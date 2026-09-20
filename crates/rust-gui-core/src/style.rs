@@ -10,6 +10,93 @@ pub enum Length {
     Percent(f32),
 }
 
+/// Cross-axis alignment of children, or of one child through `align_self`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Align {
+    #[default]
+    Start,
+    Center,
+    End,
+    Stretch,
+    /// Aligns text bottoms today; true font baselines need measurer support.
+    Baseline,
+}
+
+/// Main-axis distribution of children.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Justify {
+    #[default]
+    Start,
+    Center,
+    End,
+    Stretch,
+    SpaceBetween,
+    SpaceAround,
+    SpaceEvenly,
+}
+
+/// One bound of a grid track.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum TrackSize {
+    Px(f32),
+    Percent(f32),
+    /// Fraction of the free space; only meaningful as a maximum.
+    Fr(f32),
+    Auto,
+}
+
+/// A grid track template entry.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Track {
+    Px(f32),
+    Percent(f32),
+    Fr(f32),
+    Auto,
+    MinMax(TrackSize, TrackSize),
+    Repeat(u16, Vec<Track>),
+}
+
+impl Track {
+    pub fn repeat(count: u16, tracks: Vec<Track>) -> Self {
+        Self::Repeat(count, tracks)
+    }
+}
+
+/// Explicit grid placement in 1-based lines; spans default to one cell.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GridArea {
+    pub column: u16,
+    pub row: u16,
+    pub column_span: u16,
+    pub row_span: u16,
+}
+
+impl GridArea {
+    pub fn cell(column: u16, row: u16) -> Self {
+        Self {
+            column,
+            row,
+            column_span: 1,
+            row_span: 1,
+        }
+    }
+    pub fn span(column: u16, row: u16, column_span: u16, row_span: u16) -> Self {
+        Self {
+            column,
+            row,
+            column_span,
+            row_span,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Flow {
+    Column,
+    Row,
+    Grid,
+}
+
 /// Paint properties a pseudo-state may override. Layout never changes with state,
 /// so state transitions stay repaint-only.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -51,10 +138,32 @@ pub struct StateStyles {
 pub struct Style {
     pub width: Length,
     pub height: Length,
+    /// `Auto` means unconstrained.
+    pub min_width: Length,
+    pub max_width: Length,
+    pub min_height: Length,
+    pub max_height: Length,
+    /// width / height; the unspecified dimension follows the other.
+    pub aspect_ratio: Option<f32>,
     pub padding: f32,
     pub gap: f32,
     pub grow: f32,
+    /// Flex shrink factor; children do not shrink unless this is set.
+    pub shrink: f32,
     pub radius: f32,
+    pub align_items: Align,
+    pub justify_content: Justify,
+    pub align_self: Option<Align>,
+    /// Grid items only: inline-axis alignment inside the cell.
+    pub justify_self: Option<Align>,
+    /// Grid containers: explicit column and row templates.
+    pub columns: Vec<Track>,
+    pub rows: Vec<Track>,
+    /// Sizes for implicitly created tracks; `Auto` when empty.
+    pub auto_columns: Vec<Track>,
+    pub auto_rows: Vec<Track>,
+    /// Grid items only: explicit placement instead of auto-flow.
+    pub area: Option<GridArea>,
     pub background: Option<Color>,
     pub foreground: Option<Color>,
     pub font_size: Option<f32>,
@@ -70,10 +179,25 @@ impl Default for Style {
         Self {
             width: Length::Auto,
             height: Length::Auto,
+            min_width: Length::Auto,
+            max_width: Length::Auto,
+            min_height: Length::Auto,
+            max_height: Length::Auto,
+            aspect_ratio: None,
             padding: 0.0,
             gap: 12.0,
             grow: 0.0,
+            shrink: 0.0,
             radius: 0.0,
+            align_items: Align::Start,
+            justify_content: Justify::Start,
+            align_self: None,
+            justify_self: None,
+            columns: Vec::new(),
+            rows: Vec::new(),
+            auto_columns: Vec::new(),
+            auto_rows: Vec::new(),
+            area: None,
             background: None,
             foreground: None,
             font_size: None,
@@ -113,10 +237,25 @@ impl Style {
 
     setter!(width, width, Length);
     setter!(height, height, Length);
+    setter!(min_width, min_width, Length);
+    setter!(max_width, max_width, Length);
+    setter!(min_height, min_height, Length);
+    setter!(max_height, max_height, Length);
+    setter!(aspect_ratio, aspect_ratio, f32, some);
     setter!(padding, padding, f32);
     setter!(gap, gap, f32);
     setter!(grow, grow, f32);
+    setter!(shrink, shrink, f32);
     setter!(radius, radius, f32);
+    setter!(align_items, align_items, Align);
+    setter!(justify_content, justify_content, Justify);
+    setter!(align_self, align_self, Align, some);
+    setter!(justify_self, justify_self, Align, some);
+    setter!(columns, columns, Vec<Track>);
+    setter!(rows, rows, Vec<Track>);
+    setter!(auto_columns, auto_columns, Vec<Track>);
+    setter!(auto_rows, auto_rows, Vec<Track>);
+    setter!(area, area, GridArea, some);
     setter!(wrap, wrap, TextWrap);
     setter!(background, background, Color, some);
     setter!(foreground, foreground, Color, some);
@@ -156,32 +295,132 @@ impl Style {
         }
     }
 
-    pub(crate) fn layout(&self, row: bool) -> taffy::Style {
+    pub(crate) fn layout(&self, flow: Flow) -> taffy::Style {
         use taffy::prelude::*;
+        use taffy::style::{
+            AlignContent, GridPlacement, GridTemplateComponent, MaxTrackSizingFunction,
+            MinTrackSizingFunction, RepetitionCount, TrackSizingFunction,
+        };
         let dimension = |value| match value {
             Length::Auto => Dimension::auto(),
             Length::Px(value) => Dimension::length(value.max(0.0)),
             Length::Percent(value) => Dimension::percent(value.max(0.0)),
         };
+        // Unset minimums stay at zero, so non-shrinking children keep their
+        // previous geometry; the automatic minimum only matters when shrinking.
+        let minimum = |value| match value {
+            Length::Auto => Dimension::length(0.0),
+            other => dimension(other),
+        };
+        let align = |value: Align| match value {
+            Align::Start => AlignItems::Start,
+            Align::Center => AlignItems::Center,
+            Align::End => AlignItems::End,
+            Align::Stretch => AlignItems::Stretch,
+            Align::Baseline => AlignItems::Baseline,
+        };
+        let justify = |value: Justify| match value {
+            Justify::Start => AlignContent::Start,
+            Justify::Center => AlignContent::Center,
+            Justify::End => AlignContent::End,
+            Justify::Stretch => AlignContent::Stretch,
+            Justify::SpaceBetween => AlignContent::SpaceBetween,
+            Justify::SpaceAround => AlignContent::SpaceAround,
+            Justify::SpaceEvenly => AlignContent::SpaceEvenly,
+        };
+        let min_track = |size: TrackSize| -> MinTrackSizingFunction {
+            match size {
+                TrackSize::Px(value) => length(value.max(0.0)),
+                TrackSize::Percent(value) => percent(value.max(0.0)),
+                TrackSize::Fr(_) | TrackSize::Auto => auto(),
+            }
+        };
+        let max_track = |size: TrackSize| -> MaxTrackSizingFunction {
+            match size {
+                TrackSize::Px(value) => length(value.max(0.0)),
+                TrackSize::Percent(value) => percent(value.max(0.0)),
+                TrackSize::Fr(value) => fr(value.max(0.0)),
+                TrackSize::Auto => auto(),
+            }
+        };
+        let sizing = |track: &Track| -> TrackSizingFunction {
+            match track {
+                Track::Px(value) => minmax(
+                    min_track(TrackSize::Px(*value)),
+                    max_track(TrackSize::Px(*value)),
+                ),
+                Track::Percent(value) => minmax(
+                    min_track(TrackSize::Percent(*value)),
+                    max_track(TrackSize::Percent(*value)),
+                ),
+                Track::Fr(value) => minmax(auto(), max_track(TrackSize::Fr(*value))),
+                Track::Auto => minmax(auto(), auto()),
+                Track::MinMax(min, max) => minmax(min_track(*min), max_track(*max)),
+                // Nested repeats are not part of the contract; treat as auto.
+                Track::Repeat(..) => minmax(auto(), auto()),
+            }
+        };
+        let template = |tracks: &[Track]| -> Vec<GridTemplateComponent<String>> {
+            tracks
+                .iter()
+                .map(|track| match track {
+                    Track::Repeat(count, inner) => repeat(
+                        RepetitionCount::Count((*count).max(1)),
+                        inner.iter().map(sizing).collect(),
+                    ),
+                    other => GridTemplateComponent::Single(sizing(other)),
+                })
+                .collect()
+        };
+        let placement = |start: u16, count: u16| Line::<GridPlacement> {
+            start: line(i16::try_from(start.max(1)).unwrap_or(i16::MAX)),
+            end: span(count.max(1)),
+        };
         taffy::Style {
+            display: match flow {
+                Flow::Grid => Display::Grid,
+                Flow::Row | Flow::Column => Display::Flex,
+            },
             size: Size {
                 width: dimension(self.width),
                 height: dimension(self.height),
             },
             min_size: Size {
-                width: Dimension::length(0.0),
-                height: Dimension::length(0.0),
+                width: minimum(self.min_width),
+                height: minimum(self.min_height),
             },
+            max_size: Size {
+                width: dimension(self.max_width),
+                height: dimension(self.max_height),
+            },
+            aspect_ratio: self
+                .aspect_ratio
+                .filter(|ratio| ratio.is_finite() && *ratio > 0.0),
             padding: Rect::length(self.padding.max(0.0)),
             gap: Size::length(self.gap.max(0.0)),
-            flex_direction: if row {
+            flex_direction: if flow == Flow::Row {
                 FlexDirection::Row
             } else {
                 FlexDirection::Column
             },
-            align_items: Some(AlignItems::Start),
+            align_items: Some(align(self.align_items)),
+            // `Start` keeps the engine's normal behavior, which lets grid tracks fill.
+            justify_content: (self.justify_content != Justify::Start)
+                .then(|| justify(self.justify_content)),
+            align_self: self.align_self.map(align),
+            justify_self: self.justify_self.map(align),
             flex_grow: self.grow.max(0.0),
-            flex_shrink: 0.0,
+            flex_shrink: self.shrink.max(0.0),
+            grid_template_columns: template(&self.columns),
+            grid_template_rows: template(&self.rows),
+            grid_auto_columns: self.auto_columns.iter().map(sizing).collect(),
+            grid_auto_rows: self.auto_rows.iter().map(sizing).collect(),
+            grid_column: self.area.map_or_else(Default::default, |area| {
+                placement(area.column, area.column_span)
+            }),
+            grid_row: self
+                .area
+                .map_or_else(Default::default, |area| placement(area.row, area.row_span)),
             ..taffy::Style::default()
         }
     }

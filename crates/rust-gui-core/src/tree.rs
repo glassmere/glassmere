@@ -1,6 +1,6 @@
 use crate::{
     CustomWidget, Length, Style, Ui,
-    style::{Paint, ResolvedText},
+    style::{Flow, Paint, ResolvedText},
     stylesheet::StyleSheet,
     theme::Theme,
     ui::{Element, Kind, WidgetKey},
@@ -409,7 +409,11 @@ struct Measurement {
 }
 
 fn layout_style(style: &Style, kind: Kind) -> taffy::Style {
-    let mut result = style.layout(kind == Kind::Row);
+    let mut result = style.layout(match kind {
+        Kind::Row => Flow::Row,
+        Kind::Grid => Flow::Grid,
+        _ => Flow::Column,
+    });
     if kind == Kind::Popup {
         result.position = taffy::Position::Absolute;
         result.inset.top = taffy::LengthPercentageAuto::percent(1.0);
@@ -440,7 +444,7 @@ impl Default for Context {
         let theme = Theme::dark();
         let style = Style::default();
         let layout_id = layout
-            .new_leaf(style.layout(false))
+            .new_leaf(style.layout(Flow::Column))
             .expect("new root layout");
         let root = NodeId(1);
         let node = Node {
@@ -733,7 +737,7 @@ impl Context {
             root.style.width = Length::Px(size.width);
             root.style.height = Length::Px(size.height);
             self.layout
-                .set_style(root.layout_id, root.style.layout(false))
+                .set_style(root.layout_id, root.style.layout(Flow::Column))
                 .unwrap();
             self.pending |= Dirty::LAYOUT | Dirty::PAINT;
         }
@@ -881,7 +885,7 @@ impl Context {
                 if node.style != element.style {
                     changed |= Dirty::STYLE;
                 }
-                if node.style.layout(false) != element.style.layout(false) {
+                if node.style.layout(Flow::Column) != element.style.layout(Flow::Column) {
                     changed |= Dirty::LAYOUT;
                 }
                 if node.enabled != element.enabled || node.control != element.control {

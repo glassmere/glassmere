@@ -730,10 +730,42 @@ fn details(
         ui,
         "layout",
         format!(
-            "Style: width {:?} · height {:?} · padding {} · gap {} · grow {} · radius {}",
-            style.width, style.height, style.padding, style.gap, style.grow, style.radius
+            "Style: width {:?} · height {:?} · padding {} · gap {} · grow {} · shrink {} · radius {}",
+            style.width,
+            style.height,
+            style.padding,
+            style.gap,
+            style.grow,
+            style.shrink,
+            style.radius
         ),
     );
+    line(
+        ui,
+        "align",
+        format!(
+            "Align items {:?} · justify {:?} · self {:?}/{:?} · min {:?}×{:?} · max {:?}×{:?} · aspect {:?}",
+            style.align_items,
+            style.justify_content,
+            style.align_self,
+            style.justify_self,
+            style.min_width,
+            style.min_height,
+            style.max_width,
+            style.max_height,
+            style.aspect_ratio
+        ),
+    );
+    if !style.columns.is_empty() || !style.rows.is_empty() || style.area.is_some() {
+        line(
+            ui,
+            "grid",
+            format!(
+                "Grid columns {:?} · rows {:?} · auto {:?}/{:?} · area {:?}",
+                style.columns, style.rows, style.auto_columns, style.auto_rows, style.area
+            ),
+        );
+    }
     let resolved = &details.resolved;
     line(
         ui,

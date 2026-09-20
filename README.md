@@ -46,6 +46,14 @@ cargo run -p rust-gui --example theming --release
 
 It follows the OS light/dark preference, switches themes at runtime, inherits text properties, applies per-state overrides, and hot-reloads `examples/theming.style` while running. See [milestone 6a](docs/milestone-6.md).
 
+Layout depth has its own example too:
+
+```sh
+cargo run -p rust-gui --example layout --release
+```
+
+It shows grid tracks with `repeat` and explicit areas, a form on `[auto, 1fr]` columns, alignment and distribution, aspect-ratio cards bounded by min/max widths and opt-in shrinking. See [milestone 6b](docs/milestone-6.md#milestone-6b-layout-depth).
+
 ```rust
 use rust_gui::{run, AppOptions};
 
@@ -66,7 +74,7 @@ The view may run more than once per input event. Put application actions behind 
 
 - Parent-scoped explicit keys, positional convenience keys, monotonic `NodeId`s, reconciliation and removal.
 - Separate tree/style/layout/paint/accessibility/text invalidation flags and frame counters.
-- Cached Taffy flex layout, Row / Column / Container, labels and buttons.
+- Cached Taffy flex and grid layout with tracks, areas, min/max, aspect ratio, alignment and opt-in shrinking; Row / Column / Container / Grid.
 - A renderer-independent scene with ordered rounded quads, text and rectangular clips.
 - wgpu rendering with glyphon / cosmic-text shaping and system font fallback.
 - Width-aware wrapping, generic/named font families, weights and italic styling.
@@ -139,15 +147,16 @@ cargo run -p rust-gui --example controls -- --smoke
 cargo run -p rust-gui --example application -- --smoke
 RUST_GUI_INSPECT=1 cargo run -p rust-gui --example application -- --smoke
 cargo run -p rust-gui --example theming -- --smoke
+cargo run -p rust-gui --example layout -- --smoke
 cargo run -p rust-gui-core --example tree_bench --release
 ```
 
 The GPU test checks actual pixels for clipping, paint order, text and 2x scaling, plus buffer reuse and DPI invalidation. `--smoke` opens a native window and exits after two presented frames. `--stress --frames 6000` continuously changes the counter, toggles content and reorders keyed labels. Neither requires the optional `diagnostics` feature; memory checkpoints and allocation-policy overrides do. Desktop execution requires a graphical session and system fonts. Linux builds also need the platform development packages required by winit (X11/Wayland and xkbcommon).
 
-Verified locally on Windows with Rust 1.98.0: 66 regular tests, formatting, Clippy with warnings denied, the facade without desktop features, the two-window application smoke run with and without the inspector, and Direct3D 12 GPU pixel readback including wrapped text and the bundled-font reference. `scripts/test-inspector.ps1` drives the inspector through UI Automation and saves screenshots; `scripts/test-theming.ps1` switches themes, hot-reloads the stylesheet and captures the result. Native checks cover worker wakeups/shutdown and UI Automation interactions. Earlier renderer validation also covered Vulkan and a 6,000-frame changing-scene stress run. After a release build, `scripts/test-desktop.ps1` checks the workbench and `scripts/test-controls.ps1` checks the controls gallery. The latter's `-PointerOnly` mode skips keyboard checks when the shared desktop is active. The CI matrix is configured for Windows, Linux and macOS; native Linux/macOS execution, real OS IME candidate review and manual screen-reader speech/navigation remain unverified here. Rust 1.90 is the declared dependency floor, not a separately tested toolchain.
+Verified locally on Windows with Rust 1.98.0: 73 regular tests, formatting, Clippy with warnings denied, the facade without desktop features, the two-window application smoke run with and without the inspector, and Direct3D 12 GPU pixel readback including wrapped text and the bundled-font reference. `scripts/test-inspector.ps1` drives the inspector through UI Automation and saves screenshots; `scripts/test-theming.ps1` switches themes, hot-reloads the stylesheet and captures the result. Native checks cover worker wakeups/shutdown and UI Automation interactions. Earlier renderer validation also covered Vulkan and a 6,000-frame changing-scene stress run. After a release build, `scripts/test-desktop.ps1` checks the workbench and `scripts/test-controls.ps1` checks the controls gallery. The latter's `-PointerOnly` mode skips keyboard checks when the shared desktop is active. The CI matrix is configured for Windows, Linux and macOS; native Linux/macOS execution, real OS IME candidate review and manual screen-reader speech/navigation remain unverified here. Rust 1.90 is the declared dependency floor, not a separately tested toolchain.
 
 ## Current limits
 
-This is a prototype with an evolving API. Text editing is single-line with logical grapheme navigation; multiline/rich editing and full accessible text selection/navigation remain future work. IME routing is implemented but real candidate windows need manual validation. The pinned AccessKit Windows adapter lacks ExpandCollapsePattern; popup opening works through keyboard/pointer input. Linux clipboard support currently uses X11/XWayland. Scrolling is vertical without draggable scrollbar thumbs; virtualization requires one fixed row height per collection. Drag/drop is in-process plus incoming OS file drops, whose position is the last known pointer on Windows. Custom leaves support drawing and button-style activation. Containers clip to rectangles, while popups overlay normal content. Windows share one graphics policy; partial GPU presentation and CPU rendering remain future work. Themes cover colors and the base font, not spacing or control sizes; stylesheets reload by polling. Frame timings are CPU-side; GPU time, memory statistics and framework warnings are not recorded yet. AccessKit sends full tree updates only while accessibility is active; screen-reader behavior still needs manual review.
+This is a prototype with an evolving API. Text editing is single-line with logical grapheme navigation; multiline/rich editing and full accessible text selection/navigation remain future work. IME routing is implemented but real candidate windows need manual validation. The pinned AccessKit Windows adapter lacks ExpandCollapsePattern; popup opening works through keyboard/pointer input. Linux clipboard support currently uses X11/XWayland. Scrolling is vertical without draggable scrollbar thumbs; virtualization requires one fixed row height per collection. Drag/drop is in-process plus incoming OS file drops, whose position is the last known pointer on Windows. Custom leaves support drawing and button-style activation. Containers clip to rectangles, while popups overlay normal content. Windows share one graphics policy; partial GPU presentation and CPU rendering remain future work. Themes cover colors and the base font, not spacing or control sizes; stylesheets reload by polling. Grid item percentages resolve against the container and baseline alignment uses text bottoms. Frame timings are CPU-side; GPU time, memory statistics and framework warnings are not recorded yet. AccessKit sends full tree updates only while accessibility is active; screen-reader behavior still needs manual review.
 
 See [architecture](docs/architecture.md) and [roadmap](docs/roadmap.md) for the next steps.

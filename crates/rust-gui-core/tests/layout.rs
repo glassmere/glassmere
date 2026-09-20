@@ -1,0 +1,388 @@
+use rust_gui_core::{
+    Align, Context, GridArea, Justify, Length, MonospaceMeasurer, NodeId, Style, StyleSheet, Track,
+    TrackSize, Ui,
+};
+use rust_gui_scene::{Rect, Size};
+
+const ROOT: Size = Size::new(500.0, 400.0);
+
+fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) -> rust_gui_core::FrameStats {
+    context.run(ROOT, &mut MonospaceMeasurer, view)
+}
+
+fn bounds(context: &Context, path: &[&str]) -> Rect {
+    context.node(find(context, path)).unwrap().bounds
+}
+
+fn find(context: &Context, path: &[&str]) -> NodeId {
+    context
+        .find(path)
+        .unwrap_or_else(|| panic!("missing {path:?}"))
+}
+
+fn fixed(width: f32, height: f32) -> Style {
+    Style::default()
+        .width(Length::Px(width))
+        .height(Length::Px(height))
+}
+
+fn assert_rect(actual: Rect, x: f32, y: f32, width: f32, height: f32) {
+    let close = |a: f32, b: f32| (a - b).abs() < 0.51;
+    assert!(
+        close(actual.x, x)
+            && close(actual.y, y)
+            && close(actual.width, width)
+            && close(actual.height, height),
+        "expected ({x}, {y}, {width}×{height}), got {actual:?}"
+    );
+}
+
+#[test]
+fn grid_auto_places_children_and_honors_explicit_areas_and_implicit_rows() {
+    let mut context = Context::new();
+    let view = |ui: &mut Ui<'_>| {
+        ui.grid(
+            "grid",
+            Style::default()
+                .width(Length::Percent(1.0))
+                .columns(vec![Track::Fr(1.0), Track::Px(100.0), Track::Auto])
+                .auto_rows(vec![Track::Px(30.0)])
+                .gap(10.0),
+            |ui| {
+                for key in ["a", "b", "c", "d", "e"] {
+                    ui.label_styled(key, key, fixed(50.0, 20.0));
+                }
+                ui.label_styled(
+                    "wide",
+                    "wide",
+                    Style::default()
+                        .width(Length::Percent(1.0))
+                        .height(Length::Px(20.0))
+                        .area(GridArea::span(1, 3, 3, 1)),
+                );
+            },
+        );
+    };
+    frame(&mut context, view);
+    // Column widths: auto = 50 (content), fixed 100, fr = 500 - 150 - 2 gaps.
+    assert_rect(bounds(&context, &["grid", "a"]), 0.0, 0.0, 50.0, 20.0);
+    assert_rect(bounds(&context, &["grid", "b"]), 340.0, 0.0, 50.0, 20.0);
+    assert_rect(bounds(&context, &["grid", "c"]), 450.0, 0.0, 50.0, 20.0);
+    // Implicit rows are 30 tall; the second row starts after one gap.
+    assert_rect(bounds(&context, &["grid", "d"]), 0.0, 40.0, 50.0, 20.0);
+    assert_rect(bounds(&context, &["grid", "e"]), 340.0, 40.0, 50.0, 20.0);
+    // The explicitly placed child spans all three columns on row three.
+    assert_rect(bounds(&context, &["grid", "wide"]), 0.0, 80.0, 500.0, 20.0);
+    assert_rect(bounds(&context, &["grid"]), 0.0, 0.0, 500.0, 110.0);
+    // A grid is a group for accessibility and reuses nodes like any container.
+    let stats = frame(&mut context, view);
+    assert_eq!((stats.created, stats.layout_passes), (0, 0));
+}
+
+#[test]
+fn repeat_minmax_and_percent_tracks_size_as_specified() {
+    let mut context = Context::new();
+    frame(&mut context, |ui| {
+        ui.grid(
+            "grid",
+            Style::default()
+                .width(Length::Px(400.0))
+                .gap(0.0)
+                .columns(vec![
+                    Track::repeat(2, vec![Track::Fr(1.0)]),
+                    Track::MinMax(TrackSize::Px(50.0), TrackSize::Px(80.0)),
+                    Track::Percent(0.25),
+                ]),
+            |ui| {
+                for key in ["a", "b", "c", "d"] {
+                    ui.label_styled(key, key, Style::default().height(Length::Px(10.0)));
+                }
+            },
+        );
+    });
+    // CSS track sizing: 25% = 100, minmax(50, 80) grows to its 80 maximum while
+    // free space remains, and the two fr tracks split the remaining 220. Items
+    // without an explicit width stretch to their cell.
+    assert_rect(bounds(&context, &["grid", "a"]), 0.0, 0.0, 110.0, 10.0);
+    assert_rect(bounds(&context, &["grid", "b"]), 110.0, 0.0, 110.0, 10.0);
+    assert_rect(bounds(&context, &["grid", "c"]), 220.0, 0.0, 80.0, 10.0);
+    assert_rect(bounds(&context, &["grid", "d"]), 300.0, 0.0, 100.0, 10.0);
+}
+
+#[test]
+fn min_max_and_aspect_ratio_constrain_sizes() {
+    let mut context = Context::new();
+    frame(&mut context, |ui| {
+        ui.column("page", Style::default().width(Length::Percent(1.0)), |ui| {
+            ui.container(
+                "min",
+                Style::default()
+                    .width(Length::Percent(0.5))
+                    .min_width(Length::Px(300.0))
+                    .height(Length::Px(10.0)),
+                |_| {},
+            );
+            ui.container(
+                "max",
+                Style::default()
+                    .width(Length::Percent(1.0))
+                    .max_width(Length::Px(100.0))
+                    .height(Length::Px(10.0)),
+                |_| {},
+            );
+            ui.container(
+                "aspect",
+                Style::default().width(Length::Px(200.0)).aspect_ratio(2.0),
+                |_| {},
+            );
+            ui.container(
+                "tall",
+                Style::default()
+                    .height(Length::Px(50.0))
+                    .aspect_ratio(0.5)
+                    .max_height(Length::Px(40.0)),
+                |_| {},
+            );
+        });
+    });
+    assert_rect(bounds(&context, &["page", "min"]), 0.0, 0.0, 300.0, 10.0);
+    assert_rect(bounds(&context, &["page", "max"]), 0.0, 22.0, 100.0, 10.0);
+    assert_rect(
+        bounds(&context, &["page", "aspect"]),
+        0.0,
+        44.0,
+        200.0,
+        100.0,
+    );
+    // max-height wins over the specified height; width follows the ratio.
+    let tall = bounds(&context, &["page", "tall"]);
+    assert_eq!(tall.height, 40.0);
+    assert_eq!(tall.width, 20.0);
+}
+
+#[test]
+fn alignment_and_distribution_apply_to_rows_columns_and_children() {
+    let mut context = Context::new();
+    frame(&mut context, |ui| {
+        ui.column(
+            "page",
+            Style::default().width(Length::Percent(1.0)).gap(0.0),
+            |ui| {
+                ui.row(
+                    "centered",
+                    Style::default()
+                        .width(Length::Percent(1.0))
+                        .height(Length::Px(100.0))
+                        .align_items(Align::Center)
+                        .justify_content(Justify::SpaceBetween)
+                        .gap(0.0),
+                    |ui| {
+                        ui.label_styled("short", "s", fixed(50.0, 20.0));
+                        ui.label_styled("tall", "t", fixed(50.0, 40.0));
+                        ui.label_styled("end", "e", fixed(50.0, 20.0).align_self(Align::End));
+                    },
+                );
+                ui.row(
+                    "stretched",
+                    Style::default()
+                        .width(Length::Percent(1.0))
+                        .height(Length::Px(60.0))
+                        .align_items(Align::Stretch)
+                        .justify_content(Justify::Center)
+                        .gap(0.0),
+                    |ui| {
+                        ui.label_styled("fill", "f", Style::default().width(Length::Px(100.0)));
+                    },
+                );
+                ui.column(
+                    "vertical",
+                    Style::default()
+                        .width(Length::Px(100.0))
+                        .height(Length::Px(90.0))
+                        .justify_content(Justify::End)
+                        .align_items(Align::Center)
+                        .gap(0.0),
+                    |ui| {
+                        ui.label_styled("bottom", "b", fixed(20.0, 30.0));
+                    },
+                );
+            },
+        );
+    });
+    assert_rect(
+        bounds(&context, &["page", "centered", "short"]),
+        0.0,
+        40.0,
+        50.0,
+        20.0,
+    );
+    assert_rect(
+        bounds(&context, &["page", "centered", "tall"]),
+        225.0,
+        30.0,
+        50.0,
+        40.0,
+    );
+    assert_rect(
+        bounds(&context, &["page", "centered", "end"]),
+        450.0,
+        80.0,
+        50.0,
+        20.0,
+    );
+    assert_rect(
+        bounds(&context, &["page", "stretched", "fill"]),
+        200.0,
+        100.0,
+        100.0,
+        60.0,
+    );
+    assert_rect(
+        bounds(&context, &["page", "vertical", "bottom"]),
+        40.0,
+        220.0,
+        20.0,
+        30.0,
+    );
+}
+
+#[test]
+fn children_shrink_only_when_asked_and_respect_minimums() {
+    let mut context = Context::new();
+    let row = |shrink: f32, minimum: Length| {
+        move |ui: &mut Ui<'_>| {
+            ui.row(
+                "row",
+                Style::default().width(Length::Percent(1.0)).gap(0.0),
+                |ui| {
+                    ui.label_styled(
+                        "first",
+                        "1",
+                        fixed(400.0, 10.0).shrink(shrink).min_width(minimum),
+                    );
+                    ui.label_styled("second", "2", fixed(400.0, 10.0).shrink(shrink));
+                },
+            );
+        }
+    };
+    frame(&mut context, row(0.0, Length::Auto));
+    assert_rect(bounds(&context, &["row", "first"]), 0.0, 0.0, 400.0, 10.0);
+    assert_rect(
+        bounds(&context, &["row", "second"]),
+        400.0,
+        0.0,
+        400.0,
+        10.0,
+    );
+    frame(&mut context, row(1.0, Length::Auto));
+    assert_rect(bounds(&context, &["row", "first"]), 0.0, 0.0, 250.0, 10.0);
+    assert_rect(
+        bounds(&context, &["row", "second"]),
+        250.0,
+        0.0,
+        250.0,
+        10.0,
+    );
+    frame(&mut context, row(1.0, Length::Px(300.0)));
+    assert_rect(bounds(&context, &["row", "first"]), 0.0, 0.0, 300.0, 10.0);
+    assert_rect(
+        bounds(&context, &["row", "second"]),
+        300.0,
+        0.0,
+        200.0,
+        10.0,
+    );
+}
+
+#[test]
+fn baseline_alignment_lines_up_text_bottoms_across_font_sizes() {
+    let mut context = Context::new();
+    frame(&mut context, |ui| {
+        ui.row(
+            "row",
+            Style::default().align_items(Align::Baseline).gap(4.0),
+            |ui| {
+                ui.label_styled("small", "small", Style::default().font_size(12.0));
+                ui.label_styled("large", "large", Style::default().font_size(32.0));
+                ui.label_styled(
+                    "padded",
+                    "pad",
+                    Style::default().font_size(16.0).padding(10.0),
+                );
+            },
+        );
+    });
+    let small = bounds(&context, &["row", "small"]);
+    let large = bounds(&context, &["row", "large"]);
+    let padded = bounds(&context, &["row", "padded"]);
+    assert!(large.height > small.height);
+    assert_eq!(small.y + small.height, large.y + large.height);
+    assert_eq!(padded.y + padded.height, large.y + large.height);
+    assert!(
+        small.y > 0.0,
+        "the smaller label moves down to the shared line"
+    );
+}
+
+#[test]
+fn stylesheets_express_layout_constraints_tracks_and_alignment() {
+    let sheet = StyleSheet::parse(
+        r#"
+        class card {
+            min-width: 120; max-width: 50%; min-height: auto; max-height: 300
+            aspect-ratio: 1.5
+            shrink: 1
+            align-items: center; justify-content: space-between
+            align-self: end; justify-self: stretch
+        }
+        class gallery {
+            columns: repeat(2, 1fr) minmax(100, 1fr) auto 25%
+            rows: 40 auto
+            auto-rows: minmax(30, auto)
+        }
+        class hero { area: 1 2 3 1 }
+        class cell { area: 2 3 }
+        "#,
+    )
+    .unwrap();
+    let card = sheet.class("card").unwrap();
+    assert_eq!(card.min_width, Length::Px(120.0));
+    assert_eq!(card.max_width, Length::Percent(0.5));
+    assert_eq!(card.min_height, Length::Auto);
+    assert_eq!(card.max_height, Length::Px(300.0));
+    assert_eq!(card.aspect_ratio, Some(1.5));
+    assert_eq!(card.shrink, 1.0);
+    assert_eq!(card.align_items, Align::Center);
+    assert_eq!(card.justify_content, Justify::SpaceBetween);
+    assert_eq!(card.align_self, Some(Align::End));
+    assert_eq!(card.justify_self, Some(Align::Stretch));
+    let gallery = sheet.class("gallery").unwrap();
+    assert_eq!(
+        gallery.columns,
+        vec![
+            Track::Repeat(2, vec![Track::Fr(1.0)]),
+            Track::MinMax(TrackSize::Px(100.0), TrackSize::Fr(1.0)),
+            Track::Auto,
+            Track::Percent(0.25),
+        ]
+    );
+    assert_eq!(gallery.rows, vec![Track::Px(40.0), Track::Auto]);
+    assert_eq!(
+        gallery.auto_rows,
+        vec![Track::MinMax(TrackSize::Px(30.0), TrackSize::Auto)]
+    );
+    assert_eq!(
+        sheet.class("hero").unwrap().area,
+        Some(GridArea::span(1, 2, 3, 1))
+    );
+    assert_eq!(
+        sheet.class("cell").unwrap().area,
+        Some(GridArea::cell(2, 3))
+    );
+    let error = |text: &str| StyleSheet::parse(text).unwrap_err().message;
+    assert!(error("class a { columns: 1fr bogus }").contains("invalid number"));
+    assert!(error("class a { columns: repeat(2, repeat(2, 1fr)) }").contains("nested repeat"));
+    assert!(error("class a { align-items: middle }").contains("unknown alignment"));
+    assert!(error("class a { justify-content: around }").contains("unknown justify-content"));
+    assert!(error("class a { area: 1 }").contains("area needs"));
+}

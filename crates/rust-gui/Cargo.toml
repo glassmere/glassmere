@@ -36,5 +36,9 @@ required-features = ["desktop"]
 name = "theming"
 required-features = ["desktop"]
 
+[[example]]
+name = "layout"
+required-features = ["desktop"]
+
 [lints]
 workspace = true

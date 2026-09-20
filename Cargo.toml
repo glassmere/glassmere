@@ -25,7 +25,7 @@ rust-gui-testing = { path = "crates/rust-gui-testing" }
 rust-gui-devtools = { path = "crates/rust-gui-devtools" }
 bitflags = "2.13"
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
-taffy = { version = "0.10.1", default-features = false, features = ["std", "taffy_tree", "flexbox"] }
+taffy = { version = "0.10.1", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid"] }
 wgpu = "29.0.4"
 winit = "0.30.13"
 glyphon = "0.11.0"

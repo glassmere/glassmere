@@ -21,7 +21,9 @@ pub use drag::{DragInfo, DragPayload, DropKind};
 pub use editor::{TextEdit, TextMove, TextSelection};
 pub use rust_gui_scene::{FontFamily, TextStyle, TextWrap};
 pub use rust_gui_scene::{MonospaceMeasurer, TextMeasurer};
-pub use style::{Length, Paint, ResolvedText, StateStyles, Style};
+pub use style::{
+    Align, GridArea, Justify, Length, Paint, ResolvedText, StateStyles, Style, Track, TrackSize,
+};
 pub use stylesheet::{StyleSheet, StyleSheetError};
 pub use theme::{TOKENS, Theme};
 pub use tree::{

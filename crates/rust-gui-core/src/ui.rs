@@ -15,6 +15,7 @@ pub(crate) enum WidgetKey {
 pub(crate) enum Kind {
     Column,
     Row,
+    Grid,
     Container,
     Label,
     Button,
@@ -307,6 +308,19 @@ impl Ui<'_> {
 
     pub fn row(&mut self, key: impl Into<String>, style: Style, content: impl FnOnce(&mut Ui<'_>)) {
         self.group(key.into(), Kind::Row, style, content);
+    }
+
+    /// Children fill `style.columns` cells in row-major order, wrapping into
+    /// implicit rows sized by `auto_rows`; a child's `area` places it explicitly.
+    /// Items without a width stretch to their cell. Percentage widths resolve
+    /// against the grid container, not the cell, so prefer `Length::Auto` to fill.
+    pub fn grid(
+        &mut self,
+        key: impl Into<String>,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_>),
+    ) {
+        self.group(key.into(), Kind::Grid, style, content);
     }
 
     /// A vertical group with its own background, padding, and rectangular clip.

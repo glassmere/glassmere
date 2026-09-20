@@ -66,7 +66,7 @@ The [milestone report](milestone-5.md) describes the crates, contracts and valid
 - [x] Theme tokens for every built-in control, dark and light themes, runtime switching and OS appearance ([milestone 6a](milestone-6.md)).
 - [x] Inherited text properties, typed style classes, per-state paint overrides.
 - [x] Stylesheet format with classes, `extends`, tokens and hot reload from disk.
-- [ ] Grid layout, min/max constraints, aspect ratio and baseline alignment.
+- [x] Grid layout with tracks and areas, min/max constraints, aspect ratio, alignment and opt-in shrinking ([milestone 6b](milestone-6.md#milestone-6b-layout-depth)).
 - [ ] Focus scopes, modal focus and dialogs; tooltips, tabs, split panes and context menus.
 - [ ] Transitions and property animations with GPU-friendly transforms and opacity.
 

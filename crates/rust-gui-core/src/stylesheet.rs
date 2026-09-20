@@ -18,12 +18,17 @@
 //! class danger extends primary { background: #c0392b }
 //! ```
 //!
-//! Properties: width, height (`auto`, `50%`, `120`), padding, gap, grow, radius,
+//! Properties: width, height, min-width, max-width, min-height, max-height
+//! (`auto`, `50%`, `120`), aspect-ratio, padding, gap, grow, shrink, radius,
+//! align-items, align-self, justify-self (`start`, `center`, `end`, `stretch`,
+//! `baseline`), justify-content (also `space-between`, `space-around`,
+//! `space-evenly`), columns, rows, auto-columns, auto-rows (`120 50% 1fr auto
+//! minmax(100, 1fr) repeat(3, 1fr)`), area (`column row [colspan rowspan]`),
 //! background, foreground (`#rrggbb` or `#rrggbbaa`), font-size, font-weight,
 //! font-family (`sans`, `serif`, `monospace`, `"Name"`), italic, wrap (`word`,
 //! `none`) and `hover.`/`pressed.`/`focused.`/`disabled.` prefixed background,
 //! foreground and radius. One property per line or `;`-separated.
-use crate::{Length, Paint, Style, Theme};
+use crate::{Align, GridArea, Justify, Length, Paint, Style, Theme, Track, TrackSize};
 use rust_gui_scene::{Color, FontFamily, TextWrap};
 use std::collections::HashMap;
 
@@ -216,6 +221,51 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
     match key {
         "width" => style.width = length(value)?,
         "height" => style.height = length(value)?,
+        "min-width" => style.min_width = length(value)?,
+        "max-width" => style.max_width = length(value)?,
+        "min-height" => style.min_height = length(value)?,
+        "max-height" => style.max_height = length(value)?,
+        "aspect-ratio" => style.aspect_ratio = Some(number(value)?),
+        "shrink" => style.shrink = number(value)?,
+        "align-items" => style.align_items = align(value)?,
+        "align-self" => style.align_self = Some(align(value)?),
+        "justify-self" => style.justify_self = Some(align(value)?),
+        "justify-content" => {
+            style.justify_content = match value {
+                "start" => Justify::Start,
+                "center" => Justify::Center,
+                "end" => Justify::End,
+                "stretch" => Justify::Stretch,
+                "space-between" => Justify::SpaceBetween,
+                "space-around" => Justify::SpaceAround,
+                "space-evenly" => Justify::SpaceEvenly,
+                _ => return Err(format!("unknown justify-content `{value}`")),
+            }
+        }
+        "columns" => style.columns = tracks(value)?,
+        "rows" => style.rows = tracks(value)?,
+        "auto-columns" => style.auto_columns = tracks(value)?,
+        "auto-rows" => style.auto_rows = tracks(value)?,
+        "area" => {
+            let numbers: Vec<u16> = value
+                .split_whitespace()
+                .map(|part| {
+                    part.parse::<u16>()
+                        .map_err(|_| format!("invalid area `{value}`"))
+                })
+                .collect::<Result<_, _>>()?;
+            style.area = Some(match numbers[..] {
+                [column, row] => GridArea::cell(column, row),
+                [column, row, column_span, row_span] => {
+                    GridArea::span(column, row, column_span, row_span)
+                }
+                _ => {
+                    return Err(format!(
+                        "area needs `column row` or `column row colspan rowspan`, got `{value}`"
+                    ));
+                }
+            });
+        }
         "padding" => style.padding = number(value)?,
         "gap" => style.gap = number(value)?,
         "grow" => style.grow = number(value)?,
@@ -265,6 +315,96 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         _ => return Err(format!("unknown property `{key}`")),
     }
     Ok(())
+}
+
+fn align(value: &str) -> Result<Align, String> {
+    Ok(match value {
+        "start" => Align::Start,
+        "center" => Align::Center,
+        "end" => Align::End,
+        "stretch" => Align::Stretch,
+        "baseline" => Align::Baseline,
+        _ => return Err(format!("unknown alignment `{value}`")),
+    })
+}
+
+/// Splits on whitespace outside parentheses: `repeat(2, 1fr) minmax(100, 1fr) auto`.
+fn split_tracks(value: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth = 0usize;
+    let mut start = None;
+    for (index, ch) in value.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            ch if ch.is_whitespace() && depth == 0 => {
+                if let Some(begin) = start.take() {
+                    parts.push(&value[begin..index]);
+                }
+                continue;
+            }
+            _ => {}
+        }
+        if start.is_none() {
+            start = Some(index);
+        }
+    }
+    if let Some(begin) = start {
+        parts.push(&value[begin..]);
+    }
+    parts
+}
+
+fn track_size(value: &str) -> Result<TrackSize, String> {
+    Ok(match value.trim() {
+        "auto" => TrackSize::Auto,
+        fraction if fraction.ends_with("fr") => {
+            TrackSize::Fr(number(&fraction[..fraction.len() - 2])?)
+        }
+        percent if percent.ends_with('%') => {
+            TrackSize::Percent(number(&percent[..percent.len() - 1])? / 100.0)
+        }
+        pixels => TrackSize::Px(number(pixels)?),
+    })
+}
+
+fn tracks(value: &str) -> Result<Vec<Track>, String> {
+    split_tracks(value)
+        .into_iter()
+        .map(|part| {
+            if let Some(inner) = part
+                .strip_prefix("repeat(")
+                .and_then(|rest| rest.strip_suffix(')'))
+            {
+                let (count, rest) = inner
+                    .split_once(',')
+                    .ok_or_else(|| format!("repeat needs `repeat(count, tracks)`, got `{part}`"))?;
+                let count: u16 = count
+                    .trim()
+                    .parse()
+                    .map_err(|_| format!("invalid repeat count in `{part}`"))?;
+                if rest.contains("repeat(") {
+                    return Err(format!("nested repeat is not supported in `{part}`"));
+                }
+                return Ok(Track::Repeat(count, tracks(rest)?));
+            }
+            if let Some(inner) = part
+                .strip_prefix("minmax(")
+                .and_then(|rest| rest.strip_suffix(')'))
+            {
+                let (min, max) = inner
+                    .split_once(',')
+                    .ok_or_else(|| format!("minmax needs `minmax(min, max)`, got `{part}`"))?;
+                return Ok(Track::MinMax(track_size(min)?, track_size(max)?));
+            }
+            Ok(match track_size(part)? {
+                TrackSize::Px(value) => Track::Px(value),
+                TrackSize::Percent(value) => Track::Percent(value),
+                TrackSize::Fr(value) => Track::Fr(value),
+                TrackSize::Auto => Track::Auto,
+            })
+        })
+        .collect()
 }
 
 fn number(value: &str) -> Result<f32, String> {

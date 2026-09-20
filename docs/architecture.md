@@ -51,7 +51,7 @@ Dirty flags aggregate subsystem work at context level. Taffy retains per-node la
 
 ## Layout and text
 
-All core geometry uses logical pixels. Styles offer auto, pixel and percentage sizing, uniform padding, gaps, and flex growth. Rows lay out horizontally; columns and containers vertically. Children do not shrink by default. Content exceeding bounds is clipped.
+All core geometry uses logical pixels. Styles offer auto, pixel and percentage sizing with min/max bounds and aspect ratios, uniform padding, gaps, flex growth and opt-in shrinking, plus cross-axis alignment and main-axis distribution. Rows lay out horizontally; columns and containers vertically; grids place children into `Track` templates with implicit tracks and explicit `GridArea`s. Children do not shrink by default. Content exceeding bounds is clipped.
 
 Scroll nodes retain a vertical offset and range. Bounds propagation subtracts each ancestor's offset before computing paint, hit-test and accessibility geometry. Offsets clamp when content shrinks. Wheel input chooses the deepest viewport under the pointer and propagates to ancestors at a boundary. Tab and accessibility focus reveal the target through scroll ancestors; arrow/page/Home/End keys scroll the focused viewport or its ancestors. Scrollbars indicate position; thumb dragging and virtualization are not implemented.
 
