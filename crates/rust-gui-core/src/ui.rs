@@ -17,6 +17,8 @@ pub(crate) enum Kind {
     Row,
     Grid,
     Container,
+    FocusScope,
+    Dialog,
     Label,
     Button,
     Scroll,
@@ -88,6 +90,8 @@ pub struct Ui<'a> {
     pub(crate) submitted: &'a mut HashSet<NodeId>,
     pub(crate) warnings: &'a mut Vec<String>,
     pub(crate) theme_request: &'a mut Option<crate::Theme>,
+    /// Dialog layers, appended after normal content as root children.
+    pub(crate) layers: &'a mut Vec<Element>,
     pub(crate) enabled: bool,
 }
 
@@ -281,6 +285,7 @@ impl Ui<'_> {
             submitted: self.submitted,
             warnings: self.warnings,
             theme_request: self.theme_request,
+            layers: self.layers,
             enabled: self.enabled,
         };
         content(&mut child);
@@ -321,6 +326,115 @@ impl Ui<'_> {
         content: impl FnOnce(&mut Ui<'_>),
     ) {
         self.group(key.into(), Kind::Grid, style, content);
+    }
+
+    /// A vertical group whose children form a focus region: Tab cycles inside
+    /// when `scope.trap` is set, focus returns to the previously focused node
+    /// when a `scope.restore` group disappears, and re-entering by Tab lands on
+    /// the last focused child. `scope.arrows` adds geometric arrow-key navigation.
+    pub fn focus_scope(
+        &mut self,
+        key: impl Into<String>,
+        scope: crate::FocusScope,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_>),
+    ) {
+        self.group(key.into(), Kind::FocusScope, style, content);
+        self.elements.last_mut().unwrap().control = Control::FocusScope { scope };
+    }
+
+    /// A dialog layer over the whole window while `*open`. Modal dialogs paint a
+    /// scrim, block pointer and wheel input behind them and trap Tab; focus
+    /// moves inside on open and returns to the previously focused node on close.
+    /// Escape or a scrim click clears `*open` and reports `dismissed` once.
+    /// `content` receives the open flag so buttons inside can close the dialog.
+    /// Dialog keys are unique across the whole view, and later dialogs stack on top.
+    pub fn dialog(
+        &mut self,
+        key: impl Into<String>,
+        open: &mut bool,
+        options: crate::DialogOptions,
+        content: impl FnOnce(&mut Ui<'_>, &mut bool),
+    ) -> crate::DialogResponse {
+        let key = WidgetKey::Named(format!("$dialog:{}", key.into()));
+        let layer = self
+            .context
+            .child(Some(self.context.root()), &key, Kind::Dialog);
+        let dismissed = self.enabled
+            && layer
+                .is_some_and(|id| matches!(self.updates.remove(&id), Some(ControlUpdate::Dismiss)));
+        if dismissed {
+            *open = false;
+        }
+        if !*open {
+            return crate::DialogResponse { dismissed };
+        }
+        let popup = self.context.theme().popup;
+        let mut panel = options.style;
+        panel.width = options.width;
+        if panel.background.is_none() {
+            panel.background = Some(popup);
+        }
+        if panel.radius == 0.0 {
+            panel.radius = 12.0;
+        }
+        if panel.padding == 0.0 {
+            panel.padding = 20.0;
+        }
+        let index = self.layers.len();
+        let mut child = Ui {
+            context: self.context,
+            parent: layer,
+            clicks: self.clicks,
+            elements: Vec::new(),
+            keys: HashSet::new(),
+            updates: self.updates,
+            submitted: self.submitted,
+            warnings: self.warnings,
+            theme_request: self.theme_request,
+            layers: self.layers,
+            enabled: self.enabled,
+        };
+        let title = options.title.clone();
+        child.group("$panel".into(), Kind::Container, panel, |ui| {
+            if !title.is_empty() {
+                ui.label_styled(
+                    "$title",
+                    title.clone(),
+                    Style {
+                        font_size: Some(20.0),
+                        font_weight: Some(700),
+                        ..Style::default()
+                    },
+                );
+            }
+            content(ui, open);
+        });
+        let element = Element {
+            key,
+            kind: Kind::Dialog,
+            text: String::new(),
+            style: Style {
+                width: crate::Length::Percent(1.0),
+                height: crate::Length::Percent(1.0),
+                align_items: crate::Align::Center,
+                justify_content: crate::Justify::Center,
+                gap: 0.0,
+                ..Style::default()
+            },
+            enabled: self.enabled,
+            children: child.elements,
+            custom: None,
+            control: Control::Dialog {
+                title: options.title,
+                modal: options.modal,
+                dismissible: options.dismissible,
+            },
+        };
+        // Nested dialogs declared inside `content` were pushed meanwhile; keep
+        // this one below them so children stack on top of their parents.
+        self.layers.insert(index, element);
+        crate::DialogResponse { dismissed }
     }
 
     /// A vertical group with its own background, padding, and rectangular clip.

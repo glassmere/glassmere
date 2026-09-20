@@ -1,6 +1,6 @@
 # Milestone 6: styling, theming and layout depth
 
-Two slices so far: 6a styling and theming, and 6b layout depth (below).
+Three slices so far: 6a styling and theming, 6b layout depth and 6c focus scopes and dialogs (below).
 
 # Milestone 6a: styling and theming
 
@@ -142,3 +142,49 @@ Seven layout tests cover auto-placement with implicit rows and explicit areas, `
 - Baseline alignment aligns text bottoms; true font baselines need the measurer to report ascent, which is future work.
 - No named grid lines or areas, no `auto-fill`/`auto-fit` repeats, no dense packing, no column-major flow and no per-axis gaps.
 - Responsive breakpoints and custom layout primitives are not started; grids respond to size only through `fr`, percent tracks and min/max constraints.
+
+# Milestone 6c: focus scopes and dialogs
+
+Implemented on 2026-09-21. Focus gains scopes that trap Tab, remember their last child and restore focus when they disappear, plus opt-in arrow-key navigation by geometry. Dialogs come in two forms: an in-window layer (modal with scrim or floating non-modal) that shares the headless test path, and native modal windows through the multi-window desktop.
+
+## Run
+
+```sh
+cargo run -p rust-gui --example dialogs --release
+cargo run -p rust-gui --example dialogs --release -- --open   # starts with the confirm dialog open
+```
+
+The example has a modal confirm dialog with a nested "More options" dialog, a non-modal preferences panel, an arrow-key toolbar scope, a remembered scope and a native modal window.
+
+```rust
+ui.dialog("confirm", &mut state.confirm, DialogOptions::new("Delete file?"), |ui, open| {
+    ui.label("The file will be removed permanently.");
+    if ui.button_keyed("cancel", "Cancel").clicked() { *open = false; }
+    if ui.button_keyed("delete", "Delete").clicked() { delete(); *open = false; }
+});
+ui.focus_scope("toolbar", FocusScope { arrows: true, ..FocusScope::default() }, Style::default(), |ui| { /* buttons */ });
+let dialog = desktop.open_modal(owner, AppOptions { title: "Native modal".into(), ..AppOptions::default() }, move |ui| { /* … */ })?;
+```
+
+## Contracts
+
+| API | Behavior |
+| --- | --- |
+| `Ui::focus_scope(key, FocusScope { trap, restore, arrows }, style, content)` | A group with focus memory. `trap` cycles Tab and Shift+Tab inside once focus is within. `restore` returns focus to the node focused before the scope when the scope disappears. Every scope remembers its last focused child, and Tab entering the scope from outside lands there. `arrows` moves focus to the nearest focusable in the arrow's direction within the scope, except from controls that use arrows (sliders, text inputs, lists, radios, scroll containers, open popups). |
+| `Ui::dialog(key, &mut open, DialogOptions, content)` | Declares a dialog layer as a root child while `open`; later dialogs stack above earlier ones and nested dialogs above their parent. `content` receives the open flag so buttons inside can close it. Escape, or a scrim click on a modal dialog, clears `open` and reports `dismissed` once when `dismissible`. Keys are unique across the view. |
+| `DialogOptions` | `title` (rendered as the panel heading and the accessible name), `modal` (default true), `dismissible` (default true), `width` (default 420 px) and a panel `style` whose unset background, radius and padding take dialog defaults. |
+| Modal behavior | The layer covers the window with the theme's `scrim` token, wins hit testing so pointer and wheel input never reach content behind it, traps Tab, and moves focus inside on open (remembered child, else first focusable). Closing restores focus to the node focused before the dialog. Popups opened inside a dialog paint above it. |
+| Non-modal behavior | No scrim; the panel blocks clicks on itself but content around it stays interactive and Tab flows through the dialog like any group. |
+| `Role::Dialog`, `NodeSnapshot::modal` | The layer is exposed as a dialog with the title as its name; modal layers are flagged modal for assistive technology. |
+| `DesktopHandle::open_modal(owner, options, view)` | A native window whose owner ignores pointer, keyboard, IME and file-drop input and hands focus back to the dialog while it is open. On Windows the dialog is an owned window, so it stays above its owner and minimizes with it. Closing the owner closes its dialogs. |
+
+## Validation
+
+Six focus tests cover scope trapping and memory, restoration on removal, modal dialogs (initial focus, Tab trap, scrim hit testing, wheel blocking, scrim and Escape dismissal, closing through the flag, restoration), non-modal dialogs and stacking order, arrow navigation and arrow-owning controls, and duplicate dialog keys. The full suite is 79 tests. The dialogs example passes `--smoke`, which opens the confirm dialog and a native modal window and exits when both windows close; a release screenshot with `--open` was reviewed.
+
+## Remaining limits
+
+- Dialogs are centered only; anchored popovers, tooltips and context menus are the next slice.
+- Arrow navigation is geometric within one scope; it does not cross scopes or wrap.
+- Native modals rely on host-side input blocking; only Windows gets true owned-window semantics, and there is no return value channel beyond shared state.
+- Focus restoration targets a node id; if the opener was recreated (different key path or kind) while the dialog was open, focus is cleared instead.

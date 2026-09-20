@@ -29,12 +29,14 @@ pub struct Theme {
     pub track: Color,
     pub thumb: Color,
     pub scrollbar: Color,
+    /// Translucent cover behind modal dialogs.
+    pub scrim: Color,
     pub font_family: FontFamily,
     pub font_size: f32,
 }
 
 /// Token names accepted by stylesheets and `Theme::set_token`.
-pub const TOKENS: [&str; 20] = [
+pub const TOKENS: [&str; 21] = [
     "window",
     "surface",
     "popup",
@@ -55,6 +57,7 @@ pub const TOKENS: [&str; 20] = [
     "track",
     "thumb",
     "scrollbar",
+    "scrim",
 ];
 
 impl Theme {
@@ -81,6 +84,7 @@ impl Theme {
             track: Color::rgb(95, 111, 132),
             thumb: Color::WHITE,
             scrollbar: Color::rgb(100, 116, 139),
+            scrim: Color(2, 6, 23, 150),
             font_family: FontFamily::SansSerif,
             font_size: 16.0,
         }
@@ -109,6 +113,7 @@ impl Theme {
             track: Color::rgb(203, 213, 225),
             thumb: Color::rgb(13, 148, 136),
             scrollbar: Color::rgb(148, 163, 184),
+            scrim: Color(15, 23, 42, 90),
             font_family: FontFamily::SansSerif,
             font_size: 16.0,
         }
@@ -136,6 +141,7 @@ impl Theme {
             "track" => &mut self.track,
             "thumb" => &mut self.thumb,
             "scrollbar" => &mut self.scrollbar,
+            "scrim" => &mut self.scrim,
             _ => return None,
         })
     }

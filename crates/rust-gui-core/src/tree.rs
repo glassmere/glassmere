@@ -1,5 +1,6 @@
 use crate::{
     CustomWidget, Length, Style, Ui,
+    focus::ScopeState,
     style::{Flow, Paint, ResolvedText},
     stylesheet::StyleSheet,
     theme::Theme,
@@ -17,6 +18,7 @@ mod collection_input;
 mod control_input;
 mod control_paint;
 mod drag_input;
+mod focus_input;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -62,6 +64,7 @@ pub enum Role {
     RowGroup,
     Cell,
     ColumnHeader,
+    Dialog,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -90,6 +93,8 @@ pub struct NodeSnapshot {
     pub active_descendant: Option<NodeId>,
     pub text_selection: Option<TextSelection>,
     pub is_popup: bool,
+    /// A modal dialog layer; assistive technology treats it as modal.
+    pub modal: bool,
     pub collection: Option<CollectionInfo>,
     pub drag: Option<crate::DragInfo>,
 }
@@ -262,6 +267,7 @@ struct Node {
     changed_frame: u64,
     painted_frame: u64,
     resolved: ResolvedText,
+    scope: Option<Box<ScopeState>>,
 }
 
 impl Node {
@@ -338,6 +344,7 @@ impl Node {
                     Kind::Slider => Role::Slider,
                     Kind::ComboBox => Role::ComboBox,
                     Kind::MenuButton => Role::MenuButton,
+                    Kind::Dialog => Role::Dialog,
                     Kind::Popup => {
                         if matches!(self.control, Control::Popup { menu: true }) {
                             Role::Menu
@@ -367,6 +374,7 @@ impl Node {
                 Control::DragSource { label, .. } | Control::DropTarget { label, .. } => {
                     label.clone()
                 }
+                Control::Dialog { title, .. } => title.clone(),
                 _ => self.text.clone(),
             },
             disabled: !self.enabled,
@@ -400,6 +408,8 @@ pub struct Context {
     theme: Theme,
     stylesheet: StyleSheet,
     style_warnings: Vec<String>,
+    noted_focus: Option<NodeId>,
+    pending_restore: Option<NodeId>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -417,6 +427,11 @@ fn layout_style(style: &Style, kind: Kind) -> taffy::Style {
     if kind == Kind::Popup {
         result.position = taffy::Position::Absolute;
         result.inset.top = taffy::LengthPercentageAuto::percent(1.0);
+        result.inset.left = taffy::LengthPercentageAuto::length(0.0);
+    }
+    if kind == Kind::Dialog {
+        result.position = taffy::Position::Absolute;
+        result.inset.top = taffy::LengthPercentageAuto::length(0.0);
         result.inset.left = taffy::LengthPercentageAuto::length(0.0);
     }
     result
@@ -468,6 +483,7 @@ impl Default for Context {
             changed_frame: 0,
             painted_frame: 0,
             resolved: ResolvedText::from_theme(&theme),
+            scope: None,
         };
         Self {
             nodes: HashMap::from([(root, node)]),
@@ -494,6 +510,8 @@ impl Default for Context {
             theme,
             stylesheet: StyleSheet::default(),
             style_warnings: Vec::new(),
+            noted_focus: None,
+            pending_restore: None,
         }
     }
 }
@@ -631,6 +649,7 @@ impl Context {
                 } else { None }),
             text_selection: node.editor.as_ref().map(|editor| editor.selection),
             is_popup: node.kind == Kind::Popup,
+            modal: matches!(node.control, Control::Dialog { modal: true, .. }),
             drag: match node.control {
                 Control::DragSource { .. } => Some(crate::DragInfo { source: node.enabled, can_drop: false, dragging: self.drag.as_ref().is_some_and(|drag| drag.source == id && drag.active) }),
                 Control::DropTarget { accepts, .. } => Some(crate::DragInfo { source: false, can_drop: node.enabled && self.drag.as_ref().is_some_and(|drag| drag.active && drag.payload.kind() == accepts), dragging: false }),
@@ -706,6 +725,7 @@ impl Context {
         let mut submitted = std::mem::take(&mut self.submitted);
         let mut warnings = std::mem::take(&mut self.style_warnings);
         let mut theme_request = None;
+        let mut layers = Vec::new();
         self.stats.activations = clicks.len() + updates.len() + submitted.len();
         self.nodes.get_mut(&self.root).unwrap().resolved = ResolvedText::from_theme(&self.theme);
         let mut ui = Ui {
@@ -718,10 +738,20 @@ impl Context {
             submitted: &mut submitted,
             warnings: &mut warnings,
             theme_request: &mut theme_request,
+            layers: &mut layers,
             enabled: true,
         };
         view(&mut ui);
-        let elements = ui.elements;
+        let mut elements = ui.elements;
+        let mut dialog_keys = HashSet::new();
+        for layer in &layers {
+            assert!(
+                dialog_keys.insert(layer.key.clone()),
+                "duplicate dialog key: {:?}",
+                layer.key
+            );
+        }
+        elements.extend(layers);
         self.style_warnings = warnings;
         if let Some(theme) = theme_request {
             // Declared token reads used the old theme; count this like an
@@ -756,6 +786,8 @@ impl Context {
             }
         }
         self.repair_interaction();
+        self.enforce_modal();
+        self.note_focus();
         drop(declare_span);
         self.stats.declare = declare_started.elapsed();
         let layout_started = Instant::now();
@@ -1009,6 +1041,8 @@ impl Context {
                         changed_frame: self.frame,
                         painted_frame: 0,
                         resolved,
+                        scope: matches!(element.kind, Kind::FocusScope | Kind::Dialog)
+                            .then(|| Box::new(ScopeState::default())),
                     },
                 );
                 self.stats.created += 1;
@@ -1041,6 +1075,19 @@ impl Context {
 
     fn remove(&mut self, id: NodeId) {
         let node = self.nodes.remove(&id).unwrap();
+        if let Some(state) = &node.scope
+            && let Some(target) = state.restore_to
+            && matches!(
+                node.control,
+                Control::Dialog { .. }
+                    | Control::FocusScope {
+                        scope: crate::FocusScope { restore: true, .. }
+                    }
+            )
+            && self.pending_restore.is_none()
+        {
+            self.pending_restore = Some(target);
+        }
         self.add_damage(node.clip);
         for child in node.children {
             self.remove(child);
@@ -1067,6 +1114,14 @@ impl Context {
             self.focused = None;
             self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
         }
+        let restored = self
+            .pending_restore
+            .take()
+            .filter(|target| self.focused.is_none() && valid(*target));
+        if restored.is_some() {
+            self.focused = restored;
+            self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
+        }
         if self.captured.is_some_and(|id| {
             !self
                 .nodes
@@ -1079,6 +1134,9 @@ impl Context {
         if self.keyboard_pressed.is_some_and(|(id, _)| !valid(id)) {
             self.keyboard_pressed = None;
             self.pending |= Dirty::PAINT;
+        }
+        if let Some(target) = restored {
+            self.invalidate_paint(target);
         }
         self.cancel_compositions_except(self.focused);
         if self.drag.as_ref().is_some_and(|drag| {
@@ -1201,6 +1259,9 @@ impl Context {
                 Some(theme.control)
             }
             Kind::Popup => Some(theme.popup),
+            Kind::Dialog => {
+                matches!(node.control, Control::Dialog { modal: true, .. }).then_some(theme.scrim)
+            }
             _ => None,
         });
         let mut foreground = node.resolved.foreground;
@@ -1389,7 +1450,14 @@ impl Context {
         }
         order.into_iter().rev().find(|id| {
             let node = &self.nodes[id];
-            (node.activatable() || node.focusable() || node.kind == Kind::Popup)
+            let dialog_surface = match node.kind {
+                Kind::Dialog => matches!(node.control, Control::Dialog { modal: true, .. }),
+                Kind::Container => node
+                    .parent
+                    .is_some_and(|parent| self.nodes[&parent].kind == Kind::Dialog),
+                _ => false,
+            };
+            (node.activatable() || node.focusable() || node.kind == Kind::Popup || dialog_surface)
                 && node.clip.contains(position)
         })
     }
@@ -1397,6 +1465,12 @@ impl Context {
     /// Returns true if a declaration/redraw is needed. Pointer capture survives
     /// leaving the window, but activation requires release over the same button.
     pub fn event(&mut self, event: Event) -> bool {
+        let handled = self.handle_event(event);
+        self.note_focus();
+        handled
+    }
+
+    fn handle_event(&mut self, event: Event) -> bool {
         if let Some(handled) = self.drag_event(&event) {
             return handled;
         }
@@ -1421,6 +1495,9 @@ impl Context {
             return handled;
         }
         if let Some(handled) = self.control_event(&event) {
+            return handled;
+        }
+        if let Some(handled) = self.dialog_event(&event) {
             return handled;
         }
         if let Event::Scroll { delta_y } = event {
@@ -1455,51 +1532,6 @@ impl Context {
                 {
                     activated = self.activate(id);
                 }
-            }
-            Event::KeyDown {
-                key: Key::Tab,
-                shift,
-                ..
-            } => {
-                let mut order = Vec::new();
-                self.order(self.root, &mut order);
-                order.retain(|id| {
-                    let node = &self.nodes[id];
-                    if !node.focusable() || node.kind == Kind::Choice {
-                        return false;
-                    }
-                    if let Control::Radio {
-                        selected: false, ..
-                    } = node.control
-                    {
-                        let siblings = &self.nodes[&node.parent.unwrap()].children;
-                        let radios = || {
-                            siblings.iter().filter(|id| {
-                                self.nodes[id].kind == Kind::Radio && self.nodes[id].enabled
-                            })
-                        };
-                        return !radios().any(|id| {
-                            matches!(
-                                self.nodes[id].control,
-                                Control::Radio { selected: true, .. }
-                            )
-                        }) && radios().next() == Some(id);
-                    }
-                    true
-                });
-                let current = order.iter().position(|id| Some(*id) == self.focused);
-                self.focused = if order.is_empty() {
-                    None
-                } else {
-                    let index = match (current, shift) {
-                        (Some(index), true) => (index + order.len() - 1) % order.len(),
-                        (Some(index), false) => (index + 1) % order.len(),
-                        (None, true) => order.len() - 1,
-                        (None, false) => 0,
-                    };
-                    Some(order[index])
-                };
-                self.keyboard_pressed = None;
             }
             Event::KeyDown {
                 key: Key::Escape, ..
@@ -1686,6 +1718,12 @@ impl Context {
     }
 
     pub fn action(&mut self, target: NodeId, action: Action) -> bool {
+        let handled = self.handle_action(target, action);
+        self.note_focus();
+        handled
+    }
+
+    fn handle_action(&mut self, target: NodeId, action: Action) -> bool {
         if let Some(handled) = self.drag_action(target, &action) {
             return handled;
         }

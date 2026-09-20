@@ -25,6 +25,8 @@ pub(crate) enum WindowRequest {
         key: WindowKey,
         options: Box<AppOptions>,
         view: SendView,
+        /// A window that stays blocked while this one is open.
+        owner: Option<WindowKey>,
     },
     Close(WindowKey),
     Redraw(WindowKey),
@@ -44,6 +46,26 @@ impl DesktopHandle {
         options: AppOptions,
         view: impl FnMut(&mut Ui<'_>) + Send + 'static,
     ) -> std::result::Result<WindowKey, DesktopClosed> {
+        self.open(options, view, None)
+    }
+
+    /// A native modal window. The owner ignores input and hands focus to the
+    /// dialog until the dialog closes; on Windows it is also an owned window.
+    pub fn open_modal(
+        &self,
+        owner: WindowKey,
+        options: AppOptions,
+        view: impl FnMut(&mut Ui<'_>) + Send + 'static,
+    ) -> std::result::Result<WindowKey, DesktopClosed> {
+        self.open(options, view, Some(owner))
+    }
+
+    fn open(
+        &self,
+        options: AppOptions,
+        view: impl FnMut(&mut Ui<'_>) + Send + 'static,
+        owner: Option<WindowKey>,
+    ) -> std::result::Result<WindowKey, DesktopClosed> {
         if self.wake.is_closed() {
             return Err(DesktopClosed);
         }
@@ -59,6 +81,7 @@ impl DesktopHandle {
                 key,
                 options: Box::new(options),
                 view: Box::new(view),
+                owner,
             }))
             .map_err(|_| DesktopClosed)?;
         Ok(key)
@@ -123,6 +146,7 @@ pub(crate) fn run_single<F: FnMut(&mut Ui<'_>) + 'static>(
         key: WindowKey(1),
         options,
         view: Box::new(view),
+        owner: None,
     });
     run(event_loop, desktop)
 }
@@ -142,6 +166,7 @@ struct Pending {
     key: WindowKey,
     options: AppOptions,
     view: View,
+    owner: Option<WindowKey>,
 }
 
 struct InspectorShared {
@@ -160,6 +185,8 @@ struct Desktop {
     pending: Vec<Pending>,
     /// Inspector window → inspected window.
     inspectors: HashMap<WindowKey, InspectorLink>,
+    /// Native modal dialog → owner window blocked while it is open.
+    modals: HashMap<WindowKey, WindowKey>,
     resumed: bool,
     opened: bool,
     proxy: EventLoopProxy<UserEvent>,
@@ -216,6 +243,7 @@ impl Desktop {
             windows: HashMap::new(),
             pending: Vec::new(),
             inspectors: HashMap::new(),
+            modals: HashMap::new(),
             resumed: false,
             opened: false,
             proxy,
@@ -231,15 +259,29 @@ impl Desktop {
         WindowKey(self.next.fetch_add(1, Ordering::AcqRel))
     }
 
-    fn attach(&self, event_loop: &ActiveEventLoop, options: &AppOptions) -> Result<WindowState> {
-        let window = Arc::new(
-            event_loop.create_window(
-                Window::default_attributes()
-                    .with_visible(false)
-                    .with_title(&options.title)
-                    .with_inner_size(LogicalSize::new(options.size.width, options.size.height)),
-            )?,
-        );
+    fn attach(
+        &self,
+        event_loop: &ActiveEventLoop,
+        options: &AppOptions,
+        owner: Option<WindowKey>,
+    ) -> Result<WindowState> {
+        let mut attributes = Window::default_attributes()
+            .with_visible(false)
+            .with_title(&options.title)
+            .with_inner_size(LogicalSize::new(options.size.width, options.size.height));
+        #[cfg(target_os = "windows")]
+        if let Some(owner) = owner.and_then(|key| self.windows.get(&key)?.state.as_ref()) {
+            use winit::platform::windows::WindowAttributesExtWindows;
+            use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+            if let Ok(handle) = owner.window.window_handle()
+                && let RawWindowHandle::Win32(win32) = handle.as_raw()
+            {
+                attributes = attributes.with_owner_window(win32.hwnd.get());
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        let _ = owner;
+        let window = Arc::new(event_loop.create_window(attributes)?);
         diagnostics::checkpoint("native_window", None);
         let mut state =
             if let Some(source) = self.windows.values().find_map(|app| app.state.as_ref()) {
@@ -263,9 +305,11 @@ impl Desktop {
         key: WindowKey,
         mut options: AppOptions,
         view: View,
+        owner: Option<WindowKey>,
     ) -> bool {
         options.graphics = self.graphics.clone();
-        match self.attach(event_loop, &options) {
+        let owner = owner.filter(|owner| self.windows.contains_key(owner));
+        match self.attach(event_loop, &options, owner) {
             Ok(state) => {
                 let mut app = Application::new(options, view, state, self.clipboard.clone());
                 if let ThemeChoice::Fixed(theme) = &app.options.theme {
@@ -288,6 +332,9 @@ impl Desktop {
                 app.inspector_requested =
                     app.options.devtools && std::env::var_os("RUST_GUI_INSPECT").is_some();
                 self.windows.insert(key, app);
+                if let Some(owner) = owner {
+                    self.modals.insert(key, owner);
+                }
                 self.opened = true;
                 true
             }
@@ -301,8 +348,13 @@ impl Desktop {
 
     fn request(&mut self, event_loop: &ActiveEventLoop, request: WindowRequest) {
         match request {
-            WindowRequest::Open { key, options, view } => {
-                self.open(event_loop, key, *options, view);
+            WindowRequest::Open {
+                key,
+                options,
+                view,
+                owner,
+            } => {
+                self.open(event_loop, key, *options, view, owner);
             }
             WindowRequest::Close(key) => {
                 self.windows.remove(&key);
@@ -319,10 +371,16 @@ impl Desktop {
     /// Requests received before the event loop resumed.
     fn queue(&mut self, request: WindowRequest) {
         match request {
-            WindowRequest::Open { key, options, view } => self.pending.push(Pending {
+            WindowRequest::Open {
+                key,
+                options,
+                view,
+                owner,
+            } => self.pending.push(Pending {
                 key,
                 options: *options,
                 view,
+                owner,
             }),
             WindowRequest::Close(key) => self.pending.retain(|pending| pending.key != key),
             WindowRequest::Redraw(_) => {}
@@ -337,6 +395,19 @@ impl Desktop {
             }
         }
         self.windows.retain(|_, app| !app.close_requested);
+        // A closed owner takes its native dialogs with it; a closed dialog
+        // unblocks its owner.
+        let orphaned: Vec<_> = self
+            .modals
+            .iter()
+            .filter(|(_, owner)| !self.windows.contains_key(owner))
+            .map(|(dialog, _)| *dialog)
+            .collect();
+        for dialog in orphaned {
+            self.windows.remove(&dialog);
+        }
+        self.modals
+            .retain(|dialog, _| self.windows.contains_key(dialog));
         self.sync_inspectors(event_loop);
         if self.opened && self.windows.is_empty() {
             event_loop.exit();
@@ -421,7 +492,7 @@ impl Desktop {
             shared.response = shared.inspector.ui(ui, &shared.model);
         });
         let key = self.allocate_key();
-        if self.open(event_loop, key, options, view) {
+        if self.open(event_loop, key, options, view, None) {
             self.inspectors
                 .insert(key, InspectorLink { target, shared });
             self.refresh_inspector(key);
@@ -502,8 +573,14 @@ impl Desktop {
 impl ApplicationHandler<UserEvent> for Desktop {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         self.resumed = true;
-        for Pending { key, options, view } in std::mem::take(&mut self.pending) {
-            if !self.open(event_loop, key, options, view) {
+        for Pending {
+            key,
+            options,
+            view,
+            owner,
+        } in std::mem::take(&mut self.pending)
+        {
+            if !self.open(event_loop, key, options, view, owner) {
                 return;
             }
         }
@@ -514,7 +591,7 @@ impl ApplicationHandler<UserEvent> for Desktop {
             .map(|(key, app)| (*key, app.options.clone()))
             .collect();
         for (key, options) in restore {
-            match self.attach(event_loop, &options) {
+            match self.attach(event_loop, &options, None) {
                 Ok(state) => self.windows.get_mut(&key).unwrap().state = Some(state),
                 Err(error) => {
                     self.error = Some(error);
@@ -563,6 +640,32 @@ impl ApplicationHandler<UserEvent> for Desktop {
             return;
         };
         let redraw = matches!(event, WindowEvent::RedrawRequested);
+        // An owner with an open native modal ignores input and yields focus.
+        if let Some(dialog) = self
+            .modals
+            .iter()
+            .find(|(_, owner)| **owner == key)
+            .map(|(dialog, _)| *dialog)
+        {
+            match &event {
+                WindowEvent::Focused(true) => {
+                    if let Some(state) =
+                        self.windows.get(&dialog).and_then(|app| app.state.as_ref())
+                    {
+                        state.window.focus_window();
+                    }
+                }
+                WindowEvent::CursorMoved { .. }
+                | WindowEvent::CursorLeft { .. }
+                | WindowEvent::MouseInput { .. }
+                | WindowEvent::MouseWheel { .. }
+                | WindowEvent::KeyboardInput { .. }
+                | WindowEvent::ModifiersChanged(_)
+                | WindowEvent::Ime(_)
+                | WindowEvent::DroppedFile(_) => return,
+                _ => {}
+            }
+        }
         if redraw && self.inspectors.contains_key(&key) {
             self.refresh_inspector(key);
         }

@@ -67,7 +67,8 @@ The [milestone report](milestone-5.md) describes the crates, contracts and valid
 - [x] Inherited text properties, typed style classes, per-state paint overrides.
 - [x] Stylesheet format with classes, `extends`, tokens and hot reload from disk.
 - [x] Grid layout with tracks and areas, min/max constraints, aspect ratio, alignment and opt-in shrinking ([milestone 6b](milestone-6.md#milestone-6b-layout-depth)).
-- [ ] Focus scopes, modal focus and dialogs; tooltips, tabs, split panes and context menus.
+- [x] Focus scopes with trap/restore/memory and arrow navigation; in-window modal and non-modal dialogs; native modal windows ([milestone 6c](milestone-6.md#milestone-6c-focus-scopes-and-dialogs)).
+- [ ] Tooltips, tabs, split panes, context menus and popovers.
 - [ ] Transitions and property animations with GPU-friendly transforms and opacity.
 
 ## 7. Advanced features

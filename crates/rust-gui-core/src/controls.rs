@@ -54,6 +54,14 @@ pub(crate) enum Control {
     Popup {
         menu: bool,
     },
+    FocusScope {
+        scope: crate::FocusScope,
+    },
+    Dialog {
+        title: String,
+        modal: bool,
+        dismissible: bool,
+    },
     Choice {
         index: usize,
         selected: bool,
@@ -109,6 +117,7 @@ pub(crate) enum ControlUpdate {
     Choice(usize),
     Collection(Vec<crate::collection::CollectionInput>),
     Drop(crate::DragPayload),
+    Dismiss,
 }
 
 #[derive(Clone, Copy, Debug)]

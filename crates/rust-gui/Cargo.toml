@@ -40,5 +40,9 @@ required-features = ["desktop"]
 name = "layout"
 required-features = ["desktop"]
 
+[[example]]
+name = "dialogs"
+required-features = ["desktop"]
+
 [lints]
 workspace = true

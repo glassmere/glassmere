@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 6b. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 6c. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -12,7 +12,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 6 | First-class virtualization | Partial | Lists, trees and grids realize only the viewport (milestone 4). Huge documents/editors: planned (phase 6). |
 | 7 | Excellent text system | Partial | Unicode, graphemes, fallback, ligatures, emoji, IME, selection, clipboard, undo/redo. Missing: BiDi/RTL caret order, rich text, syntax highlighting, large-document virtualization. |
 | 8 | Accessibility from day one | Done | AccessKit roles, labels, actions, keyboard navigation, tree visible in the inspector's Accessibility tab. Screen-reader speech review remains manual. |
-| 9 | Powerful focus system | Partial | Keyboard focus, pointer capture, Tab traversal, restoration. Missing: focus scopes, modal focus, directional navigation. |
+| 9 | Powerful focus system | Done | Keyboard focus, pointer capture, Tab traversal, focus scopes with trap/restore/memory, modal focus in dialogs, geometric arrow navigation, predictable restoration (milestone 6c). |
 | 10 | Modern layout engine | Partial | Flexbox, grid with tracks/areas/repeat/minmax, intrinsic sizing, percentages, min/max, aspect ratio, alignment including text-bottom baseline, absolute popups (milestone 6b). Missing: true font baselines, responsive breakpoints, custom layout primitives. |
 | 11 | Typed styling system | Done | Typed `Style` with builders, Rust classes, stylesheet classes with `extends`, tokens, hover/pressed/focused/disabled overrides, text inheritance and hot reload from disk (milestone 6a). Compile-time validation applies to the Rust API only. |
 | 12 | Excellent theming | Done | Dark and light token themes, runtime switching, OS preference via winit, stylesheet token overlays and user sheets (milestone 6a). |
@@ -21,7 +21,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 15 | Multiple rendering backends | Partial | wgpu only. CPU renderer: planned (phase 6). |
 | 16 | Efficient GPU architecture | Partial | Instanced quads, glyph atlas, batching, rectangular clipping. Missing: layers, shadows, paths, gradients, custom shaders. |
 | 17 | Custom rendering escape hatch | Partial | `CustomWidget` leaves paint primitives; no embedded 2D/3D or direct GPU hook yet. |
-| 18 | Rich widget library | Partial | Button, checkbox, radio, slider, text input, combo, menu, tree, virtual list, data grid. Missing: number input, autocomplete, context menus, popovers, tooltips, dialogs, toasts, tabs, split panes, docking, property grid, rich text, code editor. |
+| 18 | Rich widget library | Partial | Button, checkbox, radio, slider, text input, combo, menu, tree, virtual list, data grid, modal and non-modal dialogs. Missing: number input, autocomplete, context menus, popovers, tooltips, toasts, tabs, split panes, docking, property grid, rich text, code editor. |
 | 19 | Professional-grade DataGrid | Partial | Virtual rows, sorting, selection, huge datasets. Missing: virtual columns, filtering, resizing, reordering, frozen rows/columns, inline editing. |
 | 20 | Docking/layout system | Planned | Phase 6. |
 | 21 | Powerful event system | Partial | Pointer, keyboard, drag/drop, capture. Missing: bubbling/cancellation model, gestures, custom events. |
@@ -30,7 +30,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 24 | First-class keyboard shortcuts | Partial | Commands with platform-primary shortcuts. Missing: scopes, remapping, command palette. |
 | 25 | Command architecture | Partial | `Command` shares enabled state between button and shortcut; menus/palette do not consume commands yet. |
 | 26 | Clipboard and drag-and-drop | Partial | Text clipboard, in-process item/text drags, incoming OS file drops. Missing: images, custom types, outgoing OS drags, cross-window drags. |
-| 27 | Multi-window support | Partial | Independent windows on one device, shared state via `Arc`/mailboxes, DPI scaling. Missing: dialogs, multi-monitor policy. |
+| 27 | Multi-window support | Partial | Independent windows on one device, native modal dialog windows that block their owner, shared state via `Arc`/mailboxes, DPI scaling. Missing: multi-monitor policy. |
 | 28 | Strong async integration | Partial | Bounded mailbox and wake handle; no executor is forced. Missing: cancellation, streams, async commands helpers. |
 | 29 | Optional reactive state | Not started | Ordinary Rust state is the only model. |
 | 30 | Ordinary Rust state | Done | Views borrow `&mut` application state. |

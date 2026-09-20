@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory = $true)][string]$Name,
     [int]$SettleSeconds = 2,
     [string]$FocusName = '',
-    [int]$TabAfter = 0
+    [int]$TabAfter = 0,
+    [string]$Arguments = ''
 )
 # Launches an example, waits for its window, saves target/<Name>.png and exits it.
 $ErrorActionPreference = 'Stop'
@@ -24,6 +25,7 @@ public static class ShotNative {
 $info = New-Object System.Diagnostics.ProcessStartInfo
 $info.FileName = (Resolve-Path -LiteralPath $Executable).Path
 $info.UseShellExecute = $false
+$info.Arguments = $Arguments
 $process = [System.Diagnostics.Process]::Start($info)
 try {
     $window = $null

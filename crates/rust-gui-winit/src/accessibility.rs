@@ -48,6 +48,7 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     CoreRole::RowGroup => Role::RowGroup,
                     CoreRole::Cell => Role::Cell,
                     CoreRole::ColumnHeader => Role::ColumnHeader,
+                    CoreRole::Dialog => Role::Dialog,
                 }
             };
             let mut node = Node::new(role);
@@ -81,6 +82,9 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
             }
             if snapshot.semantics.disabled {
                 node.set_disabled();
+            }
+            if snapshot.modal {
+                node.set_modal();
             }
             if let Some(info) = snapshot.collection {
                 if matches!(role, Role::ListBox | Role::ListBoxOption) {
