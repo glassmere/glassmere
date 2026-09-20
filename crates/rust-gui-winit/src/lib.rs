@@ -232,6 +232,7 @@ struct Application<F> {
     overlay_dirty: bool,
     stylesheet_modified: Option<SystemTime>,
     retry_pending: bool,
+    started: Instant,
 }
 
 impl<F: FnMut(&mut Ui<'_>)> Application<F> {
@@ -261,7 +262,26 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             overlay_dirty: false,
             stylesheet_modified: None,
             retry_pending: false,
+            started: Instant::now(),
         }
+    }
+
+    fn sync_clock(&mut self) {
+        self.context.set_now(self.started.elapsed());
+    }
+
+    /// The earliest moment this window needs the loop to wake without input.
+    fn deadline(&self) -> Option<Instant> {
+        let wake = self.context.next_wake().map(|at| self.started + at);
+        let poll = self
+            .options
+            .stylesheet
+            .is_some()
+            .then(|| Instant::now() + STYLESHEET_POLL);
+        let retry = self
+            .retry_pending
+            .then(|| Instant::now() + Duration::from_millis(100));
+        [wake, poll, retry].into_iter().flatten().min()
     }
 
     /// Applies the OS preference when the window follows the system theme.
@@ -334,6 +354,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         let renderer = &mut shared.renderer;
         let logical_size = Size::new(size.width as f32 / scale, size.height as f32 / scale);
         self.logical_size = logical_size;
+        self.context.set_now(self.started.elapsed());
         let mut stats = self
             .context
             .run(logical_size, renderer.text_system(), &mut self.view);
@@ -385,6 +406,12 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             match self.context.hovered().and_then(|id| self.context.node(id)) {
                 Some(node) if node.semantics.role == rust_gui_core::Role::TextInput => {
                     CursorIcon::Text
+                }
+                Some(node) if node.semantics.role == rust_gui_core::Role::Splitter => {
+                    match node.orientation {
+                        Some(rust_gui_core::Axis::Vertical) => CursorIcon::RowResize,
+                        _ => CursorIcon::ColResize,
+                    }
                 }
                 Some(node) if node.semantics.focusable => CursorIcon::Pointer,
                 _ => CursorIcon::Default,
@@ -490,6 +517,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
     }
 
     fn input(&mut self, event: Event) {
+        self.sync_clock();
         let description = self.options.devtools.then(|| format!("{event:?}"));
         let handled = self.context.event(event);
         if let Some(description) = description {
@@ -536,6 +564,13 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
     fn new_events(&mut self, cause: StartCause) {
         if matches!(cause, StartCause::ResumeTimeReached { .. }) {
             if std::mem::take(&mut self.retry_pending) {
+                self.request_redraw();
+            }
+            if self
+                .context
+                .next_wake()
+                .is_some_and(|at| self.started.elapsed() >= at)
+            {
                 self.request_redraw();
             }
             self.poll_stylesheet();
@@ -604,6 +639,11 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                 };
                 self.input(Event::Scroll { delta_y });
             }
+            WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button: MouseButton::Right,
+                ..
+            } => self.input(Event::ContextMenu(self.pointer)),
             WindowEvent::MouseInput {
                 state,
                 button: MouseButton::Left,

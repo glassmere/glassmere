@@ -5,6 +5,7 @@ mod controls;
 mod drag;
 mod editor;
 mod focus;
+mod panes;
 mod style;
 mod stylesheet;
 mod theme;
@@ -21,6 +22,9 @@ pub use controls::MenuItem;
 pub use drag::{DragInfo, DragPayload, DropKind};
 pub use editor::{TextEdit, TextMove, TextSelection};
 pub use focus::{DialogOptions, DialogResponse, FocusScope};
+pub use panes::{
+    Axis, PopoverOptions, PopoverResponse, SplitOptions, TOOLTIP_DELAY, Tab, TabsResponse,
+};
 pub use rust_gui_scene::{FontFamily, TextStyle, TextWrap};
 pub use rust_gui_scene::{MonospaceMeasurer, TextMeasurer};
 pub use style::{

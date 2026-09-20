@@ -49,6 +49,10 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     CoreRole::Cell => Role::Cell,
                     CoreRole::ColumnHeader => Role::ColumnHeader,
                     CoreRole::Dialog => Role::Dialog,
+                    CoreRole::TabList => Role::TabList,
+                    CoreRole::Tab => Role::Tab,
+                    CoreRole::TabPanel => Role::TabPanel,
+                    CoreRole::Splitter => Role::Splitter,
                 }
             };
             let mut node = Node::new(role);
@@ -85,6 +89,15 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
             }
             if snapshot.modal {
                 node.set_modal();
+            }
+            if let Some(description) = &snapshot.description {
+                node.set_description(description.clone());
+            }
+            if let Some(axis) = snapshot.orientation {
+                node.set_orientation(match axis {
+                    rust_gui_core::Axis::Horizontal => accesskit::Orientation::Vertical,
+                    rust_gui_core::Axis::Vertical => accesskit::Orientation::Horizontal,
+                });
             }
             if let Some(info) = snapshot.collection {
                 if matches!(role, Role::ListBox | Role::ListBoxOption) {
@@ -217,10 +230,11 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                         | Role::TreeItem
                         | Role::Row
                         | Role::ColumnHeader
+                        | Role::Tab
                 ) {
                     node.add_action(Action::Click);
                 }
-                if matches!(role, Role::TextInput | Role::Slider) {
+                if matches!(role, Role::TextInput | Role::Slider | Role::Splitter) {
                     node.add_action(Action::SetValue);
                 }
                 if role == Role::Slider {

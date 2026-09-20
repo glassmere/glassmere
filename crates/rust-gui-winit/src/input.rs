@@ -59,6 +59,7 @@ fn named(key: &WinitKey) -> Option<Key> {
         WinitKey::Named(NamedKey::End) => Key::End,
         WinitKey::Named(NamedKey::Backspace) => Key::Backspace,
         WinitKey::Named(NamedKey::Delete) => Key::Delete,
+        WinitKey::Named(NamedKey::ContextMenu) => Key::ContextMenu,
         _ => return None,
     })
 }
@@ -176,6 +177,19 @@ fn execute(context: &mut Context, clipboard: &mut impl ClipboardAccess, command:
 
 impl<F: FnMut(&mut Ui<'_>)> Application<F> {
     pub(super) fn keyboard(&mut self, event: KeyEvent) {
+        self.sync_clock();
+        if event.state == ElementState::Pressed
+            && !event.repeat
+            && event.logical_key == WinitKey::Named(NamedKey::F10)
+            && self.modifiers.shift_key()
+        {
+            self.input(Event::KeyDown {
+                key: Key::ContextMenu,
+                shift: true,
+                repeat: false,
+            });
+            return;
+        }
         if self.options.devtools
             && event.state == ElementState::Pressed
             && !event.repeat

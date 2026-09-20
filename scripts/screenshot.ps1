@@ -5,7 +5,10 @@ param(
     [int]$SettleSeconds = 2,
     [string]$FocusName = '',
     [int]$TabAfter = 0,
-    [string]$Arguments = ''
+    [string]$Arguments = '',
+    [string]$HoverName = '',
+    [string]$RightClickName = '',
+    [int]$HoverSeconds = 1
 )
 # Launches an example, waits for its window, saves target/<Name>.png and exits it.
 $ErrorActionPreference = 'Stop'
@@ -16,9 +19,12 @@ Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 public static class ShotNative {
+    [StructLayout(LayoutKind.Sequential)] public struct Point { public int X, Y; }
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint mapType);
+    [DllImport("user32.dll")] public static extern bool ScreenToClient(IntPtr window, ref Point point);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
 }
 '@
 
@@ -66,6 +72,50 @@ try {
         }
         Start-Sleep -Seconds 1
     }
+    function Find-Named([string]$name) {
+        $condition = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(
+            [System.Windows.Automation.AutomationElement]::NameProperty, $name)
+        $found = $null
+        for ($attempt = 0; $attempt -lt 50 -and $null -eq $found; $attempt++) {
+            $found = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+            Start-Sleep -Milliseconds 100
+        }
+        if ($null -eq $found) { throw "Accessible element not found: $name" }
+        return $found
+    }
+    function Client-Position($element) {
+        $handle = [IntPtr]$window.Current.NativeWindowHandle
+        $rect = $element.Current.BoundingRectangle
+        $point = New-Object ShotNative+Point
+        $point.X = [int]($rect.X + $rect.Width / 2)
+        $point.Y = [int]($rect.Y + $rect.Height / 2)
+        $null = [ShotNative]::ScreenToClient($handle, [ref]$point)
+        return [IntPtr](($point.Y -shl 16) -bor ($point.X -band 65535))
+    }
+    $restoreCursor = $null
+    if ($HoverName) {
+        # Move the real cursor: Windows follows a synthetic move with a mouse-leave
+        # when the pointer is elsewhere, which would cancel the hover dwell.
+        Add-Type -AssemblyName System.Windows.Forms
+        $restoreCursor = [System.Windows.Forms.Cursor]::Position
+        # UI Automation focus activates the window from a background process,
+        # which SetForegroundWindow alone is not allowed to do.
+        $element = Find-Named $HoverName
+        $element.SetFocus()
+        Start-Sleep -Milliseconds 300
+        $null = [ShotNative]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle)
+        $rect = $element.Current.BoundingRectangle
+        [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point([int]($rect.X + $rect.Width / 2), [int]($rect.Y + $rect.Height / 2))
+        Start-Sleep -Seconds $HoverSeconds
+    }
+    if ($RightClickName) {
+        $handle = [IntPtr]$window.Current.NativeWindowHandle
+        $position = Client-Position (Find-Named $RightClickName)
+        $null = [ShotNative]::PostMessage($handle, 0x0200, [IntPtr]0, $position)
+        $null = [ShotNative]::PostMessage($handle, 0x0204, [IntPtr]2, $position)
+        $null = [ShotNative]::PostMessage($handle, 0x0205, [IntPtr]0, $position)
+        Start-Sleep -Seconds 1
+    }
     $rectangle = $window.Current.BoundingRectangle
     $bitmap = New-Object System.Drawing.Bitmap -ArgumentList @([int]$rectangle.Width, [int]$rectangle.Height)
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
@@ -78,5 +128,6 @@ try {
     $bitmap.Dispose()
     Write-Output "Screenshot: $imagePath"
 } finally {
+    if ($null -ne $restoreCursor) { [System.Windows.Forms.Cursor]::Position = $restoreCursor }
     if (-not $process.HasExited) { $process.Kill(); $process.WaitForExit() }
 }

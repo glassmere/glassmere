@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 6c. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 6d. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -21,10 +21,10 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 15 | Multiple rendering backends | Partial | wgpu only. CPU renderer: planned (phase 6). |
 | 16 | Efficient GPU architecture | Partial | Instanced quads, glyph atlas, batching, rectangular clipping. Missing: layers, shadows, paths, gradients, custom shaders. |
 | 17 | Custom rendering escape hatch | Partial | `CustomWidget` leaves paint primitives; no embedded 2D/3D or direct GPU hook yet. |
-| 18 | Rich widget library | Partial | Button, checkbox, radio, slider, text input, combo, menu, tree, virtual list, data grid, modal and non-modal dialogs. Missing: number input, autocomplete, context menus, popovers, tooltips, toasts, tabs, split panes, docking, property grid, rich text, code editor. |
+| 18 | Rich widget library | Partial | Button, checkbox, radio, slider, text input, combo, menu, context menu, tooltip, popover, tabs, split panes, tree, virtual list, data grid, modal and non-modal dialogs. Missing: number input, autocomplete, toasts, docking, property grid, rich text, code editor. |
 | 19 | Professional-grade DataGrid | Partial | Virtual rows, sorting, selection, huge datasets. Missing: virtual columns, filtering, resizing, reordering, frozen rows/columns, inline editing. |
 | 20 | Docking/layout system | Planned | Phase 6. |
-| 21 | Powerful event system | Partial | Pointer, keyboard, drag/drop, capture. Missing: bubbling/cancellation model, gestures, custom events. |
+| 21 | Powerful event system | Partial | Pointer (left and right buttons), keyboard, drag/drop, capture, context-menu requests, timed wakes. Missing: bubbling/cancellation model, gestures, custom events. |
 | 22 | Input abstraction independent of the OS | Done | Core consumes `Event`; winit lives only in the host crate. |
 | 23 | Mouse/touch/stylus support | Partial | Mouse only. Multi-pointer, gestures, pressure, smooth scrolling: not started. |
 | 24 | First-class keyboard shortcuts | Partial | Commands with platform-primary shortcuts. Missing: scopes, remapping, command palette. |

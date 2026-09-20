@@ -3,7 +3,7 @@ use crate::{Length, MenuItem, controls::slider_value, editor::single_line};
 use std::ops::RangeInclusive;
 
 impl Ui<'_> {
-    fn take_update(&mut self, key: &str, kind: Kind) -> Option<ControlUpdate> {
+    pub(super) fn take_update(&mut self, key: &str, kind: Kind) -> Option<ControlUpdate> {
         let id = self
             .context
             .child(self.parent, &WidgetKey::Named(key.into()), kind)?;
@@ -27,6 +27,7 @@ impl Ui<'_> {
             enabled: self.enabled,
             children: Vec::new(),
             custom: None,
+            tooltip: None,
             control,
         })
     }
@@ -222,6 +223,7 @@ impl Ui<'_> {
             enabled: self.enabled && !items.is_empty(),
             children,
             custom: None,
+            tooltip: None,
             control: Control::Combo {
                 label,
                 selected: *selected,
@@ -262,6 +264,7 @@ impl Ui<'_> {
             enabled: self.enabled && items.iter().any(|item| item.enabled),
             children,
             custom: None,
+            tooltip: None,
             control: Control::Menu {
                 items: items.to_vec(),
             },
@@ -269,7 +272,7 @@ impl Ui<'_> {
         choice
     }
 
-    fn popup_children(
+    pub(super) fn popup_children(
         &mut self,
         key: &str,
         kind: Kind,
@@ -305,7 +308,12 @@ impl Ui<'_> {
             "$popup".into(),
             Kind::Popup,
             Style {
-                width: Length::Percent(1.0),
+                // Context menus size themselves; combo and menu popups match their owner.
+                width: if kind == Kind::ContextArea {
+                    Length::Px(220.0)
+                } else {
+                    Length::Percent(1.0)
+                },
                 height: Length::Px((items.len() as f32 * 34.0 + 8.0).min(280.0)),
                 gap: 2.0,
                 padding: 4.0,
@@ -327,6 +335,7 @@ impl Ui<'_> {
                         enabled: item.enabled,
                         children: Vec::new(),
                         custom: None,
+                        tooltip: None,
                         control: Control::Choice {
                             index,
                             selected: selected == index,

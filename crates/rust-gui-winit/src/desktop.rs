@@ -323,10 +323,6 @@ impl Desktop {
                     event_loop.exit();
                     return false;
                 }
-                if app.options.stylesheet.is_some() {
-                    event_loop
-                        .set_control_flow(ControlFlow::WaitUntil(Instant::now() + STYLESHEET_POLL));
-                }
                 // RUST_GUI_INSPECT opens the inspector immediately, for smoke
                 // runs and for tools without keyboard focus.
                 app.inspector_requested =
@@ -412,6 +408,21 @@ impl Desktop {
         if self.opened && self.windows.is_empty() {
             event_loop.exit();
         }
+        self.schedule(event_loop);
+    }
+
+    /// Sleeps until the earliest window deadline (tooltips, stylesheet polling,
+    /// surface retries), or indefinitely when nothing is pending.
+    fn schedule(&self, event_loop: &ActiveEventLoop) {
+        let next = self
+            .windows
+            .values()
+            .filter_map(Application::deadline)
+            .min();
+        event_loop.set_control_flow(match next {
+            Some(at) => ControlFlow::WaitUntil(at),
+            None => ControlFlow::Wait,
+        });
     }
 
     fn inspector_of(&self, target: WindowKey) -> Option<WindowKey> {
@@ -691,16 +702,7 @@ impl ApplicationHandler<UserEvent> for Desktop {
         for app in self.windows.values_mut() {
             app.new_events(cause);
         }
-        // Re-arm only while some window watches a stylesheet; otherwise sleep.
-        let watching = self
-            .windows
-            .values()
-            .any(|app| app.options.stylesheet.is_some());
-        event_loop.set_control_flow(if watching {
-            ControlFlow::WaitUntil(Instant::now() + STYLESHEET_POLL)
-        } else {
-            ControlFlow::Wait
-        });
+        self.schedule(event_loop);
     }
     fn exiting(&mut self, _: &ActiveEventLoop) {
         self.wake.close();

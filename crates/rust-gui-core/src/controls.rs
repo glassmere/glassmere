@@ -62,6 +62,30 @@ pub(crate) enum Control {
         modal: bool,
         dismissible: bool,
     },
+    Tabs {
+        count: usize,
+        selected: usize,
+    },
+    TabList,
+    Tab {
+        index: usize,
+        selected: bool,
+        closable: bool,
+    },
+    TabPanel,
+    Split {
+        axis: crate::Axis,
+    },
+    Divider {
+        axis: crate::Axis,
+        fraction: f32,
+        min_first: f32,
+        min_second: f32,
+    },
+    ContextMenu {
+        items: Vec<MenuItem>,
+    },
+    Popover,
     Choice {
         index: usize,
         selected: bool,
@@ -125,6 +149,10 @@ pub(crate) struct PopupState {
     pub owner: crate::NodeId,
     pub highlighted: usize,
     pub reveal_highlight: bool,
+    /// Absolute logical anchor for context menus; `None` opens below the owner.
+    pub anchor: Option<rust_gui_scene::Point>,
+    /// Focus to restore when the owner itself is not focusable.
+    pub return_focus: Option<crate::NodeId>,
 }
 
 pub(crate) fn slider_value(value: f64, min: f64, max: f64, step: f64) -> f64 {

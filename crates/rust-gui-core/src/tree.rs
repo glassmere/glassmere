@@ -19,6 +19,7 @@ mod control_input;
 mod control_paint;
 mod drag_input;
 mod focus_input;
+mod overlay_input;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -65,6 +66,10 @@ pub enum Role {
     Cell,
     ColumnHeader,
     Dialog,
+    TabList,
+    Tab,
+    TabPanel,
+    Splitter,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -95,6 +100,10 @@ pub struct NodeSnapshot {
     pub is_popup: bool,
     /// A modal dialog layer; assistive technology treats it as modal.
     pub modal: bool,
+    /// Tooltip text, exposed as the accessible description.
+    pub description: Option<String>,
+    /// Splitter dividers report the axis their panes are laid out along.
+    pub orientation: Option<crate::Axis>,
     pub collection: Option<CollectionInfo>,
     pub drag: Option<crate::DragInfo>,
 }
@@ -159,6 +168,8 @@ pub enum Key {
     ArrowRight,
     Backspace,
     Delete,
+    /// The Menu key or Shift+F10.
+    ContextMenu,
 }
 
 #[derive(Clone, Debug)]
@@ -186,6 +197,8 @@ pub enum Event {
         position: Point,
         payload: crate::DragPayload,
     },
+    /// A context-menu request (right click) at a logical point.
+    ContextMenu(Point),
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -268,6 +281,7 @@ struct Node {
     painted_frame: u64,
     resolved: ResolvedText,
     scope: Option<Box<ScopeState>>,
+    tooltip: Option<String>,
 }
 
 impl Node {
@@ -291,9 +305,11 @@ impl Node {
                     | Kind::Collection
                     | Kind::DragSource
                     | Kind::DropTarget
-            ) || self.custom.as_ref().is_some_and(|widget| {
-                widget.semantics.role == Role::Button && widget.semantics.focusable
-            }))
+                    | Kind::Divider
+            ) || matches!(self.control, Control::Tab { selected: true, .. })
+                || self.custom.as_ref().is_some_and(|widget| {
+                    widget.semantics.role == Role::Button && widget.semantics.focusable
+                }))
     }
 
     fn activatable(&self) -> bool {
@@ -307,6 +323,7 @@ impl Node {
                     | Kind::MenuButton
                     | Kind::Choice
                     | Kind::CollectionRow
+                    | Kind::Tab
             ) || self
                 .custom
                 .as_ref()
@@ -334,6 +351,10 @@ impl Node {
                 Control::Grid { .. } => Role::Grid,
                 Control::GridCell { header: true, .. } => Role::ColumnHeader,
                 Control::GridCell { .. } => Role::Cell,
+                Control::TabList => Role::TabList,
+                Control::Tab { .. } => Role::Tab,
+                Control::TabPanel => Role::TabPanel,
+                Control::Divider { .. } => Role::Splitter,
                 _ => match self.kind {
                     Kind::Label => Role::Label,
                     Kind::Button => Role::Button,
@@ -375,6 +396,7 @@ impl Node {
                     label.clone()
                 }
                 Control::Dialog { title, .. } => title.clone(),
+                Control::Divider { .. } => "Splitter".into(),
                 _ => self.text.clone(),
             },
             disabled: !self.enabled,
@@ -410,6 +432,10 @@ pub struct Context {
     style_warnings: Vec<String>,
     noted_focus: Option<NodeId>,
     pending_restore: Option<NodeId>,
+    now: Duration,
+    hover_since: Option<(NodeId, Duration)>,
+    tooltip: Option<NodeId>,
+    new_popovers: Vec<NodeId>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -420,11 +446,11 @@ struct Measurement {
 
 fn layout_style(style: &Style, kind: Kind) -> taffy::Style {
     let mut result = style.layout(match kind {
-        Kind::Row => Flow::Row,
+        Kind::Row | Kind::SplitRow | Kind::TabList => Flow::Row,
         Kind::Grid => Flow::Grid,
         _ => Flow::Column,
     });
-    if kind == Kind::Popup {
+    if matches!(kind, Kind::Popup | Kind::Popover) {
         result.position = taffy::Position::Absolute;
         result.inset.top = taffy::LengthPercentageAuto::percent(1.0);
         result.inset.left = taffy::LengthPercentageAuto::length(0.0);
@@ -435,6 +461,18 @@ fn layout_style(style: &Style, kind: Kind) -> taffy::Style {
         result.inset.left = taffy::LengthPercentageAuto::length(0.0);
     }
     result
+}
+
+/// A text leaf that anchors an overlay (popup or popover) gains children, and
+/// Taffy then ignores its measure context; keep its intrinsic size as a minimum.
+fn anchor_minimum(style: &mut taffy::Style, element: &Element, measured: Size) {
+    if element.kind.text_leaf() && !element.children.is_empty() {
+        let padding = element.style.padding.max(0.0) * 2.0;
+        style.min_size = taffy::Size {
+            width: taffy::Dimension::length(measured.width + padding),
+            height: taffy::Dimension::length(measured.height + padding),
+        };
+    }
 }
 
 impl Measurement {
@@ -484,6 +522,7 @@ impl Default for Context {
             painted_frame: 0,
             resolved: ResolvedText::from_theme(&theme),
             scope: None,
+            tooltip: None,
         };
         Self {
             nodes: HashMap::from([(root, node)]),
@@ -512,6 +551,10 @@ impl Default for Context {
             style_warnings: Vec::new(),
             noted_focus: None,
             pending_restore: None,
+            now: Duration::ZERO,
+            hover_since: None,
+            tooltip: None,
+            new_popovers: Vec::new(),
         }
     }
 }
@@ -610,6 +653,7 @@ impl Context {
             },
             selected: match node.control {
                 Control::Radio { selected, .. }
+                | Control::Tab { selected, .. }
                 | Control::CollectionRow { selected, .. }
                 | Control::Choice {
                     selected,
@@ -631,6 +675,12 @@ impl Context {
                     max,
                     step,
                 }),
+                Control::Divider { fraction, .. } => Some(NumericValue {
+                    value: f64::from(fraction) * 100.0,
+                    min: 0.0,
+                    max: 100.0,
+                    step: 1.0,
+                }),
                 _ => None,
             },
             expanded: if let Control::CollectionRow { expanded, .. } = node.control { expanded } else {
@@ -648,8 +698,13 @@ impl Context {
                     node.children.iter().find(|id| matches!(self.nodes[id].control, Control::CollectionRow { item, .. } if item == selected)).copied()
                 } else { None }),
             text_selection: node.editor.as_ref().map(|editor| editor.selection),
-            is_popup: node.kind == Kind::Popup,
+            is_popup: matches!(node.kind, Kind::Popup | Kind::Popover),
             modal: matches!(node.control, Control::Dialog { modal: true, .. }),
+            description: node.tooltip.clone(),
+            orientation: match node.control {
+                Control::Divider { axis, .. } => Some(axis),
+                _ => None,
+            },
             drag: match node.control {
                 Control::DragSource { .. } => Some(crate::DragInfo { source: node.enabled, can_drop: false, dragging: self.drag.as_ref().is_some_and(|drag| drag.source == id && drag.active) }),
                 Control::DropTarget { accepts, .. } => Some(crate::DragInfo { source: false, can_drop: node.enabled && self.drag.as_ref().is_some_and(|drag| drag.active && drag.payload.kind() == accepts), dragging: false }),
@@ -787,6 +842,8 @@ impl Context {
         }
         self.repair_interaction();
         self.enforce_modal();
+        self.focus_new_popovers();
+        self.update_tooltip();
         self.note_focus();
         drop(declare_span);
         self.stats.declare = declare_started.elapsed();
@@ -850,6 +907,9 @@ impl Context {
                 primitives: Vec::new(),
             };
             self.paint(self.root).append_to(&mut scene.primitives);
+            for popover in self.popovers() {
+                self.paint(popover).append_to(&mut scene.primitives);
+            }
             if let Some(popup) = self.popup
                 && let Some(panel) = self
                     .nodes
@@ -859,6 +919,7 @@ impl Context {
             {
                 self.paint(panel).append_to(&mut scene.primitives);
             }
+            self.paint_tooltip(&mut scene, measurer);
             self.scene = scene;
             self.stats.scene_rebuilt = true;
             if let Some(damage) = self.pending_damage.take() {
@@ -920,8 +981,14 @@ impl Context {
                 if node.style.layout(Flow::Column) != element.style.layout(Flow::Column) {
                     changed |= Dirty::LAYOUT;
                 }
-                if node.enabled != element.enabled || node.control != element.control {
+                if node.enabled != element.enabled
+                    || node.control != element.control
+                    || node.tooltip != element.tooltip
+                {
                     changed |= Dirty::ACCESSIBILITY;
+                }
+                if node.tooltip != element.tooltip {
+                    self.pending |= Dirty::ACCESSIBILITY;
                 }
                 if !changed.is_empty() {
                     node.changed = changed;
@@ -954,7 +1021,10 @@ impl Context {
                     }
                     self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
                 }
-                let layout_style = layout_style(&element.style, element.kind);
+                let mut layout_style = layout_style(&element.style, element.kind);
+                if let Some(measurement) = self.layout.get_node_context(node.layout_id) {
+                    anchor_minimum(&mut layout_style, &element, measurement.size);
+                }
                 if *self.layout.style(node.layout_id).unwrap() != layout_style {
                     self.layout.set_style(node.layout_id, layout_style).unwrap();
                     self.pending |= Dirty::LAYOUT;
@@ -968,6 +1038,7 @@ impl Context {
                 node.text = element.text;
                 node.style = element.style;
                 node.resolved = resolved;
+                node.tooltip = element.tooltip;
                 node.enabled = element.enabled;
                 node.custom = element.custom;
                 if let Control::Collection { offset, .. } = element.control
@@ -999,9 +1070,11 @@ impl Context {
                 } else {
                     Measurement::fixed(Size::default())
                 };
+                let mut leaf_style = layout_style(&element.style, element.kind);
+                anchor_minimum(&mut leaf_style, &element, measured.size);
                 let layout_id = self
                     .layout
-                    .new_leaf_with_context(layout_style(&element.style, element.kind), measured)
+                    .new_leaf_with_context(leaf_style, measured)
                     .unwrap();
                 let id = NodeId(self.next_id);
                 self.next_id = self
@@ -1041,10 +1114,17 @@ impl Context {
                         changed_frame: self.frame,
                         painted_frame: 0,
                         resolved,
-                        scope: matches!(element.kind, Kind::FocusScope | Kind::Dialog)
-                            .then(|| Box::new(ScopeState::default())),
+                        scope: matches!(
+                            element.kind,
+                            Kind::FocusScope | Kind::Dialog | Kind::Popover
+                        )
+                        .then(|| Box::new(ScopeState::default())),
+                        tooltip: element.tooltip,
                     },
                 );
+                if element.kind == Kind::Popover {
+                    self.new_popovers.push(id);
+                }
                 self.stats.created += 1;
                 self.pending |= Dirty::all();
                 id
@@ -1075,11 +1155,15 @@ impl Context {
 
     fn remove(&mut self, id: NodeId) {
         let node = self.nodes.remove(&id).unwrap();
+        // Popovers fall back to their anchor when nothing was focused before them.
         if let Some(state) = &node.scope
-            && let Some(target) = state.restore_to
+            && let Some(target) = state.restore_to.or((node.kind == Kind::Popover)
+                .then_some(node.parent)
+                .flatten())
             && matches!(
                 node.control,
                 Control::Dialog { .. }
+                    | Control::Popover
                     | Control::FocusScope {
                         scope: crate::FocusScope { restore: true, .. }
                     }
@@ -1173,7 +1257,7 @@ impl Context {
         let content_bottom = node
             .children
             .iter()
-            .filter(|child| self.nodes[child].kind != Kind::Popup)
+            .filter(|child| !matches!(self.nodes[child].kind, Kind::Popup | Kind::Popover))
             .map(|child| {
                 let layout = self.layout.layout(self.nodes[child].layout_id).unwrap();
                 layout.location.y + layout.size.height
@@ -1187,7 +1271,19 @@ impl Context {
             width: layout.size.width,
             height: layout.size.height,
         };
-        let clip = if node.kind == Kind::Popup {
+        let clip = if matches!(node.kind, Kind::Popup | Kind::Popover) {
+            // Context menus anchor at the request point instead of below the owner.
+            let anchored = (node.kind == Kind::Popup)
+                .then(|| {
+                    self.popup
+                        .filter(|popup| Some(popup.owner) == node.parent)
+                        .and_then(|popup| popup.anchor)
+                })
+                .flatten();
+            if let Some(anchor) = anchored {
+                node.bounds.x = anchor.x;
+                node.bounds.y = anchor.y;
+            }
             node.bounds.width = node.bounds.width.min(viewport.width);
             node.bounds.height = node.bounds.height.min(viewport.height);
             node.bounds.x = node
@@ -1195,7 +1291,8 @@ impl Context {
                 .x
                 .clamp(0.0, (viewport.width - node.bounds.width).max(0.0));
             if node.bounds.y + node.bounds.height > viewport.height {
-                node.bounds.y = (origin.y - node.bounds.height).max(0.0);
+                let above = anchored.map_or(origin.y, |anchor| anchor.y);
+                node.bounds.y = (above - node.bounds.height).max(0.0);
             }
             viewport
         } else {
@@ -1258,7 +1355,12 @@ impl Context {
             Kind::Button | Kind::TextInput | Kind::ComboBox | Kind::MenuButton => {
                 Some(theme.control)
             }
-            Kind::Popup => Some(theme.popup),
+            Kind::Popup | Kind::Popover => Some(theme.popup),
+            Kind::Divider => Some(if hovered || pressed {
+                theme.accent
+            } else {
+                theme.track
+            }),
             Kind::Dialog => {
                 matches!(node.control, Control::Dialog { modal: true, .. }).then_some(theme.scrim)
             }
@@ -1396,7 +1498,7 @@ impl Context {
             .children
             .iter()
             .copied()
-            .filter(|child| self.nodes[child].kind != Kind::Popup)
+            .filter(|child| !matches!(self.nodes[child].kind, Kind::Popup | Kind::Popover))
             .collect::<Vec<_>>();
         let before = std::mem::take(&mut scene.primitives);
         if node.scroll.maximum > 0.0 {
@@ -1440,6 +1542,9 @@ impl Context {
     pub fn hit_test(&self, position: Point) -> Option<NodeId> {
         let mut order = Vec::new();
         self.order(self.root, &mut order);
+        for popover in self.popovers() {
+            self.order(popover, &mut order);
+        }
         if let Some(popup) = self.popup
             && let Some(panel) = self
                 .nodes
@@ -1457,7 +1562,10 @@ impl Context {
                     .is_some_and(|parent| self.nodes[&parent].kind == Kind::Dialog),
                 _ => false,
             };
-            (node.activatable() || node.focusable() || node.kind == Kind::Popup || dialog_surface)
+            (node.activatable()
+                || node.focusable()
+                || matches!(node.kind, Kind::Popup | Kind::Popover)
+                || dialog_surface)
                 && node.clip.contains(position)
         })
     }
@@ -1465,7 +1573,8 @@ impl Context {
     /// Returns true if a declaration/redraw is needed. Pointer capture survives
     /// leaving the window, but activation requires release over the same button.
     pub fn event(&mut self, event: Event) -> bool {
-        let handled = self.handle_event(event);
+        let handled = self.handle_event(event.clone());
+        self.track_hover(&event);
         self.note_focus();
         handled
     }
@@ -1602,7 +1711,7 @@ impl Context {
                 self.clicks.clear();
             }
             Event::Scroll { .. } => unreachable!(),
-            Event::Text(_) | Event::Shortcut(_) | Event::DropAt { .. } => {}
+            Event::Text(_) | Event::Shortcut(_) | Event::DropAt { .. } | Event::ContextMenu(_) => {}
         }
         let after = (
             self.hovered,

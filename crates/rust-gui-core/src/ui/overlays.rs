@@ -1,0 +1,299 @@
+use super::*;
+use crate::{
+    Align, Axis, Length, MenuItem, PopoverOptions, PopoverResponse, SplitOptions, Tab, TabsResponse,
+};
+use rust_gui_scene::Color;
+
+impl Ui<'_> {
+    /// Attaches hover help to the previously declared widget. It appears after a
+    /// short dwell and doubles as the widget's accessible description.
+    pub fn tooltip(&mut self, text: impl Into<String>) {
+        if let Some(element) = self.elements.last_mut() {
+            element.tooltip = Some(text.into());
+        }
+    }
+
+    /// A tab strip over one panel. Clicking or Arrow/Home/End on the focused
+    /// tab selects at once; only the selected tab is in the Tab order, and Tab
+    /// moves on into the panel. Closable tabs report their close button.
+    pub fn tabs(
+        &mut self,
+        key: impl Into<String>,
+        selected: &mut usize,
+        tabs: &[Tab],
+        content: impl FnOnce(&mut Ui<'_>, usize),
+    ) -> TabsResponse {
+        let key = key.into();
+        let old = *selected;
+        if let Some(ControlUpdate::Choice(index)) = self.take_update(&key, Kind::Tabs) {
+            *selected = index;
+        }
+        *selected = (*selected).min(tabs.len().saturating_sub(1));
+        let current = *selected;
+        let mut closed = None;
+        let (surface, hover) = {
+            let theme = self.context.theme();
+            (theme.surface, theme.control_hover)
+        };
+        let count = tabs.len();
+        self.group(
+            key,
+            Kind::Tabs,
+            Style::default().width(Length::Percent(1.0)).gap(0.0),
+            |ui| {
+                ui.group(
+                    "$strip".into(),
+                    Kind::TabList,
+                    Style::default().gap(2.0).align_items(Align::End),
+                    |ui| {
+                        for (index, tab) in tabs.iter().enumerate() {
+                            let active = index == current;
+                            ui.push(Element {
+                                key: WidgetKey::Named(index.to_string()),
+                                kind: Kind::Tab,
+                                text: tab.label.clone(),
+                                style: Style {
+                                    padding: 10.0,
+                                    radius: 6.0,
+                                    background: active.then_some(surface),
+                                    states: (!active).then(|| {
+                                        Box::new(crate::StateStyles {
+                                            hover: crate::Paint::background(hover),
+                                            ..Default::default()
+                                        })
+                                    }),
+                                    ..Style::default()
+                                },
+                                enabled: ui.enabled,
+                                children: Vec::new(),
+                                custom: None,
+                                tooltip: None,
+                                control: Control::Tab {
+                                    index,
+                                    selected: active,
+                                    closable: tab.closable,
+                                },
+                            });
+                            if tab.closable
+                                && ui
+                                    .button_styled(
+                                        format!("$close-{index}"),
+                                        "×",
+                                        true,
+                                        Style {
+                                            padding: 6.0,
+                                            radius: 6.0,
+                                            background: Some(Color::TRANSPARENT),
+                                            ..Style::default()
+                                        },
+                                    )
+                                    .clicked()
+                            {
+                                closed = Some(index);
+                            }
+                        }
+                    },
+                );
+                ui.elements.last_mut().unwrap().control = Control::TabList;
+                ui.group(
+                    "$panel".into(),
+                    Kind::TabPanel,
+                    Style::default()
+                        .width(Length::Percent(1.0))
+                        .padding(16.0)
+                        .radius(8.0)
+                        .background(surface),
+                    |ui| content(ui, current),
+                );
+                ui.elements.last_mut().unwrap().control = Control::TabPanel;
+            },
+        );
+        self.elements.last_mut().unwrap().control = Control::Tabs {
+            count,
+            selected: current,
+        };
+        TabsResponse {
+            changed: old != *selected,
+            closed,
+        }
+    }
+
+    /// Two panes separated by a draggable divider. `fraction` is the first
+    /// pane's share of the space along `axis`; pixel minimums clamp both sides.
+    /// The divider is focusable and moves with the arrow keys, Home and End.
+    pub fn split(
+        &mut self,
+        key: impl Into<String>,
+        fraction: &mut f32,
+        axis: Axis,
+        options: SplitOptions,
+        first: impl FnOnce(&mut Ui<'_>),
+        second: impl FnOnce(&mut Ui<'_>),
+    ) {
+        let key = key.into();
+        let kind = match axis {
+            Axis::Horizontal => Kind::SplitRow,
+            Axis::Vertical => Kind::Split,
+        };
+        if let Some(ControlUpdate::Number(value)) = self.take_update(&key, kind) {
+            *fraction = value as f32;
+        }
+        if !fraction.is_finite() {
+            *fraction = 0.5;
+        }
+        *fraction = fraction.clamp(0.0, 1.0);
+        let share = *fraction;
+        let mut style = options.style.clone();
+        style.gap = 0.0;
+        let first_style = match axis {
+            Axis::Horizontal => Style::default()
+                .width(Length::Percent(share))
+                .min_width(Length::Px(options.min_first))
+                .height(Length::Percent(1.0)),
+            Axis::Vertical => Style::default()
+                .height(Length::Percent(share))
+                .min_height(Length::Px(options.min_first))
+                .width(Length::Percent(1.0)),
+        }
+        .gap(0.0);
+        let divider_style = match axis {
+            Axis::Horizontal => Style::default()
+                .width(Length::Px(options.divider))
+                .height(Length::Percent(1.0)),
+            Axis::Vertical => Style::default()
+                .height(Length::Px(options.divider))
+                .width(Length::Percent(1.0)),
+        };
+        let second_style = match axis {
+            Axis::Horizontal => Style::default()
+                .min_width(Length::Px(options.min_second))
+                .height(Length::Percent(1.0)),
+            Axis::Vertical => Style::default()
+                .min_height(Length::Px(options.min_second))
+                .width(Length::Percent(1.0)),
+        }
+        .grow(1.0)
+        .shrink(1.0)
+        .gap(0.0);
+        self.group(key, kind, style, |ui| {
+            ui.group("$first".into(), Kind::Container, first_style, first);
+            ui.push(Element {
+                key: WidgetKey::Named("$divider".into()),
+                kind: Kind::Divider,
+                text: String::new(),
+                style: divider_style,
+                enabled: ui.enabled,
+                children: Vec::new(),
+                custom: None,
+                tooltip: None,
+                control: Control::Divider {
+                    axis,
+                    fraction: share,
+                    min_first: options.min_first,
+                    min_second: options.min_second,
+                },
+            });
+            ui.group("$second".into(), Kind::Container, second_style, second);
+        });
+        self.elements.last_mut().unwrap().control = Control::Split { axis };
+    }
+
+    /// Content with a right-click (or Shift+F10 / Menu key) menu. Returns the
+    /// activated item index once, like `Ui::menu`.
+    pub fn context_menu(
+        &mut self,
+        key: impl Into<String>,
+        items: &[MenuItem],
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_>),
+    ) -> Option<usize> {
+        let key = key.into();
+        let choice = match self.take_update(&key, Kind::ContextArea) {
+            Some(ControlUpdate::Choice(index))
+                if items.get(index).is_some_and(|item| item.enabled) =>
+            {
+                Some(index)
+            }
+            _ => None,
+        };
+        let popup = self.popup_children(&key, Kind::ContextArea, items, usize::MAX, true);
+        self.group(key, Kind::ContextArea, style, |ui| {
+            // The popup panel must be the first child, like combo and menu owners.
+            ui.elements.extend(popup);
+            for element in &ui.elements {
+                ui.keys.insert(element.key.clone());
+            }
+            content(ui);
+        });
+        self.elements.last_mut().unwrap().control = Control::ContextMenu {
+            items: items.to_vec(),
+        };
+        choice
+    }
+
+    /// An anchored, non-modal panel below the previously declared widget while
+    /// `*open`. Focus moves inside on open and returns to the anchor on close;
+    /// Escape or a press outside the panel and its anchor clears `*open`.
+    pub fn popover(
+        &mut self,
+        key: impl Into<String>,
+        open: &mut bool,
+        options: PopoverOptions,
+        content: impl FnOnce(&mut Ui<'_>),
+    ) -> PopoverResponse {
+        let key = WidgetKey::Named(key.into());
+        let Some(anchor) = self.elements.last() else {
+            panic!("popover needs a preceding anchor widget in the same parent");
+        };
+        let anchor_id = self.context.child(self.parent, &anchor.key, anchor.kind);
+        let popover_id = anchor_id.and_then(|id| self.context.child(Some(id), &key, Kind::Popover));
+        let dismissed = self.enabled
+            && popover_id
+                .is_some_and(|id| matches!(self.updates.remove(&id), Some(ControlUpdate::Dismiss)));
+        if dismissed {
+            *open = false;
+        }
+        if !*open {
+            return PopoverResponse { dismissed };
+        }
+        let popup = self.context.theme().popup;
+        let mut panel = options.style;
+        panel.width = options.width;
+        if panel.background.is_none() {
+            panel.background = Some(popup);
+        }
+        if panel.radius == 0.0 {
+            panel.radius = 8.0;
+        }
+        if panel.padding == 0.0 {
+            panel.padding = 12.0;
+        }
+        let mut child = Ui {
+            context: self.context,
+            parent: popover_id,
+            clicks: self.clicks,
+            elements: Vec::new(),
+            keys: HashSet::new(),
+            updates: self.updates,
+            submitted: self.submitted,
+            warnings: self.warnings,
+            theme_request: self.theme_request,
+            layers: self.layers,
+            enabled: self.enabled,
+        };
+        content(&mut child);
+        let element = Element {
+            key,
+            kind: Kind::Popover,
+            text: String::new(),
+            style: panel,
+            enabled: self.enabled,
+            children: child.elements,
+            custom: None,
+            tooltip: None,
+            control: Control::Popover,
+        };
+        self.elements.last_mut().unwrap().children.push(element);
+        PopoverResponse { dismissed }
+    }
+}

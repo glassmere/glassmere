@@ -107,7 +107,9 @@ impl Context {
 
     fn popup_items(&self, owner: NodeId) -> Option<&[crate::MenuItem]> {
         match &self.nodes.get(&owner)?.control {
-            Control::Combo { items, .. } | Control::Menu { items } => Some(items),
+            Control::Combo { items, .. }
+            | Control::Menu { items }
+            | Control::ContextMenu { items } => Some(items),
             _ => None,
         }
     }
@@ -116,11 +118,22 @@ impl Context {
         let Some(popup) = self.popup.take() else {
             return false;
         };
-        self.focus_control(popup.owner);
+        if self.nodes.get(&popup.owner).is_some_and(Node::focusable) {
+            self.focus_control(popup.owner);
+        } else if let Some(previous) = popup
+            .return_focus
+            .filter(|id| self.nodes.get(id).is_some_and(Node::focusable))
+        {
+            self.focus_control(previous);
+        }
         true
     }
 
     fn open_popup(&mut self, owner: NodeId) -> bool {
+        self.open_popup_at(owner, None)
+    }
+
+    pub(super) fn open_popup_at(&mut self, owner: NodeId, anchor: Option<Point>) -> bool {
         let Some(node) = self.nodes.get(&owner).filter(|node| node.enabled) else {
             return false;
         };
@@ -138,13 +151,21 @@ impl Context {
         } else {
             return false;
         };
+        let return_focus = self.focused;
         self.close_popup();
         self.popup = Some(PopupState {
             owner,
             highlighted,
             reveal_highlight: true,
+            anchor,
+            return_focus,
         });
-        self.focus_control(owner);
+        if self.nodes[&owner].focusable() {
+            self.focus_control(owner);
+        } else {
+            self.invalidate_paint(owner);
+            self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
+        }
         true
     }
 
@@ -158,7 +179,6 @@ impl Context {
         }
         self.updates.insert(owner, ControlUpdate::Choice(index));
         self.close_popup();
-        self.focus_control(owner);
         true
     }
 
@@ -183,6 +203,7 @@ impl Context {
                 };
                 self.choose(owner, index)
             }
+            Control::Tab { .. } => self.select_tab(id),
             Control::Radio { .. } => {
                 let siblings = self.nodes[&node.parent.unwrap()].children.clone();
                 for sibling in siblings {
@@ -249,11 +270,20 @@ impl Context {
             Event::Text(edit) => {
                 return Some(self.focused.is_some_and(|id| self.edit(id, edit.clone())));
             }
+            Event::ContextMenu(point) => {
+                self.pointer = Some(*point);
+                return Some(self.open_context_menu_at(*point));
+            }
             Event::PointerMoved(position) => {
                 if let Some(id) = self.captured {
                     if self.nodes[&id].kind == Kind::Slider {
                         self.pointer = Some(*position);
                         return Some(self.slider_pointer(id, *position));
+                    }
+                    if self.nodes[&id].kind == Kind::Divider {
+                        self.pointer = Some(*position);
+                        self.divider_pointer(id, *position);
+                        return Some(true);
                     }
                     if self.nodes[&id].kind == Kind::TextInput {
                         self.pointer = Some(*position);
@@ -282,6 +312,11 @@ impl Context {
                 }
                 if let Some(id) = target.filter(|id| self.nodes[id].enabled) {
                     let kind = self.nodes[&id].kind;
+                    if kind == Kind::Divider {
+                        self.focus_control(id);
+                        self.captured = Some(id);
+                        return Some(true);
+                    }
                     if matches!(kind, Kind::TextInput | Kind::Slider) {
                         self.focus_control(id);
                         self.captured = Some(id);
@@ -302,11 +337,28 @@ impl Context {
                 if let Some(handled) = self.popup_key(*key) {
                     return Some(handled);
                 }
+                if *key == Key::ContextMenu {
+                    return Some(self.open_context_menu_for_focus());
+                }
                 let id = self.focused?;
                 let node = &self.nodes[&id];
                 if !node.enabled {
                     return Some(false);
                 }
+                match node.kind {
+                    Kind::Tab => {
+                        if let Some(handled) = self.tab_key(id, *key) {
+                            return Some(handled);
+                        }
+                    }
+                    Kind::Divider => {
+                        if let Some(handled) = self.divider_key(id, *key) {
+                            return Some(handled);
+                        }
+                    }
+                    _ => {}
+                }
+                let node = &self.nodes[&id];
                 if node.editor.is_some() {
                     let edit = match key {
                         Key::ArrowLeft => TextEdit::Move {
@@ -404,6 +456,9 @@ impl Context {
             Action::SetText(text) if node.editor.is_some() => {
                 let selected = self.edit(target, TextEdit::SelectAll);
                 Some(self.edit(target, TextEdit::Insert(text.clone())) || selected)
+            }
+            Action::SetNumber(value) if node.kind == Kind::Divider => {
+                Some(self.set_fraction(target, (*value / 100.0) as f32))
             }
             Action::SetNumber(value) => Some(self.set_number(target, *value)),
             Action::Increment | Action::Decrement => {

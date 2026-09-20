@@ -1,6 +1,6 @@
 # Milestone 6: styling, theming and layout depth
 
-Three slices so far: 6a styling and theming, 6b layout depth and 6c focus scopes and dialogs (below).
+Four slices so far: 6a styling and theming, 6b layout depth, 6c focus scopes and dialogs, and 6d tooltips, tabs, split panes, context menus and popovers (below).
 
 # Milestone 6a: styling and theming
 
@@ -188,3 +188,56 @@ Six focus tests cover scope trapping and memory, restoration on removal, modal d
 - Arrow navigation is geometric within one scope; it does not cross scopes or wrap.
 - Native modals rely on host-side input blocking; only Windows gets true owned-window semantics, and there is no return value channel beyond shared state.
 - Focus restoration targets a node id; if the opener was recreated (different key path or kind) while the dialog was open, focus is cleared instead.
+
+# Milestone 6d: tooltips, tabs, split panes, context menus and popovers
+
+Implemented on 2026-09-21. The core gains a clock and wake requests so hosts can sleep until a tooltip is due, closable tabs with automatic activation, draggable split panes, context menus anchored at the pointer or the focused control, and anchored non-modal popovers. Overlay painting, hit testing and dismissal now handle several open panels at once.
+
+## Run
+
+```sh
+cargo run -p rust-gui --example panes --release
+cargo run -p rust-gui --example panes --release -- --open   # starts with the share popover open
+```
+
+Hover the toolbar for tooltips, right-click the editor (or press Shift+F10 while a control inside it has focus) for a context menu, drag or arrow-key the dividers, and close the closable tabs.
+
+```rust
+ui.button_keyed("open", "Open…");
+ui.tooltip("Open a document from disk");
+
+let response = ui.tabs("documents", &mut selected, &tabs, |ui, index| { /* panel */ });
+if let Some(index) = response.closed { tabs.remove(index); }
+
+ui.split("workspace", &mut sidebar, Axis::Horizontal, SplitOptions::default(), |ui| { /* first */ }, |ui| { /* second */ });
+
+if let Some(choice) = ui.context_menu("editor", &items, style, |ui| { /* content */ }) { apply(choice); }
+
+if ui.button_keyed("share", "Share ▾").clicked() { share = !share; }
+ui.popover("share-popover", &mut share, PopoverOptions::default(), |ui| { /* anchored panel */ });
+```
+
+## Contracts
+
+| API | Behavior |
+| --- | --- |
+| `Ui::tooltip(text)` | Attaches to the previously declared widget. Shown after `TOOLTIP_DELAY` (500 ms) of steady hover, below the widget and kept inside the window; hidden by movement off the widget, any press, key, wheel or focus loss, and not re-armed until the pointer moves again. Doubles as the accessible description. |
+| `Context::set_now`, `Context::next_wake` | The host supplies a monotonic clock before events and declarations and reads the next wake time; headless tests advance time explicitly. The desktop loop sleeps until the earliest wake, stylesheet poll or surface retry. |
+| `Ui::tabs(key, &mut selected, &[Tab], content) -> TabsResponse` | Roles TabList/Tab/TabPanel. Clicking a tab or pressing Arrow/Home/End on the focused tab selects at once and keeps focus on the strip; only the selected tab is in the Tab order, so Tab moves into the panel. `Tab::closable` adds a close button reported as `closed`; Delete on a focused closable tab reports the same. |
+| `Ui::split(key, &mut fraction, Axis, SplitOptions, first, second)` | The first pane takes `fraction` of the axis; `min_first`/`min_second` clamp both sides in pixels. The divider (role Splitter, value 0–100) drags with pointer capture, moves ten pixels per arrow key, jumps with Home/End and accepts `SetValue`. The host shows resize cursors. |
+| `Ui::context_menu(key, &[MenuItem], style, content) -> Option<usize>` | Right-click inside the area, or the Menu key / Shift+F10 while a control inside has focus, opens the menu at the pointer (or below the focused control), kept on screen. Navigation, disabled items, Escape and outside clicks work as for `Ui::menu`; the choice is reported once and focus returns to where the menu was opened. |
+| `Ui::popover(key, &mut open, PopoverOptions, content) -> PopoverResponse` | An anchored panel below the previously declared widget. Focus moves inside on open and returns to the anchor on close; Escape, or a press outside the panel and its anchor, clears `open` and reports `dismissed`. Several popovers can be open; each paints above content and blocks clicks through itself. |
+| `Event::ContextMenu(Point)`, `Key::ContextMenu` | Host events for right-click release and the Menu key / Shift+F10. |
+
+Text leaves that anchor a popup or popover keep their intrinsic size as a layout minimum, since Taffy ignores the measure function once a node has children.
+
+## Validation
+
+Five overlay tests cover tooltip timing (wake requests, dwell, hiding rules), tab selection by click and keys with roles and close reporting, divider dragging within minimums plus keyboard and semantic values, context menus opened by pointer and keyboard with once-only choices and on-screen clamping, and popovers with anchoring, focus, dismissal and coexistence. The full suite is 84 tests. The panes example passes `--smoke`; release screenshots confirmed the tab strip, the popover anchored under its button with the button keeping its size, and the context menu at the pointer. A native tooltip screenshot could not be produced: a background script cannot bring the window to the foreground, so the real cursor never reached it. The hover, wake and redraw path is covered headlessly and by code review only.
+
+## Remaining limits
+
+- Tooltips are pointer-only (no keyboard-focus tooltips) and fixed to one delay and one placement rule.
+- Tabs do not reorder or overflow-scroll; docking is a later slice.
+- Split panes are two-way only; nested splits work but there is no persisted workspace layout.
+- Context menus are one level deep, like `Ui::menu`; popovers have no arrow or placement options beyond "below the anchor, kept on screen".

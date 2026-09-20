@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 mod collections;
 mod controls;
+mod overlays;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum WidgetKey {
@@ -19,6 +20,15 @@ pub(crate) enum Kind {
     Container,
     FocusScope,
     Dialog,
+    Tabs,
+    TabList,
+    Tab,
+    TabPanel,
+    Split,
+    SplitRow,
+    Divider,
+    ContextArea,
+    Popover,
     Label,
     Button,
     Scroll,
@@ -48,6 +58,7 @@ impl Kind {
                 | Self::Choice
                 | Self::MenuButton
                 | Self::ComboBox
+                | Self::Tab
         )
     }
 }
@@ -60,6 +71,7 @@ pub(crate) struct Element {
     pub enabled: bool,
     pub children: Vec<Element>,
     pub custom: Option<CustomWidget>,
+    pub tooltip: Option<String>,
     pub control: Control,
 }
 
@@ -214,6 +226,7 @@ impl Ui<'_> {
             enabled,
             children: Vec::new(),
             custom: None,
+            tooltip: None,
             control: Control::None,
         })
     }
@@ -298,6 +311,7 @@ impl Ui<'_> {
             enabled: true,
             children,
             custom: None,
+            tooltip: None,
             control: Control::None,
         });
     }
@@ -425,6 +439,7 @@ impl Ui<'_> {
             enabled: self.enabled,
             children: child.elements,
             custom: None,
+            tooltip: None,
             control: Control::Dialog {
                 title: options.title,
                 modal: options.modal,
@@ -482,6 +497,7 @@ impl Ui<'_> {
             enabled: !widget.semantics.disabled,
             children: Vec::new(),
             custom: Some(widget),
+            tooltip: None,
             control: Control::None,
         })
     }

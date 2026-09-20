@@ -1,7 +1,7 @@
 use super::*;
 
 impl Context {
-    fn within(&self, id: NodeId, ancestor: NodeId) -> bool {
+    pub(super) fn within(&self, id: NodeId, ancestor: NodeId) -> bool {
         let mut next = Some(id);
         while let Some(current) = next {
             if current == ancestor {
@@ -223,6 +223,8 @@ impl Context {
                     | Kind::Radio
                     | Kind::Scroll
                     | Kind::Choice
+                    | Kind::Tab
+                    | Kind::Divider
             )
     }
 
@@ -296,12 +298,18 @@ impl Context {
                 repeat: false,
                 ..
             } => {
+                if let Some(popover) = self.focused_popover() {
+                    self.captured = None;
+                    self.keyboard_pressed = None;
+                    return Some(self.dismiss_popover(popover));
+                }
                 let target = self.escape_target()?;
                 self.captured = None;
                 self.keyboard_pressed = None;
                 Some(self.dismiss(target))
             }
             Event::PointerDown | Event::PointerDownWithShift => {
+                self.dismiss_outside_popovers(self.hovered);
                 let id = self.hovered?;
                 if self.nodes[&id].kind != Kind::Dialog {
                     return None;
