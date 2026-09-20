@@ -1,0 +1,6 @@
+page Column Group "" @ 0.0,0.0 320.0×92.8
+  count Label Label "Count: 1" @ 8.0,8.0 76.8×22.4
+  actions Row Group "" @ 8.0,38.4 297.6×46.4
+    increment Button Button "Increase" [focusable] @ 8.0,38.4 100.8×46.4
+    decrement Button Button "Decrease" [focusable] @ 120.8,38.4 100.8×46.4
+    reset Button Button "Reset" [disabled] @ 233.6,38.4 72.0×46.4

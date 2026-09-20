@@ -1,0 +1,1595 @@
+use crate::{
+    CustomWidget, Length, Style, Ui,
+    ui::{Element, Kind, WidgetKey},
+};
+use crate::{
+    TextEdit, TextSelection,
+    controls::{Control, ControlUpdate, PopupState},
+    editor::Editor,
+};
+use rust_gui_scene::{
+    Color, Point, Primitive, Rect, Scene, Size, TextMeasurer, TextStyle, TextWrap,
+};
+mod collection_input;
+mod control_input;
+mod control_paint;
+mod drag_input;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+/// Monotonic within a Context; a removed node's identity is never reused there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct NodeId(pub u64);
+
+bitflags::bitflags! {
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct Dirty: u8 {
+        const TREE = 1;
+        const STYLE = 2;
+        const LAYOUT = 4;
+        const PAINT = 8;
+        const ACCESSIBILITY = 16;
+        const TEXT = 32;
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Role {
+    Group,
+    Label,
+    Button,
+    ScrollView,
+    TextInput,
+    Checkbox,
+    Radio,
+    Slider,
+    ComboBox,
+    MenuButton,
+    Menu,
+    ListBox,
+    Option,
+    MenuItem,
+    Tree,
+    TreeItem,
+    Grid,
+    Row,
+    RowGroup,
+    Cell,
+    ColumnHeader,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Semantics {
+    pub role: Role,
+    pub label: String,
+    pub disabled: bool,
+    pub focusable: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct NodeSnapshot {
+    pub id: NodeId,
+    pub parent: Option<NodeId>,
+    pub children: Vec<NodeId>,
+    pub bounds: Rect,
+    pub semantics: Semantics,
+    pub focused: bool,
+    pub clip: Rect,
+    pub scroll: Option<ScrollState>,
+    pub value: Option<String>,
+    pub checked: Option<bool>,
+    pub selected: Option<bool>,
+    pub numeric: Option<NumericValue>,
+    pub expanded: Option<bool>,
+    pub active_descendant: Option<NodeId>,
+    pub text_selection: Option<TextSelection>,
+    pub is_popup: bool,
+    pub collection: Option<CollectionInfo>,
+    pub drag: Option<crate::DragInfo>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CollectionInfo {
+    pub item: Option<crate::ItemId>,
+    pub index: usize,
+    pub total: usize,
+    pub level: usize,
+    pub column: Option<usize>,
+    pub columns: Option<usize>,
+    pub sort: Option<crate::SortDirection>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NumericValue {
+    pub value: f64,
+    pub min: f64,
+    pub max: f64,
+    pub step: f64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ScrollState {
+    pub offset: f32,
+    pub maximum: f32,
+}
+
+/// Actions from accessibility or another host use the same retained identities
+/// and activation queue as pointer and keyboard input. Removed IDs are ignored.
+#[derive(Clone, Debug)]
+pub enum Action {
+    Focus,
+    Activate,
+    ScrollBy(f32),
+    ScrollTo(f32),
+    ScrollIntoView,
+    SetText(String),
+    SetNumber(f64),
+    Increment,
+    Decrement,
+    Expand,
+    Collapse,
+    StartDrag,
+    Drop,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Key {
+    Tab,
+    Enter,
+    Space,
+    Escape,
+    ArrowUp,
+    ArrowDown,
+    PageUp,
+    PageDown,
+    Home,
+    End,
+    ArrowLeft,
+    ArrowRight,
+    Backspace,
+    Delete,
+}
+
+#[derive(Clone, Debug)]
+pub enum Event {
+    PointerMoved(Point),
+    PointerLeft,
+    PointerDown,
+    PointerDownWithShift,
+    PointerUp,
+    KeyDown {
+        key: Key,
+        shift: bool,
+        repeat: bool,
+    },
+    KeyUp(Key),
+    FocusLost,
+    /// Logical pixels; positive moves toward the end of content.
+    Scroll {
+        delta_y: f32,
+    },
+    Text(TextEdit),
+    Shortcut(crate::Shortcut),
+    /// The host supplies a logical drop point for external data.
+    DropAt {
+        position: Point,
+        payload: crate::DragPayload,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FrameStats {
+    /// Queued activations consumed by this declaration. Hosts should declare
+    /// once more after these callbacks so earlier labels see the updated state.
+    pub activations: usize,
+    pub created: usize,
+    pub reused: usize,
+    pub removed: usize,
+    pub text_measures: usize,
+    /// Number of root layout requests (Taffy caches unchanged subtrees internally).
+    pub layout_passes: usize,
+    pub scene_rebuilt: bool,
+    pub dirty: Dirty,
+    pub paint_nodes: usize,
+    pub paint_cache_hits: usize,
+    /// Monotonic declaration counter for this context.
+    pub frame: u64,
+    /// CPU time spent running the view closure and reconciling the tree.
+    pub declare: Duration,
+    /// CPU time spent in layout and bounds propagation; zero when skipped.
+    pub layout: Duration,
+    /// CPU time spent generating and flattening paint chunks; zero when skipped.
+    pub paint: Duration,
+}
+
+/// Inspector-facing facts about one node that ordinary semantics do not carry.
+#[derive(Clone, Debug)]
+pub struct NodeDetails {
+    /// Explicit key, or `#index` for positional children.
+    pub key: String,
+    pub kind: String,
+    pub text: String,
+    pub style: Style,
+    /// What the most recent declaration changed on this node; empty if untouched.
+    pub changed: Dirty,
+    /// Whether this node's paint chunk was regenerated by the most recent declaration.
+    pub painted: bool,
+}
+
+struct PaintChunk {
+    before: Vec<Primitive>,
+    children: Vec<Arc<PaintChunk>>,
+    after: Vec<Primitive>,
+}
+
+impl PaintChunk {
+    fn append_to(&self, output: &mut Vec<Primitive>) {
+        output.extend_from_slice(&self.before);
+        for child in &self.children {
+            child.append_to(output);
+        }
+        output.extend_from_slice(&self.after);
+    }
+}
+
+struct Node {
+    key: WidgetKey,
+    kind: Kind,
+    parent: Option<NodeId>,
+    children: Vec<NodeId>,
+    children_by_key: HashMap<WidgetKey, NodeId>,
+    text: String,
+    style: Style,
+    enabled: bool,
+    layout_id: taffy::NodeId,
+    bounds: Rect,
+    clip: Rect,
+    scroll: ScrollState,
+    custom: Option<CustomWidget>,
+    paint_cache: Option<Arc<PaintChunk>>,
+    control: Control,
+    // Labels and other controls pay one pointer, not an inline editing history.
+    editor: Option<Box<Editor>>,
+    changed: Dirty,
+    changed_frame: u64,
+    painted_frame: u64,
+}
+
+impl Node {
+    fn focusable(&self) -> bool {
+        self.enabled
+            && (matches!(
+                self.kind,
+                Kind::Button
+                    | Kind::Scroll
+                    | Kind::TextInput
+                    | Kind::Checkbox
+                    | Kind::Radio
+                    | Kind::Slider
+                    | Kind::ComboBox
+                    | Kind::MenuButton
+                    | Kind::Choice
+                    | Kind::Collection
+                    | Kind::DragSource
+                    | Kind::DropTarget
+            ) || self.custom.as_ref().is_some_and(|widget| {
+                widget.semantics.role == Role::Button && widget.semantics.focusable
+            }))
+    }
+
+    fn activatable(&self) -> bool {
+        self.enabled
+            && (matches!(
+                self.kind,
+                Kind::Button
+                    | Kind::Checkbox
+                    | Kind::Radio
+                    | Kind::ComboBox
+                    | Kind::MenuButton
+                    | Kind::Choice
+                    | Kind::CollectionRow
+            ) || self
+                .custom
+                .as_ref()
+                .is_some_and(|widget| widget.semantics.role == Role::Button))
+    }
+
+    fn semantics(&self) -> Semantics {
+        if let Some(widget) = &self.custom {
+            let mut semantics = widget.semantics.clone();
+            semantics.focusable = self.focusable();
+            return semantics;
+        }
+        Semantics {
+            role: match &self.control {
+                Control::Collection { kind, .. } => match kind {
+                    crate::collection::CollectionKind::List => Role::ListBox,
+                    crate::collection::CollectionKind::Tree => Role::Tree,
+                    crate::collection::CollectionKind::Grid => Role::RowGroup,
+                },
+                Control::CollectionRow { kind, .. } => match kind {
+                    crate::collection::CollectionKind::List => Role::Option,
+                    crate::collection::CollectionKind::Tree => Role::TreeItem,
+                    crate::collection::CollectionKind::Grid => Role::Row,
+                },
+                Control::Grid { .. } => Role::Grid,
+                Control::GridCell { header: true, .. } => Role::ColumnHeader,
+                Control::GridCell { .. } => Role::Cell,
+                _ => match self.kind {
+                    Kind::Label => Role::Label,
+                    Kind::Button => Role::Button,
+                    Kind::Scroll => Role::ScrollView,
+                    Kind::TextInput => Role::TextInput,
+                    Kind::Checkbox => Role::Checkbox,
+                    Kind::Radio => Role::Radio,
+                    Kind::Slider => Role::Slider,
+                    Kind::ComboBox => Role::ComboBox,
+                    Kind::MenuButton => Role::MenuButton,
+                    Kind::Popup => {
+                        if matches!(self.control, Control::Popup { menu: true }) {
+                            Role::Menu
+                        } else {
+                            Role::ListBox
+                        }
+                    }
+                    Kind::Choice => {
+                        if matches!(self.control, Control::Choice { menu: true, .. }) {
+                            Role::MenuItem
+                        } else {
+                            Role::Option
+                        }
+                    }
+                    _ => Role::Group,
+                },
+            },
+            label: match &self.control {
+                Control::TextInput { label, .. }
+                | Control::Checkbox { label, .. }
+                | Control::Radio { label, .. }
+                | Control::Slider { label, .. }
+                | Control::Combo { label, .. }
+                | Control::Collection { label, .. }
+                | Control::CollectionRow { label, .. }
+                | Control::Grid { label, .. } => label.clone(),
+                Control::DragSource { label, .. } | Control::DropTarget { label, .. } => {
+                    label.clone()
+                }
+                _ => self.text.clone(),
+            },
+            disabled: !self.enabled,
+            focusable: self.focusable(),
+        }
+    }
+}
+
+pub struct Context {
+    nodes: HashMap<NodeId, Node>,
+    layout: taffy::TaffyTree<Measurement>,
+    root: NodeId,
+    frame: u64,
+    next_id: u64,
+    hovered: Option<NodeId>,
+    focused: Option<NodeId>,
+    captured: Option<NodeId>,
+    keyboard_pressed: Option<(NodeId, Key)>,
+    pointer: Option<Point>,
+    clicks: HashSet<NodeId>,
+    pending: Dirty,
+    scene: Scene,
+    stats: FrameStats,
+    geometry_dirty: bool,
+    pending_damage: Option<Rect>,
+    damage: Vec<Rect>,
+    updates: HashMap<NodeId, ControlUpdate>,
+    submitted: HashSet<NodeId>,
+    pub(crate) popup: Option<PopupState>,
+    drag: Option<Box<crate::drag::DragState>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct Measurement {
+    size: Size,
+    wrapped: Option<(String, TextStyle)>,
+}
+
+fn layout_style(style: &Style, kind: Kind) -> taffy::Style {
+    let mut result = style.layout(kind == Kind::Row);
+    if kind == Kind::Popup {
+        result.position = taffy::Position::Absolute;
+        result.inset.top = taffy::LengthPercentageAuto::percent(1.0);
+        result.inset.left = taffy::LengthPercentageAuto::length(0.0);
+    }
+    result
+}
+
+impl Measurement {
+    fn fixed(size: Size) -> Self {
+        Self {
+            size,
+            wrapped: None,
+        }
+    }
+    fn text(text: &str, style: &Style, measurer: &mut impl TextMeasurer) -> Self {
+        let text_style = style.text_style();
+        Self {
+            size: measurer.measure_styled(text, &text_style, None),
+            wrapped: (text_style.wrap == TextWrap::Word).then(|| (text.to_owned(), text_style)),
+        }
+    }
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        let mut layout = taffy::TaffyTree::new();
+        layout.disable_rounding();
+        let style = Style::default();
+        let layout_id = layout
+            .new_leaf(style.layout(false))
+            .expect("new root layout");
+        let root = NodeId(1);
+        let node = Node {
+            key: WidgetKey::Named("$root".into()),
+            kind: Kind::Column,
+            parent: None,
+            children: Vec::new(),
+            children_by_key: HashMap::new(),
+            text: String::new(),
+            style,
+            enabled: true,
+            layout_id,
+            bounds: Rect::default(),
+            clip: Rect::default(),
+            scroll: ScrollState::default(),
+            custom: None,
+            paint_cache: None,
+            control: Control::None,
+            editor: None,
+            changed: Dirty::all(),
+            changed_frame: 0,
+            painted_frame: 0,
+        };
+        Self {
+            nodes: HashMap::from([(root, node)]),
+            layout,
+            root,
+            frame: 0,
+            next_id: 2,
+            hovered: None,
+            focused: None,
+            captured: None,
+            keyboard_pressed: None,
+            pointer: None,
+            clicks: HashSet::new(),
+            pending: Dirty::all(),
+            scene: Scene::default(),
+            stats: FrameStats::default(),
+            geometry_dirty: false,
+            pending_damage: None,
+            damage: Vec::new(),
+            updates: HashMap::new(),
+            submitted: HashSet::new(),
+            popup: None,
+            drag: None,
+        }
+    }
+}
+
+impl Context {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn focused(&self) -> Option<NodeId> {
+        self.focused
+    }
+    pub fn hovered(&self) -> Option<NodeId> {
+        self.hovered
+    }
+    pub fn captured(&self) -> Option<NodeId> {
+        self.captured
+    }
+    pub fn scene(&self) -> &Scene {
+        &self.scene
+    }
+    pub fn stats(&self) -> FrameStats {
+        self.stats
+    }
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+
+    pub fn root(&self) -> NodeId {
+        self.root
+    }
+
+    /// Conservative logical damage from the most recent declaration. The GPU
+    /// host still presents a full surface; partial presentation is a later step.
+    pub fn damage_regions(&self) -> &[Rect] {
+        &self.damage
+    }
+
+    /// Parent-first snapshots for platform accessibility adapters and inspectors.
+    pub fn snapshots(&self) -> Vec<NodeSnapshot> {
+        let mut order = Vec::with_capacity(self.nodes.len());
+        self.order(self.root, &mut order);
+        order.into_iter().filter_map(|id| self.node(id)).collect()
+    }
+
+    pub fn node(&self, id: NodeId) -> Option<NodeSnapshot> {
+        self.nodes.get(&id).map(|node| NodeSnapshot {
+            id,
+            parent: node.parent,
+            children: node.children.clone(),
+            bounds: node.bounds,
+            semantics: node.semantics(),
+            focused: self.focused == Some(id),
+            clip: node.clip,
+            scroll: matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection).then_some(node.scroll),
+            value: match &node.control {
+                Control::TextInput { value, .. } => Some(value.clone()),
+                Control::Combo {
+                    items, selected, ..
+                } => items.get(*selected).map(|item| item.label.clone()),
+                _ => None,
+            },
+            checked: match node.control {
+                Control::Checkbox { checked, .. } => Some(checked),
+                _ => None,
+            },
+            selected: match node.control {
+                Control::Radio { selected, .. }
+                | Control::CollectionRow { selected, .. }
+                | Control::Choice {
+                    selected,
+                    menu: false,
+                    ..
+                } => Some(selected),
+                _ => None,
+            },
+            numeric: match node.control {
+                Control::Slider {
+                    value,
+                    min,
+                    max,
+                    step,
+                    ..
+                } => Some(NumericValue {
+                    value,
+                    min,
+                    max,
+                    step,
+                }),
+                _ => None,
+            },
+            expanded: if let Control::CollectionRow { expanded, .. } = node.control { expanded } else {
+                matches!(node.kind, Kind::ComboBox | Kind::MenuButton).then_some(self.popup.is_some_and(|popup| popup.owner == id))
+            },
+            active_descendant: self
+                .popup
+                .filter(|popup| popup.owner == id)
+                .and_then(|popup| {
+                    node.children
+                        .first()
+                        .and_then(|panel| self.nodes[panel].children.get(popup.highlighted))
+                        .copied()
+                }).or_else(|| if let Control::Collection { selected: Some(selected), .. } = node.control {
+                    node.children.iter().find(|id| matches!(self.nodes[id].control, Control::CollectionRow { item, .. } if item == selected)).copied()
+                } else { None }),
+            text_selection: node.editor.as_ref().map(|editor| editor.selection),
+            is_popup: node.kind == Kind::Popup,
+            drag: match node.control {
+                Control::DragSource { .. } => Some(crate::DragInfo { source: node.enabled, can_drop: false, dragging: self.drag.as_ref().is_some_and(|drag| drag.source == id && drag.active) }),
+                Control::DropTarget { accepts, .. } => Some(crate::DragInfo { source: false, can_drop: node.enabled && self.drag.as_ref().is_some_and(|drag| drag.active && drag.payload.kind() == accepts), dragging: false }),
+                _ => None,
+            },
+            collection: match node.control {
+                Control::Collection { count, .. } => Some(CollectionInfo { item: None, index: 0, total: count, level: 0, column: None, columns: None, sort: None }),
+                Control::CollectionRow { item, index, total, depth, .. } => Some(CollectionInfo { item: Some(item), index, total, level: depth + 1, column: None, columns: None, sort: None }),
+                Control::Grid { rows, columns, .. } => Some(CollectionInfo { item: None, index: 0, total: rows, level: 0, column: None, columns: Some(columns), sort: None }),
+                Control::GridCell { row, column, sort, .. } => Some(CollectionInfo { item: None, index: row, total: 0, level: 0, column: Some(column), columns: None, sort }),
+                _ => None,
+            },
+        })
+    }
+
+    /// Key, kind, style and change facts for inspectors and test harnesses.
+    pub fn details(&self, id: NodeId) -> Option<NodeDetails> {
+        self.nodes.get(&id).map(|node| NodeDetails {
+            key: match &node.key {
+                WidgetKey::Named(name) => name.clone(),
+                WidgetKey::Position(index) => format!("#{index}"),
+            },
+            kind: format!("{:?}", node.kind),
+            text: node.text.clone(),
+            style: node.style.clone(),
+            changed: if node.changed_frame == self.frame {
+                node.changed
+            } else {
+                Dirty::empty()
+            },
+            painted: node.painted_frame == self.frame,
+        })
+    }
+
+    /// Find explicit keys relative to the root, e.g. &["main", "save"].
+    pub fn find(&self, path: &[&str]) -> Option<NodeId> {
+        let mut id = self.root;
+        for key in path {
+            id = *self.nodes[&id]
+                .children_by_key
+                .get(&WidgetKey::Named((*key).into()))?;
+        }
+        Some(id)
+    }
+
+    pub(crate) fn child(
+        &self,
+        parent: Option<NodeId>,
+        key: &WidgetKey,
+        kind: Kind,
+    ) -> Option<NodeId> {
+        let id = *self.nodes.get(&parent?)?.children_by_key.get(key)?;
+        (self.nodes[&id].kind == kind).then_some(id)
+    }
+
+    /// Declare once after an event or application update. An unchanged declaration
+    /// reuses nodes and skips both layout and scene generation.
+    pub fn run(
+        &mut self,
+        size: Size,
+        measurer: &mut impl TextMeasurer,
+        view: impl FnOnce(&mut Ui<'_>),
+    ) -> FrameStats {
+        self.stats = FrameStats::default();
+        self.frame += 1;
+        self.stats.frame = self.frame;
+        self.damage.clear();
+        let declare_started = Instant::now();
+        let declare_span = tracing::trace_span!("rust_gui.declare").entered();
+        let mut clicks = std::mem::take(&mut self.clicks);
+        let mut updates = std::mem::take(&mut self.updates);
+        let mut submitted = std::mem::take(&mut self.submitted);
+        self.stats.activations = clicks.len() + updates.len() + submitted.len();
+        let mut ui = Ui {
+            context: self,
+            parent: Some(self.root),
+            clicks: &mut clicks,
+            elements: Vec::new(),
+            keys: HashSet::new(),
+            updates: &mut updates,
+            submitted: &mut submitted,
+            enabled: true,
+        };
+        view(&mut ui);
+        let elements = ui.elements;
+        let size = Size::new(size.width.max(0.0), size.height.max(0.0));
+        if self.scene.size != size {
+            let root = self.nodes.get_mut(&self.root).unwrap();
+            root.style.width = Length::Px(size.width);
+            root.style.height = Length::Px(size.height);
+            self.layout
+                .set_style(root.layout_id, root.style.layout(false))
+                .unwrap();
+            self.pending |= Dirty::LAYOUT | Dirty::PAINT;
+        }
+        self.reconcile(self.root, elements, measurer);
+        let mut shortcuts = HashSet::new();
+        for node in self.nodes.values().filter(|node| node.enabled) {
+            if let Control::Command {
+                shortcut: Some(shortcut),
+                ..
+            } = &node.control
+            {
+                assert!(
+                    shortcuts.insert(shortcut),
+                    "duplicate enabled command shortcut: {shortcut:?}"
+                );
+            }
+        }
+        self.repair_interaction();
+        drop(declare_span);
+        self.stats.declare = declare_started.elapsed();
+        let layout_started = Instant::now();
+        let layout_span = tracing::trace_span!("rust_gui.layout").entered();
+        if self.pending.contains(Dirty::LAYOUT) {
+            let root = self.nodes[&self.root].layout_id;
+            self.layout
+                .compute_layout_with_measure(
+                    root,
+                    taffy::Size {
+                        width: taffy::AvailableSpace::Definite(size.width),
+                        height: taffy::AvailableSpace::Definite(size.height),
+                    },
+                    |known, available, _, context, _| {
+                        let measured = if let Some(Measurement {
+                            wrapped: Some((text, style)),
+                            ..
+                        }) = context
+                        {
+                            let width = known.width.or(match available.width {
+                                taffy::AvailableSpace::Definite(width) => Some(width),
+                                taffy::AvailableSpace::MinContent => Some(1.0),
+                                taffy::AvailableSpace::MaxContent => None,
+                            });
+                            self.stats.text_measures += 1;
+                            measurer.measure_styled(text, style, width)
+                        } else {
+                            context.map(|context| context.size).unwrap_or_default()
+                        };
+                        taffy::Size {
+                            width: known.width.unwrap_or(measured.width),
+                            height: known.height.unwrap_or(measured.height),
+                        }
+                    },
+                )
+                .unwrap();
+            self.stats.layout_passes = 1;
+            self.geometry_dirty = true;
+            self.pending |= Dirty::PAINT;
+        }
+        if self.geometry_dirty {
+            self.refresh_bounds(size);
+        }
+        drop(layout_span);
+        self.stats.layout = layout_started.elapsed();
+        self.prepare_controls(measurer);
+        let hover = self.pointer.and_then(|p| self.hit_test(p));
+        if hover != self.hovered {
+            for id in [self.hovered, hover].into_iter().flatten() {
+                self.invalidate_paint(id);
+            }
+            self.hovered = hover;
+            self.pending |= Dirty::PAINT;
+        }
+        if self.pending.contains(Dirty::PAINT) {
+            let paint_started = Instant::now();
+            let _paint_span = tracing::trace_span!("rust_gui.paint").entered();
+            let mut scene = Scene {
+                size,
+                primitives: Vec::new(),
+            };
+            self.paint(self.root).append_to(&mut scene.primitives);
+            if let Some(popup) = self.popup
+                && let Some(panel) = self
+                    .nodes
+                    .get(&popup.owner)
+                    .and_then(|node| node.children.first())
+                    .copied()
+            {
+                self.paint(panel).append_to(&mut scene.primitives);
+            }
+            self.scene = scene;
+            self.stats.scene_rebuilt = true;
+            if let Some(damage) = self.pending_damage.take() {
+                self.damage.push(damage);
+            }
+            self.stats.paint = paint_started.elapsed();
+        }
+        self.stats.dirty = self.pending;
+        self.pending = Dirty::empty();
+        self.stats
+    }
+
+    fn reconcile(
+        &mut self,
+        parent: NodeId,
+        elements: Vec<Element>,
+        measurer: &mut impl TextMeasurer,
+    ) {
+        let old_children = self.nodes[&parent].children.clone();
+        let mut available: HashMap<_, _> = old_children
+            .iter()
+            .map(|id| (self.nodes[id].key.clone(), *id))
+            .collect();
+        let mut children = Vec::with_capacity(elements.len());
+        for element in elements {
+            let existing = available.remove(&element.key).filter(|id| {
+                if self.nodes[id].kind == element.kind {
+                    true
+                } else {
+                    self.remove(*id);
+                    false
+                }
+            });
+            let id = if let Some(id) = existing {
+                self.stats.reused += 1;
+                let frame = self.frame;
+                let node = self.nodes.get_mut(&id).unwrap();
+                let paint_changed = node.text != element.text
+                    || node.style != element.style
+                    || node.enabled != element.enabled
+                    || node.custom != element.custom
+                    || node.control != element.control;
+                let text_changed = node.text != element.text
+                    || node.style.text_style() != element.style.text_style();
+                let mut changed = Dirty::empty();
+                if paint_changed {
+                    changed |= Dirty::PAINT;
+                }
+                if text_changed {
+                    changed |= Dirty::TEXT;
+                }
+                if node.style != element.style {
+                    changed |= Dirty::STYLE;
+                }
+                if node.style.layout(false) != element.style.layout(false) {
+                    changed |= Dirty::LAYOUT;
+                }
+                if node.enabled != element.enabled || node.control != element.control {
+                    changed |= Dirty::ACCESSIBILITY;
+                }
+                if !changed.is_empty() {
+                    node.changed = changed;
+                    node.changed_frame = frame;
+                }
+                if text_changed && element.kind.text_leaf() {
+                    let measured = Measurement::text(&element.text, &element.style, measurer);
+                    self.stats.text_measures += 1;
+                    if self.layout.get_node_context(node.layout_id) != Some(&measured) {
+                        self.layout
+                            .set_node_context(node.layout_id, Some(measured))
+                            .unwrap();
+                        self.pending |= Dirty::LAYOUT;
+                    }
+                    self.pending |= Dirty::TEXT | Dirty::PAINT | Dirty::ACCESSIBILITY;
+                }
+                if node.custom != element.custom {
+                    if let Some(widget) = &element.custom
+                        && self.layout.get_node_context(node.layout_id)
+                            != Some(&Measurement::fixed(widget.size))
+                    {
+                        self.layout
+                            .set_node_context(node.layout_id, Some(Measurement::fixed(widget.size)))
+                            .unwrap();
+                        self.pending |= Dirty::LAYOUT;
+                    }
+                    self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
+                }
+                let layout_style = layout_style(&element.style, element.kind);
+                if *self.layout.style(node.layout_id).unwrap() != layout_style {
+                    self.layout.set_style(node.layout_id, layout_style).unwrap();
+                    self.pending |= Dirty::LAYOUT;
+                }
+                if node.style != element.style {
+                    self.pending |= Dirty::STYLE | Dirty::PAINT;
+                }
+                if node.enabled != element.enabled {
+                    self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
+                }
+                node.text = element.text;
+                node.style = element.style;
+                node.enabled = element.enabled;
+                node.custom = element.custom;
+                if let Control::Collection { offset, .. } = element.control
+                    && node.scroll.offset != offset
+                {
+                    node.scroll.offset = offset;
+                    self.geometry_dirty = true;
+                }
+                if let Control::TextInput { value, .. } = &element.control {
+                    node.editor
+                        .get_or_insert_with(|| Box::new(Editor::new(value)))
+                        .synchronize(value);
+                }
+                node.control = element.control;
+                if paint_changed {
+                    self.invalidate_paint(id);
+                }
+                id
+            } else {
+                let measured = if let Some(widget) = &element.custom {
+                    Measurement::fixed(widget.size)
+                } else if element.kind.text_leaf() {
+                    self.stats.text_measures += 1;
+                    Measurement::text(&element.text, &element.style, measurer)
+                } else {
+                    Measurement::fixed(Size::default())
+                };
+                let layout_id = self
+                    .layout
+                    .new_leaf_with_context(layout_style(&element.style, element.kind), measured)
+                    .unwrap();
+                let id = NodeId(self.next_id);
+                self.next_id = self
+                    .next_id
+                    .checked_add(1)
+                    .expect("node identity exhausted");
+                self.nodes.insert(
+                    id,
+                    Node {
+                        key: element.key,
+                        kind: element.kind,
+                        parent: Some(parent),
+                        children: Vec::new(),
+                        children_by_key: HashMap::new(),
+                        text: element.text,
+                        style: element.style,
+                        enabled: element.enabled,
+                        layout_id,
+                        bounds: Rect::default(),
+                        clip: Rect::default(),
+                        scroll: ScrollState {
+                            offset: if let Control::Collection { offset, .. } = element.control {
+                                offset
+                            } else {
+                                0.0
+                            },
+                            maximum: 0.0,
+                        },
+                        custom: element.custom,
+                        paint_cache: None,
+                        editor: match &element.control {
+                            Control::TextInput { value, .. } => Some(Box::new(Editor::new(value))),
+                            _ => None,
+                        },
+                        control: element.control,
+                        changed: Dirty::all(),
+                        changed_frame: self.frame,
+                        painted_frame: 0,
+                    },
+                );
+                self.stats.created += 1;
+                self.pending |= Dirty::all();
+                id
+            };
+            self.reconcile(id, element.children, measurer);
+            children.push(id);
+        }
+        for id in available.into_values() {
+            self.remove(id);
+        }
+        if old_children != children {
+            let layout_children: Vec<_> =
+                children.iter().map(|id| self.nodes[id].layout_id).collect();
+            self.layout
+                .set_children(self.nodes[&parent].layout_id, &layout_children)
+                .unwrap();
+            let children_by_key = children
+                .iter()
+                .map(|id| (self.nodes[id].key.clone(), *id))
+                .collect();
+            let node = self.nodes.get_mut(&parent).unwrap();
+            node.children = children;
+            node.children_by_key = children_by_key;
+            self.invalidate_paint(parent);
+            self.pending |= Dirty::TREE | Dirty::LAYOUT | Dirty::PAINT | Dirty::ACCESSIBILITY;
+        }
+    }
+
+    fn remove(&mut self, id: NodeId) {
+        let node = self.nodes.remove(&id).unwrap();
+        self.add_damage(node.clip);
+        for child in node.children {
+            self.remove(child);
+        }
+        self.layout.remove(node.layout_id).unwrap();
+        self.clicks.remove(&id);
+        self.updates.remove(&id);
+        self.submitted.remove(&id);
+        self.stats.removed += 1;
+        self.pending |= Dirty::TREE | Dirty::LAYOUT | Dirty::PAINT | Dirty::ACCESSIBILITY;
+    }
+
+    fn repair_interaction(&mut self) {
+        if self.popup.is_some_and(|popup| {
+            !self
+                .nodes
+                .get(&popup.owner)
+                .is_some_and(|node| node.enabled)
+        }) {
+            self.popup = None;
+        }
+        let valid = |id: NodeId| self.nodes.get(&id).is_some_and(Node::focusable);
+        if self.focused.is_some_and(|id| !valid(id)) {
+            self.focused = None;
+            self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
+        }
+        if self.captured.is_some_and(|id| {
+            !self
+                .nodes
+                .get(&id)
+                .is_some_and(|node| node.focusable() || node.activatable())
+        }) {
+            self.captured = None;
+            self.pending |= Dirty::PAINT;
+        }
+        if self.keyboard_pressed.is_some_and(|(id, _)| !valid(id)) {
+            self.keyboard_pressed = None;
+            self.pending |= Dirty::PAINT;
+        }
+        self.cancel_compositions_except(self.focused);
+        if self.drag.as_ref().is_some_and(|drag| {
+            !self
+                .nodes
+                .get(&drag.source)
+                .is_some_and(|node| node.enabled)
+        }) {
+            self.cancel_drag();
+        }
+    }
+
+    fn refresh_bounds(&mut self, size: Size) {
+        self.update_bounds(
+            self.root,
+            Point::default(),
+            Rect {
+                x: 0.0,
+                y: 0.0,
+                width: size.width,
+                height: size.height,
+            },
+        );
+        self.geometry_dirty = false;
+        self.pending |= Dirty::ACCESSIBILITY;
+    }
+
+    fn update_bounds(&mut self, id: NodeId, origin: Point, clip: Rect) {
+        let viewport = self.nodes[&self.root].bounds;
+        let node = &self.nodes[&id];
+        let old_bounds = node.bounds;
+        let old_clip = node.clip;
+        let old_scroll = node.scroll;
+        let content_bottom = node
+            .children
+            .iter()
+            .filter(|child| self.nodes[child].kind != Kind::Popup)
+            .map(|child| {
+                let layout = self.layout.layout(self.nodes[child].layout_id).unwrap();
+                layout.location.y + layout.size.height
+            })
+            .fold(0.0_f32, f32::max);
+        let node = self.nodes.get_mut(&id).unwrap();
+        let layout = self.layout.layout(node.layout_id).unwrap();
+        node.bounds = Rect {
+            x: origin.x + layout.location.x,
+            y: origin.y + layout.location.y,
+            width: layout.size.width,
+            height: layout.size.height,
+        };
+        let clip = if node.kind == Kind::Popup {
+            node.bounds.width = node.bounds.width.min(viewport.width);
+            node.bounds.height = node.bounds.height.min(viewport.height);
+            node.bounds.x = node
+                .bounds
+                .x
+                .clamp(0.0, (viewport.width - node.bounds.width).max(0.0));
+            if node.bounds.y + node.bounds.height > viewport.height {
+                node.bounds.y = (origin.y - node.bounds.height).max(0.0);
+            }
+            viewport
+        } else {
+            clip
+        };
+        node.clip = clip.intersect(node.bounds);
+        if matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection) {
+            node.scroll.maximum =
+                (content_bottom + node.style.padding.max(0.0) - node.bounds.height).max(0.0);
+            node.scroll.offset = node.scroll.offset.clamp(0.0, node.scroll.maximum);
+        }
+        let origin = Point {
+            x: node.bounds.x,
+            y: node.bounds.y - node.scroll.offset,
+        };
+        let clip = node.clip;
+        let children = node.children.clone();
+        if old_bounds != node.bounds || old_clip != node.clip || old_scroll != node.scroll {
+            self.add_damage(old_clip);
+            self.invalidate_paint(id);
+        }
+        for child in children {
+            self.update_bounds(child, origin, clip);
+        }
+    }
+
+    fn add_damage(&mut self, rect: Rect) {
+        if rect.width > 0.0 && rect.height > 0.0 {
+            self.pending_damage = Some(self.pending_damage.map_or(rect, |old| old.union(rect)));
+        }
+    }
+
+    fn invalidate_paint(&mut self, id: NodeId) {
+        let Some(node) = self.nodes.get(&id) else {
+            return;
+        };
+        self.add_damage(node.clip);
+        let mut next = Some(id);
+        while let Some(id) = next {
+            let node = self.nodes.get_mut(&id).unwrap();
+            next = node.parent;
+            if node.paint_cache.take().is_none() {
+                break;
+            }
+        }
+        self.pending |= Dirty::PAINT;
+    }
+
+    fn paint(&mut self, id: NodeId) -> Arc<PaintChunk> {
+        if let Some(chunk) = &self.nodes[&id].paint_cache {
+            self.stats.paint_cache_hits += 1;
+            return chunk.clone();
+        }
+        self.stats.paint_nodes += 1;
+        self.nodes.get_mut(&id).unwrap().painted_frame = self.frame;
+        let node = &self.nodes[&id];
+        let mut scene = Scene::default();
+        scene.primitives.push(Primitive::PushClip(node.bounds));
+        let mut background = node.style.background;
+        if node.kind == Kind::Button {
+            if !node.enabled {
+                background = Color::rgb(36, 43, 54);
+            } else if (self.captured == Some(id) && self.hovered == Some(id))
+                || self
+                    .keyboard_pressed
+                    .is_some_and(|(pressed, _)| pressed == id)
+            {
+                background = Color::rgb(28, 115, 112);
+            } else if self.hovered == Some(id) {
+                background = Color::rgb(56, 94, 110);
+            }
+        }
+        if self.focused == Some(id) {
+            scene.primitives.push(Primitive::Quad {
+                rect: node.bounds,
+                color: Color::rgb(103, 232, 206),
+                radius: node.style.radius,
+            });
+            let rect = Rect {
+                x: node.bounds.x + 2.0,
+                y: node.bounds.y + 2.0,
+                width: (node.bounds.width - 4.0).max(0.0),
+                height: (node.bounds.height - 4.0).max(0.0),
+            };
+            scene.primitives.push(Primitive::Quad {
+                rect,
+                color: background,
+                radius: (node.style.radius - 2.0).max(0.0),
+            });
+        } else if background.3 > 0 {
+            scene.primitives.push(Primitive::Quad {
+                rect: node.bounds,
+                color: background,
+                radius: node.style.radius,
+            });
+        }
+        if !node.text.is_empty() {
+            let padding = node.style.padding.max(0.0);
+            let rect = Rect {
+                x: node.bounds.x + padding,
+                y: node.bounds.y + padding,
+                width: (node.bounds.width - 2.0 * padding).max(0.0),
+                height: (node.bounds.height - 2.0 * padding).max(0.0),
+            };
+            let color = if node.enabled {
+                node.style.foreground
+            } else {
+                Color::rgb(114, 128, 145)
+            };
+            if node.style.text_style()
+                == (TextStyle {
+                    font_size: node.style.font_size,
+                    ..TextStyle::default()
+                })
+            {
+                scene.primitives.push(Primitive::Text {
+                    rect: Rect {
+                        x: node.bounds.x + padding,
+                        y: node.bounds.y + padding,
+                        width: (node.bounds.width - 2.0 * padding).max(0.0),
+                        height: (node.bounds.height - 2.0 * padding).max(0.0),
+                    },
+                    text: node.text.clone(),
+                    font_size: node.style.font_size,
+                    color,
+                });
+            } else {
+                scene.primitives.push(Primitive::StyledText {
+                    rect,
+                    text: node.text.clone(),
+                    style: node.style.text_style(),
+                    color,
+                });
+            }
+        }
+        if let Some(widget) = &node.custom {
+            let offset = Point {
+                x: node.bounds.x,
+                y: node.bounds.y,
+            };
+            scene.primitives.extend(
+                widget
+                    .primitives
+                    .iter()
+                    .map(|primitive| primitive.translated(offset)),
+            );
+        }
+        self.paint_control(id, &mut scene);
+        let node = &self.nodes[&id];
+        let children = node
+            .children
+            .iter()
+            .copied()
+            .filter(|child| self.nodes[child].kind != Kind::Popup)
+            .collect::<Vec<_>>();
+        let before = std::mem::take(&mut scene.primitives);
+        if node.scroll.maximum > 0.0 {
+            let track = node.bounds.height;
+            let height = (track * track / (track + node.scroll.maximum))
+                .max(12.0)
+                .min(track);
+            scene.primitives.push(Primitive::Quad {
+                rect: Rect {
+                    x: node.bounds.x + node.bounds.width - 4.0,
+                    y: node.bounds.y + (track - height) * node.scroll.offset / node.scroll.maximum,
+                    width: 4.0,
+                    height,
+                },
+                color: Color::rgb(100, 116, 139),
+                radius: 2.0,
+            });
+        }
+        scene.primitives.push(Primitive::PopClip);
+        let after = scene.primitives;
+        let children = children
+            .into_iter()
+            .map(|child| self.paint(child))
+            .collect();
+        let chunk = Arc::new(PaintChunk {
+            before,
+            children,
+            after,
+        });
+        self.nodes.get_mut(&id).unwrap().paint_cache = Some(chunk.clone());
+        chunk
+    }
+
+    fn order(&self, id: NodeId, result: &mut Vec<NodeId>) {
+        result.push(id);
+        for child in &self.nodes[&id].children {
+            self.order(*child, result);
+        }
+    }
+
+    pub fn hit_test(&self, position: Point) -> Option<NodeId> {
+        let mut order = Vec::new();
+        self.order(self.root, &mut order);
+        if let Some(popup) = self.popup
+            && let Some(panel) = self
+                .nodes
+                .get(&popup.owner)
+                .and_then(|node| node.children.first())
+        {
+            self.order(*panel, &mut order);
+        }
+        order.into_iter().rev().find(|id| {
+            let node = &self.nodes[id];
+            (node.activatable() || node.focusable() || node.kind == Kind::Popup)
+                && node.clip.contains(position)
+        })
+    }
+
+    /// Returns true if a declaration/redraw is needed. Pointer capture survives
+    /// leaving the window, but activation requires release over the same button.
+    pub fn event(&mut self, event: Event) -> bool {
+        if let Some(handled) = self.drag_event(&event) {
+            return handled;
+        }
+        if let Event::Shortcut(shortcut) = &event {
+            let target = self.nodes.iter().find_map(|(id, node)| {
+                if let Control::Command {
+                    shortcut: Some(binding),
+                    while_editing,
+                } = &node.control
+                {
+                    (node.enabled
+                        && binding == shortcut
+                        && (*while_editing || !self.accepts_text()))
+                    .then_some(*id)
+                } else {
+                    None
+                }
+            });
+            return target.is_some_and(|id| self.activate(id));
+        }
+        if let Some(handled) = self.collection_event(&event) {
+            return handled;
+        }
+        if let Some(handled) = self.control_event(&event) {
+            return handled;
+        }
+        if let Event::Scroll { delta_y } = event {
+            return self.scroll_at_pointer(delta_y);
+        }
+        let before = (
+            self.hovered,
+            self.focused,
+            self.captured,
+            self.keyboard_pressed,
+        );
+        let mut activated = false;
+        match event {
+            Event::PointerMoved(position) => {
+                self.pointer = Some(position);
+                self.hovered = self.hit_test(position);
+            }
+            Event::PointerLeft => {
+                self.pointer = None;
+                self.hovered = None;
+            }
+            Event::PointerDown | Event::PointerDownWithShift => {
+                self.captured = self.hovered;
+                self.focused = self.hovered.filter(|id| self.nodes[id].focusable());
+                self.keyboard_pressed = None;
+            }
+            Event::PointerUp => {
+                if let Some(id) = self
+                    .captured
+                    .take()
+                    .filter(|id| self.hovered == Some(*id) && self.nodes[id].activatable())
+                {
+                    activated = self.activate(id);
+                }
+            }
+            Event::KeyDown {
+                key: Key::Tab,
+                shift,
+                ..
+            } => {
+                let mut order = Vec::new();
+                self.order(self.root, &mut order);
+                order.retain(|id| {
+                    let node = &self.nodes[id];
+                    if !node.focusable() || node.kind == Kind::Choice {
+                        return false;
+                    }
+                    if let Control::Radio {
+                        selected: false, ..
+                    } = node.control
+                    {
+                        let siblings = &self.nodes[&node.parent.unwrap()].children;
+                        let radios = || {
+                            siblings.iter().filter(|id| {
+                                self.nodes[id].kind == Kind::Radio && self.nodes[id].enabled
+                            })
+                        };
+                        return !radios().any(|id| {
+                            matches!(
+                                self.nodes[id].control,
+                                Control::Radio { selected: true, .. }
+                            )
+                        }) && radios().next() == Some(id);
+                    }
+                    true
+                });
+                let current = order.iter().position(|id| Some(*id) == self.focused);
+                self.focused = if order.is_empty() {
+                    None
+                } else {
+                    let index = match (current, shift) {
+                        (Some(index), true) => (index + order.len() - 1) % order.len(),
+                        (Some(index), false) => (index + 1) % order.len(),
+                        (None, true) => order.len() - 1,
+                        (None, false) => 0,
+                    };
+                    Some(order[index])
+                };
+                self.keyboard_pressed = None;
+            }
+            Event::KeyDown {
+                key: Key::Escape, ..
+            } => {
+                self.captured = None;
+                self.keyboard_pressed = None;
+            }
+            Event::KeyDown {
+                key: key @ (Key::Enter | Key::Space),
+                repeat: false,
+                ..
+            } => {
+                if self.keyboard_pressed.is_none() {
+                    self.keyboard_pressed = self
+                        .focused
+                        .filter(|id| self.nodes[id].activatable())
+                        .map(|id| (id, key));
+                }
+            }
+            Event::KeyDown { key, .. }
+                if matches!(
+                    key,
+                    Key::ArrowUp
+                        | Key::ArrowDown
+                        | Key::PageUp
+                        | Key::PageDown
+                        | Key::Home
+                        | Key::End
+                ) =>
+            {
+                let mut target = self.focused;
+                while let Some(id) = target {
+                    let node = &self.nodes[&id];
+                    if node.kind == Kind::Scroll {
+                        let offset = match key {
+                            Key::ArrowUp => node.scroll.offset - 40.0,
+                            Key::ArrowDown => node.scroll.offset + 40.0,
+                            Key::PageUp => node.scroll.offset - node.bounds.height * 0.9,
+                            Key::PageDown => node.scroll.offset + node.bounds.height * 0.9,
+                            Key::Home => 0.0,
+                            Key::End => node.scroll.maximum,
+                            _ => unreachable!(),
+                        };
+                        if self.set_scroll(id, offset) {
+                            return true;
+                        }
+                    }
+                    target = self.nodes[&id].parent;
+                }
+            }
+            Event::KeyDown { .. } => {}
+            Event::KeyUp(key) => {
+                if let Some((id, pressed_key)) = self.keyboard_pressed
+                    && pressed_key == key
+                {
+                    self.keyboard_pressed = None;
+                    if self.focused == Some(id) {
+                        activated = self.activate(id);
+                    }
+                }
+            }
+            Event::FocusLost => {
+                self.captured = None;
+                self.keyboard_pressed = None;
+                self.hovered = None;
+                self.pointer = None;
+                self.focused = None;
+                self.clicks.clear();
+            }
+            Event::Scroll { .. } => unreachable!(),
+            Event::Text(_) | Event::Shortcut(_) | Event::DropAt { .. } => {}
+        }
+        let after = (
+            self.hovered,
+            self.focused,
+            self.captured,
+            self.keyboard_pressed,
+        );
+        if before.1 != after.1 {
+            self.cancel_compositions_except(self.focused);
+            self.pending |= Dirty::ACCESSIBILITY;
+            if let Some(id) = self.focused {
+                self.scroll_into_view(id);
+            }
+        }
+        if before != after || activated {
+            for id in [
+                before.0,
+                before.1,
+                before.2,
+                before.3.map(|(id, _)| id),
+                after.0,
+                after.1,
+                after.2,
+                after.3.map(|(id, _)| id),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                self.invalidate_paint(id);
+            }
+            self.pending |= Dirty::PAINT;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn set_scroll(&mut self, id: NodeId, offset: f32) -> bool {
+        if !offset.is_finite() {
+            return false;
+        }
+        let Some(node) = self.nodes.get_mut(&id) else {
+            return false;
+        };
+        if !matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection) {
+            return false;
+        }
+        let offset = offset.clamp(0.0, node.scroll.maximum);
+        if node.scroll.offset == offset {
+            return false;
+        }
+        node.scroll.offset = offset;
+        self.invalidate_paint(id);
+        self.geometry_dirty = true;
+        self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
+        self.refresh_bounds(self.scene.size);
+        let hovered = self.pointer.and_then(|position| self.hit_test(position));
+        for id in [self.hovered, hovered].into_iter().flatten() {
+            self.invalidate_paint(id);
+        }
+        self.hovered = hovered;
+        true
+    }
+
+    fn scroll_at_pointer(&mut self, delta: f32) -> bool {
+        let Some(pointer) = self.pointer else {
+            return false;
+        };
+        if let Some(popup) = self.popup
+            && let Some(panel) = self.nodes[&popup.owner].children.first().copied()
+            && self.nodes[&panel].clip.contains(pointer)
+        {
+            return self.set_scroll(panel, self.nodes[&panel].scroll.offset + delta);
+        }
+        let mut order = Vec::new();
+        self.order(self.root, &mut order);
+        for id in order.into_iter().rev() {
+            let node = &self.nodes[&id];
+            if matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection)
+                && node.clip.contains(pointer)
+                && self.set_scroll(id, node.scroll.offset + delta)
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn scroll_into_view(&mut self, target: NodeId) -> bool {
+        let mut parent = self.nodes.get(&target).and_then(|node| node.parent);
+        let mut changed = false;
+        while let Some(id) = parent {
+            let node = &self.nodes[&id];
+            if matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection) {
+                let bounds = self.nodes[&target].bounds;
+                let top = node.bounds.y + node.style.padding.max(0.0);
+                let bottom = node.bounds.y + node.bounds.height - node.style.padding.max(0.0);
+                let delta = if bounds.y < top {
+                    bounds.y - top
+                } else if bounds.y + bounds.height > bottom {
+                    bounds.y + bounds.height - bottom
+                } else {
+                    0.0
+                };
+                changed |= self.set_scroll(id, node.scroll.offset + delta);
+                if self.nodes[&id].kind == Kind::Popup {
+                    break;
+                }
+            }
+            parent = self.nodes[&id].parent;
+        }
+        changed
+    }
+
+    pub fn action(&mut self, target: NodeId, action: Action) -> bool {
+        if let Some(handled) = self.drag_action(target, &action) {
+            return handled;
+        }
+        if let Some(handled) = self.collection_action(target, &action) {
+            return handled;
+        }
+        if let Some(handled) = self.control_action(target, &action) {
+            return handled;
+        }
+        let Some(node) = self.nodes.get(&target) else {
+            return false;
+        };
+        match action {
+            Action::Focus if node.focusable() => {
+                if let Some(old) = self.focused {
+                    self.invalidate_paint(old);
+                }
+                self.focused = Some(target);
+                self.invalidate_paint(target);
+                self.keyboard_pressed = None;
+                self.scroll_into_view(target);
+                self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
+                true
+            }
+            Action::Activate if node.activatable() => self.activate(target),
+            Action::ScrollBy(delta) => self.set_scroll(target, node.scroll.offset + delta),
+            Action::ScrollTo(offset) => self.set_scroll(target, offset),
+            Action::ScrollIntoView => self.scroll_into_view(target),
+            _ => false,
+        }
+    }
+}

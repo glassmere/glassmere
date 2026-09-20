@@ -1,0 +1,50 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/rust-gui",
+    "crates/rust-gui-core",
+    "crates/rust-gui-scene",
+    "crates/rust-gui-render-wgpu",
+    "crates/rust-gui-winit",
+    "crates/rust-gui-testing",
+    "crates/rust-gui-devtools",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+publish = false
+
+[workspace.dependencies]
+rust-gui-core = { path = "crates/rust-gui-core" }
+rust-gui-scene = { path = "crates/rust-gui-scene" }
+rust-gui-render-wgpu = { path = "crates/rust-gui-render-wgpu" }
+rust-gui-winit = { path = "crates/rust-gui-winit" }
+rust-gui-testing = { path = "crates/rust-gui-testing" }
+rust-gui-devtools = { path = "crates/rust-gui-devtools" }
+bitflags = "2.13"
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+taffy = { version = "0.10.1", default-features = false, features = ["std", "taffy_tree", "flexbox"] }
+wgpu = "29.0.4"
+winit = "0.30.13"
+glyphon = "0.11.0"
+bytemuck = { version = "1.25", features = ["derive"] }
+pollster = "0.4"
+accesskit = "0.24.1"
+accesskit_winit = "0.32.2"
+unicode-segmentation = "1.13"
+arboard = { version = "3.6.1", default-features = false }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+
+[profile.dev]
+debug = 1
+
+# An optimized build that can be profiled without replacing a running release app.
+[profile.profiling]
+inherits = "release"

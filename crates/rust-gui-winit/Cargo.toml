@@ -1,0 +1,25 @@
+[package]
+name = "rust-gui-winit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+diagnostics = []
+
+[dependencies]
+rust-gui-core.workspace = true
+rust-gui-scene.workspace = true
+rust-gui-render-wgpu.workspace = true
+rust-gui-devtools.workspace = true
+tracing.workspace = true
+wgpu.workspace = true
+winit.workspace = true
+pollster.workspace = true
+accesskit.workspace = true
+accesskit_winit.workspace = true
+arboard.workspace = true
+
+[lints]
+workspace = true

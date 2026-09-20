@@ -1,0 +1,36 @@
+[package]
+name = "rust-gui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+default = ["desktop"]
+desktop = ["dep:rust-gui-winit"]
+diagnostics = ["desktop", "rust-gui-winit/diagnostics"]
+
+[dependencies]
+rust-gui-core.workspace = true
+rust-gui-scene.workspace = true
+rust-gui-devtools.workspace = true
+rust-gui-winit = { workspace = true, optional = true }
+
+[[example]]
+name = "counter"
+required-features = ["desktop"]
+
+[[example]]
+name = "workbench"
+required-features = ["desktop"]
+
+[[example]]
+name = "controls"
+required-features = ["desktop"]
+
+[[example]]
+name = "application"
+required-features = ["desktop"]
+
+[lints]
+workspace = true

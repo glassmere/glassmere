@@ -1,0 +1,6 @@
+Group ""
+  Label "Count: 1"
+  Group ""
+    Button "Increase" [focused]
+    Button "Decrease"
+    Button "Reset" [disabled]

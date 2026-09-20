@@ -1,0 +1,104 @@
+use rust_gui_core::{Action, Context, Dirty, Event, Key, MonospaceMeasurer, Style};
+use rust_gui_devtools::{Inspector, InspectorModel, InspectorResponse, Recorder, Tab};
+use rust_gui_scene::Size;
+use std::time::Duration;
+
+const TARGET: Size = Size::new(400.0, 300.0);
+const VIEWPORT: Size = Size::new(800.0, 700.0);
+
+fn declare(context: &mut Context, recorder: &mut Recorder, title: &str) {
+    let stats = context.run(TARGET, &mut MonospaceMeasurer, |ui| {
+        ui.column("page", Style::default(), |ui| {
+            ui.label_keyed("title", title);
+            ui.button_keyed("save", "Save");
+        });
+    });
+    recorder.frame(
+        stats,
+        Duration::from_micros(500),
+        Duration::from_micros(900),
+    );
+}
+
+fn key(context: &mut Context, key: Key) {
+    context.event(Event::KeyDown {
+        key,
+        shift: false,
+        repeat: false,
+    });
+}
+
+#[test]
+fn model_captures_paths_depths_last_changes_and_history() {
+    let mut context = Context::new();
+    let mut recorder = Recorder::new(8);
+    declare(&mut context, &mut recorder, "Hello");
+    recorder.event(1, "PointerMoved".into(), true);
+    declare(&mut context, &mut recorder, "Hello!");
+    let model = InspectorModel::capture(&context, "Target", TARGET, &recorder);
+    assert_eq!(model.nodes.len(), 4);
+    let save = context.find(&["page", "save"]).unwrap();
+    let title = context.find(&["page", "title"]).unwrap();
+    assert_eq!(model.path(save), "page/save");
+    assert_eq!(model.node(save).unwrap().depth, 2);
+    let changed = &model.node(title).unwrap().details;
+    assert!(changed.changed.contains(Dirty::TEXT) && changed.painted);
+    assert!(model.node(save).unwrap().details.changed.is_empty());
+    assert_eq!(model.node(save).unwrap().details.key, "save");
+    assert_eq!((model.frames.len(), model.events.len()), (2, 1));
+    assert_eq!(recorder.csv().lines().count(), 3);
+    assert!(recorder.csv().starts_with("frame,declare_us"));
+}
+
+#[test]
+fn inspector_rows_follow_collapse_selection_drives_overlay_and_export_is_requested() {
+    let mut context = Context::new();
+    let mut recorder = Recorder::new(8);
+    declare(&mut context, &mut recorder, "Hello");
+    let mut model = InspectorModel::capture(&context, "Target", TARGET, &recorder);
+    model.viewport = VIEWPORT;
+    let mut inspector = Inspector::default();
+    let mut host = Context::new();
+    let frame = |host: &mut Context, inspector: &mut Inspector| -> InspectorResponse {
+        let mut response = InspectorResponse::default();
+        host.run(VIEWPORT, &mut MonospaceMeasurer, |ui| {
+            response = inspector.ui(ui, &model);
+        });
+        response
+    };
+    frame(&mut host, &mut inspector);
+    let tree = host.find(&["inspector", "body", "tree"]).unwrap();
+    let rows = |host: &Context| host.node(tree).unwrap().collection.unwrap().total;
+    assert_eq!(rows(&host), 4);
+    assert!(inspector.overlay(&model).is_empty());
+    host.action(tree, Action::Focus);
+    key(&mut host, Key::End);
+    frame(&mut host, &mut inspector);
+    let save = context.find(&["page", "save"]).unwrap();
+    assert_eq!(inspector.selected(), Some(save));
+    let overlay = inspector.overlay(&model);
+    assert_eq!(overlay.len(), 4, "selection outline is four edge quads");
+    inspector.show_repaints = true;
+    assert!(inspector.overlay(&model).len() > 4);
+    key(&mut host, Key::Home);
+    key(&mut host, Key::ArrowLeft);
+    frame(&mut host, &mut inspector);
+    assert_eq!(rows(&host), 1, "collapsing the root hides its subtree");
+    key(&mut host, Key::ArrowRight);
+    frame(&mut host, &mut inspector);
+    assert_eq!(rows(&host), 4);
+    inspector.tab = Tab::Frames;
+    frame(&mut host, &mut inspector);
+    let export = host.find(&["inspector", "actions", "export"]).unwrap();
+    assert!(host.action(export, Action::Activate));
+    assert!(frame(&mut host, &mut inspector).export_csv);
+    assert!(!frame(&mut host, &mut inspector).export_csv);
+    inspector.tab = Tab::Accessibility;
+    frame(&mut host, &mut inspector);
+    assert!(
+        host.node(tree).is_none(),
+        "switching tabs recreates the tree"
+    );
+    let tree = host.find(&["inspector", "body", "tree"]).unwrap();
+    assert_eq!(host.node(tree).unwrap().collection.unwrap().total, 4);
+}

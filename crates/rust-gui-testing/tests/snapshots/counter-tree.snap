@@ -1,0 +1,6 @@
+page Column Group ""
+  count Label Label "Count: 1"
+  actions Row Group ""
+    increment Button Button "Increase" [focusable]
+    decrement Button Button "Decrease" [focusable]
+    reset Button Button "Reset" [disabled]

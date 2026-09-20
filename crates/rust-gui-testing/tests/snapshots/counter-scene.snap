@@ -1,0 +1,22 @@
+PushClip 0.0,0.0 320.0×200.0
+  PushClip 0.0,0.0 320.0×92.8
+    PushClip 8.0,8.0 76.8×22.4
+      Text 8.0,8.0 76.8×22.4 16.0 "Count: 1" #e2e8f0
+    PopClip
+    PushClip 8.0,38.4 297.6×46.4
+      PushClip 8.0,38.4 100.8×46.4
+        Quad 8.0,38.4 100.8×46.4 #67e8ce r=8.0
+        Quad 10.0,40.4 96.8×42.4 #385e6e r=6.0
+        Text 20.0,50.4 76.8×22.4 16.0 "Increase" #e2e8f0
+      PopClip
+      PushClip 120.8,38.4 100.8×46.4
+        Quad 120.8,38.4 100.8×46.4 #2d4254 r=8.0
+        Text 132.8,50.4 76.8×22.4 16.0 "Decrease" #e2e8f0
+      PopClip
+      PushClip 233.6,38.4 72.0×46.4
+        Quad 233.6,38.4 72.0×46.4 #242b36 r=8.0
+        Text 245.6,50.4 48.0×22.4 16.0 "Reset" #728091
+      PopClip
+    PopClip
+  PopClip
+PopClip
