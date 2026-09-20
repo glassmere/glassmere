@@ -9,16 +9,17 @@ mod wakeup;
 pub use desktop::{DesktopClosed, DesktopHandle, WindowKey, run_windows};
 pub use graphics::{GpuMemoryPolicy, GraphicsBackend, GraphicsOptions};
 pub use mailbox::{Mailbox, MessageSender};
-use rust_gui_core::{Action, Context, DragPayload, Event, TextEdit, Ui};
+use rust_gui_core::{Action, Context, DragPayload, Event, StyleSheet, TextEdit, Theme, Ui};
 use rust_gui_devtools::Recorder;
 use rust_gui_render_wgpu::Renderer;
 use rust_gui_scene::{Color, Point, Primitive, Scene, Size};
 use std::{
     cell::RefCell,
     error::Error,
+    path::PathBuf,
     rc::Rc,
     sync::Arc,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use wakeup::UserEvent;
 pub use wakeup::WakeHandle;
@@ -33,16 +34,28 @@ use winit::{
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
+/// Which theme a window starts with and follows.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ThemeChoice {
+    /// The OS light/dark preference, re-applied when the OS switches.
+    System,
+    Fixed(Theme),
+}
+
 #[derive(Clone, Debug)]
 pub struct AppOptions {
     pub title: String,
     pub size: Size,
-    pub background: Color,
+    /// Clear color; `None` uses the active theme's window token.
+    pub background: Option<Color>,
     /// Useful for unattended native-window smoke checks; None runs until closed.
     pub frame_limit: Option<u64>,
     pub graphics: GraphicsOptions,
     /// F12 opens an inspector window for this window; `RUST_GUI_INSPECT` opens it at start.
     pub devtools: bool,
+    pub theme: ThemeChoice,
+    /// A stylesheet file installed at start and reloaded when it changes on disk.
+    pub stylesheet: Option<PathBuf>,
 }
 
 impl Default for AppOptions {
@@ -50,13 +63,20 @@ impl Default for AppOptions {
         Self {
             title: "Rust GUI".into(),
             size: Size::new(900.0, 650.0),
-            background: Color::rgb(15, 23, 34),
+            background: None,
             frame_limit: None,
             graphics: GraphicsOptions::default(),
             devtools: true,
+            theme: ThemeChoice::System,
+            stylesheet: None,
         }
     }
 }
+
+/// How often a configured stylesheet is checked for changes.
+// ponytail: mtime polling keeps the host dependency-free; a file watcher
+// (notify) is the upgrade path if half-second latency or idle wakeups matter.
+pub(crate) const STYLESHEET_POLL: Duration = Duration::from_millis(500);
 
 pub fn run(options: AppOptions, view: impl FnMut(&mut Ui<'_>) + 'static) -> Result<()> {
     run_with_wakeup(options, |_| view)
@@ -210,6 +230,8 @@ struct Application<F> {
     /// Inspector decorations painted after the scene, in logical coordinates.
     overlay: Vec<Primitive>,
     overlay_dirty: bool,
+    stylesheet_modified: Option<SystemTime>,
+    retry_pending: bool,
 }
 
 impl<F: FnMut(&mut Ui<'_>)> Application<F> {
@@ -237,6 +259,47 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             inspector_requested: false,
             overlay: Vec::new(),
             overlay_dirty: false,
+            stylesheet_modified: None,
+            retry_pending: false,
+        }
+    }
+
+    /// Applies the OS preference when the window follows the system theme.
+    fn system_theme(&mut self, theme: Option<winit::window::Theme>) {
+        if self.options.theme == ThemeChoice::System {
+            self.context.set_theme(match theme {
+                Some(winit::window::Theme::Light) => Theme::light(),
+                _ => Theme::dark(),
+            });
+        }
+    }
+
+    /// Installs the configured stylesheet when it is new or changed on disk.
+    /// Returns whether a sheet was installed; parse errors keep the previous sheet.
+    fn load_stylesheet(&mut self) -> std::result::Result<bool, String> {
+        let Some(path) = &self.options.stylesheet else {
+            return Ok(false);
+        };
+        let modified = std::fs::metadata(path)
+            .and_then(|metadata| metadata.modified())
+            .map_err(|error| format!("{}: {error}", path.display()))?;
+        if self.stylesheet_modified == Some(modified) {
+            return Ok(false);
+        }
+        self.stylesheet_modified = Some(modified);
+        let text = std::fs::read_to_string(path)
+            .map_err(|error| format!("{}: {error}", path.display()))?;
+        let sheet = StyleSheet::parse(&text)
+            .map_err(|error| format!("{}:{}: {}", path.display(), error.line, error.message))?;
+        self.context.set_stylesheet(sheet);
+        Ok(true)
+    }
+
+    fn poll_stylesheet(&mut self) {
+        match self.load_stylesheet() {
+            Ok(true) => self.request_redraw(),
+            Ok(false) => {}
+            Err(error) => eprintln!("stylesheet not reloaded: {error}"),
         }
     }
 
@@ -332,6 +395,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             wgpu::CurrentSurfaceTexture::Suboptimal(frame) => (frame, true),
             wgpu::CurrentSurfaceTexture::Occluded => return Ok(()),
             wgpu::CurrentSurfaceTexture::Timeout => {
+                self.retry_pending = true;
                 event_loop.set_control_flow(ControlFlow::WaitUntil(
                     Instant::now() + Duration::from_millis(100),
                 ));
@@ -383,7 +447,9 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                 [size.width, size.height],
                 scale,
                 scene,
-                self.options.background,
+                self.options
+                    .background
+                    .unwrap_or(self.context.theme().window),
                 state.pending_scene || window_changed || self.overlay_dirty,
             )?;
         }
@@ -467,10 +533,12 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         }
     }
 
-    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
+    fn new_events(&mut self, cause: StartCause) {
         if matches!(cause, StartCause::ResumeTimeReached { .. }) {
-            event_loop.set_control_flow(ControlFlow::Wait);
-            self.request_redraw();
+            if std::mem::take(&mut self.retry_pending) {
+                self.request_redraw();
+            }
+            self.poll_stylesheet();
         }
     }
 
@@ -499,6 +567,10 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                 }
             }
             WindowEvent::Occluded(false) => state.window.request_redraw(),
+            WindowEvent::ThemeChanged(theme) => {
+                state.window.request_redraw();
+                self.system_theme(Some(theme));
+            }
             WindowEvent::Focused(focused) => {
                 if !focused {
                     self.modifiers = ModifiersState::empty();

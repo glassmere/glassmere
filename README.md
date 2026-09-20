@@ -2,7 +2,7 @@
 
 A native Rust GUI framework prototype: immediate-style declarations over a retained tree, with stable widget identities, selective invalidation, text editing and standard controls.
 
-Based on the [shared architecture discussion](https://chatgpt.com/share/6aaf8bcf-a0f8-83eb-9b44-21ab4373c0c8). The original feature-list attachment was not available from the shared page; the implemented milestones and remaining work are tracked in the [roadmap](docs/roadmap.md).
+Based on the [shared architecture discussion](https://chatgpt.com/share/6aaf8bcf-a0f8-83eb-9b44-21ab4373c0c8) and the [original feature list](docs/feature-list.md). Implemented milestones and remaining work are tracked in the [roadmap](docs/roadmap.md) and the [feature coverage](docs/feature-coverage.md) table.
 
 ## Run
 
@@ -37,6 +37,14 @@ cargo run -p rust-gui --example application --release
 It shows a virtualized list, tree and sortable grid over 50,000 application-owned rows, commands with shortcuts, drag and drop, a worker mailbox and a details window sharing the main window's GPU device. See [milestone 4](docs/milestone-4.md).
 
 Press F12 in any window to open its inspector: node tree, computed style, accessibility view, event log, frame timings and selection/damage/repaint overlays. `RUST_GUI_INSPECT=1` opens it at start. Headless tests use the `rust-gui-testing` harness with semantic finders and text snapshots. See [milestone 5](docs/milestone-5.md) and the [feature coverage](docs/feature-coverage.md) table.
+
+Theming and stylesheets have their own example:
+
+```sh
+cargo run -p rust-gui --example theming --release
+```
+
+It follows the OS light/dark preference, switches themes at runtime, inherits text properties, applies per-state overrides, and hot-reloads `examples/theming.style` while running. See [milestone 6a](docs/milestone-6.md).
 
 ```rust
 use rust_gui::{run, AppOptions};
@@ -77,6 +85,7 @@ The view may run more than once per input event. Put application actions behind 
 - F12 inspector window with per-node change flags, frame timings, CSV export and `tracing` spans.
 - Headless testing harness with `by_label` finders, real input paths and tree/layout/accessibility/scene snapshots.
 - Headless kernel tests and an opt-in GPU readback test with a bundled-font pixel reference.
+- Theme tokens for every control with dark/light themes, OS preference and runtime switching; inherited text properties; hover/pressed/focused/disabled overrides; Rust and stylesheet classes with hot reload.
 
 ## Workspace
 
@@ -129,15 +138,16 @@ cargo run -p rust-gui --example workbench -- --smoke
 cargo run -p rust-gui --example controls -- --smoke
 cargo run -p rust-gui --example application -- --smoke
 RUST_GUI_INSPECT=1 cargo run -p rust-gui --example application -- --smoke
+cargo run -p rust-gui --example theming -- --smoke
 cargo run -p rust-gui-core --example tree_bench --release
 ```
 
 The GPU test checks actual pixels for clipping, paint order, text and 2x scaling, plus buffer reuse and DPI invalidation. `--smoke` opens a native window and exits after two presented frames. `--stress --frames 6000` continuously changes the counter, toggles content and reorders keyed labels. Neither requires the optional `diagnostics` feature; memory checkpoints and allocation-policy overrides do. Desktop execution requires a graphical session and system fonts. Linux builds also need the platform development packages required by winit (X11/Wayland and xkbcommon).
 
-Verified locally on Windows with Rust 1.98.0: 60 regular tests, formatting, Clippy with warnings denied, the facade without desktop features, the two-window application smoke run with and without the inspector, and Direct3D 12 GPU pixel readback including wrapped text and the bundled-font reference. `scripts/test-inspector.ps1` drives the inspector through UI Automation and saves screenshots. Native checks cover worker wakeups/shutdown and UI Automation interactions. Earlier renderer validation also covered Vulkan and a 6,000-frame changing-scene stress run. After a release build, `scripts/test-desktop.ps1` checks the workbench and `scripts/test-controls.ps1` checks the controls gallery. The latter's `-PointerOnly` mode skips keyboard checks when the shared desktop is active. The CI matrix is configured for Windows, Linux and macOS; native Linux/macOS execution, real OS IME candidate review and manual screen-reader speech/navigation remain unverified here. Rust 1.90 is the declared dependency floor, not a separately tested toolchain.
+Verified locally on Windows with Rust 1.98.0: 66 regular tests, formatting, Clippy with warnings denied, the facade without desktop features, the two-window application smoke run with and without the inspector, and Direct3D 12 GPU pixel readback including wrapped text and the bundled-font reference. `scripts/test-inspector.ps1` drives the inspector through UI Automation and saves screenshots; `scripts/test-theming.ps1` switches themes, hot-reloads the stylesheet and captures the result. Native checks cover worker wakeups/shutdown and UI Automation interactions. Earlier renderer validation also covered Vulkan and a 6,000-frame changing-scene stress run. After a release build, `scripts/test-desktop.ps1` checks the workbench and `scripts/test-controls.ps1` checks the controls gallery. The latter's `-PointerOnly` mode skips keyboard checks when the shared desktop is active. The CI matrix is configured for Windows, Linux and macOS; native Linux/macOS execution, real OS IME candidate review and manual screen-reader speech/navigation remain unverified here. Rust 1.90 is the declared dependency floor, not a separately tested toolchain.
 
 ## Current limits
 
-This is a prototype with an evolving API. Text editing is single-line with logical grapheme navigation; multiline/rich editing and full accessible text selection/navigation remain future work. IME routing is implemented but real candidate windows need manual validation. The pinned AccessKit Windows adapter lacks ExpandCollapsePattern; popup opening works through keyboard/pointer input. Linux clipboard support currently uses X11/XWayland. Scrolling is vertical without draggable scrollbar thumbs; virtualization requires one fixed row height per collection. Drag/drop is in-process plus incoming OS file drops, whose position is the last known pointer on Windows. Custom leaves support drawing and button-style activation. Containers clip to rectangles, while popups overlay normal content. Windows share one graphics policy; partial GPU presentation, advanced styling and CPU rendering remain future work. Frame timings are CPU-side; GPU time, memory statistics and framework warnings are not recorded yet. AccessKit sends full tree updates only while accessibility is active; screen-reader behavior still needs manual review.
+This is a prototype with an evolving API. Text editing is single-line with logical grapheme navigation; multiline/rich editing and full accessible text selection/navigation remain future work. IME routing is implemented but real candidate windows need manual validation. The pinned AccessKit Windows adapter lacks ExpandCollapsePattern; popup opening works through keyboard/pointer input. Linux clipboard support currently uses X11/XWayland. Scrolling is vertical without draggable scrollbar thumbs; virtualization requires one fixed row height per collection. Drag/drop is in-process plus incoming OS file drops, whose position is the last known pointer on Windows. Custom leaves support drawing and button-style activation. Containers clip to rectangles, while popups overlay normal content. Windows share one graphics policy; partial GPU presentation and CPU rendering remain future work. Themes cover colors and the base font, not spacing or control sizes; stylesheets reload by polling. Frame timings are CPU-side; GPU time, memory statistics and framework warnings are not recorded yet. AccessKit sends full tree updates only while accessibility is active; screen-reader behavior still needs manual review.
 
 See [architecture](docs/architecture.md) and [roadmap](docs/roadmap.md) for the next steps.

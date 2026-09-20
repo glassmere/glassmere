@@ -173,7 +173,7 @@ fn a_local_paint_change_reuses_the_other_subtree_and_reports_local_damage() {
                 "changing",
                 "same size",
                 Style {
-                    foreground: color,
+                    foreground: Some(color),
                     ..Style::default()
                 },
             );

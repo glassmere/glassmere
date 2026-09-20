@@ -346,9 +346,9 @@ fn wrapped_text_reflows_with_parent_width_and_retains_font_style() {
             Style {
                 width: Length::Percent(1.0),
                 wrap: TextWrap::Word,
-                font_family: FontFamily::Serif,
-                font_weight: 700,
-                italic: true,
+                font_family: Some(FontFamily::Serif),
+                font_weight: Some(700),
+                italic: Some(true),
                 padding: 10.0,
                 ..Style::default()
             },

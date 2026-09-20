@@ -1,0 +1,31 @@
+// Live stylesheet for `cargo run -p rust-gui --example theming`.
+// Save this file while the example runs: classes and tokens reload within half a second.
+// Tokens overlay whichever theme is active (OS preference or the Dark/Light buttons).
+// Uncomment the next line to pin a base theme instead:
+// theme dark
+token accent #f59e0b
+token focus #f59e0b
+
+class title { font-size: 30; font-weight: 700 }
+class muted { font-size: 13; foreground: #8a97a8; wrap: word; width: 100% }
+class code { font-family: monospace; font-size: 14 }
+
+class primary {
+    background: #f59e0b
+    foreground: #1a1206
+    padding: 12
+    radius: 8
+    font-weight: 700
+    hover.background: #fbbf24
+    pressed.background: #d97706
+    focused.radius: 2
+    disabled.background: #4a3b1d
+    disabled.foreground: #8a7a55
+}
+
+class danger extends primary {
+    background: #dc2626
+    foreground: #ffffff
+    hover.background: #ef4444
+    pressed.background: #b91c1c
+}

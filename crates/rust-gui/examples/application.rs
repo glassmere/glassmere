@@ -202,16 +202,16 @@ fn main_window(
     smoke: bool,
 ) {
     let muted = Style {
-        font_size: 13.0,
-        foreground: Color::rgb(162, 180, 198),
+        font_size: Some(13.0),
+        foreground: Some(Color::rgb(162, 180, 198)),
         ..Style::default()
     };
     let heading = Style {
-        font_weight: 700,
+        font_weight: Some(700),
         ..Style::default()
     };
     ui.scroll("page", Style { width: Length::Percent(1.0), height: Length::Percent(1.0), padding: 24.0, gap: 14.0, ..Style::default() }, |ui| {
-        ui.label_styled("title", "Application workbench", Style { font_size: 28.0, font_weight: 700, ..Style::default() });
+        ui.label_styled("title", "Application workbench", Style { font_size: Some(28.0), font_weight: Some(700), ..Style::default() });
         ui.label_styled("intro", "Virtualized list, tree and grid over 50,000 application-owned rows, commands with shortcuts, drag and drop, a worker mailbox and a second window.", Style {
             width: Length::Percent(1.0), wrap: TextWrap::Word, ..muted.clone()
         });
@@ -264,17 +264,17 @@ fn main_window(
                     let selected = state.list.selected();
                     let panel = Style { padding: 12.0, radius: 8.0, width: Length::Px(180.0), height: Length::Px(72.0), ..Style::default() };
                     ui.enabled(selected.is_some(), |ui| {
-                        ui.drag_source("source", "Selected ticket", DragPayload::Item { domain: "ticket".into(), id: selected.unwrap_or(ItemId(0)) }, Style { background: Color::rgb(22, 105, 99), ..panel.clone() }, |ui| {
+                        ui.drag_source("source", "Selected ticket", DragPayload::Item { domain: "ticket".into(), id: selected.unwrap_or(ItemId(0)) }, Style { background: Some(Color::rgb(22, 105, 99)), ..panel.clone() }, |ui| {
                             ui.label_keyed("text", selected.map_or("Select a ticket to drag".into(), |id| format!("Drag ticket #{}", id.0)));
                         });
                     });
-                    let dropped = ui.drop_target("archive", "Archive", DropKind::Item, Style { background: Color::rgb(64, 48, 96), ..panel.clone() }, |ui| {
+                    let dropped = ui.drop_target("archive", "Archive", DropKind::Item, Style { background: Some(Color::rgb(64, 48, 96)), ..panel.clone() }, |ui| {
                         ui.label_keyed("text", format!("Archive: {} tickets", state.archived.len()));
                     });
                     if let Some(DragPayload::Item { id, .. }) = dropped {
                         state.archived.push(id);
                     }
-                    let files = ui.drop_target("files", "Drop files", DropKind::Files, Style { background: Color::rgb(35, 52, 74), ..panel.clone() }, |ui| {
+                    let files = ui.drop_target("files", "Drop files", DropKind::Files, Style { background: Some(Color::rgb(35, 52, 74)), ..panel.clone() }, |ui| {
                         ui.label_keyed("text", if state.files.is_empty() { "Drop files from the OS here".into() } else { state.files.join(", ") });
                     });
                     if let Some(DragPayload::Files(paths)) = files {
@@ -305,7 +305,7 @@ fn open_details(desktop: &DesktopHandle, shared: &Shared, state: &mut State, smo
             move |ui| {
                 let state = shared.lock().unwrap();
                 ui.column("page", Style { padding: 24.0, gap: 12.0, ..Style::default() }, |ui| {
-                    ui.label_styled("title", "Ticket details", Style { font_size: 22.0, font_weight: 700, ..Style::default() });
+                    ui.label_styled("title", "Ticket details", Style { font_size: Some(22.0), font_weight: Some(700), ..Style::default() });
                     match state.list.selected() {
                         Some(id) => {
                             ui.label_keyed("ticket", format!("Ticket #{}", id.0));
@@ -315,7 +315,7 @@ fn open_details(desktop: &DesktopHandle, shared: &Shared, state: &mut State, smo
                         None => ui.label_keyed("ticket", "No ticket selected in the main window."),
                     }
                     ui.label_styled("hint", "Selection changes in the main window redraw this one. Close it from the title bar.", Style {
-                        font_size: 13.0, foreground: Color::rgb(162, 180, 198), width: Length::Px(380.0), wrap: TextWrap::Word, ..Style::default()
+                        font_size: Some(13.0), foreground: Some(Color::rgb(162, 180, 198)), width: Length::Px(380.0), wrap: TextWrap::Word, ..Style::default()
                     });
                 });
             },

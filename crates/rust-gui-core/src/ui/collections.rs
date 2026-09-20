@@ -3,7 +3,6 @@ use crate::{
     GridModel, GridState, Length, ListModel, ListResponse, ListState, SortDirection,
     VirtualListOptions, collection::CollectionKind,
 };
-use rust_gui_scene::Color;
 
 impl Ui<'_> {
     /// Fixed-height rows with bounded realization. State belongs to the app;
@@ -249,6 +248,8 @@ impl Ui<'_> {
         );
         let count = model.len();
         let selected = state.selected();
+        let theme = self.context.theme();
+        let (selection, even_row, odd_row) = (theme.selection, theme.row, theme.row_alternate);
         let style = Style {
             height: Length::Px(options.height),
             gap: 0.0,
@@ -275,13 +276,13 @@ impl Ui<'_> {
                         width: Length::Percent(1.0),
                         height: Length::Px(options.row_height),
                         gap: 0.0,
-                        background: if is_selected {
-                            Color::rgb(22, 105, 99)
+                        background: Some(if is_selected {
+                            selection
                         } else if index % 2 == 0 {
-                            Color::rgb(25, 36, 49)
+                            even_row
                         } else {
-                            Color::rgb(20, 30, 42)
-                        },
+                            odd_row
+                        }),
                         ..Style::default()
                     },
                     |ui| {

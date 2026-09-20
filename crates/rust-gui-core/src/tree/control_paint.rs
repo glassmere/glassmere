@@ -10,11 +10,12 @@ impl Context {
         for id in ids {
             let node = self.nodes.get_mut(&id).unwrap();
             let width = (node.bounds.width - node.style.padding.max(0.0) * 2.0).max(1.0);
+            let text_style = node.text_style();
             if node
                 .editor
                 .as_mut()
                 .unwrap()
-                .prepare(measurer, node.style.text_style(), width)
+                .prepare(measurer, text_style, width)
             {
                 self.invalidate_paint(id);
             }
@@ -36,7 +37,7 @@ impl Context {
         let node = &self.nodes[&id];
         if self.drag.as_ref().is_some_and(|drag| drag.active && (drag.over == Some(id) || (self.focused == Some(id) && matches!(node.control, Control::DropTarget { accepts, .. } if accepts == drag.payload.kind())))) {
             for rect in [Rect { height: 2.0, ..node.bounds }, Rect { y: node.bounds.y + node.bounds.height - 2.0, height: 2.0, ..node.bounds }] {
-                scene.primitives.push(Primitive::Quad { rect, color: Color::rgb(103, 232, 206), radius: 0.0 });
+                scene.primitives.push(Primitive::Quad { rect, color: self.theme.accent, radius: 0.0 });
             }
         }
         if let Some(editor) = &node.editor {
@@ -57,9 +58,9 @@ impl Context {
                     scene.primitives.push(Primitive::Quad {
                         rect: rect.translated(origin),
                         color: if self.focused == Some(id) {
-                            Color::rgb(35, 107, 150)
+                            self.theme.highlight
                         } else {
-                            Color::rgb(65, 78, 94)
+                            self.theme.selection_inactive
                         },
                         radius: 0.0,
                     });
@@ -85,12 +86,12 @@ impl Context {
                 },
                 style: TextStyle {
                     wrap: TextWrap::None,
-                    ..node.style.text_style()
+                    ..node.text_style()
                 },
                 color: if display.is_empty() || !node.enabled {
-                    Color::rgb(140, 154, 171)
+                    self.theme.text_muted
                 } else {
-                    node.style.foreground
+                    node.resolved.foreground
                 },
             });
             if let Some(range) = editor.composition_range() {
@@ -102,7 +103,7 @@ impl Context {
                             ..rect
                         }
                         .translated(origin),
-                        color: Color::rgb(103, 232, 206),
+                        color: self.theme.accent,
                         radius: 0.0,
                     });
                 }
@@ -113,7 +114,7 @@ impl Context {
             {
                 scene.primitives.push(Primitive::Quad {
                     rect: caret.translated(origin),
-                    color: Color::WHITE,
+                    color: self.theme.text,
                     radius: 0.0,
                 });
             }
@@ -132,7 +133,7 @@ impl Context {
             let fraction = ((value - min) / (max - min)) as f32;
             scene.primitives.push(Primitive::Quad {
                 rect: track,
-                color: Color::rgb(95, 111, 132),
+                color: self.theme.track,
                 radius: 2.0,
             });
             scene.primitives.push(Primitive::Quad {
@@ -140,7 +141,7 @@ impl Context {
                     width: track.width * fraction,
                     ..track
                 },
-                color: Color::rgb(103, 232, 206),
+                color: self.theme.accent,
                 radius: 2.0,
             });
             scene.primitives.push(Primitive::Quad {
@@ -151,9 +152,9 @@ impl Context {
                     height: 14.0,
                 },
                 color: if node.enabled {
-                    Color::WHITE
+                    self.theme.thumb
                 } else {
-                    Color::rgb(140, 154, 171)
+                    self.theme.text_muted
                 },
                 radius: 7.0,
             });

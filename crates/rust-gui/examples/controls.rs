@@ -18,13 +18,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         move |ui| {
             ui.scroll("page", Style { width: Length::Percent(1.0), height: Length::Percent(1.0), padding: 28.0, gap: 18.0, ..Style::default() }, |ui| {
-            ui.label_styled("title", "Text & controls", Style { font_size: 30.0, font_weight: 700, ..Style::default() });
+            ui.label_styled("title", "Text & controls", Style { font_size: Some(30.0), font_weight: Some(700), ..Style::default() });
             ui.label_styled("intro", "Native text editing and standard controls. Tab moves focus; arrow keys adjust values and navigate choices. Resize the window to see this paragraph wrap.", Style {
-                width: Length::Percent(1.0), wrap: TextWrap::Word, foreground: Color::rgb(162, 180, 198), ..Style::default()
+                width: Length::Percent(1.0), wrap: TextWrap::Word, foreground: Some(Color::rgb(162, 180, 198)), ..Style::default()
             });
             ui.row("columns", Style { gap: 32.0, width: Length::Percent(1.0), ..Style::default() }, |ui| {
                 ui.column("editing", Style { width: Length::Px(360.0), gap: 12.0, ..Style::default() }, |ui| {
-                    ui.label_styled("heading", "01 / Text editing", Style { font_weight: 700, ..Style::default() });
+                    ui.label_styled("heading", "01 / Text editing", Style { font_weight: Some(700), ..Style::default() });
                     ui.label("Name");
                     if ui.text_input_styled("name", "Name", &mut name, "Type a name", Style {
                         width: Length::Px(340.0), height: Length::Px(46.0), padding: 10.0, ..Style::button()
@@ -32,14 +32,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ui.label_styled("echo", format!("Text: {name}"), Style { width: Length::Px(340.0), wrap: TextWrap::Word, ..Style::default() });
                     ui.label_keyed("submitted", format!("Submissions: {submissions}"));
                     ui.label_styled("hint", "Select with Shift + arrows or drag. Ctrl/Cmd + A, C, X, V and Z handle selection, clipboard and undo. Enter submits.", Style {
-                        width: Length::Px(340.0), wrap: TextWrap::Word, font_size: 14.0, foreground: Color::rgb(162, 180, 198), ..Style::default()
+                        width: Length::Px(340.0), wrap: TextWrap::Word, font_size: Some(14.0), foreground: Some(Color::rgb(162, 180, 198)), ..Style::default()
                     });
-                    ui.label_styled("serif", "Shaped serif · bold italic", Style { font_family: FontFamily::Serif, font_weight: 700, italic: true, font_size: 22.0, ..Style::default() });
-                    ui.label_styled("mono", "let native = true;", Style { font_family: FontFamily::Monospace, foreground: Color::rgb(103, 232, 206), ..Style::default() });
+                    ui.label_styled("serif", "Shaped serif · bold italic", Style { font_family: Some(FontFamily::Serif), font_weight: Some(700), italic: Some(true), font_size: Some(22.0), ..Style::default() });
+                    ui.label_styled("mono", "let native = true;", Style { font_family: Some(FontFamily::Monospace), foreground: Some(Color::rgb(103, 232, 206)), ..Style::default() });
                     ui.enabled(false, |ui| { ui.text_input("readonly", "Unavailable field", &mut String::from("Unavailable field")); });
                 });
                 ui.column("choices", Style { width: Length::Px(340.0), gap: 12.0, ..Style::default() }, |ui| {
-                    ui.label_styled("heading", "02 / Choices & actions", Style { font_weight: 700, ..Style::default() });
+                    ui.label_styled("heading", "02 / Choices & actions", Style { font_weight: Some(700), ..Style::default() });
                     ui.checkbox("notifications", "Notifications", &mut notifications);
                     ui.row("mode", Style { gap: 8.0, ..Style::default() }, |ui| {
                         ui.radio("quiet", "Quiet", &mut mode, 0); ui.radio("balanced", "Balanced", &mut mode, 1);
@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ui.label_keyed("state", format!("State: {notifications} / {mode} / {volume:.0} / {theme}"));
                 });
             });
-            ui.label_styled("footer", "Event-driven rendering · system fonts · native accessibility", Style { font_size: 13.0, foreground: Color::rgb(162, 180, 198), ..Style::default() });
+            ui.label_styled("footer", "Event-driven rendering · system fonts · native accessibility", Style { font_size: Some(13.0), foreground: Some(Color::rgb(162, 180, 198)), ..Style::default() });
         });
         },
     )

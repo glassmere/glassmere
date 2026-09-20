@@ -94,7 +94,7 @@ fn paint_changes_skip_layout_and_text_changes_update_geometry() {
             "text",
             text,
             Style {
-                foreground: color,
+                foreground: Some(color),
                 ..Style::default()
             },
         );

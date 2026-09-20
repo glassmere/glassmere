@@ -1,6 +1,5 @@
 use super::*;
 use crate::{Length, MenuItem, controls::slider_value, editor::single_line};
-use rust_gui_scene::Color;
 use std::ops::RangeInclusive;
 
 impl Ui<'_> {
@@ -296,8 +295,11 @@ impl Ui<'_> {
             keys: HashSet::new(),
             updates: self.updates,
             submitted: self.submitted,
+            warnings: self.warnings,
+            theme_request: self.theme_request,
             enabled: self.enabled,
         };
+        let selection = self.context.theme().selection;
         child.group(
             "$popup".into(),
             Kind::Popup,
@@ -306,7 +308,6 @@ impl Ui<'_> {
                 height: Length::Px((items.len() as f32 * 34.0 + 8.0).min(280.0)),
                 gap: 2.0,
                 padding: 4.0,
-                background: Color::rgb(38, 51, 67),
                 ..Style::default()
             },
             |ui| {
@@ -319,11 +320,7 @@ impl Ui<'_> {
                             width: Length::Percent(1.0),
                             height: Length::Px(32.0),
                             padding: 5.0,
-                            background: if index == popup.highlighted {
-                                Color::rgb(22, 105, 99)
-                            } else {
-                                Color::TRANSPARENT
-                            },
+                            background: (index == popup.highlighted).then_some(selection),
                             ..Style::default()
                         },
                         enabled: item.enabled,

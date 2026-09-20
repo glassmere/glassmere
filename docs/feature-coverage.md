@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-20, after milestone 5. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 6a. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -14,8 +14,8 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 8 | Accessibility from day one | Done | AccessKit roles, labels, actions, keyboard navigation, tree visible in the inspector's Accessibility tab. Screen-reader speech review remains manual. |
 | 9 | Powerful focus system | Partial | Keyboard focus, pointer capture, Tab traversal, restoration. Missing: focus scopes, modal focus, directional navigation. |
 | 10 | Modern layout engine | Partial | Flexbox, intrinsic sizing, percentages, absolute popups. Missing: grid, min/max, aspect ratio, baseline, custom layout primitives. |
-| 11 | Typed styling system | Partial | Typed `Style` struct. Missing: classes, themes, tokens, pseudo-states, inheritance, hot reload. Planned (phase 6). |
-| 12 | Excellent theming | Planned | Phase 6. |
+| 11 | Typed styling system | Done | Typed `Style` with builders, Rust classes, stylesheet classes with `extends`, tokens, hover/pressed/focused/disabled overrides, text inheritance and hot reload from disk (milestone 6a). Compile-time validation applies to the Rust API only. |
+| 12 | Excellent theming | Done | Dark and light token themes, runtime switching, OS preference via winit, stylesheet token overlays and user sheets (milestone 6a). |
 | 13 | Animations in the property system | Planned | Phase 6. |
 | 14 | Renderer-independent UI core | Done | Core emits a `Scene` display list; no wgpu types in core. |
 | 15 | Multiple rendering backends | Partial | wgpu only. CPU renderer: planned (phase 6). |
@@ -37,7 +37,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 31 | Observable dependency graph | Partial | Inspector shows per-node "last declaration changed" flags and repainted nodes; no dependency graph because there is no reactive layer. |
 | 32 | Built-in native DevTools | Partial | F12 inspector: tree, box model, computed style, focus/hover state, accessibility view, event log, repaint/damage overlays, frame timings. Missing: render layers, GPU timings, memory statistics. |
 | 33 | Performance profiler | Partial | Declare/layout/paint/render CPU timings, dirty flags, created/reused/removed counts, paint cache hits, CSV export, `tracing` spans. Missing: text shaping split, GPU time, draw calls, allocations. |
-| 34 | Hot reload | Planned | Phase 6. |
+| 34 | Hot reload | Partial | Stylesheets (classes, tokens, base theme) reload from disk without losing state. UI declarations and assets: planned (phase 7). |
 | 35 | Headless UI testing | Done | `rust-gui-testing` harness with real input paths and application state access. |
 | 36 | Snapshot testing | Done | Text snapshots for tree, layout, accessibility and scene; opt-in pixel snapshots with a bundled font. |
 | 37 | Semantic testing API | Done | `by_label("Save")` then `click`; key paths for disambiguation. |
@@ -59,7 +59,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 53 | Low idle CPU/GPU usage | Done | Event-driven loop sleeps between events; no continuous redraw. |
 | 54 | Fast startup | Partial | Sequential backend probing and compact allocation; startup timing not benchmarked. |
 | 55 | Small deployment footprint | Partial | Native binary; footprint not measured. |
-| 56 | Excellent error diagnostics | Partial | Duplicate keys, duplicate shortcuts, invalid models and clip imbalance panic with messages. Missing: font/resource and accessibility diagnostics. |
+| 56 | Excellent error diagnostics | Partial | Duplicate keys, duplicate shortcuts, invalid models and clip imbalance panic with messages; stylesheet errors carry line numbers and unknown classes surface in the inspector. Missing: font/resource and accessibility diagnostics. |
 | 57 | Framework-level diagnostics | Not started | Warnings for relayout, repaint, inaccessible controls and huge unvirtualized collections. |
 | 58 | Small core with extension points | Partial | Models and custom leaves are public; third-party controls need a richer widget contract. |
 | 59 | Component ecosystem | Not started | |

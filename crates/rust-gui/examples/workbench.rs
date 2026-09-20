@@ -108,7 +108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 last_update = tick;
                 ui.column("page", Style { padding: 28.0, gap: 16.0, width: Length::Percent(1.0), ..Style::default() }, |ui| {
-                ui.label_styled("title", "Architecture workbench", Style { font_size: 28.0, ..Style::default() });
+                ui.label_styled("title", "Architecture workbench", Style { font_size: Some(28.0), ..Style::default() });
                 ui.label_keyed("background", format!("Background updates: {tick}"));
                 ui.label_keyed("instructions", "Wheel to scroll. Tab reveals focused rows. Arrow keys, Page Up/Down, Home/End scroll.");
                 ui.row("components", Style { gap: 36.0, ..Style::default() }, |ui| {
@@ -120,7 +120,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.label_keyed("selection", format!("Selected row: {selection}"));
                 ui.scroll("rows", Style {
                     width: Length::Percent(1.0), height: Length::Px(240.0),
-                    padding: 8.0, gap: 4.0, background: Color::rgb(24, 35, 49), ..Style::default()
+                    padding: 8.0, gap: 4.0, background: Some(Color::rgb(24, 35, 49)), ..Style::default()
                 }, |ui| {
                     for index in 0..250 {
                         if ui.button_styled(index.to_string(), format!("Row {index:03}"), true, Style {
@@ -128,7 +128,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }).clicked() { selection = format!("{index:03}"); }
                     }
                 });
-                ui.label_styled("footer", "Native accessibility shares the same IDs and actions as pointer and keyboard input.", Style { font_size: 13.0, ..Style::default() });
+                ui.label_styled("footer", "Native accessibility shares the same IDs and actions as pointer and keyboard input.", Style { font_size: Some(13.0), ..Style::default() });
             });
                 ready.store(true, Ordering::Release);
                 if smoke && tick == 3 {

@@ -23,7 +23,7 @@ impl Error for DesktopClosed {}
 pub(crate) enum WindowRequest {
     Open {
         key: WindowKey,
-        options: AppOptions,
+        options: Box<AppOptions>,
         view: SendView,
     },
     Close(WindowKey),
@@ -57,7 +57,7 @@ impl DesktopHandle {
         self.proxy
             .send_event(UserEvent::Window(WindowRequest::Open {
                 key,
-                options,
+                options: Box::new(options),
                 view: Box::new(view),
             }))
             .map_err(|_| DesktopClosed)?;
@@ -268,6 +268,21 @@ impl Desktop {
         match self.attach(event_loop, &options) {
             Ok(state) => {
                 let mut app = Application::new(options, view, state, self.clipboard.clone());
+                if let ThemeChoice::Fixed(theme) = &app.options.theme {
+                    app.context.set_theme(theme.clone());
+                } else {
+                    let theme = app.state.as_ref().and_then(|state| state.window.theme());
+                    app.system_theme(theme);
+                }
+                if let Err(error) = app.load_stylesheet() {
+                    self.error = Some(error.into());
+                    event_loop.exit();
+                    return false;
+                }
+                if app.options.stylesheet.is_some() {
+                    event_loop
+                        .set_control_flow(ControlFlow::WaitUntil(Instant::now() + STYLESHEET_POLL));
+                }
                 // RUST_GUI_INSPECT opens the inspector immediately, for smoke
                 // runs and for tools without keyboard focus.
                 app.inspector_requested =
@@ -287,7 +302,7 @@ impl Desktop {
     fn request(&mut self, event_loop: &ActiveEventLoop, request: WindowRequest) {
         match request {
             WindowRequest::Open { key, options, view } => {
-                self.open(event_loop, key, options, view);
+                self.open(event_loop, key, *options, view);
             }
             WindowRequest::Close(key) => {
                 self.windows.remove(&key);
@@ -304,9 +319,11 @@ impl Desktop {
     /// Requests received before the event loop resumed.
     fn queue(&mut self, request: WindowRequest) {
         match request {
-            WindowRequest::Open { key, options, view } => {
-                self.pending.push(Pending { key, options, view })
-            }
+            WindowRequest::Open { key, options, view } => self.pending.push(Pending {
+                key,
+                options: *options,
+                view,
+            }),
             WindowRequest::Close(key) => self.pending.retain(|pending| pending.key != key),
             WindowRequest::Redraw(_) => {}
         }
@@ -565,9 +582,22 @@ impl ApplicationHandler<UserEvent> for Desktop {
         self.finish(event_loop);
     }
     fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
-        for app in self.windows.values_mut() {
-            app.new_events(event_loop, cause);
+        if !matches!(cause, StartCause::ResumeTimeReached { .. }) {
+            return;
         }
+        for app in self.windows.values_mut() {
+            app.new_events(cause);
+        }
+        // Re-arm only while some window watches a stylesheet; otherwise sleep.
+        let watching = self
+            .windows
+            .values()
+            .any(|app| app.options.stylesheet.is_some());
+        event_loop.set_control_flow(if watching {
+            ControlFlow::WaitUntil(Instant::now() + STYLESHEET_POLL)
+        } else {
+            ControlFlow::Wait
+        });
     }
     fn exiting(&mut self, _: &ActiveEventLoop) {
         self.wake.close();

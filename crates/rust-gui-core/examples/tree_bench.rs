@@ -17,7 +17,7 @@ fn declare(ui: &mut Ui<'_>, count: usize, color: Color, extra: bool) {
                         item.to_string(),
                         format!("Item {item:05}"),
                         Style {
-                            foreground: if item == 0 { color } else { Color::WHITE },
+                            foreground: Some(if item == 0 { color } else { Color::WHITE }),
                             ..Style::default()
                         },
                     );

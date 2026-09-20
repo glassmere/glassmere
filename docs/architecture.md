@@ -41,6 +41,9 @@ Clicks produced by events are delivered to a matching button response once. Unha
 | Child creation / deletion / reorder | Tree, layout, scene, semantic update flags |
 | Viewport resize | Layout and scene |
 | Scroll offset | Bounds, clips, paint and semantics; no Taffy layout request |
+| Theme switch | Paint caches dropped and scene repainted; layout only if the resolved fonts change |
+| Inherited color change | Paint of every descendant without its own value |
+| Inherited font change | Re-measurement and layout of descendants without their own value |
 
 Dirty flags aggregate subsystem work at context level. Taffy retains per-node layout caches and marks ancestors dirty when node inputs change. Paint uses shared subtree chunks: invalidation walks ancestors, while clean chunks are reused without regenerating descendants. Each node's own commands are stored once in the chunk tree rather than duplicating flattened scenes at every ancestor. The renderer-facing flat scene still copies all commands when painting changes, and declarations still traverse every widget. Counters distinguish root layout requests, newly painted nodes and reused cache roots.
 
@@ -67,6 +70,12 @@ Commands attach a `Shortcut` to an ordinary button. `Event::Shortcut` searches e
 Drag state is retained in the context. A pointer press on a `DragSource` records a candidate; movement past the threshold activates it, clears capture and marks eligible `DropTarget`s. Release over a target queues a `ControlUpdate::Drop` consumed by the next `drop_target` declaration. Space/Enter and the `StartDrag`/`Drop` actions reuse the same path. `Event::DropAt` lets hosts inject external payloads at a logical point; successive file drops for one target merge.
 
 `run_windows` keeps one wgpu device, renderer and clipboard for several `Application`s, each with its own `Context`, focus and IME target. Windows created after the first share the device through `WindowState::sharing` and must present with the same surface format. `WakeHandle::channel` builds a bounded mailbox whose sender wakes the loop once per pending batch.
+
+## Styling
+
+`Style` is per widget; `Theme` is per context. Text properties on a style are optional and resolve during reconciliation from the parent's `ResolvedText`, whose root values come from the theme, so the resolved values are what measurement and paint use and what the inspector reports. Resolution is compared like any other property: a color difference marks paint, a font difference marks text and layout. Backgrounds default per widget kind to a theme token, and interaction states pick theme tokens first and then the style's `StateStyles` overrides, so state changes stay repaint-only.
+
+Named classes live in a `StyleSheet` on the context. The text format is line-based with no dependencies; tokens overlay whichever theme is active so an OS light/dark switch keeps an application's accent. The host installs a configured sheet at start and polls its modification time, keeping the last good sheet when an edit fails to parse.
 
 ## Tooling boundary
 

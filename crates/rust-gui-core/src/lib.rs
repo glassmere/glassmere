@@ -5,6 +5,8 @@ mod controls;
 mod drag;
 mod editor;
 mod style;
+mod stylesheet;
+mod theme;
 mod tree;
 mod ui;
 mod widget;
@@ -19,7 +21,9 @@ pub use drag::{DragInfo, DragPayload, DropKind};
 pub use editor::{TextEdit, TextMove, TextSelection};
 pub use rust_gui_scene::{FontFamily, TextStyle, TextWrap};
 pub use rust_gui_scene::{MonospaceMeasurer, TextMeasurer};
-pub use style::{Length, Style};
+pub use style::{Length, Paint, ResolvedText, StateStyles, Style};
+pub use stylesheet::{StyleSheet, StyleSheetError};
+pub use theme::{TOKENS, Theme};
 pub use tree::{
     Action, CollectionInfo, Context, Dirty, Event, FrameStats, Key, NodeDetails, NodeId,
     NodeSnapshot, NumericValue, Role, ScrollState, Semantics,

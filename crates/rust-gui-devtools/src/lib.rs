@@ -183,6 +183,8 @@ pub struct InspectorModel {
     pub events: Vec<EventRecord>,
     /// Where the last CSV export was written, if any.
     pub export_path: Option<String>,
+    /// Unknown style classes requested by the inspected window.
+    pub warnings: Vec<String>,
 }
 
 impl Default for InspectorModel {
@@ -200,6 +202,7 @@ impl Default for InspectorModel {
             frames: Vec::new(),
             events: Vec::new(),
             export_path: None,
+            warnings: Vec::new(),
         }
     }
 }
@@ -235,6 +238,7 @@ impl InspectorModel {
             damage: context.damage_regions().to_vec(),
             frames: recorder.frames().iter().copied().collect(),
             events: recorder.events().iter().cloned().collect(),
+            warnings: context.style_warnings().to_vec(),
             ..Self::default()
         }
     }
@@ -316,8 +320,8 @@ impl Inspector {
         let list_height = (model.viewport.height - 132.0).max(120.0);
         let width = (model.viewport.width - 36.0).max(300.0);
         let mono = Style {
-            font_size: 12.0,
-            font_family: FontFamily::Monospace,
+            font_size: Some(12.0),
+            font_family: Some(FontFamily::Monospace),
             padding: 3.0,
             width: Length::Percent(1.0),
             ..Style::default()
@@ -343,11 +347,24 @@ impl Inspector {
                         model.frames.last().map_or(0, |frame| frame.stats.frame)
                     ),
                     Style {
-                        font_size: 14.0,
-                        font_weight: 700,
+                        font_size: Some(14.0),
+                        font_weight: Some(700),
                         ..Style::default()
                     },
                 );
+                if !model.warnings.is_empty() {
+                    ui.label_styled(
+                        "warnings",
+                        format!("Style warnings: {}", model.warnings.join("; ")),
+                        Style {
+                            font_size: Some(13.0),
+                            foreground: Some(Color::rgb(255, 196, 96)),
+                            width: Length::Percent(1.0),
+                            wrap: TextWrap::Word,
+                            ..Style::default()
+                        },
+                    );
+                }
                 ui.row(
                     "tabs",
                     Style {
@@ -362,11 +379,7 @@ impl Inspector {
                             (Tab::Frames, "Frames"),
                         ] {
                             let style = Style {
-                                background: if self.tab == tab {
-                                    Color::rgb(22, 105, 99)
-                                } else {
-                                    Style::button().background
-                                },
+                                background: (self.tab == tab).then_some(ui.theme().selection),
                                 ..Style::button()
                             };
                             if ui.button_styled(label, label, true, style).clicked() {
@@ -413,12 +426,9 @@ impl Inspector {
                                             Style {
                                                 width: Length::Percent(1.0),
                                                 padding: 4.0,
-                                                font_size: 13.0,
-                                                foreground: if node.details.changed.is_empty() {
-                                                    Color::WHITE
-                                                } else {
-                                                    Color::rgb(255, 196, 96)
-                                                },
+                                                font_size: Some(13.0),
+                                                foreground: (!node.details.changed.is_empty())
+                                                    .then_some(Color::rgb(255, 196, 96)),
                                                 ..Style::default()
                                             },
                                         );
@@ -438,8 +448,8 @@ impl Inspector {
                                             "hint",
                                             "Select a node. Arrows move, Right/Left expand and collapse. Orange rows changed in the last declaration; ▮ marks a repainted node.",
                                             Style {
-                                                font_size: 13.0,
-                                                foreground: MUTED,
+                                                font_size: Some(13.0),
+                                                foreground: Some(MUTED),
                                                 width: Length::Percent(1.0),
                                                 wrap: TextWrap::Word,
                                                 ..Style::default()
@@ -479,7 +489,7 @@ impl Inspector {
                                         event.description
                                     ),
                                     Style {
-                                        foreground: if event.handled { Color::WHITE } else { MUTED },
+                                        foreground: Some(if event.handled { Color::WHITE } else { MUTED }),
                                         ..mono.clone()
                                     },
                                 );
@@ -519,8 +529,8 @@ impl Inspector {
                                         "path",
                                         format!("Written to {path}"),
                                         Style {
-                                            font_size: 13.0,
-                                            foreground: MUTED,
+                                            font_size: Some(13.0),
+                                            foreground: Some(MUTED),
                                             ..Style::default()
                                         },
                                     );
@@ -534,7 +544,7 @@ impl Inspector {
                             self.frames.reveal(ItemId(last.stats.frame));
                         }
                         ui.label_styled("columns", FrameRecord::SUMMARY_HEADER, Style {
-                            foreground: MUTED,
+                            foreground: Some(MUTED),
                             ..mono.clone()
                         });
                         let mut rows = FrameRows(&model.frames);
@@ -643,7 +653,7 @@ fn details(
             key,
             text,
             Style {
-                font_size: 13.0,
+                font_size: Some(13.0),
                 width: Length::Percent(1.0),
                 wrap: TextWrap::Word,
                 ..Style::default()
@@ -724,27 +734,45 @@ fn details(
             style.width, style.height, style.padding, style.gap, style.grow, style.radius
         ),
     );
+    let resolved = &details.resolved;
     line(
         ui,
         "font",
         format!(
-            "Font: {:?} {}px · weight {}{} · {:?}",
-            style.font_family,
-            style.font_size,
-            style.font_weight,
-            if style.italic { " · italic" } else { "" },
-            style.wrap
+            "Font: {:?} {}px · weight {}{} · {:?}{}",
+            resolved.font_family,
+            resolved.font_size,
+            resolved.font_weight,
+            if resolved.italic { " · italic" } else { "" },
+            style.wrap,
+            if style.font_family.is_none()
+                && style.font_size.is_none()
+                && style.font_weight.is_none()
+                && style.italic.is_none()
+            {
+                " · inherited"
+            } else {
+                ""
+            }
         ),
     );
     line(
         ui,
         "colors",
         format!(
-            "Background {} · Foreground {}",
-            hex(style.background),
-            hex(style.foreground)
+            "Background {} · Foreground {}{}",
+            style.background.map_or("theme default".to_owned(), hex),
+            hex(resolved.foreground),
+            if style.foreground.is_none() {
+                " (inherited)"
+            } else {
+                ""
+            }
         ),
     );
+    if let Some(states) = &style.states {
+        line(ui, "states", format!("State overrides: {states:?}"));
+    }
     if let Some(value) = &snapshot.value {
         line(ui, "value", format!("Value: \"{value}\""));
     }

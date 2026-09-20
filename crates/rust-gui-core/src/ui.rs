@@ -85,10 +85,38 @@ pub struct Ui<'a> {
     pub(crate) keys: HashSet<WidgetKey>,
     pub(crate) updates: &'a mut HashMap<NodeId, ControlUpdate>,
     pub(crate) submitted: &'a mut HashSet<NodeId>,
+    pub(crate) warnings: &'a mut Vec<String>,
+    pub(crate) theme_request: &'a mut Option<crate::Theme>,
     pub(crate) enabled: bool,
 }
 
 impl Ui<'_> {
+    /// Design tokens of the active theme, for application-owned surfaces.
+    pub fn theme(&self) -> &crate::Theme {
+        self.context.theme()
+    }
+
+    /// Switches the theme after this declaration; the host declares once more
+    /// so token reads made earlier in the view see the new theme too.
+    pub fn set_theme(&mut self, theme: crate::Theme) {
+        *self.theme_request = Some(theme);
+    }
+
+    /// A named class from the installed stylesheet. Unknown names return the
+    /// default style and are reported through `Context::style_warnings`.
+    pub fn class(&mut self, name: &str) -> Style {
+        match self.context.stylesheet().class(name) {
+            Some(style) => style.clone(),
+            None => {
+                let warning = format!("unknown style class `{name}`");
+                if !self.warnings.contains(&warning) {
+                    self.warnings.push(warning);
+                }
+                Style::default()
+            }
+        }
+    }
+
     pub fn drag_source(
         &mut self,
         key: impl Into<String>,
@@ -250,6 +278,8 @@ impl Ui<'_> {
             keys: HashSet::new(),
             updates: self.updates,
             submitted: self.submitted,
+            warnings: self.warnings,
+            theme_request: self.theme_request,
             enabled: self.enabled,
         };
         content(&mut child);

@@ -30,17 +30,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 reversed = (count / 30) % 2 == 0;
             }
             ui.column("page", Style { padding: 36.0, gap: 24.0, width: Length::Percent(1.0), ..Style::default() }, |ui| {
-            ui.label_styled("eyebrow", "RUST GUI  /  FIRST MILESTONE", Style { font_size: 12.0, foreground: Color::rgb(103, 232, 206), ..Style::default() });
-            ui.label_styled("title", "A small API. A retained engine.", Style { font_size: 30.0, ..Style::default() });
+            ui.label_styled("eyebrow", "RUST GUI  /  FIRST MILESTONE", Style { font_size: Some(12.0), foreground: Some(Color::rgb(103, 232, 206)), ..Style::default() });
+            ui.label_styled("title", "A small API. A retained engine.", Style { font_size: Some(30.0), ..Style::default() });
             ui.label_keyed("intro", "Native window, stable identity, flex layout and GPU rendering.");
-            ui.container("counter", Style { padding: 24.0, gap: 18.0, radius: 14.0, background: Color::rgb(24, 35, 49), width: Length::Percent(1.0), ..Style::default() }, |ui| {
-                ui.label_styled("count", format!("Counter   {count}"), Style { font_size: 36.0, ..Style::default() });
+            ui.container("counter", Style { padding: 24.0, gap: 18.0, radius: 14.0, background: Some(Color::rgb(24, 35, 49)), width: Length::Percent(1.0), ..Style::default() }, |ui| {
+                ui.label_styled("count", format!("Counter   {count}"), Style { font_size: Some(36.0), ..Style::default() });
                 ui.row("actions", Style::default(), |ui| {
                     if ui.button_keyed("decrement", "- Decrease").clicked() { count = count.saturating_sub(1); }
-                    if ui.button_styled("increment", "+ Increase", true, Style { background: Color::rgb(22, 105, 99), ..Style::button() }).clicked() { count = count.saturating_add(1); }
+                    if ui.button_styled("increment", "+ Increase", true, Style { background: Some(Color::rgb(22, 105, 99)), ..Style::button() }).clicked() { count = count.saturating_add(1); }
                     if ui.button_styled("reset", "Reset", count != 0, Style::button()).clicked() { count = 0; }
                 });
-                ui.label_styled("keyboard", "Tab / Shift+Tab to focus. Enter or Space to activate.", Style { font_size: 13.0, foreground: Color::rgb(153, 171, 193), ..Style::default() });
+                ui.label_styled("keyboard", "Tab / Shift+Tab to focus. Enter or Space to activate.", Style { font_size: Some(13.0), foreground: Some(Color::rgb(153, 171, 193)), ..Style::default() });
             });
             ui.row("toggles", Style::default(), |ui| {
                 if ui.button_keyed("details", if show_details { "Hide details" } else { "Show details" }).clicked() { show_details = !show_details; }
@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     for (key, text) in items { ui.label_keyed(key, text); }
                 });
             }
-            ui.label_styled("footer", "Kernel prototype / text editing, scrolling and native accessibility are next.", Style { font_size: 12.0, foreground: Color::rgb(127, 145, 166), ..Style::default() });
+            ui.label_styled("footer", "Kernel prototype / text editing, scrolling and native accessibility are next.", Style { font_size: Some(12.0), foreground: Some(Color::rgb(127, 145, 166)), ..Style::default() });
         });
         },
     )

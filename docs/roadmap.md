@@ -61,12 +61,14 @@ The [milestone report](milestone-4.md) records the contracts, validation and lim
 
 The [milestone report](milestone-5.md) describes the crates, contracts and validation. [Feature coverage](feature-coverage.md) maps all 62 goals of the [original feature list](feature-list.md) to their status.
 
-## 6. Styling, theming and layout depth — next implementation milestone
+## 6. Styling, theming and layout depth — in progress
 
-- Typed style classes, themes, tokens and pseudo-states with runtime theme switching and OS appearance.
-- Grid layout, min/max constraints, aspect ratio and baseline alignment.
-- Focus scopes, modal focus and dialogs; tooltips, tabs, split panes and context menus.
-- Transitions and property animations with GPU-friendly transforms and opacity.
+- [x] Theme tokens for every built-in control, dark and light themes, runtime switching and OS appearance ([milestone 6a](milestone-6.md)).
+- [x] Inherited text properties, typed style classes, per-state paint overrides.
+- [x] Stylesheet format with classes, `extends`, tokens and hot reload from disk.
+- [ ] Grid layout, min/max constraints, aspect ratio and baseline alignment.
+- [ ] Focus scopes, modal focus and dialogs; tooltips, tabs, split panes and context menus.
+- [ ] Transitions and property animations with GPU-friendly transforms and opacity.
 
 ## 7. Advanced features
 
