@@ -86,6 +86,15 @@ pub(crate) enum Control {
         float: bool,
     },
     DockFloat,
+    /// A WYSIWYG editor over an app-owned `RichDocument`.
+    RichEditor {
+        label: String,
+        blocks: Vec<crate::rich_editor::RichBlockView>,
+        anchor: crate::RichPosition,
+        cursor: crate::RichPosition,
+        font_size: f32,
+        read_only: bool,
+    },
     RichText {
         runs: Vec<crate::RichRun>,
         /// Number of link runs; a block with links is focusable.
@@ -186,6 +195,7 @@ pub(crate) enum ControlUpdate {
     Dismiss,
     Dock(DockAction),
     TextOps(Vec<crate::text_area::AreaOp>),
+    RichOps(Vec<crate::rich_editor::RichOp>),
 }
 
 #[derive(Clone, Debug)]

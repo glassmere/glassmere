@@ -44,7 +44,7 @@ fn content(node: &Node) -> Rect {
 }
 
 /// One rectangle per visual line for the clusters of a byte range.
-fn line_boxes(geometry: &TextGeometry, range: Range<usize>) -> Vec<Rect> {
+pub(super) fn line_boxes(geometry: &TextGeometry, range: Range<usize>) -> Vec<Rect> {
     let mut lines: Vec<Rect> = Vec::new();
     for rect in geometry.selection(range) {
         match lines.iter_mut().find(|line| line.y == rect.y) {

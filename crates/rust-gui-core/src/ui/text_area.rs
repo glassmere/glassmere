@@ -31,8 +31,14 @@ impl Applied<'_, '_> {
             EditorCommand::AddCursorBelow => {
                 self.document.add_cursor_vertically(true);
             }
-            // Resolved into a pointer operation when the event arrives.
-            EditorCommand::AddCursorAt(_) => {}
+            // Resolved into a pointer operation when the event arrives, or meant
+            // for rich text editors.
+            EditorCommand::AddCursorAt(_)
+            | EditorCommand::ToggleBold
+            | EditorCommand::ToggleItalic
+            | EditorCommand::ToggleUnderline
+            | EditorCommand::ToggleStrikethrough
+            | EditorCommand::ToggleCode => {}
             search => {
                 let Some(find) = self.find.as_deref_mut() else {
                     return;

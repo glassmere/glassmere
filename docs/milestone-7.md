@@ -1,6 +1,6 @@
 # Milestone 7: advanced features
 
-Slices so far: 7a docking, 7b rich text with the code editor foundation and 7c code intelligence (below).
+Slices so far: 7a docking, 7b rich text with the code editor foundation, 7c code intelligence and 7d the WYSIWYG rich text editor (below).
 
 # Milestone 7a: docking
 
@@ -202,3 +202,61 @@ Not verified natively: the key mappings (Ctrl+F, Ctrl+H, F3, Ctrl+D, Ctrl+Alt+Up
 - Pressing Ctrl+F while the bar is already open does not move focus back to the query field.
 - Severity colours are fixed, not theme tokens.
 - The find bar's controls are not yet styleable.
+
+# Milestone 7d: the WYSIWYG rich text editor
+
+Implemented on 2026-09-21. An app-owned `RichDocument` of blocks and marked runs, edited in place by `Ui::rich_text_editor` with wrapped paragraphs, a formatting toolbar and keyboard shortcuts, and loaded from and saved to a Markdown subset. This completes the rich text and code editor work of phase 7.
+
+## Run
+
+```powershell
+cargo run -p rust-gui --example richtext --release
+```
+
+The example edits a document on the left and shows its Markdown, highlighted by syntect, on the right.
+
+```rust
+let mut document = RichDocument::from_markdown(&std::fs::read_to_string(path)?);   // app state
+
+let response = ui.rich_text_editor("notes", &mut document, RichEditorOptions {
+    label: "Release notes".into(),
+    ..RichEditorOptions::default()                                                 // toolbar on
+});
+if response.changed { std::fs::write(path, document.to_markdown())?; }
+
+document.toggle_mark(Mark::Bold);                 // the same operations are public
+document.set_block_kind(BlockKind::Heading(2));
+document.set_link(Some("https://example.test"));
+```
+
+## Contracts
+
+| API | Behavior |
+| --- | --- |
+| `RichDocument`, `Block { kind, runs }`, `InlineRun { text, marks }`, `Marks`, `BlockKind` | Blocks are paragraphs, headings 1 to 3, bulleted and numbered list items, quotes and code blocks; marks are bold, italic, underline, strikethrough, inline code and a link target. Runs with equal marks merge. A `RichPosition` is a block and a byte offset; there is one selection. |
+| Editing | `insert_text` (line breaks start blocks, or stay inside a code block), `newline` (a heading is followed by a paragraph; an empty list item or quote becomes a paragraph; a second Enter at the end of a code block leaves it; formatting continues on the new line), `backspace`/`delete` with word variants (at the start of a styled block Backspace first makes it a paragraph, then joins blocks), deletes across blocks, `move_cursor` over graphemes, words, blocks and the document, `select_word`, `select_block`, `select_all`, `cut`, `selected_text`. |
+| Formatting | `toggle_mark` removes the mark when the whole selection has it and adds it otherwise; at a caret it applies to what is typed next. `set_link`, `set_block_kind` (toggles back to paragraph), `marks()` and `block_kind()` report the state at the cursor. |
+| Undo | Whole-document snapshots, 300 deep, with consecutive typing merged into one step. |
+| `to_markdown`, `from_markdown` | `#` headings, `-` and `1.` lists, `>` quotes, fenced code, `**bold**`, `*italic*`, `~~strike~~`, `<u>underline</u>`, `` `code` `` and `[text](target)`, with backslash escapes. Marks are written as a stack so neighbouring runs share delimiters, and reading what was written gives the same document. |
+| `Ui::rich_text_editor(key, &mut RichDocument, RichEditorOptions) -> RichEditorResponse` | Each block is one wrapped rich text block: headings scale the body size, list items get bullets or numbers, quotes a bar, code blocks a monospace panel. Input is queued and applied at declaration like the code editor, including the clipboard outbox and inline IME preedit. Up, Down, Home, End, PageUp and PageDown follow the wrapped visual lines with a sticky column, resolved from the shaped text. Click, drag, Shift+click, double-click word and triple-click block selection. The caret is kept in view and the wheel scrolls. `response.link_at_cursor` reports the link under the cursor. |
+| Toolbar and shortcuts | The optional toolbar toggles marks and block kinds, shows the state at the cursor and returns focus to the text after a click. Ctrl+B, Ctrl+I, Ctrl+U, Ctrl+E (code) and Ctrl+Shift+X (strikethrough) arrive as `EditorCommand::Toggle*`. Tab moves focus, as in ordinary fields. |
+| `Ui::request_focus(key)` | New: moves focus to a sibling widget after the declaration is reconciled. |
+| Accessibility | Role TextInput with the option label; the value is the text of the cursor's block. |
+
+One renderer fix came out of this slice: cosmic-text shapes an ASCII word in a single run when every explicit span overlapping it is compatible, and default-attribute text is not an explicit span, so punctuation after a bold or monospace run took that run's style. The renderer now gives rich blocks defaults that no run uses, which makes every run explicit.
+
+## Validation
+
+Ten new tests. Five unit tests cover the document: typing marks, selection marks and links splitting and merging runs; Enter, Backspace and cross-block deletes; code blocks; grapheme, word and block movement; and the Markdown round trip with nested marks, links and escapes. Five drive the widget headlessly: queued typing with bold carried across Enter, italic on a keyboard selection and undo, plus role, label and value; visual-line keys over wrapped text with End staying on its line and the sticky column through a short paragraph; pointer placement, a drag across blocks with its selection quads, double and triple clicks; the toolbar formatting the selection, showing active state and returning focus; and the clipboard outbox, IME preedit and commit, scrolling to the end of a 60-block document and read-only mode. The full suite is 138 tests plus 11 GPU tests; clippy is clean. The richtext example passes `--smoke`; screenshots confirmed headings, marks, a wrapped paragraph, bullets, numbers, the quote bar, the code block, the active toolbar button, and the punctuation fix above.
+
+Not verified natively: typing, shortcuts, IME and the toolbar in the real window, because a background script cannot give the window keyboard focus. They are covered headlessly.
+
+## Remaining limits
+
+- All blocks are shaped every time their content or the width changes; there is no virtualization, so very long documents will slow down. Undo snapshots copy the whole document.
+- Visual-line keys resolve against the last shaped frame, so several Up or Down presses between two frames move one line.
+- End on a wrapped line stops before its last character, because the offset after it is drawn at the start of the next line (no caret affinity yet).
+- One font size per block; no images, tables, nested lists, alignment or colours.
+- Links can be set from code and are reported at the cursor, but there is no link dialog and no click-to-follow.
+- Paste is plain text; copy puts plain text on the clipboard.
+- Marks continue across Enter but a link does not.

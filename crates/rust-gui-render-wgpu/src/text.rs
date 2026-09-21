@@ -231,7 +231,14 @@ impl TextSystem {
                         },
                     )
                 });
-                buffer.set_rich_text(&mut self.fonts, runs, &base, Shaping::Advanced, None);
+                // cosmic-text shapes an ASCII word in one run when every explicit
+                // span overlapping it is compatible, and text with the default
+                // attributes is not an explicit span: "bold:" would be all bold.
+                // Defaults that no run uses make every run explicit.
+                let unused = base
+                    .clone()
+                    .weight(glyphon::Weight(style.weight.clamp(100, 900) ^ 1));
+                buffer.set_rich_text(&mut self.fonts, runs, &unused, Shaping::Advanced, None);
             }
             buffer.shape_until_scroll(&mut self.fonts, false);
             buffer

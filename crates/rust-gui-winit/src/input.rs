@@ -85,6 +85,11 @@ fn editor_command(key: &WinitKey, modifiers: ModifiersState) -> Option<EditorCom
                 "f" => Some(EditorCommand::Find),
                 "h" => Some(EditorCommand::Replace),
                 "d" => Some(EditorCommand::SelectNextOccurrence),
+                "b" => Some(EditorCommand::ToggleBold),
+                "i" => Some(EditorCommand::ToggleItalic),
+                "u" => Some(EditorCommand::ToggleUnderline),
+                "e" => Some(EditorCommand::ToggleCode),
+                "x" if modifiers.shift_key() => Some(EditorCommand::ToggleStrikethrough),
                 _ => None,
             }
         }

@@ -65,5 +65,9 @@ required-features = ["desktop"]
 name = "editor"
 required-features = ["desktop", "syntax"]
 
+[[example]]
+name = "richtext"
+required-features = ["desktop", "syntax"]
+
 [lints]
 workspace = true

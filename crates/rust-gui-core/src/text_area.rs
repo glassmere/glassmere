@@ -75,6 +75,12 @@ pub enum EditorCommand {
     AddCursorBelow,
     /// Adds a caret under this window point.
     AddCursorAt(Point),
+    /// Rich text editors: toggle a mark on the selection or for typing.
+    ToggleBold,
+    ToggleItalic,
+    ToggleUnderline,
+    ToggleStrikethrough,
+    ToggleCode,
 }
 
 /// App-owned search state of one editor. While `open`, the editor shows its

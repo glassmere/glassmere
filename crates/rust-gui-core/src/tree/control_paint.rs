@@ -4,6 +4,7 @@ impl Context {
     pub(super) fn prepare_controls(&mut self, measurer: &mut impl TextMeasurer) {
         self.prepare_text_areas(measurer);
         self.prepare_rich_text(measurer);
+        self.prepare_rich_editors(measurer);
         let ids: Vec<_> = self
             .nodes
             .iter()
@@ -39,6 +40,9 @@ impl Context {
         let node = &self.nodes[&id];
         if node.kind == Kind::TextArea {
             self.paint_text_area(id, scene);
+        }
+        if node.kind == Kind::RichEditor {
+            self.paint_rich_editor(id, scene);
         }
         if self.drag.as_ref().is_some_and(|drag| drag.active && (drag.over == Some(id) || (self.focused == Some(id) && matches!(node.control, Control::DropTarget { accepts, .. } if accepts == drag.payload.kind())))) {
             for rect in [Rect { height: 2.0, ..node.bounds }, Rect { y: node.bounds.y + node.bounds.height - 2.0, height: 2.0, ..node.bounds }] {
@@ -168,7 +172,7 @@ impl Context {
 
     /// Logical candidate-window anchor, clamped to the active input's content box.
     pub fn ime_cursor_rect(&self) -> Option<Rect> {
-        if let Some(caret) = self.area_caret() {
+        if let Some(caret) = self.area_caret().or_else(|| self.rich_caret()) {
             return Some(caret);
         }
         let node = self.nodes.get(&self.focused?)?;
@@ -187,6 +191,7 @@ impl Context {
 
     pub fn accepts_text(&self) -> bool {
         self.area_accepts_text()
+            || self.rich_accepts_text()
             || self
                 .focused
                 .and_then(|id| self.nodes.get(&id))
@@ -195,6 +200,7 @@ impl Context {
 
     pub fn composing_text(&self) -> bool {
         self.area_composing()
+            || self.rich_composing()
             || self
                 .focused
                 .and_then(|id| self.nodes.get(&id))

@@ -22,6 +22,7 @@ mod dock_input;
 mod drag_input;
 mod focus_input;
 mod overlay_input;
+mod rich_editor;
 mod rich_text;
 mod text_area_input;
 use std::{
@@ -291,6 +292,7 @@ struct Node {
     anim: Option<Box<animation_state::NodeAnim>>,
     area: Option<Box<text_area_input::AreaState>>,
     rich: Option<Box<rich_text::RichState>>,
+    rich_editor: Option<Box<rich_editor::RichEditorState>>,
     /// Parent-relative layout rectangle; layout animations start from the old one.
     layout_rect: Rect,
 }
@@ -319,6 +321,7 @@ impl Node {
                     | Kind::Divider
                     | Kind::DockHandle
                     | Kind::TextArea
+                    | Kind::RichEditor
             ) || matches!(self.control, Control::Tab { selected: true, .. })
                 || matches!(self.control, Control::RichText { links: 1.., .. })
                 || self.custom.as_ref().is_some_and(|widget| {
@@ -373,7 +376,7 @@ impl Node {
                     Kind::Label | Kind::RichText => Role::Label,
                     Kind::Button => Role::Button,
                     Kind::Scroll => Role::ScrollView,
-                    Kind::TextInput | Kind::TextArea => Role::TextInput,
+                    Kind::TextInput | Kind::TextArea | Kind::RichEditor => Role::TextInput,
                     Kind::Checkbox => Role::Checkbox,
                     Kind::Radio => Role::Radio,
                     Kind::Slider => Role::Slider,
@@ -406,6 +409,7 @@ impl Node {
                 | Control::Collection { label, .. }
                 | Control::CollectionRow { label, .. }
                 | Control::TextArea { label, .. }
+                | Control::RichEditor { label, .. }
                 | Control::Grid { label, .. } => label.clone(),
                 Control::DragSource { label, .. } | Control::DropTarget { label, .. } => {
                     label.clone()
@@ -560,6 +564,7 @@ impl Default for Context {
             anim: None,
             area: None,
             rich: None,
+            rich_editor: None,
             layout_rect: Rect::default(),
             control: Control::None,
             editor: None,
@@ -707,6 +712,9 @@ impl Context {
                     .checked_sub(*first_line)
                     .and_then(|index| lines.get(index))
                     .map(|line| line.text.clone()),
+                Control::RichEditor { blocks, cursor, .. } => {
+                    blocks.get(cursor.block).map(|block| block.text.clone())
+                }
                 Control::Combo {
                     items, selected, ..
                 } => items.get(*selected).map(|item| item.label.clone()),
@@ -849,6 +857,7 @@ impl Context {
         let mut theme_request = None;
         let mut clipboard = None;
         let mut redraw = false;
+        let mut focus = None;
         let mut layers = Vec::new();
         self.stats.activations = clicks.len() + updates.len() + submitted.len();
         self.nodes.get_mut(&self.root).unwrap().resolved = ResolvedText::from_theme(&self.theme);
@@ -864,6 +873,7 @@ impl Context {
             theme_request: &mut theme_request,
             clipboard: &mut clipboard,
             redraw: &mut redraw,
+            focus: &mut focus,
             layers: &mut layers,
             enabled: true,
         };
@@ -918,6 +928,16 @@ impl Context {
         self.repair_interaction();
         self.enforce_modal();
         self.focus_new_popovers();
+        if let Some((parent, key)) = focus
+            && let Some(target) = self
+                .nodes
+                .get(&parent.unwrap_or(self.root))
+                .and_then(|node| node.children_by_key.get(&key))
+                .copied()
+            && self.nodes[&target].focusable()
+        {
+            self.focus_control(target);
+        }
         self.update_tooltip();
         self.note_focus();
         drop(declare_span);
@@ -1169,6 +1189,7 @@ impl Context {
                         anim: animation_state::NodeAnim::entering(element.style.enter),
                         area: None,
                         rich: None,
+                        rich_editor: None,
                         layout_rect: Rect::default(),
                         key: element.key,
                         kind: element.kind,
@@ -1457,9 +1478,12 @@ impl Context {
         let hovered = self.hovered == Some(id);
         let focused = self.focused == Some(id);
         let mut background = node.style.background.or(match node.kind {
-            Kind::Button | Kind::TextInput | Kind::TextArea | Kind::ComboBox | Kind::MenuButton => {
-                Some(theme.control)
-            }
+            Kind::Button
+            | Kind::TextInput
+            | Kind::TextArea
+            | Kind::RichEditor
+            | Kind::ComboBox
+            | Kind::MenuButton => Some(theme.control),
             Kind::Popup | Kind::Popover => Some(theme.popup),
             Kind::Divider | Kind::DockHandle => Some(if hovered || pressed {
                 theme.accent
@@ -1725,6 +1749,9 @@ impl Context {
         if let Some(handled) = self.dock_event(&event) {
             return handled;
         }
+        if let Some(handled) = self.rich_editor_event(&event) {
+            return handled;
+        }
         if let Some(handled) = self.text_area_event(&event) {
             return handled;
         }
@@ -1910,7 +1937,7 @@ impl Context {
         };
         if !matches!(
             node.kind,
-            Kind::Scroll | Kind::Popup | Kind::Collection | Kind::TextArea
+            Kind::Scroll | Kind::Popup | Kind::Collection | Kind::TextArea | Kind::RichEditor
         ) {
             return false;
         }
@@ -1947,7 +1974,7 @@ impl Context {
             let node = &self.nodes[&id];
             if matches!(
                 node.kind,
-                Kind::Scroll | Kind::Popup | Kind::Collection | Kind::TextArea
+                Kind::Scroll | Kind::Popup | Kind::Collection | Kind::TextArea | Kind::RichEditor
             ) && node.clip.contains(pointer)
                 && self.set_scroll(id, node.scroll.offset + delta)
             {

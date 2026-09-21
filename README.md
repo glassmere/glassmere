@@ -86,6 +86,14 @@ cargo run -p rust-gui --example editor --release
 
 Styled rich text with links, and a virtualized code editor over an app-owned rope document with syntect highlighting, find and replace, bracket features, multiple cursors and diagnostics. See milestones [7b](docs/milestone-7.md#milestone-7b-rich-text-and-the-code-editor-foundation) and [7c](docs/milestone-7.md#milestone-7c-code-intelligence).
 
+WYSIWYG rich text:
+
+```powershell
+cargo run -p rust-gui --example richtext --release
+```
+
+An editable document of headings, lists, quotes, code blocks and marked text with a toolbar, saved as Markdown. See [milestone 7d](docs/milestone-7.md#milestone-7d-the-wysiwyg-rich-text-editor).
+
 Docking:
 
 ```powershell
@@ -197,6 +205,7 @@ cargo run -p rust-gui --example panes -- --smoke
 cargo run -p rust-gui --example animations -- --smoke
 cargo run -p rust-gui --example docking -- --smoke
 cargo run -p rust-gui --example editor -- --smoke
+cargo run -p rust-gui --example richtext -- --smoke
 cargo run -p rust-gui-core --example tree_bench --release
 ```
 

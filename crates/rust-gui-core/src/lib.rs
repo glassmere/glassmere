@@ -9,6 +9,8 @@ mod drag;
 mod editor;
 mod focus;
 mod panes;
+mod rich_document;
+mod rich_editor;
 mod rich_text;
 mod style;
 mod stylesheet;
@@ -36,6 +38,10 @@ pub use focus::{DialogOptions, DialogResponse, FocusScope};
 pub use panes::{
     Axis, PopoverOptions, PopoverResponse, SplitOptions, TOOLTIP_DELAY, Tab, TabsResponse,
 };
+pub use rich_document::{
+    Block, BlockKind, InlineRun, Mark, Marks, RichDocument, RichMotion, RichPosition,
+};
+pub use rich_editor::{RichEditorOptions, RichEditorResponse};
 pub use rich_text::{RichRun, RichText};
 pub use rust_gui_scene::{FontFamily, TextSpan, TextStyle, TextWrap};
 pub use rust_gui_scene::{MonospaceMeasurer, TextMeasurer};

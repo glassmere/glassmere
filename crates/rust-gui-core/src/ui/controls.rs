@@ -329,6 +329,7 @@ impl Ui<'_> {
             theme_request: self.theme_request,
             clipboard: self.clipboard,
             redraw: self.redraw,
+            focus: self.focus,
             layers: self.layers,
             enabled: self.enabled,
         };

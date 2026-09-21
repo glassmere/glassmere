@@ -227,6 +227,7 @@ impl Context {
                     | Kind::Divider
                     | Kind::DockHandle
                     | Kind::TextArea
+                    | Kind::RichEditor
             )
     }
 

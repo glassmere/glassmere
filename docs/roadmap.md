@@ -76,7 +76,7 @@ The [milestone report](milestone-5.md) describes the crates, contracts and valid
 - [x] Docking: split and tab-group layouts, drop indicators, in-window floating groups, detached OS windows, a keyboard panel menu, text and serde persistence ([milestone 7a](milestone-7.md#milestone-7a-docking)).
 - [x] Rich text blocks with links, a rope-backed `TextDocument` and a virtualized code editor ([milestone 7b](milestone-7.md#milestone-7b-rich-text-and-the-code-editor-foundation)).
 - [x] Code intelligence: syntect highlighting, find and replace, bracket pairing and matching, multiple cursors, diagnostics ([milestone 7c](milestone-7.md#milestone-7c-code-intelligence)).
-- [ ] The WYSIWYG rich text editor.
+- [x] The WYSIWYG rich text editor with a Markdown subset for persistence ([milestone 7d](milestone-7.md#milestone-7d-the-wysiwyg-rich-text-editor)).
 - [ ] BiDi caret order, hot reload and framework diagnostics.
 - CPU rendering, outgoing OS drags, gestures and additional platform adapters.
 

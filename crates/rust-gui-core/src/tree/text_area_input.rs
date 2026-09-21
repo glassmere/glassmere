@@ -37,7 +37,7 @@ pub(crate) struct AreaView {
     pub primary: Option<(usize, usize)>,
 }
 
-fn content(node: &Node) -> Rect {
+pub(super) fn content(node: &Node) -> Rect {
     let padding = node.style.padding.max(0.0);
     Rect {
         x: node.bounds.x + padding,
@@ -76,6 +76,10 @@ impl Context {
     /// in an app-owned document; the text arrives through `take_clipboard`
     /// after the next declaration. False when another kind of node has focus.
     pub fn request_clipboard(&mut self, cut: bool) -> bool {
+        if let Some(id) = self.focused_rich() {
+            self.rich_op(id, crate::rich_editor::RichOp::Clipboard { cut });
+            return true;
+        }
         let Some(id) = self.focused_area() else {
             return false;
         };
@@ -93,8 +97,8 @@ impl Context {
 
     /// The text area of the code editor that holds the focus, whether the
     /// focus is in the text or in its find bar.
-    fn editor_area(&self) -> Option<NodeId> {
-        if let Some(id) = self.focused_area() {
+    pub(super) fn editor_area(&self) -> Option<NodeId> {
+        if let Some(id) = self.focused_area().or_else(|| self.focused_rich()) {
             return Some(id);
         }
         let mut next = self.focused;
@@ -284,6 +288,9 @@ impl Context {
             }
             Event::Editor(command) => {
                 let id = self.editor_area()?;
+                if self.nodes.get(&id)?.kind != Kind::TextArea {
+                    return None;
+                }
                 self.area_op(id, AreaOp::Command(*command));
                 Some(true)
             }
@@ -291,7 +298,9 @@ impl Context {
             Event::KeyDown {
                 key: Key::Escape, ..
             } if self.focused_area().is_none() && self.popup.is_none() => {
-                let id = self.editor_area()?;
+                let id = self
+                    .editor_area()
+                    .filter(|id| self.nodes[id].kind == Kind::TextArea)?;
                 self.area_op(id, AreaOp::Command(EditorCommand::CloseFind));
                 Some(true)
             }
@@ -784,7 +793,7 @@ impl Context {
 }
 
 /// Inserts `text` as its own span at byte `at` of the concatenated spans.
-fn insert_span(spans: &mut Vec<TextSpan>, mut at: usize, text: &str) {
+pub(super) fn insert_span(spans: &mut Vec<TextSpan>, mut at: usize, text: &str) {
     let mut index = 0;
     while index < spans.len() && at > spans[index].text.len() {
         at -= spans[index].text.len();

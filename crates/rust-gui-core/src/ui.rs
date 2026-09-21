@@ -6,6 +6,7 @@ mod collections;
 mod controls;
 mod dock;
 mod overlays;
+mod rich_editor;
 mod rich_text;
 mod text_area;
 
@@ -38,6 +39,7 @@ pub(crate) enum Kind {
     DockHandle,
     TextArea,
     CodeEditor,
+    RichEditor,
     RichText,
     ContextArea,
     Popover,
@@ -118,6 +120,7 @@ pub struct Ui<'a> {
     /// Text a copy or cut produced, handed to the host after the declaration.
     pub(crate) clipboard: &'a mut Option<String>,
     pub(crate) redraw: &'a mut bool,
+    pub(crate) focus: &'a mut Option<(Option<NodeId>, WidgetKey)>,
     /// Dialog layers, appended after normal content as root children.
     pub(crate) layers: &'a mut Vec<Element>,
     pub(crate) enabled: bool,
@@ -141,6 +144,12 @@ impl Ui<'_> {
     /// over frames without an input event or animation driving it.
     pub fn request_redraw(&mut self) {
         *self.redraw = true;
+    }
+
+    /// Moves keyboard focus to the widget declared with `key` in this same
+    /// container, once this declaration has been reconciled.
+    pub fn request_focus(&mut self, key: impl Into<String>) {
+        *self.focus = Some((self.parent, WidgetKey::Named(key.into())));
     }
 
     pub fn class(&mut self, name: &str) -> Style {
@@ -322,6 +331,7 @@ impl Ui<'_> {
             theme_request: self.theme_request,
             clipboard: self.clipboard,
             redraw: self.redraw,
+            focus: self.focus,
             layers: self.layers,
             enabled: self.enabled,
         };
@@ -432,6 +442,7 @@ impl Ui<'_> {
             theme_request: self.theme_request,
             clipboard: self.clipboard,
             redraw: self.redraw,
+            focus: self.focus,
             layers: self.layers,
             enabled: self.enabled,
         };
