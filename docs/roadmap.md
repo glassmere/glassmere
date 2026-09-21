@@ -57,7 +57,8 @@ The [milestone report](milestone-4.md) records the contracts, validation and lim
 - [x] Per-node change and repaint flags, declare/layout/paint/render timings, `tracing` spans and CSV export.
 - [x] F12 inspector window: tree, node details with computed style, accessibility view, event log, frame timeline, selection/damage/repaint overlays.
 - [x] Single- and multi-window hosts on one desktop loop.
-- [ ] GPU timings, memory statistics and cross-driver pixel tolerance in CI. (Framework diagnostics were delivered in milestone 7h.)
+- [x] GPU timings and memory statistics in the inspector ([milestone 12](milestone-12.md)).
+- [ ] Cross-driver pixel tolerance in CI. (Framework diagnostics were delivered in milestone 7h.)
 
 The [milestone report](milestone-5.md) describes the crates, contracts and validation. [Feature coverage](feature-coverage.md) maps all 62 goals of the [original feature list](feature-list.md) to their status.
 
@@ -97,6 +98,7 @@ Work picked from the coverage table after the seven phases.
 - [x] Data grid: column resize, reorder and hide; cell cursor and typed inline editing; filter row; frozen and virtual columns ([milestone 10](milestone-10.md)).
 - [x] Localization, part one: message lookup, Fluent catalogs with plurals and fallback, run-time language switching, the framework's own strings with Czech and German ([milestone 11a and 11b](milestone-11.md)).
 - [x] Localization, part two: a compile-time checked `tr!`, and CLDR numbers, dates and times through ICU4X behind the `icu` feature ([milestone 11c and 11d](milestone-11.md)).
-- [ ] GPU timings and memory statistics, outgoing OS drags and gestures, CPU renderer.
+- [x] GPU pass timings through timestamp queries, renderer memory accounting and the driver's report, in a GPU tab of the inspector and in the CSV export ([milestone 12](milestone-12.md)).
+- [ ] Outgoing OS drags and gestures, CPU renderer.
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

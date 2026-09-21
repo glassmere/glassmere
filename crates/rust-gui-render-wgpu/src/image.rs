@@ -162,6 +162,17 @@ impl ImageCache {
         self.textures.values().map(Texture::bytes).sum()
     }
 
+    /// Bytes in atlas pages, and in standalone textures.
+    pub fn bytes_by_kind(&self) -> (u64, u64) {
+        let pages = self
+            .textures
+            .values()
+            .filter(|texture| texture.shelves.is_some())
+            .map(Texture::bytes)
+            .sum();
+        (pages, self.bytes() - pages)
+    }
+
     /// Atlas pages and standalone textures alive.
     pub fn counts(&self) -> (usize, usize) {
         let pages = self

@@ -1,6 +1,8 @@
 //! GPU scene backend. This crate knows paint primitives, never widgets.
 mod image;
+mod profile;
 mod text;
+pub use profile::{DriverMemory, GpuPassTime, GpuProfile, MAX_TIMED_PASSES, MemoryStats};
 pub use text::TextSystem;
 pub use wgpu;
 
@@ -104,6 +106,17 @@ pub struct RenderStats {
     pub atlas_pages: usize,
     pub image_textures: usize,
     pub image_bytes: u64,
+    /// Frames submitted so far, cached replays included.
+    pub frames: u64,
+    /// In the prepared frame: render passes (the target plus one per offscreen
+    /// layer), draw calls the renderer issues, and how many of those are quads.
+    /// A text batch counts as one draw call; glyphon's own draws inside it are
+    /// not visible from here. Layer composites and image batches are one each.
+    pub passes: usize,
+    pub draw_calls: usize,
+    pub quads: usize,
+    /// GPU memory the renderer allocated, by category.
+    pub memory: MemoryStats,
 }
 
 pub struct Renderer {
@@ -128,6 +141,10 @@ pub struct Renderer {
     pool: Vec<LayerTexture>,
     prepared_target: Option<([u32; 2], u32)>,
     stats: RenderStats,
+    profiling: bool,
+    /// Created by the first profiled frame on a device with timestamp queries.
+    timestamps: Option<profile::Timestamps>,
+    timestamps_supported: bool,
 }
 
 impl Renderer {
@@ -234,7 +251,55 @@ impl Renderer {
             pool: Vec::new(),
             prepared_target: None,
             stats: RenderStats::default(),
+            profiling: false,
+            timestamps: None,
+            timestamps_supported: device.features().contains(wgpu::Features::TIMESTAMP_QUERY),
         }
+    }
+
+    /// Switches GPU pass timing on or off; off by default. While off nothing
+    /// is written to query sets, nothing is read back and the buffers used for
+    /// it are released. Hosts switch it on while an inspector is open.
+    pub fn set_profiling(&mut self, enabled: bool) {
+        self.profiling = enabled;
+        if !enabled {
+            self.timestamps = None;
+            self.stats.memory.profiling = 0;
+            self.stats.memory.settle();
+        }
+    }
+
+    pub fn profiling(&self) -> bool {
+        self.profiling
+    }
+
+    /// Whether the device was created with `wgpu::Features::TIMESTAMP_QUERY`,
+    /// which the host has to request. Without it there are no GPU times and
+    /// the CPU time around `render` is all a host can show.
+    pub fn timestamps_supported(&self) -> bool {
+        self.timestamps_supported
+    }
+
+    /// GPU times of the most recent profiled frame that has come back.
+    pub fn gpu_profile(&self) -> Option<&GpuProfile> {
+        self.timestamps.as_ref()?.latest.as_ref()
+    }
+
+    /// Starts the memory high-water mark again from the current total.
+    pub fn reset_peak(&mut self) {
+        self.stats.memory.peak = self.stats.memory.total;
+    }
+
+    /// The driver allocator's figures for the whole device, where the backend
+    /// has such an allocator; show it beside `RenderStats::memory`, which is
+    /// this renderer alone.
+    pub fn driver_memory(device: &wgpu::Device) -> Option<DriverMemory> {
+        let report = device.generate_allocator_report()?;
+        Some(DriverMemory {
+            allocated: report.total_allocated_bytes,
+            reserved: report.total_reserved_bytes,
+            allocations: report.allocations.len(),
+        })
     }
 
     pub fn text_system(&mut self) -> &mut TextSystem {
@@ -737,11 +802,17 @@ impl Renderer {
             queue.write_buffer(self.image_buffer.as_ref().unwrap(), 0, bytes);
         }
         self.image_vertices = image_vertices;
-        self.stats.image_draws = surfaces
-            .iter()
-            .flat_map(|surface| &surface.draws)
-            .filter(|draw| matches!(draw, Draw::Image { .. }))
-            .count();
+        let count = |wanted: fn(&Draw) -> bool| {
+            surfaces
+                .iter()
+                .flat_map(|surface| &surface.draws)
+                .filter(|draw| wanted(draw))
+                .count()
+        };
+        self.stats.image_draws = count(|draw| matches!(draw, Draw::Image { .. }));
+        self.stats.quads = count(|draw| matches!(draw, Draw::Quad { .. }));
+        self.stats.draw_calls = count(|_| true);
+        self.stats.passes = surfaces.len();
         self.stats.image_uploads = self.images.uploads;
         (self.stats.atlas_pages, self.stats.image_textures) = self.images.counts();
         self.stats.image_bytes = self.images.bytes();
@@ -757,6 +828,11 @@ impl Renderer {
             .iter()
             .map(|texture| u64::from(texture.size[0]) * u64::from(texture.size[1]) * texel)
             .sum();
+        let memory = &mut self.stats.memory;
+        memory.buffers = self.stats.quad_buffer_bytes + self.image_buffer_bytes;
+        (memory.image_atlas, memory.image_textures) = self.images.bytes_by_kind();
+        memory.layers = self.stats.layer_texture_bytes;
+        memory.settle();
         self.draw(device, queue, target, clear)
     }
 
@@ -824,6 +900,13 @@ impl Renderer {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("rust-gui frame"),
         });
+        self.stats.frames += 1;
+        if self.profiling && self.timestamps_supported {
+            self.timestamps
+                .get_or_insert_with(|| profile::Timestamps::new(device, queue))
+                .collect(device);
+        }
+        let mut timed = Vec::new();
         // Children first: every layer is complete before its parent samples it.
         for surface in self.surfaces.iter().rev() {
             let (view, viewport, clear) = match surface.texture {
@@ -834,6 +917,22 @@ impl Renderer {
                 }
                 None => (target, &self.viewport, clear.linear()),
             };
+            let timestamp_writes = self
+                .timestamps
+                .as_ref()
+                .filter(|_| timed.len() < profile::MAX_TIMED_PASSES)
+                .map(|timestamps| {
+                    let index = timed.len() as u32 * 2;
+                    timed.push(match surface.texture {
+                        Some(_) => format!("layer {}x{}", surface.size[0], surface.size[1]),
+                        None => "main".to_owned(),
+                    });
+                    wgpu::RenderPassTimestampWrites {
+                        query_set: &timestamps.queries,
+                        beginning_of_pass_write_index: Some(index),
+                        end_of_pass_write_index: Some(index + 1),
+                    }
+                });
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("rust-gui scene"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -851,7 +950,7 @@ impl Renderer {
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: None,
+                timestamp_writes,
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
@@ -894,7 +993,20 @@ impl Renderer {
                 }
             }
         }
+        let frame = self.stats.frames;
+        let slot = self
+            .timestamps
+            .as_mut()
+            .filter(|_| !timed.is_empty())
+            .map(|timestamps| timestamps.resolve(device, &mut encoder, frame, timed));
         queue.submit(Some(encoder.finish()));
+        if let (Some(timestamps), Some(slot)) = (&mut self.timestamps, slot) {
+            // Mapping is asked for after the submission that fills the buffer;
+            // a later frame's `collect` picks the result up.
+            timestamps.submitted(slot);
+            self.stats.memory.profiling = timestamps.bytes();
+            self.stats.memory.settle();
+        }
         self.atlas.trim();
         Ok(())
     }

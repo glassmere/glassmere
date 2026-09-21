@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 11d. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 12. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -35,8 +35,8 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 29 | Optional reactive state | Not started | Ordinary Rust state is the only model. |
 | 30 | Ordinary Rust state | Done | Views borrow `&mut` application state. |
 | 31 | Observable dependency graph | Partial | Inspector shows per-node "last declaration changed" flags and repainted nodes; no dependency graph because there is no reactive layer. |
-| 32 | Built-in native DevTools | Partial | F12 inspector: tree, box model, computed style, focus/hover state, accessibility view, event log, repaint/damage overlays, frame timings. Missing: render layers, GPU timings, memory statistics. |
-| 33 | Performance profiler | Partial | Declare/layout/paint/render CPU timings, dirty flags, created/reused/removed counts, paint cache hits, CSV export, `tracing` spans. Missing: text shaping split, GPU time, draw calls, allocations. |
+| 32 | Built-in native DevTools | Partial | F12 inspector: tree, box model, computed style, focus/hover state, accessibility view, event log, repaint/damage overlays, frame timings, and a GPU tab with pass times, draw counters, renderer memory by category and the driver's report (milestone 12). Missing: a render layer view, CPU memory statistics. |
+| 33 | Performance profiler | Partial | Declare/layout/paint/render CPU timings, dirty flags, created/reused/removed counts, paint cache hits, CSV export, `tracing` spans; GPU time per frame and pass through timestamp queries, draw calls, quads, passes and GPU memory, measured only while an inspector is open (milestone 12). Missing: text shaping split, CPU allocations, the glyph atlas in the memory total. |
 | 34 | Hot reload | Done | Stylesheets and themes reload in place; any file through `Ui::watched_bytes`/`watched_text`; Rust code through `rust-gui-dev`, which rebuilds and restarts with app state (`Ui::hot_state`) and window geometry kept (milestone 7g). Image files reload in place too (milestone 8a). Missing: in-process code swapping. |
 | 35 | Headless UI testing | Done | `rust-gui-testing` harness with real input paths and application state access. |
 | 36 | Snapshot testing | Done | Text snapshots for tree, layout, accessibility and scene; opt-in pixel snapshots with a bundled font. |

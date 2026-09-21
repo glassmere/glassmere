@@ -695,10 +695,13 @@ impl ApplicationHandler<UserEvent> for Desktop {
         if redraw && self.inspectors.contains_key(&key) {
             self.refresh_inspector(key);
         }
-        self.windows
-            .get_mut(&key)
-            .unwrap()
-            .window_event(event_loop, event);
+        let (profile_gpu, inspected) = (
+            !self.inspectors.is_empty(),
+            self.inspector_of(key).is_some(),
+        );
+        let app = self.windows.get_mut(&key).unwrap();
+        (app.profile_gpu, app.inspected) = (profile_gpu, inspected);
+        app.window_event(event_loop, event);
         if redraw {
             if self.inspectors.contains_key(&key) {
                 self.apply_inspector(key);

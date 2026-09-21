@@ -36,7 +36,7 @@ cargo run -p rust-gui --example application --release
 
 It shows a virtualized list, tree and sortable grid over 50,000 application-owned rows, commands with shortcuts, drag and drop, a worker mailbox and a details window sharing the main window's GPU device. See [milestone 4](docs/milestone-4.md).
 
-Press F12 in any window to open its inspector: node tree, computed style, accessibility view, event log, frame timings and selection/damage/repaint overlays. `RUST_GUI_INSPECT=1` opens it at start. Headless tests use the `rust-gui-testing` harness with semantic finders and text snapshots. See [milestone 5](docs/milestone-5.md) and the [feature coverage](docs/feature-coverage.md) table.
+Press F12 in any window to open its inspector: node tree, computed style, accessibility view, event log, frame timings, GPU pass times and memory, and selection/damage/repaint overlays. `RUST_GUI_INSPECT=1` opens it at start. Headless tests use the `rust-gui-testing` harness with semantic finders and text snapshots. See [milestone 5](docs/milestone-5.md) and the [feature coverage](docs/feature-coverage.md) table.
 
 Theming and stylesheets have their own example:
 
@@ -191,6 +191,7 @@ The view may run more than once per input event. Put application actions behind 
 - Commands with keyboard shortcuts, in-process drag/drop with keyboard and accessibility paths, and incoming OS file drops.
 - Bounded worker mailboxes and multiple windows on one shared graphics device.
 - F12 inspector window with per-node change flags, frame timings, CSV export and `tracing` spans.
+- GPU tab: pass times from timestamp queries where the adapter has them, draw calls, renderer memory by category and the driver's report; measured only while an inspector is open.
 - Headless testing harness with `by_label` finders, real input paths and tree/layout/accessibility/scene snapshots.
 - Headless kernel tests and an opt-in GPU readback test with a bundled-font pixel reference.
 - Theme tokens for every control with dark/light themes, OS preference and runtime switching; inherited text properties; hover/pressed/focused/disabled overrides; Rust and stylesheet classes with hot reload.

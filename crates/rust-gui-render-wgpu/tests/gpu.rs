@@ -474,6 +474,11 @@ const BLUE: Color = Color(0, 0, 255, 255);
 
 impl Gpu {
     fn new() -> Self {
+        Self::with_features(wgpu::Features::empty())
+    }
+
+    /// Requests those of `wanted` the adapter has, as a host would.
+    fn with_features(wanted: wgpu::Features) -> Self {
         let turn = turn();
         pollster::block_on(async {
             let instance = wgpu::Instance::new(
@@ -484,7 +489,10 @@ impl Gpu {
                 .await
                 .expect("graphics adapter");
             let (device, queue) = adapter
-                .request_device(&wgpu::DeviceDescriptor::default())
+                .request_device(&wgpu::DeviceDescriptor {
+                    required_features: adapter.features() & wanted,
+                    ..Default::default()
+                })
                 .await
                 .unwrap();
             let format = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -1205,4 +1213,186 @@ fn images_composite_inside_layers_and_keep_painters_order() {
     assert_pixel(&pixels, 20, 80, [255, 0, 0]);
     assert_pixel(&pixels, 40, 80, [255; 3]);
     assert_pixel(&pixels, 20, 100, [255; 3]);
+}
+
+/// A quad, and a half-transparent layer holding another: two passes.
+fn layered_scene() -> [Primitive; 4] {
+    [
+        quad(rect(0.0, 0.0, 64.0, 128.0), BLUE),
+        layer(rect(10.0, 10.0, 40.0, 40.0), 0.5, Affine::IDENTITY),
+        quad(rect(10.0, 10.0, 40.0, 40.0), RED),
+        Primitive::PopLayer,
+    ]
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn profiled_frames_report_gpu_pass_times_where_the_adapter_has_timestamps() {
+    let mut gpu = Gpu::with_features(wgpu::Features::TIMESTAMP_QUERY);
+    gpu.renderer.set_profiling(true);
+    assert!(gpu.renderer.profiling());
+    let scene = layered_scene();
+    // `render` waits for its own readback, so earlier frames' timestamps are
+    // mapped by the time the next frame collects them.
+    for frame in 0..8 {
+        gpu.render(1.0, &scene, frame == 0);
+    }
+    if !gpu.renderer.timestamps_supported() {
+        println!("timestamp path: adapter has no TIMESTAMP_QUERY, no GPU times");
+        assert!(gpu.renderer.gpu_profile().is_none());
+        assert_eq!(gpu.renderer.stats().memory.profiling, 0);
+        return;
+    }
+    let profile = gpu.renderer.gpu_profile().expect("a finished profile");
+    println!("timestamp path: queries, {profile:?}");
+    let labels: Vec<&str> = profile
+        .passes
+        .iter()
+        .map(|pass| pass.label.as_str())
+        .collect();
+    assert_eq!(labels, ["layer 40x40", "main"]);
+    assert!(profile.frame >= 1 && profile.frame < 8);
+    let sum: std::time::Duration = profile.passes.iter().map(|pass| pass.duration).sum();
+    assert!(!profile.total.is_zero() && profile.total >= sum / 2);
+    assert!(profile.total < std::time::Duration::from_secs(1));
+    // One resolve buffer and at most four readbacks of 512 bytes.
+    let stats = gpu.renderer.stats();
+    assert!((1024..=2560).contains(&stats.memory.profiling));
+
+    gpu.renderer.set_profiling(false);
+    assert!(gpu.renderer.gpu_profile().is_none());
+    assert_eq!(gpu.renderer.stats().memory.profiling, 0);
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn profiling_on_a_device_without_timestamps_draws_and_reports_no_times() {
+    // What a host gets when the adapter lacks the feature or did not ask.
+    let mut gpu = Gpu::new();
+    gpu.renderer.set_profiling(true);
+    assert!(!gpu.renderer.timestamps_supported());
+    let scene = layered_scene();
+    let first = gpu.render(1.0, &scene, true);
+    for _ in 0..4 {
+        assert!(first == gpu.render(1.0, &scene, false), "replay changed");
+    }
+    assert!(gpu.renderer.gpu_profile().is_none());
+    let stats = gpu.renderer.stats();
+    assert_eq!(stats.memory.profiling, 0);
+    // Counters and memory do not need timestamps.
+    assert!(stats.draw_calls > 0 && stats.memory.total > 0);
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn without_profiling_there_is_no_profile_and_replays_stay_identical() {
+    let mut gpu = Gpu::with_features(wgpu::Features::TIMESTAMP_QUERY);
+    assert!(!gpu.renderer.profiling());
+    let scene = layered_scene();
+    let first = gpu.render(1.0, &scene, true);
+    for _ in 0..4 {
+        assert!(first == gpu.render(1.0, &scene, false), "replay changed");
+        assert!(gpu.renderer.gpu_profile().is_none());
+    }
+    let stats = gpu.renderer.stats();
+    assert_eq!((stats.frames, stats.preparations), (5, 1));
+    assert_eq!(stats.memory.profiling, 0);
+    // Profiling does not change the picture either.
+    gpu.renderer.set_profiling(true);
+    assert!(first == gpu.render(1.0, &scene, false), "profiling changed");
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn memory_is_counted_by_category_and_the_peak_survives_eviction() {
+    let mut gpu = Gpu::new();
+    #[track_caller]
+    fn consistent(gpu: &Gpu) -> rust_gui_render_wgpu::MemoryStats {
+        let memory = gpu.renderer.stats().memory;
+        assert_eq!(memory.glyph_atlas, None, "glyphon does not say");
+        assert_eq!(
+            memory.total,
+            memory.buffers
+                + memory.image_atlas
+                + memory.image_textures
+                + memory.layers
+                + memory.profiling
+        );
+        assert!(memory.peak >= memory.total);
+        memory
+    }
+    gpu.render(1.0, &[quad(rect(0.0, 0.0, 8.0, 8.0), RED)], true);
+    let quads = consistent(&gpu);
+    assert!(quads.buffers > 0);
+    assert_eq!(
+        (quads.image_atlas, quads.image_textures, quads.layers),
+        (0, 0, 0)
+    );
+
+    gpu.render(1.0, &layered_scene(), true);
+    assert_eq!(consistent(&gpu).layers, 40 * 40 * 4);
+
+    let small = raster(8, 8, |_, _| [255, 0, 0, 255]);
+    let frame = |gpu: &mut Gpu| {
+        let large = raster(1024, 1024, |_, _| [0, 0, 255, 255]);
+        gpu.render(
+            1.0,
+            &[
+                picture(rect(0.0, 0.0, 64.0, 64.0), &large),
+                picture(rect(70.0, 0.0, 20.0, 20.0), &small),
+            ],
+            true,
+        );
+        consistent(gpu)
+    };
+    let images = frame(&mut gpu);
+    assert_eq!(images.image_atlas, 2048 * 2048 * 4);
+    assert_eq!(images.image_textures, 1024 * 1024 * 4);
+    assert!(images.total > quads.total);
+
+    gpu.renderer.set_image_budget(24 << 20);
+    frame(&mut gpu);
+    let full = frame(&mut gpu);
+    assert_eq!(full.image_textures, 3 * 1024 * 1024 * 4);
+    let evicted = frame(&mut gpu);
+    assert_eq!(evicted.image_textures, 2 * 1024 * 1024 * 4);
+    assert!(evicted.total < full.total);
+    assert!(evicted.peak >= full.total && evicted.peak > evicted.total);
+
+    gpu.renderer.reset_peak();
+    let memory = gpu.renderer.stats().memory;
+    assert_eq!(memory.peak, memory.total);
+
+    // The driver's view of the whole device, where the backend has one.
+    match Renderer::driver_memory(&gpu.device) {
+        Some(driver) => {
+            println!("driver memory: {driver:?}");
+            assert!(driver.reserved >= driver.allocated && driver.allocations > 0);
+            assert!(driver.allocated >= memory.total);
+        }
+        None => println!("driver memory: this backend has no allocator report"),
+    }
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn draw_calls_quads_and_passes_match_a_known_scene() {
+    let mut gpu = Gpu::new();
+    let image = raster(8, 8, |_, _| [255, 0, 0, 255]);
+    let mut scene = layered_scene().to_vec();
+    scene.push(Primitive::Text {
+        rect: rect(70.0, 40.0, 50.0, 20.0),
+        text: "Ag".into(),
+        font_size: 16.0,
+        color: Color(0, 0, 0, 255),
+    });
+    scene.push(picture(rect(70.0, 0.0, 20.0, 20.0), &image));
+    gpu.render(1.0, &scene, true);
+    let stats = gpu.renderer.stats();
+    // Two quads, one text batch, one image batch and the layer's composite.
+    assert_eq!(
+        (stats.quads, stats.text_batches, stats.image_draws),
+        (2, 1, 1)
+    );
+    assert_eq!((stats.draw_calls, stats.passes), (5, 2));
 }

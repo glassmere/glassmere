@@ -185,7 +185,23 @@ struct WindowState {
 struct SharedRenderer {
     renderer: Renderer,
     window: Option<WindowId>,
+    gpu: GpuRouting,
 }
+
+/// GPU times come back a few frames late and the renderer is shared, so the
+/// time of a frame may complete while another window is drawing. This
+/// remembers who drew which frame and holds a result until its window asks.
+#[derive(Default)]
+struct GpuRouting {
+    /// Renderer frame, the window that drew it and that window's frame number.
+    drawn: std::collections::VecDeque<(u64, WindowId, u64)>,
+    /// The renderer frame whose profile was routed last.
+    routed: Option<u64>,
+    arrived: std::collections::HashMap<WindowId, GpuTimes>,
+}
+
+/// A window's frame number, its GPU time and the passes it was made of.
+type GpuTimes = (u64, Duration, Vec<(String, Duration)>);
 
 impl WindowState {
     async fn new(
@@ -235,6 +251,10 @@ impl WindowState {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("rust-gui device"),
+                // Lets the inspector time render passes on the GPU's own
+                // clock where the adapter can; nothing is measured until an
+                // inspector is open.
+                required_features: adapter.features() & wgpu::Features::TIMESTAMP_QUERY,
                 memory_hints: diagnostics::memory_hints(options.memory_policy.hints()),
                 required_limits: diagnostics::device_limits(options.limits()),
                 ..Default::default()
@@ -268,6 +288,7 @@ impl WindowState {
             renderer: Rc::new(RefCell::new(SharedRenderer {
                 renderer,
                 window: None,
+                gpu: GpuRouting::default(),
             })),
             pending_scene: true,
             accessibility: None,
@@ -314,6 +335,10 @@ struct Application<F> {
     retry_pending: bool,
     /// Framework diagnostics already printed.
     diagnostics_seen: usize,
+    /// Some inspector is open, so the shared renderer profiles its frames.
+    profile_gpu: bool,
+    /// An inspector is looking at this window.
+    inspected: bool,
     started: Instant,
 }
 
@@ -358,6 +383,8 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             hot_stopping: false,
             retry_pending: false,
             diagnostics_seen: 0,
+            profile_gpu: false,
+            inspected: false,
             started: Instant::now(),
         }
     }
@@ -511,6 +538,9 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         let mut shared = shared_renderer.borrow_mut();
         let window_changed = shared.window != Some(state.window.id());
         let renderer = &mut shared.renderer;
+        // The same for every window of the device: switching it per window
+        // would drop the readbacks that are still on their way.
+        renderer.set_profiling(self.profile_gpu);
         let logical_size = Size::new(size.width as f32 / scale, size.height as f32 / scale);
         self.logical_size = logical_size;
         self.context.set_now(self.started.elapsed());
@@ -715,6 +745,80 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                 self.close_requested = true;
             } else {
                 state.window.request_redraw();
+            }
+        }
+        if self.profile_gpu {
+            let core_frame = self
+                .recorder
+                .frames()
+                .back()
+                .map_or(0, |record| record.stats.frame);
+            let shared = &mut *shared;
+            let window = state.window.id();
+            let stats = shared.renderer.stats();
+            let routing = &mut shared.gpu;
+            routing.drawn.push_back((stats.frames, window, core_frame));
+            while routing.drawn.len() > 32 {
+                routing.drawn.pop_front();
+            }
+            // Whatever completed goes to the window that drew it, which may
+            // not be this one.
+            if let Some(profile) = shared.renderer.gpu_profile()
+                && routing.routed != Some(profile.frame)
+            {
+                routing.routed = Some(profile.frame);
+                if let Some((_, owner, frame)) = routing
+                    .drawn
+                    .iter()
+                    .find(|(drawn, ..)| *drawn == profile.frame)
+                {
+                    let passes = profile
+                        .passes
+                        .iter()
+                        .map(|pass| (pass.label.clone(), pass.duration))
+                        .collect();
+                    // ponytail: one entry per window that ever drew while an
+                    // inspector was open, overwritten and never pruned; prune
+                    // on window close if apps start opening thousands.
+                    routing
+                        .arrived
+                        .insert(*owner, (*frame, profile.total, passes));
+                }
+            }
+            if self.inspected {
+                let arrived = routing.arrived.remove(&window);
+                let memory = stats.memory;
+                let snapshot = rust_gui_devtools::GpuSnapshot {
+                    adapter: {
+                        let info = state.adapter.get_info();
+                        format!("{} ({:?})", info.name, info.backend)
+                    },
+                    timestamps: shared.renderer.timestamps_supported(),
+                    passes: match &arrived {
+                        Some((_, _, passes)) => passes.clone(),
+                        None => self
+                            .recorder
+                            .gpu_snapshot()
+                            .map(|last| last.passes.clone())
+                            .unwrap_or_default(),
+                    },
+                    draw_calls: stats.draw_calls as u32,
+                    quads: stats.quads as u32,
+                    text_batches: stats.text_batches as u32,
+                    render_passes: stats.passes as u32,
+                    memory: vec![
+                        ("Vertex and uniform buffers".into(), memory.buffers),
+                        ("Image atlas".into(), memory.image_atlas),
+                        ("Image textures".into(), memory.image_textures),
+                        ("Offscreen layers".into(), memory.layers),
+                        ("Profiling".into(), memory.profiling),
+                    ],
+                    memory_peak: memory.peak,
+                    driver: Renderer::driver_memory(&state.device)
+                        .map(|driver| (driver.allocated, driver.reserved)),
+                };
+                self.recorder
+                    .gpu(snapshot, arrived.map(|(frame, total, _)| (frame, total)));
             }
         }
         shared.window = Some(state.window.id());

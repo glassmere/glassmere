@@ -20,15 +20,50 @@ pub struct FrameRecord {
     pub stats: FrameStats,
     pub render: Duration,
     pub total: Duration,
+    /// Time the GPU spent on this frame. It arrives a few frames late, and
+    /// never on adapters without timestamp queries.
+    pub gpu: Option<Duration>,
+    pub draw_calls: u32,
+    /// Bytes the renderer had allocated on the GPU after this frame.
+    pub gpu_memory: u64,
+}
+
+/// What the renderer reports about the GPU, as of the latest frame. Plain
+/// data, so that the inspector does not depend on a renderer.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct GpuSnapshot {
+    /// Adapter name and backend, such as `NVIDIA GeForce RTX 4070 (Dx12)`.
+    pub adapter: String,
+    /// Whether the adapter can time passes. Without it only the CPU's render
+    /// time is known, which measures the driver's queue, not the GPU.
+    pub timestamps: bool,
+    /// The most recent frame whose GPU times have arrived, by pass.
+    pub passes: Vec<(String, Duration)>,
+    pub draw_calls: u32,
+    pub quads: u32,
+    pub text_batches: u32,
+    pub render_passes: u32,
+    /// Bytes by category, as the renderer accounts for its own allocations.
+    pub memory: Vec<(String, u64)>,
+    pub memory_peak: u64,
+    /// The driver's allocator, for the whole device: allocated and reserved
+    /// bytes. Only some backends report it.
+    pub driver: Option<(u64, u64)>,
+}
+
+impl GpuSnapshot {
+    pub fn memory_total(&self) -> u64 {
+        self.memory.iter().map(|(_, bytes)| bytes).sum()
+    }
 }
 
 impl FrameRecord {
-    pub const CSV_HEADER: &'static str = "frame,declare_us,layout_us,paint_us,render_us,total_us,created,reused,removed,text_measures,layout_passes,paint_nodes,paint_cache_hits,scene_rebuilt,dirty";
+    pub const CSV_HEADER: &'static str = "frame,declare_us,layout_us,paint_us,render_us,total_us,created,reused,removed,text_measures,layout_passes,paint_nodes,paint_cache_hits,scene_rebuilt,dirty,gpu_us,draw_calls,gpu_memory_bytes";
 
     pub fn csv_row(&self) -> String {
         let s = &self.stats;
         format!(
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{:?}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{:?},{},{},{}",
             s.frame,
             s.declare.as_micros(),
             s.layout.as_micros(),
@@ -43,23 +78,30 @@ impl FrameRecord {
             s.paint_nodes,
             s.paint_cache_hits,
             s.scene_rebuilt,
-            s.dirty
+            s.dirty,
+            // Empty when the GPU time is not known, rather than a zero that
+            // would read as a measurement.
+            self.gpu
+                .map_or_else(String::new, |gpu| gpu.as_micros().to_string()),
+            self.draw_calls,
+            self.gpu_memory
         )
     }
 
     /// Column titles for [`FrameRecord::summary`] rows.
-    const SUMMARY_HEADER: &'static str =
-        "frame   declare  layout   paint  render   total ms   +new ~reused -gone  painted   dirty";
+    const SUMMARY_HEADER: &'static str = "frame   declare  layout   paint  render     gpu   total ms   +new ~reused -gone  painted   dirty";
 
     fn summary(&self) -> String {
         let s = &self.stats;
         format!(
-            "{:<7} {:>7.2} {:>7.2} {:>7.2} {:>7.2} {:>7.2}    {:>4} {:>7} {:>5}  {:>3}/{:<4} {}",
+            "{:<7} {:>7.2} {:>7.2} {:>7.2} {:>7.2} {:>7} {:>7.2}    {:>4} {:>7} {:>5}  {:>3}/{:<4} {}",
             s.frame,
             millis(s.declare),
             millis(s.layout),
             millis(s.paint),
             millis(self.render),
+            self.gpu
+                .map_or_else(|| "-".to_owned(), |gpu| format!("{:.2}", millis(gpu))),
             millis(self.total),
             s.created,
             s.reused,
@@ -100,6 +142,7 @@ pub struct Recorder {
     events: VecDeque<EventRecord>,
     capacity: usize,
     next_event: u64,
+    gpu: Option<GpuSnapshot>,
 }
 
 impl Recorder {
@@ -110,6 +153,7 @@ impl Recorder {
             events: VecDeque::with_capacity(capacity),
             capacity,
             next_event: 0,
+            gpu: None,
         }
     }
 
@@ -121,7 +165,33 @@ impl Recorder {
             stats,
             render,
             total,
+            gpu: None,
+            draw_calls: 0,
+            gpu_memory: 0,
         });
+    }
+
+    /// The renderer's report after the frame just recorded. `completed` is a
+    /// GPU time that has arrived now for an earlier frame, by its number.
+    pub fn gpu(&mut self, snapshot: GpuSnapshot, completed: Option<(u64, Duration)>) {
+        if let Some(last) = self.frames.back_mut() {
+            last.draw_calls = snapshot.draw_calls;
+            last.gpu_memory = snapshot.memory_total();
+        }
+        if let Some((frame, time)) = completed
+            && let Some(record) = self
+                .frames
+                .iter_mut()
+                .rev()
+                .find(|record| record.stats.frame == frame)
+        {
+            record.gpu = Some(time);
+        }
+        self.gpu = Some(snapshot);
+    }
+
+    pub fn gpu_snapshot(&self) -> Option<&GpuSnapshot> {
+        self.gpu.as_ref()
     }
 
     pub fn event(&mut self, frame: u64, description: String, handled: bool) {
@@ -187,6 +257,8 @@ pub struct InspectorModel {
     pub warnings: Vec<String>,
     /// Framework diagnostics of the inspected window.
     pub diagnostics: Vec<rust_gui_core::FrameDiagnostic>,
+    /// The renderer's latest report, when the host supplies one.
+    pub gpu: Option<GpuSnapshot>,
 }
 
 impl Default for InspectorModel {
@@ -206,6 +278,7 @@ impl Default for InspectorModel {
             export_path: None,
             warnings: Vec::new(),
             diagnostics: Vec::new(),
+            gpu: None,
         }
     }
 }
@@ -243,6 +316,7 @@ impl InspectorModel {
             events: recorder.events().iter().cloned().collect(),
             warnings: context.style_warnings().to_vec(),
             diagnostics: context.diagnostics().to_vec(),
+            gpu: recorder.gpu_snapshot().cloned(),
             ..Self::default()
         }
     }
@@ -273,6 +347,7 @@ pub enum Tab {
     Accessibility,
     Events,
     Frames,
+    Gpu,
     Diagnostics,
 }
 
@@ -316,6 +391,14 @@ const MUTED: Color = Color::rgb(162, 180, 198);
 const ACCENT: Color = Color::rgb(103, 232, 206);
 
 impl Inspector {
+    /// An inspector that opens on `tab`.
+    pub fn showing(tab: Tab) -> Self {
+        Self {
+            tab,
+            ..Self::default()
+        }
+    }
+
     pub fn selected(&self) -> Option<NodeId> {
         self.tree.selected().map(|id| NodeId(id.0))
     }
@@ -382,6 +465,7 @@ impl Inspector {
                             (Tab::Accessibility, "Accessibility".to_owned()),
                             (Tab::Events, "Events".to_owned()),
                             (Tab::Frames, "Frames".to_owned()),
+                            (Tab::Gpu, "GPU".to_owned()),
                             (
                                 Tab::Diagnostics,
                                 format!("Diagnostics ({})", model.diagnostics.len()),
@@ -573,6 +657,7 @@ impl Inspector {
                             },
                         );
                     }
+                    Tab::Gpu => gpu_tab(ui, model, &mono),
                     Tab::Frames => {
                         let count = model.frames.len().max(1) as f64;
                         let average = |pick: fn(&FrameRecord) -> Duration| {
@@ -1123,4 +1208,157 @@ impl ListModel for FrameRows<'_> {
     fn label(&self, index: usize) -> String {
         self.0[index].summary()
     }
+}
+
+fn mebibytes(bytes: u64) -> String {
+    if bytes < 1 << 20 {
+        // A few vertex buffers would otherwise read as nothing at all.
+        return format!("{:.1} KiB", bytes as f64 / 1024.0);
+    }
+    format!("{:.1} MiB", bytes as f64 / (1024.0 * 1024.0))
+}
+
+/// A label, a value and a bar whose length is `share` of the row.
+fn bar_row(ui: &mut Ui<'_>, key: &str, label: &str, value: String, share: f32, mono: &Style) {
+    ui.row(
+        key,
+        Style {
+            gap: 10.0,
+            width: Length::Percent(1.0),
+            align_items: rust_gui_core::Align::Center,
+            ..Style::default()
+        },
+        |ui| {
+            ui.label_styled("label", label, mono.clone().width(Length::Px(190.0)));
+            ui.label_styled("value", value, mono.clone().width(Length::Px(110.0)));
+            ui.container(
+                "track",
+                Style::default().grow(1.0).height(Length::Px(8.0)),
+                |ui| {
+                    let accent = ui.theme().accent;
+                    ui.container(
+                        "bar",
+                        Style::default()
+                            .width(Length::Percent(share.clamp(0.0, 1.0)))
+                            .height(Length::Px(8.0))
+                            .radius(3.0)
+                            .background(accent),
+                        |_| {},
+                    );
+                },
+            );
+        },
+    );
+}
+
+fn gpu_tab(ui: &mut Ui<'_>, model: &InspectorModel, mono: &Style) {
+    let muted = Style {
+        font_size: Some(13.0),
+        foreground: Some(MUTED),
+        ..Style::default()
+    };
+    let Some(gpu) = &model.gpu else {
+        ui.label_styled("none", "This host does not report GPU statistics.", muted);
+        return;
+    };
+    ui.label_keyed("adapter", gpu.adapter.clone());
+    let timed: Vec<Duration> = model.frames.iter().filter_map(|frame| frame.gpu).collect();
+    if gpu.timestamps {
+        let average =
+            timed.iter().sum::<Duration>().as_secs_f64() * 1000.0 / timed.len().max(1) as f64;
+        ui.label_keyed(
+            "time",
+            format!(
+                "GPU frame time  ·  last {}  ·  average {average:.2} ms over {} frames",
+                timed
+                    .last()
+                    .map_or_else(|| "-".to_owned(), |last| format!("{:.2} ms", millis(*last))),
+                timed.len()
+            ),
+        );
+    } else {
+        ui.label_styled(
+            "time",
+            "This adapter has no timestamp queries, so GPU time is unknown. The render column \
+             of the Frames tab is CPU time: it measures the driver's queue, not the GPU.",
+            Style {
+                wrap: rust_gui_core::TextWrap::Word,
+                width: Length::Percent(1.0),
+                ..muted.clone()
+            },
+        );
+    }
+    ui.label_keyed(
+        "counters",
+        format!(
+            "{} draw calls  ·  {} quads  ·  {} text batches  ·  {} render passes",
+            gpu.draw_calls, gpu.quads, gpu.text_batches, gpu.render_passes
+        ),
+    );
+    if !gpu.passes.is_empty() {
+        ui.label_styled(
+            "passes-title",
+            "Passes of the last timed frame",
+            muted.clone(),
+        );
+        let longest = gpu
+            .passes
+            .iter()
+            .map(|(_, time)| time.as_secs_f32())
+            .fold(f32::MIN_POSITIVE, f32::max);
+        ui.column(
+            "passes",
+            Style::default().gap(4.0).width(Length::Percent(1.0)),
+            |ui| {
+                for (index, (label, time)) in gpu.passes.iter().enumerate() {
+                    bar_row(
+                        ui,
+                        &format!("pass-{index}"),
+                        label,
+                        format!("{:.3} ms", millis(*time)),
+                        time.as_secs_f32() / longest,
+                        mono,
+                    );
+                }
+            },
+        );
+    }
+    let total = gpu.memory_total();
+    ui.label_styled(
+        "memory-title",
+        format!(
+            "GPU memory allocated by the renderer  ·  {}  ·  peak {}",
+            mebibytes(total),
+            mebibytes(gpu.memory_peak)
+        ),
+        muted.clone(),
+    );
+    ui.column(
+        "memory",
+        Style::default().gap(4.0).width(Length::Percent(1.0)),
+        |ui| {
+            for (index, (category, bytes)) in gpu.memory.iter().enumerate() {
+                bar_row(
+                    ui,
+                    &format!("memory-{index}"),
+                    category,
+                    mebibytes(*bytes),
+                    *bytes as f32 / total.max(1) as f32,
+                    mono,
+                );
+            }
+        },
+    );
+    ui.label_styled(
+        "driver",
+        match gpu.driver {
+            Some((allocated, reserved)) => format!(
+                "The driver's allocator reports {} allocated and {} reserved for the whole device.",
+                mebibytes(allocated),
+                mebibytes(reserved)
+            ),
+            None => "This backend does not report the driver's allocator.".to_owned(),
+        },
+        muted,
+    );
 }
