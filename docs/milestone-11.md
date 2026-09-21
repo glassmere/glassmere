@@ -1,6 +1,6 @@
 # Milestone 11: localization
 
-Row 39 of the coverage table had right-to-left layout and locale detection but no translated text. Decisions taken at the start: Fluent catalogs through the fluent crates; `ui.tr` plus a compile-time checked macro; the framework's own strings as overridable keys with built-in English and shipped Czech and German; full CLDR formatting through ICU4X behind a feature. Slices: 11a messages and Fluent, 11b the framework's own strings and 11c the `tr!` macro (all below), 11d ICU4X numbers and dates.
+Row 39 of the coverage table had right-to-left layout and locale detection but no translated text. Decisions taken at the start: Fluent catalogs through the fluent crates; `ui.tr` plus a compile-time checked macro; the framework's own strings as overridable keys with built-in English and shipped Czech and German; full CLDR formatting through ICU4X behind a feature. Slices: 11a messages and Fluent, 11b the framework's own strings, 11c the `tr!` macro and 11d ICU4X numbers and dates (all below). Milestone 11 is complete.
 
 # Milestone 11a: messages and Fluent catalogs
 
@@ -94,3 +94,39 @@ messages = "locales/en.ftl"          # the default-locale catalog, relative to t
 One new test in the facade crate, whose own manifest names the example's English catalog: a plain key, an argument from an expression, a trailing comma and a framework key, all resolving in Czech at run time. The four kinds of compile error were checked by compiling a throwaway file and reading the messages; there is no compile-fail test suite. The localization example uses the macro for its plural line and its toast.
 
 Limits: only the default-locale catalog is checked, so another language can still lack a key, which shows as the fallback text at run time and in `Context::missing_messages`; only one catalog file can be named; attributes of messages and terms are not checked.
+
+# Milestone 11d: numbers, dates and times through ICU4X
+
+Implemented on 2026-09-21. The core asks a `LocaleFormat` for numbers, dates and times, and a new opt-in crate answers with CLDR data. This completes milestone 11.
+
+```rust
+ui.set_format(rust_gui::icu::IcuFormat::new("cs-CZ").ok().map(|format| Box::new(format) as _));
+ui.format_number(1_234_567.891, 2);                                        // 1 234 567,89
+ui.format_date(Date { year: 2026, month: 9, day: 21 }, DateStyle::Long);   // 21. září 2026
+```
+
+| Piece | Contract |
+| --- | --- |
+| `LocaleFormat` (core) | `number(value, decimals)`, `parse_number(text)`, `date(Date, DateStyle)`, `time(Time, seconds)`. `Date` and `Time` are plain values; `DateStyle` is `Short`, `Medium` or `Long`. |
+| Installing | `Ui::set_format` and `Context::set_format`, exactly like messages: applied after the declaration, everything repaints, the host declares again. The two usually change together. |
+| Without one | Plain numbers without grouping, a decimal comma accepted when typing, `2026-09-21` and `14:05`. Nothing changes for apps that do not opt in. |
+| Widgets | `Ui::number_input` and the grid's number cells show and read numbers in the installed locale. `NumberOptions::format_in` and `parse_in` take the context; `format` and `parse` stay plain. |
+| `rust-gui-icu` (`rust_gui::icu`, feature `icu`, off by default) | `IcuFormat::new(tag)`, also with extensions such as `th-u-nu-thai`. Numbers group and use native digits as CLDR says; dates in three lengths; times with or without seconds in the locale's 12 or 24 hour convention. |
+| Parsing | ICU4X has no number parser, so the crate learns the locale's decimal and grouping separators from its own output and accepts what it prints, plus what people type: an ordinary space or no grouping, a typographic minus, native digits, invisible direction marks, exponents. Anything else is `None`. |
+| Cost | About one megabyte in the localization example (16.3 MB against 15.3 MB), because only the patterns used are linked. The dependency tree is large, which is why the feature is off by default. |
+
+A bug surfaced while writing the widget test and was fixed at its root. The number field treated any text that differed from the freshly formatted value as the user's draft and parsed it back on blur. After a change of locale the text of the old locale is exactly that, and "1 234,50" read by English rules is 123450. Fields now record whether their text was typed (`Control::TextInput::draft`, set while the user is typing and cleared on commit), and only typed text is ever parsed.
+
+## Validation
+
+Three new tests in the ICU crate: exact output for English, Czech and Swiss German numbers, dates and times, a bad tag, and out-of-range values; round trips through the parser for seven locales including Arabic and Hindi digits, the things people type, and the comma that groups in English; and a number input that shows "1 234,50 Kč", reads "2 500,75" typed with an ordinary space, and goes back to plain text without corrupting its value when the format is removed. The expected strings were first printed from the library, not assumed.
+
+The full suite is 230 tests plus 18 GPU tests; formatting and clippy (all features, and core alone) are clean; the facade builds without default features. In the real localization example built with `--features icu` and started with `--locale cs-CZ`, the window showed "1 234 567,89 · 21. září 2026" and the number field "12,5 kg".
+
+## Remaining limits
+
+- Numbers inside Fluent messages are still formatted by Fluent, plainly: its formatter hook is a function pointer and cannot hold an ICU formatter. Format the number with `ui.format_number` and pass it as text when grouping matters and no plural form depends on it.
+- A model's `cell` text is the app's: grids show numbers the way the model wrote them, and only the editor follows the locale.
+- No relative times, lists, currencies or units yet; no calendars other than Gregorian; no time zones.
+- A draft that is being typed while the locale changes is parsed by the new locale's rules.
+- The first declaration after `set_format` still shows the old notation, like messages.

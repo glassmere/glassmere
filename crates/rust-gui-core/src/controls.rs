@@ -103,9 +103,33 @@ impl NumberOptions {
         ((snapped * scale).round() / scale).clamp(self.min, self.max)
     }
 
+    /// Plain notation: no grouping and a decimal point. Widgets show numbers
+    /// in the locale installed on their context instead; see `format_in`.
     pub fn format(&self, value: f64) -> String {
-        // Adding zero turns a negative zero into a plain one.
-        format!("{:.*}{}", self.places(), value + 0.0, self.suffix)
+        format!(
+            "{}{}",
+            crate::locale_format::plain_number(value, self.places()),
+            self.suffix
+        )
+    }
+
+    /// The number as the context's locale writes it, with the suffix.
+    pub fn format_in(&self, context: &crate::Context, value: f64) -> String {
+        format!("{}{}", self.bare_in(context, value), self.suffix)
+    }
+
+    /// Without the suffix, for an editor whose unit is shown beside it.
+    pub(crate) fn bare_in(&self, context: &crate::Context, value: f64) -> String {
+        context.format_number(value, self.places())
+    }
+
+    /// The constrained number in text typed in the context's locale.
+    pub fn parse_in(&self, context: &crate::Context, text: &str) -> Option<f64> {
+        let text = text.trim();
+        let text = text.strip_suffix(self.suffix.trim()).unwrap_or(text);
+        context
+            .parse_number(text)
+            .map(|number| self.constrain(number))
     }
 
     /// The constrained number in `text`, which may carry the suffix and use a
@@ -151,6 +175,9 @@ pub(crate) enum Control {
         number: Option<crate::NumericValue>,
         /// Autocomplete fields: what the popup offers; `None` for plain inputs.
         suggestions: Option<Vec<MenuItem>>,
+        /// Number fields: the text is what the user is typing, not a value
+        /// the field formatted. Only such text is ever parsed back.
+        draft: bool,
     },
     /// A button the keyboard skips because the field beside it has the keys.
     Stepper,

@@ -1,6 +1,15 @@
 use super::*;
 use crate::{TextMove, controls::slider_value};
 
+/// What a text field holds between declarations.
+pub(crate) struct FieldState {
+    pub text: String,
+    /// The text is the user's typing rather than what the field wrote itself.
+    pub draft: bool,
+    pub number: Option<NumericValue>,
+    pub focused: bool,
+}
+
 impl Context {
     pub(super) fn cancel_compositions_except(&mut self, keep: Option<NodeId>) {
         let mut changed = Vec::new();
@@ -268,16 +277,25 @@ impl Context {
     }
 
     /// A text field's current text, its declared number and whether it has focus.
-    pub(crate) fn field_state(&self, id: NodeId) -> Option<(String, Option<NumericValue>, bool)> {
+    pub(crate) fn field_state(&self, id: NodeId) -> Option<FieldState> {
         let node = self.nodes.get(&id)?;
-        let Control::TextInput { number, .. } = node.control else {
+        let Control::TextInput {
+            value,
+            number,
+            draft,
+            ..
+        } = &node.control
+        else {
             return None;
         };
-        Some((
-            node.editor.as_ref()?.text.clone(),
-            number,
-            self.focused == Some(id),
-        ))
+        let text = node.editor.as_ref()?.text.clone();
+        Some(FieldState {
+            // Typed since the field last declared its text, or still being typed.
+            draft: *draft || text != *value,
+            text,
+            number: *number,
+            focused: self.focused == Some(id),
+        })
     }
 
     /// Queues steps for a number field; several between two frames add up.

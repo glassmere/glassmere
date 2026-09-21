@@ -6,6 +6,8 @@ pub use rust_gui_derive::{Properties, tr};
 pub use rust_gui_devtools as devtools;
 #[cfg(feature = "fluent")]
 pub use rust_gui_fluent as fluent;
+#[cfg(feature = "icu")]
+pub use rust_gui_icu as icu;
 #[cfg(feature = "images")]
 pub use rust_gui_image as image;
 pub use rust_gui_scene::{

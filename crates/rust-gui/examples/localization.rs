@@ -1,5 +1,6 @@
 //! Localization: Fluent catalogs, plurals, a language switch at run time, and
-//! the framework's own controls following along. German leaves `name`
+//! the framework's own controls following along. Run it with `--features icu`
+//! and numbers and dates follow the language as well. German leaves `name`
 //! untranslated on purpose, to show the fallback to English.
 use rust_gui::fluent::FluentMessages;
 use rust_gui::{AppOptions, Length, NumberOptions, Size, Style, TextWrap, Toast, run, tr};
@@ -32,6 +33,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move |ui| {
             if let Some(locale) = wanted.take() {
                 ui.set_messages(messages(&locale));
+                // With `--features icu`, numbers and dates follow the language too.
+                #[cfg(feature = "icu")]
+                ui.set_format(
+                    rust_gui::icu::IcuFormat::new(&locale)
+                        .ok()
+                        .map(|format| Box::new(format) as Box<dyn rust_gui::LocaleFormat>),
+                );
             }
             let page = Style {
                 padding: 28.0,
@@ -75,6 +83,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 });
                 // `tr!` checks the key and its arguments against locales/en.ftl while compiling.
                 ui.label_keyed("count", tr!(ui, "files", count = count));
+                let today = rust_gui::Date {
+                    year: 2026,
+                    month: 9,
+                    day: 21,
+                };
+                ui.label_keyed(
+                    "formats",
+                    format!(
+                        "{}  ·  {}",
+                        ui.format_number(1_234_567.891, 2),
+                        ui.format_date(today, rust_gui::DateStyle::Long)
+                    ),
+                );
                 // The stepper buttons' names are the framework's and follow the language.
                 ui.label_keyed("weight-label", ui.tr("weight"));
                 ui.number_input(

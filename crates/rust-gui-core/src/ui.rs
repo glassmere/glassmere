@@ -34,6 +34,8 @@ pub(crate) struct HostOutbox {
     pub toasts: ToastOutbox,
     /// A new message source, or `Some(None)` to remove the current one.
     pub messages: Option<Option<Box<dyn crate::Messages>>>,
+    /// New locale-aware formatting, or `Some(None)` to remove it.
+    pub format: Option<Option<Box<dyn crate::LocaleFormat>>>,
     pub hot_state: Option<String>,
 }
 

@@ -108,7 +108,7 @@ Localization:
 cargo run -p rust-gui --example localization --release
 ```
 
-Fluent catalogs, plurals, a language switch while running, and framework controls that follow the language. See [milestone 11](docs/milestone-11.md).
+Fluent catalogs, plurals, a language switch while running, framework controls that follow the language, and `tr!` checked at compile time. Add `--features icu` for CLDR numbers and dates. See [milestone 11](docs/milestone-11.md).
 
 Data grid:
 
@@ -206,6 +206,7 @@ The view may run more than once per input event. Put application actions behind 
 | `rust-gui-winit` | Native windows, input, worker wakeups and mailboxes, AccessKit mapping, inspector hosting and presentation |
 | `rust-gui-image` | PNG, JPEG, WebP, GIF and SVG decoding and the background loader; `rust_gui::image` behind the default `images` feature |
 | `rust-gui-fluent` | Fluent catalogs for `Ui::tr`, with Czech and German for the framework's own texts; `rust_gui::fluent` behind the default `fluent` feature |
+| `rust-gui-icu` | CLDR numbers, dates and times through ICU4X; `rust_gui::icu` behind the opt-in `icu` feature |
 | `rust-gui-derive` | `#[derive(Properties)]`; `rust_gui::Properties` behind the default `derive` feature |
 | `rust-gui-devtools` | Frame/event recorder, inspector model, views and overlays; no platform dependencies |
 | `rust-gui-testing` | Headless harness, semantic finders and text snapshot assertions for application tests |

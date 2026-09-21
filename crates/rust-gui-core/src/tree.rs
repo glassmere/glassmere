@@ -538,6 +538,7 @@ pub struct Context {
     diagnostic: diagnostics::DiagnosticState,
     toast: toasts::ToastState,
     pub(crate) messages: Option<Box<dyn crate::Messages>>,
+    pub(crate) format: Option<Box<dyn crate::LocaleFormat>>,
     pub(crate) missing_messages: std::sync::Mutex<Vec<String>>,
     theme: Theme,
     stylesheet: StyleSheet,
@@ -730,6 +731,7 @@ impl Default for Context {
             diagnostic: diagnostics::DiagnosticState::new(),
             toast: toasts::ToastState::default(),
             messages: None,
+            format: None,
             missing_messages: std::sync::Mutex::new(Vec::new()),
             theme,
             stylesheet: StyleSheet::default(),
@@ -1196,6 +1198,10 @@ impl Context {
         if host.hot_state.is_some() {
             self.hot_state = host.hot_state;
             self.hot_save = false;
+        }
+        if let Some(format) = host.format {
+            self.set_format(format);
+            self.stats.activations += 1;
         }
         if let Some(messages) = host.messages {
             // Like a theme: texts already looked up in this declaration are

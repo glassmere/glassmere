@@ -9,6 +9,7 @@ mod drag;
 mod editor;
 mod focus;
 mod image;
+mod locale_format;
 mod messages;
 mod panes;
 mod property_grid;
@@ -41,6 +42,7 @@ pub use drag::{DragInfo, DragPayload, DropKind};
 pub use editor::{CaretMovement, TextEdit, TextMove, TextSelection};
 pub use focus::{DialogOptions, DialogResponse, FocusScope};
 pub use image::{BackgroundImage, ImageFit, ImageOptions, ImageSource, ImageTint};
+pub use locale_format::{Date, DateStyle, LocaleFormat, Time};
 pub use messages::{BUILTIN_MESSAGES, MessageArg, Messages};
 pub use panes::{
     Axis, PopoverOptions, PopoverResponse, SplitOptions, TOOLTIP_DELAY, Tab, TabsResponse,

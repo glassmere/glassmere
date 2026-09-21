@@ -9,6 +9,8 @@ pub(super) struct FieldExtra {
     pub suggestions: Option<Vec<MenuItem>>,
     /// The suggestion popup while it is open.
     pub children: Vec<Element>,
+    /// See `Control::TextInput::draft`.
+    pub draft: bool,
 }
 
 impl Ui<'_> {
@@ -114,6 +116,7 @@ impl Ui<'_> {
                 placeholder: placeholder.into(),
                 number: extra.number,
                 suggestions: extra.suggestions,
+                draft: extra.draft,
             },
         });
         response.changed = changed;

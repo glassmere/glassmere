@@ -232,8 +232,14 @@ impl Ui<'_> {
                         }
                         // Enter and Tab store the value first; a refused value
                         // keeps the editor open and the cursor where it is.
-                        _ if !commit_edit(model, state, &columns, &mut edited, &invalid_number) => {
-                        }
+                        _ if !commit_edit(
+                            model,
+                            state,
+                            &columns,
+                            &mut edited,
+                            &invalid_number,
+                            self.context,
+                        ) => {}
                         crate::Key::Enter => {
                             row_moves.push(CollectionInput::Move(step));
                             focus_rows = true;
@@ -254,7 +260,8 @@ impl Ui<'_> {
             if let Some(typed) = start
                 && state.edit.is_none()
             {
-                focus_editor |= begin_edit(model, state, &columns, typed, &mut edited);
+                focus_editor |=
+                    begin_edit(self.context, model, state, &columns, typed, &mut edited);
             }
         }
         if let Some(rows) = rows
@@ -588,7 +595,14 @@ impl Ui<'_> {
             },
         );
         if (picked || left)
-            && commit_edit(model, state, &columns, &mut edited, &invalid_number)
+            && commit_edit(
+                model,
+                state,
+                &columns,
+                &mut edited,
+                &invalid_number,
+                self.context,
+            )
             && picked
         {
             // The combo box that had the keyboard is gone with the editor:
@@ -942,6 +956,7 @@ fn spread(
 /// `typed` replaces the content of a text or number cell. Returns whether an
 /// editor opened and wants the keyboard.
 fn begin_edit(
+    context: &crate::Context,
     model: &mut impl GridModel,
     state: &mut GridState,
     columns: &[crate::GridColumn],
@@ -980,13 +995,9 @@ fn begin_edit(
             (String::new(), choice.min(choices.len().saturating_sub(1)))
         }
         // The draft is the bare number: the unit is shown, not typed.
-        (crate::CellEditor::Number(options), crate::CellValue::Number(number)) => (
-            options
-                .format(number)
-                .trim_end_matches(options.suffix.as_str())
-                .to_owned(),
-            0,
-        ),
+        (crate::CellEditor::Number(options), crate::CellValue::Number(number)) => {
+            (options.bare_in(context, number), 0)
+        }
         (_, crate::CellValue::Text(text)) => (text, 0),
         _ => (model.cell(row, column), 0),
     };
@@ -1010,6 +1021,7 @@ fn commit_edit(
     edited: &mut Option<(crate::ItemId, usize)>,
     // What to say about text that is not a number, in the user's language.
     invalid: &str,
+    context: &crate::Context,
 ) -> bool {
     let Some(edit) = &mut state.edit else {
         return true;
@@ -1025,7 +1037,7 @@ fn commit_edit(
         return true;
     };
     let value = match editor {
-        crate::CellEditor::Number(options) => match options.parse(&edit.text) {
+        crate::CellEditor::Number(options) => match options.parse_in(context, &edit.text) {
             Some(number) => crate::CellValue::Number(number),
             None => {
                 edit.error = Some(invalid.to_owned());

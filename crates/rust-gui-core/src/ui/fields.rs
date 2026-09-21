@@ -25,7 +25,9 @@ impl Ui<'_> {
         let mut changed = false;
         // The field already holds the chosen text; the list may have moved on.
         if let Some(ControlUpdate::Choice(index)) = id.and_then(|id| self.updates.get(&id).cloned())
-            && let Some((text, ..)) = id.and_then(|id| self.context.field_state(id))
+            && let Some(text) = id
+                .and_then(|id| self.context.field_state(id))
+                .map(|state| state.text)
         {
             self.updates.remove(&id.unwrap());
             if self.enabled {
@@ -61,6 +63,7 @@ impl Ui<'_> {
                 number: None,
                 suggestions: Some(entries),
                 children,
+                draft: false,
             },
         );
         response.changed |= changed;
@@ -107,25 +110,30 @@ impl Ui<'_> {
                 steps -= f64::from(u8::from(clicked(ui, "$less")));
             }
             let submitted = field.is_some_and(|id| ui.submitted.contains(&id));
-            let formatted = options.format(*value);
+            let formatted = options.format_in(ui.context, *value);
             let mut text = formatted.clone();
-            if let Some((draft, last, focused)) = field.and_then(|id| ui.context.field_state(id))
+            let mut drafting = false;
+            if let Some(state) = field.and_then(|id| ui.context.field_state(id))
+                // Only what the user typed is a draft. Text the field wrote
+                // itself is never parsed back: after a change of locale it
+                // would be read by the wrong rules.
+                && state.draft
                 // The app changing the number wins over a draft.
-                && last.is_some_and(|last| last.value == *value)
-                && draft != formatted
+                && state.number.is_some_and(|last| last.value == *value)
             {
-                if !focused || submitted || steps != 0.0 {
+                if !state.focused || submitted || steps != 0.0 {
                     // Commit; text that is not a number reverts.
-                    *value = options.parse(&draft).unwrap_or(*value);
+                    *value = options.parse_in(ui.context, &state.text).unwrap_or(*value);
                 } else {
-                    text = draft;
+                    text = state.text;
+                    drafting = true;
                 }
             }
             if steps != 0.0 {
                 *value = options.constrain(*value + steps * options.step);
             }
-            if *value != old || text == formatted {
-                text = options.format(*value);
+            if !drafting {
+                text = options.format_in(ui.context, *value);
             }
             let number = NumericValue {
                 value: *value,
@@ -144,6 +152,7 @@ impl Ui<'_> {
                 style,
                 FieldExtra {
                     number: Some(number),
+                    draft: drafting,
                     ..FieldExtra::default()
                 },
             );

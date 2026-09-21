@@ -17,6 +17,9 @@ diagnostics = ["desktop", "rust-gui-winit/diagnostics"]
 syntax = ["dep:rust-gui-syntax"]
 # `rust_gui::image`: PNG, JPEG, WebP, GIF and SVG decoding, and `Ui::image_file` on the desktop.
 images = ["dep:rust-gui-image", "rust-gui-winit?/images"]
+# `rust_gui::icu`: CLDR numbers, dates and times through ICU4X. Not on by
+# default: a large dependency tree, and about a megabyte of compiled data.
+icu = ["dep:rust-gui-icu"]
 # `rust_gui::fluent`: Fluent catalogs for `Ui::tr`.
 fluent = ["dep:rust-gui-fluent"]
 # `#[derive(Properties)]` for property grids.
@@ -33,6 +36,7 @@ rust-gui-syntax = { workspace = true, optional = true }
 rust-gui-image = { workspace = true, optional = true }
 rust-gui-derive = { workspace = true, optional = true }
 rust-gui-fluent = { workspace = true, optional = true }
+rust-gui-icu = { workspace = true, optional = true }
 
 [[example]]
 name = "counter"
