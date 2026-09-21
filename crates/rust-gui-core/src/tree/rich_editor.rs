@@ -23,7 +23,11 @@ struct BlockLayout {
     /// Top of the block in content coordinates.
     y: f32,
     height: f32,
+    /// Space reserved for the list marker, quote bar or code padding.
     indent: f32,
+    /// Where the text starts: after the indent, which is on the right in
+    /// right-to-left blocks.
+    left: f32,
 }
 
 /// Retained shaping and view state; the document stays with the app.
@@ -32,6 +36,7 @@ pub(super) struct RichEditorState {
     layouts: Vec<BlockLayout>,
     width: f32,
     font_size: f32,
+    rtl: bool,
     preedit: Option<String>,
     /// Absolute caret rectangle, for the IME and paging.
     caret: Option<Rect>,
@@ -61,6 +66,8 @@ fn block_style(base: &TextStyle, kind: BlockKind, font_size: f32) -> TextStyle {
         },
         italic: false,
         wrap: TextWrap::Word,
+        // Code reads left to right whatever the UI direction is.
+        rtl: base.rtl && kind != BlockKind::Code,
     }
 }
 
@@ -140,7 +147,7 @@ impl Context {
             .unwrap_or(state.layouts.len().checked_sub(1)?);
         let layout = &state.layouts[block];
         let (mut offset, affinity) = layout.geometry.hit_affinity(Point {
-            x: point.x - content.x - layout.indent,
+            x: point.x - content.x - layout.left,
             y: (y - layout.y).clamp(0.0, (layout.height - 1.0).max(0.0)),
         });
         if let Some((at, len)) = layout.preedit
@@ -233,12 +240,12 @@ impl Context {
         let state = node.rich_editor.as_ref()?;
         let layout = state.layouts.get(cursor.block)?;
         let caret = layout.geometry.caret_at(cursor.offset, state.affinity);
-        let x = state.goal_x.unwrap_or(caret.x + layout.indent);
+        let x = state.goal_x.unwrap_or(caret.x + layout.left);
         let page = content(node).height;
         let in_block = |block: usize, x: f32, y: f32| {
             let layout = &state.layouts[block];
             let (offset, affinity) = layout.geometry.hit_affinity(Point {
-                x: x - layout.indent,
+                x: x - layout.left,
                 y,
             });
             (
@@ -551,7 +558,8 @@ impl Context {
             let base = node.text_style();
             let area = content(node);
             let mut state = node.rich_editor.take().unwrap_or_default();
-            let same_frame = state.width == area.width && state.font_size == *font_size;
+            let same_frame =
+                state.width == area.width && state.font_size == *font_size && state.rtl == base.rtl;
             let mut old: Vec<Option<BlockLayout>> = std::mem::take(&mut state.layouts)
                 .into_iter()
                 .map(Some)
@@ -594,8 +602,14 @@ impl Context {
                         preedit: splice,
                         y: 0.0,
                         indent,
+                        left: 0.0,
                     }
                 });
+                layout.left = if base.rtl && view.kind != BlockKind::Code {
+                    0.0
+                } else {
+                    indent
+                };
                 // Reused layouts compare against the declared view again next frame.
                 if layout.preedit.is_none() {
                     layout.view = view.clone();
@@ -610,6 +624,7 @@ impl Context {
             }
             state.width = area.width;
             state.font_size = *font_size;
+            state.rtl = base.rtl;
             let maximum = (y - area.height).max(0.0);
             changed |= node.scroll.maximum != maximum;
             node.scroll.maximum = maximum;
@@ -622,7 +637,7 @@ impl Context {
                     Some((_, len)) => layout.geometry.caret(cursor.offset + len),
                     None => layout.geometry.caret_at(cursor.offset, affinity),
                 };
-                (layout.y + caret.y, caret.height, layout.indent + caret.x)
+                (layout.y + caret.y, caret.height, layout.left + caret.x)
             });
             if let Some((top, height, _)) = caret
                 && (state.cursor != Some(*cursor) || state.preedit.is_some())
@@ -674,7 +689,7 @@ impl Context {
             let kind = layout.view.kind;
             let style = block_style(&base, kind, *font_size);
             let origin = Point {
-                x: area.x + layout.indent,
+                x: area.x + layout.left,
                 y: top,
             };
             match kind {
@@ -690,7 +705,11 @@ impl Context {
                 }),
                 BlockKind::Quote => scene.primitives.push(Primitive::Quad {
                     rect: Rect {
-                        x: area.x,
+                        x: if base.rtl {
+                            area.x + area.width - 3.0
+                        } else {
+                            area.x
+                        },
                         y: top,
                         width: 3.0,
                         height: layout.height,
@@ -701,7 +720,11 @@ impl Context {
                 BlockKind::Bullet | BlockKind::Numbered => {
                     scene.primitives.push(Primitive::StyledText {
                         rect: Rect {
-                            x: area.x + 4.0,
+                            x: if base.rtl {
+                                area.x + area.width - layout.indent + 4.0
+                            } else {
+                                area.x + 4.0
+                            },
                             y: top,
                             width: layout.indent,
                             height: style.font_size * 1.4,
@@ -713,6 +736,7 @@ impl Context {
                         },
                         style: TextStyle {
                             wrap: TextWrap::None,
+                            rtl: false,
                             ..style.clone()
                         },
                         color: theme.text_muted,

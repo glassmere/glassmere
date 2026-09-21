@@ -5,6 +5,12 @@ use rust_gui::{
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
+    // `--rtl` mirrors the window as a right-to-left locale would.
+    let direction = if std::env::args().any(|arg| arg == "--rtl") {
+        rust_gui::DirectionChoice::Rtl
+    } else {
+        rust_gui::DirectionChoice::Auto
+    };
     let open = std::env::args().any(|arg| arg == "--open");
     let mut tabs = vec![
         Tab::new("Overview"),
@@ -23,6 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             title: "Rust GUI / Tabs, panes and overlays".into(),
             size: Size::new(960.0, 720.0),
             frame_limit: smoke.then_some(3),
+            direction,
             ..AppOptions::default()
         },
         move |ui| {

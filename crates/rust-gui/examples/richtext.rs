@@ -29,6 +29,12 @@ std::fs::write(path, document.to_markdown())?;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
+    // `--rtl` mirrors the window as a right-to-left locale would.
+    let direction = if std::env::args().any(|arg| arg == "--rtl") {
+        rust_gui::DirectionChoice::Rtl
+    } else {
+        rust_gui::DirectionChoice::Auto
+    };
     let mut document = RichDocument::from_markdown(SAMPLE);
     let mut markdown = TextDocument::from_text(&document.to_markdown());
     let mut highlighter: Option<(bool, SyntectHighlighter)> = None;
@@ -38,6 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             title: "Rust GUI / Rich text".into(),
             size: Size::new(1100.0, 720.0),
             frame_limit: smoke.then_some(3),
+            direction,
             ..AppOptions::default()
         },
         move |ui| {

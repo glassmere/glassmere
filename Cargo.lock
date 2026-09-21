@@ -2345,6 +2345,7 @@ dependencies = [
  "rust-gui-devtools",
  "rust-gui-render-wgpu",
  "rust-gui-scene",
+ "sys-locale",
  "tracing",
  "wgpu",
  "winit",

@@ -46,7 +46,8 @@ pub use rich_text::{RichRun, RichText};
 pub use rust_gui_scene::{FontFamily, TextSpan, TextStyle, TextWrap};
 pub use rust_gui_scene::{MonospaceMeasurer, TextMeasurer};
 pub use style::{
-    Align, GridArea, Justify, Length, Paint, ResolvedText, StateStyles, Style, Track, TrackSize,
+    Align, Direction, GridArea, Justify, Length, Paint, ResolvedText, StateStyles, Style, Track,
+    TrackSize,
 };
 pub use stylesheet::{StyleSheet, StyleSheetError};
 pub use text_area::{

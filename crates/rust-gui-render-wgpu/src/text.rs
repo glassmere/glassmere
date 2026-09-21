@@ -14,6 +14,7 @@ pub(crate) struct TextKey {
     weight: u16,
     italic: bool,
     wrap: TextWrap,
+    rtl: bool,
     width: Option<u32>,
     /// Byte length and overrides of each run of a rich block; empty for plain text.
     spans: Vec<SpanKey>,
@@ -185,6 +186,8 @@ impl TextSystem {
             weight: style.weight.clamp(100, 900),
             italic: style.italic,
             wrap: style.wrap,
+            // Alignment needs a width, which only wrapped blocks have.
+            rtl: style.rtl && width.is_some(),
             width: width.map(f32::to_bits),
             spans: spans
                 .iter()
@@ -239,6 +242,11 @@ impl TextSystem {
                     .clone()
                     .weight(glyphon::Weight(style.weight.clamp(100, 900) ^ 1));
                 buffer.set_rich_text(&mut self.fonts, runs, &unused, Shaping::Advanced, None);
+            }
+            if style.rtl && width.is_some() {
+                for line in &mut buffer.lines {
+                    line.set_align(Some(glyphon::cosmic_text::Align::Right));
+                }
             }
             buffer.shape_until_scroll(&mut self.fonts, false);
             buffer

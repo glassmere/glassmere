@@ -90,6 +90,8 @@ pub(crate) struct Editor {
     pub affinity: Affinity,
     /// Left and Right move on screen instead of in reading order.
     pub visual: bool,
+    /// Shift that right-aligns text shorter than a right-to-left field.
+    pub align_x: f32,
 }
 
 pub(crate) fn single_line(text: &str) -> String {
@@ -129,6 +131,7 @@ impl Editor {
             geometry_key: None,
             affinity: Affinity::Downstream,
             visual: true,
+            align_x: 0.0,
         }
     }
 
@@ -399,6 +402,7 @@ impl Editor {
         measurer: &mut impl TextMeasurer,
         mut style: TextStyle,
         width: f32,
+        rtl: bool,
     ) -> bool {
         style.wrap = TextWrap::None;
         let text = self.display();
@@ -421,7 +425,13 @@ impl Editor {
         self.scroll_x = self
             .scroll_x
             .clamp(0.0, (self.geometry.size.width - width + 2.0).max(0.0));
-        changed || self.scroll_x != old_scroll
+        let old_align = self.align_x;
+        self.align_x = if rtl {
+            (width - 2.0 - self.geometry.size.width).max(0.0)
+        } else {
+            0.0
+        };
+        changed || self.scroll_x != old_scroll || self.align_x != old_align
     }
 
     pub fn caret(&self) -> Option<Rect> {

@@ -78,7 +78,7 @@ The [milestone report](milestone-5.md) describes the crates, contracts and valid
 - [x] Code intelligence: syntect highlighting, find and replace, bracket pairing and matching, multiple cursors, diagnostics ([milestone 7c](milestone-7.md#milestone-7c-code-intelligence)).
 - [x] The WYSIWYG rich text editor with a Markdown subset for persistence ([milestone 7d](milestone-7.md#milestone-7d-the-wysiwyg-rich-text-editor)).
 - [x] Bidirectional caret order: visual or logical arrows, caret affinity and direction flags in all three editors ([milestone 7e](milestone-7.md#milestone-7e-bidirectional-caret-order)).
-- [ ] Text direction styles and right-to-left layout mirroring.
+- [x] Inherited text and layout direction with OS locale detection, mirrored layout and widgets ([milestone 7f](milestone-7.md#milestone-7f-text-direction-and-right-to-left-layout)).
 - [ ] Hot reload and framework diagnostics.
 - CPU rendering, outgoing OS drags, gestures and additional platform adapters.
 

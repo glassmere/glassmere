@@ -26,7 +26,7 @@
 //! minmax(100, 1fr) repeat(3, 1fr)`), area (`column row [colspan rowspan]`),
 //! background, foreground (`#rrggbb` or `#rrggbbaa`), font-size, font-weight,
 //! font-family (`sans`, `serif`, `monospace`, `"Name"`), italic, wrap (`word`,
-//! `none`), opacity, translate (`x y`), scale (`factor` or `x y`), rotate
+//! `none`), direction (`ltr`, `rtl`), opacity, translate (`x y`), scale (`factor` or `x y`), rotate
 //! (clockwise degrees), transition and layout-transition (`150ms ease-out
 //! [delay]`, easings `linear`, `ease-in`, `ease-out`, `ease-in-out`,
 //! `cubic-bezier(x1, y1, x2, y2)`), `enter-`/`exit-` prefixed opacity,
@@ -275,6 +275,13 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
                         "area needs `column row` or `column row colspan rowspan`, got `{value}`"
                     ));
                 }
+            });
+        }
+        "direction" => {
+            style.direction = Some(match value {
+                "ltr" => crate::Direction::Ltr,
+                "rtl" => crate::Direction::Rtl,
+                _ => return Err(format!("direction is `ltr` or `rtl`, got `{value}`")),
             });
         }
         "opacity" => style.opacity = number(value)?,

@@ -103,7 +103,11 @@ impl Context {
         let width = (measured.width + padding * 2.0).min(viewport.width);
         let height = measured.height + padding * 2.0;
         let mut rect = Rect {
-            x: node.bounds.x,
+            x: if node.resolved.rtl() {
+                node.bounds.x + node.bounds.width - width
+            } else {
+                node.bounds.x
+            },
             y: node.bounds.y + node.bounds.height + 6.0,
             width,
             height,
@@ -176,6 +180,12 @@ impl Context {
     pub(super) fn tab_key(&mut self, tab: NodeId, key: Key) -> Option<bool> {
         let siblings = self.sibling_tabs(tab);
         let current = siblings.iter().position(|id| *id == tab)?;
+        // In a right-to-left strip the next tab is on the left.
+        let key = match key {
+            Key::ArrowLeft if self.nodes[&tab].resolved.rtl() => Key::ArrowRight,
+            Key::ArrowRight if self.nodes[&tab].resolved.rtl() => Key::ArrowLeft,
+            other => other,
+        };
         let target = match key {
             Key::ArrowLeft | Key::ArrowUp => {
                 siblings[(current + siblings.len() - 1) % siblings.len()]
@@ -275,6 +285,10 @@ impl Context {
         let split = self.nodes[&owner].bounds;
         let thickness = node.bounds.width.min(node.bounds.height);
         let (offset, extent) = match axis {
+            // The first pane of a right-to-left split is on the right.
+            Axis::Horizontal if node.resolved.rtl() => {
+                (split.x + split.width - position.x, split.width)
+            }
             Axis::Horizontal => (position.x - split.x, split.width),
             Axis::Vertical => (position.y - split.y, split.height),
         };
@@ -295,6 +309,12 @@ impl Context {
         }
         .max(1.0);
         let step = 10.0 / extent;
+        // Arrows move the divider the way they point.
+        let step = if axis == Axis::Horizontal && node.resolved.rtl() {
+            -step
+        } else {
+            step
+        };
         let next = match (axis, key) {
             (Axis::Horizontal, Key::ArrowLeft) | (Axis::Vertical, Key::ArrowUp) => fraction - step,
             (Axis::Horizontal, Key::ArrowRight) | (Axis::Vertical, Key::ArrowDown) => {

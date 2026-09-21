@@ -419,6 +419,8 @@ impl Ui<'_> {
             .padding(options.style.padding)
             .radius(options.style.radius);
         style.background = options.style.background;
+        // Source code reads left to right whatever the UI direction is.
+        style.direction = Some(crate::Direction::Ltr);
         self.push(Element {
             key: WidgetKey::Named(key.into()),
             kind: Kind::TextArea,

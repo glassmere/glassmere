@@ -293,6 +293,9 @@ struct Node {
     area: Option<Box<text_area_input::AreaState>>,
     rich: Option<Box<rich_text::RichState>>,
     rich_editor: Option<Box<rich_editor::RichEditorState>>,
+    /// Width of the label of a control that is not a text leaf, for
+    /// right-aligning it in right-to-left UI.
+    label_width: f32,
     /// Parent-relative layout rectangle; layout animations start from the old one.
     layout_rect: Rect,
 }
@@ -454,6 +457,7 @@ pub struct Context {
     clipboard_out: Option<String>,
     redraw_requested: bool,
     caret_movement: crate::CaretMovement,
+    direction: crate::Direction,
     theme: Theme,
     stylesheet: StyleSheet,
     style_warnings: Vec<String>,
@@ -477,16 +481,25 @@ struct Measurement {
     spans: Option<Vec<rust_gui_scene::TextSpan>>,
 }
 
-fn layout_style(style: &Style, kind: Kind) -> taffy::Style {
+fn layout_style(style: &Style, kind: Kind, direction: crate::Direction) -> taffy::Style {
     let mut result = style.layout(match kind {
         Kind::Row | Kind::SplitRow | Kind::TabList => Flow::Row,
         Kind::Grid => Flow::Grid,
         _ => Flow::Column,
     });
+    let rtl = direction == crate::Direction::Rtl;
+    if rtl {
+        result.direction = taffy::Direction::Rtl;
+    }
     if matches!(kind, Kind::Popup | Kind::Popover) {
         result.position = taffy::Position::Absolute;
         result.inset.top = taffy::LengthPercentageAuto::percent(1.0);
-        result.inset.left = taffy::LengthPercentageAuto::length(0.0);
+        // Overlays hang from the start side of their owner.
+        if rtl {
+            result.inset.right = taffy::LengthPercentageAuto::length(0.0);
+        } else {
+            result.inset.left = taffy::LengthPercentageAuto::length(0.0);
+        }
     }
     if kind == Kind::Dialog {
         result.position = taffy::Position::Absolute;
@@ -566,6 +579,7 @@ impl Default for Context {
             area: None,
             rich: None,
             rich_editor: None,
+            label_width: 0.0,
             layout_rect: Rect::default(),
             control: Control::None,
             editor: None,
@@ -603,6 +617,7 @@ impl Default for Context {
             clipboard_out: None,
             redraw_requested: false,
             caret_movement: crate::CaretMovement::Visual,
+            direction: crate::Direction::Ltr,
             theme,
             stylesheet: StyleSheet::default(),
             style_warnings: Vec::new(),
@@ -643,7 +658,6 @@ impl Context {
     pub fn stylesheet(&self) -> &StyleSheet {
         &self.stylesheet
     }
-    /// Installs named classes and, if the sheet declares one, its theme.
     /// Whether Left and Right move on screen (the default) or in reading
     /// order inside bidirectional text. Applies to every text editor.
     pub fn set_caret_movement(&mut self, movement: crate::CaretMovement) {
@@ -654,6 +668,38 @@ impl Context {
         self.caret_movement
     }
 
+    /// The direction of the whole window; subtrees override it with
+    /// `Style::direction`. Layout, text alignment and widget internals follow.
+    pub fn set_direction(&mut self, direction: crate::Direction) {
+        if self.direction == direction {
+            return;
+        }
+        self.direction = direction;
+        let root = self.nodes[&self.root].layout_id;
+        let mut style = self.layout.style(root).unwrap().clone();
+        style.direction = match direction {
+            crate::Direction::Ltr => taffy::Direction::Ltr,
+            crate::Direction::Rtl => taffy::Direction::Rtl,
+        };
+        self.layout.set_style(root, style).unwrap();
+        for node in self.nodes.values_mut() {
+            node.paint_cache = None;
+        }
+        self.pending |= Dirty::all();
+    }
+
+    pub fn direction(&self) -> crate::Direction {
+        self.direction
+    }
+
+    fn root_text(&self) -> ResolvedText {
+        ResolvedText {
+            direction: self.direction,
+            ..ResolvedText::from_theme(&self.theme)
+        }
+    }
+
+    /// Installs named classes and, if the sheet declares one, its theme.
     pub fn set_stylesheet(&mut self, sheet: StyleSheet) {
         self.stylesheet = sheet;
         let theme = self.stylesheet.apply_to(&self.theme);
@@ -872,7 +918,7 @@ impl Context {
         let mut focus = None;
         let mut layers = Vec::new();
         self.stats.activations = clicks.len() + updates.len() + submitted.len();
-        self.nodes.get_mut(&self.root).unwrap().resolved = ResolvedText::from_theme(&self.theme);
+        self.nodes.get_mut(&self.root).unwrap().resolved = self.root_text();
         let mut ui = Ui {
             context: self,
             parent: Some(self.root),
@@ -909,8 +955,7 @@ impl Context {
             // Declared token reads used the old theme; count this like an
             // activation so hosts declare once more before presenting.
             self.set_theme(theme);
-            self.nodes.get_mut(&self.root).unwrap().resolved =
-                ResolvedText::from_theme(&self.theme);
+            self.nodes.get_mut(&self.root).unwrap().resolved = self.root_text();
             self.stats.activations += 1;
         }
         let size = Size::new(size.width.max(0.0), size.height.max(0.0));
@@ -918,8 +963,12 @@ impl Context {
             let root = self.nodes.get_mut(&self.root).unwrap();
             root.style.width = Length::Px(size.width);
             root.style.height = Length::Px(size.height);
+            let direction = self.direction;
             self.layout
-                .set_style(root.layout_id, root.style.layout(Flow::Column))
+                .set_style(
+                    root.layout_id,
+                    layout_style(&root.style, Kind::Column, direction),
+                )
                 .unwrap();
             self.pending |= Dirty::LAYOUT | Dirty::PAINT;
         }
@@ -1136,7 +1185,8 @@ impl Context {
                     }
                     self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
                 }
-                let mut layout_style = layout_style(&element.style, element.kind);
+                let mut layout_style =
+                    layout_style(&element.style, element.kind, resolved.direction);
                 if let Some(measurement) = self.layout.get_node_context(node.layout_id) {
                     anchor_minimum(&mut layout_style, &element, measurement.size);
                 }
@@ -1184,7 +1234,7 @@ impl Context {
                 } else {
                     Measurement::fixed(Size::default())
                 };
-                let mut leaf_style = layout_style(&element.style, element.kind);
+                let mut leaf_style = layout_style(&element.style, element.kind, resolved.direction);
                 anchor_minimum(&mut leaf_style, &element, measured.size);
                 let layout_id = self
                     .layout
@@ -1202,6 +1252,7 @@ impl Context {
                         area: None,
                         rich: None,
                         rich_editor: None,
+                        label_width: 0.0,
                         layout_rect: Rect::default(),
                         key: element.key,
                         kind: element.kind,
@@ -1418,7 +1469,11 @@ impl Context {
                 })
                 .flatten();
             if let Some(anchor) = anchored {
-                node.bounds.x = anchor.x;
+                node.bounds.x = if node.resolved.rtl() {
+                    anchor.x - node.bounds.width
+                } else {
+                    anchor.x
+                };
                 node.bounds.y = anchor.y;
             }
             node.bounds.width = node.bounds.width.min(viewport.width);
@@ -1618,12 +1673,28 @@ impl Context {
             self.paint_rich_text(id, &mut scene, foreground);
         } else if !node.text.is_empty() {
             let padding = node.style.padding.max(0.0);
-            let rect = Rect {
+            let mut rect = Rect {
                 x: node.bounds.x + padding,
                 y: node.bounds.y + padding,
                 width: (node.bounds.width - 2.0 * padding).max(0.0),
                 height: (node.bounds.height - 2.0 * padding).max(0.0),
             };
+            // Wrapped blocks are aligned by the shaper; a single line in a wider
+            // box is moved to the right here.
+            if node.resolved.rtl() && node.style.wrap == TextWrap::None {
+                // Text leaves were measured for layout; other labelled controls
+                // (sliders) are measured while controls are prepared.
+                let width = if node.kind.text_leaf() {
+                    self.layout
+                        .get_node_context(node.layout_id)
+                        .map_or(0.0, |measured| measured.size.width)
+                } else {
+                    node.label_width
+                };
+                if width > 0.0 {
+                    rect.x += (rect.width - width).max(0.0);
+                }
+            }
             let color = foreground;
             if node.text_style()
                 == (TextStyle {
@@ -1632,12 +1703,7 @@ impl Context {
                 })
             {
                 scene.primitives.push(Primitive::Text {
-                    rect: Rect {
-                        x: node.bounds.x + padding,
-                        y: node.bounds.y + padding,
-                        width: (node.bounds.width - 2.0 * padding).max(0.0),
-                        height: (node.bounds.height - 2.0 * padding).max(0.0),
-                    },
+                    rect,
                     text: node.text.clone(),
                     font_size: node.resolved.font_size,
                     color,
@@ -1679,7 +1745,11 @@ impl Context {
                 .min(track);
             scene.primitives.push(Primitive::Quad {
                 rect: Rect {
-                    x: node.bounds.x + node.bounds.width - 4.0,
+                    x: if node.resolved.rtl() {
+                        node.bounds.x
+                    } else {
+                        node.bounds.x + node.bounds.width - 4.0
+                    },
                     y: node.bounds.y + (track - height) * node.scroll.offset / node.scroll.maximum,
                     width: 4.0,
                     height,

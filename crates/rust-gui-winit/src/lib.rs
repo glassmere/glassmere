@@ -44,6 +44,67 @@ pub enum ThemeChoice {
     Fixed(Theme),
 }
 
+/// Where the window's reading and layout direction comes from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DirectionChoice {
+    /// Right-to-left when the OS locale's language is written that way.
+    #[default]
+    Auto,
+    Ltr,
+    Rtl,
+}
+
+impl DirectionChoice {
+    pub fn resolve(self) -> rust_gui_core::Direction {
+        match self {
+            Self::Ltr => rust_gui_core::Direction::Ltr,
+            Self::Rtl => rust_gui_core::Direction::Rtl,
+            Self::Auto => sys_locale::get_locale()
+                .map_or(rust_gui_core::Direction::Ltr, |locale| {
+                    locale_direction(&locale)
+                }),
+        }
+    }
+}
+
+/// Direction of a BCP 47 locale such as `he-IL` or `ar`, by its language.
+pub fn locale_direction(locale: &str) -> rust_gui_core::Direction {
+    let language = locale
+        .split(['-', '_'])
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    // Languages whose usual script is Arabic, Hebrew, Thaana or Syriac.
+    const RTL: [&str; 12] = [
+        "ar", "he", "iw", "fa", "ur", "yi", "ps", "sd", "ug", "dv", "ckb", "syr",
+    ];
+    if RTL.contains(&language.as_str()) {
+        rust_gui_core::Direction::Rtl
+    } else {
+        rust_gui_core::Direction::Ltr
+    }
+}
+
+#[cfg(test)]
+mod direction_tests {
+    use super::{DirectionChoice, locale_direction};
+    use rust_gui_core::Direction;
+
+    #[test]
+    fn locales_map_to_directions_by_language() {
+        for locale in [
+            "ar", "ar-EG", "he-IL", "iw_IL", "fa-IR", "ur-PK", "ckb-IQ", "AR-sa",
+        ] {
+            assert_eq!(locale_direction(locale), Direction::Rtl, "{locale}");
+        }
+        for locale in ["en-US", "sk-SK", "ja", "", "arn-CL", "hello"] {
+            assert_eq!(locale_direction(locale), Direction::Ltr, "{locale}");
+        }
+        assert_eq!(DirectionChoice::Rtl.resolve(), Direction::Rtl);
+        assert_eq!(DirectionChoice::Ltr.resolve(), Direction::Ltr);
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AppOptions {
     pub title: String,
@@ -64,6 +125,8 @@ pub struct AppOptions {
     /// Whether Left and Right move on screen or in reading order in
     /// bidirectional text.
     pub caret_movement: rust_gui_core::CaretMovement,
+    /// Layout and text direction of the window.
+    pub direction: DirectionChoice,
 }
 
 impl Default for AppOptions {
@@ -79,6 +142,7 @@ impl Default for AppOptions {
             stylesheet: None,
             reduced_motion: false,
             caret_movement: rust_gui_core::CaretMovement::Visual,
+            direction: DirectionChoice::Auto,
         }
     }
 }
@@ -255,6 +319,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         let mut context = Context::new();
         context.set_reduced_motion(options.reduced_motion);
         context.set_caret_movement(options.caret_movement);
+        context.set_direction(options.direction.resolve());
         Self {
             options,
             view,

@@ -20,6 +20,7 @@ pollster.workspace = true
 accesskit.workspace = true
 accesskit_winit.workspace = true
 arboard.workspace = true
+sys-locale.workspace = true
 
 [lints]
 workspace = true

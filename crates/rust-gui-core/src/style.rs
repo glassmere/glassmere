@@ -98,6 +98,16 @@ pub(crate) enum Flow {
     Grid,
 }
 
+/// Reading and layout direction. Rows, grids, tab strips and split panes run
+/// from the start side, which is the right in `Rtl`; text blocks align there.
+/// Pixel values (`offset`, transforms, dock sides) stay physical.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Direction {
+    #[default]
+    Ltr,
+    Rtl,
+}
+
 /// Paint properties a pseudo-state may override. Layout never changes with state,
 /// so state transitions stay repaint-only.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -205,6 +215,8 @@ pub struct Style {
     /// Takes the node out of flow and places its top-left corner at this
     /// offset from the parent's top-left corner.
     pub offset: Option<(f32, f32)>,
+    /// Inherited like text properties; `None` takes the parent's direction.
+    pub direction: Option<Direction>,
 }
 
 impl Default for Style {
@@ -247,6 +259,7 @@ impl Default for Style {
             exit: None,
             animation: None,
             offset: None,
+            direction: None,
         }
     }
 }
@@ -305,6 +318,7 @@ impl Style {
     setter!(enter, enter, Effect, some);
     setter!(exit, exit, Effect, some);
     setter!(animation, animation, Animation, some);
+    setter!(direction, direction, Direction, some);
     pub fn offset(mut self, x: f32, y: f32) -> Self {
         self.offset = Some((x, y));
         self
@@ -344,6 +358,7 @@ impl Style {
                 .unwrap_or_else(|| inherited.font_family.clone()),
             font_weight: self.font_weight.unwrap_or(inherited.font_weight),
             italic: self.italic.unwrap_or(inherited.italic),
+            direction: self.direction.unwrap_or(inherited.direction),
         }
     }
 
@@ -497,6 +512,7 @@ pub struct ResolvedText {
     pub font_family: FontFamily,
     pub font_weight: u16,
     pub italic: bool,
+    pub direction: Direction,
 }
 
 impl ResolvedText {
@@ -507,7 +523,12 @@ impl ResolvedText {
             font_family: theme.font_family.clone(),
             font_weight: 400,
             italic: false,
+            direction: Direction::Ltr,
         }
+    }
+
+    pub fn rtl(&self) -> bool {
+        self.direction == Direction::Rtl
     }
 
     pub fn text_style(&self, wrap: TextWrap) -> TextStyle {
@@ -517,6 +538,7 @@ impl ResolvedText {
             weight: self.font_weight,
             italic: self.italic,
             wrap,
+            rtl: self.rtl(),
         }
     }
 }

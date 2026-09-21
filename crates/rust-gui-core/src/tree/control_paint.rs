@@ -25,6 +25,22 @@ pub(super) fn caret_flag(scene: &mut Scene, caret: Rect, rtl: Option<bool>, colo
 impl Context {
     pub(super) fn prepare_controls(&mut self, measurer: &mut impl TextMeasurer) {
         self.prepare_text_areas(measurer);
+        let labelled: Vec<_> = self
+            .nodes
+            .iter()
+            .filter_map(|(id, node)| {
+                (node.resolved.rtl()
+                    && node.kind == Kind::Slider
+                    && node.changed_frame == self.frame)
+                    .then_some(*id)
+            })
+            .collect();
+        for id in labelled {
+            let node = self.nodes.get_mut(&id).unwrap();
+            node.label_width = measurer
+                .measure_styled(&node.text, &node.text_style(), None)
+                .width;
+        }
         self.prepare_rich_text(measurer);
         self.prepare_rich_editors(measurer);
         let ids: Vec<_> = self
@@ -36,11 +52,12 @@ impl Context {
             let node = self.nodes.get_mut(&id).unwrap();
             let width = (node.bounds.width - node.style.padding.max(0.0) * 2.0).max(1.0);
             let text_style = node.text_style();
+            let rtl = node.resolved.rtl();
             if node
                 .editor
                 .as_mut()
                 .unwrap()
-                .prepare(measurer, text_style, width)
+                .prepare(measurer, text_style, width, rtl)
             {
                 self.invalidate_paint(id);
             }
@@ -80,7 +97,7 @@ impl Context {
                 height: (node.bounds.height - padding * 2.0).max(0.0),
             };
             let origin = Point {
-                x: content.x - editor.scroll_x,
+                x: content.x - editor.scroll_x + editor.align_x,
                 y: content.y,
             };
             scene.primitives.push(Primitive::PushClip(content));
@@ -168,6 +185,8 @@ impl Context {
                 height: 4.0,
             };
             let fraction = ((value - min) / (max - min)) as f32;
+            let rtl = node.resolved.rtl();
+            let thumb = if rtl { 1.0 - fraction } else { fraction };
             scene.primitives.push(Primitive::Quad {
                 rect: track,
                 color: self.theme.track,
@@ -175,6 +194,11 @@ impl Context {
             });
             scene.primitives.push(Primitive::Quad {
                 rect: Rect {
+                    x: if rtl {
+                        track.x + track.width * thumb
+                    } else {
+                        track.x
+                    },
                     width: track.width * fraction,
                     ..track
                 },
@@ -183,7 +207,7 @@ impl Context {
             });
             scene.primitives.push(Primitive::Quad {
                 rect: Rect {
-                    x: track.x + track.width * fraction - 7.0,
+                    x: track.x + track.width * thumb - 7.0,
                     y: track.y - 5.0,
                     width: 14.0,
                     height: 14.0,
@@ -210,7 +234,7 @@ impl Context {
         Some(
             caret
                 .translated(Point {
-                    x: node.bounds.x + padding - editor.scroll_x,
+                    x: node.bounds.x + padding - editor.scroll_x + editor.align_x,
                     y: node.bounds.y + padding,
                 })
                 .intersect(node.clip),

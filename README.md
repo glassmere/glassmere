@@ -132,6 +132,7 @@ The view may run more than once per input event. Put application actions behind 
 - In-window modal and non-modal dialogs with scrim, stacking, Escape/scrim dismissal and focus restoration; native modal windows that block their owner.
 - Tooltips driven by a core clock and host wake requests, closable tabs, split panes with draggable dividers, context menus and anchored popovers.
 - Transitions, enter/exit effects, layout animations and keyframes with easing curves and a reduced-motion switch, rendered through offscreen GPU layers.
+- Bidirectional text editing with visual caret order and affinity, and right-to-left windows or subtrees with mirrored layout and widgets, detected from the OS locale.
 - Docking with an app-owned, persistable layout: split tree, tab groups, floating groups, detached windows, drop indicators and a keyboard panel menu.
 - Native winit host, logical coordinates, DPI scaling, zero-size handling and surface recovery.
 - Vertical scrolling, nested wheel propagation, keyboard scrolling and focus revealing off-screen controls.

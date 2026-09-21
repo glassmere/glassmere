@@ -1,6 +1,6 @@
 # Milestone 7: advanced features
 
-Slices so far: 7a docking, 7b rich text with the code editor foundation, 7c code intelligence, 7d the WYSIWYG rich text editor and 7e bidirectional caret order (below).
+Slices so far: 7a docking, 7b rich text with the code editor foundation, 7c code intelligence, 7d the WYSIWYG rich text editor, 7e bidirectional caret order and 7f text direction with right-to-left layout (below).
 
 # Milestone 7a: docking
 
@@ -303,3 +303,54 @@ Not verified natively: pressing the arrow keys in the real window. The stepping 
 - Word moves follow the direction of the adjacent run but still stop at logical word boundaries.
 - The headless measurer's reordering is a simplification (neutrals follow the previous strong character, digits count as left-to-right); the real shaper implements the Unicode algorithm.
 - Paragraph direction is still detected from the first strong character; forcing it, and mirroring layouts for right-to-left locales, is the next slice.
+
+# Milestone 7f: text direction and right-to-left layout
+
+Implemented on 2026-09-21. A window, or any subtree, can run right to left: layout mirrors through the layout engine's own direction support, text aligns to the right, and directional widget internals follow. The direction comes from the OS locale by default.
+
+## Run
+
+```powershell
+cargo run -p rust-gui --example controls --release -- --rtl
+cargo run -p rust-gui --example richtext --release -- --rtl
+cargo run -p rust-gui --example panes --release -- --rtl
+```
+
+```rust
+run(AppOptions { direction: DirectionChoice::Rtl, ..AppOptions::default() }, view)?;   // default: Auto
+context.set_direction(Direction::Rtl);                                                  // at runtime
+ui.row("phone", Style::default().direction(Direction::Ltr), |ui| { /* stays left to right */ });
+```
+
+```text
+class mirrored { direction: rtl }
+```
+
+## Contracts
+
+| API | Behavior |
+| --- | --- |
+| `Direction::{Ltr, Rtl}`, `Style::direction`, stylesheet `direction` | Inherited like text properties: a node without one takes its parent's, so one subtree can differ from the window. |
+| `Context::set_direction`, `Context::direction` | The window's direction; switching at runtime re-lays out and repaints everything. |
+| `AppOptions::direction`, `DirectionChoice::{Auto, Ltr, Rtl}`, `locale_direction` | `Auto` (the default) reads the OS locale through `sys-locale` and is right-to-left for Arabic, Hebrew, Persian, Urdu, Yiddish, Pashto, Sindhi, Uyghur, Dhivehi, Central Kurdish and Syriac. |
+| Layout | Taffy's `direction` is set per node, so rows, wrapped rows, grid columns and the cross axis of columns run from the right. `Align::Start` and `Justify::Start` are the right edge. Split panes put `first` on the right; tab strips run right to left. |
+| Physical values stay physical | `Style::offset`, transforms, slide effects, floating dock rectangles and `DockZone::Left/Right` mean the same pixels in both directions, as in CSS where flex order flips and `left` does not. |
+| Text | Blocks in right-to-left UI align right: wrapped blocks through the shaper (`TextStyle::rtl`), single lines in wider boxes by moving the text. The paragraph's base direction still comes from its content, so a Latin label right-aligns but keeps its punctuation order. |
+| Text input | Text shorter than the field sits at the right; clicks, the caret and the IME rectangle account for it. |
+| Widgets | Sliders have their minimum on the right and Left increases the value. Split dividers drag and step the way they look. Left selects the next tab. Tree expanders are hit at the right end of the row. Combo and menu popups hang from the owner's right edge, context menus open to the left of the pointer, tooltips align with the owner's right edge, and scrollbars are on the left. |
+| Rich text editor | Paragraphs align right; list markers, the quote bar and indents move to the right side. Code blocks stay left-to-right. |
+| Code editor | Always left-to-right, text, gutter and scrollbar, whatever surrounds it; its find bar mirrors like any other row. |
+
+## Validation
+
+Five new tests. Four core tests: rows, column start alignment and grid columns mirrored, a left-to-right subtree inside a right-to-left window, switching back at runtime and the stylesheet property; right alignment of a single line in a wider leaf and the `rtl` style on a wrapped block; slider pointer and key direction, split pane order with divider drag and key steps, tab order with the Left key, and a combo popup hanging from its owner's right edge; a right-aligned text field that still places the caret where it was clicked, and a code editor that stays left-to-right at the right side of a mirrored column. One host test maps locales to directions. The full suite is 148 tests plus 11 GPU tests; clippy is clean; the controls, panes and richtext examples also pass `--smoke --rtl`. Screenshots of the mirrored controls and richtext examples confirmed swapped columns and panes, right-aligned text and fields, the mirrored slider, list markers and quote bar on the right, and code kept left-to-right. They also exposed two defects that were fixed: a clipped slider label and a right-aligned code block.
+
+Not verified natively: `Auto` on a right-to-left OS locale (this machine is left-to-right; the mapping is unit-tested), and pointer and key interaction in the mirrored window, which is covered headlessly.
+
+## Remaining limits
+
+- The base direction of a paragraph cannot be forced, so `Hello!` in a right-to-left label shows as `Hello!` at the right, not `!Hello`.
+- Collection rows, data grid cells and dock tab strips mirror through layout, but their keyboard Left and Right (tree expand and collapse, grid cell moves) still use left-to-right meanings.
+- Dock side zones, floating panels and the inspector stay physical by design; an app that wants a mirrored default dock layout builds it that way.
+- Buttons with a minimum width align their label to the start side, like left-to-right buttons do.
+- Checkbox and radio marks follow the direction of their label text, since the mark is part of the label.

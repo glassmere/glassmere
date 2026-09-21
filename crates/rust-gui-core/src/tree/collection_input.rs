@@ -70,7 +70,13 @@ impl Context {
                 } = node.control
                     && self.hovered == Some(id)
                     && self.pointer.is_some_and(|point| {
-                        point.x < node.bounds.x + (depth.min(100) * 18 + 28) as f32
+                        // The expander sits at the start of the row, after its indent.
+                        let reach = (depth.min(100) * 18 + 28) as f32;
+                        if node.resolved.rtl() {
+                            point.x > node.bounds.x + node.bounds.width - reach
+                        } else {
+                            point.x < node.bounds.x + reach
+                        }
                     })
                 {
                     let owner = node.parent.unwrap();

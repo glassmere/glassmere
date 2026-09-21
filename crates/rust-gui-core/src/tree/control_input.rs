@@ -73,6 +73,12 @@ impl Context {
         };
         let fraction = ((position.x - node.bounds.x - 12.0) / (node.bounds.width - 24.0).max(1.0))
             .clamp(0.0, 1.0);
+        // A right-to-left slider has its minimum on the right.
+        let fraction = if node.resolved.rtl() {
+            1.0 - fraction
+        } else {
+            fraction
+        };
         self.set_number(id, min + f64::from(fraction) * (max - min))
     }
 
@@ -82,7 +88,7 @@ impl Context {
             return false;
         };
         let local = Point {
-            x: position.x - node.bounds.x - node.style.padding + editor.scroll_x,
+            x: position.x - node.bounds.x - node.style.padding + editor.scroll_x - editor.align_x,
             y: position.y - node.bounds.y - node.style.padding,
         };
         let (cursor, affinity) = editor.geometry.hit_affinity(local);
@@ -418,6 +424,11 @@ impl Context {
                     ..
                 } = node.control
                 {
+                    // Left and Right follow the slider's direction on screen.
+                    let step = match key {
+                        Key::ArrowLeft | Key::ArrowRight if node.resolved.rtl() => -step,
+                        _ => step,
+                    };
                     let next = match key {
                         Key::ArrowLeft | Key::ArrowDown => value - step,
                         Key::ArrowRight | Key::ArrowUp => value + step,

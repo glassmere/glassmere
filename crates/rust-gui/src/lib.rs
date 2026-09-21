@@ -6,7 +6,7 @@ pub use rust_gui_scene::{Affine, Affinity, Color, Point, Primitive, Rect, Scene,
 pub use rust_gui_syntax as syntax;
 #[cfg(feature = "desktop")]
 pub use rust_gui_winit::{
-    AppOptions, DesktopClosed, DesktopHandle, DockWindowView, DockWindows, GpuMemoryPolicy,
-    GraphicsBackend, GraphicsOptions, Mailbox, MessageSender, ThemeChoice, WakeHandle, WindowKey,
-    run, run_windows, run_with_wakeup,
+    AppOptions, DesktopClosed, DesktopHandle, DirectionChoice, DockWindowView, DockWindows,
+    GpuMemoryPolicy, GraphicsBackend, GraphicsOptions, Mailbox, MessageSender, ThemeChoice,
+    WakeHandle, WindowKey, run, run_windows, run_with_wakeup,
 };

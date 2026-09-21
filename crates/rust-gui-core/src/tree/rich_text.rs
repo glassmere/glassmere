@@ -43,6 +43,18 @@ fn content(node: &Node) -> Rect {
     }
 }
 
+/// The content box the text is drawn in. Wrapped blocks are aligned by the
+/// shaper; a single line in a wider right-to-left box moves to the right edge.
+fn aligned(node: &Node, state: &RichState) -> Rect {
+    let mut content = content(node);
+    if node.resolved.rtl() && node.style.wrap == TextWrap::None {
+        let shift = (content.width - state.geometry.size.width).max(0.0);
+        content.x += shift;
+        content.width -= shift;
+    }
+    content
+}
+
 /// One rectangle per visual line for the clusters of a byte range.
 pub(super) fn line_boxes(geometry: &TextGeometry, range: Range<usize>) -> Vec<Rect> {
     let mut lines: Vec<Rect> = Vec::new();
@@ -95,7 +107,7 @@ impl Context {
             return;
         };
         let theme = &self.theme;
-        let content = content(node);
+        let content = aligned(node, state);
         let origin = Point {
             x: content.x,
             y: content.y,
@@ -155,7 +167,7 @@ impl Context {
         else {
             return None;
         };
-        let content = content(node);
+        let content = aligned(node, state);
         let local = Point {
             x: point.x - content.x,
             y: point.y - content.y,

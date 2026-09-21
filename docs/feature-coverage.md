@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 7e. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 7f. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -10,7 +10,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 4 | Incremental layout | Done | Taffy dirty subtrees; same-size text changes skip layout. |
 | 5 | Incremental rendering | Partial | Damage tracking, subtree paint caches, retained GPU buffers and text batching exist; presentation still repaints the full surface. |
 | 6 | First-class virtualization | Partial | Lists, trees and grids realize only the viewport (milestone 4). Huge documents/editors: planned (phase 6). |
-| 7 | Excellent text system | Partial | Unicode, graphemes, fallback, ligatures, emoji, IME, selection, clipboard, undo/redo, rich text blocks with links, syntect highlighting, a rope document with virtualized line rendering, a WYSIWYG rich text editor with Markdown persistence. Visual or logical caret order in bidirectional text with caret affinity. Missing: forced paragraph direction, regular expression search. |
+| 7 | Excellent text system | Partial | Unicode, graphemes, fallback, ligatures, emoji, IME, selection, clipboard, undo/redo, rich text blocks with links, syntect highlighting, a rope document with virtualized line rendering, a WYSIWYG rich text editor with Markdown persistence. Visual or logical caret order in bidirectional text with caret affinity, right-to-left alignment. Missing: forced paragraph base direction, regular expression search. |
 | 8 | Accessibility from day one | Done | AccessKit roles, labels, actions, keyboard navigation, tree visible in the inspector's Accessibility tab. Screen-reader speech review remains manual. |
 | 9 | Powerful focus system | Done | Keyboard focus, pointer capture, Tab traversal, focus scopes with trap/restore/memory, modal focus in dialogs, geometric arrow navigation, predictable restoration (milestone 6c). |
 | 10 | Modern layout engine | Partial | Flexbox, grid with tracks/areas/repeat/minmax, intrinsic sizing, percentages, min/max, aspect ratio, alignment including text-bottom baseline, absolute popups (milestone 6b). Missing: true font baselines, responsive breakpoints, custom layout primitives. |
@@ -42,7 +42,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 36 | Snapshot testing | Done | Text snapshots for tree, layout, accessibility and scene; opt-in pixel snapshots with a bundled font. |
 | 37 | Semantic testing API | Done | `by_label("Save")` then `click`; key paths for disambiguation. |
 | 38 | Deterministic rendering/testing | Done | Synthetic measurer for logic tests; bundled Fira Mono for pixel references. Cross-driver tolerance still to be confirmed in CI. |
-| 39 | Localization | Not started | |
+| 39 | Localization | Partial | Right-to-left windows and subtrees with mirrored layout and widgets, direction detected from the OS locale (milestone 7f). Missing: runtime locale switching, message catalogs and plurals, locale-aware numbers and dates. |
 | 40 | High-DPI support | Done | Per-window scale factor, fractional scaling, DPI-aware accessibility bounds. |
 | 41 | Platform integration | Partial | Accessibility APIs, IME, clipboard, window titles. Missing: file dialogs, notifications, native menus, tray, file associations, system appearance. |
 | 42 | Native-first desktop focus | Partial | Windows verified natively; Linux/macOS build in CI without interaction checks. |

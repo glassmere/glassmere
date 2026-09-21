@@ -2,6 +2,12 @@ use rust_gui::{AppOptions, Color, FontFamily, Length, MenuItem, Size, Style, Tex
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
+    // `--rtl` mirrors the window as a right-to-left locale would.
+    let direction = if std::env::args().any(|arg| arg == "--rtl") {
+        rust_gui::DirectionChoice::Rtl
+    } else {
+        rust_gui::DirectionChoice::Auto
+    };
     let mut name = String::from("Hello, 世界 👩‍💻");
     let mut notifications = false;
     let mut mode = 0;
@@ -14,6 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             title: "Rust GUI / Text and controls".into(),
             size: Size::new(880.0, 740.0),
             frame_limit: smoke.then_some(3),
+            direction,
             ..AppOptions::default()
         },
         move |ui| {

@@ -25,6 +25,10 @@ pub struct TextStyle {
     pub weight: u16,
     pub italic: bool,
     pub wrap: TextWrap,
+    /// The block belongs to right-to-left UI: wrapped lines align to the right
+    /// edge whatever their content. Left-to-right UI keeps each line on the
+    /// side its own content asks for.
+    pub rtl: bool,
 }
 
 impl Default for TextStyle {
@@ -35,6 +39,7 @@ impl Default for TextStyle {
             weight: 400,
             italic: false,
             wrap: TextWrap::None,
+            rtl: false,
         }
     }
 }
@@ -406,12 +411,18 @@ impl TextMeasurer for MonospaceMeasurer {
             if base {
                 order.reverse();
             }
+            let shift = match width {
+                Some(width) if style.rtl && width.is_finite() => {
+                    (width - items.len() as f32 * advance).max(0.0)
+                }
+                _ => 0.0,
+            };
             for (slot, item) in order.iter().enumerate() {
                 let (byte, grapheme) = items[*item];
                 geometry.clusters.push(TextCluster {
                     bytes: byte..byte + grapheme.len(),
                     rect: Rect {
-                        x: slot as f32 * advance,
+                        x: shift + slot as f32 * advance,
                         y,
                         width: advance,
                         height: line_height,
@@ -419,7 +430,7 @@ impl TextMeasurer for MonospaceMeasurer {
                     rtl: directions[*item],
                 });
             }
-            max_x = max_x.max(items.len() as f32 * advance);
+            max_x = max_x.max(shift + items.len() as f32 * advance);
             let end = items
                 .last()
                 .map_or(*start, |(byte, grapheme)| byte + grapheme.len());
@@ -433,7 +444,7 @@ impl TextMeasurer for MonospaceMeasurer {
                 geometry.carets.push(CaretStop {
                     byte: *start,
                     rect: Rect {
-                        x: 0.0,
+                        x: shift,
                         y,
                         width: 1.0,
                         height: line_height,
