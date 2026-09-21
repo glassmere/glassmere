@@ -1,7 +1,7 @@
 use rust_gui_render_wgpu::{Renderer, TextSystem, wgpu};
 use rust_gui_scene::{
-    Affine, Color, FontFamily, Point, Primitive, Rect, Scene, Size, TextMeasurer, TextSpan,
-    TextStyle, TextWrap,
+    Affine, Color, FontFamily, Image, Point, Primitive, Rect, Scene, Size, TextMeasurer, TextSpan,
+    TextStyle, TextWrap, VectorImage,
 };
 
 /// Requires a hardware or software graphics adapter. Run explicitly on a machine
@@ -894,4 +894,271 @@ fn cached_replay_of_rich_text_is_identical() {
         first == again,
         "re-preparing the same rich block changed pixels"
     );
+}
+
+/// A raster image from straight RGBA texels.
+fn raster(width: u32, height: u32, texel: impl Fn(u32, u32) -> [u8; 4]) -> Image {
+    let mut pixels = Vec::new();
+    for y in 0..height {
+        for x in 0..width {
+            pixels.extend(texel(x, y));
+        }
+    }
+    Image::from_rgba8(width, height, pixels).unwrap()
+}
+
+fn rect_of(image: &Image) -> Rect {
+    let size = image.size();
+    rect(0.0, 0.0, size.width, size.height)
+}
+
+fn picture(rect: Rect, image: &Image) -> Primitive {
+    Primitive::Image {
+        rect,
+        image: image.clone(),
+        source: rect_of(image),
+        tint: None,
+        radius: 0.0,
+    }
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn images_show_their_texels_in_the_colours_quads_have() {
+    let mut gpu = Gpu::new();
+    let colours = [
+        Color::rgb(200, 0, 0),
+        Color::rgb(0, 180, 0),
+        Color::rgb(0, 0, 220),
+        Color::rgb(240, 200, 40),
+    ];
+    let image = raster(2, 2, |x, y| {
+        let Color(r, g, b, a) = colours[(y * 2 + x) as usize];
+        [r, g, b, a]
+    });
+    let mut primitives = vec![picture(rect(10.0, 10.0, 40.0, 40.0), &image)];
+    for (index, colour) in colours.iter().enumerate() {
+        primitives.push(quad(
+            rect(70.0, 10.0 + 12.0 * index as f32, 10.0, 10.0),
+            *colour,
+        ));
+    }
+    let pixels = gpu.render(1.0, &primitives, true);
+    for (index, Color(r, g, b, _)) in colours.into_iter().enumerate() {
+        // Outside the texel centres, where filtering has nothing to blend.
+        let (x, y) = (15 + 30 * (index % 2), 15 + 30 * (index / 2));
+        assert_pixel(&pixels, x, y, [r, g, b]);
+        let (qx, qy) = (75, 15 + 12 * index);
+        assert_eq!(
+            pixels[(y * SIDE + x) * 4..][..4],
+            pixels[(qy * SIDE + qx) * 4..][..4],
+            "texel {index} differs from a quad of its colour"
+        );
+    }
+    // One texel as the source fills the rectangle edge to edge with its colour.
+    let pixels = gpu.render(
+        1.0,
+        &[Primitive::Image {
+            rect: rect(10.0, 10.0, 40.0, 40.0),
+            image,
+            source: rect(1.0, 0.0, 1.0, 1.0),
+            tint: None,
+            radius: 0.0,
+        }],
+        true,
+    );
+    for (x, y) in [(12, 12), (30, 30), (47, 47), (12, 47)] {
+        assert_pixel(&pixels, x, y, [0, 180, 0]);
+    }
+    assert_eq!(gpu.renderer.stats().image_uploads, 1);
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn tint_recolours_opaque_texels_and_radius_rounds_the_rectangle() {
+    let mut gpu = Gpu::new();
+    // The left half is an opaque white glyph, the right half is empty.
+    let icon = raster(4, 4, |x, _| if x < 2 { [255; 4] } else { [0; 4] });
+    let tinted = |rect, tint| Primitive::Image {
+        rect,
+        image: icon.clone(),
+        source: rect_of(&icon),
+        tint: Some(tint),
+        radius: 0.0,
+    };
+    let photo = raster(2, 2, |_, _| [0, 0, 255, 255]);
+    let pixels = gpu.render(
+        1.0,
+        &[
+            quad(rect(0.0, 0.0, 128.0, 60.0), RED),
+            tinted(rect(10.0, 10.0, 40.0, 40.0), BLUE),
+            tinted(rect(10.0, 70.0, 40.0, 40.0), Color(0, 0, 255, 128)),
+            Primitive::Image {
+                rect: rect(70.0, 70.0, 40.0, 40.0),
+                image: photo.clone(),
+                source: rect_of(&photo),
+                tint: None,
+                radius: 14.0,
+            },
+        ],
+        true,
+    );
+    assert_pixel(&pixels, 15, 30, [0, 0, 255]);
+    assert_pixel(&pixels, 45, 30, [255, 0, 0]);
+    // A translucent tint keeps the shape and scales its alpha.
+    let rest = srgb(1.0 - 128.0 / 255.0);
+    assert_pixel(&pixels, 15, 90, [rest, rest, 255]);
+    assert_pixel(&pixels, 45, 90, [255; 3]);
+    assert_pixel(&pixels, 90, 90, [0, 0, 255]);
+    assert_pixel(&pixels, 90, 72, [0, 0, 255]);
+    for (x, y) in [(71, 71), (108, 71), (71, 108), (108, 108)] {
+        assert_pixel(&pixels, x, y, [255; 3]);
+    }
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn atlas_neighbours_do_not_bleed_and_share_a_draw() {
+    let mut gpu = Gpu::new();
+    let red = raster(4, 4, |_, _| [255, 0, 0, 255]);
+    let blue = raster(4, 4, |_, _| [0, 0, 255, 255]);
+    let green = raster(4, 4, |_, _| [0, 255, 0, 255]);
+    let pixels = gpu.render(
+        1.0,
+        &[
+            picture(rect(10.0, 10.0, 40.0, 40.0), &red),
+            picture(rect(50.0, 10.0, 40.0, 40.0), &blue),
+            picture(rect(10.0, 60.0, 40.0, 40.0), &green),
+            picture(rect(60.0, 60.0, 40.0, 40.0), &blue),
+        ],
+        true,
+    );
+    // Ten pixels per texel: bleeding would tint the outer five.
+    for y in [12, 30, 47] {
+        assert_pixel(&pixels, 12, y, [255, 0, 0]);
+        assert_pixel(&pixels, 47, y, [255, 0, 0]);
+        assert_pixel(&pixels, 52, y, [0, 0, 255]);
+        assert_pixel(&pixels, 87, y, [0, 0, 255]);
+    }
+    for (x, y) in [(12, 62), (47, 62), (12, 97), (47, 97), (30, 80)] {
+        assert_pixel(&pixels, x, y, [0, 255, 0]);
+    }
+    for (x, y) in [(62, 62), (97, 97)] {
+        assert_pixel(&pixels, x, y, [0, 0, 255]);
+    }
+    let stats = gpu.renderer.stats();
+    assert_eq!((stats.atlas_pages, stats.image_textures), (1, 0));
+    assert_eq!(stats.image_uploads, 3, "the second blue picture is cached");
+    assert_eq!(stats.image_draws, 1, "one page under one clip is one draw");
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn large_images_get_their_own_texture_and_the_budget_evicts_idle_ones() {
+    let mut gpu = Gpu::new();
+    let small = raster(8, 8, |_, _| [255, 0, 0, 255]);
+    // A new large image each frame, as a slideshow would produce.
+    let frame = |gpu: &mut Gpu| {
+        let large = raster(1024, 1024, |x, _| {
+            if x < 512 {
+                [0, 0, 255, 255]
+            } else {
+                [0, 255, 0, 255]
+            }
+        });
+        let pixels = gpu.render(
+            1.0,
+            &[
+                picture(rect(0.0, 0.0, 64.0, 64.0), &large),
+                picture(rect(70.0, 0.0, 20.0, 20.0), &small),
+            ],
+            true,
+        );
+        assert_pixel(&pixels, 16, 32, [0, 0, 255]);
+        assert_pixel(&pixels, 48, 32, [0, 255, 0]);
+        assert_pixel(&pixels, 80, 10, [255, 0, 0]);
+        gpu.renderer.stats()
+    };
+    let stats = frame(&mut gpu);
+    assert_eq!((stats.atlas_pages, stats.image_textures), (1, 1));
+    assert_eq!(stats.image_draws, 2);
+    assert_eq!(stats.image_bytes, (2048 * 2048 + 1024 * 1024) * 4);
+    // A page and two large images fit 24 MiB; idle ones go once it is exceeded.
+    gpu.renderer.set_image_budget(24 << 20);
+    frame(&mut gpu);
+    let stats = frame(&mut gpu);
+    assert_eq!(stats.image_textures, 3);
+    let stats = frame(&mut gpu);
+    assert_eq!((stats.atlas_pages, stats.image_textures), (1, 2));
+    assert_eq!(stats.image_uploads, 5, "the small image was uploaded once");
+}
+
+struct Solid(std::sync::Arc<std::sync::Mutex<Vec<(u32, u32)>>>);
+
+impl VectorImage for Solid {
+    fn size(&self) -> Size {
+        Size::new(10.0, 10.0)
+    }
+    fn rasterize(&self, width: u32, height: u32) -> Vec<u8> {
+        self.0.lock().unwrap().push((width, height));
+        [0, 0, 255, 255].repeat((width * height) as usize)
+    }
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn vector_images_rasterize_for_the_pixels_they_cover_and_replay_from_cache() {
+    let mut gpu = Gpu::new();
+    let sizes = std::sync::Arc::default();
+    let vector = Image::from_vector(Solid(std::sync::Arc::clone(&sizes)));
+    let small = [picture(rect(5.0, 5.0, 20.0, 20.0), &vector)];
+    let pixels = gpu.render(2.0, &small, true);
+    assert_pixel(&pixels, 30, 30, [0, 0, 255]);
+    assert_pixel(&pixels, 60, 60, [255; 3]);
+    gpu.render(2.0, &small, true);
+    assert_eq!(*sizes.lock().unwrap(), [(40, 40)]);
+    let large = [picture(rect(5.0, 5.0, 30.0, 30.0), &vector)];
+    let first = gpu.render(2.0, &large, true);
+    assert_eq!(*sizes.lock().unwrap(), [(40, 40), (60, 60)]);
+    let stats = gpu.renderer.stats();
+    let replay = gpu.render(2.0, &large, false);
+    assert_eq!(first, replay);
+    assert_pixel(&replay, 60, 60, [0, 0, 255]);
+    assert_eq!(gpu.renderer.stats().preparations, stats.preparations);
+    assert_eq!(gpu.renderer.stats().image_uploads, 2);
+    assert_eq!(sizes.lock().unwrap().len(), 2);
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn images_composite_inside_layers_and_keep_painters_order() {
+    let mut gpu = Gpu::new();
+    let red = raster(2, 2, |_, _| [255, 0, 0, 255]);
+    let green = Color::rgb(0, 255, 0);
+    let pixels = gpu.render(
+        1.0,
+        &[
+            layer(rect(0.0, 0.0, 60.0, 60.0), 0.5, Affine::IDENTITY),
+            picture(rect(10.0, 10.0, 40.0, 40.0), &red),
+            Primitive::PopLayer,
+            quad(rect(70.0, 10.0, 50.0, 50.0), BLUE),
+            picture(rect(80.0, 20.0, 30.0, 30.0), &red),
+            quad(rect(95.0, 35.0, 25.0, 25.0), green),
+            Primitive::PushClip(rect(10.0, 70.0, 20.0, 20.0)),
+            picture(rect(10.0, 70.0, 40.0, 40.0), &red),
+            Primitive::PopClip,
+        ],
+        true,
+    );
+    let half = srgb(0.5);
+    assert_pixel(&pixels, 30, 30, [255, half, half]);
+    assert_pixel(&pixels, 55, 55, [255; 3]);
+    assert_pixel(&pixels, 75, 15, [0, 0, 255]);
+    assert_pixel(&pixels, 85, 25, [255, 0, 0]);
+    assert_pixel(&pixels, 100, 40, [0, 255, 0]);
+    assert_pixel(&pixels, 115, 55, [0, 255, 0]);
+    // The clip scissors the image.
+    assert_pixel(&pixels, 20, 80, [255, 0, 0]);
+    assert_pixel(&pixels, 40, 80, [255; 3]);
+    assert_pixel(&pixels, 20, 100, [255; 3]);
 }

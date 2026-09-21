@@ -303,6 +303,21 @@ impl<S> Harness<S> {
                         .collect::<String>(),
                     hex(*color)
                 ),
+                Primitive::Image {
+                    rect: r,
+                    image,
+                    source,
+                    tint,
+                    radius,
+                } => format!(
+                    "Image {} {}x{}{} source={} r={radius:.1}{}",
+                    rect(*r),
+                    image.size().width,
+                    image.size().height,
+                    if image.is_vector() { " vector" } else { "" },
+                    rect(*source),
+                    tint.map_or_else(String::new, |tint| format!(" tint={}", hex(tint)))
+                ),
                 Primitive::PushClip(r) => format!("PushClip {}", rect(*r)),
                 Primitive::PopClip => "PopClip".into(),
                 Primitive::PushLayer {

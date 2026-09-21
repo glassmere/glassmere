@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 7h. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 8a. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -19,7 +19,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 13 | Animations in the property system | Done | `Style::transition`, `enter`/`exit` effects, `layout_transition`, keyframe `Animation`, easing curves, reduced motion; composited as GPU layers. Missing: spring physics, per-property timing, OS reduced-motion detection. |
 | 14 | Renderer-independent UI core | Done | Core emits a `Scene` display list; no wgpu types in core. |
 | 15 | Multiple rendering backends | Partial | wgpu only. CPU renderer: planned (phase 6). |
-| 16 | Efficient GPU architecture | Partial | Instanced quads, glyph atlas, batching, rectangular clipping. Missing: layers, shadows, paths, gradients, custom shaders. |
+| 16 | Efficient GPU architecture | Partial | Instanced quads, glyph atlas, a shared image atlas with vector images rasterized per size (milestone 8a), offscreen layers, batching, rectangular clipping. Missing: shadows, paths, gradients, custom shaders, mipmaps. |
 | 17 | Custom rendering escape hatch | Partial | `CustomWidget` leaves paint primitives; no embedded 2D/3D or direct GPU hook yet. |
 | 18 | Rich widget library | Partial | Button, checkbox, radio, slider, text input, combo, menu, context menu, tooltip, popover, tabs, split panes, tree, virtual list, data grid, modal and non-modal dialogs, docking, rich text, code editor, rich text editor. Missing: number input, autocomplete, toasts, property grid. |
 | 19 | Professional-grade DataGrid | Partial | Virtual rows, sorting, selection, huge datasets. Missing: virtual columns, filtering, resizing, reordering, frozen rows/columns, inline editing. |
@@ -37,7 +37,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 31 | Observable dependency graph | Partial | Inspector shows per-node "last declaration changed" flags and repainted nodes; no dependency graph because there is no reactive layer. |
 | 32 | Built-in native DevTools | Partial | F12 inspector: tree, box model, computed style, focus/hover state, accessibility view, event log, repaint/damage overlays, frame timings. Missing: render layers, GPU timings, memory statistics. |
 | 33 | Performance profiler | Partial | Declare/layout/paint/render CPU timings, dirty flags, created/reused/removed counts, paint cache hits, CSV export, `tracing` spans. Missing: text shaping split, GPU time, draw calls, allocations. |
-| 34 | Hot reload | Done | Stylesheets and themes reload in place; any file through `Ui::watched_bytes`/`watched_text`; Rust code through `rust-gui-dev`, which rebuilds and restarts with app state (`Ui::hot_state`) and window geometry kept (milestone 7g). Missing: in-process code swapping, image assets. |
+| 34 | Hot reload | Done | Stylesheets and themes reload in place; any file through `Ui::watched_bytes`/`watched_text`; Rust code through `rust-gui-dev`, which rebuilds and restarts with app state (`Ui::hot_state`) and window geometry kept (milestone 7g). Image files reload in place too (milestone 8a). Missing: in-process code swapping. |
 | 35 | Headless UI testing | Done | `rust-gui-testing` harness with real input paths and application state access. |
 | 36 | Snapshot testing | Done | Text snapshots for tree, layout, accessibility and scene; opt-in pixel snapshots with a bundled font. |
 | 37 | Semantic testing API | Done | `by_label("Save")` then `click`; key paths for disambiguation. |

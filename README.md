@@ -102,6 +102,14 @@ cargo run -p rust-gui-dev -- -p rust-gui --example counter
 
 Rebuilds and restarts the app when sources change, with its state and window kept; watched files and stylesheets update in place. See [milestone 7g](docs/milestone-7.md#milestone-7g-hot-reload).
 
+Images:
+
+```powershell
+cargo run -p rust-gui --example images --release
+```
+
+PNG, JPEG, WebP, GIF and SVG files decoded in the background and reloaded when they change, fit modes, icons tinted with the text colour, and one SVG sharp at every size. See [milestone 8a](docs/milestone-8.md#milestone-8a-images).
+
 Docking:
 
 ```powershell
@@ -142,6 +150,7 @@ The view may run more than once per input event. Put application actions behind 
 - Transitions, enter/exit effects, layout animations and keyframes with easing curves and a reduced-motion switch, rendered through offscreen GPU layers.
 - Bidirectional text editing with visual caret order and affinity, and right-to-left windows or subtrees with mirrored layout and widgets, detected from the OS locale.
 - Framework diagnostics in debug builds: unstable ids, needless relayout, excessive repainting, unnamed controls, oversized layers and huge containers, in the inspector, the log and `Context::diagnostics`.
+- Images: PNG, JPEG, WebP, GIF and SVG, decoded in the background with placeholders and live reload, fit modes, theme-following icon tints, a shared GPU atlas and SVGs rasterized sharp at every size.
 - Docking with an app-owned, persistable layout: split tree, tab groups, floating groups, detached windows, drop indicators and a keyboard panel menu.
 - Native winit host, logical coordinates, DPI scaling, zero-size handling and surface recovery.
 - Vertical scrolling, nested wheel propagation, keyboard scrolling and focus revealing off-screen controls.
@@ -164,8 +173,9 @@ The view may run more than once per input event. Put application actions behind 
 | `rust-gui` | Public facade and runnable example; `desktop` is an optional default feature |
 | `rust-gui-core` | UI builder, components/custom leaves, retained tree, scroll/layout/input, collections, commands, drag/drop, paint caches and semantics |
 | `rust-gui-scene` | Geometry, colors, measurement interface and display list; no platform dependencies |
-| `rust-gui-render-wgpu` | Ordered GPU rendering, text shaping and glyph atlas |
+| `rust-gui-render-wgpu` | Ordered GPU rendering, text shaping, glyph atlas and image atlas |
 | `rust-gui-winit` | Native windows, input, worker wakeups and mailboxes, AccessKit mapping, inspector hosting and presentation |
+| `rust-gui-image` | PNG, JPEG, WebP, GIF and SVG decoding and the background loader; `rust_gui::image` behind the default `images` feature |
 | `rust-gui-devtools` | Frame/event recorder, inspector model, views and overlays; no platform dependencies |
 | `rust-gui-testing` | Headless harness, semantic finders and text snapshot assertions for application tests |
 
@@ -216,6 +226,7 @@ cargo run -p rust-gui --example animations -- --smoke
 cargo run -p rust-gui --example docking -- --smoke
 cargo run -p rust-gui --example editor -- --smoke
 cargo run -p rust-gui --example richtext -- --smoke
+cargo run -p rust-gui --example images -- --smoke
 cargo run -p rust-gui-core --example tree_bench --release
 ```
 

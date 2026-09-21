@@ -53,6 +53,7 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     CoreRole::Tab => Role::Tab,
                     CoreRole::TabPanel => Role::TabPanel,
                     CoreRole::Splitter => Role::Splitter,
+                    CoreRole::Image => Role::Image,
                 }
             };
             let mut node = Node::new(role);

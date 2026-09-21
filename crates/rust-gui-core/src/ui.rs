@@ -6,6 +6,7 @@ use std::sync::Arc;
 mod collections;
 mod controls;
 mod dock;
+mod image;
 mod overlays;
 mod rich_editor;
 mod rich_text;
@@ -23,6 +24,7 @@ pub(crate) enum WidgetKey {
 #[derive(Default)]
 pub(crate) struct HostOutbox {
     pub watched: Vec<std::path::PathBuf>,
+    pub images: Vec<std::path::PathBuf>,
     pub hot_state: Option<String>,
 }
 
@@ -49,6 +51,7 @@ pub(crate) enum Kind {
     CodeEditor,
     RichEditor,
     RichText,
+    Image,
     ContextArea,
     Popover,
     Label,

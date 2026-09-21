@@ -7,12 +7,15 @@ publish.workspace = true
 
 [features]
 diagnostics = []
+# Decoding for `Ui::image_file`; without it image files report an error.
+images = ["dep:rust-gui-image"]
 
 [dependencies]
 rust-gui-core.workspace = true
 rust-gui-scene.workspace = true
 rust-gui-render-wgpu.workspace = true
 rust-gui-devtools.workspace = true
+rust-gui-image = { workspace = true, optional = true }
 tracing.workspace = true
 wgpu.workspace = true
 winit.workspace = true

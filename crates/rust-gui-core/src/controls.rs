@@ -95,6 +95,13 @@ pub(crate) enum Control {
         font_size: f32,
         read_only: bool,
     },
+    Image {
+        /// `None` while a file loads or after it failed to.
+        image: Option<rust_gui_scene::Image>,
+        failed: bool,
+        fit: crate::ImageFit,
+        tint: crate::ImageTint,
+    },
     RichText {
         runs: Vec<crate::RichRun>,
         /// Number of link runs; a block with links is focusable.

@@ -1,5 +1,7 @@
 //! Renderer-independent geometry, text measurement, and ordered paint commands.
+mod image;
 mod text;
+pub use image::{Image, VectorImage};
 pub use text::{
     Affinity, CaretStop, FontFamily, MonospaceMeasurer, TextCluster, TextGeometry, TextLine,
     TextMeasurer, TextSpan, TextStyle, TextWrap,
@@ -219,6 +221,20 @@ pub enum Primitive {
         style: TextStyle,
         color: Color,
     },
+    /// Draws the `source` part of an image into `rect`, scaled with linear
+    /// filtering. `source` is in the image's own units (pixels of a raster
+    /// image, natural-size units of a vector image); fit modes and nine-slice
+    /// are expressed by the caller through `rect` and `source`. `tint` replaces
+    /// the image's colour and keeps its alpha, for single-colour icons.
+    /// `radius` rounds the corners of `rect`. Vector images are rasterized for
+    /// the device pixels `rect` covers.
+    Image {
+        rect: Rect,
+        image: Image,
+        source: Rect,
+        tint: Option<Color>,
+        radius: f32,
+    },
     PushClip(Rect),
     PopClip,
     /// Starts a group. Everything up to the matching `PopLayer` is rendered as
@@ -281,6 +297,19 @@ impl Primitive {
                 spans: spans.clone(),
                 style: style.clone(),
                 color: *color,
+            },
+            Self::Image {
+                rect,
+                image,
+                source,
+                tint,
+                radius,
+            } => Self::Image {
+                rect: rect.translated(offset),
+                image: image.clone(),
+                source: *source,
+                tint: *tint,
+                radius: *radius,
             },
             Self::PopClip => Self::PopClip,
             // Coordinates are absolute, so moving a layer conjugates its transform.

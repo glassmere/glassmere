@@ -113,15 +113,22 @@ pub(crate) struct Poller {
 }
 
 impl Poller {
+    /// Whether the file is new, gone or modified since the last call, without
+    /// reading it.
+    pub fn stamp_changed(&mut self, path: &std::path::Path) -> bool {
+        let stamp = std::fs::metadata(path)
+            .and_then(|metadata| metadata.modified())
+            .ok();
+        self.seen.insert(path.to_owned(), stamp) != Some(stamp)
+    }
+
     /// The file's content when it is new or changed since the last call, or
     /// the error that prevented reading it (reported once per change).
     pub fn changed(&mut self, path: &std::path::Path) -> Option<Result<Vec<u8>, String>> {
         let modified = std::fs::metadata(path).and_then(|metadata| metadata.modified());
-        let stamp = modified.as_ref().ok().copied();
-        if self.seen.get(path) == Some(&stamp) {
+        if !self.stamp_changed(path) {
             return None;
         }
-        self.seen.insert(path.to_owned(), stamp);
         Some(
             modified
                 .and_then(|_| std::fs::read(path))

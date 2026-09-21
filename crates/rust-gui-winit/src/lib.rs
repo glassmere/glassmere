@@ -5,6 +5,7 @@ mod diagnostics;
 mod dock;
 mod graphics;
 pub mod hot;
+mod images;
 mod input;
 mod mailbox;
 mod wakeup;
@@ -306,6 +307,7 @@ struct Application<F> {
     overlay: Vec<Primitive>,
     overlay_dirty: bool,
     poller: hot::Poller,
+    images: images::ImageFiles,
     last_poll: Instant,
     /// The development runner asked this process to stop.
     hot_stopping: bool,
@@ -321,6 +323,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         view: F,
         state: WindowState,
         clipboard: Rc<RefCell<Option<arboard::Clipboard>>>,
+        wake: WakeHandle,
     ) -> Self {
         let mut context = Context::new();
         context.set_reduced_motion(options.reduced_motion);
@@ -345,6 +348,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             overlay: Vec::new(),
             overlay_dirty: false,
             poller: hot::Poller::default(),
+            images: images::ImageFiles::new(wake),
             last_poll: Instant::now(),
             hot_stopping: false,
             retry_pending: false,
@@ -362,6 +366,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         let wake = self.context.next_wake().map(|at| self.started + at);
         let polls = self.options.stylesheet.is_some()
             || !self.context.watched_paths().is_empty()
+            || !self.context.image_paths().is_empty()
             || hot::active();
         let poll = polls.then(|| Instant::now() + STYLESHEET_POLL);
         let retry = self
@@ -421,6 +426,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                 false
             }
         };
+        self.images.request(&mut self.context, true);
         if self.load_watched() || sheet {
             self.request_redraw();
         }
@@ -499,6 +505,8 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         let logical_size = Size::new(size.width as f32 / scale, size.height as f32 / scale);
         self.logical_size = logical_size;
         self.context.set_now(self.started.elapsed());
+        // Images decoded in the background since the last frame.
+        self.images.deliver(&mut self.context);
         let mut stats = self
             .context
             .run(logical_size, renderer.text_system(), &mut self.view);
@@ -521,6 +529,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             );
         }
         self.diagnostics_seen = diagnostics.len();
+        self.images.request(&mut self.context, false);
         // Files asked for the first time load right away; the next frame shows them.
         let fresh: Vec<_> = self
             .context

@@ -1,4 +1,5 @@
 //! GPU scene backend. This crate knows paint primitives, never widgets.
+mod image;
 mod text;
 pub use text::TextSystem;
 pub use wgpu;
@@ -27,6 +28,14 @@ enum Draw {
         clip: [u32; 4],
     },
     Text(usize),
+    /// Consecutive images from one texture under one clip, as a vertex range
+    /// of the image buffer.
+    Image {
+        texture: u32,
+        start: u32,
+        count: u32,
+        clip: [u32; 4],
+    },
     /// Composites a child surface. Its vertices reuse `Vertex`: `local` is the
     /// uv and `color[3]` the group opacity.
     Layer {
@@ -86,11 +95,25 @@ pub struct RenderStats {
     /// Pooled layer textures currently alive, and their size.
     pub layer_textures: usize,
     pub layer_texture_bytes: u64,
+    /// Batched image draw calls in the prepared frame.
+    pub image_draws: usize,
+    /// Image uploads so far; a cached image does not upload again.
+    pub image_uploads: u64,
+    /// Shared atlas pages, standalone textures for large images, and the size
+    /// of both.
+    pub atlas_pages: usize,
+    pub image_textures: usize,
+    pub image_bytes: u64,
 }
 
 pub struct Renderer {
     pipeline: wgpu::RenderPipeline,
     layer_pipeline: wgpu::RenderPipeline,
+    image_pipeline: wgpu::RenderPipeline,
+    images: image::ImageCache,
+    image_buffer: Option<wgpu::Buffer>,
+    image_buffer_bytes: u64,
+    image_vertices: Vec<image::ImageVertex>,
     sampler: wgpu::Sampler,
     format: wgpu::TextureFormat,
     text_system: TextSystem,
@@ -119,50 +142,85 @@ impl Renderer {
         format: wgpu::TextureFormat,
         text_system: TextSystem,
     ) -> Self {
-        let pipeline = |label, source: &str, blend| {
-            let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some(label),
-                source: wgpu::ShaderSource::Wgsl(source.into()),
-            });
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some(label), layout: None,
-                vertex: wgpu::VertexState {
-                    module: &shader, entry_point: Some("vs_main"), compilation_options: Default::default(),
-                    buffers: &[wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<Vertex>() as u64,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Float32x2, 3 => Float32x4, 4 => Float32],
-                    }],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader, entry_point: Some("fs_main"), compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format, blend: Some(blend), write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                primitive: wgpu::PrimitiveState::default(), depth_stencil: None,
-                multisample: wgpu::MultisampleState::default(), multiview_mask: None, cache: None,
-            })
-        };
+        let pipeline =
+            |label, source: &str, blend, stride: usize, attributes: &[wgpu::VertexAttribute]| {
+                let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some(label),
+                    source: wgpu::ShaderSource::Wgsl(source.into()),
+                });
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some(label),
+                    layout: None,
+                    vertex: wgpu::VertexState {
+                        module: &shader,
+                        entry_point: Some("vs_main"),
+                        compilation_options: Default::default(),
+                        buffers: &[wgpu::VertexBufferLayout {
+                            array_stride: stride as u64,
+                            step_mode: wgpu::VertexStepMode::Vertex,
+                            attributes,
+                        }],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &shader,
+                        entry_point: Some("fs_main"),
+                        compilation_options: Default::default(),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format,
+                            blend: Some(blend),
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                    }),
+                    primitive: wgpu::PrimitiveState::default(),
+                    depth_stencil: None,
+                    multisample: wgpu::MultisampleState::default(),
+                    multiview_mask: None,
+                    cache: None,
+                })
+            };
+        let quad_attributes = wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Float32x2, 3 => Float32x4, 4 => Float32];
+        let quad_stride = std::mem::size_of::<Vertex>();
         let cache = Cache::new(device);
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("rust-gui layers"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        // Image textures hold premultiplied colour, like layers.
+        let image_pipeline = pipeline(
+            "rust-gui images",
+            include_str!("image.wgsl"),
+            wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING,
+            std::mem::size_of::<image::ImageVertex>(),
+            &image::ImageVertex::ATTRIBUTES,
+        );
         Self {
+            images: image::ImageCache::new(
+                device,
+                image_pipeline.get_bind_group_layout(0),
+                sampler.clone(),
+            ),
+            image_pipeline,
+            image_buffer: None,
+            image_buffer_bytes: 0,
+            image_vertices: Vec::new(),
             pipeline: pipeline(
                 "rust-gui quads",
                 include_str!("quad.wgsl"),
                 wgpu::BlendState::ALPHA_BLENDING,
+                quad_stride,
+                &quad_attributes,
             ),
             // Alpha blending into a transparent layer leaves premultiplied color.
             layer_pipeline: pipeline(
                 "rust-gui layers",
                 include_str!("layer.wgsl"),
                 wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING,
+                quad_stride,
+                &quad_attributes,
             ),
-            sampler: device.create_sampler(&wgpu::SamplerDescriptor {
-                label: Some("rust-gui layers"),
-                mag_filter: wgpu::FilterMode::Linear,
-                min_filter: wgpu::FilterMode::Linear,
-                ..Default::default()
-            }),
+            sampler,
             format,
             text_system,
             swash: SwashCache::new(),
@@ -185,6 +243,13 @@ impl Renderer {
 
     pub fn stats(&self) -> RenderStats {
         self.stats
+    }
+
+    /// GPU memory images may occupy before textures the last preparation did
+    /// not draw are released early. 256 MiB by default. Images on screen are
+    /// never dropped, so a frame that needs more than this still renders.
+    pub fn set_image_budget(&mut self, bytes: u64) {
+        self.images.budget = bytes;
     }
 
     /// Paint in display-list order. `physical_size` and `scale` describe the target;
@@ -251,6 +316,9 @@ impl Renderer {
         let mut clips = vec![viewport];
         let mut vertices = std::mem::take(&mut self.vertices);
         vertices.clear();
+        let mut image_vertices = std::mem::take(&mut self.image_vertices);
+        image_vertices.clear();
+        self.images.begin();
         let mut draws = self
             .surfaces
             .first_mut()
@@ -458,6 +526,97 @@ impl Renderer {
                         clip: scissor,
                     });
                 }
+                Primitive::Image {
+                    rect,
+                    image,
+                    source,
+                    tint,
+                    radius,
+                } => {
+                    let surface = &mut surfaces[current];
+                    let visible = scissor(clip.intersect(*rect), surface);
+                    if visible[2] == 0
+                        || visible[3] == 0
+                        || source.width == 0.0
+                        || source.height == 0.0
+                    {
+                        continue;
+                    }
+                    let raster = self
+                        .images
+                        .raster_size(image, *rect, *source, surface.scale);
+                    let Some(place) = self.images.ensure(device, queue, image, raster) else {
+                        continue;
+                    };
+                    // `source` in texels of the placement, which differ from the
+                    // image's units for vector rasters and downscaled photos.
+                    let natural = image.size();
+                    let texels = |at: f32, length: f32, natural: f32, axis: usize| {
+                        let (start, side) = (place.rect[axis] as f32, place.rect[axis + 2] as f32);
+                        let from = start + at * side / natural;
+                        let to = from + length * side / natural;
+                        // Half a texel inside both the source and the image, so
+                        // filtering blends in nothing from beyond either.
+                        let low = from.min(to).max(start) + 0.5;
+                        let high = from.max(to).min(start + side) - 0.5;
+                        let (low, high) = if low > high {
+                            ((low + high) / 2.0, (low + high) / 2.0)
+                        } else {
+                            (low, high)
+                        };
+                        [from, to, low, high].map(|texel| texel / place.texture_size[axis] as f32)
+                    };
+                    let u = texels(source.x, source.width, natural.width, 0);
+                    let v = texels(source.y, source.height, natural.height, 1);
+                    let (origin, scale, size) = (surface.origin, surface.scale, surface.size);
+                    let start = image_vertices.len() as u32;
+                    for [x, y] in [
+                        [0.0, 0.0],
+                        [1.0, 0.0],
+                        [0.0, 1.0],
+                        [0.0, 1.0],
+                        [1.0, 0.0],
+                        [1.0, 1.0],
+                    ] {
+                        image_vertices.push(image::ImageVertex {
+                            position: [
+                                ((rect.x - origin[0]) + x * rect.width) * scale / size[0] as f32
+                                    * 2.0
+                                    - 1.0,
+                                1.0 - ((rect.y - origin[1]) + y * rect.height) * scale
+                                    / size[1] as f32
+                                    * 2.0,
+                            ],
+                            uv: [u[0] + x * (u[1] - u[0]), v[0] + y * (v[1] - v[0])],
+                            local: [x * rect.width, y * rect.height],
+                            size: [rect.width, rect.height],
+                            tint: tint.map_or([0.0, 0.0, 0.0, 1.0], Color::linear),
+                            params: [*radius, f32::from(u8::from(tint.is_some()))],
+                            bounds: [u[2], v[2], u[3], v[3]],
+                        });
+                    }
+                    // The scissor is the clip alone, so neighbours can share a draw.
+                    let clip = scissor(clip, surface);
+                    match surface.draws.last_mut() {
+                        Some(Draw::Image {
+                            texture,
+                            start: first,
+                            count,
+                            clip: last,
+                        }) if *texture == place.texture
+                            && *last == clip
+                            && *first + *count == start =>
+                        {
+                            *count += 6
+                        }
+                        _ => surface.draws.push(Draw::Image {
+                            texture: place.texture,
+                            start,
+                            count: 6,
+                            clip,
+                        }),
+                    }
+                }
                 Primitive::Text { rect, color, .. }
                 | Primitive::StyledText { rect, color, .. }
                 | Primitive::RichText { rect, color, .. } => {
@@ -564,6 +723,28 @@ impl Renderer {
             }
             queue.write_buffer(self.quad_buffer.as_ref().unwrap(), 0, bytes);
         }
+        let bytes = bytemuck::cast_slice(&image_vertices);
+        if !bytes.is_empty() {
+            if bytes.len() as u64 > self.image_buffer_bytes {
+                self.image_buffer_bytes = (bytes.len() as u64).next_power_of_two();
+                self.image_buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("rust-gui retained image vertices"),
+                    size: self.image_buffer_bytes,
+                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                }));
+            }
+            queue.write_buffer(self.image_buffer.as_ref().unwrap(), 0, bytes);
+        }
+        self.image_vertices = image_vertices;
+        self.stats.image_draws = surfaces
+            .iter()
+            .flat_map(|surface| &surface.draws)
+            .filter(|draw| matches!(draw, Draw::Image { .. }))
+            .count();
+        self.stats.image_uploads = self.images.uploads;
+        (self.stats.atlas_pages, self.stats.image_textures) = self.images.counts();
+        self.stats.image_bytes = self.images.bytes();
         self.vertices = vertices;
         self.surfaces = surfaces;
         self.prepared_target = Some(target_key);
@@ -685,6 +866,18 @@ impl Renderer {
                     Draw::Text(index) => {
                         pass.set_scissor_rect(0, 0, surface.size[0], surface.size[1]);
                         self.text_renderers[*index].render(&self.atlas, viewport, &mut pass)?;
+                    }
+                    Draw::Image {
+                        texture,
+                        start,
+                        count,
+                        clip,
+                    } => {
+                        pass.set_pipeline(&self.image_pipeline);
+                        pass.set_bind_group(0, self.images.bind_group(*texture), &[]);
+                        pass.set_vertex_buffer(0, self.image_buffer.as_ref().unwrap().slice(..));
+                        pass.set_scissor_rect(clip[0], clip[1], clip[2], clip[3]);
+                        pass.draw(*start..*start + *count, 0..1);
                     }
                     Draw::Layer {
                         surface: child,

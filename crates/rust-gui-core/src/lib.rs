@@ -8,6 +8,7 @@ mod document;
 mod drag;
 mod editor;
 mod focus;
+mod image;
 mod panes;
 mod rich_document;
 mod rich_editor;
@@ -35,6 +36,7 @@ pub use document::{Indentation, Motion, Selection, TextDocument};
 pub use drag::{DragInfo, DragPayload, DropKind};
 pub use editor::{CaretMovement, TextEdit, TextMove, TextSelection};
 pub use focus::{DialogOptions, DialogResponse, FocusScope};
+pub use image::{ImageFit, ImageOptions, ImageTint};
 pub use panes::{
     Axis, PopoverOptions, PopoverResponse, SplitOptions, TOOLTIP_DELAY, Tab, TabsResponse,
 };

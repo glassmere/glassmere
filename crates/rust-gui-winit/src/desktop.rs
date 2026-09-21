@@ -320,7 +320,13 @@ impl Desktop {
         let owner = owner.filter(|owner| self.windows.contains_key(owner));
         match self.attach(event_loop, &options, owner) {
             Ok(state) => {
-                let mut app = Application::new(options, view, state, self.clipboard.clone());
+                let mut app = Application::new(
+                    options,
+                    view,
+                    state,
+                    self.clipboard.clone(),
+                    self.wake.clone(),
+                );
                 if let ThemeChoice::Fixed(theme) = &app.options.theme {
                     app.context.set_theme(theme.clone());
                 } else {

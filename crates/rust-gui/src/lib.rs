@@ -1,7 +1,11 @@
 //! Immediate-style declarations over a retained, incremental UI kernel.
 pub use rust_gui_core::*;
 pub use rust_gui_devtools as devtools;
-pub use rust_gui_scene::{Affine, Affinity, Color, Point, Primitive, Rect, Scene, Size};
+#[cfg(feature = "images")]
+pub use rust_gui_image as image;
+pub use rust_gui_scene::{
+    Affine, Affinity, Color, Image, Point, Primitive, Rect, Scene, Size, VectorImage,
+};
 #[cfg(feature = "syntax")]
 pub use rust_gui_syntax as syntax;
 #[cfg(feature = "desktop")]

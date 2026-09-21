@@ -22,6 +22,7 @@ pub mod diagnostics;
 mod dock_input;
 mod drag_input;
 mod focus_input;
+mod image;
 mod overlay_input;
 mod rich_editor;
 mod rich_text;
@@ -76,6 +77,7 @@ pub enum Role {
     Tab,
     TabPanel,
     Splitter,
+    Image,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -381,6 +383,8 @@ impl Node {
                 Control::Divider { .. } => Role::Splitter,
                 _ => match self.kind {
                     Kind::Label | Kind::RichText => Role::Label,
+                    // An image without a name is decorative.
+                    Kind::Image if !self.text.is_empty() => Role::Image,
                     Kind::Button => Role::Button,
                     Kind::Scroll => Role::ScrollView,
                     Kind::TextInput | Kind::TextArea | Kind::RichEditor => Role::TextInput,
@@ -471,6 +475,8 @@ pub struct Context {
     direction: crate::Direction,
     watched: HashMap<std::path::PathBuf, Watched>,
     watch_requests: Vec<std::path::PathBuf>,
+    images: HashMap<std::path::PathBuf, image::LoadedImage>,
+    image_requests: Vec<std::path::PathBuf>,
     hot_save: bool,
     hot_state: Option<String>,
     diagnostic: diagnostics::DiagnosticState,
@@ -551,6 +557,17 @@ impl Measurement {
             wrapped: (text_style.wrap == TextWrap::Word).then(|| (text.to_owned(), text_style)),
             spans: None,
         }
+    }
+    /// An image's natural size; nothing until a file has loaded.
+    fn image(element: &Element) -> Option<Self> {
+        let Control::Image { image, .. } = &element.control else {
+            return None;
+        };
+        Some(Self::fixed(
+            image
+                .as_ref()
+                .map_or(Size::default(), rust_gui_scene::Image::size),
+        ))
     }
     /// A text leaf: plain, or the styled runs of a rich block.
     fn leaf(element: &Element, text_style: TextStyle, measurer: &mut impl TextMeasurer) -> Self {
@@ -636,6 +653,8 @@ impl Default for Context {
             caret_movement: crate::CaretMovement::Visual,
             direction: crate::Direction::Ltr,
             watched: HashMap::new(),
+            images: HashMap::new(),
+            image_requests: Vec::new(),
             watch_requests: Vec::new(),
             hot_save: false,
             hot_state: None,
@@ -1058,6 +1077,8 @@ impl Context {
         }
         self.redraw_requested = redraw;
         self.watch_requests = host.watched;
+        self.image_requests = host.images;
+        self.trim_images();
         if host.hot_state.is_some() {
             self.hot_state = host.hot_state;
             self.hot_save = false;
@@ -1303,6 +1324,14 @@ impl Context {
                     }
                     self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
                 }
+                if let Some(measured) = Measurement::image(&element)
+                    && self.layout.get_node_context(node.layout_id) != Some(&measured)
+                {
+                    self.layout
+                        .set_node_context(node.layout_id, Some(measured))
+                        .unwrap();
+                    self.pending |= Dirty::LAYOUT;
+                }
                 let mut layout_style =
                     layout_style(&element.style, element.kind, resolved.direction);
                 if let Some(measurement) = self.layout.get_node_context(node.layout_id) {
@@ -1351,7 +1380,7 @@ impl Context {
                     self.stats.text_measures += 1;
                     Measurement::leaf(&element, resolved.text_style(element.style.wrap), measurer)
                 } else {
-                    Measurement::fixed(Size::default())
+                    Measurement::image(&element).unwrap_or(Measurement::fixed(Size::default()))
                 };
                 let mut leaf_style = layout_style(&element.style, element.kind, resolved.direction);
                 anchor_minimum(&mut leaf_style, &element, measured.size);
@@ -1801,6 +1830,8 @@ impl Context {
         }
         if node.kind == Kind::RichText {
             self.paint_rich_text(id, &mut scene, foreground);
+        } else if node.kind == Kind::Image {
+            self.paint_image(id, &mut scene, foreground, radius);
         } else if !node.text.is_empty() {
             let padding = node.style.padding.max(0.0);
             let mut rect = Rect {
