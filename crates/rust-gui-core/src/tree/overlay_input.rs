@@ -277,8 +277,38 @@ impl Context {
         true
     }
 
+    /// Asks the declaration for a new size; the widget that owns the sizer applies it.
+    pub(super) fn set_size(&mut self, sizer: NodeId, size: f32) -> bool {
+        let Some(node) = self.nodes.get(&sizer).filter(|node| node.enabled) else {
+            return false;
+        };
+        let Control::Sizer {
+            size: current,
+            min,
+            max,
+            ..
+        } = node.control
+        else {
+            return false;
+        };
+        let next = if size.is_finite() { size } else { current }.clamp(min, max.max(min));
+        if (next - current).abs() < 0.5 {
+            return false;
+        }
+        self.updates
+            .insert(sizer, ControlUpdate::Number(f64::from(next)));
+        true
+    }
+
     pub(super) fn divider_pointer(&mut self, divider: NodeId, position: Point) -> bool {
         let node = &self.nodes[&divider];
+        if let Control::Sizer { size, .. } = node.control {
+            // The handle sits on the edge it moves, so the distance from its
+            // middle to the pointer is how much the size is off.
+            let off = position.x - (node.bounds.x + node.bounds.width / 2.0);
+            let off = if node.resolved.rtl() { -off } else { off };
+            return self.set_size(divider, size + off);
+        }
         let Control::Divider { axis, .. } = node.control else {
             return false;
         };

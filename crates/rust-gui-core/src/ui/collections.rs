@@ -85,6 +85,11 @@ impl Ui<'_> {
         })
     }
 
+    /// A virtual grid over a model. `state.columns` holds what the user did to
+    /// the columns. Dragging the end edge of a header resizes its column,
+    /// dragging a header onto another moves it there, and each header has a
+    /// context menu (right-click, Shift+F10 or the Menu key) that moves,
+    /// resizes, hides and restores columns from the keyboard.
     pub fn data_grid(
         &mut self,
         key: impl Into<String>,
@@ -92,6 +97,18 @@ impl Ui<'_> {
         state: &mut GridState,
         options: VirtualListOptions,
     ) -> ListResponse {
+        /// Width of the resize handle at the end of each header.
+        const SIZER: f32 = 5.0;
+        /// What one "Wider" or "Narrower" changes.
+        const WIDTH_STEP: f32 = 20.0;
+        enum HeaderAction {
+            Sort(usize),
+            Resize(usize, f32),
+            /// The first column was dropped on the second.
+            Drop(usize, usize),
+            Menu(usize, usize),
+        }
+        let key = key.into();
         let columns = model.columns().to_vec();
         assert!(
             !columns.is_empty()
@@ -100,10 +117,25 @@ impl Ui<'_> {
                     .all(|column| column.width.is_finite() && column.width > 0.0),
             "grid columns need finite positive widths"
         );
+        let count = columns.len();
+        let visible = state.columns.visible(count);
+        let widths: Vec<f32> = visible
+            .iter()
+            .map(|column| state.columns.width(*column, columns[*column].width))
+            .collect();
+        let total_width = widths.iter().sum::<f32>();
+        // Menu entries name physical directions; the start is on the right in
+        // a right-to-left grid.
+        let (toward_start, toward_end) = if self.context.direction() == crate::Direction::Rtl {
+            ("Move right", "Move left")
+        } else {
+            ("Move left", "Move right")
+        };
+        let domain = format!("grid-column:{key}");
         let mut response = ListResponse::default();
-        let total_width = columns.iter().map(|column| column.width).sum::<f32>();
+        let mut actions = Vec::new();
         self.group(
-            key.into(),
+            key,
             Kind::Column,
             Style {
                 width: options.style.width,
@@ -120,53 +152,121 @@ impl Ui<'_> {
                         ..Style::default()
                     },
                     |ui| {
-                        for (index, column) in columns.iter().enumerate() {
+                        for (position, (&column, &width)) in visible.iter().zip(&widths).enumerate()
+                        {
+                            let descriptor = &columns[column];
                             let direction = state
                                 .sort
-                                .filter(|(selected, _)| *selected == index)
+                                .filter(|(selected, _)| *selected == column)
                                 .map(|(_, direction)| direction);
                             let label = format!(
                                 "{}{}",
-                                column.label,
+                                descriptor.label,
                                 match direction {
                                     Some(SortDirection::Ascending) => " ↑",
                                     Some(SortDirection::Descending) => " ↓",
                                     None => "",
                                 }
                             );
-                            if ui
-                                .button_styled(
-                                    index.to_string(),
-                                    label,
-                                    column.sortable,
-                                    Style {
-                                        width: Length::Px(column.width),
-                                        height: Length::Px(options.row_height),
-                                        padding: 6.0,
-                                        radius: 0.0,
-                                        ..Style::button()
-                                    },
-                                )
-                                .clicked()
-                            {
-                                let next = if direction == Some(SortDirection::Ascending) {
-                                    SortDirection::Descending
-                                } else {
-                                    SortDirection::Ascending
-                                };
-                                if model.sort(index, next) {
-                                    state.sort = Some((index, next));
-                                }
-                            }
-                            ui.elements.last_mut().unwrap().control = Control::GridCell {
-                                row: 0,
-                                column: index,
-                                header: true,
-                                sort: state
-                                    .sort
-                                    .filter(|(selected, _)| *selected == index)
-                                    .map(|(_, direction)| direction),
+                            let cell = Style {
+                                width: Length::Px(width),
+                                height: Length::Px(options.row_height),
+                                gap: 0.0,
+                                ..Style::default()
                             };
+                            let item = |label: &str, enabled| crate::MenuItem {
+                                label: label.into(),
+                                enabled,
+                            };
+                            let menu = [
+                                item(toward_start, position > 0),
+                                item(toward_end, position + 1 < visible.len()),
+                                item("Wider", width < crate::GridColumns::MAX_WIDTH),
+                                item("Narrower", width > crate::GridColumns::MIN_WIDTH),
+                                item(&format!("Hide {}", descriptor.label), visible.len() > 1),
+                                item("Show all columns", visible.len() < count),
+                                item("Reset columns", true),
+                            ];
+                            let actions = &mut actions;
+                            let domain = &domain;
+                            let chosen =
+                                ui.context_menu(column.to_string(), &menu, cell.clone(), |ui| {
+                                    ui.row("$cell", cell.clone(), |ui| {
+                                        // Unnamed, so pointer-only: the menu is the keyboard path.
+                                        let payload = crate::DragPayload::Item {
+                                            domain: domain.clone(),
+                                            id: crate::ItemId(column as u64),
+                                        };
+                                        let grip = cell.clone().width(Length::Px(width - SIZER));
+                                        let dropped = ui.drop_target(
+                                            "$drop",
+                                            "",
+                                            crate::DropKind::Item,
+                                            grip.clone(),
+                                            |ui| {
+                                                ui.drag_source("$drag", "", payload, grip, |ui| {
+                                                    let sort = Style {
+                                                        padding: 6.0,
+                                                        radius: 0.0,
+                                                        ..Style::button()
+                                                    }
+                                                    .width(Length::Px(width - SIZER))
+                                                    .height(Length::Px(options.row_height));
+                                                    if ui
+                                                        .button_styled(
+                                                            "$sort",
+                                                            label,
+                                                            descriptor.sortable,
+                                                            sort,
+                                                        )
+                                                        .clicked()
+                                                    {
+                                                        actions.push(HeaderAction::Sort(column));
+                                                    }
+                                                    ui.elements.last_mut().unwrap().control =
+                                                        Control::GridCell {
+                                                            row: 0,
+                                                            column: position,
+                                                            header: true,
+                                                            sort: direction,
+                                                        };
+                                                });
+                                            },
+                                        );
+                                        if let Some(crate::DragPayload::Item { domain: from, id }) =
+                                            dropped
+                                            && from == *domain
+                                        {
+                                            actions.push(HeaderAction::Drop(id.0 as usize, column));
+                                        }
+                                        if let Some(ControlUpdate::Number(size)) =
+                                            ui.take_update("$size", Kind::Divider)
+                                        {
+                                            actions.push(HeaderAction::Resize(column, size as f32));
+                                        }
+                                        ui.push(Element {
+                                            key: WidgetKey::Named("$size".into()),
+                                            kind: Kind::Divider,
+                                            text: String::new(),
+                                            style: Style::default()
+                                                .width(Length::Px(SIZER))
+                                                .height(Length::Px(options.row_height)),
+                                            enabled: ui.enabled,
+                                            children: Vec::new(),
+                                            custom: None,
+                                            tooltip: None,
+                                            control: Control::Sizer {
+                                                label: format!("Resize {}", descriptor.label),
+                                                size: width,
+                                                min: crate::GridColumns::MIN_WIDTH,
+                                                max: crate::GridColumns::MAX_WIDTH,
+                                            },
+                                        });
+                                    });
+                                });
+                            if let Some(chosen) = chosen {
+                                actions.push(HeaderAction::Menu(column, chosen));
+                            }
                         }
                     },
                 );
@@ -188,12 +288,14 @@ impl Ui<'_> {
                                 ..Style::default()
                             },
                             |ui| {
-                                for (column, descriptor) in columns.iter().enumerate() {
+                                for (position, (&column, &width)) in
+                                    visible.iter().zip(&widths).enumerate()
+                                {
                                     ui.label_styled(
                                         column.to_string(),
                                         model.cell(index, column),
                                         Style {
-                                            width: Length::Px(descriptor.width),
+                                            width: Length::Px(width),
                                             height: Length::Px(options.row_height),
                                             padding: 6.0,
                                             ..Style::default()
@@ -201,7 +303,7 @@ impl Ui<'_> {
                                     );
                                     ui.elements.last_mut().unwrap().control = Control::GridCell {
                                         row: index,
-                                        column,
+                                        column: position,
                                         header: false,
                                         sort: None,
                                     };
@@ -215,8 +317,49 @@ impl Ui<'_> {
         self.elements.last_mut().unwrap().control = Control::Grid {
             label: options.label,
             rows: model.len(),
-            columns: columns.len(),
+            columns: visible.len(),
         };
+        // The header only recorded what happened; the state changes here,
+        // outside the closures that were reading it.
+        for action in actions {
+            match action {
+                HeaderAction::Sort(column) => {
+                    let ascending = state.sort == Some((column, SortDirection::Ascending));
+                    let next = if ascending {
+                        SortDirection::Descending
+                    } else {
+                        SortDirection::Ascending
+                    };
+                    if model.sort(column, next) {
+                        state.sort = Some((column, next));
+                    }
+                }
+                HeaderAction::Resize(column, width) => state.columns.set_width(column, width),
+                HeaderAction::Drop(moved, onto) => {
+                    // A column dragged toward the end lands after its target,
+                    // one dragged toward the start lands before it.
+                    let place = |column| visible.iter().position(|other| *other == column);
+                    let before = if place(moved) < place(onto) {
+                        place(onto).and_then(|at| visible.get(at + 1).copied())
+                    } else {
+                        Some(onto)
+                    };
+                    state.columns.move_before(count, moved, before);
+                }
+                HeaderAction::Menu(column, chosen) => {
+                    let width = state.columns.width(column, columns[column].width);
+                    match chosen {
+                        0 => drop(state.columns.shift(count, column, -1)),
+                        1 => drop(state.columns.shift(count, column, 1)),
+                        2 => state.columns.set_width(column, width + WIDTH_STEP),
+                        3 => state.columns.set_width(column, width - WIDTH_STEP),
+                        4 => drop(state.columns.hide(count, column)),
+                        5 => state.columns.show_all(),
+                        _ => state.columns.reset(),
+                    }
+                }
+            }
+        }
         response
     }
 

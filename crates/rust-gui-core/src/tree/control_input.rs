@@ -459,7 +459,10 @@ impl Context {
                 if let Some(id) = target.filter(|id| self.nodes[id].enabled) {
                     let kind = self.nodes[&id].kind;
                     if kind == Kind::Divider {
-                        self.focus_control(id);
+                        // A column sizer is dragged without taking focus.
+                        if !matches!(self.nodes[&id].control, Control::Sizer { .. }) {
+                            self.focus_control(id);
+                        }
                         self.captured = Some(id);
                         return Some(true);
                     }
@@ -626,6 +629,9 @@ impl Context {
             Action::SetText(text) if node.editor.is_some() => {
                 let selected = self.edit(target, TextEdit::SelectAll);
                 Some(self.edit(target, TextEdit::Insert(text.clone())) || selected)
+            }
+            Action::SetNumber(value) if matches!(node.control, Control::Sizer { .. }) => {
+                Some(self.set_size(target, *value as f32))
             }
             Action::SetNumber(value) if node.kind == Kind::Divider => {
                 Some(self.set_fraction(target, (*value / 100.0) as f32))

@@ -1,6 +1,6 @@
 # Milestone 10: the data grid
 
-Row 19 of the coverage table lists what a professional grid still lacks: column resizing and reordering, filtering, inline editing, frozen and virtual columns. Decisions taken at the start: column layout lives in the app-owned `GridState`; the model filters, like it sorts; editing uses a cell cursor with typed editors; and wide grids build on general two-axis scrolling in the engine rather than a grid-only mechanism. Slices: 10a horizontal scrolling (below), 10b column resize, reorder and hide, 10c cell cursor and inline editing, 10d the filter row, 10e the horizontally scrolling grid with frozen and virtual columns.
+Row 19 of the coverage table lists what a professional grid still lacks: column resizing and reordering, filtering, inline editing, frozen and virtual columns. Decisions taken at the start: column layout lives in the app-owned `GridState`; the model filters, like it sorts; editing uses a cell cursor with typed editors; and wide grids build on general two-axis scrolling in the engine rather than a grid-only mechanism. Slices: 10a horizontal scrolling and 10b column resize, reorder and hide (both below), 10c cell cursor and inline editing, 10d the filter row, 10e the horizontally scrolling grid with frozen and virtual columns.
 
 # Milestone 10a: horizontal scrolling
 
@@ -48,3 +48,36 @@ Two verification routes failed for reasons outside this change and are recorded 
 - The data grid's header does not follow its rows sideways yet; that is 10e.
 - Popups scroll vertically only.
 - Real horizontal wheel and touchpad input was not exercised here, only the key, focus and headless event paths.
+
+# Milestone 10b: column resize, reorder and hide
+
+Implemented on 2026-09-21. Users can now arrange a grid's columns, and the arrangement is plain app-owned data.
+
+## Contracts
+
+| Piece | Contract |
+| --- | --- |
+| `GridState::columns: GridColumns` | `order` (model column indices in display order), `widths` (only the ones the user changed) and `hidden`. The model keeps describing data and default widths. `Default` is the model's own arrangement. Serializable with the `serde` feature. |
+| A changing model | `arranged(count)` and `visible(count)` normalize on every use: indices the model no longer has are ignored, duplicates collapse, and new columns follow in model order. A state that hides everything still shows one column. |
+| `GridColumns` methods | `width`, `set_width` (clamped to 40..2000, non-finite ignored), `move_before(count, column, before)`, `shift(count, column, -1 or 1)` past the visible neighbour, `hide` (refused for the last visible column), `show_all`, `reset`. |
+| Resize | The end edge of every header is a 5 px handle. Dragging it sets the width; it is a splitter to assistive technology ("Resize NAME", value, minimum and maximum) and accepts a set-value action. It takes no focus. |
+| Reorder | Dragging a header onto another moves the column there: after the target when moving toward the end, before it when moving toward the start. A press and release without movement is still a click on the sort button. Drops from another grid are ignored. |
+| Keyboard | Each header has a context menu (right-click, Shift+F10 or the Menu key): Move left, Move right, Wider, Narrower (20 px), Hide NAME, Show all columns, Reset columns. Entries that cannot apply are disabled. In a right-to-left grid the move entries swap so that they still name physical directions. |
+| Tab order | One stop per column, as before: the sort button. The handle and the drag wrappers are pointer-only. |
+| Engine | `Control::Sizer`, a pixel-sized sibling of the split divider. Drag sources and drop targets declared without a label are pointer-only: no focus, no announcement. Hit testing and pointer capture share one test, `takes_pointer`, which includes the sizer. |
+| Accessibility | The grid reports the number of visible columns, and cells report their display position. |
+
+## Validation
+
+Five new core tests: the column arithmetic including hidden neighbours, the last visible column and a model that lost or gained columns; dragging a header edge with the cells following, the minimum, and a set-value action; dragging headers in both directions with cells following, and a plain click still sorting; every menu operation from the keyboard with the disabled entries; and the header staying one Tab stop per column.
+
+Two of those tests caught real defects while this slice was being written. Hit testing only considered focusable or activatable nodes, so the pointer-only handle could not be grabbed. Then a drag stopped after one step, because every declaration dropped a pointer capture held by a node that was neither focusable nor activatable.
+
+The full suite is 208 tests plus 18 GPU tests; formatting and clippy (all features, and core alone) are clean; the facade builds without default features; the application, workbench, docking and panes examples pass `--smoke`. In the real application example a right-click on the Priority header opened the menu with all seven entries and "Show all columns" disabled. Dragging was verified headlessly only; the capture script cannot drag.
+
+## Remaining limits
+
+- No drop indicator while a header is dragged; the column jumps on release.
+- Keyboard resizing goes through the menu in 20 px steps, one menu trip per step.
+- No auto-fit to content on a double-click of the handle.
+- Column arrangement is not yet frozen or virtualized, and the header does not follow the rows sideways: 10e.

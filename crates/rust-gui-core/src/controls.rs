@@ -271,6 +271,14 @@ pub(crate) enum Control {
         min_first: f32,
         min_second: f32,
     },
+    /// A handle at the end edge of something sized in pixels, such as a grid
+    /// column: dragging it or pressing the arrows asks for a new size.
+    Sizer {
+        label: String,
+        size: f32,
+        min: f32,
+        max: f32,
+    },
     ContextMenu {
         items: Vec<MenuItem>,
     },

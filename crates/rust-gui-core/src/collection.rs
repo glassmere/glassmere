@@ -432,4 +432,128 @@ pub trait GridModel: ListModel {
 pub struct GridState {
     pub rows: ListState,
     pub sort: Option<(usize, SortDirection)>,
+    /// What the user did to the columns.
+    pub columns: GridColumns,
+}
+
+/// A grid's column layout as the user arranged it: the model describes the
+/// data and its default widths, this holds the order, the widths and what is
+/// hidden. It is plain data, so it can be kept with the rest of a workspace,
+/// and two grids over one model can differ.
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct GridColumns {
+    /// Model column indices in display order. Columns of the model that are
+    /// missing here follow in model order; indices the model no longer has
+    /// are ignored.
+    pub order: Vec<usize>,
+    /// Widths the user chose, by model column index.
+    pub widths: std::collections::BTreeMap<usize, f32>,
+    /// Hidden model column indices.
+    pub hidden: std::collections::BTreeSet<usize>,
+}
+
+impl GridColumns {
+    pub const MIN_WIDTH: f32 = 40.0;
+    pub const MAX_WIDTH: f32 = 2000.0;
+
+    /// All `count` model columns in display order, hidden ones included.
+    pub fn arranged(&self, count: usize) -> Vec<usize> {
+        let mut arranged: Vec<usize> = Vec::with_capacity(count);
+        for column in self.order.iter().copied().chain(0..count) {
+            if column < count && !arranged.contains(&column) {
+                arranged.push(column);
+            }
+        }
+        arranged
+    }
+
+    /// The columns on screen, in display order. Never empty for a model with
+    /// columns: hiding the last one is refused by `hide`, and a state that
+    /// hides everything anyway shows the first.
+    pub fn visible(&self, count: usize) -> Vec<usize> {
+        let arranged = self.arranged(count);
+        let visible: Vec<usize> = arranged
+            .iter()
+            .copied()
+            .filter(|column| !self.hidden.contains(column))
+            .collect();
+        if visible.is_empty() {
+            arranged.into_iter().take(1).collect()
+        } else {
+            visible
+        }
+    }
+
+    pub fn width(&self, column: usize, default: f32) -> f32 {
+        self.widths
+            .get(&column)
+            .copied()
+            .unwrap_or(default)
+            .clamp(Self::MIN_WIDTH, Self::MAX_WIDTH)
+    }
+
+    pub fn set_width(&mut self, column: usize, width: f32) {
+        if width.is_finite() {
+            self.widths
+                .insert(column, width.clamp(Self::MIN_WIDTH, Self::MAX_WIDTH));
+        }
+    }
+
+    /// Moves `column` so that it stands where `before` stands now; `None`
+    /// moves it to the end.
+    pub fn move_before(&mut self, count: usize, column: usize, before: Option<usize>) {
+        let mut arranged = self.arranged(count);
+        if column >= count || before == Some(column) {
+            return;
+        }
+        arranged.retain(|other| *other != column);
+        let at = before
+            .and_then(|before| arranged.iter().position(|other| *other == before))
+            .unwrap_or(arranged.len());
+        arranged.insert(at, column);
+        self.order = arranged;
+    }
+
+    /// Moves `column` past its visible neighbour: `-1` toward the start,
+    /// `1` toward the end. Returns whether it moved.
+    pub fn shift(&mut self, count: usize, column: usize, by: isize) -> bool {
+        let visible = self.visible(count);
+        let Some(at) = visible.iter().position(|other| *other == column) else {
+            return false;
+        };
+        let Some(target) = at
+            .checked_add_signed(by)
+            .filter(|target| *target < visible.len())
+        else {
+            return false;
+        };
+        // Toward the end the column lands after its neighbour, which is
+        // before the neighbour's own successor.
+        let before = if by < 0 {
+            Some(visible[target])
+        } else {
+            visible.get(target + 1).copied()
+        };
+        self.move_before(count, column, before);
+        true
+    }
+
+    /// Hides a column unless it is the last one showing.
+    pub fn hide(&mut self, count: usize, column: usize) -> bool {
+        let visible = self.visible(count);
+        if visible.len() < 2 || !visible.contains(&column) {
+            return false;
+        }
+        self.hidden.insert(column)
+    }
+
+    pub fn show_all(&mut self) {
+        self.hidden.clear();
+    }
+
+    /// Back to the model's order and widths, with everything showing.
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
 }

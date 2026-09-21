@@ -339,6 +339,17 @@ impl Node {
     fn focusable(&self) -> bool {
         self.enabled
             && self.control != Control::Stepper
+            // Pointer-only helpers: a column sizer, whose keyboard path is its
+            // header's menu, and drag sources or drop targets without a name.
+            && !matches!(
+                &self.control,
+                Control::Sizer { .. }
+            )
+            && !matches!(
+                &self.control,
+                Control::DragSource { label, .. } | Control::DropTarget { label, .. }
+                    if label.is_empty()
+            )
             && (matches!(
                 self.kind,
                 Kind::Button
@@ -362,6 +373,14 @@ impl Node {
                 || self.custom.as_ref().is_some_and(|widget| {
                     widget.semantics.role == Role::Button && widget.semantics.focusable
                 }))
+    }
+
+    /// Whether a press can land on this node: anything focusable or
+    /// activatable, and the pointer-only column sizer.
+    fn takes_pointer(&self) -> bool {
+        self.focusable()
+            || self.activatable()
+            || (self.enabled && matches!(self.control, Control::Sizer { .. }))
     }
 
     fn activatable(&self) -> bool {
@@ -406,7 +425,7 @@ impl Node {
                 Control::TabList => Role::TabList,
                 Control::Tab { .. } => Role::Tab,
                 Control::TabPanel => Role::TabPanel,
-                Control::Divider { .. } => Role::Splitter,
+                Control::Divider { .. } | Control::Sizer { .. } => Role::Splitter,
                 Control::TextInput {
                     number: Some(_), ..
                 } => Role::SpinButton,
@@ -461,6 +480,7 @@ impl Node {
                 Control::Dialog { title, .. } => title.clone(),
                 Control::Toast { label, .. } => label.clone(),
                 Control::Divider { .. } => "Splitter".into(),
+                Control::Sizer { label, .. } => label.clone(),
                 Control::DockFloat => "Floating panel".into(),
                 Control::DockHandle { resize: false, .. } => "Move floating panel".into(),
                 Control::DockHandle { resize: true, .. } => "Resize floating panel".into(),
@@ -976,6 +996,12 @@ impl Context {
                     step,
                 }),
                 Control::TextInput { number, .. } => number,
+                Control::Sizer { size, min, max, .. } => Some(NumericValue {
+                    value: f64::from(size),
+                    min: f64::from(min),
+                    max: f64::from(max),
+                    step: 10.0,
+                }),
                 Control::Divider { fraction, .. } => Some(NumericValue {
                     value: f64::from(fraction) * 100.0,
                     min: 0.0,
@@ -1016,6 +1042,7 @@ impl Context {
             description: node.tooltip.clone(),
             orientation: match node.control {
                 Control::Divider { axis, .. } => Some(axis),
+                Control::Sizer { .. } => Some(crate::Axis::Horizontal),
                 _ => None,
             },
             drag: match node.control {
@@ -1602,12 +1629,10 @@ impl Context {
             self.focused = restored;
             self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
         }
-        if self.captured.is_some_and(|id| {
-            !self
-                .nodes
-                .get(&id)
-                .is_some_and(|node| node.focusable() || node.activatable())
-        }) {
+        if self
+            .captured
+            .is_some_and(|id| !self.nodes.get(&id).is_some_and(Node::takes_pointer))
+        {
             self.captured = None;
             self.pending |= Dirty::PAINT;
         }
@@ -2148,8 +2173,7 @@ impl Context {
                     .is_some_and(|parent| self.nodes[&parent].kind == Kind::Dialog),
                 _ => false,
             };
-            (node.activatable()
-                || node.focusable()
+            (node.takes_pointer()
                 // Floating groups block clicks to whatever lies under them.
                 || matches!(
                     node.kind,

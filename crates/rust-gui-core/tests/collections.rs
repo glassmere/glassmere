@@ -305,7 +305,9 @@ fn grid_realizes_bounded_cells_and_sorting_preserves_selected_identity() {
     };
     frame(&mut context, &mut grid, &mut state);
     assert!(context.node_count() < 65);
-    let header = context.find(&["grid", "$header", "0"]).unwrap();
+    let header = context
+        .find(&["grid", "$header", "0", "$cell", "$drop", "$drag", "$sort"])
+        .unwrap();
     context.action(header, Action::Activate);
     frame(&mut context, &mut grid, &mut state);
     context.action(header, Action::Activate);
