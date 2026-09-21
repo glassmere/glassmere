@@ -2,7 +2,7 @@
 pub use rust_gui_core::*;
 /// Derives `Properties`: property grid rows from a struct's fields.
 #[cfg(feature = "derive")]
-pub use rust_gui_derive::Properties;
+pub use rust_gui_derive::{Properties, tr};
 pub use rust_gui_devtools as devtools;
 #[cfg(feature = "fluent")]
 pub use rust_gui_fluent as fluent;

@@ -2,7 +2,7 @@
 //! the framework's own controls following along. German leaves `name`
 //! untranslated on purpose, to show the fallback to English.
 use rust_gui::fluent::FluentMessages;
-use rust_gui::{AppOptions, Length, NumberOptions, Size, Style, TextWrap, Toast, run};
+use rust_gui::{AppOptions, Length, NumberOptions, Size, Style, TextWrap, Toast, run, tr};
 
 const LOCALES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/locales");
 
@@ -73,7 +73,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         count -= 1;
                     }
                 });
-                ui.label_keyed("count", ui.tr_args("files", &[("count", count.into())]));
+                // `tr!` checks the key and its arguments against locales/en.ftl while compiling.
+                ui.label_keyed("count", tr!(ui, "files", count = count));
                 // The stepper buttons' names are the framework's and follow the language.
                 ui.label_keyed("weight-label", ui.tr("weight"));
                 ui.number_input(
@@ -88,9 +89,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.label_keyed("name-label", ui.tr("name"));
                 ui.text_input("name", ui.tr("name"), &mut name);
                 if ui.button_keyed("save", ui.tr("save")).clicked() {
-                    ui.toast(Toast::success(
-                        ui.tr_args("saved", &[("name", name.as_str().into())]),
-                    ));
+                    ui.toast(Toast::success(tr!(ui, "saved", name = name.as_str())));
                 }
             });
         },

@@ -34,6 +34,31 @@ use proc_macro2::TokenStream as Tokens;
 use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Error, Expr, Fields, LitStr, Path, Type, parse_macro_input};
 
+mod tr;
+
+/// A localized text whose key and arguments are checked while compiling:
+/// `tr!(ui, "files-selected", count = files.len())`.
+///
+/// Name the default-locale catalog in the manifest of the crate that uses it:
+///
+/// ```toml
+/// [package.metadata.rust-gui]
+/// messages = "locales/en.ftl"
+/// ```
+///
+/// An unknown key, an argument the message does not use and a variable the
+/// call does not pass are compile errors, and editing the catalog rebuilds
+/// the crate. Without that entry the macro checks nothing. Keys starting with
+/// `rust-gui-` are the framework's own and are not checked. It expands to
+/// `ui.tr_args(key, &[(name, value.into()), ...])`.
+#[proc_macro]
+pub fn tr(input: TokenStream) -> TokenStream {
+    let call = parse_macro_input!(input as tr::Call);
+    tr::expand(call)
+        .unwrap_or_else(Error::into_compile_error)
+        .into()
+}
+
 #[proc_macro_derive(Properties, attributes(property))]
 pub fn properties(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

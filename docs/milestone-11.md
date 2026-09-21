@@ -1,6 +1,6 @@
 # Milestone 11: localization
 
-Row 39 of the coverage table had right-to-left layout and locale detection but no translated text. Decisions taken at the start: Fluent catalogs through the fluent crates; `ui.tr` plus a compile-time checked macro; the framework's own strings as overridable keys with built-in English and shipped Czech and German; full CLDR formatting through ICU4X behind a feature. Slices: 11a messages and Fluent, 11b the framework's own strings (both below), 11c the `tr!` macro, 11d ICU4X numbers and dates.
+Row 39 of the coverage table had right-to-left layout and locale detection but no translated text. Decisions taken at the start: Fluent catalogs through the fluent crates; `ui.tr` plus a compile-time checked macro; the framework's own strings as overridable keys with built-in English and shipped Czech and German; full CLDR formatting through ICU4X behind a feature. Slices: 11a messages and Fluent, 11b the framework's own strings and 11c the `tr!` macro (all below), 11d ICU4X numbers and dates.
 
 # Milestone 11a: messages and Fluent catalogs
 
@@ -69,3 +69,28 @@ The German and Czech texts were written by me and have not been reviewed by nati
 - Numbers inside messages are formatted plainly until 11d.
 - Missing keys are listed by the context but not yet shown in the inspector.
 - No message for a date, list or relative time yet: 11d.
+
+# Milestone 11c: `tr!`, checked while compiling
+
+Implemented on 2026-09-21. A typo in a message key or an argument name is a compile error.
+
+```rust
+ui.label(tr!(ui, "files", count = files.len()));       // expands to ui.tr_args("files", &[("count", files.len().into())])
+```
+
+```toml
+[package.metadata.rust-gui]
+messages = "locales/en.ftl"          # the default-locale catalog, relative to this Cargo.toml
+```
+
+| Piece | Contract |
+| --- | --- |
+| The check | The macro reads the catalog named in the manifest of the crate being compiled and parses it with `fluent-syntax`. An unknown key, an argument the message does not use and a variable the call does not pass are errors, each reported on the offending token. Variables of messages that a message refers to count as its own. |
+| Rebuilds | The expansion includes the catalog by path, so editing it recompiles the crate; verified by touching the file. |
+| Without the manifest entry | Nothing is checked and the macro is just the shorter spelling, so it is safe in crates that have no catalog. |
+| The framework's keys | Keys starting with `rust-gui-` are accepted unchecked: they live in the core, not in an app's catalog. |
+| Where it lives | In `rust-gui-derive`, re-exported as `rust_gui::tr` behind the default `derive` feature. It adds `fluent-syntax`, which the Fluent crate already built. |
+
+One new test in the facade crate, whose own manifest names the example's English catalog: a plain key, an argument from an expression, a trailing comma and a framework key, all resolving in Czech at run time. The four kinds of compile error were checked by compiling a throwaway file and reading the messages; there is no compile-fail test suite. The localization example uses the macro for its plural line and its toast.
+
+Limits: only the default-locale catalog is checked, so another language can still lack a key, which shows as the fallback text at run time and in `Context::missing_messages`; only one catalog file can be named; attributes of messages and terms are not checked.

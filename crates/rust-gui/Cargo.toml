@@ -5,6 +5,10 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+# `tr!` checks keys and arguments against this catalog while compiling.
+[package.metadata.rust-gui]
+messages = "examples/locales/en.ftl"
+
 [features]
 default = ["desktop", "syntax", "images", "derive", "fluent"]
 desktop = ["dep:rust-gui-winit"]
