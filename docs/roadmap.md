@@ -57,7 +57,7 @@ The [milestone report](milestone-4.md) records the contracts, validation and lim
 - [x] Per-node change and repaint flags, declare/layout/paint/render timings, `tracing` spans and CSV export.
 - [x] F12 inspector window: tree, node details with computed style, accessibility view, event log, frame timeline, selection/damage/repaint overlays.
 - [x] Single- and multi-window hosts on one desktop loop.
-- [ ] GPU timings, memory statistics, framework diagnostics (relayout/repaint/accessibility warnings) and cross-driver pixel tolerance in CI.
+- [ ] GPU timings, memory statistics and cross-driver pixel tolerance in CI. (Framework diagnostics were delivered in milestone 7h.)
 
 The [milestone report](milestone-5.md) describes the crates, contracts and validation. [Feature coverage](feature-coverage.md) maps all 62 goals of the [original feature list](feature-list.md) to their status.
 
@@ -71,7 +71,7 @@ The [milestone report](milestone-5.md) describes the crates, contracts and valid
 - [x] Tooltips with a core clock and host wake requests, closable tabs, split panes, context menus and popovers ([milestone 6d](milestone-6.md#milestone-6d-tooltips-tabs-split-panes-context-menus-and-popovers)).
 - [x] Transitions, enter/exit effects, layout animations and keyframes on GPU layers with group opacity and transforms ([milestone 6e](milestone-6.md#milestone-6e-animations)).
 
-## 7. Advanced features — in progress
+## 7. Advanced features — implementation delivered
 
 - [x] Docking: split and tab-group layouts, drop indicators, in-window floating groups, detached OS windows, a keyboard panel menu, text and serde persistence ([milestone 7a](milestone-7.md#milestone-7a-docking)).
 - [x] Rich text blocks with links, a rope-backed `TextDocument` and a virtualized code editor ([milestone 7b](milestone-7.md#milestone-7b-rich-text-and-the-code-editor-foundation)).
@@ -80,7 +80,7 @@ The [milestone report](milestone-5.md) describes the crates, contracts and valid
 - [x] Bidirectional caret order: visual or logical arrows, caret affinity and direction flags in all three editors ([milestone 7e](milestone-7.md#milestone-7e-bidirectional-caret-order)).
 - [x] Inherited text and layout direction with OS locale detection, mirrored layout and widgets ([milestone 7f](milestone-7.md#milestone-7f-text-direction-and-right-to-left-layout)).
 - [x] Hot reload: watched files, and a development runner that rebuilds and restarts with state and window kept ([milestone 7g](milestone-7.md#milestone-7g-hot-reload)).
-- [ ] Framework diagnostics.
+- [x] Framework diagnostics: unstable ids, relayout, repainting, unnamed controls, oversized layers and huge containers, through an API, the inspector and logs ([milestone 7h](milestone-7.md#milestone-7h-framework-diagnostics)).
 - CPU rendering, outgoing OS drags, gestures and additional platform adapters.
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

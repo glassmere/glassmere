@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 7g. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 7h. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -59,8 +59,8 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 53 | Low idle CPU/GPU usage | Done | Event-driven loop sleeps between events; no continuous redraw. |
 | 54 | Fast startup | Partial | Sequential backend probing and compact allocation; startup timing not benchmarked. |
 | 55 | Small deployment footprint | Partial | Native binary; footprint not measured. |
-| 56 | Excellent error diagnostics | Partial | Duplicate keys, duplicate shortcuts, invalid models and clip imbalance panic with messages; stylesheet errors carry line numbers and unknown classes surface in the inspector. Missing: font/resource and accessibility diagnostics. |
-| 57 | Framework-level diagnostics | Not started | Warnings for relayout, repaint, inaccessible controls and huge unvirtualized collections. |
+| 56 | Excellent error diagnostics | Partial | Duplicate keys, duplicate shortcuts, invalid models and clip imbalance panic with messages; stylesheet, dock layout and watched-file errors carry line numbers or paths, unknown classes surface in the inspector, and controls without an accessible name are reported (milestone 7h). Missing: font/resource diagnostics. |
+| 57 | Framework-level diagnostics | Done | Unstable ids, needless relayout, excessive repainting, controls without an accessible name, oversized layers and huge unvirtualized containers, through `Context::diagnostics`, the inspector and `tracing` (milestone 7h). |
 | 58 | Small core with extension points | Partial | Models and custom leaves are public; third-party controls need a richer widget contract. |
 | 59 | Component ecosystem | Not started | |
 | 60 | Excellent custom-widget API | Partial | Size, paint and semantics; missing input, state and style contracts. |

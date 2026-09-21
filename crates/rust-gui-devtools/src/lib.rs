@@ -185,6 +185,8 @@ pub struct InspectorModel {
     pub export_path: Option<String>,
     /// Unknown style classes requested by the inspected window.
     pub warnings: Vec<String>,
+    /// Framework diagnostics of the inspected window.
+    pub diagnostics: Vec<rust_gui_core::FrameDiagnostic>,
 }
 
 impl Default for InspectorModel {
@@ -203,6 +205,7 @@ impl Default for InspectorModel {
             events: Vec::new(),
             export_path: None,
             warnings: Vec::new(),
+            diagnostics: Vec::new(),
         }
     }
 }
@@ -239,6 +242,7 @@ impl InspectorModel {
             frames: recorder.frames().iter().copied().collect(),
             events: recorder.events().iter().cloned().collect(),
             warnings: context.style_warnings().to_vec(),
+            diagnostics: context.diagnostics().to_vec(),
             ..Self::default()
         }
     }
@@ -269,6 +273,7 @@ pub enum Tab {
     Accessibility,
     Events,
     Frames,
+    Diagnostics,
 }
 
 /// Requests the inspector makes of the inspected window.
@@ -373,16 +378,23 @@ impl Inspector {
                     },
                     |ui| {
                         for (tab, label) in [
-                            (Tab::Tree, "Tree"),
-                            (Tab::Accessibility, "Accessibility"),
-                            (Tab::Events, "Events"),
-                            (Tab::Frames, "Frames"),
+                            (Tab::Tree, "Tree".to_owned()),
+                            (Tab::Accessibility, "Accessibility".to_owned()),
+                            (Tab::Events, "Events".to_owned()),
+                            (Tab::Frames, "Frames".to_owned()),
+                            (
+                                Tab::Diagnostics,
+                                format!("Diagnostics ({})", model.diagnostics.len()),
+                            ),
                         ] {
                             let style = Style {
                                 background: (self.tab == tab).then_some(ui.theme().selection),
                                 ..Style::button()
                             };
-                            if ui.button_styled(label, label, true, style).clicked() {
+                            if ui
+                                .button_styled(format!("{tab:?}"), label, true, style)
+                                .clicked()
+                            {
                                 self.tab = tab;
                             }
                         }
@@ -493,6 +505,71 @@ impl Inspector {
                                         ..mono.clone()
                                     },
                                 );
+                            },
+                        );
+                    }
+                    Tab::Diagnostics => {
+                        if model.diagnostics.is_empty() {
+                            ui.label_styled(
+                                "none",
+                                "No framework diagnostics. Checks run in debug builds.",
+                                Style {
+                                    foreground: Some(MUTED),
+                                    ..mono.clone()
+                                },
+                            );
+                        }
+                        ui.scroll(
+                            "diagnostics",
+                            Style {
+                                width: Length::Percent(1.0),
+                                height: Length::Px(list_height),
+                                gap: 6.0,
+                                ..Style::default()
+                            },
+                            |ui| {
+                                for (index, entry) in model.diagnostics.iter().enumerate() {
+                                    // Selecting an entry shows its node in the tree.
+                                    let title = format!(
+                                        "{:?}  ·  {}  ·  ×{}",
+                                        entry.kind,
+                                        if entry.path.is_empty() {
+                                            "(window)"
+                                        } else {
+                                            entry.path.as_str()
+                                        },
+                                        entry.count
+                                    );
+                                    if ui
+                                        .button_styled(
+                                            format!("entry-{index}"),
+                                            title,
+                                            entry.node.is_some(),
+                                            Style {
+                                                width: Length::Percent(1.0),
+                                                padding: 6.0,
+                                                ..Style::button()
+                                            },
+                                        )
+                                        .clicked()
+                                        && let Some(node) = entry.node
+                                    {
+                                        self.tree.select(Some(ItemId(node.0)));
+                                        self.tree.reveal(ItemId(node.0));
+                                        self.tab = Tab::Tree;
+                                    }
+                                    ui.label_styled(
+                                        format!("message-{index}"),
+                                        entry.message.clone(),
+                                        Style {
+                                            font_size: Some(12.0),
+                                            foreground: Some(MUTED),
+                                            width: Length::Percent(1.0),
+                                            wrap: TextWrap::Word,
+                                            ..Style::default()
+                                        },
+                                    );
+                                }
                             },
                         );
                     }

@@ -310,6 +310,8 @@ struct Application<F> {
     /// The development runner asked this process to stop.
     hot_stopping: bool,
     retry_pending: bool,
+    /// Framework diagnostics already printed.
+    diagnostics_seen: usize,
     started: Instant,
 }
 
@@ -346,6 +348,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             last_poll: Instant::now(),
             hot_stopping: false,
             retry_pending: false,
+            diagnostics_seen: 0,
             started: Instant::now(),
         }
     }
@@ -508,6 +511,16 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         if let Some(text) = self.context.take_clipboard() {
             input::write_clipboard(&mut self.clipboard.borrow_mut(), &text);
         }
+        // Each new framework diagnostic is printed once; the inspector (F12)
+        // lists them with their nodes. They are collected in debug builds.
+        let diagnostics = self.context.diagnostics();
+        for entry in diagnostics.iter().skip(self.diagnostics_seen) {
+            eprintln!(
+                "rust-gui diagnostic: {:?} at `{}`: {}",
+                entry.kind, entry.path, entry.message
+            );
+        }
+        self.diagnostics_seen = diagnostics.len();
         // Files asked for the first time load right away; the next frame shows them.
         let fresh: Vec<_> = self
             .context

@@ -1,0 +1,208 @@
+use rust_gui_core::{
+    Context, DiagnosticKind, HUGE_CHILDREN, Length, MonospaceMeasurer, RELAYOUT_FRAMES,
+    REPAINT_FRAMES, Style, Tab, TextWrap, UNSTABLE_ID_FRAMES, Ui,
+};
+use rust_gui_scene::{Color, Size};
+
+const ROOT: Size = Size::new(800.0, 600.0);
+
+fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) {
+    context.run(ROOT, &mut MonospaceMeasurer, view);
+}
+
+fn kinds(context: &Context) -> Vec<DiagnosticKind> {
+    context
+        .diagnostics()
+        .iter()
+        .map(|entry| entry.kind)
+        .collect()
+}
+
+#[test]
+fn keys_that_change_every_frame_are_reported_once_with_their_container() {
+    let mut context = Context::new();
+    assert!(context.diagnostics_enabled());
+    for round in 0..u32::from(UNSTABLE_ID_FRAMES) + 5 {
+        frame(&mut context, |ui| {
+            ui.column("stable", Style::default(), |ui| {
+                for item in 0..4 {
+                    ui.label_keyed(format!("row-{item}"), format!("stable {item} at {round}"));
+                }
+            });
+            ui.column("churning", Style::default(), |ui| {
+                for item in 0..4 {
+                    // The frame number in the key makes every row a new widget.
+                    ui.label_keyed(format!("row-{item}-{round}"), "unstable");
+                }
+            });
+        });
+    }
+    let entries = context.diagnostics();
+    assert_eq!(kinds(&context), [DiagnosticKind::UnstableIds]);
+    assert_eq!(entries[0].path, "churning");
+    assert_eq!(entries[0].node, context.find(&["churning"]));
+    assert!(entries[0].message.contains("4 children"));
+
+    // A list that really changes (one row added per frame) is not churn.
+    let mut context = Context::new();
+    for round in 0..30 {
+        frame(&mut context, |ui| {
+            for item in 0..=round {
+                ui.label_keyed(format!("row-{item}"), "grows");
+            }
+        });
+    }
+    assert!(context.diagnostics().is_empty());
+}
+
+#[test]
+fn layout_that_never_moves_anything_and_wholesale_repaints_are_reported() {
+    let mut context = Context::new();
+    for round in 0..RELAYOUT_FRAMES + 5 {
+        frame(&mut context, |ui| {
+            // A wrapped label re-measures whenever its text changes, even
+            // though these two strings always measure the same.
+            ui.label_styled(
+                "ticker",
+                if round % 2 == 0 { "tick" } else { "tock" },
+                Style::default()
+                    .width(Length::Px(200.0))
+                    .wrap(TextWrap::Word),
+            );
+        });
+    }
+    let entries = context.diagnostics();
+    assert_eq!(kinds(&context), [DiagnosticKind::Relayout]);
+    assert_eq!(entries[0].path, "ticker");
+
+    let mut context = Context::new();
+    for round in 0..REPAINT_FRAMES + 5 {
+        frame(&mut context, |ui| {
+            for item in 0..30 {
+                ui.label_styled(
+                    format!("cell-{item}"),
+                    "cell",
+                    Style::default().foreground(Color(200, (round % 200) as u8, 0, 255)),
+                );
+            }
+        });
+    }
+    assert_eq!(kinds(&context), [DiagnosticKind::Repaint]);
+    assert!(context.diagnostics()[0].node.is_none());
+
+    // A tree that settles is quiet.
+    let mut context = Context::new();
+    for _ in 0..REPAINT_FRAMES + 5 {
+        frame(&mut context, |ui| {
+            for item in 0..30 {
+                ui.label_keyed(format!("cell-{item}"), "cell");
+            }
+        });
+    }
+    assert!(context.diagnostics().is_empty());
+}
+
+#[test]
+fn controls_without_a_name_are_reported_and_tooltips_or_labels_fix_them() {
+    let mut context = Context::new();
+    let mut value = String::new();
+    let mut selected = 0;
+    frame(&mut context, |ui| {
+        ui.button_keyed("empty", "");
+        ui.button_keyed("symbol", "→");
+        ui.button_keyed("described", "→");
+        ui.tooltip("Next page");
+        ui.button_keyed("named", "Next");
+        ui.text_input("field", "", &mut value);
+        // Built-in widgets name their own symbol buttons.
+        ui.tabs(
+            "tabs",
+            &mut selected,
+            &[Tab::closable("notes.md")],
+            |ui, _| {
+                ui.label("panel");
+            },
+        );
+    });
+    let mut reported: Vec<(String, bool)> = context
+        .diagnostics()
+        .iter()
+        .map(|entry| {
+            assert_eq!(entry.kind, DiagnosticKind::Inaccessible);
+            (entry.path.clone(), entry.message.contains("symbols"))
+        })
+        .collect();
+    reported.sort();
+    assert_eq!(
+        reported,
+        [
+            ("empty".to_owned(), false),
+            ("field".to_owned(), false),
+            ("symbol".to_owned(), true),
+        ]
+    );
+    // Unchanged controls are not reported again on later frames.
+    let count = context.diagnostics()[0].count;
+    frame(&mut context, |ui| {
+        ui.button_keyed("empty", "");
+    });
+    assert!(
+        context
+            .diagnostics()
+            .iter()
+            .all(|entry| entry.count == count)
+    );
+}
+
+#[test]
+fn oversized_layers_and_huge_containers_are_reported_and_checks_can_be_turned_off() {
+    let view = |ui: &mut Ui<'_>| {
+        ui.container(
+            "faded",
+            Style::default()
+                .width(Length::Px(3000.0))
+                .height(Length::Px(2000.0))
+                .opacity(0.5),
+            |ui| ui.label("content"),
+        );
+        ui.container(
+            "small",
+            Style::default()
+                .width(Length::Px(300.0))
+                .height(Length::Px(200.0))
+                .opacity(0.5),
+            |ui| ui.label("content"),
+        );
+        ui.column("everything", Style::default(), |ui| {
+            for item in 0..=HUGE_CHILDREN {
+                ui.label_keyed(format!("row-{item}"), "row");
+            }
+        });
+    };
+    let mut context = Context::new();
+    frame(&mut context, view);
+    let mut found: Vec<(DiagnosticKind, String)> = context
+        .diagnostics()
+        .iter()
+        .map(|entry| (entry.kind, entry.path.clone()))
+        .collect();
+    found.sort_by(|a, b| a.1.cmp(&b.1));
+    assert_eq!(
+        found,
+        [
+            (DiagnosticKind::HugeCollection, "everything".to_owned()),
+            (DiagnosticKind::OversizedLayer, "faded".to_owned()),
+        ]
+    );
+    assert!(
+        context.diagnostics()[0].message.contains("501")
+            || context.diagnostics()[1].message.contains("501")
+    );
+    context.clear_diagnostics();
+    assert!(context.diagnostics().is_empty());
+
+    let mut quiet = Context::new();
+    quiet.set_diagnostics(false);
+    frame(&mut quiet, view);
+    assert!(quiet.diagnostics().is_empty());
+}

@@ -102,3 +102,37 @@ fn inspector_rows_follow_collapse_selection_drives_overlay_and_export_is_request
     let tree = host.find(&["inspector", "body", "tree"]).unwrap();
     assert_eq!(host.node(tree).unwrap().collection.unwrap().total, 4);
 }
+
+#[test]
+fn the_diagnostics_tab_lists_entries_and_selecting_one_shows_its_node_in_the_tree() {
+    let mut context = Context::new();
+    let recorder = Recorder::new(8);
+    context.run(TARGET, &mut MonospaceMeasurer, |ui| {
+        ui.column("page", Style::default(), |ui| {
+            ui.button_keyed("nameless", "");
+        });
+    });
+    let mut model = InspectorModel::capture(&context, "Target", TARGET, &recorder);
+    model.viewport = VIEWPORT;
+    assert_eq!(model.diagnostics.len(), 1);
+    assert_eq!(model.diagnostics[0].path, "page/nameless");
+
+    let mut inspector = Inspector::default();
+    inspector.tab = Tab::Diagnostics;
+    let mut host = Context::new();
+    let frame = |host: &mut Context, inspector: &mut Inspector| {
+        host.run(VIEWPORT, &mut MonospaceMeasurer, |ui| {
+            inspector.ui(ui, &model);
+        });
+    };
+    frame(&mut host, &mut inspector);
+    let entry = host
+        .find(&["inspector", "diagnostics", "entry-0"])
+        .expect("the entry is a button");
+    assert!(host.action(entry, Action::Activate));
+    frame(&mut host, &mut inspector);
+    assert_eq!(inspector.tab, Tab::Tree);
+    assert_eq!(inspector.selected(), context.find(&["page", "nameless"]));
+    // The inspector's own UI raises no diagnostics.
+    assert!(host.diagnostics().is_empty(), "{:?}", host.diagnostics());
+}

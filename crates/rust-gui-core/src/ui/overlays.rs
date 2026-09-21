@@ -117,6 +117,10 @@ impl Ui<'_> {
                             {
                                 closed = Some(index);
                             }
+                            if tab.closable {
+                                // The button shows only a symbol; this names it.
+                                ui.tooltip(format!("Close {}", tab.label));
+                            }
                         }
                         strip_extra(ui, current);
                     },

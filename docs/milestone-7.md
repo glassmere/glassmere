@@ -1,6 +1,6 @@
 # Milestone 7: advanced features
 
-Slices so far: 7a docking, 7b rich text with the code editor foundation, 7c code intelligence, 7d the WYSIWYG rich text editor, 7e bidirectional caret order, 7f text direction with right-to-left layout and 7g hot reload (below).
+Slices so far: 7a docking, 7b rich text with the code editor foundation, 7c code intelligence, 7d the WYSIWYG rich text editor, 7e bidirectional caret order, 7f text direction with right-to-left layout, 7g hot reload and 7h framework diagnostics (below). Phase 7 is complete.
 
 # Milestone 7a: docking
 
@@ -408,3 +408,52 @@ Not verified: that the restored window position looks right on a second monitor 
 - Polling has up to 500 ms latency and scans the watch roots on every tick; there are no OS change notifications.
 - Focus, scroll positions and other retained widget state are not part of the saved state unless the app includes them.
 - There are still no image or asset types; `watched_bytes` is the hook they will use.
+
+# Milestone 7h: framework diagnostics
+
+Implemented on 2026-09-21. The framework now warns about six kinds of mistakes it can see from the inside, through one collector with three views: an API for tests, a tab in the F12 inspector, and log output. This completes phase 7.
+
+## Use
+
+```rust
+for entry in context.diagnostics() {
+    // kind, node, path such as `page/list`, message, count, last frame
+}
+context.set_diagnostics(true);      // on in debug builds, off in release builds by default
+context.clear_diagnostics();
+```
+
+In a desktop app, each new diagnostic is printed once to stderr as `rust-gui diagnostic: <Kind> at `<path>`: <message>`, emitted as a `tracing` warn event with target `rust_gui::diagnostics`, and listed in the inspector's Diagnostics tab, where selecting an entry shows its node in the tree.
+
+## Contracts
+
+| Kind | Reported when | Threshold |
+| --- | --- | --- |
+| `UnstableIds` | A container gains exactly as many children as it loses, frame after frame: keys built from changing data or positions recreate widgets and lose their focus, scroll and editing state. Reported on the container. | `UNSTABLE_ID_FRAMES` = 8 consecutive frames |
+| `Relayout` | Layout ran but no node's bounds changed, frame after frame. Reported on the first node that made layout dirty, typically a wrapped text or layout style that changes every frame yet measures the same. | `RELAYOUT_FRAMES` = 30 |
+| `Repaint` | More than half of the tree repainted, frame after frame, in a tree of at least `REPAINT_MIN_NODES` = 20 nodes. Reported for the window. | `REPAINT_FRAMES` = 60 |
+| `Inaccessible` | A button, text input, checkbox, radio, slider, combo box, menu button or tab has an empty accessible name, or a name made only of symbols, and no tooltip to describe it. Checked for controls a declaration created or changed. | each control once |
+| `OversizedLayer` | A node composited as an offscreen layer (opacity or transform) covers more than `LAYER_AREA` = 4,096,000 logical pixels. | each node once |
+| `HugeCollection` | A container other than a virtual collection has more than `HUGE_CHILDREN` = 500 direct children. | each container once |
+
+| API | Behavior |
+| --- | --- |
+| `Context::diagnostics() -> &[FrameDiagnostic]` | One entry per kind and node; repeats raise `count` and refresh `frame` and `message`. At most 256 entries are kept. |
+| `Context::set_diagnostics`, `diagnostics_enabled`, `clear_diagnostics` | The checks run when `debug_assertions` are on unless switched. When off they cost one branch per hook. |
+| Inspector | `InspectorModel::diagnostics` and a `Diagnostics (n)` tab; an entry with a node selects it in the Tree tab. |
+
+Two of the framework's own buttons were named only by a symbol and would have been reported: the tab close button and the find bar's close button. Both now carry a tooltip ("Close notes.md", "Close the find bar"), which is also their accessible description.
+
+## Validation
+
+Five new tests. Four core tests: churning keys reported once on their container while stable keys and a genuinely growing list stay quiet; a wrapped label alternating between two equally sized strings reported as relayout on that label, thirty recoloured labels reported as wholesale repainting, and a settled tree staying quiet; unnamed and symbol-named controls reported while a tooltip, a label and the built-in closable tabs are not, and unchanged controls not re-reported; an oversized layer and a 501-child column reported while a small layer is not, `clear_diagnostics`, and nothing collected when switched off. One inspector test: the model captures diagnostics, the tab lists them, activating an entry switches to the tree with that node selected, and the inspector's own UI raises none. The full suite is 160 tests plus 11 GPU tests; clippy is clean.
+
+Dogfooding: all twelve examples, six of them also in their `--open` or `--rtl` variants, run without a single diagnostic in debug builds. A throwaway example with a nameless button and frame-numbered keys printed both expected lines through the desktop host and was removed. A release build of the counter example prints nothing, as designed.
+
+## Remaining limits
+
+- The relayout and repaint checks are heuristics with fixed thresholds; an app that legitimately repaints everything each frame (a game-like view) should switch them off.
+- `UnstableIds` sees only wholesale replacement with equal counts; keys that churn while the list also changes size are not caught.
+- Accessibility checks cover names only, not contrast, focus order or target size.
+- Diagnostics are per window; nothing aggregates them across windows.
+- GPU timings, memory statistics and cross-driver pixel tolerance from the phase 5 list are still open.

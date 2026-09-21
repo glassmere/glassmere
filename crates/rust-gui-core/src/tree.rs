@@ -18,6 +18,7 @@ mod animation_state;
 mod collection_input;
 mod control_input;
 mod control_paint;
+pub mod diagnostics;
 mod dock_input;
 mod drag_input;
 mod focus_input;
@@ -296,6 +297,9 @@ struct Node {
     /// Width of the label of a control that is not a text leaf, for
     /// right-aligning it in right-to-left UI.
     label_width: f32,
+    /// Consecutive frames in which all of this node's new children replaced
+    /// as many removed ones.
+    churn: u8,
     /// Parent-relative layout rectangle; layout animations start from the old one.
     layout_rect: Rect,
 }
@@ -469,6 +473,7 @@ pub struct Context {
     watch_requests: Vec<std::path::PathBuf>,
     hot_save: bool,
     hot_state: Option<String>,
+    diagnostic: diagnostics::DiagnosticState,
     theme: Theme,
     stylesheet: StyleSheet,
     style_warnings: Vec<String>,
@@ -591,6 +596,7 @@ impl Default for Context {
             rich: None,
             rich_editor: None,
             label_width: 0.0,
+            churn: 0,
             layout_rect: Rect::default(),
             control: Control::None,
             editor: None,
@@ -633,6 +639,7 @@ impl Default for Context {
             watch_requests: Vec::new(),
             hot_save: false,
             hot_state: None,
+            diagnostic: diagnostics::DiagnosticState::new(),
             theme,
             stylesheet: StyleSheet::default(),
             style_warnings: Vec::new(),
@@ -1109,6 +1116,8 @@ impl Context {
         self.stats.declare = declare_started.elapsed();
         let layout_started = Instant::now();
         let layout_span = tracing::trace_span!("rust_gui.layout").entered();
+        let layout_ran = self.pending.contains(Dirty::LAYOUT);
+        self.diagnose_accessibility();
         if self.pending.contains(Dirty::LAYOUT) {
             let root = self.nodes[&self.root].layout_id;
             self.layout
@@ -1154,6 +1163,7 @@ impl Context {
         }
         drop(layout_span);
         self.stats.layout = layout_started.elapsed();
+        self.diagnose_layout(layout_ran);
         self.prepare_controls(measurer);
         let hover = self.pointer.and_then(|p| self.hit_test(p));
         if hover != self.hovered {
@@ -1193,6 +1203,7 @@ impl Context {
             }
             self.stats.paint = paint_started.elapsed();
         }
+        self.diagnose_paint();
         self.stats.dirty = self.pending;
         self.pending = Dirty::empty();
         self.stats
@@ -1211,12 +1222,14 @@ impl Context {
             .map(|id| (self.nodes[id].key.clone(), *id))
             .collect();
         let mut children = Vec::with_capacity(elements.len());
+        let (mut created_here, mut removed_here) = (0usize, 0usize);
         for element in elements {
             let existing = available.remove(&element.key).filter(|id| {
                 if self.nodes[id].kind == element.kind {
                     true
                 } else {
                     self.remove(*id);
+                    removed_here += 1;
                     false
                 }
             });
@@ -1274,6 +1287,7 @@ impl Context {
                             .set_node_context(node.layout_id, Some(measured))
                             .unwrap();
                         self.pending |= Dirty::LAYOUT;
+                        self.diagnostic.layout_cause.get_or_insert(id);
                     }
                     self.pending |= Dirty::TEXT | Dirty::PAINT | Dirty::ACCESSIBILITY;
                 }
@@ -1297,6 +1311,7 @@ impl Context {
                 if *self.layout.style(node.layout_id).unwrap() != layout_style {
                     self.layout.set_style(node.layout_id, layout_style).unwrap();
                     self.pending |= Dirty::LAYOUT;
+                    self.diagnostic.layout_cause.get_or_insert(id);
                 }
                 if node.style != element.style {
                     self.pending |= Dirty::STYLE | Dirty::PAINT;
@@ -1357,6 +1372,7 @@ impl Context {
                         rich: None,
                         rich_editor: None,
                         label_width: 0.0,
+                        churn: 0,
                         layout_rect: Rect::default(),
                         key: element.key,
                         kind: element.kind,
@@ -1411,12 +1427,14 @@ impl Context {
                     self.new_popovers.push(id);
                 }
                 self.stats.created += 1;
+                created_here += 1;
                 self.pending |= Dirty::all();
                 id
             };
             self.reconcile(id, element.children, measurer);
             children.push(id);
         }
+        removed_here += available.len();
         for id in available.into_values() {
             self.remove_with_exit(id);
         }
@@ -1436,6 +1454,7 @@ impl Context {
             self.invalidate_paint(parent);
             self.pending |= Dirty::TREE | Dirty::LAYOUT | Dirty::PAINT | Dirty::ACCESSIBILITY;
         }
+        self.diagnose_children(parent, created_here, removed_here);
     }
 
     fn remove(&mut self, id: NodeId) {
@@ -1606,6 +1625,9 @@ impl Context {
         };
         let clip = node.clip;
         let children = node.children.clone();
+        if old_bounds != node.bounds {
+            self.diagnostic.bounds_changed = true;
+        }
         if old_bounds != node.bounds || old_clip != node.clip || old_scroll != node.scroll {
             self.add_damage(old_clip);
             self.invalidate_paint(id);
@@ -1737,6 +1759,10 @@ impl Context {
             radius,
             ..
         } = shown;
+        if layer.is_some() {
+            let bounds = self.nodes[&id].bounds;
+            self.diagnose_layer(id, bounds);
+        }
         let node = &self.nodes[&id];
         let mut scene = Scene::default();
         if let Some((opacity, transform)) = layer {
