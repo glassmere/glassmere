@@ -161,6 +161,8 @@ pub(crate) enum CollectionInput {
         key: crate::Key,
         shift: bool,
     },
+    /// Grids: scroll the unfrozen columns by physical pixels, right positive.
+    ScrollX(f32),
 }
 
 impl CollectionInput {
@@ -168,7 +170,12 @@ impl CollectionInput {
     pub(crate) fn for_grid(&self) -> bool {
         matches!(
             self,
-            Self::Cell { .. } | Self::Column(_) | Self::Edit | Self::Type(_) | Self::EditKey { .. }
+            Self::Cell { .. }
+                | Self::Column(_)
+                | Self::Edit
+                | Self::Type(_)
+                | Self::EditKey { .. }
+                | Self::ScrollX(_)
         )
     }
 }
@@ -237,7 +244,8 @@ impl ListState {
                 | CollectionInput::Column(_)
                 | CollectionInput::Edit
                 | CollectionInput::Type(_)
-                | CollectionInput::EditKey { .. } => None,
+                | CollectionInput::EditKey { .. }
+                | CollectionInput::ScrollX(_) => None,
                 CollectionInput::Expand(expand) => {
                     if let Some(index) = current {
                         let id = model.item_id(index);
@@ -563,6 +571,9 @@ pub struct GridState {
     pub columns: GridColumns,
     /// Model column of the current cell; its row is the selected row.
     pub cursor: usize,
+    /// How far the unfrozen columns are scrolled, from the start side. The
+    /// grid clamps it and moves it to keep the current cell in view.
+    pub scroll_x: f32,
     /// Text of the filter fields by model column. Changing it from code
     /// filters at the next declaration, without the typing delay.
     pub filters: std::collections::BTreeMap<usize, String>,
@@ -621,6 +632,9 @@ pub struct GridColumns {
     pub widths: std::collections::BTreeMap<usize, f32>,
     /// Hidden model column indices.
     pub hidden: std::collections::BTreeSet<usize>,
+    /// How many of the leading visible columns stay in place while the rest
+    /// scroll sideways.
+    pub frozen: usize,
 }
 
 impl GridColumns {

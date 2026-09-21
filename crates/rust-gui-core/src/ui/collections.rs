@@ -124,7 +124,7 @@ impl Ui<'_> {
             .iter()
             .map(|column| state.columns.width(*column, columns[*column].width))
             .collect();
-        let total_width = widths.iter().sum::<f32>();
+        let rtl = self.context.direction() == crate::Direction::Rtl;
         // Menu entries name physical directions; the start is on the right in
         // a right-to-left grid.
         let (toward_start, toward_end) = if self.context.direction() == crate::Direction::Rtl {
@@ -187,6 +187,7 @@ impl Ui<'_> {
         if !visible.contains(&state.cursor) {
             state.cursor = visible[0];
         }
+        let cursor_before = state.cursor;
         let mut edited = None;
         // Where the keyboard goes once this declaration is reconciled.
         let (mut focus_editor, mut focus_rows) = (false, false);
@@ -211,6 +212,9 @@ impl Ui<'_> {
                         .position(|column| *column == state.cursor)
                         .unwrap_or(0);
                     state.cursor = visible[at.saturating_add_signed(by).min(visible.len() - 1)];
+                }
+                CollectionInput::ScrollX(delta) => {
+                    state.scroll_x += if rtl { -delta } else { delta };
                 }
                 CollectionInput::Edit => start = Some(None),
                 CollectionInput::Type(text) => start = Some(Some(text)),
@@ -259,6 +263,23 @@ impl Ui<'_> {
                 _ => unreachable!("a collection only queues collection input"),
             }
         }
+        // Which columns exist this frame. The first declaration does not know
+        // its width yet and shows everything; the next one knows.
+        let viewport = rows
+            .and_then(|rows| self.context.node(rows))
+            .map(|node| node.bounds.width);
+        if viewport.is_none() {
+            self.request_redraw();
+        }
+        let plan = ColumnPlan::new(
+            &visible,
+            &widths,
+            state.columns.frozen,
+            viewport.unwrap_or(f32::INFINITY),
+            &mut state.scroll_x,
+            (state.cursor != cursor_before).then_some(state.cursor),
+            rtl,
+        );
         let rows_focused = rows.is_some_and(|rows| self.context.focused() == Some(rows));
         let theme = self.context.theme();
         let (cursor_fill, error_fill) =
@@ -275,16 +296,12 @@ impl Ui<'_> {
                 ..Style::default()
             },
             |ui| {
-                ui.row(
+                spread(
+                    ui,
                     "$header",
-                    Style {
-                        width: Length::Px(total_width),
-                        height: Length::Px(options.row_height),
-                        gap: 0.0,
-                        ..Style::default()
-                    },
-                    |ui| {
-                        for (position, (&column, &width)) in visible.iter().zip(&widths).enumerate()
+                    options.row_height,
+                    &plan,
+                    &mut |ui, position, column, width| {
                         {
                             let descriptor = &columns[column];
                             let direction = state
@@ -318,6 +335,11 @@ impl Ui<'_> {
                                 item(&format!("Hide {}", descriptor.label), visible.len() > 1),
                                 item("Show all columns", visible.len() < count),
                                 item("Reset columns", true),
+                                item(
+                                    &format!("Freeze up to {}", descriptor.label),
+                                    state.columns.frozen != position + 1,
+                                ),
+                                item("Unfreeze columns", state.columns.frozen > 0),
                             ];
                             let actions = &mut actions;
                             let domain = &domain;
@@ -403,42 +425,37 @@ impl Ui<'_> {
                     },
                 );
                 if filterable {
-                    ui.row(
+                    spread(
+                        ui,
                         "$filters",
-                        Style {
-                            width: Length::Px(total_width),
-                            height: Length::Px(options.row_height),
-                            gap: 0.0,
-                            ..Style::default()
-                        },
-                        |ui| {
-                            for (&column, &width) in visible.iter().zip(&widths) {
-                                let descriptor = &columns[column];
-                                let field = Style {
-                                    padding: 4.0,
-                                    radius: 0.0,
-                                    ..Style::button()
-                                }
-                                .width(Length::Px(width))
-                                .height(Length::Px(options.row_height));
-                                if descriptor.filterable {
-                                    let text = state.filters.entry(column).or_default();
-                                    typed_filter |= ui
-                                        .text_input_styled(
-                                            column.to_string(),
-                                            format!("Filter {}", descriptor.label),
-                                            text,
-                                            "Filter",
-                                            field,
-                                        )
-                                        .changed;
-                                } else {
-                                    ui.label_styled(
+                        options.row_height,
+                        &plan,
+                        &mut |ui, _, column, width| {
+                            let descriptor = &columns[column];
+                            let field = Style {
+                                padding: 4.0,
+                                radius: 0.0,
+                                ..Style::button()
+                            }
+                            .width(Length::Px(width))
+                            .height(Length::Px(options.row_height));
+                            if descriptor.filterable {
+                                let text = state.filters.entry(column).or_default();
+                                typed_filter |= ui
+                                    .text_input_styled(
                                         column.to_string(),
-                                        "",
-                                        field.background(rust_gui_scene::Color::TRANSPARENT),
-                                    );
-                                }
+                                        format!("Filter {}", descriptor.label),
+                                        text,
+                                        "Filter",
+                                        field,
+                                    )
+                                    .changed;
+                            } else {
+                                ui.label_styled(
+                                    column.to_string(),
+                                    "",
+                                    field.background(rust_gui_scene::Color::TRANSPARENT),
+                                );
                             }
                         },
                     );
@@ -449,22 +466,21 @@ impl Ui<'_> {
                     model,
                     &mut state.rows,
                     VirtualListOptions {
-                        height: (options.height - options.row_height * header_rows).max(1.0),
+                        height: (options.height
+                            - options.row_height * header_rows
+                            - plan.bar_height())
+                        .max(1.0),
                         ..options.clone()
                     },
                     CollectionKind::Grid,
                     |ui, model, index, is_selected| {
                         let item = model.item_id(index);
-                        ui.row(
+                        spread(
+                            ui,
                             "$cells",
-                            Style {
-                                width: Length::Px(total_width),
-                                gap: 0.0,
-                                ..Style::default()
-                            },
-                            |ui| {
-                                for (position, (&column, &width)) in
-                                    visible.iter().zip(&widths).enumerate()
+                            options.row_height,
+                            &plan,
+                            &mut |ui, position, column, width| {
                                 {
                                     let cell = Style {
                                         width: Length::Px(width),
@@ -521,7 +537,7 @@ impl Ui<'_> {
                                         // Leaving the cell any other way stores the value too.
                                         left |= edit.focused && !response.focused;
                                         edit.focused |= response.focused;
-                                        continue;
+                                        return;
                                     }
                                     let current =
                                         is_selected && column == state.cursor && rows_focused;
@@ -544,6 +560,7 @@ impl Ui<'_> {
                         );
                     },
                 );
+                plan.scrollbar(ui, rtl);
                 if focus_rows || std::mem::take(&mut state.refocus) {
                     ui.request_focus("$rows");
                 }
@@ -620,7 +637,12 @@ impl Ui<'_> {
                         3 => state.columns.set_width(column, width - WIDTH_STEP),
                         4 => drop(state.columns.hide(count, column)),
                         5 => state.columns.show_all(),
-                        _ => state.columns.reset(),
+                        6 => state.columns.reset(),
+                        7 => {
+                            let at = visible.iter().position(|other| *other == column);
+                            state.columns.frozen = at.map_or(0, |at| at + 1);
+                        }
+                        _ => state.columns.frozen = 0,
                     }
                 }
             }
@@ -751,6 +773,145 @@ impl Ui<'_> {
         };
         response
     }
+}
+
+/// Which columns a grid declares this frame and where they go: the frozen
+/// ones in place, then a window onto the rest with only the columns that show.
+struct ColumnPlan {
+    /// Display position, model column and width.
+    frozen: Vec<(usize, usize, f32)>,
+    realized: Vec<(usize, usize, f32)>,
+    /// Width of the window onto the scrolling columns, and of all of them.
+    view: f32,
+    scrolling: f32,
+    scroll_x: f32,
+    /// Where the strip of realized columns sits in the window, from its left edge.
+    strip_x: f32,
+}
+
+impl ColumnPlan {
+    fn new(
+        visible: &[usize],
+        widths: &[f32],
+        frozen: usize,
+        viewport: f32,
+        scroll_x: &mut f32,
+        reveal: Option<usize>,
+        rtl: bool,
+    ) -> Self {
+        let columns: Vec<(usize, usize, f32)> = visible
+            .iter()
+            .zip(widths)
+            .enumerate()
+            .map(|(position, (column, width))| (position, *column, *width))
+            .collect();
+        let (frozen, rest) = columns.split_at(frozen.min(columns.len()));
+        let frozen_width: f32 = frozen.iter().map(|column| column.2).sum();
+        let scrolling: f32 = rest.iter().map(|column| column.2).sum();
+        let view = (viewport - frozen_width).clamp(0.0, scrolling);
+        // Keep the current cell in view when the cursor moved to it.
+        let mut start = 0.0;
+        for (_, column, width) in rest {
+            if reveal == Some(*column) {
+                *scroll_x = scroll_x.min(start).max(start + width - view).min(start);
+            }
+            start += width;
+        }
+        *scroll_x = if scroll_x.is_finite() {
+            scroll_x.clamp(0.0, (scrolling - view).max(0.0))
+        } else {
+            0.0
+        };
+        let (mut start, mut first, mut realized) = (0.0, None, Vec::new());
+        for column in rest {
+            if start + column.2 > *scroll_x && start < *scroll_x + view {
+                first.get_or_insert(start);
+                realized.push(*column);
+            }
+            start += column.2;
+        }
+        let hidden_before = *scroll_x - first.unwrap_or(0.0);
+        let realized_width: f32 = realized.iter().map(|column| column.2).sum();
+        Self {
+            frozen: frozen.to_vec(),
+            realized,
+            view,
+            scrolling,
+            scroll_x: *scroll_x,
+            // Offsets are physical: in a right-to-left grid the strip hangs
+            // from the right edge of the window.
+            strip_x: if rtl {
+                view - realized_width + hidden_before
+            } else {
+                -hidden_before
+            },
+        }
+    }
+
+    fn bar_height(&self) -> f32 {
+        if self.scrolling > self.view { 6.0 } else { 0.0 }
+    }
+
+    /// The sideways scrollbar under the rows, beside the frozen columns.
+    fn scrollbar(&self, ui: &mut Ui<'_>, rtl: bool) {
+        if self.bar_height() == 0.0 {
+            return;
+        }
+        let frozen: f32 = self.frozen.iter().map(|column| column.2).sum();
+        let thumb = (self.view * self.view / self.scrolling)
+            .max(12.0)
+            .min(self.view);
+        let travelled = (self.view - thumb) * self.scroll_x / (self.scrolling - self.view);
+        let x = if rtl {
+            self.view - thumb - travelled
+        } else {
+            travelled
+        };
+        let color = ui.context.theme().scrollbar;
+        let line = Style::default()
+            .height(Length::Px(self.bar_height()))
+            .gap(0.0);
+        ui.row("$hbar", line.clone(), |ui| {
+            ui.label_styled("$frozen", "", line.clone().width(Length::Px(frozen)));
+            ui.container("$track", line.clone().width(Length::Px(self.view)), |ui| {
+                let thumb = Style::default()
+                    .offset(x, 1.0)
+                    .width(Length::Px(thumb))
+                    .height(Length::Px(4.0))
+                    .radius(2.0)
+                    .background(color);
+                ui.container("$thumb", thumb, |_| {});
+            });
+        });
+    }
+}
+
+/// One line of a grid: the frozen cells, then the window onto the scrolling
+/// ones. The header, the filter row and every body row use it, so they line up.
+fn spread(
+    ui: &mut Ui<'_>,
+    key: &str,
+    height: f32,
+    plan: &ColumnPlan,
+    cell: &mut dyn FnMut(&mut Ui<'_>, usize, usize, f32),
+) {
+    let line = Style::default().height(Length::Px(height)).gap(0.0);
+    ui.row(key, line.clone(), |ui| {
+        for &(position, column, width) in &plan.frozen {
+            cell(ui, position, column, width);
+        }
+        ui.container(
+            "$scrolling",
+            line.clone().width(Length::Px(plan.view)),
+            |ui| {
+                ui.row("$strip", line.clone().offset(plan.strip_x, 0.0), |ui| {
+                    for &(position, column, width) in &plan.realized {
+                        cell(ui, position, column, width);
+                    }
+                });
+            },
+        );
+    });
 }
 
 /// Opens the editor of the current cell, or toggles it when it is a bool.

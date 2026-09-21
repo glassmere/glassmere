@@ -22,6 +22,10 @@ impl Context {
         true
     }
 
+    pub(super) fn grid_scroll_x(&mut self, rows: NodeId, delta: f32) -> bool {
+        self.collection_queue(rows, CollectionInput::ScrollX(delta))
+    }
+
     /// Display position of the grid cell of `row` under `point`.
     fn grid_cell_at(&self, row: NodeId, point: Point) -> Option<usize> {
         let mut pending = self.nodes.get(&row)?.children.clone();
@@ -33,7 +37,9 @@ impl Context {
                 ..
             } = node.control
             {
-                if point.x >= node.bounds.x && point.x < node.bounds.x + node.bounds.width {
+                // A cell scrolled under the frozen columns still has bounds
+                // there; what can be pressed is what shows.
+                if node.clip.contains(point) {
                     return Some(column);
                 }
             } else {

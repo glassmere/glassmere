@@ -1,7 +1,9 @@
 //! The data grid: typed in-place editing with a cell cursor, and columns the
 //! user resizes, reorders and hides. F2, Enter, a second click or typing opens
 //! a cell; Enter stores and moves down, Tab stores and moves sideways, Escape
-//! cancels. Right-click a header, or press Shift+F10 on it, for its menu.
+//! cancels. Right-click a header, or press Shift+F10 on it, for its menu,
+//! which also freezes columns. Name and City can be filtered. The grid is wider
+//! than its window: Id and Name stay while the rest scrolls sideways.
 use rust_gui::{
     AppOptions, CellEditor, CellValue, GridColumn, GridModel, GridState, ItemId, Length, ListModel,
     NumberOptions, Size, SortDirection, Style, VirtualListOptions, run, text_matches,
@@ -56,6 +58,9 @@ impl People {
                     .sortable(true)
                     .editor(CellEditor::number(money)),
                 GridColumn::new("Active", 80.0).editor(CellEditor::Bool),
+                GridColumn::new("Email", 260.0),
+                GridColumn::new("Department", 170.0),
+                GridColumn::new("Badge", 150.0),
             ],
             rows: (0..count as usize).collect(),
             everyone: (0..count)
@@ -112,7 +117,13 @@ impl GridModel for People {
             2 => CITIES[person.city].into(),
             3 => format!("{}", person.age),
             4 => format!("{} €", person.salary),
-            _ => if person.active { "☑" } else { "☐" }.into(),
+            5 => if person.active { "☑" } else { "☐" }.into(),
+            6 => format!(
+                "{}@example.test",
+                person.name.to_lowercase().replace(' ', ".")
+            ),
+            7 => ["Research", "Design", "Support", "Sales"][(person.id % 4) as usize].into(),
+            _ => format!("B-{:05}", person.id * 37 % 100_000),
         }
     }
     fn value(&self, row: usize, column: usize) -> CellValue {
@@ -186,6 +197,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     let mut people = People::new(2000);
     let mut state = GridState::default();
+    // Id and Name stay in place while the other columns scroll sideways.
+    state.columns.frozen = 2;
     let mut last = String::from("nothing yet");
     run(
         AppOptions {
@@ -213,7 +226,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 ui.label_keyed(
                     "hint",
-                    "F2, Enter, a second click or typing edits · Enter stores and moves down · Tab sideways · Esc cancels",
+                    "F2, Enter, a second click or typing edits · Enter stores, Tab moves on, Esc cancels · Shift+wheel scrolls sideways",
                 );
                 let options = VirtualListOptions {
                     label: "People".into(),

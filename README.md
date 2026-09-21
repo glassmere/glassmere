@@ -108,7 +108,7 @@ Data grid:
 cargo run -p rust-gui --example grid --release
 ```
 
-Two thousand rows with typed in-place editing, a cell cursor, and columns the user resizes, reorders and hides. See [milestone 10](docs/milestone-10.md).
+Two thousand rows with typed in-place editing, a cell cursor, a filter row, columns the user resizes, reorders, hides and freezes, and sideways scrolling that only creates the columns in view. See [milestone 10](docs/milestone-10.md).
 
 Property grid:
 

@@ -308,9 +308,22 @@ fn grid_realizes_bounded_cells_and_sorting_preserves_selected_identity() {
         });
     };
     frame(&mut context, &mut grid, &mut state);
-    assert!(context.node_count() < 65);
+    // About thirteen realized rows of six nodes each (the row, its line, the
+    // window onto the scrolling columns, their strip and two cells) plus the
+    // header: bounded by the viewport, not by the hundred thousand rows.
+    assert!(context.node_count() < 100);
     let header = context
-        .find(&["grid", "$header", "0", "$cell", "$drop", "$drag", "$sort"])
+        .find(&[
+            "grid",
+            "$header",
+            "$scrolling",
+            "$strip",
+            "0",
+            "$cell",
+            "$drop",
+            "$drag",
+            "$sort",
+        ])
         .unwrap();
     context.action(header, Action::Activate);
     frame(&mut context, &mut grid, &mut state);
@@ -318,7 +331,7 @@ fn grid_realizes_bounded_cells_and_sorting_preserves_selected_identity() {
     frame(&mut context, &mut grid, &mut state);
     assert_eq!(state.sort, Some((0, SortDirection::Descending)));
     assert_eq!(state.rows.selected(), Some(ItemId(7)));
-    assert!(context.node_count() < 65);
+    assert!(context.node_count() < 100);
     let info = context
         .node(context.find(&["grid"]).unwrap())
         .unwrap()

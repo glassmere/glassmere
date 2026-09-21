@@ -2447,6 +2447,20 @@ impl Context {
         let Some(node) = self.nodes.get(&id) else {
             return false;
         };
+        if delta == 0.0 {
+            return false;
+        }
+        // A grid scrolls its own columns, so that frozen ones stay put and
+        // only the ones in view exist; it is told instead of being moved.
+        if matches!(
+            node.control,
+            Control::Collection {
+                kind: crate::collection::CollectionKind::Grid,
+                ..
+            }
+        ) {
+            return self.grid_scroll_x(id, delta);
+        }
         let delta = if node.resolved.rtl() { -delta } else { delta };
         self.set_scroll_x(id, node.scroll.offset_x + delta)
     }

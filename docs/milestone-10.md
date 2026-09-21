@@ -1,6 +1,6 @@
 # Milestone 10: the data grid
 
-Row 19 of the coverage table lists what a professional grid still lacks: column resizing and reordering, filtering, inline editing, frozen and virtual columns. Decisions taken at the start: column layout lives in the app-owned `GridState`; the model filters, like it sorts; editing uses a cell cursor with typed editors; and wide grids build on general two-axis scrolling in the engine rather than a grid-only mechanism. Slices: 10a horizontal scrolling, 10b column resize, reorder and hide and 10c cell cursor and inline editing and 10d the filter row (all below), 10e the horizontally scrolling grid with frozen and virtual columns.
+Row 19 of the coverage table lists what a professional grid still lacks: column resizing and reordering, filtering, inline editing, frozen and virtual columns. Decisions taken at the start: column layout lives in the app-owned `GridState`; the model filters, like it sorts; editing uses a cell cursor with typed editors; and wide grids build on general two-axis scrolling in the engine rather than a grid-only mechanism. Slices: 10a horizontal scrolling, 10b column resize, reorder and hide and 10c cell cursor and inline editing, 10d the filter row and 10e the horizontally scrolling grid with frozen and virtual columns (all below). Milestone 10 is complete.
 
 # Milestone 10a: horizontal scrolling
 
@@ -164,3 +164,34 @@ The full suite is 215 tests plus 18 GPU tests; formatting and clippy are clean; 
 - Text filters only: no operators, ranges or per-type filter editors.
 - The delay is waited out with frames rather than a timer, so the window does not sleep for those 200 ms.
 - The filter fields do not follow the rows sideways yet: 10e.
+
+# Milestone 10e: wide grids, frozen and virtual columns
+
+Implemented on 2026-09-21. A grid wider than its box scrolls sideways with its header, filter row and rows moving as one; leading columns can be frozen; and only the columns in view exist. This completes milestone 10.
+
+## Contracts
+
+| Piece | Contract |
+| --- | --- |
+| Who scrolls | The grid owns its horizontal offset, `GridState::scroll_x`, counted from the start side. The engine does not move the rows sideways; it tells the grid (a `ScrollX` input) whenever a horizontal wheel, Shift+wheel, `Action::ScrollByX` from assistive technology or a focus reveal would have scrolled the row collection. Header, filters and rows are then declared from the same offset in the same frame, so frozen columns never trail behind. |
+| Frozen columns | `GridColumns::frozen`: that many leading visible columns stay in place in every line. The header menu gained "Freeze up to NAME" and "Unfreeze columns". Frozen columns wider than the grid leave nothing to scroll. |
+| Virtual columns | Only the unfrozen columns that intersect the view are declared, in every line; a partly visible column is clipped at the frozen boundary and at the grid's edge. A thirty-column grid in a 450 px box declares five columns per row. |
+| The current cell | Moving the cell cursor, by arrows, Tab after an edit or a press, scrolls just far enough to show the whole column; the start edge wins for a column wider than the view. |
+| Scrollbar | A thumb under the rows, beside the frozen columns, when there is somewhere to go. It is an indicator, like the engine's. |
+| Width | The grid reads its pixel width from the previous frame. Its first declaration shows every column and asks for a second one; after a resize the columns follow one frame later. |
+| Right to left | The frozen columns are at the right, the rest hang from the right edge of their window, and scrolling physically left moves toward later columns. |
+| Structure | Every line is `frozen cells, $scrolling / $strip / cells`, through one helper, which is what keeps the three kinds of line aligned. Cell presses use the visible part of a cell, its clip, so a cell scrolled under the frozen columns cannot be pressed through them. |
+
+## Validation
+
+Four new core tests: five of thirty columns existing, the engine leaving the rows alone, a wheel gesture moving header, filter and body cells to identical positions with the half-hidden column clipped, and both ends through `ScrollByX`; two frozen columns staying put in all three lines while the window onto the rest starts after them, the scrollbar under that window, and the cursor revealing a column going right and again coming back; the header menu freezing up to a column; and a right-to-left grid with its frozen column at the right edge scrolling from the right. All passed on their first run. The bounded-realization test of milestone 4 now allows 100 nodes instead of 65 for a hundred thousand rows: every row has two more structural nodes, and the count still does not depend on the number of rows.
+
+The full suite is 219 tests plus 18 GPU tests; formatting and clippy (all features, and core alone) are clean; the facade builds without default features; all fifteen examples pass `--smoke`; the theming and controls scripts pass. In the real grid example, now nine columns wide with Id and Name frozen, moving the cell cursor to the last column scrolled the grid to its end: Email clipped at the frozen boundary, headers over their cells, the current cell tinted and the thumb at the end of its track.
+
+## Remaining limits
+
+- No pinned data rows (totals, a frozen first row); the header and filter rows are the only fixed lines.
+- The scrollbar cannot be dragged.
+- Each realized row costs two more nodes than before, for the window and its strip.
+- Column virtualization is by declaration: a row still visits every visible column's width each frame, which is arithmetic, not nodes.
+- Sideways wheel input over a grid is always taken by the grid, also at its ends, so an enclosing view does not take over there.

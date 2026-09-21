@@ -156,8 +156,15 @@ impl App {
 
     fn editor(&self, row: usize) -> Option<NodeId> {
         let item = format!("item-{row}");
-        self.context
-            .find(&["grid", "$rows", &item, "$cells", "$edit"])
+        self.context.find(&[
+            "grid",
+            "$rows",
+            &item,
+            "$cells",
+            "$scrolling",
+            "$strip",
+            "$edit",
+        ])
     }
 
     fn retype(&mut self, text: &str) {
@@ -171,7 +178,15 @@ impl App {
         let (item, column) = (format!("item-{row}"), column.to_string());
         let id = self
             .context
-            .find(&["grid", "$rows", &item, "$cells", &column])
+            .find(&[
+                "grid",
+                "$rows",
+                &item,
+                "$cells",
+                "$scrolling",
+                "$strip",
+                &column,
+            ])
             .unwrap();
         let bounds = self.context.node(id).unwrap().bounds;
         Point {
@@ -471,9 +486,13 @@ mod filtering {
         frame(&mut context, &mut model, &mut state, 0);
 
         // One field per filterable column, named for assistive technology; none for Notes.
-        let name = context.find(&["grid", "$filters", "0"]).unwrap();
+        let name = context
+            .find(&["grid", "$filters", "$scrolling", "$strip", "0"])
+            .unwrap();
         assert_eq!(context.node(name).unwrap().semantics.label, "Filter Name");
-        let notes = context.find(&["grid", "$filters", "2"]).unwrap();
+        let notes = context
+            .find(&["grid", "$filters", "$scrolling", "$strip", "2"])
+            .unwrap();
         assert!(!context.node(notes).unwrap().semantics.focusable);
 
         // Typing a word filters once, after the pause.

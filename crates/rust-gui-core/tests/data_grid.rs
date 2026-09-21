@@ -95,7 +95,14 @@ impl App {
 
     fn header(&self, column: usize, part: &[&str]) -> NodeId {
         let column = column.to_string();
-        let mut path = vec!["grid", "$header", column.as_str(), "$cell"];
+        let mut path = vec![
+            "grid",
+            "$header",
+            "$scrolling",
+            "$strip",
+            column.as_str(),
+            "$cell",
+        ];
         path.extend(part);
         self.context.find(&path).unwrap()
     }
@@ -112,6 +119,8 @@ impl App {
                 let path = [
                     "grid",
                     "$header",
+                    "$scrolling",
+                    "$strip",
                     column.as_str(),
                     "$cell",
                     "$drop",
@@ -163,7 +172,14 @@ impl App {
         self.frame();
         let popup = self
             .context
-            .find(&["grid", "$header", &column.to_string(), "$popup"])
+            .find(&[
+                "grid",
+                "$header",
+                "$scrolling",
+                "$strip",
+                &column.to_string(),
+                "$popup",
+            ])
             .unwrap();
         let entry = self
             .context
@@ -238,12 +254,28 @@ fn dragging_a_header_edge_resizes_its_column_and_the_cells_follow() {
     assert_eq!(app.state.columns.width(0, 160.0), 220.0);
     let cell = app
         .context
-        .find(&["grid", "$rows", "item-0", "$cells", "0"])
+        .find(&[
+            "grid",
+            "$rows",
+            "item-0",
+            "$cells",
+            "$scrolling",
+            "$strip",
+            "0",
+        ])
         .unwrap();
     assert_eq!(app.context.node(cell).unwrap().bounds.width, 220.0);
     let city = app
         .context
-        .find(&["grid", "$rows", "item-0", "$cells", "1"])
+        .find(&[
+            "grid",
+            "$rows",
+            "item-0",
+            "$cells",
+            "$scrolling",
+            "$strip",
+            "1",
+        ])
         .unwrap();
     assert_eq!(app.context.node(city).unwrap().bounds.x, 220.0);
 
@@ -276,7 +308,15 @@ fn dragging_a_header_onto_another_moves_the_column_and_a_click_still_sorts() {
     assert_eq!(app.headers(), ["Notes", "City", "Age", "Name"]);
     let first = app
         .context
-        .find(&["grid", "$rows", "item-0", "$cells", "3"])
+        .find(&[
+            "grid",
+            "$rows",
+            "item-0",
+            "$cells",
+            "$scrolling",
+            "$strip",
+            "3",
+        ])
         .unwrap();
     assert_eq!(app.context.node(first).unwrap().bounds.x, 0.0);
     assert_eq!(app.context.node(first).unwrap().semantics.label, "note 0");
@@ -326,7 +366,7 @@ fn every_column_operation_is_in_the_header_menu_for_the_keyboard() {
     app.frame();
     let popup = app
         .context
-        .find(&["grid", "$header", "0", "$popup"])
+        .find(&["grid", "$header", "$scrolling", "$strip", "0", "$popup"])
         .unwrap();
     let disabled: Vec<String> = app
         .context
@@ -338,7 +378,10 @@ fn every_column_operation_is_in_the_header_menu_for_the_keyboard() {
         .filter(|semantics| semantics.disabled)
         .map(|semantics| semantics.label)
         .collect();
-    assert_eq!(disabled, ["Move left", "Show all columns"]);
+    assert_eq!(
+        disabled,
+        ["Move left", "Show all columns", "Unfreeze columns"]
+    );
 }
 
 #[test]
