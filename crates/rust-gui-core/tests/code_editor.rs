@@ -163,6 +163,7 @@ fn only_visible_lines_are_declared_and_scrolling_follows_wheel_pages_and_the_car
 
     context.event(Event::PointerMoved(Point { x: 100.0, y: 100.0 }));
     context.event(Event::Scroll {
+        delta_x: 0.0,
         delta_y: LINE * 5000.0,
     });
     frame(&mut context, &mut app);

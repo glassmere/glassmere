@@ -227,7 +227,10 @@ fn combo_popup_overlays_later_siblings_scrolls_highlight_and_restores_focus() {
         x: bounds.x + 10.0,
         y: bounds.y + 10.0,
     }));
-    context.event(Event::Scroll { delta_y: 80.0 });
+    context.event(Event::Scroll {
+        delta_x: 0.0,
+        delta_y: 80.0,
+    });
     frame(&mut context, |ui| view(ui, &mut selected));
     assert_eq!(
         context.node(panel).unwrap().scroll.unwrap().offset,
@@ -321,7 +324,10 @@ fn popup_wheel_targets_overlay_and_short_viewports_keep_last_choice_reachable() 
     let bounds = context.node(panel).unwrap().bounds;
     assert!(bounds.x >= 0.0 && bounds.y >= 0.0 && bounds.width <= 220.0 && bounds.height <= 180.0);
     context.event(Event::PointerMoved(Point { x: 20.0, y: 80.0 }));
-    context.event(Event::Scroll { delta_y: 80.0 });
+    context.event(Event::Scroll {
+        delta_x: 0.0,
+        delta_y: 80.0,
+    });
     context.run(Size::new(220.0, 180.0), &mut MonospaceMeasurer, &mut view);
     assert_eq!(
         context.node(background).unwrap().scroll.unwrap().offset,

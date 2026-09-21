@@ -832,13 +832,18 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             }),
             WindowEvent::CursorLeft { .. } => self.input(Event::PointerLeft),
             WindowEvent::MouseWheel { delta, .. } => {
-                let delta_y = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => -y * 40.0,
+                let (mut delta_x, mut delta_y) = match delta {
+                    MouseScrollDelta::LineDelta(x, y) => (-x * 40.0, -y * 40.0),
                     MouseScrollDelta::PixelDelta(position) => {
-                        -(position.y / state.window.scale_factor()) as f32
+                        let scale = state.window.scale_factor();
+                        (-(position.x / scale) as f32, -(position.y / scale) as f32)
                     }
                 };
-                self.input(Event::Scroll { delta_y });
+                // Shift turns a plain wheel into a sideways one.
+                if self.modifiers.shift_key() && delta_x == 0.0 {
+                    (delta_x, delta_y) = (delta_y, 0.0);
+                }
+                self.input(Event::Scroll { delta_x, delta_y });
             }
             WindowEvent::MouseInput {
                 state: ElementState::Released,

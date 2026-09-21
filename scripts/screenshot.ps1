@@ -11,7 +11,8 @@ param(
     [int]$HoverSeconds = 1,
     [string]$TypeText = '',
     [string]$InvokeNames = '',
-    [string]$ClickAt = ''
+    [string]$ClickAt = '',
+    [string]$Wheel = ''
 )
 # Launches an example, waits for its window, saves target/<Name>.png and exits it.
 $ErrorActionPreference = 'Stop'
@@ -68,6 +69,20 @@ try {
         $element.SetFocus()
         Start-Sleep -Seconds 1
     }
+    # Tab first, so that typed keys go to the control Tab arrived at.
+    if ($TabAfter -gt 0) {
+        # Tab moves focus onward; the framework scrolls the focused control into view.
+        $handle = [IntPtr]$window.Current.NativeWindowHandle
+        $scan = [ShotNative]::MapVirtualKey(0x09, 0)
+        $flags = ([long]$scan -shl 16) -bor 1
+        for ($press = 0; $press -lt $TabAfter; $press++) {
+            $null = [ShotNative]::PostMessage($handle, 0x0100, [IntPtr]0x09, [IntPtr]$flags)
+            Start-Sleep -Milliseconds 80
+            $null = [ShotNative]::PostMessage($handle, 0x0101, [IntPtr]0x09, [IntPtr]($flags -bor 3221225472L))
+            Start-Sleep -Milliseconds 200
+        }
+        Start-Sleep -Seconds 1
+    }
     if ($TypeText) {
         $handle = [IntPtr]$window.Current.NativeWindowHandle
         # Letters and digits only: winit derives text from key presses, and
@@ -82,6 +97,22 @@ try {
             Start-Sleep -Milliseconds 120
         }
         Start-Sleep -Seconds 1
+    }
+    foreach ($gesture in ($Wheel -split '\|' | Where-Object { $_ })) {
+        # "x,y,right,down": the pointer moves to client pixel x,y, then the wheel
+        # turns that many notches sideways and downwards (negative for left, up).
+        $x, $y, $right, $down = $gesture -split ',' | ForEach-Object { [int]$_ }
+        $handle = [IntPtr]$window.Current.NativeWindowHandle
+        $position = [IntPtr](($y -shl 16) -bor ($x -band 65535))
+        $null = [ShotNative]::PostMessage($handle, 0x0200, [IntPtr]0, $position)
+        Start-Sleep -Milliseconds 100
+        if ($down -ne 0) {
+            $null = [ShotNative]::PostMessage($handle, 0x020A, [IntPtr]((-120 * $down) -shl 16), $position)
+        }
+        if ($right -ne 0) {
+            $null = [ShotNative]::PostMessage($handle, 0x020E, [IntPtr]((120 * $right) -shl 16), $position)
+        }
+        Start-Sleep -Milliseconds 500
     }
     if ($ClickAt) {
         # A left click at "x,y" in client pixels, for places that have no name.
@@ -103,19 +134,6 @@ try {
             [System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
         # Long enough for what the button started to show.
         Start-Sleep -Seconds 2
-    }
-    if ($TabAfter -gt 0) {
-        # Tab moves focus onward; the framework scrolls the focused control into view.
-        $handle = [IntPtr]$window.Current.NativeWindowHandle
-        $scan = [ShotNative]::MapVirtualKey(0x09, 0)
-        $flags = ([long]$scan -shl 16) -bor 1
-        for ($press = 0; $press -lt $TabAfter; $press++) {
-            $null = [ShotNative]::PostMessage($handle, 0x0100, [IntPtr]0x09, [IntPtr]$flags)
-            Start-Sleep -Milliseconds 80
-            $null = [ShotNative]::PostMessage($handle, 0x0101, [IntPtr]0x09, [IntPtr]($flags -bor 3221225472L))
-            Start-Sleep -Milliseconds 200
-        }
-        Start-Sleep -Seconds 1
     }
     function Find-Named([string]$name) {
         $condition = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(

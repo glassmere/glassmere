@@ -270,7 +270,10 @@ fn modal_dialogs_take_focus_trap_tab_block_pointer_and_wheel_and_restore_on_clos
     assert!(scrim_quads >= 1, "a scrim quad covers the window");
     let list = context.find(&["page", "list"]).unwrap();
     context.event(Event::PointerMoved(center(&context, &["page", "list"])));
-    assert!(!context.event(Event::Scroll { delta_y: 40.0 }));
+    assert!(!context.event(Event::Scroll {
+        delta_x: 0.0,
+        delta_y: 40.0
+    }));
     assert_eq!(context.node(list).unwrap().scroll.unwrap().offset, 0.0);
     // Clicking the scrim dismisses; the flag clears and the response reports it once.
     click(&mut context, behind_point);

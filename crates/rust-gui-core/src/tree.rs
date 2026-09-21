@@ -151,8 +151,13 @@ pub struct NumericValue {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ScrollState {
+    /// Vertical offset and how far it can go.
     pub offset: f32,
     pub maximum: f32,
+    /// Horizontal offset from the start side (the left, or the right in a
+    /// right-to-left container) and how far it can go.
+    pub offset_x: f32,
+    pub maximum_x: f32,
 }
 
 /// Actions from accessibility or another host use the same retained identities
@@ -163,6 +168,10 @@ pub enum Action {
     Activate,
     ScrollBy(f32),
     ScrollTo(f32),
+    /// Horizontal, in physical direction: positive moves the view right.
+    ScrollByX(f32),
+    /// Horizontal offset from the start side.
+    ScrollToX(f32),
     ScrollIntoView,
     SetText(String),
     SetNumber(f64),
@@ -208,8 +217,10 @@ pub enum Event {
     },
     KeyUp(Key),
     FocusLost,
-    /// Logical pixels; positive moves toward the end of content.
+    /// Logical pixels. Positive `delta_y` moves toward the end of content;
+    /// positive `delta_x` moves the view to the right.
     Scroll {
+        delta_x: f32,
         delta_y: f32,
     },
     Text(TextEdit),
@@ -1472,6 +1483,7 @@ impl Context {
                                 0.0
                             },
                             maximum: 0.0,
+                            ..ScrollState::default()
                         },
                         custom: element.custom,
                         paint_cache: None,
@@ -1638,15 +1650,22 @@ impl Context {
         let old_bounds = node.bounds;
         let old_clip = node.clip;
         let old_scroll = node.scroll;
-        let content_bottom = node
+        // How far the children reach past the node's own box, per side.
+        let (content_left, content_right, content_bottom) = node
             .children
             .iter()
             .filter(|child| !matches!(self.nodes[child].kind, Kind::Popup | Kind::Popover))
-            .map(|child| {
-                let layout = self.layout.layout(self.nodes[child].layout_id).unwrap();
-                layout.location.y + layout.size.height
-            })
-            .fold(0.0_f32, f32::max);
+            .map(|child| *self.layout.layout(self.nodes[child].layout_id).unwrap())
+            .fold(
+                (0.0_f32, 0.0_f32, 0.0_f32),
+                |(left, right, bottom), layout| {
+                    (
+                        left.min(layout.location.x),
+                        right.max(layout.location.x + layout.size.width),
+                        bottom.max(layout.location.y + layout.size.height),
+                    )
+                },
+            );
         let node = self.nodes.get_mut(&id).unwrap();
         let layout = self.layout.layout(node.layout_id).unwrap();
         node.bounds = Rect {
@@ -1699,8 +1718,27 @@ impl Context {
                 (content_bottom + node.style.padding.max(0.0) - node.bounds.height).max(0.0);
             node.scroll.offset = node.scroll.offset.clamp(0.0, node.scroll.maximum);
         }
+        let rtl = node.resolved.rtl();
+        if matches!(node.kind, Kind::Scroll | Kind::Collection) {
+            // Content overflows at the end side: past the right edge, or past
+            // the left edge in a right-to-left container.
+            let padding = node.style.padding.max(0.0);
+            let overflow = if rtl {
+                padding - content_left
+            } else {
+                content_right + padding - node.bounds.width
+            };
+            // A fraction of a pixel from rounding is not worth a scrollbar.
+            node.scroll.maximum_x = if overflow >= 0.5 { overflow } else { 0.0 };
+            node.scroll.offset_x = node.scroll.offset_x.clamp(0.0, node.scroll.maximum_x);
+        }
         let origin = Point {
-            x: node.bounds.x,
+            x: node.bounds.x
+                + if rtl {
+                    node.scroll.offset_x
+                } else {
+                    -node.scroll.offset_x
+                },
             y: node.bounds.y - node.scroll.offset,
         };
         let clip = node.clip;
@@ -2020,6 +2058,28 @@ impl Context {
             .filter(|child| !matches!(self.nodes[child].kind, Kind::Popup | Kind::Popover))
             .collect::<Vec<_>>();
         let before = std::mem::take(&mut scene.primitives);
+        if node.scroll.maximum_x > 0.0 {
+            let track = node.bounds.width;
+            let width = (track * track / (track + node.scroll.maximum_x))
+                .max(12.0)
+                .min(track);
+            let travelled = (track - width) * node.scroll.offset_x / node.scroll.maximum_x;
+            scene.primitives.push(Primitive::Quad {
+                rect: Rect {
+                    // The thumb starts at the start side, like the content.
+                    x: if node.resolved.rtl() {
+                        node.bounds.x + track - width - travelled
+                    } else {
+                        node.bounds.x + travelled
+                    },
+                    y: node.bounds.y + node.bounds.height - 4.0,
+                    width,
+                    height: 4.0,
+                },
+                color: self.theme.scrollbar,
+                radius: 2.0,
+            });
+        }
         if node.scroll.maximum > 0.0 {
             let track = node.bounds.height;
             let height = (track * track / (track + node.scroll.maximum))
@@ -2151,7 +2211,7 @@ impl Context {
         if let Some(handled) = self.dialog_event(&event) {
             return handled;
         }
-        if let Event::Scroll { delta_y } = event {
+        if let Event::Scroll { delta_x, delta_y } = event {
             // The wheel steps a number field only while it has the keyboard
             // and the pointer, so scrolling a page never edits values in passing.
             if let Some(id) = self.focused.filter(|id| self.hovered == Some(*id))
@@ -2160,7 +2220,9 @@ impl Context {
             {
                 return true;
             }
-            return self.scroll_at_pointer(delta_y);
+            let vertical = delta_y != 0.0 && self.scroll_at_pointer(delta_y);
+            let horizontal = delta_x != 0.0 && self.scroll_x_at_pointer(delta_x);
+            return vertical || horizontal;
         }
         let before = (
             self.hovered,
@@ -2215,6 +2277,8 @@ impl Context {
                     key,
                     Key::ArrowUp
                         | Key::ArrowDown
+                        | Key::ArrowLeft
+                        | Key::ArrowRight
                         | Key::PageUp
                         | Key::PageDown
                         | Key::Home
@@ -2224,7 +2288,13 @@ impl Context {
                 let mut target = self.focused;
                 while let Some(id) = target {
                     let node = &self.nodes[&id];
-                    if node.kind == Kind::Scroll {
+                    if node.kind == Kind::Scroll && matches!(key, Key::ArrowLeft | Key::ArrowRight)
+                    {
+                        let step = if key == Key::ArrowRight { 40.0 } else { -40.0 };
+                        if self.scroll_x_by(id, step) {
+                            return true;
+                        }
+                    } else if node.kind == Kind::Scroll {
                         let offset = match key {
                             Key::ArrowUp => node.scroll.offset - 40.0,
                             Key::ArrowDown => node.scroll.offset + 40.0,
@@ -2321,6 +2391,43 @@ impl Context {
             return false;
         }
         node.scroll.offset = offset;
+        self.scrolled(id);
+        true
+    }
+
+    /// Horizontal offset from the start side.
+    fn set_scroll_x(&mut self, id: NodeId, offset: f32) -> bool {
+        if !offset.is_finite() {
+            return false;
+        }
+        let Some(node) = self.nodes.get_mut(&id) else {
+            return false;
+        };
+        if !matches!(node.kind, Kind::Scroll | Kind::Collection) {
+            return false;
+        }
+        let offset = offset.clamp(0.0, node.scroll.maximum_x);
+        if node.scroll.offset_x == offset {
+            return false;
+        }
+        node.scroll.offset_x = offset;
+        self.scrolled(id);
+        true
+    }
+
+    /// Moves the view by physical pixels: positive is to the right, which in a
+    /// right-to-left container is back toward the start.
+    fn scroll_x_by(&mut self, id: NodeId, delta: f32) -> bool {
+        let Some(node) = self.nodes.get(&id) else {
+            return false;
+        };
+        let delta = if node.resolved.rtl() { -delta } else { delta };
+        self.set_scroll_x(id, node.scroll.offset_x + delta)
+    }
+
+    /// After an offset changed: children move, and the pointer may be over
+    /// something else now.
+    fn scrolled(&mut self, id: NodeId) {
         self.invalidate_paint(id);
         self.geometry_dirty = true;
         self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
@@ -2330,7 +2437,21 @@ impl Context {
             self.invalidate_paint(id);
         }
         self.hovered = hovered;
-        true
+    }
+
+    /// The innermost container under the pointer that can still move sideways.
+    fn scroll_x_at_pointer(&mut self, delta: f32) -> bool {
+        let Some(pointer) = self.pointer else {
+            return false;
+        };
+        let mut order = Vec::new();
+        self.order(self.root, &mut order);
+        order.into_iter().rev().any(|id| {
+            let node = &self.nodes[&id];
+            matches!(node.kind, Kind::Scroll | Kind::Collection)
+                && node.clip.contains(pointer)
+                && self.scroll_x_by(id, delta)
+        })
     }
 
     fn scroll_at_pointer(&mut self, delta: f32) -> bool {
@@ -2376,6 +2497,24 @@ impl Context {
                     0.0
                 };
                 changed |= self.set_scroll(id, node.scroll.offset + delta);
+                // The same for the other axis; the start edge wins when the
+                // target is wider than the view.
+                let node = &self.nodes[&id];
+                let bounds = self.nodes[&target].bounds;
+                let padding = node.style.padding.max(0.0);
+                let (left, right) = (
+                    node.bounds.x + padding,
+                    node.bounds.x + node.bounds.width - padding,
+                );
+                let (before, after) = (bounds.x - left, bounds.x + bounds.width - right);
+                let sideways = if node.resolved.rtl() {
+                    if after > 0.0 { after } else { before.min(0.0) }
+                } else if before < 0.0 {
+                    before
+                } else {
+                    after.max(0.0)
+                };
+                changed |= self.scroll_x_by(id, sideways);
                 if self.nodes[&id].kind == Kind::Popup {
                     break;
                 }
@@ -2419,6 +2558,8 @@ impl Context {
             Action::Activate if node.activatable() => self.activate(target),
             Action::ScrollBy(delta) => self.set_scroll(target, node.scroll.offset + delta),
             Action::ScrollTo(offset) => self.set_scroll(target, offset),
+            Action::ScrollByX(delta) => self.scroll_x_by(target, delta),
+            Action::ScrollToX(offset) => self.set_scroll_x(target, offset),
             Action::ScrollIntoView => self.scroll_into_view(target),
             _ => false,
         }

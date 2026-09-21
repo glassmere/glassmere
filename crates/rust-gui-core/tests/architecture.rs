@@ -42,7 +42,10 @@ fn scrolling_moves_paint_and_hit_testing_without_layout_and_clamps_after_removal
     let list = context.find(&["list"]).unwrap();
     let item = context.find(&["list", "2"]).unwrap();
     context.event(Event::PointerMoved(Point { x: 10.0, y: 10.0 }));
-    assert!(context.event(Event::Scroll { delta_y: 80.0 }));
+    assert!(context.event(Event::Scroll {
+        delta_x: 0.0,
+        delta_y: 80.0
+    }));
     let stats = frame(&mut context, |ui| scroll_list(ui, 10));
     assert_eq!(stats.layout_passes, 0);
     assert_eq!(context.node(list).unwrap().scroll.unwrap().offset, 80.0);
@@ -109,7 +112,10 @@ fn wheel_bubbles_from_an_inner_viewport_at_its_limit() {
     let outer = context.find(&["outer"]).unwrap();
     context.event(Event::PointerMoved(Point { x: 10.0, y: 10.0 }));
     context.action(inner, Action::ScrollTo(10000.0));
-    assert!(context.event(Event::Scroll { delta_y: 20.0 }));
+    assert!(context.event(Event::Scroll {
+        delta_x: 0.0,
+        delta_y: 20.0
+    }));
     assert_eq!(context.node(inner).unwrap().scroll.unwrap().offset, 120.0);
     assert_eq!(context.node(outer).unwrap().scroll.unwrap().offset, 20.0);
 }

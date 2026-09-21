@@ -159,14 +159,20 @@ fn arrows_pages_buttons_the_wheel_and_assistive_technology_step_the_value() {
         y: bounds.y + 10.0,
     };
     numbers.context.event(Event::PointerMoved(over));
-    numbers.context.event(Event::Scroll { delta_y: 40.0 });
+    numbers.context.event(Event::Scroll {
+        delta_x: 0.0,
+        delta_y: 40.0,
+    });
     numbers.frame();
     assert_eq!(
         numbers.value, 1.75,
         "not focused: the wheel scrolls the page"
     );
     numbers.context.action(field, Action::Focus);
-    numbers.context.event(Event::Scroll { delta_y: 40.0 });
+    numbers.context.event(Event::Scroll {
+        delta_x: 0.0,
+        delta_y: 40.0,
+    });
     numbers.frame();
     assert_eq!(numbers.value, 1.5);
 

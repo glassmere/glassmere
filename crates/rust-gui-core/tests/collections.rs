@@ -157,7 +157,10 @@ fn pointer_capture_survives_the_intervening_frame_and_keyboard_events_accumulate
     frame(&mut context, &mut model, &mut state);
     assert_eq!(state.selected(), Some(ItemId(9)));
     context.event(Event::PointerMoved(Point { x: 15.0, y: 75.0 }));
-    context.event(Event::Scroll { delta_y: 450.0 });
+    context.event(Event::Scroll {
+        delta_x: 0.0,
+        delta_y: 450.0,
+    });
     let response = frame(&mut context, &mut model, &mut state);
     assert_eq!(response.realized.start, 13);
 }

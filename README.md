@@ -158,6 +158,7 @@ The view may run more than once per input event. Put application actions behind 
 - Transitions, enter/exit effects, layout animations and keyframes with easing curves and a reduced-motion switch, rendered through offscreen GPU layers.
 - Bidirectional text editing with visual caret order and affinity, and right-to-left windows or subtrees with mirrored layout and widgets, detected from the OS locale.
 - Framework diagnostics in debug builds: unstable ids, needless relayout, excessive repainting, unnamed controls, oversized layers and huge containers, in the inspector, the log and `Context::diagnostics`.
+- Scroll views and collections scroll on both axes, with Shift+wheel, touchpads, arrow keys, focus reveal and right-to-left support.
 - `#[derive(Properties)]` turns a struct into property grid rows.
 - A property grid bound directly to app values: groups, filter, resizable name column, reset buttons, numbers with units, colours and custom rows.
 - Toasts owned by the framework: timed, held while hovered, announced to screen readers, with an action button and a sender for other threads.

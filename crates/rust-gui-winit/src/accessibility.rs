@@ -262,8 +262,17 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                 node.set_scroll_y(f64::from(scroll.offset) * scale);
                 node.set_scroll_y_min(0.0);
                 node.set_scroll_y_max(f64::from(scroll.maximum) * scale);
+                if scroll.maximum_x > 0.0 {
+                    node.set_scroll_x(f64::from(scroll.offset_x) * scale);
+                    node.set_scroll_x_min(0.0);
+                    node.set_scroll_x_max(f64::from(scroll.maximum_x) * scale);
+                }
                 node.add_action(Action::ScrollUp);
                 node.add_action(Action::ScrollDown);
+                if scroll.maximum_x > 0.0 {
+                    node.add_action(Action::ScrollLeft);
+                    node.add_action(Action::ScrollRight);
+                }
                 node.add_action(Action::SetScrollOffset);
             }
             (NodeId(snapshot.id.0), node)
@@ -314,8 +323,24 @@ pub(crate) fn action(context: &mut Context, request: ActionRequest, scale: f64) 
                 amount
             })
         }
+        Action::ScrollLeft | Action::ScrollRight => {
+            let Some(node) = context.node(target) else {
+                return false;
+            };
+            let amount = match request.data {
+                Some(ActionData::ScrollUnit(ScrollUnit::Item)) => 40.0,
+                _ => node.bounds.width * 0.9,
+            };
+            CoreAction::ScrollByX(if request.action == Action::ScrollLeft {
+                -amount
+            } else {
+                amount
+            })
+        }
         Action::SetScrollOffset => match request.data {
             Some(ActionData::SetScrollOffset(point)) => {
+                // One request carries both axes; apply the horizontal one first.
+                context.action(target, CoreAction::ScrollToX((point.x / scale) as f32));
                 CoreAction::ScrollTo((point.y / scale) as f32)
             }
             _ => return false,
@@ -390,6 +415,60 @@ mod tests {
         assert_eq!(update.focus, NodeId(choice.0));
         assert_eq!(node(choice.0).role(), Role::ListBoxOption);
         assert_eq!(node(choice.0).is_selected(), Some(true));
+    }
+
+    #[test]
+    fn a_view_that_overflows_sideways_reports_and_takes_horizontal_scrolling() {
+        let mut context = Context::new();
+        context.run(Size::new(200.0, 200.0), &mut MonospaceMeasurer, |ui| {
+            let sized = |width: f32, height: f32| Style {
+                width: Length::Px(width),
+                height: Length::Px(height),
+                ..Style::default()
+            };
+            ui.scroll("strip", sized(100.0, 60.0), |ui| {
+                ui.button_styled("wide", "Wide", true, sized(400.0, 30.0));
+            });
+            ui.scroll("plain", sized(100.0, 60.0), |ui| {
+                ui.button_keyed("fits", "Fits");
+            });
+        });
+        let strip = context.find(&["strip"]).unwrap();
+        let plain = context.find(&["plain"]).unwrap();
+        let update = tree(&context, "Test window", 2.0);
+        let node = |id: CoreNodeId| {
+            &update
+                .nodes
+                .iter()
+                .find(|(key, _)| key.0 == id.0)
+                .unwrap()
+                .1
+        };
+        assert_eq!(node(strip).scroll_x_max(), Some(600.0));
+        assert!(node(strip).supports_action(Action::ScrollRight));
+        assert_eq!(node(plain).scroll_x_max(), None);
+        assert!(!node(plain).supports_action(Action::ScrollRight));
+        let request = |action, data| ActionRequest {
+            action,
+            target_tree: TreeId::ROOT,
+            target_node: NodeId(strip.0),
+            data,
+        };
+        let item = Some(ActionData::ScrollUnit(ScrollUnit::Item));
+        assert!(action(
+            &mut context,
+            request(Action::ScrollRight, item.clone()),
+            2.0
+        ));
+        assert_eq!(context.node(strip).unwrap().scroll.unwrap().offset_x, 40.0);
+        assert!(action(&mut context, request(Action::ScrollLeft, item), 2.0));
+        let point = ActionData::SetScrollOffset(accesskit::Point::new(100.0, 0.0));
+        action(
+            &mut context,
+            request(Action::SetScrollOffset, Some(point)),
+            2.0,
+        );
+        assert_eq!(context.node(strip).unwrap().scroll.unwrap().offset_x, 50.0);
     }
 
     #[test]

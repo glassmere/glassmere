@@ -83,6 +83,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         ui.label_keyed("label", "520 px");
                     });
                 });
+                ui.label_styled("scrolling-heading", "Scrolling · both axes: Shift+wheel, a touchpad, or arrow keys once the view has focus", heading.clone());
+                ui.scroll("strip", Style::default().width(Length::Percent(1.0)).height(Length::Px(104.0)).padding(8.0).radius(10.0).background(theme.surface), |ui| {
+                    ui.row("cards", Style::default().gap(8.0), |ui| {
+                        for index in 1..=16 {
+                            ui.container(format!("card-{index}"), card.clone().width(Length::Px(150.0)).height(Length::Px(80.0)), |ui| {
+                                ui.label_keyed("label", format!("Card {index}"));
+                            });
+                        }
+                    });
+                });
                 ui.label_styled("footer", "Grid, constraints and alignment map onto Taffy; children keep their exact size unless shrink is set.", muted);
             });
         },
