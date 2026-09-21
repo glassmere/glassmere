@@ -830,6 +830,11 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
     }
 
     fn input(&mut self, event: Event) {
+        self.offer(event);
+    }
+
+    /// Like `input`, and says whether the event was taken.
+    fn offer(&mut self, event: Event) -> bool {
         self.sync_clock();
         let description = self.options.devtools.then(|| format!("{event:?}"));
         let handled = self.context.event(event);
@@ -840,6 +845,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         if handled {
             self.request_redraw();
         }
+        handled
     }
 
     /// Tells the source of a system drag how it ended, once that is known.
@@ -983,6 +989,14 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                 payload: DragPayload::Files(vec![path]),
             }),
             WindowEvent::CursorLeft { .. } => self.input(Event::PointerLeft),
+            // Trackpad gestures, which winit reports on macOS only.
+            WindowEvent::PinchGesture { delta, .. } => {
+                self.input(Event::Zoom(1.0 + delta as f32));
+            }
+            // winit counts counterclockwise degrees; the core clockwise radians.
+            WindowEvent::RotationGesture { delta, .. } => {
+                self.input(Event::Rotate(-delta.to_radians()));
+            }
             // Fingers and pens. Windows does not repeat them as mouse events
             // once winit has taken the pointer messages.
             WindowEvent::Touch(touch) => {
@@ -1012,6 +1026,15 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                         (-(position.x / scale) as f32, -(position.y / scale) as f32)
                     }
                 };
+                // Ctrl with the wheel zooms a gesture area, and so does a
+                // pinch on a Windows touchpad, which arrives as exactly that.
+                // One notch is a tenth. Elsewhere the wheel scrolls as usual.
+                if self.modifiers.control_key()
+                    && delta_y != 0.0
+                    && self.offer(Event::Zoom((-delta_y / 400.0).exp()))
+                {
+                    return;
+                }
                 // Shift turns a plain wheel into a sideways one.
                 if self.modifiers.shift_key() && delta_x == 0.0 {
                     (delta_x, delta_y) = (delta_y, 0.0);

@@ -34,7 +34,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-pub use touch_input::TouchPhase;
+pub use touch_input::{GestureResponse, TouchPhase};
 
 /// Monotonic within a Context; a removed node's identity is never reused there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -247,6 +247,13 @@ pub enum Event {
         /// Pressure from 0 to 1, where the device reports it.
         force: Option<f32>,
     },
+    /// A pinch on a trackpad, or Ctrl with the wheel, for the gesture area
+    /// under the pointer: 1.1 is a tenth larger. Not handled when there is no
+    /// such area, so that a host can fall back to scrolling.
+    Zoom(f32),
+    /// A turn on a trackpad for the gesture area under the pointer, in
+    /// clockwise radians.
+    Rotate(f32),
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -2255,6 +2262,8 @@ impl Context {
                 self.note_focus();
                 return handled;
             }
+            Event::Zoom(factor) => return self.pointer_gesture(factor, 0.0),
+            Event::Rotate(radians) => return self.pointer_gesture(1.0, radians),
             Event::FocusLost => self.stop_touches(),
             // Any other way of scrolling or pressing ends a fling.
             Event::PointerDown | Event::PointerDownWithShift | Event::Scroll { .. } => {
@@ -2435,8 +2444,11 @@ impl Context {
             | Event::DropAt { .. }
             | Event::ContextMenu(_)
             | Event::Editor(_)
-            // Handled in `event`, as pointer events of the contact.
-            | Event::Touch { .. } => {}
+            // Handled in `event`: contacts as pointer events, the others by
+            // the gesture area under the pointer.
+            | Event::Touch { .. }
+            | Event::Zoom(_)
+            | Event::Rotate(_) => {}
         }
         let after = (
             self.hovered,

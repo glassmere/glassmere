@@ -71,8 +71,8 @@ pub use tree::diagnostics::{
     REPAINT_MIN_NODES, UNSTABLE_ID_FRAMES,
 };
 pub use tree::{
-    Action, CollectionInfo, Context, Dirty, Event, FrameStats, Key, Live, NodeDetails, NodeId,
-    NodeSnapshot, NumericValue, Role, ScrollState, Semantics, TouchPhase,
+    Action, CollectionInfo, Context, Dirty, Event, FrameStats, GestureResponse, Key, Live,
+    NodeDetails, NodeId, NodeSnapshot, NumericValue, Role, ScrollState, Semantics, TouchPhase,
 };
 pub use ui::{
     DockOptions, DockPanel, DockResponse, Properties, PropertyGrid, Response, Ui, suggest,

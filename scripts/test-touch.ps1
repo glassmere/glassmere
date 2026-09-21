@@ -1,6 +1,7 @@
-param([string]$Executable = 'target/debug/examples/controls.exe')
+param([string]$Executable = 'target/debug/examples/controls.exe', [string]$Gestures = 'target/debug/examples/gestures.exe')
 # Drives the controls gallery with injected touch input: a tap, a slider drag
-# and a swipe with inertia. The input is real and lands on whatever is on
+# and a swipe with inertia; then the gestures example with two fingers: a pinch,
+# and two sliders at once. The input is real and lands on whatever is on
 # screen, so every gesture first checks that its point belongs to the example's
 # window and skips otherwise.
 $ErrorActionPreference = 'Stop'
@@ -53,6 +54,30 @@ public static class TouchNative {
             throw new InvalidOperationException("InjectTouchInput failed: " + Marshal.GetLastWin32Error());
     }
 
+    // Two contacts at once, each from one point to another.
+    public static void Pair(int ax0, int ay0, int ax1, int ay1, int bx0, int by0, int bx1, int by1, int steps, int pause) {
+        for (int step = -1; step <= steps + 1; step++) {
+            int at = Math.Max(0, Math.Min(step, steps));
+            uint flags = step < 0 ? (InRange | InContact | Down) : step > steps ? Up : (InRange | InContact | Update);
+            PointerTouchInfo[] contacts = new PointerTouchInfo[2];
+            for (int finger = 0; finger < 2; finger++) {
+                int x = finger == 0 ? ax0 + (ax1 - ax0) * at / steps : bx0 + (bx1 - bx0) * at / steps;
+                int y = finger == 0 ? ay0 + (ay1 - ay0) * at / steps : by0 + (by1 - by0) * at / steps;
+                contacts[finger].Pointer.PointerType = 2;
+                contacts[finger].Pointer.PointerId = (uint)finger;
+                contacts[finger].Pointer.PointerFlags = flags;
+                contacts[finger].Pointer.PixelLocation = new Point { X = x, Y = y };
+                contacts[finger].TouchMask = 1 | 2 | 4;
+                contacts[finger].Contact = new Rect { Left = x - 2, Top = y - 2, Right = x + 2, Bottom = y + 2 };
+                contacts[finger].Orientation = 90;
+                contacts[finger].Pressure = 512;
+            }
+            if (!InjectTouchInput(2, contacts))
+                throw new InvalidOperationException("InjectTouchInput failed: " + Marshal.GetLastWin32Error());
+            Thread.Sleep(pause);
+        }
+    }
+
     // A contact from one point to another in `steps` moves, `pause` ms apart.
     public static void Stroke(int x0, int y0, int x1, int y1, int steps, int pause) {
         Send(x0, y0, InRange | InContact | Down);
@@ -87,31 +112,40 @@ function Center($Element) {
     return @([int]($rect.X + $rect.Width / 2), [int]($rect.Y + $rect.Height / 2), $rect)
 }
 
-$info = New-Object System.Diagnostics.ProcessStartInfo
-$info.FileName = (Resolve-Path -LiteralPath $Executable).Path
-$info.UseShellExecute = $false
-# Diagnostics on stderr would end a PowerShell job that runs this script.
-$info.RedirectStandardError = $true
-$probe = [System.Diagnostics.Process]::Start($info)
-try {
+function Open-Example([string]$Path, [string]$Title) {
+    $info = New-Object System.Diagnostics.ProcessStartInfo
+    $info.FileName = (Resolve-Path -LiteralPath $Path).Path
+    $info.UseShellExecute = $false
+    # Diagnostics on stderr would end a PowerShell job that runs this script.
+    $info.RedirectStandardError = $true
+    $process = [System.Diagnostics.Process]::Start($info)
     $processCondition = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(
-        [System.Windows.Automation.AutomationElement]::ProcessIdProperty, [int]$probe.Id)
+        [System.Windows.Automation.AutomationElement]::ProcessIdProperty, [int]$process.Id)
     $titleCondition = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(
-        [System.Windows.Automation.AutomationElement]::NameProperty, 'Rust GUI / Text and controls')
+        [System.Windows.Automation.AutomationElement]::NameProperty, $Title)
     $condition = New-Object System.Windows.Automation.AndCondition -ArgumentList @($processCondition, $titleCondition)
     $window = $null
     for ($attempt = 0; $attempt -lt 100 -and $null -eq $window; $attempt++) {
         $window = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, $condition)
         if ($null -eq $window) { Start-Sleep -Milliseconds 100 }
     }
-    if ($null -eq $window) { throw 'Window not found' }
+    if ($null -eq $window) { $process.Kill(); throw "Window not found: $Title" }
     $handle = [IntPtr]$window.Current.NativeWindowHandle
     $null = [TouchNative]::SetForegroundWindow($handle)
     # A background script may not take the foreground; topmost needs no such
     # right. HWND_TOPMOST, without moving, sizing or activating.
     $null = [TouchNative]::SetWindowPos($handle, [IntPtr](-1), 0, 0, 0, 0, 0x0013)
     Start-Sleep -Milliseconds 800
+    return @($process, $window, $handle)
+}
+function Find-Label($Root, [string]$Pattern) {
+    $all = $Root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+    foreach ($element in $all) { if ($element.Current.Name -like $Pattern) { return $element.Current.Name } }
+    return ''
+}
 
+$probe, $window, $handle = Open-Example $Executable 'Rust GUI / Text and controls'
+try {
     $check = Wait-Element $window 'Notifications'
     $x, $y, $null = Center $check
     if (-not [TouchNative]::Owns($handle, $x, $y)) { Write-Output 'SKIP: the window is covered'; return }
@@ -150,7 +184,40 @@ try {
     if ($travel -lt 70) { throw "The swipe of 40 px scrolled $travel px: no inertia" }
     Write-Output "PASS: a swipe of 40 px scrolled $travel px, the rest by inertia"
     $state = Find-State $window
-    if ($state -notlike 'State: true / 0 / 9*') { throw "The swipe pressed something: $state" }
+    if ($state -ne $after) { throw "The swipe pressed something: '$after' became '$state'" }
+} finally {
+    if (-not $probe.HasExited) { $probe.Kill() }
+}
+
+$probe, $window, $handle = Open-Example $Gestures 'Rust GUI / Gestures'
+try {
+    $photo = Wait-Element $window 'Hills at dusk'
+    $x, $y, $null = Center $photo
+    if (-not ([TouchNative]::Owns($handle, $x - 100, $y) -and [TouchNative]::Owns($handle, $x + 100, $y))) {
+        Write-Output 'SKIP: the window is covered'; return
+    }
+    # Two fingers from 80 px apart to 160 px apart, about the photo's centre.
+    [TouchNative]::Pair($x - 40, $y, $x - 80, $y, $x + 40, $y, $x + 80, $y, 10, 15)
+    Start-Sleep -Milliseconds 600
+    $state = Find-Label $window 'Zoom *'
+    $zoom = [double](($state -split ' ')[1])
+    if ($zoom -lt 1.9 -or $zoom -gt 2.1) { throw "A pinch to twice the distance gave: $state" }
+    if ($state -notlike '*taps 0*') { throw "The pinch counted as a tap: $state" }
+    Write-Output "PASS: a pinch to twice the distance zooms by two ($state)"
+
+    $left = Wait-Element $window 'Corners'
+    $right = Wait-Element $window 'Opacity'
+    $lx, $ly, $lrect = Center $left
+    $rx, $ry, $rrect = Center $right
+    if (-not ([TouchNative]::Owns($handle, $lx, $ly) -and [TouchNative]::Owns($handle, $rx, $ry))) {
+        Write-Output 'SKIP: the window is covered'; return
+    }
+    [TouchNative]::Pair($lx, $ly, [int]($lrect.X + $lrect.Width * 0.1), $ly, $rx, $ry, [int]($rrect.X + $rrect.Width * 0.9), $ry, 10, 15)
+    Start-Sleep -Milliseconds 600
+    $state = Find-Label $window 'Zoom *'
+    $sliders = (($state -split 'sliders ')[1]) -split ' / '
+    if ([double]$sliders[0] -gt 10 -or [double]$sliders[1] -lt 90) { throw "Two sliders under two fingers gave: $state" }
+    Write-Output "PASS: two sliders follow two fingers at once (sliders $($sliders -join ' / '))"
     Write-Output 'TOUCH_OK'
 } finally {
     if (-not $probe.HasExited) { $probe.Kill() }

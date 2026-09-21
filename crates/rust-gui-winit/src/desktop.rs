@@ -686,6 +686,8 @@ impl ApplicationHandler<UserEvent> for Desktop {
                 | WindowEvent::MouseInput { .. }
                 | WindowEvent::MouseWheel { .. }
                 | WindowEvent::Touch(_)
+                | WindowEvent::PinchGesture { .. }
+                | WindowEvent::RotationGesture { .. }
                 | WindowEvent::KeyboardInput { .. }
                 | WindowEvent::ModifiersChanged(_)
                 | WindowEvent::Ime(_)

@@ -3,6 +3,9 @@
 //! context's pointer fields while its events run. Widgets therefore need no
 //! touch code, and two sliders follow two fingers.
 //!
+//! A contact that lands on a `Ui::gesture_area` presses nothing: it moves,
+//! scales and turns whatever the app shows there.
+//!
 //! What differs from a mouse: a press that moves pans the scroll view under
 //! it and keeps going after release; a press that rests opens the context
 //! menu, or picks up a drag source; there is no hover once the finger lifts.
@@ -37,6 +40,51 @@ enum Mode {
     Panning,
     /// Spent: the long press fired, or another pointer holds the control.
     Held,
+    /// One of a gesture area's fingers.
+    Gesture(NodeId),
+}
+
+/// What happened in a `Ui::gesture_area` since the last declaration. One
+/// finger pans; two also scale and turn; a pinch on a trackpad and Ctrl with
+/// the wheel scale about the pointer.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GestureResponse {
+    /// Fingers are down in the area.
+    pub active: bool,
+    pub pan_x: f32,
+    pub pan_y: f32,
+    /// A factor: 1 is no change, 2 is twice as large.
+    pub scale: f32,
+    /// Clockwise radians.
+    pub rotation: f32,
+    /// Where the change is centred, from the area's top left corner: between
+    /// the fingers, or under the pointer.
+    pub center: Option<Point>,
+    /// A tap that was neither a pan nor a long press.
+    pub tapped: Option<Point>,
+    /// The firmest contact in the area, 0 to 1, where the device reports it.
+    pub pressure: Option<f32>,
+}
+
+impl Default for GestureResponse {
+    fn default() -> Self {
+        Self {
+            active: false,
+            pan_x: 0.0,
+            pan_y: 0.0,
+            scale: 1.0,
+            rotation: 0.0,
+            center: None,
+            tapped: None,
+            pressure: None,
+        }
+    }
+}
+
+impl GestureResponse {
+    pub fn changed(&self) -> bool {
+        self.pan_x != 0.0 || self.pan_y != 0.0 || self.scale != 1.0 || self.rotation != 0.0
+    }
 }
 
 pub(super) struct Touch {
@@ -55,6 +103,10 @@ pub(super) struct Touch {
     /// Recent positions, for the speed at release.
     samples: VecDeque<(Duration, Point)>,
     force: Option<f32>,
+    /// Left the slop, so neither a tap nor a long press any more.
+    travelled: bool,
+    /// The long press had its chance.
+    rested: bool,
 }
 
 pub(super) struct Fling {
@@ -117,7 +169,7 @@ impl Context {
     pub(super) fn touch_wake(&self) -> Option<Duration> {
         self.touches
             .values()
-            .filter(|touch| touch.mode == Mode::Pressing)
+            .filter(|touch| touch.awaits_long_press())
             .map(|touch| touch.since + LONG_PRESS)
             .min()
     }
@@ -174,11 +226,18 @@ impl Context {
             since: self.now,
             samples: VecDeque::from([(self.now, position)]),
             force,
+            travelled: false,
+            rested: false,
         };
+        let target = self.hit_test(position);
+        if let Some(area) = self.gesture_area_at(position, target) {
+            touch.mode = Mode::Gesture(area);
+            self.touches.insert(id, touch);
+            return true;
+        }
         // One pointer per control: a second finger on a slider that is being
         // dragged would fight the first. Decided before the press, which
         // already moves a slider.
-        let target = self.hit_test(position);
         let taken = target.is_some()
             && (self.captured == target
                 || self.touches.values().any(|other| other.captured == target));
@@ -222,7 +281,8 @@ impl Context {
             touch.samples.pop_front();
         }
         let (dx, dy) = (position.x - touch.start.x, position.y - touch.start.y);
-        if touch.mode == Mode::Pressing && dx * dx + dy * dy > SLOP * SLOP {
+        touch.travelled |= dx * dx + dy * dy > SLOP * SLOP;
+        if touch.mode == Mode::Pressing && touch.travelled {
             // The finger travels, so this was never a tap: whatever it
             // pressed is let go, and from here on it moves the content.
             self.as_touch(&mut touch, Self::release_press);
@@ -231,6 +291,17 @@ impl Context {
         }
         let handled = match touch.mode {
             Mode::Pressing | Mode::Held => false,
+            Mode::Gesture(area) => {
+                // A lone finger waits out the slop, then catches up; with a
+                // second finger down nothing is a tap any more.
+                let partner = self.gesture_partner(area);
+                if touch.travelled || partner.is_some() {
+                    let from = std::mem::replace(&mut touch.last, position);
+                    self.gesture_moved(area, from, position, partner)
+                } else {
+                    false
+                }
+            }
             Mode::Dragging => self.as_touch(&mut touch, |context| {
                 context.handle_event(Event::PointerMoved(position))
             }),
@@ -282,6 +353,13 @@ impl Context {
                     }
                 }
             }
+            Mode::Gesture(area) => {
+                if !touch.travelled && self.gesture_partner(area).is_none() {
+                    self.gesture(area, position, |gesture, local| {
+                        gesture.tapped = Some(local)
+                    });
+                }
+            }
             Mode::Panning | Mode::Held => {}
         }
         // No hover is left behind where the finger was.
@@ -294,14 +372,28 @@ impl Context {
         let due: Vec<u64> = self
             .touches
             .iter()
-            .filter(|(_, touch)| {
-                touch.mode == Mode::Pressing && self.now >= touch.since + LONG_PRESS
-            })
+            .filter(|(_, touch)| touch.awaits_long_press() && self.now >= touch.since + LONG_PRESS)
             .map(|(id, _)| *id)
             .collect();
         for id in due {
             let mut touch = self.touches.remove(&id).unwrap();
             let at = touch.start;
+            touch.rested = true;
+            if let Mode::Gesture(area) = touch.mode {
+                // A canvas keeps its finger unless a menu really opened:
+                // resting before a pan is how people aim.
+                let alone = self.gesture_partner(area).is_none();
+                if alone
+                    && self.as_touch(&mut touch, |context| {
+                        context.handle_event(Event::ContextMenu(at))
+                    })
+                {
+                    touch.mode = Mode::Held;
+                    self.pending |= Dirty::PAINT;
+                }
+                self.touches.insert(id, touch);
+                continue;
+            }
             touch.mode = Mode::Held;
             self.as_touch(&mut touch, |context| {
                 // Resting on something draggable picks it up; anywhere else
@@ -360,7 +452,141 @@ impl Context {
     }
 }
 
+impl Context {
+    /// The gesture area a new contact at `position` belongs to. A control
+    /// inside the area is pressed as anywhere else, and whatever lies over
+    /// the area (a popup, a dialog) keeps the contact from it.
+    fn gesture_area_at(&self, position: Point, target: Option<NodeId>) -> Option<NodeId> {
+        let mut order = Vec::new();
+        self.order(self.root, &mut order);
+        let area = order.into_iter().rev().find(|id| {
+            let node = &self.nodes[id];
+            node.kind == Kind::GestureArea && node.enabled && node.clip.contains(position)
+        })?;
+        let Some(target) = target else {
+            return Some(area);
+        };
+        // Only something the area sits in may be under the finger as well.
+        let mut ancestor = self.nodes[&area].parent;
+        while let Some(id) = ancestor {
+            if id == target {
+                return Some(area);
+            }
+            ancestor = self.nodes[&id].parent;
+        }
+        None
+    }
+
+    /// Another finger of the area: the one with the lowest id.
+    // ponytail: a third finger moves the picture against the first only.
+    // Upgrade path: a least-squares fit over all contacts.
+    fn gesture_partner(&self, area: NodeId) -> Option<Point> {
+        self.touches
+            .iter()
+            .filter(|(_, touch)| touch.mode == Mode::Gesture(area))
+            .min_by_key(|(id, _)| **id)
+            .map(|(_, touch)| touch.last)
+    }
+
+    /// Adds to what the area reports at its next declaration.
+    fn gesture(
+        &mut self,
+        area: NodeId,
+        center: Point,
+        change: impl FnOnce(&mut GestureResponse, Point),
+    ) -> bool {
+        let Some(node) = self.nodes.get(&area) else {
+            return false;
+        };
+        let local = Point {
+            x: center.x - node.bounds.x,
+            y: center.y - node.bounds.y,
+        };
+        let update = self
+            .updates
+            .entry(area)
+            .or_insert_with(|| ControlUpdate::Gesture(GestureResponse::default()));
+        if let ControlUpdate::Gesture(gesture) = update {
+            gesture.center = Some(local);
+            change(gesture, local);
+        }
+        true
+    }
+
+    fn gesture_moved(
+        &mut self,
+        area: NodeId,
+        from: Point,
+        to: Point,
+        partner: Option<Point>,
+    ) -> bool {
+        let Some(partner) = partner else {
+            return self.gesture(area, to, |gesture, _| {
+                gesture.pan_x += to.x - from.x;
+                gesture.pan_y += to.y - from.y;
+            });
+        };
+        let middle = Point {
+            x: (to.x + partner.x) / 2.0,
+            y: (to.y + partner.y) / 2.0,
+        };
+        let (before, after) = (
+            (from.x - partner.x, from.y - partner.y),
+            (to.x - partner.x, to.y - partner.y),
+        );
+        let (length_before, length_after) = (before.0.hypot(before.1), after.0.hypot(after.1));
+        self.gesture(area, middle, |gesture, _| {
+            // The point between the fingers moves half as far as one of them.
+            gesture.pan_x += (to.x - from.x) / 2.0;
+            gesture.pan_y += (to.y - from.y) / 2.0;
+            // Fingers on top of each other have no direction to speak of.
+            if length_before > 1.0 && length_after > 1.0 {
+                gesture.scale *= length_after / length_before;
+                let turn = after.1.atan2(after.0) - before.1.atan2(before.0);
+                gesture.rotation += (turn + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU)
+                    - std::f32::consts::PI;
+            }
+        })
+    }
+
+    /// A pinch or a turn from a trackpad, or Ctrl with the wheel: applied to
+    /// the gesture area under the mouse pointer, if there is one.
+    pub(super) fn pointer_gesture(&mut self, factor: f32, radians: f32) -> bool {
+        let Some(position) = self.pointer else {
+            return false;
+        };
+        let Some(area) = self.gesture_area_at(position, self.hit_test(position)) else {
+            return false;
+        };
+        if !factor.is_finite() || factor <= 0.0 || !radians.is_finite() {
+            return false;
+        }
+        self.pending |= Dirty::PAINT;
+        self.gesture(area, position, |gesture, _| {
+            gesture.scale *= factor;
+            gesture.rotation += radians;
+        })
+    }
+
+    /// Whether fingers are down in the area, and the firmest of them.
+    pub(crate) fn gesture_contacts(&self, area: NodeId) -> (bool, Option<f32>) {
+        let mut contacts = self
+            .touches
+            .values()
+            .filter(|touch| touch.mode == Mode::Gesture(area))
+            .peekable();
+        (
+            contacts.peek().is_some(),
+            contacts.filter_map(|touch| touch.force).reduce(f32::max),
+        )
+    }
+}
+
 impl Touch {
+    fn awaits_long_press(&self) -> bool {
+        !self.rested && !self.travelled && matches!(self.mode, Mode::Pressing | Mode::Gesture(_))
+    }
+
     fn last_seen(&self) -> Point {
         self.samples.back().map_or(self.start, |(_, point)| *point)
     }

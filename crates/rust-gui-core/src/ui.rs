@@ -67,6 +67,7 @@ pub(crate) enum Kind {
     Toasts,
     Toast,
     ContextArea,
+    GestureArea,
     Popover,
     Label,
     Button,
@@ -250,6 +251,33 @@ impl Ui<'_> {
             Some(ControlUpdate::DragEnded(outcome)) => Some(outcome),
             _ => None,
         }
+    }
+
+    /// A surface that fingers move, scale and turn: a canvas, a map, a photo.
+    /// Reports what happened since the last declaration; the app applies it
+    /// to its own view state. Controls inside are pressed as anywhere else.
+    /// A pinch on a trackpad and Ctrl with the wheel arrive as `scale`.
+    pub fn gesture_area(
+        &mut self,
+        key: impl Into<String>,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_>),
+    ) -> crate::GestureResponse {
+        let key = key.into();
+        let id = self.context.child(
+            self.parent,
+            &WidgetKey::Named(key.clone()),
+            Kind::GestureArea,
+        );
+        let mut response = match id.and_then(|id| self.updates.remove(&id)) {
+            Some(ControlUpdate::Gesture(gesture)) if self.enabled => gesture,
+            _ => crate::GestureResponse::default(),
+        };
+        if let Some(id) = id {
+            (response.active, response.pressure) = self.context.gesture_contacts(id);
+        }
+        self.group(key, Kind::GestureArea, style, content);
+        response
     }
 
     pub fn drop_target(

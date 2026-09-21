@@ -2,7 +2,7 @@
 
 Decisions taken on 2026-09-21, before the work: outgoing drags through the `drag` crate, with the core's side shaped so that a backend that can carry text fits in later without changing apps; an in-app drag becomes a system drag when the pointer leaves the window; a full multi-pointer model rather than touch mapped onto the one mouse pointer; kinetic scrolling after a touch pan.
 
-Slices: 13a outgoing OS drags, 13b touch as a pointer with pan scrolling, inertia and long press together with 13c multi-pointer capture (all below), 13d the gesture area with pinch and rotation, macOS gestures, Ctrl+wheel and pen pressure.
+Slices: 13a outgoing OS drags, 13b touch as a pointer with pan scrolling, inertia and long press together with 13c multi-pointer capture, 13d the gesture area with pinch and rotation, macOS gestures, Ctrl+wheel and pen pressure (all below). Milestone 13 is complete.
 
 # Milestone 13a: outgoing OS drags
 
@@ -79,3 +79,45 @@ The suite is 243 tests plus 23 GPU tests; formatting and clippy (all features, a
 - A fling belongs to the point where the finger lifted; content that moves under it keeps scrolling whatever is there.
 - Tooltips never show for touch. Outgoing OS drags start from the mouse only.
 - Not run on a physical touch screen or a pen; injected input reports a fixed pressure.
+
+# Milestone 13d: the gesture area
+
+Implemented on 2026-09-21. A surface that fingers move, scale and turn. This completes milestone 13.
+
+```rust
+let gesture = ui.gesture_area("canvas", style, |ui| { /* the picture, and controls if any */ });
+if gesture.changed() {
+    zoom *= gesture.scale;
+    turn += gesture.rotation;
+    // ...and move the view by pan_x, pan_y about gesture.center
+}
+```
+
+| Piece | Contract |
+| --- | --- |
+| `Ui::gesture_area(key, style, content) -> GestureResponse` | Reports what happened since the last declaration, once: `pan_x`, `pan_y`, `scale` (a factor, 1 is no change), `rotation` (clockwise radians), `center` (where the change is centred, from the area's corner), `tapped`, and live `active` and `pressure`. The app owns the view state and applies the change; `changed()` says whether there is one. |
+| One finger | Pans, after the same 10 px slop as elsewhere, catching up with the finger when it leaves the slop. Released within the slop it is a tap at that point. It scrolls nothing and flings nothing: the area keeps its fingers. |
+| Two fingers | Scale by the ratio of their distances, turn by the change of the angle between them, and pan by the movement of the point between them, with no slop. A finger that lifts leaves no jump and no tap. A third finger works against the first only. |
+| Trackpad and wheel | `Event::Zoom(factor)` and `Event::Rotate(radians)` apply to the gesture area under the mouse pointer and are not handled when there is none. The host sends a macOS pinch and rotation as these, and Ctrl with the wheel as a zoom of a tenth per notch, which is also how a pinch on a Windows touchpad arrives; where no gesture area takes it, the wheel scrolls as before. |
+| Controls inside | A control inside the area is pressed as anywhere else, and whatever lies over the area (a popup, a dialog) keeps a contact from it. |
+| Long press | Resting on the area requests the context menu of an enclosing `context_menu`. If none opens, the finger stays the area's, because resting before a pan is how people aim. |
+| Pressure | `GestureResponse::pressure` is the firmest contact in the area, 0 to 1, where the device reports it; `Context::touches()` has it per contact. |
+
+New example: `gestures`, a photo to pan, pinch and turn about the point between the fingers, with two sliders that can be dragged at once. `--demo` starts it moved, enlarged and turned.
+
+## Validation
+
+Five headless tests in `tests/gestures.rs`: a pan that waits out the slop, catches up, reports once, leaves the scroll view under it alone and does not fling, and a tap; two fingers giving exactly a factor of two, exactly a quarter turn, a pure pan when both move alike, and no jump or tap when one lifts; a control inside being pressed while a touch outside pans the page; zoom and rotate events landing on the area under the pointer, refusing nonsense and falling through elsewhere; and the long press with and without a menu.
+
+`scripts/test-touch.ps1` now also drives the gestures example with two injected contacts: moving them from 80 to 160 px apart gave "Zoom 2.00" with no tap, and two fingers on the two sliders at once took them to 6 and 94. Together with the three checks of 13b it passed four runs in a row; in one earlier run the single slider of the controls gallery read 100 where the others read 95, which I could not reproduce or explain.
+
+The suite is 248 tests plus 23 GPU tests; formatting and clippy (all features, and core alone) are clean; the facade builds without default features; all 17 examples pass their smoke run; `scripts/test-theming.ps1` and `scripts/test-controls.ps1` pass.
+
+**Not verified:** Ctrl with the wheel and a touchpad pinch on a real window (a posted wheel message does not reach the app, and real wheel input would take over the user's pointer); the macOS pinch and rotation events, which only CI compiles; a physical touch screen or a pen.
+
+## Remaining limits
+
+- The mouse does not pan a gesture area by dragging; apps that want that read the pointer themselves.
+- No double tap, no swipe recognizer, no inertia for a canvas pan.
+- Gestures with more than two fingers use the first two.
+- Pen tilt, barrel buttons and the eraser are not reported; a pen is a touch with pressure.
