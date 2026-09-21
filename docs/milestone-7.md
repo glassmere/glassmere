@@ -1,6 +1,6 @@
 # Milestone 7: advanced features
 
-Slices so far: 7a docking and 7b rich text with the code editor foundation (below).
+Slices so far: 7a docking, 7b rich text with the code editor foundation and 7c code intelligence (below).
 
 # Milestone 7a: docking
 
@@ -143,3 +143,62 @@ Not verified natively: typing, IME composition and clipboard round trips in the 
 - Very long single lines are shaped whole, and line operations copy the line.
 - Rich blocks have one font size; links share one pointer cursor with the whole block; assistive technology sees the block as a label, not separate link objects.
 - On macOS, Cmd+Up/Down are not mapped to document start and end yet.
+
+# Milestone 7c: code intelligence
+
+Implemented on 2026-09-21. The code editor gains syntect highlighting, find and replace, bracket pairing and matching, multiple cursors from the keyboard and pointer, and app-supplied diagnostics.
+
+## Run
+
+```powershell
+cargo run -p rust-gui --example editor --release
+cargo run -p rust-gui --example editor --release -- --open   # starts with the find bar searching "counts"
+```
+
+```rust
+use rust_gui::syntax::SyntectHighlighter;
+
+let mut highlighter = SyntectHighlighter::new("rs", dark);   // extension, token or syntax name
+let mut find = FindState::default();                         // app state
+let diagnostics: Vec<Diagnostic> = language_server_results();
+
+ui.code_editor("code", &mut document, CodeEditorOptions {
+    highlighter: Some(&mut highlighter),
+    find: Some(&mut find),
+    diagnostics: &diagnostics,
+    ..CodeEditorOptions::default()                            // auto_close and match_brackets are on
+});
+```
+
+## Contracts
+
+| API | Behavior |
+| --- | --- |
+| `rust-gui-syntax`, `rust_gui::syntax::SyntectHighlighter` (facade feature `syntax`, on by default) | syntect's bundled Sublime grammars and themes through the pure-Rust `fancy-regex` engine, so no C toolchain is needed. `new(language, dark)` picks `base16-ocean.dark` or `InspiredGitHub`; `with_theme`, `languages()`, `themes()` and `set_language` cover the rest. Unknown languages highlight as plain text. |
+| Incremental highlighting | Parser state is checkpointed every 32 lines and spans are cached per line. An edit re-parses from its first changed line (`TextDocument::changed_since`). Jumping far into a large file parses at most 1,500 catch-up lines per declaration: lines stay plain meanwhile, `Highlighter::pending` is true and the editor keeps requesting frames until colours arrive. |
+| `Highlighter::begin`, `pending`; `Ui::request_redraw` | New optional trait hooks for per-declaration budgets, and a general way for a view to ask for another frame; `Context::animating` reports it to hosts. |
+| `FindState`, `CodeEditorOptions::find` | With a find state, Ctrl+F opens a find bar above the text (Ctrl+H adds the replace row), seeded from a single-line selection. The query field takes focus; Enter, F3 and Shift+F3 step through matches with wrap-around; "Match case" and "Whole word" narrow them; the count reads "3 of 17". Replace acts on the selected match and moves on; Replace all is one undo step. Escape closes the bar and returns focus to the text. All matches in view are marked, the selected one in the accent colour. Searches re-run only when the document or the query changes. |
+| `TextDocument::find_all`, `replace_ranges`, `select_next_occurrence`, `add_cursor_vertically`, `matching_bracket`, `insert_paired`, `backspace_paired` | The document-level operations behind the features, usable without the widget. |
+| Bracket pairing (`auto_close`) | Typing `(`, `[`, `{`, `"` or a backtick inserts the partner, or wraps the selection; typing a closer that is already there steps over it; a quote right after a word does not pair; Backspace inside an empty pair removes both; Enter between a pair opens an indented block. |
+| Bracket matching (`match_brackets`) | The bracket at or just before the caret and its partner are marked, scanning up to 20,000 characters. |
+| Multiple cursors | Alt+click adds a caret, Ctrl+Alt+Up/Down add one above or below in the same column, Ctrl+D selects the word and then each next occurrence, Escape returns to one cursor. All cursors type, delete, move and undo together. |
+| `Diagnostic { range, severity, message }`, `Severity` | Underlined in the severity colour with a gutter dot per line (the highest severity wins). Resting the pointer on one shows its message next to the pointer after the tooltip delay. |
+| `Event::Editor(EditorCommand)`, `Context::editor_focused` | Host-neutral commands: `Find`, `Replace`, `FindNext`, `FindPrevious`, `CloseFind`, `SelectNextOccurrence`, `AddCursorAbove`, `AddCursorBelow`, `AddCursorAt(point)`. The desktop host maps the keys above while an editor or its find bar has focus; apps can send the same commands from menus. |
+| `FocusScope::autofocus` | New: a scope that appears moves focus to its first control. With `restore`, closing it returns focus. The find bar uses both. |
+
+`Ui::code_editor` is now a small composite: a container holding the optional find bar and the text area. Its `style` sizes the container; padding, radius and background apply to the text area.
+
+## Validation
+
+Ten new tests. Two document unit tests cover pairing, wrapping, step-over, pair deletion and block opening, and search, next-occurrence selection, vertical cursors and bracket matching. Four editor tests drive find and replace from commands, the query field, F3 stepping with wrap, options, Replace and Replace all with undo, and Escape restoring focus; multiple cursors from Alt+click, vertical adds and Ctrl+D with joint typing and undo; bracket pairing while typing plus the two bracket marks; and diagnostics with underline and gutter quads, a wake request after the dwell and the message shown and hidden by pointer movement. Four syntax tests check that keywords, strings and comments differ and that a block comment colours the next line, that an edit re-highlights later lines and undo restores them, that a far jump in a 6,000-line file takes several declarations while `pending` and then serves nearby lines from checkpoints, and that unknown languages and theme names are handled. The full suite is 128 tests plus 11 GPU tests; clippy is clean, and the facade builds with and without the `syntax` feature. A screenshot of the example confirmed syntect colours, the focused find bar with seven marked matches, and the warning and error underlines with gutter dots.
+
+Not verified natively: the key mappings (Ctrl+F, Ctrl+H, F3, Ctrl+D, Ctrl+Alt+Up/Down, Alt+click) and hover messages in the real window, since a background script cannot focus the window for input. The commands behind them are covered headlessly.
+
+## Remaining limits
+
+- syntect adds noticeable build time and binary size; disable the facade's `syntax` feature to leave it out. Loading the bundled grammars costs a one-time delay on the first highlight.
+- Search is plain text, single line and case folding is per character; there is no regular expression search.
+- Bracket features do not know about strings and comments.
+- Pressing Ctrl+F while the bar is already open does not move focus back to the query field.
+- Severity colours are fixed, not theme tokens.
+- The find bar's controls are not yet styleable.

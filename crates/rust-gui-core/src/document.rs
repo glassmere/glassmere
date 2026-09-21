@@ -456,6 +456,84 @@ impl TextDocument {
         self.edit(edits, typing)
     }
 
+    /// Typing with bracket and quote pairing: an opener also inserts its closer
+    /// (or wraps the selection), and typing a closer that is already there
+    /// steps over it. Other text is a plain `insert`.
+    pub fn insert_paired(&mut self, text: &str) -> bool {
+        const PAIRS: [(char, char); 5] =
+            [('(', ')'), ('[', ']'), ('{', '}'), ('"', '"'), ('`', '`')];
+        let mut chars = text.chars();
+        let (Some(typed), None) = (chars.next(), chars.next()) else {
+            return self.insert(text);
+        };
+        let next_is = |document: &Self, selection: &Selection, ch: char| {
+            selection.is_caret()
+                && selection.cursor < document.len_chars()
+                && document.rope.char(selection.cursor) == ch
+        };
+        let closer = PAIRS.iter().any(|(_, close)| *close == typed);
+        if closer
+            && self
+                .selections
+                .iter()
+                .all(|selection| next_is(self, selection, typed))
+        {
+            self.move_cursors(Motion::Right, false);
+            return true;
+        }
+        let Some((_, close)) = PAIRS.iter().find(|(open, _)| *open == typed) else {
+            return self.insert(text);
+        };
+        // A quote right after a word is an apostrophe or a closing quote.
+        let after_word = |selection: &Selection| {
+            let start = selection.range().start;
+            start > 0 && word_class(self.rope.char(start - 1)) == 2
+        };
+        if typed == *close && self.selections.iter().any(after_word) {
+            return self.insert(text);
+        }
+        let edits: Vec<(Range<usize>, String)> = self
+            .selections
+            .iter()
+            .map(|selection| {
+                let inner = String::from(self.rope.slice(selection.range()));
+                (selection.range(), format!("{typed}{inner}{close}"))
+            })
+            .collect();
+        let changed = self.edit(edits, false);
+        // Carets sit after each closer: step back inside the pair.
+        for selection in &mut self.selections {
+            *selection = Selection::caret(selection.cursor - 1);
+        }
+        if let Some(last) = self.undo.last_mut() {
+            last.after = self.selections.clone();
+        }
+        changed
+    }
+
+    /// Backspace that removes an empty pair (`(|)`) as a whole.
+    pub fn backspace_paired(&mut self) -> bool {
+        let inside_pair = |selection: &Selection| {
+            let at = selection.cursor;
+            selection.is_caret()
+                && at > 0
+                && at < self.len_chars()
+                && matches!(
+                    (self.rope.char(at - 1), self.rope.char(at)),
+                    ('(', ')') | ('[', ']') | ('{', '}') | ('"', '"') | ('`', '`')
+                )
+        };
+        if !self.selections.iter().all(inside_pair) {
+            return self.backspace(false);
+        }
+        let edits = self
+            .selections
+            .iter()
+            .map(|selection| (selection.cursor - 1..selection.cursor + 1, String::new()))
+            .collect();
+        self.edit(edits, false)
+    }
+
     /// Replaces one range, for find and replace. Selections collapse after it.
     pub fn replace_range(&mut self, range: Range<usize>, text: &str) -> bool {
         self.replace_ranges(vec![(range, text.to_owned())])
@@ -517,6 +595,7 @@ impl TextDocument {
     /// Breaks the line, keeping its indentation and adding one unit after an
     /// opening bracket.
     pub fn newline(&mut self) -> bool {
+        let mut splits = Vec::new();
         let edits = self
             .selections
             .iter()
@@ -529,13 +608,34 @@ impl TextDocument {
                     .chars()
                     .take_while(|ch| *ch == ' ' || *ch == '\t')
                     .collect();
-                if head.trim_end().ends_with(['{', '[', '(']) {
+                let opened = head.trim_end().ends_with(['{', '[', '(']);
+                let base = indent.clone();
+                if opened {
                     indent.push_str(&self.indentation.unit);
                 }
-                (range, format!("\n{indent}"))
+                // `{|}` becomes three lines with the caret on the middle one.
+                let closes = opened
+                    && text[byte.min(text.len())..].starts_with(['}', ']', ')'])
+                    && selection.is_caret();
+                if closes {
+                    splits.push(base.chars().count() + 1);
+                    (range, format!("\n{indent}\n{base}"))
+                } else {
+                    splits.push(0);
+                    (range, format!("\n{indent}"))
+                }
             })
             .collect();
-        self.edit(edits, false)
+        let changed = self.edit(edits, false);
+        if changed && splits.iter().any(|back| *back > 0) && splits.len() == self.selections.len() {
+            for (selection, back) in self.selections.iter_mut().zip(&splits) {
+                *selection = Selection::caret(selection.cursor - back);
+            }
+            if let Some(last) = self.undo.last_mut() {
+                last.after = self.selections.clone();
+            }
+        }
+        changed
     }
 
     fn touched_lines(&self) -> Vec<usize> {
@@ -835,6 +935,158 @@ impl TextDocument {
         from..to
     }
 
+    /// All occurrences of `query`, ascending and non-overlapping, as char
+    /// ranges. Matches do not span lines.
+    // ponytail: compares lowercased chars line by line; move to a streaming
+    // searcher if documents reach tens of megabytes.
+    pub fn find_all(
+        &self,
+        query: &str,
+        case_sensitive: bool,
+        whole_word: bool,
+    ) -> Vec<Range<usize>> {
+        let fold = |ch: char| {
+            if case_sensitive {
+                ch
+            } else {
+                ch.to_lowercase().next().unwrap_or(ch)
+            }
+        };
+        let needle: Vec<char> = query.chars().map(fold).collect();
+        if needle.is_empty() || needle.contains(&'\n') {
+            return Vec::new();
+        }
+        let mut matches = Vec::new();
+        let mut start = 0;
+        for line in self.rope.lines() {
+            let chars: Vec<char> = line.chars().map(fold).collect();
+            let mut at = 0;
+            while at + needle.len() <= chars.len() {
+                let word = |index: Option<usize>| {
+                    index
+                        .and_then(|index| chars.get(index))
+                        .is_some_and(|ch| word_class(*ch) == 2)
+                };
+                if chars[at..at + needle.len()] == needle[..]
+                    && !(whole_word && (word(at.checked_sub(1)) || word(Some(at + needle.len()))))
+                {
+                    matches.push(start + at..start + at + needle.len());
+                    at += needle.len();
+                } else {
+                    at += 1;
+                }
+            }
+            start += chars.len();
+        }
+        matches
+    }
+
+    /// Ctrl+D: a caret selects its word; a selection adds the next occurrence
+    /// of its text (wrapping around) as another selection.
+    pub fn select_next_occurrence(&mut self) -> bool {
+        let primary = self.primary();
+        if primary.is_caret() {
+            let word = self.word_at(primary.cursor);
+            if word.is_empty() {
+                return false;
+            }
+            let others: Vec<Selection> = self
+                .selections
+                .iter()
+                .copied()
+                .filter(|selection| *selection != primary)
+                .collect();
+            self.selections = others;
+            self.add_selection(word.start, word.end);
+            return true;
+        }
+        let text = String::from(self.rope.slice(primary.range()));
+        let taken: Vec<Range<usize>> = self.selections.iter().map(|s| s.range()).collect();
+        let last = taken.iter().map(|range| range.end).max().unwrap_or(0);
+        let matches = self.find_all(&text, true, false);
+        let free = |range: &&Range<usize>| !taken.contains(range);
+        let next = matches
+            .iter()
+            .filter(free)
+            .find(|range| range.start >= last)
+            .or_else(|| matches.iter().find(free))
+            .cloned();
+        match next {
+            Some(range) => {
+                self.add_selection(range.start, range.end);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Adds a caret one line above the first or below the last selection, in
+    /// the same display column.
+    pub fn add_cursor_vertically(&mut self, down: bool) -> bool {
+        let edge = if down {
+            self.selections[self.selections.len() - 1]
+        } else {
+            self.selections[0]
+        };
+        let (line, byte) = self.position(edge.cursor);
+        let target = if down { line + 1 } else { line.wrapping_sub(1) };
+        if target >= self.len_lines() {
+            return false;
+        }
+        let column = self.display_column(&self.line(line)[..byte]);
+        let offset = self.column_offset(target, column);
+        self.add_selection(offset, offset);
+        true
+    }
+
+    /// The bracket at or just before `offset` and its partner, when both exist
+    /// within a bounded scan. Brackets in strings and comments count too.
+    pub fn matching_bracket(&self, offset: usize) -> Option<(usize, usize)> {
+        const SCAN: usize = 20_000;
+        let len = self.len_chars();
+        let bracket = |at: usize| {
+            (at < len)
+                .then(|| self.rope.char(at))
+                .filter(|ch| "()[]{}".contains(*ch))
+        };
+        let at = if bracket(offset).is_some() {
+            offset
+        } else {
+            offset.checked_sub(1).filter(|at| bracket(*at).is_some())?
+        };
+        let ch = bracket(at)?;
+        let (partner, forward) = match ch {
+            '(' => (')', true),
+            '[' => (']', true),
+            '{' => ('}', true),
+            ')' => ('(', false),
+            ']' => ('[', false),
+            _ => ('{', false),
+        };
+        let mut depth = 0usize;
+        let mut index = at;
+        for _ in 0..SCAN {
+            let current = self.rope.char(index);
+            if current == ch {
+                depth += 1;
+            } else if current == partner {
+                depth -= 1;
+                if depth == 0 {
+                    return Some((at, index));
+                }
+            }
+            if forward {
+                index += 1;
+                if index >= len {
+                    return None;
+                }
+            } else {
+                index = index.checked_sub(1)?;
+            }
+        }
+        None
+    }
+
     /// The whole line including its line ending.
     pub fn line_range(&self, line: usize) -> Range<usize> {
         let line = line.min(self.len_lines().saturating_sub(1));
@@ -1028,6 +1280,84 @@ mod tests {
         assert_eq!(document.copy_text(), "x\n");
         assert_eq!(document.cut(), "x\n");
         assert_eq!(document.text(), "fn main() {\r\n}");
+    }
+
+    #[test]
+    fn pairs_close_wrap_step_over_and_delete_together_and_enter_opens_blocks() {
+        let mut document = TextDocument::from_text("");
+        document.insert_paired("f");
+        document.insert_paired("(");
+        assert_eq!(
+            (document.text().as_str(), carets(&document)),
+            ("f()", vec![2])
+        );
+        document.insert_paired("\"");
+        document.insert_paired("x");
+        document.insert_paired("\"");
+        document.insert_paired(")");
+        assert_eq!(
+            (document.text().as_str(), carets(&document)),
+            ("f(\"x\")", vec![6])
+        );
+        // A quote typed right after a word does not pair.
+        document.set_selection(1, 1);
+        document.insert_paired("\"");
+        assert_eq!(document.text(), "f\"(\"x\")");
+        document.undo();
+        document.set_selection(6, 6);
+        document.insert_paired(" ");
+        document.insert_paired("{");
+        document.newline();
+        document.insert("body");
+        assert_eq!(document.text(), "f(\"x\") {\n    body\n}");
+        document.undo();
+        document.undo();
+        document.backspace_paired();
+        assert_eq!(document.text(), "f(\"x\") ");
+        // A selection is wrapped.
+        document.set_selection(2, 5);
+        document.insert_paired("[");
+        assert_eq!(document.text(), "f([\"x\"]) ");
+    }
+
+    #[test]
+    fn search_occurrences_vertical_cursors_and_brackets() {
+        let mut document = TextDocument::from_text("foo Foo foobar\nfoo(bar[1], {x})\n  foo");
+        assert_eq!(document.find_all("foo", true, false).len(), 4);
+        assert_eq!(document.find_all("foo", false, false).len(), 5);
+        assert_eq!(
+            document.find_all("foo", false, true),
+            [0..3, 4..7, 15..18, 34..37]
+        );
+        assert!(document.find_all("", true, false).is_empty());
+        // Ctrl+D: word first, then following occurrences, wrapping around.
+        document.set_selection(16, 16);
+        assert!(document.select_next_occurrence());
+        assert_eq!(document.selected_text(), "foo");
+        assert!(document.select_next_occurrence());
+        assert!(document.select_next_occurrence());
+        assert_eq!(
+            document
+                .selections()
+                .iter()
+                .map(|s| s.range())
+                .collect::<Vec<_>>(),
+            [0..3, 15..18, 34..37]
+        );
+        document.insert("x");
+        assert_eq!(document.text(), "x Foo foobar\nx(bar[1], {x})\n  x");
+        document.undo();
+        // Carets stack vertically in the same column.
+        document.set_selection(2, 2);
+        assert!(document.add_cursor_vertically(true));
+        assert!(document.add_cursor_vertically(true));
+        assert!(!document.add_cursor_vertically(true));
+        assert_eq!(carets(&document), [2, 17, 34]);
+        // Brackets match at or just before the offset, across nesting.
+        assert_eq!(document.matching_bracket(18), Some((18, 30)));
+        assert_eq!(document.matching_bracket(31), Some((30, 18)));
+        assert_eq!(document.matching_bracket(23), Some((22, 24)));
+        assert_eq!(document.matching_bracket(5), None);
     }
 
     #[test]

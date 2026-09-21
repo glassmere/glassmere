@@ -75,7 +75,7 @@ impl Context {
 
     /// Whether another frame is needed without input. Hosts redraw while true.
     pub fn animating(&self) -> bool {
-        !self.animating_nodes.is_empty() || !self.ghosts.is_empty()
+        !self.animating_nodes.is_empty() || !self.ghosts.is_empty() || self.redraw_requested
     }
 
     /// Marks last frame's animated nodes dirty so this frame re-evaluates them.

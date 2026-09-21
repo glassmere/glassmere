@@ -315,6 +315,7 @@ impl Ui<'_> {
             warnings: self.warnings,
             theme_request: self.theme_request,
             clipboard: self.clipboard,
+            redraw: self.redraw,
             layers: self.layers,
             enabled: self.enabled,
         };

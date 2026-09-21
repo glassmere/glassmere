@@ -10,6 +10,8 @@ pub struct FocusScope {
     /// Arrow keys move focus geometrically between focusables in the scope,
     /// except from controls that use arrows themselves.
     pub arrows: bool,
+    /// When the scope appears, focus moves to its first focusable control.
+    pub autofocus: bool,
 }
 
 /// Presentation of a `Ui::dialog`. Modal dialogs paint a scrim, block pointer

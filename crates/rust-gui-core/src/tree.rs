@@ -203,6 +203,8 @@ pub enum Event {
     },
     /// A context-menu request (right click) at a logical point.
     ContextMenu(Point),
+    /// A command for the focused code editor, such as find or add cursor.
+    Editor(crate::EditorCommand),
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -446,6 +448,7 @@ pub struct Context {
     dock_drag: Option<Box<dock_input::DockDrag>>,
     dock_grab: Option<dock_input::DockGrab>,
     clipboard_out: Option<String>,
+    redraw_requested: bool,
     theme: Theme,
     stylesheet: StyleSheet,
     style_warnings: Vec<String>,
@@ -592,6 +595,7 @@ impl Default for Context {
             dock_drag: None,
             dock_grab: None,
             clipboard_out: None,
+            redraw_requested: false,
             theme,
             stylesheet: StyleSheet::default(),
             style_warnings: Vec::new(),
@@ -844,6 +848,7 @@ impl Context {
         let mut warnings = std::mem::take(&mut self.style_warnings);
         let mut theme_request = None;
         let mut clipboard = None;
+        let mut redraw = false;
         let mut layers = Vec::new();
         self.stats.activations = clicks.len() + updates.len() + submitted.len();
         self.nodes.get_mut(&self.root).unwrap().resolved = ResolvedText::from_theme(&self.theme);
@@ -858,6 +863,7 @@ impl Context {
             warnings: &mut warnings,
             theme_request: &mut theme_request,
             clipboard: &mut clipboard,
+            redraw: &mut redraw,
             layers: &mut layers,
             enabled: true,
         };
@@ -876,6 +882,7 @@ impl Context {
         if clipboard.is_some() {
             self.clipboard_out = clipboard;
         }
+        self.redraw_requested = redraw;
         if let Some(theme) = theme_request {
             // Declared token reads used the old theme; count this like an
             // activation so hosts declare once more before presenting.
@@ -1201,7 +1208,18 @@ impl Context {
                         tooltip: element.tooltip,
                     },
                 );
-                if element.kind == Kind::Popover {
+                // Popovers and autofocus scopes take focus when they appear.
+                if element.kind == Kind::Popover
+                    || matches!(
+                        self.nodes[&id].control,
+                        Control::FocusScope {
+                            scope: crate::FocusScope {
+                                autofocus: true,
+                                ..
+                            }
+                        }
+                    )
+                {
                     self.new_popovers.push(id);
                 }
                 self.stats.created += 1;
@@ -1841,7 +1859,11 @@ impl Context {
                 self.clicks.clear();
             }
             Event::Scroll { .. } => unreachable!(),
-            Event::Text(_) | Event::Shortcut(_) | Event::DropAt { .. } | Event::ContextMenu(_) => {}
+            Event::Text(_)
+            | Event::Shortcut(_)
+            | Event::DropAt { .. }
+            | Event::ContextMenu(_)
+            | Event::Editor(_) => {}
         }
         let after = (
             self.hovered,

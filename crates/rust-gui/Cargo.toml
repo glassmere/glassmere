@@ -6,9 +6,11 @@ rust-version.workspace = true
 publish.workspace = true
 
 [features]
-default = ["desktop"]
+default = ["desktop", "syntax"]
 desktop = ["dep:rust-gui-winit"]
 diagnostics = ["desktop", "rust-gui-winit/diagnostics"]
+# `rust_gui::syntax`: syntect highlighting for the code editor.
+syntax = ["dep:rust-gui-syntax"]
 # Serialize and Deserialize for `DockLayout`.
 serde = ["rust-gui-core/serde"]
 
@@ -17,6 +19,7 @@ rust-gui-core.workspace = true
 rust-gui-scene.workspace = true
 rust-gui-devtools.workspace = true
 rust-gui-winit = { workspace = true, optional = true }
+rust-gui-syntax = { workspace = true, optional = true }
 
 [[example]]
 name = "counter"
@@ -60,7 +63,7 @@ required-features = ["desktop"]
 
 [[example]]
 name = "editor"
-required-features = ["desktop"]
+required-features = ["desktop", "syntax"]
 
 [lints]
 workspace = true

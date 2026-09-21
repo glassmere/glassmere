@@ -1,6 +1,6 @@
 use super::*;
-use crate::text_area::{AreaLine, AreaOp, Granularity};
-use crate::{Motion, TextEdit, TextMove};
+use crate::text_area::{AreaLine, AreaOp, Granularity, MarkKind};
+use crate::{EditorCommand, Motion, TextEdit, TextMove};
 use rust_gui_scene::{FontFamily, TextGeometry, TextSpan};
 
 struct LineLayout {
@@ -88,6 +88,48 @@ impl Context {
             self.nodes
                 .get(id)
                 .is_some_and(|node| node.kind == Kind::TextArea && node.enabled)
+        })
+    }
+
+    /// The text area of the code editor that holds the focus, whether the
+    /// focus is in the text or in its find bar.
+    fn editor_area(&self) -> Option<NodeId> {
+        if let Some(id) = self.focused_area() {
+            return Some(id);
+        }
+        let mut next = self.focused;
+        while let Some(id) = next {
+            let node = self.nodes.get(&id)?;
+            if node.kind == Kind::CodeEditor {
+                return node
+                    .children_by_key
+                    .get(&WidgetKey::Named("$area".into()))
+                    .copied();
+            }
+            next = node.parent;
+        }
+        None
+    }
+
+    /// Whether `Event::Editor` commands currently have a target.
+    pub fn editor_focused(&self) -> bool {
+        self.editor_area().is_some()
+    }
+
+    /// The message of the diagnostic under the pointer.
+    pub(super) fn area_diagnostic(&self, id: NodeId) -> Option<String> {
+        let node = self.nodes.get(&id)?;
+        let Control::TextArea { marks, .. } = &node.control else {
+            return None;
+        };
+        let (line, byte) = self.area_position(id, self.pointer?)?;
+        marks.iter().find_map(|mark| match &mark.kind {
+            MarkKind::Diagnostic(_, message)
+                if mark.line == line && mark.from <= byte && byte < mark.to.max(mark.from + 1) =>
+            {
+                Some(message.clone())
+            }
+            _ => None,
         })
     }
 
@@ -193,6 +235,7 @@ impl Context {
                             3 => Granularity::Line,
                             _ => Granularity::Char,
                         },
+                        add: false,
                     },
                 );
                 Some(true)
@@ -211,6 +254,7 @@ impl Context {
                         byte,
                         select: true,
                         granularity: Granularity::Char,
+                        add: false,
                     },
                 );
                 Some(true)
@@ -218,6 +262,38 @@ impl Context {
             Event::Text(edit) => {
                 let id = self.focused_area()?;
                 Some(self.area_text(id, edit))
+            }
+            Event::Editor(EditorCommand::AddCursorAt(point)) => {
+                let id = self.hit_test(*point)?;
+                if self.nodes.get(&id)?.kind != Kind::TextArea {
+                    return None;
+                }
+                let (line, byte) = self.area_position(id, *point)?;
+                self.focus_control(id);
+                self.area_op(
+                    id,
+                    AreaOp::Pointer {
+                        line,
+                        byte,
+                        select: false,
+                        granularity: Granularity::Char,
+                        add: true,
+                    },
+                );
+                Some(true)
+            }
+            Event::Editor(command) => {
+                let id = self.editor_area()?;
+                self.area_op(id, AreaOp::Command(*command));
+                Some(true)
+            }
+            // Escape in the find bar closes it; focus returns to the text.
+            Event::KeyDown {
+                key: Key::Escape, ..
+            } if self.focused_area().is_none() && self.popup.is_none() => {
+                let id = self.editor_area()?;
+                self.area_op(id, AreaOp::Command(EditorCommand::CloseFind));
+                Some(true)
             }
             Event::KeyDown { key, shift, .. } => {
                 let id = self.focused_area()?;
@@ -374,7 +450,8 @@ impl Context {
             let line_height = font_size * 1.4;
             let digit = measurer.measure_styled("0", &style, None).width;
             let gutter = if *line_numbers {
-                digit * (total_lines.to_string().len().max(2) as f32) + 20.0
+                // Room for a diagnostic dot on the left and a gap on the right.
+                digit * (total_lines.to_string().len().max(2) as f32) + 26.0
             } else {
                 0.0
             };
@@ -468,6 +545,8 @@ impl Context {
                 primary,
                 font_size,
                 line_numbers,
+                marks,
+                gutter_marks,
                 ..
             },
             Some(area),
@@ -526,6 +605,20 @@ impl Context {
                 });
             }
         }
+        for (line, severity) in gutter_marks {
+            if visible(row(*line)) {
+                scene.primitives.push(Primitive::Quad {
+                    rect: Rect {
+                        x: content.x + 2.0,
+                        y: row(*line) + line_height / 2.0 - 3.0,
+                        width: 6.0,
+                        height: 6.0,
+                    },
+                    color: severity.color(),
+                    radius: 3.0,
+                });
+            }
+        }
         scene.primitives.push(Primitive::PushClip(Rect {
             x: text_x,
             width: (content.width - area.gutter).max(0.0),
@@ -536,6 +629,31 @@ impl Context {
             line.checked_sub(*first_line)
                 .and_then(|index| area.layouts.get(index))
         };
+        // Search matches and bracket marks sit under the selection and the text.
+        let accent = theme.accent;
+        for mark in marks {
+            let color = match mark.kind {
+                MarkKind::Match => theme.selection_inactive,
+                MarkKind::CurrentMatch => Color(accent.0, accent.1, accent.2, 120),
+                MarkKind::Bracket => Color(theme.text.0, theme.text.1, theme.text.2, 56),
+                MarkKind::Diagnostic(..) => continue,
+            };
+            let Some(layout) = layout_of(mark.line).filter(|_| visible(row(mark.line))) else {
+                continue;
+            };
+            for rect in layout.geometry.selection(mark.from..mark.to) {
+                scene.primitives.push(Primitive::Quad {
+                    rect: Rect {
+                        x: origin_x + rect.x,
+                        y: row(mark.line),
+                        width: rect.width,
+                        height: line_height,
+                    },
+                    color,
+                    radius: 2.0,
+                });
+            }
+        }
         for selection in selections {
             if selection.start == selection.end {
                 continue;
@@ -615,6 +733,28 @@ impl Context {
                     radius: 0.0,
                 });
             }
+        }
+        for mark in marks {
+            let MarkKind::Diagnostic(severity, _) = &mark.kind else {
+                continue;
+            };
+            let Some(layout) = layout_of(mark.line).filter(|_| visible(row(mark.line))) else {
+                continue;
+            };
+            let (from, to) = (
+                layout.geometry.caret(mark.from),
+                layout.geometry.caret(mark.to),
+            );
+            scene.primitives.push(Primitive::Quad {
+                rect: Rect {
+                    x: origin_x + from.x.min(to.x),
+                    y: row(mark.line) + line_height - 3.0,
+                    width: (to.x - from.x).abs().max(font_size * 0.5),
+                    height: 2.0,
+                },
+                color: severity.color(),
+                radius: 1.0,
+            });
         }
         if focused {
             for selection in selections {

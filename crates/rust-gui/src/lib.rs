@@ -2,6 +2,8 @@
 pub use rust_gui_core::*;
 pub use rust_gui_devtools as devtools;
 pub use rust_gui_scene::{Affine, Color, Point, Primitive, Rect, Scene, Size};
+#[cfg(feature = "syntax")]
+pub use rust_gui_syntax as syntax;
 #[cfg(feature = "desktop")]
 pub use rust_gui_winit::{
     AppOptions, DesktopClosed, DesktopHandle, DockWindowView, DockWindows, GpuMemoryPolicy,

@@ -1,5 +1,5 @@
 use crate::Application;
-use rust_gui_core::{Action, Context, Event, Key, NodeId, TextEdit, TextMove, Ui};
+use rust_gui_core::{Action, Context, EditorCommand, Event, Key, NodeId, TextEdit, TextMove, Ui};
 use winit::{
     event::{ElementState, KeyEvent},
     keyboard::{Key as WinitKey, ModifiersState, NamedKey},
@@ -62,6 +62,34 @@ fn named(key: &WinitKey) -> Option<Key> {
         WinitKey::Named(NamedKey::ContextMenu) => Key::ContextMenu,
         _ => return None,
     })
+}
+
+/// Keys of a focused code editor that are not text editing.
+fn editor_command(key: &WinitKey, modifiers: ModifiersState) -> Option<EditorCommand> {
+    let command = if cfg!(target_os = "macos") {
+        modifiers.super_key()
+    } else {
+        modifiers.control_key()
+    };
+    match key {
+        WinitKey::Named(NamedKey::F3) if modifiers.shift_key() => Some(EditorCommand::FindPrevious),
+        WinitKey::Named(NamedKey::F3) => Some(EditorCommand::FindNext),
+        WinitKey::Named(NamedKey::ArrowUp) if command && modifiers.alt_key() => {
+            Some(EditorCommand::AddCursorAbove)
+        }
+        WinitKey::Named(NamedKey::ArrowDown) if command && modifiers.alt_key() => {
+            Some(EditorCommand::AddCursorBelow)
+        }
+        WinitKey::Character(character) if command && !modifiers.alt_key() => {
+            match character.to_lowercase().as_str() {
+                "f" => Some(EditorCommand::Find),
+                "h" => Some(EditorCommand::Replace),
+                "d" => Some(EditorCommand::SelectNextOccurrence),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
 }
 
 fn pressed(
@@ -242,7 +270,14 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                 return;
             }
         }
-        let command = if event.state == ElementState::Pressed {
+        let editor = (event.state == ElementState::Pressed
+            && self.context.editor_focused()
+            && !self.context.composing_text())
+        .then(|| editor_command(&event.logical_key, self.modifiers))
+        .flatten();
+        let command = if let Some(editor) = editor {
+            Some(Command::Input(Event::Editor(editor)))
+        } else if event.state == ElementState::Pressed {
             pressed(
                 &event.logical_key,
                 event.text.as_deref(),

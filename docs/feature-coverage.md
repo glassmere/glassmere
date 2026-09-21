@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 7b. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 7c. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -10,7 +10,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 4 | Incremental layout | Done | Taffy dirty subtrees; same-size text changes skip layout. |
 | 5 | Incremental rendering | Partial | Damage tracking, subtree paint caches, retained GPU buffers and text batching exist; presentation still repaints the full surface. |
 | 6 | First-class virtualization | Partial | Lists, trees and grids realize only the viewport (milestone 4). Huge documents/editors: planned (phase 6). |
-| 7 | Excellent text system | Partial | Unicode, graphemes, fallback, ligatures, emoji, IME, selection, clipboard, undo/redo. Missing: BiDi/RTL caret order, rich text, syntax highlighting, large-document virtualization. |
+| 7 | Excellent text system | Partial | Unicode, graphemes, fallback, ligatures, emoji, IME, selection, clipboard, undo/redo, rich text blocks with links, syntect highlighting, a rope document with virtualized line rendering. Missing: BiDi/RTL caret order, editable rich text, regular expression search. |
 | 8 | Accessibility from day one | Done | AccessKit roles, labels, actions, keyboard navigation, tree visible in the inspector's Accessibility tab. Screen-reader speech review remains manual. |
 | 9 | Powerful focus system | Done | Keyboard focus, pointer capture, Tab traversal, focus scopes with trap/restore/memory, modal focus in dialogs, geometric arrow navigation, predictable restoration (milestone 6c). |
 | 10 | Modern layout engine | Partial | Flexbox, grid with tracks/areas/repeat/minmax, intrinsic sizing, percentages, min/max, aspect ratio, alignment including text-bottom baseline, absolute popups (milestone 6b). Missing: true font baselines, responsive breakpoints, custom layout primitives. |
@@ -21,7 +21,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 15 | Multiple rendering backends | Partial | wgpu only. CPU renderer: planned (phase 6). |
 | 16 | Efficient GPU architecture | Partial | Instanced quads, glyph atlas, batching, rectangular clipping. Missing: layers, shadows, paths, gradients, custom shaders. |
 | 17 | Custom rendering escape hatch | Partial | `CustomWidget` leaves paint primitives; no embedded 2D/3D or direct GPU hook yet. |
-| 18 | Rich widget library | Partial | Button, checkbox, radio, slider, text input, combo, menu, context menu, tooltip, popover, tabs, split panes, tree, virtual list, data grid, modal and non-modal dialogs, docking. Missing: number input, autocomplete, toasts, property grid, rich text, code editor. |
+| 18 | Rich widget library | Partial | Button, checkbox, radio, slider, text input, combo, menu, context menu, tooltip, popover, tabs, split panes, tree, virtual list, data grid, modal and non-modal dialogs, docking, rich text, code editor. Missing: number input, autocomplete, toasts, property grid, WYSIWYG rich text editor. |
 | 19 | Professional-grade DataGrid | Partial | Virtual rows, sorting, selection, huge datasets. Missing: virtual columns, filtering, resizing, reordering, frozen rows/columns, inline editing. |
 | 20 | Docking/layout system | Done | `DockLayout` with splits, tab groups, in-window floating groups and detached OS windows; drag onto drop indicators plus a keyboard panel menu; text format and `serde` feature. Missing: cross-window tab drags, persisted detached-window geometry, scrolling tab strips. |
 | 21 | Powerful event system | Partial | Pointer (left and right buttons), keyboard, drag/drop, capture, context-menu requests, timed wakes. Missing: bubbling/cancellation model, gestures, custom events. |

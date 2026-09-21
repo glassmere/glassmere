@@ -43,7 +43,10 @@ pub use style::{
     Align, GridArea, Justify, Length, Paint, ResolvedText, StateStyles, Style, Track, TrackSize,
 };
 pub use stylesheet::{StyleSheet, StyleSheetError};
-pub use text_area::{CodeEditorOptions, CodeEditorResponse, HighlightSpan, Highlighter};
+pub use text_area::{
+    CodeEditorOptions, CodeEditorResponse, Diagnostic, EditorCommand, FindState, HighlightSpan,
+    Highlighter, Severity,
+};
 pub use theme::{TOKENS, Theme};
 pub use tree::{
     Action, CollectionInfo, Context, Dirty, Event, FrameStats, Key, NodeDetails, NodeId,

@@ -665,7 +665,10 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                 ..
             } => {
                 self.input(if state == ElementState::Pressed {
-                    if self.modifiers.shift_key() {
+                    if self.modifiers.alt_key() {
+                        // Adds a caret in a code editor; elsewhere it does nothing.
+                        Event::Editor(rust_gui_core::EditorCommand::AddCursorAt(self.pointer))
+                    } else if self.modifiers.shift_key() {
                         Event::PointerDownWithShift
                     } else {
                         Event::PointerDown

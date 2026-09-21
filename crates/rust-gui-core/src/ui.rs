@@ -37,6 +37,7 @@ pub(crate) enum Kind {
     DockFloat,
     DockHandle,
     TextArea,
+    CodeEditor,
     RichText,
     ContextArea,
     Popover,
@@ -116,6 +117,7 @@ pub struct Ui<'a> {
     pub(crate) theme_request: &'a mut Option<crate::Theme>,
     /// Text a copy or cut produced, handed to the host after the declaration.
     pub(crate) clipboard: &'a mut Option<String>,
+    pub(crate) redraw: &'a mut bool,
     /// Dialog layers, appended after normal content as root children.
     pub(crate) layers: &'a mut Vec<Element>,
     pub(crate) enabled: bool,
@@ -135,6 +137,12 @@ impl Ui<'_> {
 
     /// A named class from the installed stylesheet. Unknown names return the
     /// default style and are reported through `Context::style_warnings`.
+    /// Asks the host for another frame after this one, for work that spreads
+    /// over frames without an input event or animation driving it.
+    pub fn request_redraw(&mut self) {
+        *self.redraw = true;
+    }
+
     pub fn class(&mut self, name: &str) -> Style {
         match self.context.stylesheet().class(name) {
             Some(style) => style.clone(),
@@ -313,6 +321,7 @@ impl Ui<'_> {
             warnings: self.warnings,
             theme_request: self.theme_request,
             clipboard: self.clipboard,
+            redraw: self.redraw,
             layers: self.layers,
             enabled: self.enabled,
         };
@@ -422,6 +431,7 @@ impl Ui<'_> {
             warnings: self.warnings,
             theme_request: self.theme_request,
             clipboard: self.clipboard,
+            redraw: self.redraw,
             layers: self.layers,
             enabled: self.enabled,
         };

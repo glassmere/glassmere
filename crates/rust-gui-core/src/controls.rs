@@ -105,6 +105,8 @@ pub(crate) enum Control {
         line_numbers: bool,
         read_only: bool,
         scroll_y: f32,
+        marks: Vec<crate::text_area::AreaMark>,
+        gutter_marks: Vec<(usize, crate::Severity)>,
     },
     /// A floating group's grip (`resize: false`) or resize corner, with the
     /// float's declared rectangle. Floats are named by their first panel.

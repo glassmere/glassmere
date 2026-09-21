@@ -8,6 +8,7 @@ members = [
     "crates/rust-gui-winit",
     "crates/rust-gui-testing",
     "crates/rust-gui-devtools",
+    "crates/rust-gui-syntax",
 ]
 
 [workspace.package]
@@ -23,6 +24,7 @@ rust-gui-render-wgpu = { path = "crates/rust-gui-render-wgpu" }
 rust-gui-winit = { path = "crates/rust-gui-winit" }
 rust-gui-testing = { path = "crates/rust-gui-testing" }
 rust-gui-devtools = { path = "crates/rust-gui-devtools" }
+rust-gui-syntax = { path = "crates/rust-gui-syntax" }
 bitflags = "2.13"
 ropey = "1.6"
 serde = { version = "1.0.229", features = ["derive"] }

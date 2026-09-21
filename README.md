@@ -84,7 +84,7 @@ Rich text and code editing:
 cargo run -p rust-gui --example editor --release
 ```
 
-Styled rich text with links, and a virtualized code editor over an app-owned rope document. See [milestone 7b](docs/milestone-7.md#milestone-7b-rich-text-and-the-code-editor-foundation).
+Styled rich text with links, and a virtualized code editor over an app-owned rope document with syntect highlighting, find and replace, bracket features, multiple cursors and diagnostics. See milestones [7b](docs/milestone-7.md#milestone-7b-rich-text-and-the-code-editor-foundation) and [7c](docs/milestone-7.md#milestone-7c-code-intelligence).
 
 Docking:
 

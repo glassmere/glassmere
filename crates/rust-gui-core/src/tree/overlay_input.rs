@@ -11,12 +11,13 @@ impl Context {
     /// When the context next wants to be run without input, on the `set_now` clock.
     pub fn next_wake(&self) -> Option<Duration> {
         let (id, since) = self.hover_since?;
-        (self.tooltip.is_none()
-            && self
-                .nodes
-                .get(&id)
-                .is_some_and(|node| node.tooltip.is_some()))
-        .then_some(since + TOOLTIP_DELAY)
+        (self.tooltip.is_none() && self.tooltip_text(id).is_some()).then_some(since + TOOLTIP_DELAY)
+    }
+
+    /// The node's tooltip, or for an editor the diagnostic under the pointer.
+    fn tooltip_text(&self, id: NodeId) -> Option<String> {
+        let node = self.nodes.get(&id)?;
+        node.tooltip.clone().or_else(|| self.area_diagnostic(id))
     }
 
     /// Tracks hover dwell after input; hides a visible tooltip when the pointer
@@ -40,11 +41,18 @@ impl Context {
         if !matches!(event, Event::PointerMoved(_)) {
             return;
         }
-        if self.hover_since.map(|(id, _)| id) != self.hovered {
+        // Inside an editor the text under the pointer changes as it moves.
+        let editor = self.hovered.is_some_and(|id| {
+            self.nodes
+                .get(&id)
+                .is_some_and(|node| node.kind == Kind::TextArea)
+        });
+        if editor || self.hover_since.map(|(id, _)| id) != self.hovered {
             self.hover_since = self.hovered.map(|id| (id, self.now));
-            if self
-                .tooltip
-                .is_some_and(|owner| Some(owner) != self.hovered)
+            if editor
+                || self
+                    .tooltip
+                    .is_some_and(|owner| Some(owner) != self.hovered)
             {
                 self.hide_tooltip();
             }
@@ -65,11 +73,7 @@ impl Context {
         if self.tooltip.is_some() || self.now < since + TOOLTIP_DELAY {
             return;
         }
-        if self
-            .nodes
-            .get(&id)
-            .is_some_and(|node| node.tooltip.is_some())
-        {
+        if self.tooltip_text(id).is_some() {
             self.tooltip = Some(id);
             self.pending |= Dirty::PAINT;
         }
@@ -84,7 +88,7 @@ impl Context {
             self.tooltip = None;
             return;
         };
-        let Some(text) = node.tooltip.clone() else {
+        let Some(text) = self.tooltip_text(owner) else {
             return;
         };
         let style = TextStyle {
@@ -104,9 +108,15 @@ impl Context {
             width,
             height,
         };
+        // Editor messages belong to a spot in the text, not to the whole editor.
+        let anchor = self.pointer.filter(|_| node.kind == Kind::TextArea);
+        if let Some(pointer) = anchor {
+            rect.x = pointer.x;
+            rect.y = pointer.y + 18.0;
+        }
         rect.x = rect.x.clamp(0.0, (viewport.width - width).max(0.0));
         if rect.y + height > viewport.height {
-            rect.y = (node.bounds.y - height - 6.0).max(0.0);
+            rect.y = (anchor.map_or(node.bounds.y, |pointer| pointer.y) - height - 6.0).max(0.0);
         }
         scene.primitives.push(Primitive::Quad {
             rect,
