@@ -261,7 +261,9 @@ impl Context {
             return;
         }
         let (painted, total) = (self.stats.paint_nodes, self.nodes.len());
-        let heavy = total >= REPAINT_MIN_NODES && painted * 2 > total;
+        // A fling scrolls a page for a second or so, which repaints it every
+        // frame; that is the framework's doing, and it ends by itself.
+        let heavy = total >= REPAINT_MIN_NODES && painted * 2 > total && !self.flinging();
         self.diagnostic.repaint = if heavy {
             self.diagnostic.repaint + 1
         } else {

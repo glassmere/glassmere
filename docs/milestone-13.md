@@ -2,7 +2,7 @@
 
 Decisions taken on 2026-09-21, before the work: outgoing drags through the `drag` crate, with the core's side shaped so that a backend that can carry text fits in later without changing apps; an in-app drag becomes a system drag when the pointer leaves the window; a full multi-pointer model rather than touch mapped onto the one mouse pointer; kinetic scrolling after a touch pan.
 
-Slices: 13a outgoing OS drags (below), 13b touch as a pointer with pan scrolling, inertia and long press, 13c multi-pointer capture, 13d the gesture area with pinch and rotation, macOS gestures, Ctrl+wheel and pen pressure.
+Slices: 13a outgoing OS drags, 13b touch as a pointer with pan scrolling, inertia and long press together with 13c multi-pointer capture (all below), 13d the gesture area with pinch and rotation, macOS gestures, Ctrl+wheel and pen pressure.
 
 # Milestone 13a: outgoing OS drags
 
@@ -39,3 +39,43 @@ One new core test drives the protocol headlessly: nothing to export below the dr
 - The drag image is a fixed icon, not a picture of the dragged node.
 - While Windows runs the system drag our windows do not repaint.
 - Cross-window drags of `Item` payloads between two windows of one app are still not possible.
+
+# Milestone 13b and 13c: touch, and every contact a pointer of its own
+
+Implemented on 2026-09-21. The two slices landed together, because the model chosen for many pointers is also the simplest way to add the first touch.
+
+```rust
+context.event(Event::Touch { id, phase: TouchPhase::Started, position, force: Some(0.4) });
+```
+
+| Piece | Contract |
+| --- | --- |
+| Model | Every contact has its own position, hover, capture and drags (`tree/touch_input.rs`). They are swapped into the context's pointer fields while that contact's events run, then swapped back. Widgets read the same fields as ever and needed no touch code; the mouse is simply the pointer that lives there between events. |
+| `Event::Touch { id, phase, position, force }` | `TouchPhase` is `Started`, `Moved`, `Ended` or `Cancelled`. Ids may be reused once a contact has ended; a contact that starts twice lets go of its first press. `Context::touches()` lists the contacts that are down with their position and pressure. |
+| Tap | Down and up within 10 px activates what is under the finger, exactly as a click does. No hover stays behind when the finger lifts. |
+| Pan | A press that travels more than 10 px lets go of what it pressed without activating it and scrolls the innermost scroll view, collection or editor under the finger, on both axes. A slider, a split or grid divider, a dock handle and a dock tab follow the finger instead. |
+| Inertia | On release the content keeps the speed of the last 100 ms and loses it exponentially (1/e in 0.325 s) until it falls below 50 px/s or the content ends. Any touch, press or wheel stops it; reduced motion never starts it. `Context::animating` is true meanwhile, so hosts keep drawing. |
+| Long press | 500 ms without travel. On a drag source it picks the payload up, and the drag then follows the finger to a drop target. Anywhere else it requests the context menu at that point, as a right click does, and the release neither closes the menu nor clicks. `Context::next_wake` includes the deadline. |
+| Many pointers | Two fingers move two sliders at the same time, and a finger and the mouse do not disturb each other. One pointer per control: a contact that lands on a control another pointer holds does nothing. |
+| Pressed look | A node pressed by any contact paints as pressed. |
+| Safety | A contact whose node disappears in a declaration lets go quietly; losing window focus ends all contacts and any fling. |
+| Host | `WindowEvent::Touch` becomes `Event::Touch` in logical pixels with pressure normalized to 0..1; a window blocked by a modal dialog ignores touch like other input. On Windows winit answers the pointer messages, so the system does not repeat a touch as mouse events. |
+
+A finding from the real-window run, fixed at its root: a fling scrolls a page every frame for about a second, which tripped the framework's own "excessive repainting" diagnostic after 60 frames. Frames that the framework scrolls itself no longer count toward it; a test reproduces the case.
+
+## Validation
+
+Seven headless tests in `tests/touch.rs`: a tap with a wobble; a pan that follows the finger exactly, does not click and then flings with a decaying speed to a total within the analytic bounds, without tripping the repaint diagnostic; a touch catching a fling, and reduced motion; the long-press menu with its wake time, surviving the release and taking a tapped choice; a drag source that pans when moved at once and is picked up after a rest; two sliders under two interleaved fingers with a third finger refused; and contacts outliving their node or the window's focus.
+
+`scripts/test-touch.ps1` injects real touch input into the controls gallery through the Windows touch injection API, which exercises winit's pointer messages, the host and the core together. On this machine: a tap toggled a checkbox exactly once, a slider followed the finger from 50 to 95, and a swipe of 40 physical pixels scrolled 124, the rest by inertia, without pressing anything. The script keeps the window topmost while it runs and refuses to touch a point that belongs to another window.
+
+The suite is 243 tests plus 23 GPU tests; formatting and clippy (all features, and core alone) are clean; the facade builds without default features; all 16 examples pass their smoke run.
+
+## Remaining limits
+
+- A pan that starts on a text field focuses it first, because focus moves on press.
+- No overscroll bounce, no snap points, no scroll chaining to the parent once a view reaches its end during one pan.
+- Text selection by touch (handles, magnifier) does not exist; a touch in an editor places the caret and pans.
+- A fling belongs to the point where the finger lifted; content that moves under it keeps scrolling whatever is there.
+- Tooltips never show for touch. Outgoing OS drags start from the mouse only.
+- Not run on a physical touch screen or a pen; injected input reports a fixed pressure.

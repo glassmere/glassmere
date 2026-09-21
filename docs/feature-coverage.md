@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 13a. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 13c. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -24,9 +24,9 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 18 | Rich widget library | Done | Button, checkbox, radio, slider, text input, combo, menu, context menu, tooltip, popover, tabs, split panes, tree, virtual list, data grid, modal and non-modal dialogs, docking, rich text, code editor, rich text editor, images, number input and autocomplete (milestone 9a), toasts (milestone 9b) and a property grid with a derive macro (milestones 9c and 9d). |
 | 19 | Professional-grade DataGrid | Done | Virtual rows, sorting, selection, huge datasets; column resizing, reordering and hiding in app-owned state, by drag and from a keyboard menu (milestone 10b); a cell cursor and typed in-place editing with model validation (milestone 10c); a filter row whose texts the model applies (milestone 10d); sideways scrolling with frozen and virtual columns (milestone 10e). Missing: pinned data rows, range selection with copy and paste. |
 | 20 | Docking/layout system | Done | `DockLayout` with splits, tab groups, in-window floating groups and detached OS windows; drag onto drop indicators plus a keyboard panel menu; text format and `serde` feature. Missing: cross-window tab drags, persisted detached-window geometry, scrolling tab strips. |
-| 21 | Powerful event system | Partial | Pointer (left and right buttons), keyboard, drag/drop, capture, context-menu requests, timed wakes. Missing: bubbling/cancellation model, gestures, custom events. |
+| 21 | Powerful event system | Partial | Pointer (left and right buttons), touch contacts, keyboard, drag/drop, capture per pointer, context-menu requests, timed wakes. Missing: bubbling/cancellation model, gestures, custom events. |
 | 22 | Input abstraction independent of the OS | Done | Core consumes `Event`; winit lives only in the host crate. |
-| 23 | Mouse/touch/stylus support | Partial | Mouse only. Multi-pointer, gestures, pressure, smooth scrolling: not started. |
+| 23 | Mouse/touch/stylus support | Partial | Mouse; touch and pen contacts as independent pointers with tap, pan, kinetic scrolling, long press and pressure readable from `Context::touches` (milestone 13b and 13c). Missing: pinch and rotation, touch text selection, pen tilt and buttons. |
 | 24 | First-class keyboard shortcuts | Partial | Commands with platform-primary shortcuts. Missing: scopes, remapping, command palette. |
 | 25 | Command architecture | Partial | `Command` shares enabled state between button and shortcut; menus/palette do not consume commands yet. |
 | 26 | Clipboard and drag-and-drop | Partial | Text clipboard, in-process item/text drags, incoming OS file drops, outgoing OS file drags on Windows and macOS with the outcome reported to the source (milestone 13a). Missing: images, custom types, outgoing text, outgoing drags on Linux, cross-window drags. |

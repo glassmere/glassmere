@@ -983,6 +983,27 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                 payload: DragPayload::Files(vec![path]),
             }),
             WindowEvent::CursorLeft { .. } => self.input(Event::PointerLeft),
+            // Fingers and pens. Windows does not repeat them as mouse events
+            // once winit has taken the pointer messages.
+            WindowEvent::Touch(touch) => {
+                let position = touch
+                    .location
+                    .to_logical::<f32>(state.window.scale_factor());
+                self.input(Event::Touch {
+                    id: touch.id,
+                    phase: match touch.phase {
+                        winit::event::TouchPhase::Started => rust_gui_core::TouchPhase::Started,
+                        winit::event::TouchPhase::Moved => rust_gui_core::TouchPhase::Moved,
+                        winit::event::TouchPhase::Ended => rust_gui_core::TouchPhase::Ended,
+                        winit::event::TouchPhase::Cancelled => rust_gui_core::TouchPhase::Cancelled,
+                    },
+                    position: Point {
+                        x: position.x,
+                        y: position.y,
+                    },
+                    force: touch.force.map(|force| force.normalized() as f32),
+                });
+            }
             WindowEvent::MouseWheel { delta, .. } => {
                 let (mut delta_x, mut delta_y) = match delta {
                     MouseScrollDelta::LineDelta(x, y) => (-x * 40.0, -y * 40.0),

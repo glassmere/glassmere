@@ -28,11 +28,13 @@ mod rich_editor;
 mod rich_text;
 mod text_area_input;
 mod toasts;
+mod touch_input;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
     time::{Duration, Instant},
 };
+pub use touch_input::TouchPhase;
 
 /// Monotonic within a Context; a removed node's identity is never reused there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -236,6 +238,15 @@ pub enum Event {
     ContextMenu(Point),
     /// A command for the focused code editor, such as find or add cursor.
     Editor(crate::EditorCommand),
+    /// A finger or a pen. Each contact is a pointer of its own, told apart by
+    /// `id`, which the host may reuse once the contact has ended.
+    Touch {
+        id: u64,
+        phase: TouchPhase,
+        position: Point,
+        /// Pressure from 0 to 1, where the device reports it.
+        force: Option<f32>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -539,6 +550,8 @@ pub struct Context {
     hot_state: Option<String>,
     diagnostic: diagnostics::DiagnosticState,
     toast: toasts::ToastState,
+    touches: HashMap<u64, touch_input::Touch>,
+    fling: Option<touch_input::Fling>,
     pub(crate) messages: Option<Box<dyn crate::Messages>>,
     pub(crate) format: Option<Box<dyn crate::LocaleFormat>>,
     pub(crate) missing_messages: std::sync::Mutex<Vec<String>>,
@@ -733,6 +746,8 @@ impl Default for Context {
             hot_state: None,
             diagnostic: diagnostics::DiagnosticState::new(),
             toast: toasts::ToastState::default(),
+            touches: HashMap::new(),
+            fling: None,
             messages: None,
             format: None,
             missing_messages: std::sync::Mutex::new(Vec::new()),
@@ -1146,6 +1161,7 @@ impl Context {
         self.resizing = size != self.scene.size;
         self.begin_animation_frame();
         self.update_toasts();
+        self.update_touches();
         let declare_started = Instant::now();
         let declare_span = tracing::trace_span!("rust_gui.declare").entered();
         let mut clicks = std::mem::take(&mut self.clicks);
@@ -1848,6 +1864,7 @@ impl Context {
     fn appearance(&self, id: NodeId, node: &Node) -> crate::animation::Shown {
         let theme = &self.theme;
         let pressed = (self.captured == Some(id) && self.hovered == Some(id))
+            || self.touch_pressed(id)
             || self
                 .keyboard_pressed
                 .is_some_and(|(pressed, _)| pressed == id);
@@ -2227,6 +2244,24 @@ impl Context {
     /// Returns true if a declaration/redraw is needed. Pointer capture survives
     /// leaving the window, but activation requires release over the same button.
     pub fn event(&mut self, event: Event) -> bool {
+        match event {
+            Event::Touch {
+                id,
+                phase,
+                position,
+                force,
+            } => {
+                let handled = self.touch_event(id, phase, position, force);
+                self.note_focus();
+                return handled;
+            }
+            Event::FocusLost => self.stop_touches(),
+            // Any other way of scrolling or pressing ends a fling.
+            Event::PointerDown | Event::PointerDownWithShift | Event::Scroll { .. } => {
+                self.fling = None;
+            }
+            _ => {}
+        }
         let handled = self.handle_event(event.clone());
         self.track_hover(&event);
         self.note_focus();
@@ -2399,7 +2434,9 @@ impl Context {
             | Event::Shortcut(_)
             | Event::DropAt { .. }
             | Event::ContextMenu(_)
-            | Event::Editor(_) => {}
+            | Event::Editor(_)
+            // Handled in `event`, as pointer events of the contact.
+            | Event::Touch { .. } => {}
         }
         let after = (
             self.hovered,

@@ -72,7 +72,7 @@ pub use tree::diagnostics::{
 };
 pub use tree::{
     Action, CollectionInfo, Context, Dirty, Event, FrameStats, Key, Live, NodeDetails, NodeId,
-    NodeSnapshot, NumericValue, Role, ScrollState, Semantics,
+    NodeSnapshot, NumericValue, Role, ScrollState, Semantics, TouchPhase,
 };
 pub use ui::{
     DockOptions, DockPanel, DockResponse, Properties, PropertyGrid, Response, Ui, suggest,
