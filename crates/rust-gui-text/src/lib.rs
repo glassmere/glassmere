@@ -1,4 +1,7 @@
-use glyphon::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Wrap};
+//! Fonts, shaping and measuring, shared by every renderer so that layout and
+//! pixels agree whichever one draws. Built on cosmic-text.
+pub use cosmic_text;
+use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Wrap};
 use rust_gui_scene::{
     CaretStop, FontFamily, Rect, Size, TextCluster, TextGeometry, TextLine, TextMeasurer, TextSpan,
     TextStyle, TextWrap,
@@ -7,7 +10,8 @@ use std::collections::{HashMap, HashSet};
 use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct TextKey {
+/// Identifies one shaped block: its text and everything that shapes it.
+pub struct TextKey {
     text: String,
     size: u32,
     family: FontFamily,
@@ -40,18 +44,19 @@ fn family(family: &FontFamily) -> Family<'_> {
 fn attrs(font: &FontFamily, weight: u16, italic: bool) -> Attrs<'_> {
     Attrs::new()
         .family(family(font))
-        .weight(glyphon::Weight(weight.clamp(100, 900)))
+        .weight(cosmic_text::Weight(weight.clamp(100, 900)))
         .style(if italic {
-            glyphon::Style::Italic
+            cosmic_text::Style::Italic
         } else {
-            glyphon::Style::Normal
+            cosmic_text::Style::Normal
         })
 }
 
 /// System fonts and shared shaping buffers for measurement, painting and editing.
 pub struct TextSystem {
-    pub(crate) fonts: FontSystem,
-    pub(crate) buffers: HashMap<TextKey, Buffer>,
+    pub fonts: FontSystem,
+    /// Shaped blocks, kept between frames; see `ensure` and `retain`.
+    pub buffers: HashMap<TextKey, Buffer>,
 }
 
 impl Default for TextSystem {
@@ -110,7 +115,7 @@ impl TextSystem {
     /// Shaping over exactly these font files and no system fonts; every generic
     /// family resolves to the first font. Intended for deterministic snapshots.
     pub fn with_fonts(fonts: impl IntoIterator<Item = Vec<u8>>) -> Self {
-        let mut db = glyphon::fontdb::Database::new();
+        let mut db = cosmic_text::fontdb::Database::new();
         for font in fonts {
             db.load_font_data(font);
         }
@@ -129,7 +134,7 @@ impl TextSystem {
         }
     }
 
-    pub(crate) fn ensure(&mut self, text: &str, font_size: f32) -> TextKey {
+    pub fn ensure(&mut self, text: &str, font_size: f32) -> TextKey {
         self.ensure_styled(
             text,
             &TextStyle {
@@ -140,17 +145,12 @@ impl TextSystem {
         )
     }
 
-    pub(crate) fn ensure_styled(
-        &mut self,
-        text: &str,
-        style: &TextStyle,
-        width: Option<f32>,
-    ) -> TextKey {
+    pub fn ensure_styled(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> TextKey {
         self.ensure_buffer(text, &[], style, width)
     }
 
     /// A rich block: per-span family, weight, slant and colour over the block style.
-    pub(crate) fn ensure_rich(
+    pub fn ensure_rich(
         &mut self,
         spans: &[TextSpan],
         style: &TextStyle,
@@ -227,9 +227,9 @@ impl TextSystem {
                     (
                         span.text.as_str(),
                         match span.color {
-                            Some(color) => {
-                                run.color(glyphon::Color::rgba(color.0, color.1, color.2, color.3))
-                            }
+                            Some(color) => run.color(cosmic_text::Color::rgba(
+                                color.0, color.1, color.2, color.3,
+                            )),
                             None => run,
                         },
                     )
@@ -240,12 +240,12 @@ impl TextSystem {
                 // Defaults that no run uses make every run explicit.
                 let unused = base
                     .clone()
-                    .weight(glyphon::Weight(style.weight.clamp(100, 900) ^ 1));
+                    .weight(cosmic_text::Weight(style.weight.clamp(100, 900) ^ 1));
                 buffer.set_rich_text(&mut self.fonts, runs, &unused, Shaping::Advanced, None);
             }
             if style.rtl && width.is_some() {
                 for line in &mut buffer.lines {
-                    line.set_align(Some(glyphon::cosmic_text::Align::Right));
+                    line.set_align(Some(cosmic_text::Align::Right));
                 }
             }
             buffer.shape_until_scroll(&mut self.fonts, false);
@@ -254,7 +254,7 @@ impl TextSystem {
         key
     }
 
-    pub(crate) fn retain(&mut self, active: &HashSet<TextKey>) {
+    pub fn retain(&mut self, active: &HashSet<TextKey>) {
         self.buffers.retain(|key, _| active.contains(key));
     }
 
@@ -531,7 +531,7 @@ mod tests {
         let expected = system
             .fonts
             .db()
-            .query(&glyphon::fontdb::Query {
+            .query(&cosmic_text::fontdb::Query {
                 families: &[Family::Serif],
                 ..Default::default()
             })

@@ -1,0 +1,14 @@
+[package]
+name = "rust-gui-text"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+rust-gui-scene.workspace = true
+cosmic-text.workspace = true
+unicode-segmentation.workspace = true
+
+[lints]
+workspace = true

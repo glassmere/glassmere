@@ -102,6 +102,7 @@ Work picked from the coverage table after the seven phases.
 - [x] Outgoing OS file drags: a drag that leaves the window is handed to the system on Windows and macOS ([milestone 13a](milestone-13.md)).
 - [x] Touch with every contact a pointer of its own: tap, pan with inertia, long press, two controls at once ([milestone 13b and 13c](milestone-13.md)).
 - [x] `Ui::gesture_area`: pan, pinch and rotation from fingers, a trackpad or Ctrl with the wheel ([milestone 13d](milestone-13.md)).
-- [ ] CPU renderer.
+- [x] Text shaping in a crate of its own, shared by the renderers ([milestone 14a](milestone-14.md)).
+- [ ] CPU renderer: headless (14b), then the window fallback (14c).
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

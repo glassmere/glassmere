@@ -213,7 +213,8 @@ The view may run more than once per input event. Put application actions behind 
 | `rust-gui` | Public facade and runnable example; `desktop` is an optional default feature |
 | `rust-gui-core` | UI builder, components/custom leaves, retained tree, scroll/layout/input, collections, commands, drag/drop, paint caches and semantics |
 | `rust-gui-scene` | Geometry, colors, measurement interface and display list; no platform dependencies |
-| `rust-gui-render-wgpu` | Ordered GPU rendering, text shaping, glyph atlas and image atlas |
+| `rust-gui-text` | Fonts, shaping, measuring and text geometry on cosmic-text, shared by the renderers |
+| `rust-gui-render-wgpu` | Ordered GPU rendering, glyph atlas and image atlas |
 | `rust-gui-winit` | Native windows, input, worker wakeups and mailboxes, AccessKit mapping, inspector hosting and presentation |
 | `rust-gui-image` | PNG, JPEG, WebP, GIF and SVG decoding and the background loader; `rust_gui::image` behind the default `images` feature |
 | `rust-gui-fluent` | Fluent catalogs for `Ui::tr`, with Czech and German for the framework's own texts; `rust_gui::fluent` behind the default `fluent` feature |

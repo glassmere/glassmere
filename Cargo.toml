@@ -4,6 +4,7 @@ members = [
     "crates/rust-gui",
     "crates/rust-gui-core",
     "crates/rust-gui-scene",
+    "crates/rust-gui-text",
     "crates/rust-gui-render-wgpu",
     "crates/rust-gui-winit",
     "crates/rust-gui-testing",
@@ -25,6 +26,7 @@ publish = false
 [workspace.dependencies]
 rust-gui-core = { path = "crates/rust-gui-core" }
 rust-gui-scene = { path = "crates/rust-gui-scene" }
+rust-gui-text = { path = "crates/rust-gui-text" }
 rust-gui-render-wgpu = { path = "crates/rust-gui-render-wgpu" }
 rust-gui-winit = { path = "crates/rust-gui-winit" }
 rust-gui-testing = { path = "crates/rust-gui-testing" }
@@ -41,6 +43,8 @@ tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 taffy = { version = "0.10.1", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid"] }
 wgpu = "29.0.4"
 winit = "0.30.13"
+# The version glyphon uses, so that both share one font system type.
+cosmic-text = "0.18"
 glyphon = "0.11.0"
 bytemuck = { version = "1.25", features = ["derive"] }
 pollster = "0.4"

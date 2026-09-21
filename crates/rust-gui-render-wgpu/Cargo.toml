@@ -7,6 +7,7 @@ publish.workspace = true
 
 [dependencies]
 rust-gui-scene.workspace = true
+rust-gui-text.workspace = true
 wgpu.workspace = true
 glyphon.workspace = true
 bytemuck.workspace = true
@@ -17,5 +18,3 @@ pollster.workspace = true
 [lints]
 workspace = true
 
-[dependencies.unicode-segmentation]
-workspace = true

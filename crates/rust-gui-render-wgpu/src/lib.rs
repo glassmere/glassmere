@@ -1,9 +1,8 @@
 //! GPU scene backend. This crate knows paint primitives, never widgets.
 mod image;
 mod profile;
-mod text;
 pub use profile::{DriverMemory, GpuPassTime, GpuProfile, MAX_TIMED_PASSES, MemoryStats};
-pub use text::TextSystem;
+pub use rust_gui_text::TextSystem;
 pub use wgpu;
 
 use glyphon::{
@@ -48,7 +47,7 @@ enum Draw {
 }
 
 struct PreparedText {
-    key: text::TextKey,
+    key: rust_gui_text::TextKey,
     left: f32,
     top: f32,
     scale: f32,

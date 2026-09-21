@@ -3652,7 +3652,7 @@ dependencies = [
  "glyphon",
  "pollster",
  "rust-gui-scene",
- "unicode-segmentation",
+ "rust-gui-text",
  "wgpu",
 ]
 
@@ -3678,6 +3678,15 @@ version = "0.1.0"
 dependencies = [
  "rust-gui-core",
  "rust-gui-scene",
+]
+
+[[package]]
+name = "rust-gui-text"
+version = "0.1.0"
+dependencies = [
+ "cosmic-text",
+ "rust-gui-scene",
+ "unicode-segmentation",
 ]
 
 [[package]]
