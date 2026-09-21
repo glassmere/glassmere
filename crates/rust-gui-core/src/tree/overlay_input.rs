@@ -10,8 +10,11 @@ impl Context {
 
     /// When the context next wants to be run without input, on the `set_now` clock.
     pub fn next_wake(&self) -> Option<Duration> {
-        let (id, since) = self.hover_since?;
-        (self.tooltip.is_none() && self.tooltip_text(id).is_some()).then_some(since + TOOLTIP_DELAY)
+        let tooltip = self.hover_since.and_then(|(id, since)| {
+            (self.tooltip.is_none() && self.tooltip_text(id).is_some())
+                .then_some(since + TOOLTIP_DELAY)
+        });
+        [tooltip, self.toast_wake()].into_iter().flatten().min()
     }
 
     /// The node's tooltip, or for an editor the diagnostic under the pointer.

@@ -1,6 +1,6 @@
 # Milestone 9: the missing widgets
 
-Row 18 of the coverage table listed four widgets as missing: number input, autocomplete, toasts and a property grid. Slices: 9a number input and autocomplete (below), 9b toasts, 9c property grid, 9d a derive macro for property grids.
+Row 18 of the coverage table listed four widgets as missing: number input, autocomplete, toasts and a property grid. Slices: 9a number input and autocomplete and 9b toasts (both below), 9c property grid, 9d a derive macro for property grids.
 
 # Milestone 9a: number input and autocomplete
 
@@ -56,3 +56,51 @@ The full suite is 182 tests plus 18 GPU tests; formatting and clippy (all featur
 - Clicking a stepper button moves focus out of the field.
 - The autocomplete list shows at most what fits in 280 px and scrolls; rows are plain text with one bold match, no icons or secondary text.
 - The field's role stays a text input with an expandable list rather than a dedicated editable combo box role.
+
+# Milestone 9b: toasts
+
+Implemented on 2026-09-21. Short messages that the framework owns: the app raises one and forgets it. They stack in the bottom corner at the end of the reading direction, above everything including modal dialogs, time out on the context's clock, hold while someone is reading or reaching for them, announce themselves to screen readers, and report a clicked action once. A cloneable sender raises them from any thread.
+
+## Use
+
+```rust
+if saved { ui.toast(Toast::success("Draft saved").action("Undo").tag("draft")); }
+if let Some(clicked) = ui.toast_action() { if clicked.tag == "draft" { undo(); } }
+
+let toasts = ui.toast_sender();                       // once, during any declaration
+std::thread::spawn(move || toasts.send(Toast::error("Export failed: the disk is full.")));
+```
+
+In the controls example, Actions > Save draft raises a toast with Undo, and "Export in the background" raises an error from a worker thread a moment later.
+
+## Contracts
+
+| Piece | Contract |
+| --- | --- |
+| `Toast` | `new`, `success`, `warning`, `error`; `.kind`, `.action(label)`, `.tag(text)`, `.duration`, `.sticky`. Five seconds by default, eight for errors and for toasts with an action; sticky toasts stay until dismissed. |
+| `Ui::toast(toast) -> ToastId` | Raised during a declaration, visible from the next one, which the context requests. Call it when something happens, not every frame. A toast equal to one already showing or waiting restarts that one instead of stacking, and the newest id is the valid one. |
+| Queue | Four toasts show at once, oldest on top; later ones wait and their time starts when they show. |
+| Time | Expiry runs on the `set_now` clock and `Context::next_wake` includes the next expiry, so an idle window wakes exactly when a toast is due. While the pointer or keyboard focus is on any toast, none expire and no wake is scheduled; afterwards each has at least 1.5 seconds left, however long the pointer rested. |
+| `Ui::toast_action() -> Option<ToastAction>` | Each click on an action button, once, with the toast's id and tag; the click also dismisses the toast. The report arrives in the declaration after the one that consumed the click, which hosts run in the same frame. At most 32 unclaimed actions are kept. |
+| `ToastSender` | From `Ui::toast_sender`; `Clone + Send`. `send` queues the toast for that window and wakes it through the host, so the toast is in the very next declaration. The desktop host installs the wake per window; other hosts call `Context::set_toast_wake`. |
+| `Context::push_toast`, `toasts`, `dismiss_toast` | For hosts and tests. |
+| Layout and look | The stack is the last root layer, absolutely placed 16 px from the bottom and from the end side (left in right-to-left windows). Each toast is a 360 px row: an accent stripe (the theme accent, green, amber or red by kind), wrapped text, the optional action and a close button with the tooltip "Dismiss". Toasts slide in, fade out and the stack glides when one leaves; reduced motion applies as everywhere. They take clicks over whatever is under them, including a modal dialog's scrim. |
+| Accessibility | A toast is `Role::Status` with a polite live region, an error is `Role::Alert` with an assertive one; the text is the name. The action and close buttons are ordinary buttons. |
+
+## Validation
+
+Six new core tests: placement in the corner, roles and live settings, the requested follow-up frame, the wake time and expiry at five and eight seconds; holding with the pointer for a minute with no wake scheduled, then 1.5 seconds of grace; an action reported once with its id and tag, eight seconds for action toasts, sticky toasts and the named close button; equal toasts restarting with the newest id valid, four visible with the waiting ones timed from when they show; a sender used from another thread waking the host twice and showing both toasts in the next declaration; and a toast above a modal dialog whose close button wins the hit test.
+
+One of those tests found a bug before it shipped: a toast moving up from the waiting queue got its timer one declaration late, so an idle window had no wake scheduled for it and it would have stayed until the next input. Timers now start after the leavers are removed, in the same pass.
+
+The full suite is 188 tests plus 18 GPU tests; formatting and clippy (all features, and core alone) are clean; the facade builds without default features. The controls, dialogs, application and images examples pass `--smoke`, controls also with `--rtl`, and `scripts/test-controls.ps1` passes. Checked in a release build by really driving the window: Save draft through the keyboard showed the green toast with Undo, and the worker thread's red error appeared about 1.5 seconds after its button was invoked, wrapped over two lines. UI Automation reports that toast 21 px above the client area's bottom and 20 px from its right edge, which is 16 logical pixels at 125 % scaling.
+
+The example change first broke `scripts/test-controls.ps1`: a new button pushed the `State:` label below the visible part of the scroll view, and nodes outside the viewport are not in the accessibility tree. The new widgets now sit below that label. `scripts/screenshot.ps1` gained `-InvokeNames`; its captures have always lost the bottom strip of the window (it sizes the bitmap to the client area but prints the window with its title bar), which is why a toast looks cut off in them.
+
+## Remaining limits
+
+- Kind colours are fixed, not theme tokens; the position is fixed to the bottom end corner.
+- Toasts under a modal dialog take clicks but are outside the dialog's focus scope, so Tab does not reach them there.
+- Toast state is per window and is not kept across a development restart.
+- No progress toasts and no updating a toast in place; raise a new one.
+- Windows screen reader speech for the live regions was not listened to here; the roles and live settings are what AccessKit is given.

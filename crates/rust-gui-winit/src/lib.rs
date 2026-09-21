@@ -329,6 +329,11 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         context.set_reduced_motion(options.reduced_motion);
         context.set_caret_movement(options.caret_movement);
         context.set_direction(options.direction.resolve());
+        // `ToastSender::send` from any thread wakes the loop; the next frame shows the toast.
+        let toast_wake = wake.clone();
+        context.set_toast_wake(move || {
+            toast_wake.request_redraw();
+        });
         Self {
             options,
             view,

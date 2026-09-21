@@ -13,6 +13,8 @@ mod overlays;
 mod rich_editor;
 mod rich_text;
 mod text_area;
+mod toasts;
+pub(crate) use toasts::ToastOutbox;
 
 pub use dock::{DockOptions, DockPanel, DockResponse};
 
@@ -27,6 +29,7 @@ pub(crate) enum WidgetKey {
 pub(crate) struct HostOutbox {
     pub watched: Vec<std::path::PathBuf>,
     pub images: Vec<std::path::PathBuf>,
+    pub toasts: ToastOutbox,
     pub hot_state: Option<String>,
 }
 
@@ -54,6 +57,9 @@ pub(crate) enum Kind {
     RichEditor,
     RichText,
     Image,
+    /// The stack of toasts in the window corner, and one toast in it.
+    Toasts,
+    Toast,
     ContextArea,
     Popover,
     Label,

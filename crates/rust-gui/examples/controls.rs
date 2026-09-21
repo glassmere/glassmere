@@ -1,6 +1,6 @@
 use rust_gui::{
-    AppOptions, Color, FontFamily, Length, MenuItem, NumberOptions, Size, Style, TextWrap, run,
-    suggest,
+    AppOptions, Color, FontFamily, Length, MenuItem, NumberOptions, Size, Style, TextWrap, Toast,
+    run, suggest,
 };
 
 const CITIES: [&str; 10] = [
@@ -78,10 +78,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ui.label("City"); ui.autocomplete("city", "City", &mut city, &matches);
                     if let Some(index) = ui.menu("actions", "Actions", &[MenuItem::new("Save draft"), MenuItem::disabled("Publish (unavailable)"), MenuItem::new("Reset name")]) {
                         action = if index == 0 { "saved".into() } else { name = "Hello".into(); "reset".into() };
+                        // Toasts confirm without taking focus; the action comes back through `toast_action`.
+                        if index == 0 { ui.toast(Toast::success("Draft saved").action("Undo").tag("draft")); }
+                        else { ui.toast(Toast::new("Name reset")); }
                     }
+                    if ui.toast_action().is_some_and(|clicked| clicked.tag == "draft") { action = "save undone".into(); }
                     ui.label_keyed("action", format!("Last action: {action}"));
-                    ui.label_keyed("fields", format!("Fields: {quantity} kg / {city}"));
                     ui.label_keyed("state", format!("State: {notifications} / {mode} / {volume:.0} / {theme}"));
+                    ui.label_keyed("fields", format!("Fields: {quantity} kg / {city}"));
+                    if ui.button_keyed("export", "Export in the background").clicked() {
+                        // Any thread raises a toast in this window through the sender.
+                        let toasts = ui.toast_sender();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_millis(1500));
+                            toasts.send(Toast::error("Export failed: the disk is full. Free some space and try again."));
+                        });
+                    }
                 });
             });
             ui.label_styled("footer", "Event-driven rendering · system fonts · native accessibility", Style { font_size: Some(13.0), foreground: Some(Color::rgb(162, 180, 198)), ..Style::default() });

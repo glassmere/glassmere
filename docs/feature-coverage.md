@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 9a. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 9b. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -21,7 +21,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 15 | Multiple rendering backends | Partial | wgpu only. CPU renderer: planned (phase 6). |
 | 16 | Efficient GPU architecture | Partial | Instanced quads, glyph atlas, a shared image atlas with vector images rasterized per size (milestone 8a), offscreen layers, batching, rectangular clipping. Missing: shadows, paths, gradients, custom shaders, mipmaps. |
 | 17 | Custom rendering escape hatch | Partial | `CustomWidget` leaves paint primitives; no embedded 2D/3D or direct GPU hook yet. |
-| 18 | Rich widget library | Partial | Button, checkbox, radio, slider, text input, combo, menu, context menu, tooltip, popover, tabs, split panes, tree, virtual list, data grid, modal and non-modal dialogs, docking, rich text, code editor, rich text editor, images, number input and autocomplete (milestone 9a). Missing: toasts, property grid. |
+| 18 | Rich widget library | Partial | Button, checkbox, radio, slider, text input, combo, menu, context menu, tooltip, popover, tabs, split panes, tree, virtual list, data grid, modal and non-modal dialogs, docking, rich text, code editor, rich text editor, images, number input and autocomplete (milestone 9a), toasts (milestone 9b). Missing: property grid. |
 | 19 | Professional-grade DataGrid | Partial | Virtual rows, sorting, selection, huge datasets. Missing: virtual columns, filtering, resizing, reordering, frozen rows/columns, inline editing. |
 | 20 | Docking/layout system | Done | `DockLayout` with splits, tab groups, in-window floating groups and detached OS windows; drag onto drop indicators plus a keyboard panel menu; text format and `serde` feature. Missing: cross-window tab drags, persisted detached-window geometry, scrolling tab strips. |
 | 21 | Powerful event system | Partial | Pointer (left and right buttons), keyboard, drag/drop, capture, context-menu requests, timed wakes. Missing: bubbling/cancellation model, gestures, custom events. |

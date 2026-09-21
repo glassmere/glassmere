@@ -9,7 +9,8 @@ param(
     [string]$HoverName = '',
     [string]$RightClickName = '',
     [int]$HoverSeconds = 1,
-    [string]$TypeText = ''
+    [string]$TypeText = '',
+    [string]$InvokeNames = ''
 )
 # Launches an example, waits for its window, saves target/<Name>.png and exits it.
 $ErrorActionPreference = 'Stop'
@@ -78,6 +79,17 @@ try {
             Start-Sleep -Milliseconds 120
         }
         Start-Sleep -Seconds 1
+    }
+    foreach ($target in ($InvokeNames -split '\|' | Where-Object { $_ })) {
+        # Activates buttons by name, after any typing.
+        $condition = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(
+            [System.Windows.Automation.AutomationElement]::NameProperty, $target)
+        $element = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+        if ($null -eq $element) { throw "Accessible element not found: $target" }
+        ([System.Windows.Automation.InvokePattern]$element.GetCurrentPattern(
+            [System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+        # Long enough for what the button started to show.
+        Start-Sleep -Seconds 2
     }
     if ($TabAfter -gt 0) {
         # Tab moves focus onward; the framework scrolls the focused control into view.

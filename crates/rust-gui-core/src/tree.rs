@@ -27,6 +27,7 @@ mod overlay_input;
 mod rich_editor;
 mod rich_text;
 mod text_area_input;
+mod toasts;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -79,6 +80,9 @@ pub enum Role {
     Splitter,
     Image,
     SpinButton,
+    /// A toast; `Alert` for errors.
+    Status,
+    Alert,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -103,6 +107,8 @@ pub struct NodeSnapshot {
     pub checked: Option<bool>,
     pub selected: Option<bool>,
     pub numeric: Option<NumericValue>,
+    /// Set for toasts.
+    pub live: Option<Live>,
     pub expanded: Option<bool>,
     pub active_descendant: Option<NodeId>,
     pub text_selection: Option<TextSelection>,
@@ -126,6 +132,13 @@ pub struct CollectionInfo {
     pub column: Option<usize>,
     pub columns: Option<usize>,
     pub sort: Option<crate::SortDirection>,
+}
+
+/// How assistive technology announces a node whose content appears on its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Live {
+    Polite,
+    Assertive,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -386,6 +399,10 @@ impl Node {
                 Control::TextInput {
                     number: Some(_), ..
                 } => Role::SpinButton,
+                Control::Toast {
+                    assertive: true, ..
+                } => Role::Alert,
+                Control::Toast { .. } => Role::Status,
                 _ => match self.kind {
                     Kind::Label | Kind::RichText => Role::Label,
                     // An image without a name is decorative.
@@ -431,6 +448,7 @@ impl Node {
                     label.clone()
                 }
                 Control::Dialog { title, .. } => title.clone(),
+                Control::Toast { label, .. } => label.clone(),
                 Control::Divider { .. } => "Splitter".into(),
                 Control::DockFloat => "Floating panel".into(),
                 Control::DockHandle { resize: false, .. } => "Move floating panel".into(),
@@ -485,6 +503,7 @@ pub struct Context {
     hot_save: bool,
     hot_state: Option<String>,
     diagnostic: diagnostics::DiagnosticState,
+    toast: toasts::ToastState,
     theme: Theme,
     stylesheet: StyleSheet,
     style_warnings: Vec<String>,
@@ -510,7 +529,7 @@ struct Measurement {
 
 fn layout_style(style: &Style, kind: Kind, direction: crate::Direction) -> taffy::Style {
     let mut result = style.layout(match kind {
-        Kind::Row | Kind::SplitRow | Kind::TabList => Flow::Row,
+        Kind::Row | Kind::SplitRow | Kind::TabList | Kind::Toast => Flow::Row,
         Kind::Grid => Flow::Grid,
         _ => Flow::Column,
     });
@@ -526,6 +545,16 @@ fn layout_style(style: &Style, kind: Kind, direction: crate::Direction) -> taffy
             result.inset.right = taffy::LengthPercentageAuto::length(0.0);
         } else {
             result.inset.left = taffy::LengthPercentageAuto::length(0.0);
+        }
+    }
+    if kind == Kind::Toasts {
+        // The bottom corner at the end of the reading direction.
+        result.position = taffy::Position::Absolute;
+        result.inset.bottom = taffy::LengthPercentageAuto::length(16.0);
+        if rtl {
+            result.inset.left = taffy::LengthPercentageAuto::length(16.0);
+        } else {
+            result.inset.right = taffy::LengthPercentageAuto::length(16.0);
         }
     }
     if kind == Kind::Dialog {
@@ -664,6 +693,7 @@ impl Default for Context {
             hot_save: false,
             hot_state: None,
             diagnostic: diagnostics::DiagnosticState::new(),
+            toast: toasts::ToastState::default(),
             theme,
             stylesheet: StyleSheet::default(),
             style_warnings: Vec::new(),
@@ -943,6 +973,13 @@ impl Context {
                 }),
                 _ => None,
             },
+            live: match node.control {
+                Control::Toast {
+                    assertive: true, ..
+                } => Some(Live::Assertive),
+                Control::Toast { .. } => Some(Live::Polite),
+                _ => None,
+            },
             expanded: if let Control::CollectionRow { expanded, .. } = node.control { expanded } else {
                 let suggests = matches!(node.control, Control::TextInput { suggestions: Some(_), .. });
                 // An autocomplete list is open only while it has rows to show.
@@ -1040,6 +1077,7 @@ impl Context {
         self.damage.clear();
         self.resizing = size != self.scene.size;
         self.begin_animation_frame();
+        self.update_toasts();
         let declare_started = Instant::now();
         let declare_span = tracing::trace_span!("rust_gui.declare").entered();
         let mut clicks = std::mem::take(&mut self.clicks);
@@ -1072,6 +1110,7 @@ impl Context {
             enabled: true,
         };
         view(&mut ui);
+        ui.declare_toasts();
         let mut elements = ui.elements;
         let mut dialog_keys = HashSet::new();
         for layer in &layers {
@@ -1090,6 +1129,7 @@ impl Context {
         self.watch_requests = host.watched;
         self.image_requests = host.images;
         self.trim_images();
+        self.apply_toasts(host.toasts);
         if host.hot_state.is_some() {
             self.hot_state = host.hot_state;
             self.hot_save = false;
@@ -2001,7 +2041,10 @@ impl Context {
             (node.activatable()
                 || node.focusable()
                 // Floating groups block clicks to whatever lies under them.
-                || matches!(node.kind, Kind::Popup | Kind::Popover | Kind::DockFloat)
+                || matches!(
+                    node.kind,
+                    Kind::Popup | Kind::Popover | Kind::DockFloat | Kind::Toast
+                )
                 || dialog_surface)
                 && node.clip.contains(position)
         })

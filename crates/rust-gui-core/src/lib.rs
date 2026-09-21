@@ -17,6 +17,7 @@ mod style;
 mod stylesheet;
 mod text_area;
 mod theme;
+mod toast;
 mod tree;
 mod ui;
 mod widget;
@@ -57,12 +58,13 @@ pub use text_area::{
     Highlighter, Severity,
 };
 pub use theme::{TOKENS, Theme};
+pub use toast::{Toast, ToastAction, ToastId, ToastKind, ToastSender};
 pub use tree::diagnostics::{
     DiagnosticKind, FrameDiagnostic, HUGE_CHILDREN, LAYER_AREA, RELAYOUT_FRAMES, REPAINT_FRAMES,
     REPAINT_MIN_NODES, UNSTABLE_ID_FRAMES,
 };
 pub use tree::{
-    Action, CollectionInfo, Context, Dirty, Event, FrameStats, Key, NodeDetails, NodeId,
+    Action, CollectionInfo, Context, Dirty, Event, FrameStats, Key, Live, NodeDetails, NodeId,
     NodeSnapshot, NumericValue, Role, ScrollState, Semantics,
 };
 pub use ui::{DockOptions, DockPanel, DockResponse, Response, Ui, suggest};

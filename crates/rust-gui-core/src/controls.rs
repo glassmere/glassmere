@@ -154,6 +154,11 @@ pub(crate) enum Control {
     },
     /// A button the keyboard skips because the field beside it has the keys.
     Stepper,
+    Toast {
+        label: String,
+        /// Errors interrupt a screen reader; the rest wait their turn.
+        assertive: bool,
+    },
     Checkbox {
         label: String,
         checked: bool,

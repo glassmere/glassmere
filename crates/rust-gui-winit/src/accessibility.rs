@@ -55,6 +55,8 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     CoreRole::Splitter => Role::Splitter,
                     CoreRole::Image => Role::Image,
                     CoreRole::SpinButton => Role::SpinButton,
+                    CoreRole::Status => Role::Status,
+                    CoreRole::Alert => Role::Alert,
                 }
             };
             let mut node = Node::new(role);
@@ -85,6 +87,12 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                 node.set_value(snapshot.semantics.label);
             } else if !snapshot.semantics.label.is_empty() {
                 node.set_label(snapshot.semantics.label);
+            }
+            if let Some(live) = snapshot.live {
+                node.set_live(match live {
+                    rust_gui_core::Live::Polite => accesskit::Live::Polite,
+                    rust_gui_core::Live::Assertive => accesskit::Live::Assertive,
+                });
             }
             if snapshot.semantics.disabled {
                 node.set_disabled();
