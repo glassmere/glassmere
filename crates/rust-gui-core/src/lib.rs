@@ -25,9 +25,9 @@ mod widget;
 
 pub use animation::{Animation, Easing, Effect, Keyframe, Repeat, Transform, Transition};
 pub use collection::{
-    CellEditor, CellValue, GridColumn, GridColumns, GridModel, GridState, ItemId, ItemOrder,
-    ListModel, ListResponse, ListState, ModelError, SortDirection, TreeItem, TreeModel,
-    VirtualListOptions,
+    CellEditor, CellValue, FILTER_DELAY, GridColumn, GridColumns, GridModel, GridState, ItemId,
+    ItemOrder, ListModel, ListResponse, ListState, ModelError, SortDirection, TreeItem, TreeModel,
+    VirtualListOptions, text_matches,
 };
 pub use command::{Command, Shortcut, ShortcutKey};
 pub use controls::{AutocompleteResponse, MenuItem, NumberOptions};

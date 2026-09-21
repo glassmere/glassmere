@@ -487,6 +487,8 @@ pub struct GridColumn {
     pub sortable: bool,
     /// `None` makes the column read-only.
     pub editor: Option<CellEditor>,
+    /// Shows a filter field under the header; see `GridModel::filter`.
+    pub filterable: bool,
 }
 
 impl GridColumn {
@@ -497,7 +499,13 @@ impl GridColumn {
             width,
             sortable: false,
             editor: None,
+            filterable: false,
         }
+    }
+
+    pub fn filterable(mut self, filterable: bool) -> Self {
+        self.filterable = filterable;
+        self
     }
 
     pub fn sortable(mut self, sortable: bool) -> Self {
@@ -527,7 +535,26 @@ pub trait GridModel: ListModel {
         let _ = (row, column, value);
         Err("This grid is read-only.".into())
     }
+    /// Narrows the rows to the ones matching every `(column, text)` pair; an
+    /// empty slice shows everything again. The model filters its own data, as
+    /// it sorts it, so this works for indexes and remote sources, and item
+    /// identities stay stable. Texts arrive trimmed and never empty. Return
+    /// true after actually changing the rows. `text_matches` is the usual test.
+    fn filter(&mut self, filters: &[(usize, &str)]) -> bool {
+        let _ = filters;
+        false
+    }
 }
+
+/// Whether `cell` contains `filter`, ignoring case: the usual test for
+/// `GridModel::filter`.
+pub fn text_matches(cell: &str, filter: &str) -> bool {
+    cell.to_lowercase().contains(&filter.to_lowercase())
+}
+
+/// How long the filter fields wait after the last keystroke before the model
+/// filters, so that typing a word filters once.
+pub const FILTER_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
 #[derive(Clone, Debug, Default)]
 pub struct GridState {
     pub rows: ListState,
@@ -536,6 +563,13 @@ pub struct GridState {
     pub columns: GridColumns,
     /// Model column of the current cell; its row is the selected row.
     pub cursor: usize,
+    /// Text of the filter fields by model column. Changing it from code
+    /// filters at the next declaration, without the typing delay.
+    pub filters: std::collections::BTreeMap<usize, String>,
+    /// What the model was last asked to filter by.
+    pub(crate) applied_filters: Vec<(usize, String)>,
+    /// When typed filter text is due to reach the model.
+    pub(crate) filter_due: Option<std::time::Duration>,
     pub(crate) edit: Option<GridEdit>,
     /// The next declaration gives the keyboard back to the rows.
     pub(crate) refocus: bool,

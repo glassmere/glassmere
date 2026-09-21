@@ -136,6 +136,23 @@ impl Ui<'_> {
         let mut response = ListResponse::default();
         let mut actions = Vec::new();
 
+        // Filters. Typing waits for a pause; text set from code applies at once.
+        let filterable = columns.iter().any(|column| column.filterable);
+        let mut typed_filter = false;
+        let wanted = |state: &GridState| -> Vec<(usize, String)> {
+            state
+                .filters
+                .iter()
+                .filter(|(column, _)| {
+                    columns
+                        .get(**column)
+                        .is_some_and(|column| column.filterable)
+                })
+                .map(|(column, text)| (*column, text.trim().to_owned()))
+                .filter(|(_, text)| !text.is_empty())
+                .collect()
+        };
+
         // Cell cursor and in-place editing. The rows' input queue also carries
         // what only a grid understands; take that out before the rows see the rest.
         let rows = self
@@ -385,12 +402,54 @@ impl Ui<'_> {
                         }
                     },
                 );
+                if filterable {
+                    ui.row(
+                        "$filters",
+                        Style {
+                            width: Length::Px(total_width),
+                            height: Length::Px(options.row_height),
+                            gap: 0.0,
+                            ..Style::default()
+                        },
+                        |ui| {
+                            for (&column, &width) in visible.iter().zip(&widths) {
+                                let descriptor = &columns[column];
+                                let field = Style {
+                                    padding: 4.0,
+                                    radius: 0.0,
+                                    ..Style::button()
+                                }
+                                .width(Length::Px(width))
+                                .height(Length::Px(options.row_height));
+                                if descriptor.filterable {
+                                    let text = state.filters.entry(column).or_default();
+                                    typed_filter |= ui
+                                        .text_input_styled(
+                                            column.to_string(),
+                                            format!("Filter {}", descriptor.label),
+                                            text,
+                                            "Filter",
+                                            field,
+                                        )
+                                        .changed;
+                                } else {
+                                    ui.label_styled(
+                                        column.to_string(),
+                                        "",
+                                        field.background(rust_gui_scene::Color::TRANSPARENT),
+                                    );
+                                }
+                            }
+                        },
+                    );
+                }
+                let header_rows = if filterable { 2.0 } else { 1.0 };
                 response = ui.collection(
                     "$rows".into(),
                     model,
                     &mut state.rows,
                     VirtualListOptions {
-                        height: (options.height - options.row_height).max(1.0),
+                        height: (options.height - options.row_height * header_rows).max(1.0),
                         ..options.clone()
                     },
                     CollectionKind::Grid,
@@ -497,6 +556,29 @@ impl Ui<'_> {
             self.request_redraw();
         }
         response.edited = edited;
+        // The model hears about filter text once typing pauses, and at once
+        // when the app changed it.
+        let now = self.context.now();
+        if typed_filter {
+            state.filter_due = Some(now + crate::FILTER_DELAY);
+        }
+        let wanted = wanted(state);
+        if wanted != state.applied_filters {
+            if state.filter_due.is_none_or(|due| now >= due) {
+                let pairs: Vec<(usize, &str)> = wanted
+                    .iter()
+                    .map(|(column, text)| (*column, text.as_str()))
+                    .collect();
+                model.filter(&pairs);
+                state.applied_filters = wanted;
+                state.filter_due = None;
+            }
+            // ponytail: frames until the delay is over; a context timer would
+            // let the window sleep through it.
+            self.request_redraw();
+        } else {
+            state.filter_due = None;
+        }
         self.elements.last_mut().unwrap().control = Control::Grid {
             label: options.label,
             rows: model.len(),

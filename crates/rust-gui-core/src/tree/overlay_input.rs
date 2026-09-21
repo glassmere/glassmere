@@ -8,6 +8,11 @@ impl Context {
         self.now = now;
     }
 
+    /// The clock the host last supplied through `set_now`.
+    pub fn now(&self) -> Duration {
+        self.now
+    }
+
     /// When the context next wants to be run without input, on the `set_now` clock.
     pub fn next_wake(&self) -> Option<Duration> {
         let tooltip = self.hover_since.and_then(|(id, since)| {

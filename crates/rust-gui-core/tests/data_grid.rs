@@ -18,6 +18,7 @@ impl People {
             width,
             sortable: true,
             editor: None,
+            filterable: false,
         };
         Self {
             columns: vec![

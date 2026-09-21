@@ -4,7 +4,7 @@
 //! cancels. Right-click a header, or press Shift+F10 on it, for its menu.
 use rust_gui::{
     AppOptions, CellEditor, CellValue, GridColumn, GridModel, GridState, ItemId, Length, ListModel,
-    NumberOptions, Size, SortDirection, Style, VirtualListOptions, run,
+    NumberOptions, Size, SortDirection, Style, VirtualListOptions, run, text_matches,
 };
 
 const CITIES: [&str; 6] = ["Berlin", "Brno", "Lisbon", "Prague", "Vienna", "Zagreb"];
@@ -26,7 +26,9 @@ struct Person {
 
 struct People {
     columns: Vec<GridColumn>,
-    rows: Vec<Person>,
+    /// Everyone; `rows` is the part the filters let through.
+    everyone: Vec<Person>,
+    rows: Vec<usize>,
 }
 
 impl People {
@@ -41,9 +43,11 @@ impl People {
                 GridColumn::new("Id", 70.0).sortable(true),
                 GridColumn::new("Name", 190.0)
                     .sortable(true)
+                    .filterable(true)
                     .editor(CellEditor::Text),
                 GridColumn::new("City", 130.0)
                     .sortable(true)
+                    .filterable(true)
                     .editor(CellEditor::Choice(CITIES.map(String::from).to_vec())),
                 GridColumn::new("Age", 80.0)
                     .sortable(true)
@@ -53,7 +57,8 @@ impl People {
                     .editor(CellEditor::number(money)),
                 GridColumn::new("Active", 80.0).editor(CellEditor::Bool),
             ],
-            rows: (0..count)
+            rows: (0..count as usize).collect(),
+            everyone: (0..count)
                 .map(|id| Person {
                     id,
                     name: format!(
@@ -71,19 +76,27 @@ impl People {
     }
 }
 
+impl People {
+    fn person(&self, row: usize) -> &Person {
+        &self.everyone[self.rows[row]]
+    }
+}
+
 impl ListModel for People {
     fn len(&self) -> usize {
         self.rows.len()
     }
     fn item_id(&self, index: usize) -> ItemId {
-        ItemId(self.rows[index].id)
+        ItemId(self.person(index).id)
     }
     // ponytail: a linear search; keep an id-to-row map once there are more than a few thousand rows.
     fn index_of(&self, id: ItemId) -> Option<usize> {
-        self.rows.iter().position(|person| person.id == id.0)
+        self.rows
+            .iter()
+            .position(|person| self.everyone[*person].id == id.0)
     }
     fn label(&self, index: usize) -> String {
-        self.rows[index].name.clone()
+        self.person(index).name.clone()
     }
 }
 
@@ -92,7 +105,7 @@ impl GridModel for People {
         &self.columns
     }
     fn cell(&self, row: usize, column: usize) -> String {
-        let person = &self.rows[row];
+        let person = self.person(row);
         match column {
             0 => format!("#{}", person.id),
             1 => person.name.clone(),
@@ -103,7 +116,7 @@ impl GridModel for People {
         }
     }
     fn value(&self, row: usize, column: usize) -> CellValue {
-        let person = &self.rows[row];
+        let person = self.person(row);
         match column {
             2 => CellValue::Choice(person.city),
             3 => CellValue::Number(person.age),
@@ -113,7 +126,7 @@ impl GridModel for People {
         }
     }
     fn set_cell(&mut self, row: usize, column: usize, value: CellValue) -> Result<(), String> {
-        let person = &mut self.rows[row];
+        let person = &mut self.everyone[self.rows[row]];
         match (column, value) {
             (1, CellValue::Text(name)) if name.trim().is_empty() => {
                 return Err("A name is required.".into());
@@ -128,16 +141,43 @@ impl GridModel for People {
         Ok(())
     }
     fn sort(&mut self, column: usize, direction: SortDirection) -> bool {
-        self.rows.sort_by(|a, b| match column {
-            1 => a.name.cmp(&b.name),
-            2 => CITIES[a.city].cmp(CITIES[b.city]),
-            3 => a.age.total_cmp(&b.age),
-            4 => a.salary.total_cmp(&b.salary),
-            _ => a.id.cmp(&b.id),
+        let everyone = &self.everyone;
+        self.rows.sort_by(|a, b| {
+            let (a, b) = (&everyone[*a], &everyone[*b]);
+            match column {
+                1 => a.name.cmp(&b.name),
+                2 => CITIES[a.city].cmp(CITIES[b.city]),
+                3 => a.age.total_cmp(&b.age),
+                4 => a.salary.total_cmp(&b.salary),
+                _ => a.id.cmp(&b.id),
+            }
         });
         if direction == SortDirection::Descending {
             self.rows.reverse();
         }
+        true
+    }
+    fn filter(&mut self, filters: &[(usize, &str)]) -> bool {
+        // Sorting is kept: the rows that pass stay in their current order,
+        // and the ones that come back are appended in id order.
+        let passes = |person: &Person| {
+            filters.iter().all(|(column, text)| match column {
+                1 => text_matches(&person.name, text),
+                _ => text_matches(CITIES[person.city], text),
+            })
+        };
+        let mut rows: Vec<usize> = self
+            .rows
+            .iter()
+            .copied()
+            .filter(|row| passes(&self.everyone[*row]))
+            .collect();
+        for row in 0..self.everyone.len() {
+            if passes(&self.everyone[row]) && !rows.contains(&row) {
+                rows.push(row);
+            }
+        }
+        self.rows = rows;
         true
     }
 }
@@ -165,7 +205,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.column("page", page, |ui| {
                 ui.label_styled(
                     "title",
-                    "People · 2,000 rows",
+                    format!("People · {} of 2,000 rows", people.rows.len()),
                     Style {
                         font_size: Some(24.0),
                         ..Style::default()

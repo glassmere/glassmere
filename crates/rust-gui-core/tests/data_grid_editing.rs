@@ -380,3 +380,142 @@ fn a_second_click_on_the_current_cell_opens_it_and_clicking_away_stores_it() {
         (Some(ItemId(5)), 2)
     );
 }
+
+mod filtering {
+    use rust_gui_core::{
+        Action, Context, Event, FILTER_DELAY, GridColumn, GridModel, GridState, ItemId, ListModel,
+        MonospaceMeasurer, SortDirection, TextEdit, VirtualListOptions, text_matches,
+    };
+    use rust_gui_scene::Size;
+    use std::time::Duration;
+
+    struct Fruit {
+        columns: Vec<GridColumn>,
+        all: Vec<(&'static str, &'static str)>,
+        shown: Vec<usize>,
+        calls: Vec<Vec<(usize, String)>>,
+    }
+
+    impl ListModel for Fruit {
+        fn len(&self) -> usize {
+            self.shown.len()
+        }
+        fn item_id(&self, index: usize) -> ItemId {
+            ItemId(self.shown[index] as u64)
+        }
+        fn index_of(&self, id: ItemId) -> Option<usize> {
+            self.shown.iter().position(|row| *row as u64 == id.0)
+        }
+        fn label(&self, index: usize) -> String {
+            self.all[self.shown[index]].0.into()
+        }
+    }
+
+    impl GridModel for Fruit {
+        fn columns(&self) -> &[GridColumn] {
+            &self.columns
+        }
+        fn cell(&self, row: usize, column: usize) -> String {
+            let fruit = self.all[self.shown[row]];
+            [fruit.0, fruit.1, "-"][column].into()
+        }
+        fn sort(&mut self, _: usize, _: SortDirection) -> bool {
+            false
+        }
+        fn filter(&mut self, filters: &[(usize, &str)]) -> bool {
+            self.calls.push(
+                filters
+                    .iter()
+                    .map(|(column, text)| (*column, (*text).to_owned()))
+                    .collect(),
+            );
+            self.shown = (0..self.all.len())
+                .filter(|row| {
+                    let fruit = self.all[*row];
+                    filters
+                        .iter()
+                        .all(|(column, text)| text_matches([fruit.0, fruit.1][*column], text))
+                })
+                .collect();
+            true
+        }
+    }
+
+    fn frame(context: &mut Context, model: &mut Fruit, state: &mut GridState, at: u64) {
+        context.set_now(Duration::from_millis(at));
+        context.run(Size::new(700.0, 400.0), &mut MonospaceMeasurer, |ui| {
+            ui.data_grid("grid", model, state, VirtualListOptions::default());
+        });
+    }
+
+    #[test]
+    fn the_model_filters_once_typing_pauses_and_at_once_when_the_app_sets_the_text() {
+        let mut model = Fruit {
+            columns: vec![
+                GridColumn::new("Name", 160.0).filterable(true),
+                GridColumn::new("Colour", 160.0).filterable(true),
+                GridColumn::new("Notes", 100.0),
+            ],
+            all: vec![
+                ("Apple", "red"),
+                ("Apricot", "orange"),
+                ("Banana", "yellow"),
+                ("Blood orange", "red"),
+            ],
+            shown: (0..4).collect(),
+            calls: Vec::new(),
+        };
+        let mut context = Context::new();
+        let mut state = GridState::default();
+        state.rows.select(Some(ItemId(2)));
+        frame(&mut context, &mut model, &mut state, 0);
+
+        // One field per filterable column, named for assistive technology; none for Notes.
+        let name = context.find(&["grid", "$filters", "0"]).unwrap();
+        assert_eq!(context.node(name).unwrap().semantics.label, "Filter Name");
+        let notes = context.find(&["grid", "$filters", "2"]).unwrap();
+        assert!(!context.node(notes).unwrap().semantics.focusable);
+
+        // Typing a word filters once, after the pause.
+        context.action(name, Action::Focus);
+        for (at, letter) in [(10, "a"), (60, "p")] {
+            context.event(Event::Text(TextEdit::Insert(letter.into())));
+            frame(&mut context, &mut model, &mut state, at);
+        }
+        assert!(model.calls.is_empty(), "still typing");
+        assert!(
+            context.animating(),
+            "and frames keep coming until it is due"
+        );
+        frame(
+            &mut context,
+            &mut model,
+            &mut state,
+            60 + FILTER_DELAY.as_millis() as u64,
+        );
+        assert_eq!(model.calls, [vec![(0, "ap".to_owned())]]);
+        frame(&mut context, &mut model, &mut state, 400);
+        assert_eq!(model.len(), 2);
+        let info = context.node(context.find(&["grid"]).unwrap()).unwrap();
+        assert_eq!(info.collection.unwrap().total, 2);
+        // The selected row was filtered away, so nothing is selected.
+        assert_eq!(state.rows.selected(), None);
+        frame(&mut context, &mut model, &mut state, 500);
+        assert_eq!(model.calls.len(), 1, "unchanged text does not filter again");
+        assert!(!context.animating());
+
+        // Text the app sets applies at the next declaration; filters combine; spaces are trimmed.
+        state.filters.insert(1, "  RED ".into());
+        frame(&mut context, &mut model, &mut state, 600);
+        assert_eq!(
+            model.calls.last().unwrap(),
+            &vec![(0, "ap".to_owned()), (1, "RED".to_owned())]
+        );
+        assert_eq!(model.shown, [0]);
+        // Clearing everything asks for all rows with an empty slice.
+        state.filters.clear();
+        frame(&mut context, &mut model, &mut state, 700);
+        assert_eq!(model.calls.last().unwrap(), &Vec::new());
+        assert_eq!(model.len(), 4);
+    }
+}

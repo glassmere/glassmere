@@ -1,6 +1,6 @@
 # Milestone 10: the data grid
 
-Row 19 of the coverage table lists what a professional grid still lacks: column resizing and reordering, filtering, inline editing, frozen and virtual columns. Decisions taken at the start: column layout lives in the app-owned `GridState`; the model filters, like it sorts; editing uses a cell cursor with typed editors; and wide grids build on general two-axis scrolling in the engine rather than a grid-only mechanism. Slices: 10a horizontal scrolling, 10b column resize, reorder and hide and 10c cell cursor and inline editing (all below), 10d the filter row, 10e the horizontally scrolling grid with frozen and virtual columns.
+Row 19 of the coverage table lists what a professional grid still lacks: column resizing and reordering, filtering, inline editing, frozen and virtual columns. Decisions taken at the start: column layout lives in the app-owned `GridState`; the model filters, like it sorts; editing uses a cell cursor with typed editors; and wide grids build on general two-axis scrolling in the engine rather than a grid-only mechanism. Slices: 10a horizontal scrolling, 10b column resize, reorder and hide and 10c cell cursor and inline editing and 10d the filter row (all below), 10e the horizontally scrolling grid with frozen and virtual columns.
 
 # Milestone 10a: horizontal scrolling
 
@@ -137,3 +137,30 @@ The full suite is 214 tests plus 18 GPU tests; formatting and clippy (all featur
 - An editor scrolled out of the realized rows disappears until it is scrolled back; the draft is kept.
 - The current cell is not reported to assistive technology as the active descendant; the selected row is.
 - There is no double-click; a second press on the current cell stands in for it.
+
+# Milestone 10d: filter row
+
+Implemented on 2026-09-21. Columns marked filterable get a field under their header; the model narrows its own rows, as it sorts them.
+
+## Contracts
+
+| Piece | Contract |
+| --- | --- |
+| `GridColumn::filterable(true)` | Shows a text field under that column's header, named "Filter NAME" for assistive technology. The row appears when any column is filterable and takes one row height from the grid's height. |
+| `GridModel::filter(&[(column, text)]) -> bool` | Called with every non-empty filter, trimmed; all must match. An empty slice means everything. The default does nothing, so existing models are unaffected. Because the model filters its own data, this works for indexes and remote sources and item identities stay stable; a selected row that is filtered away is deselected. |
+| `text_matches(cell, filter)` | The usual test: contains, ignoring case. |
+| Timing | Typing reaches the model `FILTER_DELAY` (200 ms) after the last keystroke, so a word filters once; frames keep coming until then. Unchanged text never filters again. |
+| `GridState::filters` | The field texts by model column, public: text the app sets, or clears, applies at the next declaration without the delay. Keep it with the rest of the state to persist filters. |
+| Also new | `Context::now()`. |
+
+## Validation
+
+One new core test covers the whole flow against a model that records its calls: the named fields and the inert spacer, two keystrokes filtering once after the pause while frames are requested, the row count and the deselected row, no second call for unchanged text, app-set text applying at once and combining with the typed one after trimming, and clearing asking for everything with an empty slice.
+
+The full suite is 215 tests plus 18 GPU tests; formatting and clippy are clean; the facade builds without default features; the grid and application examples pass `--smoke`. In the real grid example, typing "ada" into the Name filter left 250 of 2,000 rows, all named Ada.
+
+## Remaining limits
+
+- Text filters only: no operators, ranges or per-type filter editors.
+- The delay is waited out with frames rather than a timer, so the window does not sleep for those 200 ms.
+- The filter fields do not follow the rows sideways yet: 10e.

@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 10c. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 10d. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -22,7 +22,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 16 | Efficient GPU architecture | Partial | Instanced quads, glyph atlas, a shared image atlas with vector images rasterized per size (milestone 8a), offscreen layers, batching, rectangular clipping. Missing: shadows, paths, gradients, custom shaders, mipmaps. |
 | 17 | Custom rendering escape hatch | Partial | `CustomWidget` leaves paint primitives; no embedded 2D/3D or direct GPU hook yet. |
 | 18 | Rich widget library | Done | Button, checkbox, radio, slider, text input, combo, menu, context menu, tooltip, popover, tabs, split panes, tree, virtual list, data grid, modal and non-modal dialogs, docking, rich text, code editor, rich text editor, images, number input and autocomplete (milestone 9a), toasts (milestone 9b) and a property grid with a derive macro (milestones 9c and 9d). |
-| 19 | Professional-grade DataGrid | Partial | Virtual rows, sorting, selection, huge datasets; column resizing, reordering and hiding in app-owned state, by drag and from a keyboard menu (milestone 10b); a cell cursor and typed in-place editing with model validation (milestone 10c). Missing: virtual columns, filtering, frozen rows/columns. |
+| 19 | Professional-grade DataGrid | Partial | Virtual rows, sorting, selection, huge datasets; column resizing, reordering and hiding in app-owned state, by drag and from a keyboard menu (milestone 10b); a cell cursor and typed in-place editing with model validation (milestone 10c); a filter row whose texts the model applies (milestone 10d). Missing: virtual columns, frozen rows/columns. |
 | 20 | Docking/layout system | Done | `DockLayout` with splits, tab groups, in-window floating groups and detached OS windows; drag onto drop indicators plus a keyboard panel menu; text format and `serde` feature. Missing: cross-window tab drags, persisted detached-window geometry, scrolling tab strips. |
 | 21 | Powerful event system | Partial | Pointer (left and right buttons), keyboard, drag/drop, capture, context-menu requests, timed wakes. Missing: bubbling/cancellation model, gestures, custom events. |
 | 22 | Input abstraction independent of the OS | Done | Core consumes `Event`; winit lives only in the host crate. |

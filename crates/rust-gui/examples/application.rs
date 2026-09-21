@@ -26,6 +26,7 @@ impl Tickets {
             width,
             sortable,
             editor: None,
+            filterable: false,
         };
         let mut tickets = Self {
             count,
