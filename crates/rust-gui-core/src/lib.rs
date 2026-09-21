@@ -1,4 +1,5 @@
 //! Stable identity, reconciliation, layout, input, and semantic metadata.
+mod animation;
 mod collection;
 mod command;
 mod controls;
@@ -13,6 +14,7 @@ mod tree;
 mod ui;
 mod widget;
 
+pub use animation::{Animation, Easing, Effect, Keyframe, Repeat, Transform, Transition};
 pub use collection::{
     GridColumn, GridModel, GridState, ItemId, ItemOrder, ListModel, ListResponse, ListState,
     ModelError, SortDirection, TreeItem, TreeModel, VirtualListOptions,

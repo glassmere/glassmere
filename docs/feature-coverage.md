@@ -4,7 +4,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
-| 1 | Immediate-mode ergonomics, retained internals | Done | `ui.button(...)` over a retained tree with persistent focus, scroll, editing and caches. Animations: planned (phase 6). |
+| 1 | Immediate-mode ergonomics, retained internals | Done | `ui.button(...)` over a retained tree with persistent focus, scroll, editing, caches and animation state. |
 | 2 | Stable widget identity | Done | Explicit/positional keys, monotonic `NodeId` shared by layout, input, focus, accessibility, testing and the inspector. |
 | 3 | Incremental updates | Partial | Property comparison limits layout/paint work; declarations still visit the whole view each frame. |
 | 4 | Incremental layout | Done | Taffy dirty subtrees; same-size text changes skip layout. |
@@ -16,7 +16,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 10 | Modern layout engine | Partial | Flexbox, grid with tracks/areas/repeat/minmax, intrinsic sizing, percentages, min/max, aspect ratio, alignment including text-bottom baseline, absolute popups (milestone 6b). Missing: true font baselines, responsive breakpoints, custom layout primitives. |
 | 11 | Typed styling system | Done | Typed `Style` with builders, Rust classes, stylesheet classes with `extends`, tokens, hover/pressed/focused/disabled overrides, text inheritance and hot reload from disk (milestone 6a). Compile-time validation applies to the Rust API only. |
 | 12 | Excellent theming | Done | Dark and light token themes, runtime switching, OS preference via winit, stylesheet token overlays and user sheets (milestone 6a). |
-| 13 | Animations in the property system | Planned | Phase 6. |
+| 13 | Animations in the property system | Done | `Style::transition`, `enter`/`exit` effects, `layout_transition`, keyframe `Animation`, easing curves, reduced motion; composited as GPU layers. Missing: spring physics, per-property timing, OS reduced-motion detection. |
 | 14 | Renderer-independent UI core | Done | Core emits a `Scene` display list; no wgpu types in core. |
 | 15 | Multiple rendering backends | Partial | wgpu only. CPU renderer: planned (phase 6). |
 | 16 | Efficient GPU architecture | Partial | Instanced quads, glyph atlas, batching, rectangular clipping. Missing: layers, shadows, paths, gradients, custom shaders. |

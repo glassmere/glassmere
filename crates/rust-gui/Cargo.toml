@@ -48,5 +48,9 @@ required-features = ["desktop"]
 name = "panes"
 required-features = ["desktop"]
 
+[[example]]
+name = "animations"
+required-features = ["desktop"]
+
 [lints]
 workspace = true

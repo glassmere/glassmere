@@ -14,6 +14,7 @@ use crate::{
 use rust_gui_scene::{
     Color, Point, Primitive, Rect, Scene, Size, TextMeasurer, TextStyle, TextWrap,
 };
+mod animation_state;
 mod collection_input;
 mod control_input;
 mod control_paint;
@@ -282,6 +283,9 @@ struct Node {
     resolved: ResolvedText,
     scope: Option<Box<ScopeState>>,
     tooltip: Option<String>,
+    anim: Option<Box<animation_state::NodeAnim>>,
+    /// Parent-relative layout rectangle; layout animations start from the old one.
+    layout_rect: Rect,
 }
 
 impl Node {
@@ -436,6 +440,10 @@ pub struct Context {
     hover_since: Option<(NodeId, Duration)>,
     tooltip: Option<NodeId>,
     new_popovers: Vec<NodeId>,
+    reduced_motion: bool,
+    resizing: bool,
+    animating_nodes: Vec<NodeId>,
+    ghosts: Vec<animation_state::Ghost>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -515,6 +523,8 @@ impl Default for Context {
             scroll: ScrollState::default(),
             custom: None,
             paint_cache: None,
+            anim: None,
+            layout_rect: Rect::default(),
             control: Control::None,
             editor: None,
             changed: Dirty::all(),
@@ -555,6 +565,10 @@ impl Default for Context {
             hover_since: None,
             tooltip: None,
             new_popovers: Vec::new(),
+            reduced_motion: false,
+            resizing: false,
+            animating_nodes: Vec::new(),
+            ghosts: Vec::new(),
         }
     }
 }
@@ -773,6 +787,8 @@ impl Context {
         self.frame += 1;
         self.stats.frame = self.frame;
         self.damage.clear();
+        self.resizing = size != self.scene.size;
+        self.begin_animation_frame();
         let declare_started = Instant::now();
         let declare_span = tracing::trace_span!("rust_gui.declare").entered();
         let mut clicks = std::mem::take(&mut self.clicks);
@@ -919,6 +935,7 @@ impl Context {
             {
                 self.paint(panel).append_to(&mut scene.primitives);
             }
+            self.paint_ghosts(&mut scene);
             self.paint_tooltip(&mut scene, measurer);
             self.scene = scene;
             self.stats.scene_rebuilt = true;
@@ -1084,6 +1101,8 @@ impl Context {
                 self.nodes.insert(
                     id,
                     Node {
+                        anim: animation_state::NodeAnim::entering(element.style.enter),
+                        layout_rect: Rect::default(),
                         key: element.key,
                         kind: element.kind,
                         parent: Some(parent),
@@ -1133,7 +1152,7 @@ impl Context {
             children.push(id);
         }
         for id in available.into_values() {
-            self.remove(id);
+            self.remove_with_exit(id);
         }
         if old_children != children {
             let layout_children: Vec<_> =
@@ -1271,6 +1290,13 @@ impl Context {
             width: layout.size.width,
             height: layout.size.height,
         };
+        let layout_rect = Rect {
+            x: layout.location.x,
+            y: layout.location.y,
+            width: layout.size.width,
+            height: layout.size.height,
+        };
+        let old_layout_rect = std::mem::replace(&mut node.layout_rect, layout_rect);
         let clip = if matches!(node.kind, Kind::Popup | Kind::Popover) {
             // Context menus anchor at the request point instead of below the owner.
             let anchored = (node.kind == Kind::Popup)
@@ -1314,6 +1340,7 @@ impl Context {
             self.add_damage(old_clip);
             self.invalidate_paint(id);
         }
+        self.note_layout_change(id, old_layout_rect, layout_rect);
         for child in children {
             self.update_bounds(child, origin, clip);
         }
@@ -1343,7 +1370,7 @@ impl Context {
 
     /// Background, text color and radius for the node's current interaction
     /// state: theme defaults for the widget kind, then the style's overrides.
-    fn appearance(&self, id: NodeId, node: &Node) -> (Option<Color>, Color, f32) {
+    fn appearance(&self, id: NodeId, node: &Node) -> crate::animation::Shown {
         let theme = &self.theme;
         let pressed = (self.captured == Some(id) && self.hovered == Some(id))
             || self
@@ -1368,6 +1395,8 @@ impl Context {
         });
         let mut foreground = node.resolved.foreground;
         let mut radius = node.style.radius;
+        let mut opacity = node.style.opacity;
+        let mut transform = node.style.transform;
         if node.kind == Kind::Button {
             if !node.enabled {
                 background = Some(theme.control_disabled);
@@ -1391,6 +1420,12 @@ impl Context {
                 if let Some(value) = paint.radius {
                     radius = value;
                 }
+                if let Some(value) = paint.opacity {
+                    opacity = value;
+                }
+                if let Some(value) = paint.transform {
+                    transform = value;
+                }
             };
             if focused {
                 apply(&states.focused);
@@ -1405,7 +1440,13 @@ impl Context {
                 apply(&states.disabled);
             }
         }
-        (background, foreground, radius)
+        crate::animation::Shown {
+            background,
+            foreground,
+            radius,
+            opacity,
+            transform,
+        }
     }
 
     fn paint(&mut self, id: NodeId) -> Arc<PaintChunk> {
@@ -1415,10 +1456,24 @@ impl Context {
         }
         self.stats.paint_nodes += 1;
         self.nodes.get_mut(&id).unwrap().painted_frame = self.frame;
+        let target = self.appearance(id, &self.nodes[&id]);
+        let animation_state::Displayed { shown, layer } = self.displayed(id, target);
+        let crate::animation::Shown {
+            background,
+            foreground,
+            radius,
+            ..
+        } = shown;
         let node = &self.nodes[&id];
         let mut scene = Scene::default();
+        if let Some((opacity, transform)) = layer {
+            scene.primitives.push(Primitive::PushLayer {
+                bounds: node.bounds,
+                opacity,
+                transform,
+            });
+        }
         scene.primitives.push(Primitive::PushClip(node.bounds));
-        let (background, foreground, radius) = self.appearance(id, node);
         if self.focused == Some(id) {
             scene.primitives.push(Primitive::Quad {
                 rect: node.bounds,
@@ -1518,6 +1573,9 @@ impl Context {
             });
         }
         scene.primitives.push(Primitive::PopClip);
+        if layer.is_some() {
+            scene.primitives.push(Primitive::PopLayer);
+        }
         let after = scene.primitives;
         let children = children
             .into_iter()

@@ -28,15 +28,23 @@ impl CustomWidget {
             "custom widget intrinsic size must be finite and nonnegative"
         );
         let mut depth = 0usize;
+        let mut layers = 0usize;
         for primitive in &self.primitives {
             match primitive {
                 Primitive::PushClip(_) => depth += 1,
                 Primitive::PopClip => {
                     depth = depth.checked_sub(1).expect("custom widget clip underflow");
                 }
+                Primitive::PushLayer { .. } => layers += 1,
+                Primitive::PopLayer => {
+                    layers = layers
+                        .checked_sub(1)
+                        .expect("custom widget layer underflow");
+                }
                 _ => {}
             }
         }
         assert_eq!(depth, 0, "custom widget clips must be balanced");
+        assert_eq!(layers, 0, "custom widget layers must be balanced");
     }
 }

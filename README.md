@@ -70,6 +70,14 @@ cargo run -p rust-gui --example panes --release
 
 Closable tabs, nested draggable split panes, tooltips after a hover dwell, a right-click context menu and an anchored popover. See [milestone 6d](docs/milestone-6.md#milestone-6d-tooltips-tabs-split-panes-context-menus-and-popovers).
 
+Animations:
+
+```powershell
+cargo run -p rust-gui --example animations --release
+```
+
+Eased state transitions, enter and exit effects, layout animations and looping keyframes, composited as GPU layers with group opacity and transforms. See [milestone 6e](docs/milestone-6.md#milestone-6e-animations).
+
 ```rust
 use rust_gui::{run, AppOptions};
 
@@ -99,6 +107,7 @@ The view may run more than once per input event. Put application actions behind 
 - Pointer hit testing and capture, hover, focus, Tab navigation, focus scopes with trap/restore/memory and arrow navigation, Enter/Space activation, disabled states and focus-loss cancellation.
 - In-window modal and non-modal dialogs with scrim, stacking, Escape/scrim dismissal and focus restoration; native modal windows that block their owner.
 - Tooltips driven by a core clock and host wake requests, closable tabs, split panes with draggable dividers, context menus and anchored popovers.
+- Transitions, enter/exit effects, layout animations and keyframes with easing curves and a reduced-motion switch, rendered through offscreen GPU layers.
 - Native winit host, logical coordinates, DPI scaling, zero-size handling and surface recovery.
 - Vertical scrolling, nested wheel propagation, keyboard scrolling and focus revealing off-screen controls.
 - AccessKit bridge sharing widget IDs, bounds, disabled state and activation with layout/input.
@@ -168,6 +177,7 @@ cargo run -p rust-gui --example theming -- --smoke
 cargo run -p rust-gui --example layout -- --smoke
 cargo run -p rust-gui --example dialogs -- --smoke
 cargo run -p rust-gui --example panes -- --smoke
+cargo run -p rust-gui --example animations -- --smoke
 cargo run -p rust-gui-core --example tree_bench --release
 ```
 

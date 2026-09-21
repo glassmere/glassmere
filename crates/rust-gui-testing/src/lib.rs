@@ -259,7 +259,7 @@ impl<S> Harness<S> {
         let mut out = String::new();
         let mut depth = 0usize;
         for primitive in &self.context.scene().primitives {
-            if matches!(primitive, Primitive::PopClip) {
+            if matches!(primitive, Primitive::PopClip | Primitive::PopLayer) {
                 depth = depth.saturating_sub(1);
             }
             out += &"  ".repeat(depth);
@@ -289,9 +289,27 @@ impl<S> Harness<S> {
                 ),
                 Primitive::PushClip(r) => format!("PushClip {}", rect(*r)),
                 Primitive::PopClip => "PopClip".into(),
+                Primitive::PushLayer {
+                    bounds,
+                    opacity,
+                    transform: t,
+                } => format!(
+                    "PushLayer {} opacity={opacity:.2} transform=[{:.3} {:.3} {:.3} {:.3} {:.1} {:.1}]",
+                    rect(*bounds),
+                    t.a,
+                    t.b,
+                    t.c,
+                    t.d,
+                    t.e,
+                    t.f
+                ),
+                Primitive::PopLayer => "PopLayer".into(),
             };
             out.push('\n');
-            if matches!(primitive, Primitive::PushClip(_)) {
+            if matches!(
+                primitive,
+                Primitive::PushClip(_) | Primitive::PushLayer { .. }
+            ) {
                 depth += 1;
             }
         }

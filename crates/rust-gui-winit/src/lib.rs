@@ -56,6 +56,9 @@ pub struct AppOptions {
     pub theme: ThemeChoice,
     /// A stylesheet file installed at start and reloaded when it changes on disk.
     pub stylesheet: Option<PathBuf>,
+    /// Skips animations. ponytail: not read from the OS setting yet, winit has no
+    /// cross-platform query; wire it per platform when one appears.
+    pub reduced_motion: bool,
 }
 
 impl Default for AppOptions {
@@ -69,6 +72,7 @@ impl Default for AppOptions {
             devtools: true,
             theme: ThemeChoice::System,
             stylesheet: None,
+            reduced_motion: false,
         }
     }
 }
@@ -242,10 +246,12 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         state: WindowState,
         clipboard: Rc<RefCell<Option<arboard::Clipboard>>>,
     ) -> Self {
+        let mut context = Context::new();
+        context.set_reduced_motion(options.reduced_motion);
         Self {
             options,
             view,
-            context: Context::new(),
+            context,
             state: Some(state),
             modifiers: ModifiersState::empty(),
             error: None,
@@ -487,6 +493,10 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         }
         state.window.pre_present_notify();
         frame.present();
+        // Fifo presentation paces this loop to the display while anything animates.
+        if self.context.animating() {
+            state.window.request_redraw();
+        }
         let render = render_started.elapsed();
         if self.frames == 0 {
             diagnostics::checkpoint("first_present", Some(&state.device));

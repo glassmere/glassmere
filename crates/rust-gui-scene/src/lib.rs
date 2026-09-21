@@ -97,6 +97,100 @@ impl Color {
     }
 }
 
+/// A 2×3 affine transform in absolute logical pixels:
+/// `x' = a·x + c·y + e`, `y' = b·x + d·y + f`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Affine {
+    pub a: f32,
+    pub b: f32,
+    pub c: f32,
+    pub d: f32,
+    pub e: f32,
+    pub f: f32,
+}
+
+impl Default for Affine {
+    fn default() -> Self {
+        Self::IDENTITY
+    }
+}
+
+impl Affine {
+    pub const IDENTITY: Self = Self {
+        a: 1.0,
+        b: 0.0,
+        c: 0.0,
+        d: 1.0,
+        e: 0.0,
+        f: 0.0,
+    };
+
+    pub fn translate(x: f32, y: f32) -> Self {
+        Self {
+            e: x,
+            f: y,
+            ..Self::IDENTITY
+        }
+    }
+
+    pub fn scale(x: f32, y: f32) -> Self {
+        Self {
+            a: x,
+            d: y,
+            ..Self::IDENTITY
+        }
+    }
+
+    /// Clockwise rotation in degrees (y grows downward).
+    pub fn rotate(degrees: f32) -> Self {
+        let (sin, cos) = degrees.to_radians().sin_cos();
+        Self {
+            a: cos,
+            b: sin,
+            c: -sin,
+            d: cos,
+            e: 0.0,
+            f: 0.0,
+        }
+    }
+
+    /// `self` applied first, then `next`.
+    pub fn then(self, next: Self) -> Self {
+        Self {
+            a: next.a * self.a + next.c * self.b,
+            b: next.b * self.a + next.d * self.b,
+            c: next.a * self.c + next.c * self.d,
+            d: next.b * self.c + next.d * self.d,
+            e: next.a * self.e + next.c * self.f + next.e,
+            f: next.b * self.e + next.d * self.f + next.f,
+        }
+    }
+
+    /// The same transform applied around `pivot` instead of the origin.
+    pub fn about(self, pivot: Point) -> Self {
+        Self::translate(-pivot.x, -pivot.y)
+            .then(self)
+            .then(Self::translate(pivot.x, pivot.y))
+    }
+
+    pub fn apply(self, point: Point) -> Point {
+        Point {
+            x: self.a * point.x + self.c * point.y + self.e,
+            y: self.b * point.x + self.d * point.y + self.f,
+        }
+    }
+
+    pub fn is_identity(self) -> bool {
+        const EPSILON: f32 = 1e-5;
+        (self.a - 1.0).abs() < EPSILON
+            && self.b.abs() < EPSILON
+            && self.c.abs() < EPSILON
+            && (self.d - 1.0).abs() < EPSILON
+            && self.e.abs() < EPSILON
+            && self.f.abs() < EPSILON
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Primitive {
     Quad {
@@ -118,6 +212,19 @@ pub enum Primitive {
     },
     PushClip(Rect),
     PopClip,
+    /// Starts a group. Everything up to the matching `PopLayer` is rendered as
+    /// one image covering `bounds` (content outside is clipped), then composited
+    /// into the parent with `opacity` applied to the whole group and `transform`
+    /// applied to its pixels in absolute logical coordinates. The clip active at
+    /// the push bounds the composited result; clips inside apply to the group's
+    /// untransformed content. Layers nest. Renderers may draw a layer with full
+    /// opacity and an identity transform inline.
+    PushLayer {
+        bounds: Rect,
+        opacity: f32,
+        transform: Affine,
+    },
+    PopLayer,
 }
 
 impl Primitive {
@@ -156,6 +263,19 @@ impl Primitive {
                 color: *color,
             },
             Self::PopClip => Self::PopClip,
+            // Coordinates are absolute, so moving a layer conjugates its transform.
+            Self::PushLayer {
+                bounds,
+                opacity,
+                transform,
+            } => Self::PushLayer {
+                bounds: bounds.translated(offset),
+                opacity: *opacity,
+                transform: Affine::translate(-offset.x, -offset.y)
+                    .then(*transform)
+                    .then(Affine::translate(offset.x, offset.y)),
+            },
+            Self::PopLayer => Self::PopLayer,
         }
     }
 }

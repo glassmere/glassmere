@@ -1,6 +1,7 @@
 use rust_gui_render_wgpu::{Renderer, TextSystem, wgpu};
 use rust_gui_scene::{
-    Color, FontFamily, Primitive, Rect, Scene, Size, TextMeasurer, TextStyle, TextWrap,
+    Affine, Color, FontFamily, Point, Primitive, Rect, Scene, Size, TextMeasurer, TextStyle,
+    TextWrap,
 };
 
 /// Requires a hardware or software graphics adapter. Run explicitly on a machine
@@ -441,4 +442,379 @@ fn pixel_snapshot_matches_reference_with_bundled_font() {
             ratio * 100.0
         );
     });
+}
+
+/// A 128×128 sRGB target and a bundled-font renderer for the layer tests.
+struct Gpu {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    texture: wgpu::Texture,
+    renderer: Renderer,
+}
+
+const SIDE: usize = 128;
+const RED: Color = Color(255, 0, 0, 255);
+const BLUE: Color = Color(0, 0, 255, 255);
+
+impl Gpu {
+    fn new() -> Self {
+        pollster::block_on(async {
+            let instance = wgpu::Instance::new(
+                wgpu::InstanceDescriptor::new_without_display_handle_from_env(),
+            );
+            let adapter = instance
+                .request_adapter(&wgpu::RequestAdapterOptions::default())
+                .await
+                .expect("graphics adapter");
+            let (device, queue) = adapter
+                .request_device(&wgpu::DeviceDescriptor::default())
+                .await
+                .unwrap();
+            let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("layer target"),
+                size: wgpu::Extent3d {
+                    width: SIDE as u32,
+                    height: SIDE as u32,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
+            });
+            let fonts =
+                TextSystem::with_fonts([include_bytes!("../fonts/FiraMono-Regular.ttf").to_vec()]);
+            let renderer = Renderer::with_text_system(&device, &queue, format, fonts);
+            Self {
+                device,
+                queue,
+                texture,
+                renderer,
+            }
+        })
+    }
+
+    fn render(&mut self, scale: f32, primitives: &[Primitive], changed: bool) -> Vec<u8> {
+        let scene = Scene {
+            size: Size::new(SIDE as f32 / scale, SIDE as f32 / scale),
+            primitives: primitives.to_vec(),
+        };
+        self.renderer
+            .render_cached(
+                &self.device,
+                &self.queue,
+                &self.texture.create_view(&Default::default()),
+                [SIDE as u32; 2],
+                scale,
+                &scene,
+                Color::WHITE,
+                changed,
+            )
+            .unwrap();
+        readback(&self.device, &self.queue, &self.texture, SIDE, SIDE)
+    }
+}
+
+fn rect(x: f32, y: f32, width: f32, height: f32) -> Rect {
+    Rect {
+        x,
+        y,
+        width,
+        height,
+    }
+}
+
+fn quad(rect: Rect, color: Color) -> Primitive {
+    Primitive::Quad {
+        rect,
+        color,
+        radius: 0.0,
+    }
+}
+
+fn layer(bounds: Rect, opacity: f32, transform: Affine) -> Primitive {
+    Primitive::PushLayer {
+        bounds,
+        opacity,
+        transform,
+    }
+}
+
+#[track_caller]
+fn assert_pixel(pixels: &[u8], x: usize, y: usize, expected: [u8; 3]) {
+    let actual = &pixels[(y * SIDE + x) * 4..][..3];
+    assert!(
+        actual.iter().zip(expected).all(|(a, e)| a.abs_diff(e) <= 3),
+        "pixel ({x}, {y}) is {actual:?}, expected {expected:?} ±3"
+    );
+}
+
+/// sRGB encoding of a linear value, as the target stores it.
+fn srgb(linear: f32) -> u8 {
+    ((1.055 * linear.powf(1.0 / 2.4) - 0.055) * 255.0).round() as u8
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn layer_opacity_applies_to_the_group_not_each_child() {
+    let mut gpu = Gpu::new();
+    let pixels = gpu.render(
+        1.0,
+        &[
+            layer(rect(10.0, 10.0, 100.0, 100.0), 0.5, Affine::IDENTITY),
+            quad(rect(20.0, 20.0, 60.0, 60.0), RED),
+            quad(rect(50.0, 50.0, 50.0, 50.0), BLUE),
+            Primitive::PopLayer,
+        ],
+        true,
+    );
+    let half = srgb(0.5);
+    // Blending is linear: half of an opaque color over white.
+    assert_pixel(&pixels, 30, 30, [255, half, half]);
+    // Red must not show through the blue that covers it inside the group.
+    assert_pixel(&pixels, 65, 65, [half, half, 255]);
+    assert_pixel(&pixels, 90, 90, [half, half, 255]);
+    assert_pixel(&pixels, 5, 5, [255; 3]);
+    assert_pixel(&pixels, 105, 30, [255; 3]);
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn layer_transform_moves_scales_and_rotates_the_group() {
+    let mut gpu = Gpu::new();
+    let (red, white) = ([255, 0, 0], [255; 3]);
+
+    let bounds = rect(10.0, 10.0, 20.0, 20.0);
+    let pixels = gpu.render(
+        1.0,
+        &[
+            layer(bounds, 1.0, Affine::translate(30.0, 15.0)),
+            quad(bounds, RED),
+            Primitive::PopLayer,
+        ],
+        true,
+    );
+    for (x, y, expected) in [
+        (50, 35, red),
+        (41, 35, red),
+        (20, 20, white),
+        (38, 35, white),
+    ] {
+        assert_pixel(&pixels, x, y, expected);
+    }
+
+    // The same translation is twice as many physical pixels at 2x.
+    let bounds = rect(5.0, 5.0, 10.0, 10.0);
+    let pixels = gpu.render(
+        2.0,
+        &[
+            layer(bounds, 1.0, Affine::translate(20.0, 10.0)),
+            quad(bounds, RED),
+            Primitive::PopLayer,
+        ],
+        true,
+    );
+    for (x, y, expected) in [
+        (60, 40, red),
+        (52, 40, red),
+        (20, 20, white),
+        (46, 40, white),
+    ] {
+        assert_pixel(&pixels, x, y, expected);
+    }
+
+    let center = Point { x: 64.0, y: 64.0 };
+    let bounds = rect(24.0, 24.0, 80.0, 80.0);
+    let pixels = gpu.render(
+        1.0,
+        &[
+            layer(bounds, 1.0, Affine::scale(0.5, 0.5).about(center)),
+            quad(bounds, RED),
+            Primitive::PopLayer,
+        ],
+        true,
+    );
+    for (x, y, expected) in [
+        (64, 64, red),
+        (47, 47, red),
+        (81, 81, red),
+        (40, 40, white),
+        (88, 88, white),
+    ] {
+        assert_pixel(&pixels, x, y, expected);
+    }
+
+    // A wide bar becomes a tall one.
+    let bounds = rect(14.0, 54.0, 100.0, 20.0);
+    let pixels = gpu.render(
+        1.0,
+        &[
+            layer(bounds, 1.0, Affine::rotate(90.0).about(center)),
+            quad(bounds, RED),
+            Primitive::PopLayer,
+        ],
+        true,
+    );
+    for (x, y, expected) in [
+        (64, 64, red),
+        (64, 20, red),
+        (64, 108, red),
+        (20, 64, white),
+        (108, 64, white),
+    ] {
+        assert_pixel(&pixels, x, y, expected);
+    }
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn nested_layers_multiply_their_opacity() {
+    let mut gpu = Gpu::new();
+    let pixels = gpu.render(
+        1.0,
+        &[
+            layer(rect(10.0, 10.0, 100.0, 100.0), 0.5, Affine::IDENTITY),
+            layer(rect(20.0, 20.0, 80.0, 80.0), 0.5, Affine::IDENTITY),
+            quad(rect(30.0, 30.0, 40.0, 40.0), RED),
+            Primitive::PopLayer,
+            Primitive::PopLayer,
+        ],
+        true,
+    );
+    // A quarter of opaque red over white.
+    assert_pixel(&pixels, 50, 50, [255, srgb(0.75), srgb(0.75)]);
+    assert_pixel(&pixels, 25, 25, [255; 3]);
+    assert_eq!(gpu.renderer.stats().layer_passes, 2);
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn opaque_identity_layer_renders_inline() {
+    let mut gpu = Gpu::new();
+    let content = [
+        Primitive::Quad {
+            rect: rect(10.0, 10.0, 70.0, 50.0),
+            color: RED,
+            radius: 8.0,
+        },
+        Primitive::Quad {
+            rect: rect(40.0, 40.0, 60.0, 60.0),
+            color: Color(0, 0, 255, 160),
+            radius: 12.0,
+        },
+    ];
+    let plain = gpu.render(1.0, &content, true);
+    let wrapped = |opacity| {
+        let mut primitives = vec![layer(
+            rect(0.0, 0.0, 128.0, 128.0),
+            opacity,
+            Affine::IDENTITY,
+        )];
+        primitives.extend(content.iter().cloned());
+        primitives.push(Primitive::PopLayer);
+        primitives
+    };
+    let inline = gpu.render(1.0, &wrapped(1.0), true);
+    assert!(plain == inline, "an opaque identity layer changed pixels");
+    assert_eq!(gpu.renderer.stats().layer_passes, 0);
+    assert_eq!(gpu.renderer.stats().layer_textures, 0);
+
+    gpu.render(1.0, &wrapped(0.5), true);
+    assert_eq!(gpu.renderer.stats().layer_passes, 1);
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn text_moves_with_a_translated_layer() {
+    let mut gpu = Gpu::new();
+    let bounds = rect(4.0, 4.0, 60.0, 24.0);
+    let pixels = gpu.render(
+        1.0,
+        &[
+            layer(bounds, 1.0, Affine::translate(40.0, 60.0)),
+            Primitive::Text {
+                rect: bounds,
+                text: "Ag 1".into(),
+                font_size: 16.0,
+                color: Color::rgb(0, 0, 0),
+            },
+            Primitive::PopLayer,
+        ],
+        true,
+    );
+    let ink = |inside: bool| {
+        (0..SIDE * SIDE)
+            .filter(|i| {
+                ((44..104).contains(&(i % SIDE)) && (64..88).contains(&(i / SIDE))) == inside
+            })
+            .filter(|i| pixels[i * 4] < 128)
+            .count()
+    };
+    assert!(ink(true) > 20, "expected glyphs in the translated layer");
+    assert_eq!(ink(false), 0, "text stayed at its untranslated position");
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn cached_replay_and_pooled_textures_work_with_layers() {
+    let mut gpu = Gpu::new();
+    let scene = [
+        quad(rect(0.0, 0.0, 64.0, 128.0), BLUE),
+        layer(
+            rect(10.0, 10.0, 40.0, 40.0),
+            0.5,
+            Affine::translate(30.0, 30.0),
+        ),
+        quad(rect(10.0, 10.0, 40.0, 40.0), RED),
+        Primitive::Text {
+            rect: rect(12.0, 12.0, 36.0, 20.0),
+            text: "Ag".into(),
+            font_size: 16.0,
+            color: Color::WHITE,
+        },
+        Primitive::PopLayer,
+    ];
+    let first = gpu.render(1.0, &scene, true);
+    assert_pixel(&first, 100, 100, [255; 3]);
+    assert_pixel(&first, 75, 75, [255, srgb(0.5), srgb(0.5)]);
+    let stats = gpu.renderer.stats();
+    assert_eq!((stats.preparations, stats.layer_passes), (1, 1));
+    assert_eq!((stats.layer_textures, stats.layer_texture_bytes), (1, 6400));
+
+    let replayed = gpu.render(1.0, &scene, false);
+    assert!(first == replayed, "cached replay changed pixels");
+    let stats = gpu.renderer.stats();
+    assert_eq!((stats.preparations, stats.layer_passes), (1, 2));
+
+    let second = gpu.render(1.0, &scene, true);
+    assert!(first == second, "a reused layer texture changed pixels");
+    assert_eq!(gpu.renderer.stats().layer_textures, 1);
+
+    // Unused textures are released after a few frames.
+    for _ in 0..3 {
+        gpu.render(1.0, &scene[..1], true);
+    }
+    assert_eq!(gpu.renderer.stats().layer_textures, 0);
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn oversized_layers_render_at_a_capped_resolution() {
+    let mut gpu = Gpu::new();
+    let pixels = gpu.render(
+        1.0,
+        &[
+            layer(rect(0.0, 0.0, 4000.0, 4000.0), 0.5, Affine::IDENTITY),
+            quad(rect(0.0, 0.0, 100.0, 100.0), RED),
+            Primitive::PopLayer,
+        ],
+        true,
+    );
+    assert_pixel(&pixels, 50, 50, [255, srgb(0.5), srgb(0.5)]);
+    assert_pixel(&pixels, 120, 120, [255; 3]);
+    // Twice the target per side, not 4000×4000.
+    assert_eq!(gpu.renderer.stats().layer_texture_bytes, 256 * 256 * 4);
 }

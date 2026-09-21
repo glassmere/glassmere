@@ -69,7 +69,7 @@ The [milestone report](milestone-5.md) describes the crates, contracts and valid
 - [x] Grid layout with tracks and areas, min/max constraints, aspect ratio, alignment and opt-in shrinking ([milestone 6b](milestone-6.md#milestone-6b-layout-depth)).
 - [x] Focus scopes with trap/restore/memory and arrow navigation; in-window modal and non-modal dialogs; native modal windows ([milestone 6c](milestone-6.md#milestone-6c-focus-scopes-and-dialogs)).
 - [x] Tooltips with a core clock and host wake requests, closable tabs, split panes, context menus and popovers ([milestone 6d](milestone-6.md#milestone-6d-tooltips-tabs-split-panes-context-menus-and-popovers)).
-- [ ] Transitions and property animations with GPU-friendly transforms and opacity.
+- [x] Transitions, enter/exit effects, layout animations and keyframes on GPU layers with group opacity and transforms ([milestone 6e](milestone-6.md#milestone-6e-animations)).
 
 ## 7. Advanced features
 

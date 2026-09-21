@@ -6,7 +6,7 @@ pub use wgpu;
 use glyphon::{
     Cache, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
 };
-use rust_gui_scene::{Color, Primitive, Rect, Scene};
+use rust_gui_scene::{Color, Point, Primitive, Rect, Scene};
 use std::{collections::HashSet, error::Error};
 
 pub type RenderResult<T> = Result<T, Box<dyn Error>>;
@@ -22,15 +22,56 @@ struct Vertex {
 }
 
 enum Draw {
-    Quad { start: u32, clip: [u32; 4] },
+    Quad {
+        start: u32,
+        clip: [u32; 4],
+    },
     Text(usize),
+    /// Composites a child surface. Its vertices reuse `Vertex`: `local` is the
+    /// uv and `color[3]` the group opacity.
+    Layer {
+        surface: usize,
+        start: u32,
+        clip: [u32; 4],
+    },
 }
 
 struct PreparedText {
     key: text::TextKey,
-    rect: Rect,
+    left: f32,
+    top: f32,
+    scale: f32,
     clip: [u32; 4],
     color: Color,
+}
+
+/// One render pass: the target (index 0) or an offscreen layer. Children always
+/// have a larger index than their parent, so passes run in reverse order.
+struct Surface {
+    size: [u32; 2],
+    /// Logical position of the surface's top-left pixel.
+    origin: [f32; 2],
+    scale: f32,
+    /// Index into the layer pool; `None` for the target.
+    texture: Option<usize>,
+    draws: Vec<Draw>,
+}
+
+struct LayerTexture {
+    size: [u32; 2],
+    view: wgpu::TextureView,
+    bind_group: wgpu::BindGroup,
+    /// glyphon needs the resolution of the surface it draws into.
+    viewport: Viewport,
+    /// Preparations since this texture was last used.
+    idle: u32,
+}
+
+struct LayerFrame {
+    parent: usize,
+    clip_depth: usize,
+    /// `None` for layers drawn inline as a clip.
+    composite: Option<Draw>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -40,18 +81,28 @@ pub struct RenderStats {
     pub quad_buffer_bytes: u64,
     pub text_batches: usize,
     pub text_renderer_allocations: u64,
+    /// Offscreen layer passes executed so far, replays included.
+    pub layer_passes: u64,
+    /// Pooled layer textures currently alive, and their size.
+    pub layer_textures: usize,
+    pub layer_texture_bytes: u64,
 }
 
 pub struct Renderer {
     pipeline: wgpu::RenderPipeline,
+    layer_pipeline: wgpu::RenderPipeline,
+    sampler: wgpu::Sampler,
+    format: wgpu::TextureFormat,
     text_system: TextSystem,
     swash: SwashCache,
+    cache: Cache,
     viewport: Viewport,
     atlas: TextAtlas,
     text_renderers: Vec<TextRenderer>,
     quad_buffer: Option<wgpu::Buffer>,
     vertices: Vec<Vertex>,
-    draws: Vec<Draw>,
+    surfaces: Vec<Surface>,
+    pool: Vec<LayerTexture>,
     prepared_target: Option<([u32; 2], u32)>,
     stats: RenderStats,
 }
@@ -68,40 +119,61 @@ impl Renderer {
         format: wgpu::TextureFormat,
         text_system: TextSystem,
     ) -> Self {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("rust-gui quads"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("quad.wgsl").into()),
-        });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("rust-gui quads"), layout: None,
-            vertex: wgpu::VertexState {
-                module: &shader, entry_point: Some("vs_main"), compilation_options: Default::default(),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<Vertex>() as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Float32x2, 3 => Float32x4, 4 => Float32],
-                }],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader, entry_point: Some("fs_main"), compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format, blend: Some(wgpu::BlendState::ALPHA_BLENDING), write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState::default(), depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(), multiview_mask: None, cache: None,
-        });
+        let pipeline = |label, source: &str, blend| {
+            let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some(label),
+                source: wgpu::ShaderSource::Wgsl(source.into()),
+            });
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label), layout: None,
+                vertex: wgpu::VertexState {
+                    module: &shader, entry_point: Some("vs_main"), compilation_options: Default::default(),
+                    buffers: &[wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<Vertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Float32x2, 3 => Float32x4, 4 => Float32],
+                    }],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader, entry_point: Some("fs_main"), compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format, blend: Some(blend), write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState::default(), depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(), multiview_mask: None, cache: None,
+            })
+        };
         let cache = Cache::new(device);
         Self {
-            pipeline,
+            pipeline: pipeline(
+                "rust-gui quads",
+                include_str!("quad.wgsl"),
+                wgpu::BlendState::ALPHA_BLENDING,
+            ),
+            // Alpha blending into a transparent layer leaves premultiplied color.
+            layer_pipeline: pipeline(
+                "rust-gui layers",
+                include_str!("layer.wgsl"),
+                wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING,
+            ),
+            sampler: device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("rust-gui layers"),
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                ..Default::default()
+            }),
+            format,
             text_system,
             swash: SwashCache::new(),
             viewport: Viewport::new(device, &cache),
             atlas: TextAtlas::new(device, queue, &cache, format),
+            cache,
             text_renderers: Vec::new(),
             quad_buffer: None,
             vertices: Vec::new(),
-            draws: Vec::new(),
+            surfaces: Vec::new(),
+            pool: Vec::new(),
             prepared_target: None,
             stats: RenderStats::default(),
         }
@@ -160,7 +232,7 @@ impl Renderer {
         }
         let target_key = (physical_size, scale.to_bits());
         if !scene_changed && self.prepared_target == Some(target_key) {
-            return self.draw(device, queue, target, physical_size, clear);
+            return self.draw(device, queue, target, clear);
         }
         self.prepared_target = None;
         self.viewport.update(
@@ -179,18 +251,171 @@ impl Renderer {
         let mut clips = vec![viewport];
         let mut vertices = std::mem::take(&mut self.vertices);
         vertices.clear();
-        let mut draws = std::mem::take(&mut self.draws);
+        let mut draws = self
+            .surfaces
+            .first_mut()
+            .map(|root| std::mem::take(&mut root.draws))
+            .unwrap_or_default();
         draws.clear();
+        let mut surfaces = vec![Surface {
+            size: physical_size,
+            origin: [0.0; 2],
+            scale,
+            texture: None,
+            draws,
+        }];
+        let mut current = 0;
+        let mut frames: Vec<LayerFrame> = Vec::new();
+        // Layer textures survive two preparations without use, then are released.
+        self.pool.retain(|texture| texture.idle < 2);
+        for texture in &mut self.pool {
+            texture.idle += 1;
+        }
+        let limit = device.limits().max_texture_dimension_2d;
+        let cap = physical_size.map(|side| side.saturating_mul(2).min(limit));
         let mut text_items = Vec::new();
-        let mut text_ranges: Vec<std::ops::Range<usize>> = Vec::new();
+        let mut text_ranges: Vec<(usize, std::ops::Range<usize>)> = Vec::new();
         let mut active_text = HashSet::new();
-        for primitive in &scene.primitives {
+        let close = Primitive::PopLayer;
+        let mut primitives = scene.primitives.iter();
+        loop {
+            let primitive = match primitives.next() {
+                Some(primitive) => primitive,
+                None if frames.is_empty() => break,
+                // Layers left open still composite.
+                None => &close,
+            };
             let clip = *clips.last().unwrap();
             match primitive {
                 Primitive::PushClip(rect) => clips.push(clip.intersect(*rect)),
                 Primitive::PopClip => {
-                    if clips.len() > 1 {
+                    if clips.len() > frames.last().map_or(1, |frame| frame.clip_depth + 1) {
                         clips.pop();
+                    }
+                }
+                Primitive::PushLayer {
+                    bounds,
+                    opacity,
+                    transform,
+                } => {
+                    let mut frame = LayerFrame {
+                        parent: current,
+                        clip_depth: clips.len(),
+                        composite: None,
+                    };
+                    if *opacity >= 1.0 && transform.is_identity() {
+                        clips.push(clip.intersect(*bounds));
+                        frames.push(frame);
+                        continue;
+                    }
+                    let parent = &surfaces[current];
+                    let (origin, scale) = (parent.origin, parent.scale);
+                    // Snapped to the parent's pixel grid, so an untransformed
+                    // composite maps texels onto pixels one to one.
+                    let x = ((bounds.x - origin[0]) * scale).floor();
+                    let y = ((bounds.y - origin[1]) * scale).floor();
+                    let width =
+                        (((bounds.x + bounds.width - origin[0]) * scale).ceil() - x).max(1.0);
+                    let height =
+                        (((bounds.y + bounds.height - origin[1]) * scale).ceil() - y).max(1.0);
+                    // Oversized layers render at a lower resolution instead.
+                    let fit = (cap[0] as f32 / width).min(cap[1] as f32 / height).min(1.0);
+                    let size = [
+                        ((width * fit).ceil() as u32).clamp(1, cap[0]),
+                        ((height * fit).ceil() as u32).clamp(1, cap[1]),
+                    ];
+                    let child_origin = [origin[0] + x / scale, origin[1] + y / scale];
+                    let child_scale = scale * fit;
+                    let corners = [
+                        [0.0, 0.0],
+                        [1.0, 0.0],
+                        [0.0, 1.0],
+                        [0.0, 1.0],
+                        [1.0, 0.0],
+                        [1.0, 1.0],
+                    ]
+                    .map(|[u, v]| {
+                        let point = transform.apply(Point {
+                            x: child_origin[0] + u * size[0] as f32 / child_scale,
+                            y: child_origin[1] + v * size[1] as f32 / child_scale,
+                        });
+                        (u, v, point)
+                    });
+                    let min = |f: fn(Point) -> f32| {
+                        corners
+                            .iter()
+                            .map(|corner| f(corner.2))
+                            .fold(f32::INFINITY, f32::min)
+                    };
+                    let (left, top) = (min(|p| p.x), min(|p| p.y));
+                    let covered = Rect {
+                        x: left,
+                        y: top,
+                        width: -min(|p| -p.x) - left,
+                        height: -min(|p| -p.y) - top,
+                    };
+                    // The clip at the push bounds the composite; rotated groups
+                    // are scissored by their bounding box.
+                    let composite_clip = scissor(clip.intersect(covered), parent);
+                    if !(*opacity > 0.0 && bounds.width > 0.0 && bounds.height > 0.0)
+                        || composite_clip[2] == 0
+                        || composite_clip[3] == 0
+                    {
+                        // Invisible: an empty clip culls the content.
+                        clips.push(Rect {
+                            x: 0.0,
+                            y: 0.0,
+                            width: 0.0,
+                            height: 0.0,
+                        });
+                        frames.push(frame);
+                        continue;
+                    }
+                    let start = vertices.len() as u32;
+                    vertices.extend(corners.map(|(u, v, point)| Vertex {
+                        position: [
+                            (point.x - origin[0]) * scale / parent.size[0] as f32 * 2.0 - 1.0,
+                            1.0 - (point.y - origin[1]) * scale / parent.size[1] as f32 * 2.0,
+                        ],
+                        local: [u, v],
+                        size: [0.0; 2],
+                        color: [0.0, 0.0, 0.0, opacity.min(1.0)],
+                        radius: 0.0,
+                    }));
+                    let texture = match self
+                        .pool
+                        .iter()
+                        .position(|texture| texture.idle > 0 && texture.size == size)
+                    {
+                        Some(index) => index,
+                        None => {
+                            let created = self.layer_texture(device, queue, size);
+                            self.pool.push(created);
+                            self.pool.len() - 1
+                        }
+                    };
+                    self.pool[texture].idle = 0;
+                    frame.composite = Some(Draw::Layer {
+                        surface: surfaces.len(),
+                        start,
+                        clip: composite_clip,
+                    });
+                    frames.push(frame);
+                    clips.push(*bounds);
+                    current = surfaces.len();
+                    surfaces.push(Surface {
+                        size,
+                        origin: child_origin,
+                        scale: child_scale,
+                        texture: Some(texture),
+                        draws: Vec::new(),
+                    });
+                }
+                Primitive::PopLayer => {
+                    if let Some(frame) = frames.pop() {
+                        clips.truncate(frame.clip_depth);
+                        current = frame.parent;
+                        surfaces[current].draws.extend(frame.composite);
                     }
                 }
                 Primitive::Quad {
@@ -198,10 +423,12 @@ impl Renderer {
                     color,
                     radius,
                 } => {
-                    let scissor = scissor(clip.intersect(*rect), scale, physical_size);
+                    let surface = &mut surfaces[current];
+                    let scissor = scissor(clip.intersect(*rect), surface);
                     if scissor[2] == 0 || scissor[3] == 0 {
                         continue;
                     }
+                    let (origin, scale, size) = (surface.origin, surface.scale, surface.size);
                     let start = vertices.len() as u32;
                     for [x, y] in [
                         [0.0, 0.0],
@@ -213,9 +440,11 @@ impl Renderer {
                     ] {
                         vertices.push(Vertex {
                             position: [
-                                (rect.x + x * rect.width) * scale / physical_size[0] as f32 * 2.0
+                                ((rect.x - origin[0]) + x * rect.width) * scale / size[0] as f32
+                                    * 2.0
                                     - 1.0,
-                                1.0 - (rect.y + y * rect.height) * scale / physical_size[1] as f32
+                                1.0 - ((rect.y - origin[1]) + y * rect.height) * scale
+                                    / size[1] as f32
                                     * 2.0,
                             ],
                             local: [x * rect.width, y * rect.height],
@@ -224,7 +453,7 @@ impl Renderer {
                             radius: *radius,
                         });
                     }
-                    draws.push(Draw::Quad {
+                    surface.draws.push(Draw::Quad {
                         start,
                         clip: scissor,
                     });
@@ -246,30 +475,34 @@ impl Renderer {
                         _ => unreachable!(),
                     };
                     active_text.insert(key.clone());
-                    let scissor = scissor(clip.intersect(*rect), scale, physical_size);
+                    let surface = &mut surfaces[current];
+                    let scissor = scissor(clip.intersect(*rect), surface);
                     if scissor[2] == 0 || scissor[3] == 0 {
                         continue;
                     }
                     let index = text_items.len();
                     text_items.push(PreparedText {
                         key,
-                        rect: *rect,
+                        left: (rect.x - surface.origin[0]) * surface.scale,
+                        top: (rect.y - surface.origin[1]) * surface.scale,
+                        scale: surface.scale,
                         clip: scissor,
                         color: *color,
                     });
                     // Clips are attached to each text area. Adjacent text may be
-                    // batched across clip commands, but never across a painted quad.
-                    if let Some(Draw::Text(batch)) = draws.last() {
-                        text_ranges[*batch].end = index + 1;
+                    // batched across clip commands, but never across a painted quad
+                    // or a composited layer.
+                    if let Some(Draw::Text(batch)) = surface.draws.last() {
+                        text_ranges[*batch].1.end = index + 1;
                     } else {
-                        draws.push(Draw::Text(text_ranges.len()));
-                        text_ranges.push(index..index + 1);
+                        surface.draws.push(Draw::Text(text_ranges.len()));
+                        text_ranges.push((current, index..index + 1));
                     }
                 }
             }
         }
         let text_count = text_ranges.len();
-        for (index, range) in text_ranges.into_iter().enumerate() {
+        for (index, (surface, range)) in text_ranges.into_iter().enumerate() {
             if index == self.text_renderers.len() {
                 self.text_renderers.push(TextRenderer::new(
                     &mut self.atlas,
@@ -282,9 +515,9 @@ impl Renderer {
             let buffers = &self.text_system.buffers;
             let areas = text_items[range].iter().map(|item| TextArea {
                 buffer: &buffers[&item.key],
-                left: item.rect.x * scale,
-                top: item.rect.y * scale,
-                scale,
+                left: item.left,
+                top: item.top,
+                scale: item.scale,
                 bounds: TextBounds {
                     left: item.clip[0] as i32,
                     top: item.clip[1] as i32,
@@ -299,12 +532,16 @@ impl Renderer {
                 ),
                 custom_glyphs: &[],
             });
+            let viewport = match surfaces[surface].texture {
+                Some(texture) => &self.pool[texture].viewport,
+                None => &self.viewport,
+            };
             self.text_renderers[index].prepare(
                 device,
                 queue,
                 &mut self.text_system.fonts,
                 &mut self.atlas,
-                &self.viewport,
+                viewport,
                 areas,
                 &mut self.swash,
             )?;
@@ -329,11 +566,72 @@ impl Renderer {
             queue.write_buffer(self.quad_buffer.as_ref().unwrap(), 0, bytes);
         }
         self.vertices = vertices;
-        self.draws = draws;
+        self.surfaces = surfaces;
         self.prepared_target = Some(target_key);
         self.stats.preparations += 1;
         self.stats.text_batches = text_count;
-        self.draw(device, queue, target, physical_size, clear)
+        self.stats.layer_textures = self.pool.len();
+        let texel = u64::from(self.format.block_copy_size(None).unwrap_or(4));
+        self.stats.layer_texture_bytes = self
+            .pool
+            .iter()
+            .map(|texture| u64::from(texture.size[0]) * u64::from(texture.size[1]) * texel)
+            .sum();
+        self.draw(device, queue, target, clear)
+    }
+
+    fn layer_texture(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        size: [u32; 2],
+    ) -> LayerTexture {
+        let view = device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("rust-gui layer"),
+                size: wgpu::Extent3d {
+                    width: size[0],
+                    height: size[1],
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+            .create_view(&Default::default());
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("rust-gui layer"),
+            layout: &self.layer_pipeline.get_bind_group_layout(0),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+        let mut viewport = Viewport::new(device, &self.cache);
+        viewport.update(
+            queue,
+            Resolution {
+                width: size[0],
+                height: size[1],
+            },
+        );
+        LayerTexture {
+            size,
+            view,
+            bind_group,
+            viewport,
+            idle: 0,
+        }
     }
 
     fn draw(
@@ -341,18 +639,25 @@ impl Renderer {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         target: &wgpu::TextureView,
-        physical_size: [u32; 2],
         clear: Color,
     ) -> RenderResult<()> {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("rust-gui frame"),
         });
-        {
-            let clear = clear.linear();
+        // Children first: every layer is complete before its parent samples it.
+        for surface in self.surfaces.iter().rev() {
+            let (view, viewport, clear) = match surface.texture {
+                Some(texture) => {
+                    self.stats.layer_passes += 1;
+                    let texture = &self.pool[texture];
+                    (&texture.view, &texture.viewport, [0.0; 4])
+                }
+                None => (target, &self.viewport, clear.linear()),
+            };
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("rust-gui scene"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: target,
+                    view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -370,7 +675,7 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            for draw in &self.draws {
+            for draw in &surface.draws {
                 match draw {
                     Draw::Quad { start, clip } => {
                         pass.set_pipeline(&self.pipeline);
@@ -379,12 +684,20 @@ impl Renderer {
                         pass.draw(*start..*start + 6, 0..1);
                     }
                     Draw::Text(index) => {
-                        pass.set_scissor_rect(0, 0, physical_size[0], physical_size[1]);
-                        self.text_renderers[*index].render(
-                            &self.atlas,
-                            &self.viewport,
-                            &mut pass,
-                        )?;
+                        pass.set_scissor_rect(0, 0, surface.size[0], surface.size[1]);
+                        self.text_renderers[*index].render(&self.atlas, viewport, &mut pass)?;
+                    }
+                    Draw::Layer {
+                        surface: child,
+                        start,
+                        clip,
+                    } => {
+                        let texture = self.surfaces[*child].texture.unwrap();
+                        pass.set_pipeline(&self.layer_pipeline);
+                        pass.set_bind_group(0, &self.pool[texture].bind_group, &[]);
+                        pass.set_vertex_buffer(0, self.quad_buffer.as_ref().unwrap().slice(..));
+                        pass.set_scissor_rect(clip[0], clip[1], clip[2], clip[3]);
+                        pass.draw(*start..*start + 6, 0..1);
                     }
                 }
             }
@@ -395,17 +708,25 @@ impl Renderer {
     }
 }
 
-fn scissor(rect: Rect, scale: f32, size: [u32; 2]) -> [u32; 4] {
+/// `rect` in the surface's own physical pixels, rounded outward and clamped.
+fn scissor(rect: Rect, surface: &Surface) -> [u32; 4] {
     if rect.width <= 0.0 || rect.height <= 0.0 {
         return [0; 4];
     }
-    let x = (rect.x * scale).floor().max(0.0).min(size[0] as f32) as u32;
-    let y = (rect.y * scale).floor().max(0.0).min(size[1] as f32) as u32;
-    let right = ((rect.x + rect.width) * scale)
+    let (origin, scale, size) = (surface.origin, surface.scale, surface.size);
+    let x = ((rect.x - origin[0]) * scale)
+        .floor()
+        .max(0.0)
+        .min(size[0] as f32) as u32;
+    let y = ((rect.y - origin[1]) * scale)
+        .floor()
+        .max(0.0)
+        .min(size[1] as f32) as u32;
+    let right = ((rect.x + rect.width - origin[0]) * scale)
         .ceil()
         .max(0.0)
         .min(size[0] as f32) as u32;
-    let bottom = ((rect.y + rect.height) * scale)
+    let bottom = ((rect.y + rect.height - origin[1]) * scale)
         .ceil()
         .max(0.0)
         .min(size[1] as f32) as u32;

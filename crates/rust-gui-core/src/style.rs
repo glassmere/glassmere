@@ -1,4 +1,5 @@
 use crate::Theme;
+use crate::animation::{Animation, Effect, Transform, Transition};
 use rust_gui_scene::{Color, FontFamily, TextStyle, TextWrap};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -104,9 +105,23 @@ pub struct Paint {
     pub background: Option<Color>,
     pub foreground: Option<Color>,
     pub radius: Option<f32>,
+    pub opacity: Option<f32>,
+    pub transform: Option<Transform>,
 }
 
 impl Paint {
+    pub fn opacity(opacity: f32) -> Self {
+        Self {
+            opacity: Some(opacity),
+            ..Self::default()
+        }
+    }
+    pub fn transform(transform: Transform) -> Self {
+        Self {
+            transform: Some(transform),
+            ..Self::default()
+        }
+    }
     pub fn background(color: Color) -> Self {
         Self {
             background: Some(color),
@@ -172,6 +187,21 @@ pub struct Style {
     pub italic: Option<bool>,
     pub wrap: TextWrap,
     pub states: Option<Box<StateStyles>>,
+    /// Group opacity of the node and its subtree, 0..=1.
+    pub opacity: f32,
+    /// Visual-only transform about the node's center; layout, hit testing and
+    /// accessibility keep using the untransformed bounds.
+    pub transform: Transform,
+    /// Animates background, foreground, radius, opacity and transform changes.
+    pub transition: Option<Transition>,
+    /// Animates the node from its previous position and size after layout moves it.
+    pub layout_transition: Option<Transition>,
+    /// Played from this look when the node first appears.
+    pub enter: Option<Effect>,
+    /// Played toward this look after the node is removed; the fading image is
+    /// not interactive.
+    pub exit: Option<Effect>,
+    pub animation: Option<Animation>,
 }
 
 impl Default for Style {
@@ -206,6 +236,13 @@ impl Default for Style {
             italic: None,
             wrap: TextWrap::None,
             states: None,
+            opacity: 1.0,
+            transform: Transform::IDENTITY,
+            transition: None,
+            layout_transition: None,
+            enter: None,
+            exit: None,
+            animation: None,
         }
     }
 }
@@ -257,6 +294,13 @@ impl Style {
     setter!(auto_rows, auto_rows, Vec<Track>);
     setter!(area, area, GridArea, some);
     setter!(wrap, wrap, TextWrap);
+    setter!(opacity, opacity, f32);
+    setter!(transform, transform, Transform);
+    setter!(transition, transition, Transition, some);
+    setter!(layout_transition, layout_transition, Transition, some);
+    setter!(enter, enter, Effect, some);
+    setter!(exit, exit, Effect, some);
+    setter!(animation, animation, Animation, some);
     setter!(background, background, Color, some);
     setter!(foreground, foreground, Color, some);
     setter!(font_size, font_size, f32, some);

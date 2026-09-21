@@ -1,6 +1,6 @@
 # Milestone 6: styling, theming and layout depth
 
-Four slices so far: 6a styling and theming, 6b layout depth, 6c focus scopes and dialogs, and 6d tooltips, tabs, split panes, context menus and popovers (below).
+Five slices: 6a styling and theming, 6b layout depth, 6c focus scopes and dialogs, 6d tooltips, tabs, split panes, context menus and popovers, and 6e animations (below). This completes phase 6.
 
 # Milestone 6a: styling and theming
 
@@ -241,3 +241,79 @@ Five overlay tests cover tooltip timing (wake requests, dwell, hiding rules), ta
 - Tabs do not reorder or overflow-scroll; docking is a later slice.
 - Split panes are two-way only; nested splits work but there is no persisted workspace layout.
 - Context menus are one level deep, like `Ui::menu`; popovers have no arrow or placement options beyond "below the anchor, kept on screen".
+
+# Milestone 6e: animations
+
+Implemented on 2026-09-21. Styles gain transitions, enter and exit effects, layout animations and looping keyframes. The scene gains layers, which the wgpu renderer composites offscreen so opacity applies to a whole group and transforms move, scale and rotate everything inside, text included.
+
+## Run
+
+```powershell
+cargo run -p rust-gui --example animations --release
+cargo run -p rust-gui --example animations --release -- --open             # starts expanded with three toasts
+cargo run -p rust-gui --example animations --release -- --reduced-motion   # everything jumps to its end state
+```
+
+```rust
+// State changes ease instead of jumping. Paint overrides may now set opacity and transform.
+Style::button()
+    .transition(Transition::new(160))                       // ease-out by default
+    .on_hover(Paint::transform(Transform::scale(1.06)))
+    .on_pressed(Paint::transform(Transform::scale(0.94)));
+
+// Appear, disappear, and follow layout changes.
+Style::default()
+    .enter(Effect::slide(-24.0, 0.0, 220))
+    .exit(Effect::fade(200))
+    .layout_transition(Transition::new(220).easing(Easing::EaseInOut));
+
+// Keyframes.
+Style::default().animation(Animation::spin(1600));
+Style::default().animation(
+    Animation::new(vec![Keyframe::at(0.0).opacity(1.0), Keyframe::at(1.0).opacity(0.3)], 900)
+        .easing(Easing::EaseInOut).repeat(Repeat::Forever).alternate(true),
+);
+```
+
+```text
+class card {
+    transition: 150ms ease-out
+    layout-transition: 0.2s cubic-bezier(0.2, 0, 0, 1)
+    enter-opacity: 0
+    enter-translate: 0 12
+    exit-scale: 0.9
+    hover.translate: 0 -2
+    hover.opacity: 0.9
+}
+```
+
+## Contracts
+
+| API | Behavior |
+| --- | --- |
+| `Primitive::PushLayer { bounds, opacity, transform }`, `PopLayer`, `Affine` | Everything between the pair renders as one image covering `bounds`, then composites with group opacity and a 2x3 transform in absolute logical pixels. The clip active at the push bounds the composite. Layers nest. An opaque identity layer renders inline with no offscreen work. Custom widgets may emit balanced layers. |
+| `Style::opacity`, `Style::transform` | Resting group opacity and a visual-only `Transform` (translate, scale, clockwise rotate) about the node's center. Layout, hit testing, focus and accessibility keep using the untransformed bounds. Nodes without either emit no layer, so existing scenes and snapshots are unchanged. |
+| `Style::transition(Transition)` | Eases background, foreground, radius, opacity and transform whenever their resolved value changes (state, style or theme). A change mid-flight starts from the currently displayed value. Nothing plays on first appearance. `Transition::new(ms)` is ease-out; `.easing(..)` and `.delay(ms)` adjust it. |
+| `Easing` | `Linear`, `EaseIn`, `EaseOut`, `EaseInOut` (the CSS curves) and `CubicBezier(x1, y1, x2, y2)`; y may overshoot. |
+| `Style::enter(Effect)`, `Style::exit(Effect)` | `enter` plays from the effect's look to the resting look when the node is created. `exit` plays after removal: the node leaves the tree, focus order and accessibility at once, and a non-interactive image of it fades where it last was. A removed subtree ghosts its topmost nodes that declare `exit`, so a dialog panel styled through `DialogOptions::style` fades when the dialog closes. `Effect::fade`, `slide` and `zoom` cover the common cases. |
+| `Style::layout_transition(Transition)` | When layout moves or resizes the node relative to its parent, it is drawn from the old rectangle toward the new one (FLIP). Layout itself is final immediately. Window resizes are followed live rather than eased. |
+| `Style::animation(Animation)` | Keyframes over opacity, transform, background and foreground, layered on top of the transitioned state. `Repeat::{Once, Count(n), Forever}`, optional `alternate`. Starts when the node appears or the animation value changes; holds its last frame when finished. `Animation::pulse` and `spin` are ready-made. |
+| `Context::animating()` | True while any transition, effect, keyframe or ghost needs another frame. The desktop host requests the next redraw after each present while it is true, so animation runs at the display rate under Fifo presentation and the loop sleeps otherwise. Headless tests advance `Context::set_now`. |
+| `Context::set_reduced_motion`, `AppOptions::reduced_motion` | Transitions jump to their target, enter and exit effects are skipped, layout changes are immediate and keyframes hold their final frame. |
+| `RenderStats::layer_passes`, `layer_textures`, `layer_texture_bytes` | Offscreen pass count and the pooled layer texture footprint. |
+
+Animated nodes repaint only their own chunk each frame; sibling and child paint chunks stay cached, and a settled node goes back to cache hits. Layer textures are pooled by size and released after two frames without use.
+
+## Validation
+
+Nine headless animation tests cover easing endpoints and shape, interpolation with mid-flight retargeting and a return to cached paint, hover opacity and scale through a layer with unchanged hit testing, enter then exit with a fading ghost, the dialog panel ghost, layout transitions, looping, alternating and finite keyframes, reduced motion, and the stylesheet properties. Seven new GPU tests (run with `--ignored`) read pixels back to confirm group opacity rather than per-child opacity, translate, scale and rotate, nested opacity, the inline path for trivial layers, text moving with a translated layer, cached replay with pooled textures, and capped texture sizes. The existing pixel reference is unchanged. The full suite is 93 tests plus 9 GPU tests. The animations example passes `--smoke`, and a screenshot confirmed the rotated spinner, the pulsing tile and a rotated 80% opacity group with text.
+
+## Remaining limits
+
+- Ancestors clip to their bounds, so transformed or sliding pixels need room inside the parent (the example pads its rows). An opt-in unclipped container would lift this.
+- One transition covers all animatable properties of a node; there is no per-property timing and no spring physics.
+- Layout animations are per node and relative to the parent; a moving parent and a moving child each animate, which can overshoot visually when both change at once.
+- Exit ghosts are images: they do not reflow with later layout changes, and a modal scrim disappears at once while its panel fades.
+- Scaled or rotated layers are bilinear-filtered images, so text softens while transformed; nothing re-rasterises at the transformed scale.
+- Control internals (slider thumbs, checkbox marks, carets) do not ease; only the node-level background, foreground, radius, opacity and transform do.
+- Reduced motion is an application option; the OS preference is not read yet.

@@ -26,11 +26,18 @@
 //! minmax(100, 1fr) repeat(3, 1fr)`), area (`column row [colspan rowspan]`),
 //! background, foreground (`#rrggbb` or `#rrggbbaa`), font-size, font-weight,
 //! font-family (`sans`, `serif`, `monospace`, `"Name"`), italic, wrap (`word`,
-//! `none`) and `hover.`/`pressed.`/`focused.`/`disabled.` prefixed background,
-//! foreground and radius. One property per line or `;`-separated.
+//! `none`), opacity, translate (`x y`), scale (`factor` or `x y`), rotate
+//! (clockwise degrees), transition and layout-transition (`150ms ease-out
+//! [delay]`, easings `linear`, `ease-in`, `ease-out`, `ease-in-out`,
+//! `cubic-bezier(x1, y1, x2, y2)`), `enter-`/`exit-` prefixed opacity,
+//! translate, scale, rotate and transition, and `hover.`/`pressed.`/
+//! `focused.`/`disabled.` prefixed background, foreground, radius, opacity,
+//! translate, scale and rotate. One property per line or `;`-separated.
+use crate::animation::{Easing, Effect, Transform, Transition};
 use crate::{Align, GridArea, Justify, Length, Paint, Style, Theme, Track, TrackSize};
 use rust_gui_scene::{Color, FontFamily, TextWrap};
 use std::collections::HashMap;
+use std::time::Duration;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StyleSheet {
@@ -214,6 +221,10 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
             "background" => paint.background = Some(color(value)?),
             "foreground" => paint.foreground = Some(color(value)?),
             "radius" => paint.radius = Some(number(value)?),
+            "opacity" => paint.opacity = Some(number(value)?),
+            "translate" | "scale" | "rotate" => {
+                transform(paint.transform.get_or_insert_default(), property, value)?;
+            }
             _ => return Err(format!("state `{state}` cannot set `{property}`")),
         }
         return Ok(());
@@ -266,6 +277,17 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
                 }
             });
         }
+        "opacity" => style.opacity = number(value)?,
+        "translate" | "scale" | "rotate" => transform(&mut style.transform, key, value)?,
+        "transition" => style.transition = Some(transition(value)?),
+        "layout-transition" => style.layout_transition = Some(transition(value)?),
+        "enter-opacity" | "enter-translate" | "enter-scale" | "enter-rotate"
+        | "enter-transition" => {
+            effect(&mut style.enter, &key[6..], value)?;
+        }
+        "exit-opacity" | "exit-translate" | "exit-scale" | "exit-rotate" | "exit-transition" => {
+            effect(&mut style.exit, &key[5..], value)?;
+        }
         "padding" => style.padding = number(value)?,
         "gap" => style.gap = number(value)?,
         "grow" => style.grow = number(value)?,
@@ -313,6 +335,93 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
             }
         }
         _ => return Err(format!("unknown property `{key}`")),
+    }
+    Ok(())
+}
+
+fn transform(target: &mut Transform, key: &str, value: &str) -> Result<(), String> {
+    let numbers: Vec<f32> = value
+        .split_whitespace()
+        .map(number)
+        .collect::<Result<_, _>>()?;
+    match (key, &numbers[..]) {
+        ("translate", &[x, y]) => target.translate = (x, y),
+        ("scale", &[factor]) => target.scale = (factor, factor),
+        ("scale", &[x, y]) => target.scale = (x, y),
+        ("rotate", &[degrees]) => target.rotate = degrees,
+        _ => return Err(format!("invalid {key} `{value}`")),
+    }
+    Ok(())
+}
+
+fn time(value: &str) -> Result<Duration, String> {
+    let (digits, factor) = match value.strip_suffix("ms") {
+        Some(digits) => (digits, 1.0),
+        None => (
+            value
+                .strip_suffix('s')
+                .ok_or_else(|| format!("time `{value}` needs an `ms` or `s` unit"))?,
+            1000.0,
+        ),
+    };
+    let milliseconds = (number(digits)? * factor).round();
+    if !(0.0..=3_600_000.0).contains(&milliseconds) {
+        return Err(format!("time `{value}` is out of range"));
+    }
+    // Whole milliseconds keep `150ms` exact instead of 150.000006 ms.
+    Ok(Duration::from_millis(milliseconds as u64))
+}
+
+/// `<duration> [linear|ease-in|ease-out|ease-in-out|cubic-bezier(x1, y1, x2, y2)] [delay]`
+fn transition(value: &str) -> Result<Transition, String> {
+    let (value, bezier) = match value.split_once("cubic-bezier(") {
+        Some((before, rest)) => {
+            let (inside, after) = rest
+                .split_once(')')
+                .ok_or_else(|| format!("unclosed cubic-bezier in `{value}`"))?;
+            let points: Vec<f32> = inside
+                .split(',')
+                .map(|part| number(part.trim()))
+                .collect::<Result<_, _>>()?;
+            let [x1, y1, x2, y2] = points[..] else {
+                return Err("cubic-bezier needs four numbers".into());
+            };
+            (
+                format!("{before} {after}"),
+                Some(Easing::CubicBezier(x1, y1, x2, y2)),
+            )
+        }
+        None => (value.to_owned(), None),
+    };
+    let mut parts = value.split_whitespace();
+    let duration = time(parts.next().ok_or("transition needs a duration")?)?;
+    let mut result = Transition {
+        duration,
+        easing: bezier.unwrap_or(Easing::EaseOut),
+        delay: Duration::ZERO,
+    };
+    for part in parts {
+        match part {
+            "linear" => result.easing = Easing::Linear,
+            "ease-in" => result.easing = Easing::EaseIn,
+            "ease-out" => result.easing = Easing::EaseOut,
+            "ease-in-out" => result.easing = Easing::EaseInOut,
+            delay => result.delay = time(delay)?,
+        }
+    }
+    Ok(result)
+}
+
+fn effect(target: &mut Option<Effect>, property: &str, value: &str) -> Result<(), String> {
+    let effect = target.get_or_insert(Effect {
+        opacity: 1.0,
+        transform: Transform::IDENTITY,
+        transition: Transition::new(150),
+    });
+    match property {
+        "opacity" => effect.opacity = number(value)?,
+        "transition" => effect.transition = transition(value)?,
+        _ => transform(&mut effect.transform, property, value)?,
     }
     Ok(())
 }

@@ -1,7 +1,7 @@
 //! Immediate-style declarations over a retained, incremental UI kernel.
 pub use rust_gui_core::*;
 pub use rust_gui_devtools as devtools;
-pub use rust_gui_scene::{Color, Point, Primitive, Rect, Scene, Size};
+pub use rust_gui_scene::{Affine, Color, Point, Primitive, Rect, Scene, Size};
 #[cfg(feature = "desktop")]
 pub use rust_gui_winit::{
     AppOptions, DesktopClosed, DesktopHandle, GpuMemoryPolicy, GraphicsBackend, GraphicsOptions,
