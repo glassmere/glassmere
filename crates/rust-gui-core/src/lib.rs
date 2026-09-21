@@ -36,7 +36,7 @@ pub use document::{Indentation, Motion, Selection, TextDocument};
 pub use drag::{DragInfo, DragPayload, DropKind};
 pub use editor::{CaretMovement, TextEdit, TextMove, TextSelection};
 pub use focus::{DialogOptions, DialogResponse, FocusScope};
-pub use image::{ImageFit, ImageOptions, ImageTint};
+pub use image::{BackgroundImage, ImageFit, ImageOptions, ImageSource, ImageTint};
 pub use panes::{
     Axis, PopoverOptions, PopoverResponse, SplitOptions, TOOLTIP_DELAY, Tab, TabsResponse,
 };

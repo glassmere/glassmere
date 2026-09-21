@@ -190,6 +190,8 @@ pub struct Style {
     /// Grid items only: explicit placement instead of auto-flow.
     pub area: Option<GridArea>,
     pub background: Option<Color>,
+    /// Painted over `background` and under the content; see `BackgroundImage`.
+    pub background_image: Option<crate::BackgroundImage>,
     pub foreground: Option<Color>,
     pub font_size: Option<f32>,
     pub font_family: Option<FontFamily>,
@@ -244,6 +246,7 @@ impl Default for Style {
             auto_rows: Vec::new(),
             area: None,
             background: None,
+            background_image: None,
             foreground: None,
             font_size: None,
             font_family: None,
@@ -296,6 +299,12 @@ impl Style {
     setter!(min_height, min_height, Length);
     setter!(max_height, max_height, Length);
     setter!(aspect_ratio, aspect_ratio, f32, some);
+    setter!(
+        background_image,
+        background_image,
+        crate::BackgroundImage,
+        some
+    );
     setter!(padding, padding, f32);
     setter!(gap, gap, f32);
     setter!(grow, grow, f32);

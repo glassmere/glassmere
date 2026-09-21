@@ -44,7 +44,11 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let radius = min(max(input.params.x, 0.0), min(input.size.x, input.size.y) * 0.5);
     let q = abs(input.local - input.size * 0.5) - input.size * 0.5 + vec2<f32>(radius);
     let distance = length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) - radius;
-    let coverage = 1.0 - smoothstep(-fwidth(distance), fwidth(distance), distance);
+    // Square pieces tile: nine-slice parts and sprite grids abut, and edges that
+    // each cover the shared boundary halfway would leave a seam. The rasterizer
+    // gives every pixel to exactly one of them instead.
+    let rounded = 1.0 - smoothstep(-fwidth(distance), fwidth(distance), distance);
+    let coverage = select(rounded, 1.0, radius <= 0.0);
     let uv = clamp(input.uv, input.bounds.xy, input.bounds.zw);
     let texel = textureSample(image_texture, image_sampler, uv);
     let rgb = mix(texel.rgb, input.tint.rgb * texel.a, input.params.y);

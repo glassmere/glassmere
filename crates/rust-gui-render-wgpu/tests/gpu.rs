@@ -4,11 +4,24 @@ use rust_gui_scene::{
     TextStyle, TextWrap, VectorImage,
 };
 
+/// GPU tests take turns. The test harness starts one thread per core, and many
+/// devices created at the same moment in one process stall some drivers: with
+/// eighteen tests on a 24-core machine the Direct3D 12 runs hung about half the
+/// time, and never with four threads. An app creates one device.
+static TURN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn turn() -> std::sync::MutexGuard<'static, ()> {
+    // A failed test must not take the others down with a poisoned lock.
+    TURN.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// Requires a hardware or software graphics adapter. Run explicitly on a machine
 /// with graphics drivers: cargo test -p rust-gui-render-wgpu --test gpu -- --ignored
 #[test]
 #[ignore = "requires a graphics adapter"]
 fn renders_ordered_clipped_quads_and_shaped_text_at_two_x_scale() {
+    let _turn = turn();
     pollster::block_on(async {
         let instance =
             wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
@@ -330,6 +343,7 @@ fn readback(
 fn pixel_snapshot_matches_reference_with_bundled_font() {
     const WIDTH: usize = 96;
     const HEIGHT: usize = 64;
+    let _turn = turn();
     pollster::block_on(async {
         let instance =
             wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
@@ -450,6 +464,8 @@ struct Gpu {
     queue: wgpu::Queue,
     texture: wgpu::Texture,
     renderer: Renderer,
+    /// Released last, after the device is gone.
+    _turn: std::sync::MutexGuard<'static, ()>,
 }
 
 const SIDE: usize = 128;
@@ -458,6 +474,7 @@ const BLUE: Color = Color(0, 0, 255, 255);
 
 impl Gpu {
     fn new() -> Self {
+        let turn = turn();
         pollster::block_on(async {
             let instance = wgpu::Instance::new(
                 wgpu::InstanceDescriptor::new_without_display_handle_from_env(),
@@ -493,6 +510,7 @@ impl Gpu {
                 queue,
                 texture,
                 renderer,
+                _turn: turn,
             }
         })
     }
@@ -1050,6 +1068,32 @@ fn atlas_neighbours_do_not_bleed_and_share_a_draw() {
     assert_eq!((stats.atlas_pages, stats.image_textures), (1, 0));
     assert_eq!(stats.image_uploads, 3, "the second blue picture is cached");
     assert_eq!(stats.image_draws, 1, "one page under one clip is one draw");
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn square_images_that_abut_leave_no_seam() {
+    let mut gpu = Gpu::new();
+    let white = raster(4, 4, |_, _| [255, 255, 255, 255]);
+    // Nine-slice pieces meet at whole and at fractional device pixels.
+    for scale in [1.0, 1.25] {
+        let pixels = gpu.render(
+            scale,
+            &[
+                picture(rect(10.0, 10.0, 12.0, 30.0), &white),
+                picture(rect(22.0, 10.0, 21.5, 30.0), &white),
+                picture(rect(43.5, 10.0, 20.0, 30.0), &white),
+                picture(rect(10.0, 40.0, 53.5, 12.5), &white),
+            ],
+            true,
+        );
+        let inside = |logical: f32| (logical * scale) as usize;
+        for x in inside(11.0)..inside(62.0) {
+            for y in inside(11.0)..inside(51.0) {
+                assert_pixel(&pixels, x, y, [255, 255, 255]);
+            }
+        }
+    }
 }
 
 #[test]

@@ -1,6 +1,6 @@
 # Milestone 8: images and assets
 
-The seven roadmap phases are delivered; milestone 8 starts the work that comes from the coverage table. Slices: 8a images (below), 8b background images and nine-slice.
+The seven roadmap phases are delivered; milestone 8 starts the work that comes from the coverage table. Slices: 8a images and 8b background images with nine-slice (both below). Milestone 8 is complete.
 
 # Milestone 8a: images
 
@@ -77,3 +77,63 @@ Checked by eye in a release build: the four fit modes, tinted icons, one SVG sha
 - One decoder thread per window; a gallery of large photos loads one file at a time.
 - Image files are polled by modification time, like other watched files; there is no OS file notification.
 - The clipboard still carries text only.
+
+# Milestone 8b: background images and nine-slice
+
+Implemented on 2026-09-21. Any node can paint an image over its background colour and under its content, from a decoded `Image` or from a file the host loads, fitted like an image widget or nine-sliced so that one small frame image skins boxes of any size. Stylesheets describe the same thing with four `background-` properties. This completes milestone 8.
+
+## Use
+
+```rust
+// A photo behind a card's content.
+let card = Style::default()
+    .radius(14.0)
+    .background_image(BackgroundImage::file("assets/dusk.png"));          // Cover by default
+
+// A 24 px skin stretched over a button of any size: corners keep their shape.
+let skinned = Style::default()
+    .background_image(BackgroundImage::new(&skin).slice(8.0, 8.0, 8.0, 8.0));
+```
+
+```text
+class hero {
+    background-image: url(assets/dusk.png)     // relative to the stylesheet's own file
+    background-fit: cover                      // cover | contain | fill | none
+}
+class frame {
+    background-image: url(assets/frame.svg)
+    background-slice: 12                       // 1, 2 (vertical horizontal) or 4 (top right bottom left) numbers, or none
+    background-tint: foreground                // foreground | #rrggbb[aa] | none
+}
+```
+
+## Contracts
+
+| Piece | Contract |
+| --- | --- |
+| `Style::background_image: Option<BackgroundImage>` | Painted across the node's bounds after the background colour and before text, controls and children. Without a slice it is placed by `fit` (default `Cover`) and rounded by the node's `radius`; opacity, transforms and clipping apply as to the rest of the node. |
+| `ImageSource::{Image, File}` | A file is requested from the host exactly like `Ui::image_file` (same background decoding, reload on change, error reporting and cache) and nothing is painted until it arrives. It is resolved when the element is declared, so the arrival is an ordinary style change that repaints just that node. |
+| `slice: [top, right, bottom, left]` | Insets in image units. The four corners are drawn at their own size, the four edges stretch along one axis, the centre along both. Insets that overlap in the image, or borders wider than the box, are scaled down proportionally; pieces with no area are skipped. `radius` is ignored: the image brings its own shape. Works for vector images too. |
+| `tint` | As for image widgets, including `Foreground`, so one frame image follows themes and states. |
+| Stylesheet | `background-image: url(file)` or `none`; `background-fit`, `background-slice` and `background-tint` need an image before them and are kept when a derived class replaces only the image. `StyleSheet::rebase(directory)` makes relative files relative to the sheet; the desktop host calls it for `AppOptions::stylesheet`, so sheets work wherever the app is started from. Errors carry line numbers like all other properties. |
+| Renderer | Images with `radius` 0 are no longer anti-aliased at their edges: abutting pieces each covered the shared boundary halfway and left a visible seam. The rasterizer now gives every boundary pixel to exactly one piece. Rounded images are anti-aliased as before. |
+
+The `images` example gained a row with a stylesheet photo card, one SVG frame over three box sizes and a 24 px raster skin made in code.
+
+## Validation
+
+Five new tests. Core: nine-slice geometry (corners fixed, edges and centre stretched, a box narrower than its borders, insets larger than the image); a background painted between the colour and the content, `Cover` and the node's radius by default, nine tinted square pieces for a slice; a background file requested from the host, invisible until delivered and painted after; stylesheet parsing with `rebase`, inheritance between classes, and four error messages. Renderer: square images that abut at whole and fractional device pixels, at scale 1 and 1.25, leave no seam (GPU test).
+
+The seam was found by eye in the example, not by a test: the first nine-slice screenshot showed dark lines at every slice boundary. The fix and its GPU test followed, and the second screenshot is clean for the SVG frame at three sizes and the raster skin.
+
+While repeating the GPU suite a second problem showed up: with eighteen tests the default harness (one thread per core, 24 here) created eighteen Direct3D 12 devices at once and the run hung about half the time, at device creation, before any test finished. Subsets and `--test-threads=4` never hung. GPU tests now take turns behind one lock; eight consecutive default runs passed in 9 s each. Apps create one device and are not affected.
+
+The full suite is 177 tests plus 18 GPU tests; formatting and clippy (all features, and core alone) are clean; the facade builds without default features. All thirteen examples pass `--smoke` and the theming script reports `THEMING_OK`.
+
+## Remaining limits
+
+- One background image per node; no tiling (`repeat`), no position other than centred, no gradients.
+- Pseudo-states cannot swap the image (`hover.background-image`); tint through `foreground` state colours instead.
+- A nine-sliced vector image is rasterized once per distinct piece scale, so a frame used at many box sizes fills the cache with edge rasters until they age out.
+- Square images snap to device pixels at their edges instead of fading; a lone unrounded image moving by fractions of a pixel steps rather than glides.
+- Background files share the image widget's limits from 8a: no mipmaps, first frame only, sRGB assumed.

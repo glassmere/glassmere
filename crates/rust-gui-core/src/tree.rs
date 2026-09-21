@@ -1828,6 +1828,7 @@ impl Context {
                 radius,
             });
         }
+        self.paint_background_image(node, &mut scene, foreground, radius);
         if node.kind == Kind::RichText {
             self.paint_rich_text(id, &mut scene, foreground);
         } else if node.kind == Kind::Image {

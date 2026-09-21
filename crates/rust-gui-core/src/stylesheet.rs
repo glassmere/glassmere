@@ -24,7 +24,12 @@
 //! `baseline`), justify-content (also `space-between`, `space-around`,
 //! `space-evenly`), columns, rows, auto-columns, auto-rows (`120 50% 1fr auto
 //! minmax(100, 1fr) repeat(3, 1fr)`), area (`column row [colspan rowspan]`),
-//! background, foreground (`#rrggbb` or `#rrggbbaa`), font-size, font-weight,
+//! background, foreground (`#rrggbb` or `#rrggbbaa`), background-image
+//! (`url(panel.png)`, relative to the sheet's file once the host has called
+//! `rebase`, or `none`), background-fit (`cover`, `contain`, `fill`, `none`),
+//! background-slice (nine-slice insets in image pixels: one number, `vertical
+//! horizontal`, or `top right bottom left`; `none`), background-tint
+//! (`foreground`, a colour, `none`), font-size, font-weight,
 //! font-family (`sans`, `serif`, `monospace`, `"Name"`), italic, wrap (`word`,
 //! `none`), direction (`ltr`, `rtl`), opacity, translate (`x y`), scale (`factor` or `x y`), rotate
 //! (clockwise degrees), transition and layout-transition (`150ms ease-out
@@ -68,6 +73,19 @@ impl StyleSheet {
 
     pub fn insert(&mut self, name: impl Into<String>, style: Style) {
         self.classes.insert(name.into(), style);
+    }
+
+    /// Resolves relative `background-image` files against `directory`, the
+    /// folder of the sheet's own file. Hosts call this after parsing.
+    pub fn rebase(&mut self, directory: &std::path::Path) {
+        for style in self.classes.values_mut() {
+            if let Some(background) = &mut style.background_image
+                && let crate::ImageSource::File(path) = &mut background.source
+                && path.is_relative()
+            {
+                *path = directory.join(&*path);
+            }
+        }
     }
 
     pub fn classes(&self) -> impl Iterator<Item = (&str, &Style)> {
@@ -301,6 +319,76 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         "radius" => style.radius = number(value)?,
         "background" => style.background = Some(color(value)?),
         "foreground" => style.foreground = Some(color(value)?),
+        "background-image" => {
+            style.background_image = if value == "none" {
+                None
+            } else {
+                let path = value
+                    .strip_prefix("url(")
+                    .and_then(|rest| rest.strip_suffix(')'))
+                    .map(|path| {
+                        path.trim()
+                            .trim_matches(|quote| quote == '"' || quote == '\'')
+                    })
+                    .filter(|path| !path.is_empty())
+                    .ok_or_else(|| {
+                        format!("background-image is `url(file)` or none, got `{value}`")
+                    })?;
+                // Fit, slice and tint set before the image stay.
+                let mut image = crate::BackgroundImage::file(path);
+                if let Some(old) = &style.background_image {
+                    (image.fit, image.slice, image.tint) = (old.fit, old.slice, old.tint);
+                }
+                Some(image)
+            };
+        }
+        "background-fit" | "background-slice" | "background-tint" => {
+            let image = style
+                .background_image
+                .as_mut()
+                .ok_or_else(|| format!("`{key}` needs a background-image before it"))?;
+            match key {
+                "background-fit" => {
+                    image.fit = match value {
+                        "cover" => crate::ImageFit::Cover,
+                        "contain" => crate::ImageFit::Contain,
+                        "fill" => crate::ImageFit::Fill,
+                        "none" => crate::ImageFit::None,
+                        _ => return Err(format!("unknown background-fit `{value}`")),
+                    }
+                }
+                "background-slice" => {
+                    let insets: Vec<f32> = if value == "none" {
+                        Vec::new()
+                    } else {
+                        value
+                            .split_whitespace()
+                            .map(number)
+                            .collect::<Result<_, _>>()?
+                    };
+                    image.slice = match insets[..] {
+                        [] => None,
+                        [all] => Some([all; 4]),
+                        [vertical, horizontal] => {
+                            Some([vertical, horizontal, vertical, horizontal])
+                        }
+                        [top, right, bottom, left] => Some([top, right, bottom, left]),
+                        _ => {
+                            return Err(format!(
+                                "background-slice takes 1, 2 or 4 numbers, got `{value}`"
+                            ));
+                        }
+                    };
+                }
+                _ => {
+                    image.tint = match value {
+                        "none" => crate::ImageTint::None,
+                        "foreground" => crate::ImageTint::Foreground,
+                        _ => crate::ImageTint::Color(color(value)?),
+                    }
+                }
+            }
+        }
         "font-size" => style.font_size = Some(number(value)?),
         "font-weight" => {
             let weight: u16 = value

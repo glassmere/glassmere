@@ -396,8 +396,12 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         };
         let text =
             String::from_utf8(content?).map_err(|error| format!("{}: {error}", path.display()))?;
-        let sheet = StyleSheet::parse(&text)
+        let mut sheet = StyleSheet::parse(&text)
             .map_err(|error| format!("{}:{}: {}", path.display(), error.line, error.message))?;
+        // `url(...)` in a sheet is relative to the sheet, not to where the app started.
+        if let Some(directory) = path.parent() {
+            sheet.rebase(directory);
+        }
         self.context.set_stylesheet(sheet);
         Ok(true)
     }

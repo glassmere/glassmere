@@ -1,5 +1,5 @@
 use super::*;
-use crate::ImageTint;
+use crate::{ImageSource, ImageTint};
 use rust_gui_scene::Image;
 use std::path::{Path, PathBuf};
 
@@ -80,6 +80,51 @@ impl Context {
         if bytes > UNUSED_IMAGE_BYTES {
             let requests = &self.image_requests;
             self.images.retain(|path, _| requests.contains(path));
+        }
+    }
+
+    /// `Style::background_image`, over the background colour.
+    pub(super) fn paint_background_image(
+        &self,
+        node: &Node,
+        scene: &mut Scene,
+        foreground: Color,
+        radius: f32,
+    ) {
+        let Some(background) = &node.style.background_image else {
+            return;
+        };
+        // A file that has not arrived yet paints nothing.
+        let ImageSource::Image(image) = &background.source else {
+            return;
+        };
+        let tint = match background.tint {
+            ImageTint::None => None,
+            ImageTint::Foreground => Some(foreground),
+            ImageTint::Color(color) => Some(color),
+        };
+        let (pieces, radius) = match background.slice {
+            Some(slice) => (
+                crate::image::nine_slice(slice, image.size(), node.bounds),
+                0.0,
+            ),
+            None => (
+                background
+                    .fit
+                    .place(image.size(), node.bounds)
+                    .into_iter()
+                    .collect(),
+                radius,
+            ),
+        };
+        for (rect, source) in pieces {
+            scene.primitives.push(Primitive::Image {
+                rect,
+                image: image.clone(),
+                source,
+                tint,
+                radius,
+            });
         }
     }
 

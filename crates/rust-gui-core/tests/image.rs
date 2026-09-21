@@ -1,5 +1,6 @@
 use rust_gui_core::{
-    Context, ImageFit, ImageOptions, ImageTint, Length, MonospaceMeasurer, Role, Style,
+    BackgroundImage, Context, ImageFit, ImageOptions, ImageSource, ImageTint, Length,
+    MonospaceMeasurer, Role, Style, StyleSheet,
 };
 use rust_gui_scene::{Color, Image, Primitive, Rect, Size};
 use std::path::Path;
@@ -193,4 +194,145 @@ fn a_file_image_sizes_itself_once_loaded_and_unused_images_are_dropped_past_a_bu
     frame(&mut context);
     assert!(!context.image_known(big));
     assert!(context.image_known(Path::new("small.png")));
+}
+
+#[test]
+fn background_images_paint_between_the_colour_and_the_content_and_nine_slice_into_pieces() {
+    let mut context = Context::new();
+    let photo = picture(200, 100);
+    let frame = picture(30, 30);
+    let navy = Color(10, 20, 60, 255);
+    context.run(ROOT, &mut MonospaceMeasurer, |ui| {
+        let sized = Style::default()
+            .width(Length::Px(100.0))
+            .height(Length::Px(100.0));
+        ui.column(
+            "card",
+            sized
+                .clone()
+                .radius(9.0)
+                .background(navy)
+                .background_image(BackgroundImage::new(&photo)),
+            |ui| ui.label("Title"),
+        );
+        ui.column(
+            "framed",
+            sized.foreground(navy).background_image(
+                BackgroundImage::new(&frame)
+                    .slice(10.0, 10.0, 10.0, 10.0)
+                    .tint(ImageTint::Foreground),
+            ),
+            |_| {},
+        );
+    });
+    let card = bounds(&context, "card");
+    let primitives = &context.scene().primitives;
+    let position =
+        |wanted: &dyn Fn(&Primitive) -> bool| primitives.iter().position(wanted).unwrap();
+    let colour = position(
+        &|p| matches!(p, Primitive::Quad { rect, color, .. } if *rect == card && *color == navy),
+    );
+    let image = position(&|p| matches!(p, Primitive::Image { rect, .. } if *rect == card));
+    let title = position(
+        &|p| matches!(p, Primitive::Text { text, .. } | Primitive::StyledText { text, .. } if text == "Title"),
+    );
+    assert!(colour < image && image < title);
+    let images = drawn(&context);
+    // Cover by default, rounded like the node.
+    assert_eq!(images[0].1.width, 100.0);
+    assert_eq!(images[0].3, 9.0);
+    // Nine pieces, square corners kept, tinted with the inherited colour, never rounded.
+    assert_eq!(images.len(), 10);
+    let framed = bounds(&context, "framed");
+    assert_eq!((images[1].0.x, images[1].0.width), (framed.x, 10.0));
+    assert_eq!(images[5].0.width, 80.0);
+    assert!(
+        images[1..]
+            .iter()
+            .all(|piece| piece.2 == Some(navy) && piece.3 == 0.0)
+    );
+}
+
+#[test]
+fn background_files_load_through_the_host_and_repaint_when_they_arrive() {
+    let mut context = Context::new();
+    let path = Path::new("skin/panel.png");
+    let frame = |context: &mut Context| {
+        context.run(ROOT, &mut MonospaceMeasurer, |ui| {
+            let style = Style::default()
+                .width(Length::Px(80.0))
+                .height(Length::Px(40.0))
+                .background_image(BackgroundImage::file(path).fit(ImageFit::Fill));
+            ui.column("panel", style, |_| {});
+        })
+    };
+    frame(&mut context);
+    assert_eq!(context.image_paths(), [path.to_owned()]);
+    assert!(drawn(&context).is_empty());
+    context.set_image_file(path, Ok(picture(8, 8)));
+    frame(&mut context);
+    let images = drawn(&context);
+    assert_eq!(images.len(), 1);
+    assert_eq!(images[0].0, bounds(&context, "panel"));
+    assert_eq!(images[0].1.width, 8.0);
+}
+
+#[test]
+fn stylesheets_describe_background_images_relative_to_their_own_file() {
+    let mut sheet = StyleSheet::parse(
+        "class panel {\n\
+             background-image: url(\"skin/panel.png\")\n\
+             background-slice: 8 12\n\
+             background-tint: foreground\n\
+         }\n\
+         class hero extends panel { background-image: url(/abs/hero.jpg); background-slice: none; background-fit: contain }\n\
+         class plain extends panel { background-image: none }",
+    )
+    .unwrap();
+    sheet.rebase(Path::new("app/styles"));
+    let panel = sheet
+        .class("panel")
+        .unwrap()
+        .background_image
+        .clone()
+        .unwrap();
+    assert_eq!(
+        panel.source,
+        ImageSource::File(Path::new("app/styles").join("skin/panel.png"))
+    );
+    assert_eq!(panel.slice, Some([8.0, 12.0, 8.0, 12.0]));
+    assert_eq!(panel.tint, ImageTint::Foreground);
+    assert_eq!(panel.fit, ImageFit::Cover);
+    // A new image keeps what the base class said about it; absolute paths stay.
+    let hero = sheet
+        .class("hero")
+        .unwrap()
+        .background_image
+        .clone()
+        .unwrap();
+    assert_eq!(hero.source, ImageSource::File("/abs/hero.jpg".into()));
+    assert_eq!(
+        (hero.slice, hero.fit, hero.tint),
+        (None, ImageFit::Contain, ImageTint::Foreground)
+    );
+    assert!(sheet.class("plain").unwrap().background_image.is_none());
+
+    for (text, message) in [
+        (
+            "class a { background-fit: cover }",
+            "needs a background-image",
+        ),
+        ("class a { background-image: panel.png }", "url(file)"),
+        (
+            "class a { background-image: url(p.png); background-slice: 1 2 3 }",
+            "1, 2 or 4",
+        ),
+        (
+            "class a { background-image: url(p.png); background-fit: tile }",
+            "unknown background-fit",
+        ),
+    ] {
+        let error = StyleSheet::parse(text).unwrap_err();
+        assert!(error.message.contains(message), "{text}: {}", error.message);
+    }
 }

@@ -263,6 +263,18 @@ impl Ui<'_> {
     }
     fn push(&mut self, mut element: Element) -> Response {
         element.enabled &= self.enabled;
+        // A background file becomes its image once the host has delivered it,
+        // and that style change is what repaints the node.
+        if let Some(background) = &mut element.style.background_image
+            && let crate::ImageSource::File(path) = &background.source
+        {
+            if !self.host.images.contains(path) {
+                self.host.images.push(path.clone());
+            }
+            if let (Some(image), _) = self.context.image_file(path) {
+                background.source = crate::ImageSource::Image(image);
+            }
+        }
         assert!(
             self.keys.insert(element.key.clone()),
             "duplicate widget key among siblings: {:?}",

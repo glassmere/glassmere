@@ -1,8 +1,10 @@
 //! Images: files decoded in the background (PNG, JPEG, WebP, GIF, SVG), fit
-//! modes, tinted vector icons and an image made in code. Edit or replace a
+//! modes, tinted vector icons, an image made in code, and background images
+//! with nine-slice frames from a stylesheet and from code. Edit or replace a
 //! file under `examples/assets` while this runs and it reloads.
 use rust_gui::{
-    AppOptions, Color, Image, ImageFit, ImageOptions, ImageTint, Length, Style, Ui, run,
+    AppOptions, BackgroundImage, Color, Image, ImageFit, ImageOptions, ImageTint, Length, Style,
+    Ui, run,
 };
 
 const ASSETS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/assets");
@@ -22,6 +24,37 @@ fn checker() -> Image {
     Image::from_rgba8(size, size, rgba).expect("64 by 64 pixels")
 }
 
+/// A 24 by 24 button skin: a lit top edge, a dark rim and rounded corners that
+/// must survive stretching.
+fn skin() -> Image {
+    let size = 24i32;
+    let mut rgba = Vec::with_capacity((size * size * 4) as usize);
+    for y in 0..size {
+        for x in 0..size {
+            // Distance into the rounded rectangle, for the rim and the corner cut.
+            let (dx, dy) = (
+                (x.min(size - 1 - x) - 7).min(0),
+                (y.min(size - 1 - y) - 7).min(0),
+            );
+            let corner = ((dx * dx + dy * dy) as f32).sqrt();
+            let rim = corner > 5.5
+                || x.min(size - 1 - x) < 2 && dy == 0
+                || y.min(size - 1 - y) < 2 && dx == 0;
+            let pixel = if corner > 7.5 {
+                [0, 0, 0, 0]
+            } else if rim {
+                [14, 60, 56, 255]
+            } else if y < 5 {
+                [74, 190, 176, 255]
+            } else {
+                [30, 132, 122, 255]
+            };
+            rgba.extend(pixel);
+        }
+    }
+    Image::from_rgba8(size as u32, size as u32, rgba).expect("24 by 24 pixels")
+}
+
 fn caption(ui: &mut Ui<'_>, key: &str, text: &str) {
     let style = Style {
         font_size: Some(12.0),
@@ -34,10 +67,13 @@ fn caption(ui: &mut Ui<'_>, key: &str, text: &str) {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     let made = checker();
+    let skin = skin();
     let mut liked = false;
     run(
         AppOptions {
             title: "Rust GUI / Images".into(),
+            size: rust_gui::Size::new(980.0, 860.0),
+            stylesheet: Some(format!("{ASSETS}/../images.style").into()),
             // Long enough for the background decodes to land in a smoke run.
             frame_limit: smoke.then_some(30),
             ..AppOptions::default()
@@ -65,7 +101,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 caption(
                     ui,
                     "fits-caption",
-                    "One 320 by 200 file in four 150 by 150 boxes: contain, cover, fill, none",
+                    "One 320 by 200 file in four 120 by 120 boxes: contain, cover, fill, none",
                 );
                 ui.row(
                     "fits",
@@ -81,8 +117,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ("none", ImageFit::None),
                         ] {
                             let frame = Style {
-                                width: Length::Px(150.0),
-                                height: Length::Px(150.0),
+                                width: Length::Px(120.0),
+                                height: Length::Px(120.0),
                                 radius: 12.0,
                                 background: Some(Color::rgb(24, 35, 49)),
                                 ..Style::default()
@@ -138,7 +174,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         for (key, side) in [
                             ("badge-small", 24.0),
                             ("badge", 64.0),
-                            ("badge-large", 128.0),
+                            ("badge-large", 96.0),
                         ] {
                             ui.image_file(
                                 key,
@@ -177,7 +213,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     "checker",
                                     &made,
                                     ImageOptions::new("Checkerboard").style(Style {
-                                        width: Length::Px(128.0),
+                                        width: Length::Px(96.0),
                                         radius: 8.0,
                                         ..Style::default()
                                     }),
@@ -189,12 +225,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             format!("{ASSETS}/not-there.png"),
                             ImageOptions::new("not-there.png is missing").style(Style {
                                 width: Length::Px(220.0),
-                                height: Length::Px(152.0),
+                                height: Length::Px(120.0),
                                 padding: 12.0,
                                 radius: 10.0,
                                 ..Style::default()
                             }),
                         );
+                    },
+                );
+
+                caption(
+                    ui,
+                    "backgrounds-caption",
+                    "Backgrounds: a stylesheet photo, one SVG frame nine-sliced over three boxes, a 24 px skin made in code",
+                );
+                ui.row(
+                    "backgrounds",
+                    Style {
+                        gap: 16.0,
+                        align_items: rust_gui::Align::Start,
+                        ..Style::default()
+                    },
+                    |ui| {
+                        let hero = ui.class("hero");
+                        ui.column("hero", hero, |ui| ui.label("Hills at dusk"));
+                        for (key, width, height) in [
+                            ("small", 90.0, 56.0),
+                            ("wide", 170.0, 56.0),
+                            ("tall", 120.0, 150.0),
+                        ] {
+                            let frame = Style {
+                                width: Length::Px(width),
+                                height: Length::Px(height),
+                                ..ui.class("frame")
+                            };
+                            ui.column(key, frame, |ui| ui.label(key));
+                        }
+                        let skinned = Style {
+                            width: Length::Px(170.0),
+                            height: Length::Px(64.0),
+                            align_items: rust_gui::Align::Center,
+                            justify_content: rust_gui::Justify::Center,
+                            ..Style::default()
+                        }
+                        .background_image(BackgroundImage::new(&skin).slice(8.0, 8.0, 8.0, 8.0));
+                        ui.column("skinned", skinned, |ui| ui.label("Raster skin"));
                     },
                 );
             });
