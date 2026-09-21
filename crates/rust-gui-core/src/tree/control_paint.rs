@@ -2,6 +2,8 @@ use super::*;
 
 impl Context {
     pub(super) fn prepare_controls(&mut self, measurer: &mut impl TextMeasurer) {
+        self.prepare_text_areas(measurer);
+        self.prepare_rich_text(measurer);
         let ids: Vec<_> = self
             .nodes
             .iter()
@@ -35,6 +37,9 @@ impl Context {
 
     pub(super) fn paint_control(&self, id: NodeId, scene: &mut Scene) {
         let node = &self.nodes[&id];
+        if node.kind == Kind::TextArea {
+            self.paint_text_area(id, scene);
+        }
         if self.drag.as_ref().is_some_and(|drag| drag.active && (drag.over == Some(id) || (self.focused == Some(id) && matches!(node.control, Control::DropTarget { accepts, .. } if accepts == drag.payload.kind())))) {
             for rect in [Rect { height: 2.0, ..node.bounds }, Rect { y: node.bounds.y + node.bounds.height - 2.0, height: 2.0, ..node.bounds }] {
                 scene.primitives.push(Primitive::Quad { rect, color: self.theme.accent, radius: 0.0 });
@@ -163,6 +168,9 @@ impl Context {
 
     /// Logical candidate-window anchor, clamped to the active input's content box.
     pub fn ime_cursor_rect(&self) -> Option<Rect> {
+        if let Some(caret) = self.area_caret() {
+            return Some(caret);
+        }
         let node = self.nodes.get(&self.focused?)?;
         let editor = node.editor.as_ref()?;
         let caret = editor.caret()?;
@@ -178,16 +186,20 @@ impl Context {
     }
 
     pub fn accepts_text(&self) -> bool {
-        self.focused
-            .and_then(|id| self.nodes.get(&id))
-            .is_some_and(|node| node.enabled && node.editor.is_some())
+        self.area_accepts_text()
+            || self
+                .focused
+                .and_then(|id| self.nodes.get(&id))
+                .is_some_and(|node| node.enabled && node.editor.is_some())
     }
 
     pub fn composing_text(&self) -> bool {
-        self.focused
-            .and_then(|id| self.nodes.get(&id))
-            .and_then(|node| node.editor.as_ref())
-            .is_some_and(|editor| editor.composing())
+        self.area_composing()
+            || self
+                .focused
+                .and_then(|id| self.nodes.get(&id))
+                .and_then(|node| node.editor.as_ref())
+                .is_some_and(|editor| editor.composing())
     }
 
     pub fn selected_text(&self) -> Option<&str> {

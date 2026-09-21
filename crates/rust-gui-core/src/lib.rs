@@ -4,12 +4,15 @@ mod collection;
 mod command;
 mod controls;
 mod dock;
+mod document;
 mod drag;
 mod editor;
 mod focus;
 mod panes;
+mod rich_text;
 mod style;
 mod stylesheet;
+mod text_area;
 mod theme;
 mod tree;
 mod ui;
@@ -26,18 +29,21 @@ pub use dock::{
     DockArea, DockFloat, DockLayout, DockLayoutError, DockNode, DockPlace, DockTabs, DockTarget,
     DockWindow, DockWindowId, DockZone,
 };
+pub use document::{Indentation, Motion, Selection, TextDocument};
 pub use drag::{DragInfo, DragPayload, DropKind};
 pub use editor::{TextEdit, TextMove, TextSelection};
 pub use focus::{DialogOptions, DialogResponse, FocusScope};
 pub use panes::{
     Axis, PopoverOptions, PopoverResponse, SplitOptions, TOOLTIP_DELAY, Tab, TabsResponse,
 };
-pub use rust_gui_scene::{FontFamily, TextStyle, TextWrap};
+pub use rich_text::{RichRun, RichText};
+pub use rust_gui_scene::{FontFamily, TextSpan, TextStyle, TextWrap};
 pub use rust_gui_scene::{MonospaceMeasurer, TextMeasurer};
 pub use style::{
     Align, GridArea, Justify, Length, Paint, ResolvedText, StateStyles, Style, Track, TrackSize,
 };
 pub use stylesheet::{StyleSheet, StyleSheetError};
+pub use text_area::{CodeEditorOptions, CodeEditorResponse, HighlightSpan, Highlighter};
 pub use theme::{TOKENS, Theme};
 pub use tree::{
     Action, CollectionInfo, Context, Dirty, Event, FrameStats, Key, NodeDetails, NodeId,

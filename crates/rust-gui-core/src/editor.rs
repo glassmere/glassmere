@@ -6,8 +6,12 @@ use unicode_segmentation::UnicodeSegmentation;
 pub enum TextMove {
     Left,
     Right,
+    /// Line start and end.
     Start,
     End,
+    /// Same as `Start` and `End` in single-line inputs.
+    DocumentStart,
+    DocumentEnd,
 }
 
 #[derive(Clone, Debug)]
@@ -271,8 +275,8 @@ impl Editor {
                 self.composition = None;
                 let range = self.selection.range();
                 let cursor = match direction {
-                    TextMove::Start => 0,
-                    TextMove::End => self.text.len(),
+                    TextMove::Start | TextMove::DocumentStart => 0,
+                    TextMove::End | TextMove::DocumentEnd => self.text.len(),
                     TextMove::Left if !select && !range.is_empty() => range.start,
                     TextMove::Right if !select && !range.is_empty() => range.end,
                     TextMove::Left => self.adjacent(false, word),

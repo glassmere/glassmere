@@ -226,6 +226,7 @@ impl Context {
                     | Kind::Tab
                     | Kind::Divider
                     | Kind::DockHandle
+                    | Kind::TextArea
             )
     }
 

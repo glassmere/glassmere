@@ -1,8 +1,8 @@
 //! Renderer-independent geometry, text measurement, and ordered paint commands.
 mod text;
 pub use text::{
-    CaretStop, FontFamily, MonospaceMeasurer, TextCluster, TextGeometry, TextMeasurer, TextStyle,
-    TextWrap,
+    CaretStop, FontFamily, MonospaceMeasurer, TextCluster, TextGeometry, TextMeasurer, TextSpan,
+    TextStyle, TextWrap,
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -210,6 +210,15 @@ pub enum Primitive {
         style: TextStyle,
         color: Color,
     },
+    /// One shaped block of differently styled runs. `style` gives the font
+    /// size, wrapping and the defaults spans fall back to, `color` the default
+    /// colour. Lines break at `\n` and, when wrapping, at `rect.width`.
+    RichText {
+        rect: Rect,
+        spans: Vec<TextSpan>,
+        style: TextStyle,
+        color: Color,
+    },
     PushClip(Rect),
     PopClip,
     /// Starts a group. Everything up to the matching `PopLayer` is rendered as
@@ -259,6 +268,17 @@ impl Primitive {
             } => Self::StyledText {
                 rect: rect.translated(offset),
                 text: text.clone(),
+                style: style.clone(),
+                color: *color,
+            },
+            Self::RichText {
+                rect,
+                spans,
+                style,
+                color,
+            } => Self::RichText {
+                rect: rect.translated(offset),
+                spans: spans.clone(),
                 style: style.clone(),
                 color: *color,
             },

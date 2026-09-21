@@ -15,6 +15,7 @@ bitflags.workspace = true
 tracing.workspace = true
 taffy.workspace = true
 unicode-segmentation.workspace = true
+ropey.workspace = true
 
 [lints]
 workspace = true

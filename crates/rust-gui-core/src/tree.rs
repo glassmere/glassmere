@@ -22,6 +22,8 @@ mod dock_input;
 mod drag_input;
 mod focus_input;
 mod overlay_input;
+mod rich_text;
+mod text_area_input;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -285,6 +287,8 @@ struct Node {
     scope: Option<Box<ScopeState>>,
     tooltip: Option<String>,
     anim: Option<Box<animation_state::NodeAnim>>,
+    area: Option<Box<text_area_input::AreaState>>,
+    rich: Option<Box<rich_text::RichState>>,
     /// Parent-relative layout rectangle; layout animations start from the old one.
     layout_rect: Rect,
 }
@@ -312,7 +316,9 @@ impl Node {
                     | Kind::DropTarget
                     | Kind::Divider
                     | Kind::DockHandle
+                    | Kind::TextArea
             ) || matches!(self.control, Control::Tab { selected: true, .. })
+                || matches!(self.control, Control::RichText { links: 1.., .. })
                 || self.custom.as_ref().is_some_and(|widget| {
                     widget.semantics.role == Role::Button && widget.semantics.focusable
                 }))
@@ -362,10 +368,10 @@ impl Node {
                 Control::TabPanel => Role::TabPanel,
                 Control::Divider { .. } => Role::Splitter,
                 _ => match self.kind {
-                    Kind::Label => Role::Label,
+                    Kind::Label | Kind::RichText => Role::Label,
                     Kind::Button => Role::Button,
                     Kind::Scroll => Role::ScrollView,
-                    Kind::TextInput => Role::TextInput,
+                    Kind::TextInput | Kind::TextArea => Role::TextInput,
                     Kind::Checkbox => Role::Checkbox,
                     Kind::Radio => Role::Radio,
                     Kind::Slider => Role::Slider,
@@ -397,6 +403,7 @@ impl Node {
                 | Control::Combo { label, .. }
                 | Control::Collection { label, .. }
                 | Control::CollectionRow { label, .. }
+                | Control::TextArea { label, .. }
                 | Control::Grid { label, .. } => label.clone(),
                 Control::DragSource { label, .. } | Control::DropTarget { label, .. } => {
                     label.clone()
@@ -438,6 +445,7 @@ pub struct Context {
     drag: Option<Box<crate::drag::DragState>>,
     dock_drag: Option<Box<dock_input::DockDrag>>,
     dock_grab: Option<dock_input::DockGrab>,
+    clipboard_out: Option<String>,
     theme: Theme,
     stylesheet: StyleSheet,
     style_warnings: Vec<String>,
@@ -457,6 +465,8 @@ pub struct Context {
 struct Measurement {
     size: Size,
     wrapped: Option<(String, TextStyle)>,
+    /// Rich blocks measure their styled runs instead of the plain text.
+    spans: Option<Vec<rust_gui_scene::TextSpan>>,
 }
 
 fn layout_style(style: &Style, kind: Kind) -> taffy::Style {
@@ -495,12 +505,26 @@ impl Measurement {
         Self {
             size,
             wrapped: None,
+            spans: None,
         }
     }
     fn text(text: &str, text_style: TextStyle, measurer: &mut impl TextMeasurer) -> Self {
         Self {
             size: measurer.measure_styled(text, &text_style, None),
             wrapped: (text_style.wrap == TextWrap::Word).then(|| (text.to_owned(), text_style)),
+            spans: None,
+        }
+    }
+    /// A text leaf: plain, or the styled runs of a rich block.
+    fn leaf(element: &Element, text_style: TextStyle, measurer: &mut impl TextMeasurer) -> Self {
+        let Control::RichText { runs, .. } = &element.control else {
+            return Self::text(&element.text, text_style, measurer);
+        };
+        let spans = rich_text::spans(runs, Color::TRANSPARENT);
+        Self {
+            size: measurer.geometry_rich(&spans, &text_style, None).size,
+            wrapped: (text_style.wrap == TextWrap::Word).then(|| (String::new(), text_style)),
+            spans: Some(spans),
         }
     }
 }
@@ -531,6 +555,8 @@ impl Default for Context {
             custom: None,
             paint_cache: None,
             anim: None,
+            area: None,
+            rich: None,
             layout_rect: Rect::default(),
             control: Control::None,
             editor: None,
@@ -565,6 +591,7 @@ impl Default for Context {
             drag: None,
             dock_drag: None,
             dock_grab: None,
+            clipboard_out: None,
             theme,
             stylesheet: StyleSheet::default(),
             style_warnings: Vec::new(),
@@ -665,6 +692,17 @@ impl Context {
             scroll: matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection).then_some(node.scroll),
             value: match &node.control {
                 Control::TextInput { value, .. } => Some(value.clone()),
+                // Assistive technology reads the caret's line.
+                Control::TextArea {
+                    lines,
+                    first_line,
+                    primary,
+                    ..
+                } => primary
+                    .0
+                    .checked_sub(*first_line)
+                    .and_then(|index| lines.get(index))
+                    .map(|line| line.text.clone()),
                 Control::Combo {
                     items, selected, ..
                 } => items.get(*selected).map(|item| item.label.clone()),
@@ -805,6 +843,7 @@ impl Context {
         let mut submitted = std::mem::take(&mut self.submitted);
         let mut warnings = std::mem::take(&mut self.style_warnings);
         let mut theme_request = None;
+        let mut clipboard = None;
         let mut layers = Vec::new();
         self.stats.activations = clicks.len() + updates.len() + submitted.len();
         self.nodes.get_mut(&self.root).unwrap().resolved = ResolvedText::from_theme(&self.theme);
@@ -818,6 +857,7 @@ impl Context {
             submitted: &mut submitted,
             warnings: &mut warnings,
             theme_request: &mut theme_request,
+            clipboard: &mut clipboard,
             layers: &mut layers,
             enabled: true,
         };
@@ -833,6 +873,9 @@ impl Context {
         }
         elements.extend(layers);
         self.style_warnings = warnings;
+        if clipboard.is_some() {
+            self.clipboard_out = clipboard;
+        }
         if let Some(theme) = theme_request {
             // Declared token reads used the old theme; count this like an
             // activation so hosts declare once more before presenting.
@@ -886,6 +929,7 @@ impl Context {
                     |known, available, _, context, _| {
                         let measured = if let Some(Measurement {
                             wrapped: Some((text, style)),
+                            spans,
                             ..
                         }) = context
                         {
@@ -895,7 +939,10 @@ impl Context {
                                 taffy::AvailableSpace::MaxContent => None,
                             });
                             self.stats.text_measures += 1;
-                            measurer.measure_styled(text, style, width)
+                            match spans {
+                                Some(spans) => measurer.geometry_rich(spans, style, width).size,
+                                None => measurer.measure_styled(text, style, width),
+                            }
                         } else {
                             context.map(|context| context.size).unwrap_or_default()
                         };
@@ -994,7 +1041,9 @@ impl Context {
                     || node.control != element.control;
                 // Colors repaint; only font and wrapping changes re-measure.
                 let text_changed = node.text != element.text
-                    || node.text_style() != resolved.text_style(element.style.wrap);
+                    || node.text_style() != resolved.text_style(element.style.wrap)
+                    // Bold, italic and code runs change advances without changing the text.
+                    || (element.kind == Kind::RichText && node.control != element.control);
                 let mut changed = Dirty::empty();
                 if paint_changed {
                     changed |= Dirty::PAINT;
@@ -1022,8 +1071,8 @@ impl Context {
                     node.changed_frame = frame;
                 }
                 if text_changed && element.kind.text_leaf() {
-                    let measured = Measurement::text(
-                        &element.text,
+                    let measured = Measurement::leaf(
+                        &element,
                         resolved.text_style(element.style.wrap),
                         measurer,
                     );
@@ -1068,7 +1117,10 @@ impl Context {
                 node.tooltip = element.tooltip;
                 node.enabled = element.enabled;
                 node.custom = element.custom;
-                if let Control::Collection { offset, .. } = element.control
+                if let Control::Collection { offset, .. }
+                | Control::TextArea {
+                    scroll_y: offset, ..
+                } = element.control
                     && node.scroll.offset != offset
                 {
                     node.scroll.offset = offset;
@@ -1089,11 +1141,7 @@ impl Context {
                     Measurement::fixed(widget.size)
                 } else if element.kind.text_leaf() {
                     self.stats.text_measures += 1;
-                    Measurement::text(
-                        &element.text,
-                        resolved.text_style(element.style.wrap),
-                        measurer,
-                    )
+                    Measurement::leaf(&element, resolved.text_style(element.style.wrap), measurer)
                 } else {
                     Measurement::fixed(Size::default())
                 };
@@ -1112,6 +1160,8 @@ impl Context {
                     id,
                     Node {
                         anim: animation_state::NodeAnim::entering(element.style.enter),
+                        area: None,
+                        rich: None,
                         layout_rect: Rect::default(),
                         key: element.key,
                         kind: element.kind,
@@ -1389,7 +1439,7 @@ impl Context {
         let hovered = self.hovered == Some(id);
         let focused = self.focused == Some(id);
         let mut background = node.style.background.or(match node.kind {
-            Kind::Button | Kind::TextInput | Kind::ComboBox | Kind::MenuButton => {
+            Kind::Button | Kind::TextInput | Kind::TextArea | Kind::ComboBox | Kind::MenuButton => {
                 Some(theme.control)
             }
             Kind::Popup | Kind::Popover => Some(theme.popup),
@@ -1510,7 +1560,9 @@ impl Context {
                 radius,
             });
         }
-        if !node.text.is_empty() {
+        if node.kind == Kind::RichText {
+            self.paint_rich_text(id, &mut scene, foreground);
+        } else if !node.text.is_empty() {
             let padding = node.style.padding.max(0.0);
             let rect = Rect {
                 x: node.bounds.x + padding,
@@ -1653,6 +1705,12 @@ impl Context {
             return handled;
         }
         if let Some(handled) = self.dock_event(&event) {
+            return handled;
+        }
+        if let Some(handled) = self.text_area_event(&event) {
+            return handled;
+        }
+        if let Some(handled) = self.rich_text_event(&event) {
             return handled;
         }
         if let Event::Shortcut(shortcut) = &event {
@@ -1828,7 +1886,10 @@ impl Context {
         let Some(node) = self.nodes.get_mut(&id) else {
             return false;
         };
-        if !matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection) {
+        if !matches!(
+            node.kind,
+            Kind::Scroll | Kind::Popup | Kind::Collection | Kind::TextArea
+        ) {
             return false;
         }
         let offset = offset.clamp(0.0, node.scroll.maximum);
@@ -1862,8 +1923,10 @@ impl Context {
         self.order(self.root, &mut order);
         for id in order.into_iter().rev() {
             let node = &self.nodes[&id];
-            if matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection)
-                && node.clip.contains(pointer)
+            if matches!(
+                node.kind,
+                Kind::Scroll | Kind::Popup | Kind::Collection | Kind::TextArea
+            ) && node.clip.contains(pointer)
                 && self.set_scroll(id, node.scroll.offset + delta)
             {
                 return true;

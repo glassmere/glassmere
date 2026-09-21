@@ -287,6 +287,22 @@ impl<S> Harness<S> {
                     style.family,
                     hex(*color)
                 ),
+                Primitive::RichText {
+                    rect: r,
+                    spans,
+                    style,
+                    color,
+                } => format!(
+                    "RichText {} {:.1} {:?} {:?} {}",
+                    rect(*r),
+                    style.font_size,
+                    style.family,
+                    spans
+                        .iter()
+                        .map(|span| span.text.as_str())
+                        .collect::<String>(),
+                    hex(*color)
+                ),
                 Primitive::PushClip(r) => format!("PushClip {}", rect(*r)),
                 Primitive::PopClip => "PopClip".into(),
                 Primitive::PushLayer {

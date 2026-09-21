@@ -458,19 +458,18 @@ impl Renderer {
                         clip: scissor,
                     });
                 }
-                Primitive::Text {
-                    rect, text, color, ..
-                }
-                | Primitive::StyledText {
-                    rect, text, color, ..
-                } => {
+                Primitive::Text { rect, color, .. }
+                | Primitive::StyledText { rect, color, .. }
+                | Primitive::RichText { rect, color, .. } => {
                     let key = match primitive {
-                        Primitive::Text { font_size, .. } => {
-                            self.text_system.ensure(text, *font_size)
-                        }
-                        Primitive::StyledText { style, .. } => {
-                            self.text_system
-                                .ensure_styled(text, style, Some(rect.width))
+                        Primitive::Text {
+                            text, font_size, ..
+                        } => self.text_system.ensure(text, *font_size),
+                        Primitive::StyledText { text, style, .. } => self
+                            .text_system
+                            .ensure_styled(text, style, Some(rect.width)),
+                        Primitive::RichText { spans, style, .. } => {
+                            self.text_system.ensure_rich(spans, style, Some(rect.width))
                         }
                         _ => unreachable!(),
                     };

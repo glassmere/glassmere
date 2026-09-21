@@ -314,6 +314,7 @@ impl Ui<'_> {
             submitted: self.submitted,
             warnings: self.warnings,
             theme_request: self.theme_request,
+            clipboard: self.clipboard,
             layers: self.layers,
             enabled: self.enabled,
         };

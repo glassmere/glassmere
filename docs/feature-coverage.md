@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 7a. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 7b. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |

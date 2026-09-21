@@ -6,6 +6,8 @@ mod collections;
 mod controls;
 mod dock;
 mod overlays;
+mod rich_text;
+mod text_area;
 
 pub use dock::{DockOptions, DockPanel, DockResponse};
 
@@ -34,6 +36,8 @@ pub(crate) enum Kind {
     DockGroup,
     DockFloat,
     DockHandle,
+    TextArea,
+    RichText,
     ContextArea,
     Popover,
     Label,
@@ -66,6 +70,7 @@ impl Kind {
                 | Self::MenuButton
                 | Self::ComboBox
                 | Self::Tab
+                | Self::RichText
         )
     }
 }
@@ -109,6 +114,8 @@ pub struct Ui<'a> {
     pub(crate) submitted: &'a mut HashSet<NodeId>,
     pub(crate) warnings: &'a mut Vec<String>,
     pub(crate) theme_request: &'a mut Option<crate::Theme>,
+    /// Text a copy or cut produced, handed to the host after the declaration.
+    pub(crate) clipboard: &'a mut Option<String>,
     /// Dialog layers, appended after normal content as root children.
     pub(crate) layers: &'a mut Vec<Element>,
     pub(crate) enabled: bool,
@@ -305,6 +312,7 @@ impl Ui<'_> {
             submitted: self.submitted,
             warnings: self.warnings,
             theme_request: self.theme_request,
+            clipboard: self.clipboard,
             layers: self.layers,
             enabled: self.enabled,
         };
@@ -413,6 +421,7 @@ impl Ui<'_> {
             submitted: self.submitted,
             warnings: self.warnings,
             theme_request: self.theme_request,
+            clipboard: self.clipboard,
             layers: self.layers,
             enabled: self.enabled,
         };

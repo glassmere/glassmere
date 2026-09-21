@@ -74,7 +74,9 @@ The [milestone report](milestone-5.md) describes the crates, contracts and valid
 ## 7. Advanced features — in progress
 
 - [x] Docking: split and tab-group layouts, drop indicators, in-window floating groups, detached OS windows, a keyboard panel menu, text and serde persistence ([milestone 7a](milestone-7.md#milestone-7a-docking)).
-- [ ] Rich text/code editing, BiDi caret order, hot reload and framework diagnostics.
+- [x] Rich text blocks with links, a rope-backed `TextDocument` and a virtualized code editor ([milestone 7b](milestone-7.md#milestone-7b-rich-text-and-the-code-editor-foundation)).
+- [ ] Code intelligence (syntect highlighting, find and replace, brackets, multiple cursors, diagnostics) and the WYSIWYG rich text editor.
+- [ ] BiDi caret order, hot reload and framework diagnostics.
 - CPU rendering, outgoing OS drags, gestures and additional platform adapters.
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

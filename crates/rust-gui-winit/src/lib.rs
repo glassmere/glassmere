@@ -372,6 +372,9 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                 .run(logical_size, renderer.text_system(), &mut self.view);
             stats = merge(stats, second);
         }
+        if let Some(text) = self.context.take_clipboard() {
+            input::write_clipboard(&mut self.clipboard.borrow_mut(), &text);
+        }
         let scene_changed = stats.scene_rebuilt;
         let ime_target = self
             .context

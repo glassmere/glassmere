@@ -1,7 +1,7 @@
 use rust_gui_render_wgpu::{Renderer, TextSystem, wgpu};
 use rust_gui_scene::{
-    Affine, Color, FontFamily, Point, Primitive, Rect, Scene, Size, TextMeasurer, TextStyle,
-    TextWrap,
+    Affine, Color, FontFamily, Point, Primitive, Rect, Scene, Size, TextMeasurer, TextSpan,
+    TextStyle, TextWrap,
 };
 
 /// Requires a hardware or software graphics adapter. Run explicitly on a machine
@@ -817,4 +817,81 @@ fn oversized_layers_render_at_a_capped_resolution() {
     assert_pixel(&pixels, 120, 120, [255; 3]);
     // Twice the target per side, not 4000×4000.
     assert_eq!(gpu.renderer.stats().layer_texture_bytes, 256 * 256 * 4);
+}
+
+/// Four red then four blue 9.6 px FiraMono cells starting at x = 8, over a
+/// green default colour that no glyph should use.
+fn two_colour_block() -> Primitive {
+    Primitive::RichText {
+        rect: rect(8.0, 8.0, 112.0, 24.0),
+        spans: vec![
+            TextSpan::new("MMMM").color(RED),
+            TextSpan::new("MMMM").color(BLUE),
+        ],
+        style: TextStyle {
+            family: FontFamily::Monospace,
+            ..TextStyle::default()
+        },
+        color: Color(0, 255, 0, 255),
+    }
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn rich_text_spans_keep_their_own_colours() {
+    let mut gpu = Gpu::new();
+    let pixels = gpu.render(1.0, &[two_colour_block()], true);
+    let count = |matches: &dyn Fn(usize, [u8; 3]) -> bool| {
+        (0..SIDE * SIDE)
+            .filter(|i| {
+                matches(
+                    i % SIDE,
+                    [pixels[i * 4], pixels[i * 4 + 1], pixels[i * 4 + 2]],
+                )
+            })
+            .count()
+    };
+    let red = |[r, g, b]: [u8; 3]| r > 150 && g < 120 && b < 120;
+    let blue = |[r, g, b]: [u8; 3]| b > 150 && r < 120 && g < 120;
+    // The colour boundary is at x = 8 + 4 * 9.6 = 46.4.
+    assert!(count(&|x, rgb| x < 47 && red(rgb)) > 40, "red span missing");
+    assert!(
+        count(&|x, rgb| x >= 46 && blue(rgb)) > 40,
+        "blue span missing"
+    );
+    assert_eq!(
+        count(&|x, rgb| x >= 48 && red(rgb)),
+        0,
+        "red ran into the blue span"
+    );
+    assert_eq!(
+        count(&|x, rgb| x < 45 && blue(rgb)),
+        0,
+        "blue ran into the red span"
+    );
+    assert_eq!(
+        count(&|_, [r, g, b]| g > r.saturating_add(40) && g > b.saturating_add(40)),
+        0,
+        "a glyph fell back to the default colour"
+    );
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn cached_replay_of_rich_text_is_identical() {
+    let mut gpu = Gpu::new();
+    let scene = [
+        quad(rect(0.0, 0.0, 128.0, 40.0), Color::rgb(30, 30, 30)),
+        two_colour_block(),
+    ];
+    let first = gpu.render(1.0, &scene, true);
+    let replayed = gpu.render(1.0, &scene, false);
+    assert!(first == replayed, "cached replay changed pixels");
+    assert_eq!(gpu.renderer.stats().preparations, 1);
+    // A later preparation still finds the rich buffer (it stays in the active set).
+    let again = gpu.render(1.0, &scene, true);
+    assert!(
+        first == again,
+        "re-preparing the same rich block changed pixels"
+    );
 }

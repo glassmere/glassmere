@@ -117,6 +117,16 @@ fn pressed(
                 },
                 Key::Backspace => TextEdit::Backspace { word: true },
                 Key::Delete => TextEdit::Delete { word: true },
+                Key::Home if !cfg!(target_os = "macos") => TextEdit::Move {
+                    direction: TextMove::DocumentStart,
+                    select: shift,
+                    word: false,
+                },
+                Key::End if !cfg!(target_os = "macos") => TextEdit::Move {
+                    direction: TextMove::DocumentEnd,
+                    select: shift,
+                    word: false,
+                },
                 _ => return Some(Command::Input(Event::KeyDown { key, shift, repeat })),
             };
             return Some(Command::Input(Event::Text(edit)));
@@ -155,10 +165,20 @@ impl ClipboardAccess for Option<arboard::Clipboard> {
     }
 }
 
+/// Best effort: a cut already happened in the document and stays undoable.
+pub(super) fn write_clipboard(clipboard: &mut Option<arboard::Clipboard>, text: &str) {
+    let _ = clipboard.write(text);
+}
+
 fn execute(context: &mut Context, clipboard: &mut impl ClipboardAccess, command: Command) -> bool {
     match command {
         Command::Input(event) => context.event(event),
         Command::Copy | Command::Cut => {
+            // Multi-line editors keep their text in an app-owned document: the
+            // text arrives through `take_clipboard` after the next declaration.
+            if context.request_clipboard(matches!(command, Command::Cut)) {
+                return true;
+            }
             let Some(selected) = context.selected_text().filter(|text| !text.is_empty()) else {
                 return false;
             };

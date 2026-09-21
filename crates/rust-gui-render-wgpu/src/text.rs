@@ -1,6 +1,7 @@
 use glyphon::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Wrap};
 use rust_gui_scene::{
-    CaretStop, FontFamily, Rect, Size, TextCluster, TextGeometry, TextMeasurer, TextStyle, TextWrap,
+    CaretStop, FontFamily, Rect, Size, TextCluster, TextGeometry, TextMeasurer, TextSpan,
+    TextStyle, TextWrap,
 };
 use std::collections::{HashMap, HashSet};
 use unicode_segmentation::UnicodeSegmentation;
@@ -14,6 +15,36 @@ pub(crate) struct TextKey {
     italic: bool,
     wrap: TextWrap,
     width: Option<u32>,
+    /// Byte length and overrides of each run of a rich block; empty for plain text.
+    spans: Vec<SpanKey>,
+}
+
+type SpanKey = (
+    usize,
+    Option<[u8; 4]>,
+    Option<u16>,
+    Option<bool>,
+    Option<FontFamily>,
+);
+
+fn family(family: &FontFamily) -> Family<'_> {
+    match family {
+        FontFamily::SansSerif => Family::SansSerif,
+        FontFamily::Serif => Family::Serif,
+        FontFamily::Monospace => Family::Monospace,
+        FontFamily::Named(name) => Family::Name(name),
+    }
+}
+
+fn attrs(font: &FontFamily, weight: u16, italic: bool) -> Attrs<'_> {
+    Attrs::new()
+        .family(family(font))
+        .weight(glyphon::Weight(weight.clamp(100, 900)))
+        .style(if italic {
+            glyphon::Style::Italic
+        } else {
+            glyphon::Style::Normal
+        })
 }
 
 /// System fonts and shared shaping buffers for measurement, painting and editing.
@@ -114,6 +145,27 @@ impl TextSystem {
         style: &TextStyle,
         width: Option<f32>,
     ) -> TextKey {
+        self.ensure_buffer(text, &[], style, width)
+    }
+
+    /// A rich block: per-span family, weight, slant and colour over the block style.
+    pub(crate) fn ensure_rich(
+        &mut self,
+        spans: &[TextSpan],
+        style: &TextStyle,
+        width: Option<f32>,
+    ) -> TextKey {
+        let text: String = spans.iter().map(|span| span.text.as_str()).collect();
+        self.ensure_buffer(&text, spans, style, width)
+    }
+
+    fn ensure_buffer(
+        &mut self,
+        text: &str,
+        spans: &[TextSpan],
+        style: &TextStyle,
+        width: Option<f32>,
+    ) -> TextKey {
         let font_size = if style.font_size.is_finite() {
             style.font_size.max(1.0)
         } else {
@@ -134,6 +186,18 @@ impl TextSystem {
             italic: style.italic,
             wrap: style.wrap,
             width: width.map(f32::to_bits),
+            spans: spans
+                .iter()
+                .map(|span| {
+                    (
+                        span.text.len(),
+                        span.color.map(|color| [color.0, color.1, color.2, color.3]),
+                        span.weight,
+                        span.italic,
+                        span.family.clone(),
+                    )
+                })
+                .collect(),
         };
         self.buffers.entry(key.clone()).or_insert_with(|| {
             let mut buffer = Buffer::new(&mut self.fonts, Metrics::new(font_size, font_size * 1.4));
@@ -146,21 +210,29 @@ impl TextSystem {
                 },
             );
             buffer.set_size(&mut self.fonts, width, None);
-            let family = match &style.family {
-                FontFamily::SansSerif => Family::SansSerif,
-                FontFamily::Serif => Family::Serif,
-                FontFamily::Monospace => Family::Monospace,
-                FontFamily::Named(name) => Family::Name(name),
-            };
-            let attrs = Attrs::new()
-                .family(family)
-                .weight(glyphon::Weight(style.weight.clamp(100, 900)))
-                .style(if style.italic {
-                    glyphon::Style::Italic
-                } else {
-                    glyphon::Style::Normal
+            let base = attrs(&style.family, style.weight, style.italic);
+            if spans.is_empty() {
+                buffer.set_text(&mut self.fonts, text, &base, Shaping::Advanced, None);
+            } else {
+                // A span colour overrides the text area's default colour per glyph.
+                let runs = spans.iter().map(|span| {
+                    let run = attrs(
+                        span.family.as_ref().unwrap_or(&style.family),
+                        span.weight.unwrap_or(style.weight),
+                        span.italic.unwrap_or(style.italic),
+                    );
+                    (
+                        span.text.as_str(),
+                        match span.color {
+                            Some(color) => {
+                                run.color(glyphon::Color::rgba(color.0, color.1, color.2, color.3))
+                            }
+                            None => run,
+                        },
+                    )
                 });
-            buffer.set_text(&mut self.fonts, text, &attrs, Shaping::Advanced, None);
+                buffer.set_rich_text(&mut self.fonts, runs, &base, Shaping::Advanced, None);
+            }
             buffer.shape_until_scroll(&mut self.fonts, false);
             buffer
         });
@@ -189,7 +261,23 @@ impl TextMeasurer for TextSystem {
 
     fn geometry(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> TextGeometry {
         let key = self.ensure_styled(text, style, width);
-        let buffer = &self.buffers[&key];
+        Self::extract(&self.buffers[&key], text)
+    }
+
+    fn geometry_rich(
+        &mut self,
+        spans: &[TextSpan],
+        style: &TextStyle,
+        width: Option<f32>,
+    ) -> TextGeometry {
+        let key = self.ensure_rich(spans, style, width);
+        Self::extract(&self.buffers[&key], &key.text)
+    }
+}
+
+impl TextSystem {
+    /// Grapheme clusters and caret stops of a shaped buffer over `text`.
+    fn extract(buffer: &Buffer, text: &str) -> TextGeometry {
         let mut result = TextGeometry {
             size: Self::size(buffer),
             ..TextGeometry::default()
@@ -286,6 +374,37 @@ impl TextMeasurer for TextSystem {
 mod tests {
     use super::*;
     use rust_gui_scene::Point;
+
+    #[test]
+    fn rich_geometry_indexes_the_concatenated_spans_and_matches_plain_shaping() {
+        let mut system = TextSystem::default();
+        let style = TextStyle::default();
+        let plain = system.geometry("abcd", &style, None);
+        let ranges = |geometry: &TextGeometry| -> Vec<_> {
+            geometry
+                .clusters
+                .iter()
+                .map(|cluster| cluster.bytes.clone())
+                .collect()
+        };
+        let rich = system.geometry_rich(&[TextSpan::new("ab"), TextSpan::new("cd")], &style, None);
+        assert_eq!(ranges(&rich), [0..1, 1..2, 2..3, 3..4]);
+        assert_eq!(rich.size, plain.size);
+        assert_eq!(rich.carets.last().map(|caret| caret.byte), Some(4));
+        let bold = system.geometry_rich(
+            &[TextSpan::new("ab").weight(700), TextSpan::new("c\nd")],
+            &style,
+            None,
+        );
+        assert_eq!(ranges(&bold), [0..1, 1..2, 2..3, 4..5]);
+        assert!(bold.size.height > plain.size.height);
+        // Span attributes are part of the cache key; plain text keeps its own entry.
+        let red = [TextSpan::new("abcd").color(rust_gui_scene::Color(255, 0, 0, 255))];
+        assert_ne!(
+            system.ensure_rich(&red, &style, None),
+            system.ensure_styled("abcd", &style, None)
+        );
+    }
 
     #[test]
     fn shaping_wraps_and_geometry_hits_only_grapheme_boundaries() {

@@ -86,6 +86,26 @@ pub(crate) enum Control {
         float: bool,
     },
     DockFloat,
+    RichText {
+        runs: Vec<crate::RichRun>,
+        /// Number of link runs; a block with links is focusable.
+        links: usize,
+    },
+    /// A multi-line editor over an app-owned document: the declared window of
+    /// lines plus what is needed to paint and navigate it.
+    TextArea {
+        label: String,
+        lines: Vec<crate::text_area::AreaLine>,
+        first_line: usize,
+        total_lines: usize,
+        selections: Vec<crate::text_area::AreaSelection>,
+        selection_count: usize,
+        primary: (usize, usize),
+        font_size: f32,
+        line_numbers: bool,
+        read_only: bool,
+        scroll_y: f32,
+    },
     /// A floating group's grip (`resize: false`) or resize corner, with the
     /// float's declared rectangle. Floats are named by their first panel.
     DockHandle {
@@ -163,6 +183,7 @@ pub(crate) enum ControlUpdate {
     Drop(crate::DragPayload),
     Dismiss,
     Dock(DockAction),
+    TextOps(Vec<crate::text_area::AreaOp>),
 }
 
 #[derive(Clone, Debug)]

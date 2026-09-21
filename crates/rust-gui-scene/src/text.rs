@@ -113,11 +113,60 @@ impl TextGeometry {
     }
 }
 
+/// One run of a rich text block. Unset properties fall back to the block's
+/// `TextStyle` and colour. Font size and wrapping are per block.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TextSpan {
+    pub text: String,
+    pub color: Option<crate::Color>,
+    pub weight: Option<u16>,
+    pub italic: Option<bool>,
+    pub family: Option<FontFamily>,
+}
+
+impl TextSpan {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            ..Self::default()
+        }
+    }
+    pub fn color(mut self, color: crate::Color) -> Self {
+        self.color = Some(color);
+        self
+    }
+    pub fn weight(mut self, weight: u16) -> Self {
+        self.weight = Some(weight);
+        self
+    }
+    pub fn italic(mut self, italic: bool) -> Self {
+        self.italic = Some(italic);
+        self
+    }
+    pub fn family(mut self, family: FontFamily) -> Self {
+        self.family = Some(family);
+        self
+    }
+}
+
 /// Shared shaping contract. Desktop implementations use the renderer's fonts;
 /// the synthetic implementation below is for deterministic headless tests.
 pub trait TextMeasurer {
     fn measure_styled(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> Size;
     fn geometry(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> TextGeometry;
+
+    /// Geometry of a rich block; byte offsets index the concatenated span
+    /// texts. The default ignores span fonts, which is exact for measurers whose
+    /// advances do not depend on weight, slant or family.
+    fn geometry_rich(
+        &mut self,
+        spans: &[TextSpan],
+        style: &TextStyle,
+        width: Option<f32>,
+    ) -> TextGeometry {
+        let text: String = spans.iter().map(|span| span.text.as_str()).collect();
+        self.geometry(&text, style, width)
+    }
 
     fn measure(&mut self, text: &str, font_size: f32) -> Size {
         self.measure_styled(

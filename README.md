@@ -78,6 +78,14 @@ cargo run -p rust-gui --example animations --release
 
 Eased state transitions, enter and exit effects, layout animations and looping keyframes, composited as GPU layers with group opacity and transforms. See [milestone 6e](docs/milestone-6.md#milestone-6e-animations).
 
+Rich text and code editing:
+
+```powershell
+cargo run -p rust-gui --example editor --release
+```
+
+Styled rich text with links, and a virtualized code editor over an app-owned rope document. See [milestone 7b](docs/milestone-7.md#milestone-7b-rich-text-and-the-code-editor-foundation).
+
 Docking:
 
 ```powershell
@@ -188,6 +196,7 @@ cargo run -p rust-gui --example dialogs -- --smoke
 cargo run -p rust-gui --example panes -- --smoke
 cargo run -p rust-gui --example animations -- --smoke
 cargo run -p rust-gui --example docking -- --smoke
+cargo run -p rust-gui --example editor -- --smoke
 cargo run -p rust-gui-core --example tree_bench --release
 ```
 
