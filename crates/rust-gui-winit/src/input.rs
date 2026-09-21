@@ -60,6 +60,7 @@ fn named(key: &WinitKey) -> Option<Key> {
         WinitKey::Named(NamedKey::Backspace) => Key::Backspace,
         WinitKey::Named(NamedKey::Delete) => Key::Delete,
         WinitKey::Named(NamedKey::ContextMenu) => Key::ContextMenu,
+        WinitKey::Named(NamedKey::F2) => Key::F2,
         _ => return None,
     })
 }

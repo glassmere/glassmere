@@ -102,6 +102,14 @@ cargo run -p rust-gui-dev -- -p rust-gui --example counter
 
 Rebuilds and restarts the app when sources change, with its state and window kept; watched files and stylesheets update in place. See [milestone 7g](docs/milestone-7.md#milestone-7g-hot-reload).
 
+Data grid:
+
+```powershell
+cargo run -p rust-gui --example grid --release
+```
+
+Two thousand rows with typed in-place editing, a cell cursor, and columns the user resizes, reorders and hides. See [milestone 10](docs/milestone-10.md).
+
 Property grid:
 
 ```powershell
@@ -242,6 +250,7 @@ cargo run -p rust-gui --example editor -- --smoke
 cargo run -p rust-gui --example richtext -- --smoke
 cargo run -p rust-gui --example images -- --smoke
 cargo run -p rust-gui --example properties -- --smoke
+cargo run -p rust-gui --example grid -- --smoke
 cargo run -p rust-gui-core --example tree_bench --release
 ```
 

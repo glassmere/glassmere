@@ -201,6 +201,8 @@ pub enum Key {
     Delete,
     /// The Menu key or Shift+F10.
     ContextMenu,
+    /// Starts editing the current cell of a grid.
+    F2,
 }
 
 #[derive(Clone, Debug)]

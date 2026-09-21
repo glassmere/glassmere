@@ -287,11 +287,13 @@ fn grid_realizes_bounded_cells_and_sorting_preserves_selected_identity() {
                 label: "ID".into(),
                 width: 120.0,
                 sortable: true,
+                editor: None,
             },
             GridColumn {
                 label: "Value".into(),
                 width: 200.0,
                 sortable: false,
+                editor: None,
             },
         ],
     };

@@ -1,7 +1,8 @@
 use super::*;
 use crate::{
     GridModel, GridState, Length, ListModel, ListResponse, ListState, SortDirection,
-    VirtualListOptions, collection::CollectionKind,
+    VirtualListOptions,
+    collection::{CollectionInput, CollectionKind},
 };
 
 impl Ui<'_> {
@@ -134,6 +135,120 @@ impl Ui<'_> {
         let domain = format!("grid-column:{key}");
         let mut response = ListResponse::default();
         let mut actions = Vec::new();
+
+        // Cell cursor and in-place editing. The rows' input queue also carries
+        // what only a grid understands; take that out before the rows see the rest.
+        let rows = self
+            .context
+            .child(self.parent, &WidgetKey::Named(key.clone()), Kind::Column)
+            .and_then(|grid| {
+                self.context.child(
+                    Some(grid),
+                    &WidgetKey::Named("$rows".into()),
+                    Kind::Collection,
+                )
+            });
+        let mut inputs = Vec::new();
+        if let Some(rows) = rows
+            && let Some(ControlUpdate::Collection(queue)) = self.updates.get_mut(&rows)
+        {
+            let editable = columns
+                .get(state.cursor)
+                .is_some_and(|column| column.editor.is_some());
+            for input in std::mem::take(queue) {
+                match input {
+                    // Enter opens an editable cell; elsewhere it activates the row.
+                    CollectionInput::Activate if editable => inputs.push(CollectionInput::Edit),
+                    input if input.for_grid() => inputs.push(input),
+                    input => queue.push(input),
+                }
+            }
+        }
+        if !self.enabled {
+            inputs.clear();
+        }
+        if !visible.contains(&state.cursor) {
+            state.cursor = visible[0];
+        }
+        let mut edited = None;
+        // Where the keyboard goes once this declaration is reconciled.
+        let (mut focus_editor, mut focus_rows) = (false, false);
+        let mut row_moves = Vec::new();
+        for input in inputs {
+            let mut start = None;
+            match input {
+                CollectionInput::Cell { item, position } => {
+                    let Some(&column) = visible.get(position) else {
+                        continue;
+                    };
+                    // A second press on the current cell opens it.
+                    let again = state.edit.is_none()
+                        && state.cursor == column
+                        && state.rows.selected() == Some(item);
+                    state.cursor = column;
+                    start = again.then_some(None);
+                }
+                CollectionInput::Column(by) if state.edit.is_none() => {
+                    let at = visible
+                        .iter()
+                        .position(|column| *column == state.cursor)
+                        .unwrap_or(0);
+                    state.cursor = visible[at.saturating_add_signed(by).min(visible.len() - 1)];
+                }
+                CollectionInput::Edit => start = Some(None),
+                CollectionInput::Type(text) => start = Some(Some(text)),
+                CollectionInput::EditKey { key, shift } => {
+                    let step = if shift { -1 } else { 1 };
+                    match key {
+                        crate::Key::Escape => {
+                            state.edit = None;
+                            focus_rows = true;
+                        }
+                        // Enter and Tab store the value first; a refused value
+                        // keeps the editor open and the cursor where it is.
+                        _ if !commit_edit(model, state, &columns, &mut edited) => {}
+                        crate::Key::Enter => {
+                            row_moves.push(CollectionInput::Move(step));
+                            focus_rows = true;
+                        }
+                        _ => {
+                            let at = visible
+                                .iter()
+                                .position(|column| *column == state.cursor)
+                                .unwrap_or(0);
+                            state.cursor =
+                                visible[at.saturating_add_signed(step).min(visible.len() - 1)];
+                            focus_rows = true;
+                        }
+                    }
+                }
+                _ => {}
+            }
+            if let Some(typed) = start
+                && state.edit.is_none()
+            {
+                focus_editor |= begin_edit(model, state, &columns, typed, &mut edited);
+            }
+        }
+        if let Some(rows) = rows
+            && !row_moves.is_empty()
+        {
+            match self
+                .updates
+                .entry(rows)
+                .or_insert_with(|| ControlUpdate::Collection(Vec::new()))
+            {
+                ControlUpdate::Collection(queue) => queue.extend(row_moves),
+                _ => unreachable!("a collection only queues collection input"),
+            }
+        }
+        let rows_focused = rows.is_some_and(|rows| self.context.focused() == Some(rows));
+        let theme = self.context.theme();
+        let (cursor_fill, error_fill) =
+            (theme.control_hover, rust_gui_scene::Color::rgb(120, 40, 48));
+        // Set by the editor in its cell, applied after the rows are declared:
+        // a choice was picked, or the keyboard left the cell.
+        let (mut picked, mut left) = (false, false);
         self.group(
             key,
             Kind::Column,
@@ -279,7 +394,8 @@ impl Ui<'_> {
                         ..options.clone()
                     },
                     CollectionKind::Grid,
-                    |ui, model, index, _| {
+                    |ui, model, index, is_selected| {
+                        let item = model.item_id(index);
                         ui.row(
                             "$cells",
                             Style {
@@ -291,14 +407,71 @@ impl Ui<'_> {
                                 for (position, (&column, &width)) in
                                     visible.iter().zip(&widths).enumerate()
                                 {
+                                    let cell = Style {
+                                        width: Length::Px(width),
+                                        height: Length::Px(options.row_height),
+                                        padding: 6.0,
+                                        ..Style::default()
+                                    };
+                                    if let Some(edit) = state
+                                        .edit
+                                        .as_mut()
+                                        .filter(|edit| edit.item == item && edit.column == column)
+                                    {
+                                        // The editor takes the cell's place.
+                                        let descriptor = &columns[column];
+                                        let mut style = Style {
+                                            padding: 4.0,
+                                            radius: 0.0,
+                                            ..Style::button()
+                                        }
+                                        .width(Length::Px(width))
+                                        .height(Length::Px(options.row_height));
+                                        if edit.error.is_some() {
+                                            style.background = Some(error_fill);
+                                        }
+                                        let response = match &descriptor.editor {
+                                            Some(crate::CellEditor::Choice(choices)) => {
+                                                let choices: Vec<&str> =
+                                                    choices.iter().map(String::as_str).collect();
+                                                let response = ui.combo_box_styled(
+                                                    "$edit",
+                                                    descriptor.label.clone(),
+                                                    &mut edit.choice,
+                                                    &choices,
+                                                    style,
+                                                );
+                                                // Picking a choice is the whole edit.
+                                                picked |= response.changed;
+                                                response
+                                            }
+                                            _ => ui.text_input_styled(
+                                                "$edit",
+                                                descriptor.label.clone(),
+                                                &mut edit.text,
+                                                "",
+                                                style,
+                                            ),
+                                        };
+                                        if let Some(error) = &edit.error {
+                                            ui.tooltip(error.clone());
+                                        }
+                                        if focus_editor {
+                                            ui.request_focus("$edit");
+                                        }
+                                        // Leaving the cell any other way stores the value too.
+                                        left |= edit.focused && !response.focused;
+                                        edit.focused |= response.focused;
+                                        continue;
+                                    }
+                                    let current =
+                                        is_selected && column == state.cursor && rows_focused;
                                     ui.label_styled(
                                         column.to_string(),
                                         model.cell(index, column),
                                         Style {
-                                            width: Length::Px(width),
-                                            height: Length::Px(options.row_height),
-                                            padding: 6.0,
-                                            ..Style::default()
+                                            background: current.then_some(cursor_fill),
+                                            ..cell
                                         },
                                     );
                                     ui.elements.last_mut().unwrap().control = Control::GridCell {
@@ -312,8 +485,18 @@ impl Ui<'_> {
                         );
                     },
                 );
+                if focus_rows || std::mem::take(&mut state.refocus) {
+                    ui.request_focus("$rows");
+                }
             },
         );
+        if (picked || left) && commit_edit(model, state, &columns, &mut edited) && picked {
+            // The combo box that had the keyboard is gone with the editor:
+            // the next declaration hands the keyboard back to the rows.
+            state.refocus = true;
+            self.request_redraw();
+        }
+        response.edited = edited;
         self.elements.last_mut().unwrap().control = Control::Grid {
             label: options.label,
             rows: model.len(),
@@ -485,5 +668,113 @@ impl Ui<'_> {
             selected,
         };
         response
+    }
+}
+
+/// Opens the editor of the current cell, or toggles it when it is a bool.
+/// `typed` replaces the content of a text or number cell. Returns whether an
+/// editor opened and wants the keyboard.
+fn begin_edit(
+    model: &mut impl GridModel,
+    state: &mut GridState,
+    columns: &[crate::GridColumn],
+    typed: Option<String>,
+    edited: &mut Option<(crate::ItemId, usize)>,
+) -> bool {
+    let column = state.cursor;
+    let Some(item) = state.rows.selected() else {
+        return false;
+    };
+    let (Some(row), Some(editor)) = (
+        model.index_of(item),
+        columns
+            .get(column)
+            .and_then(|column| column.editor.as_ref()),
+    ) else {
+        return false;
+    };
+    let value = model.value(row, column);
+    let (text, choice) = match (editor, value) {
+        (crate::CellEditor::Bool, value) => {
+            let next = !matches!(value, crate::CellValue::Bool(true));
+            if model
+                .set_cell(row, column, crate::CellValue::Bool(next))
+                .is_ok()
+            {
+                *edited = Some((item, column));
+            }
+            return false;
+        }
+        (crate::CellEditor::Choice(choices), value) => {
+            let choice = match value {
+                crate::CellValue::Choice(choice) => choice,
+                _ => 0,
+            };
+            (String::new(), choice.min(choices.len().saturating_sub(1)))
+        }
+        // The draft is the bare number: the unit is shown, not typed.
+        (crate::CellEditor::Number(options), crate::CellValue::Number(number)) => (
+            options
+                .format(number)
+                .trim_end_matches(options.suffix.as_str())
+                .to_owned(),
+            0,
+        ),
+        (_, crate::CellValue::Text(text)) => (text, 0),
+        _ => (model.cell(row, column), 0),
+    };
+    state.edit = Some(crate::collection::GridEdit {
+        item,
+        column,
+        text: typed.unwrap_or(text),
+        choice,
+        error: None,
+        focused: false,
+    });
+    true
+}
+
+/// Hands the open editor's value to the model. Returns whether the edit is
+/// over: the model took the value, or there was nothing to store.
+fn commit_edit(
+    model: &mut impl GridModel,
+    state: &mut GridState,
+    columns: &[crate::GridColumn],
+    edited: &mut Option<(crate::ItemId, usize)>,
+) -> bool {
+    let Some(edit) = &mut state.edit else {
+        return true;
+    };
+    let (Some(row), Some(editor)) = (
+        model.index_of(edit.item),
+        columns
+            .get(edit.column)
+            .and_then(|column| column.editor.as_ref()),
+    ) else {
+        // The row or the column went away while it was being edited.
+        state.edit = None;
+        return true;
+    };
+    let value = match editor {
+        crate::CellEditor::Number(options) => match options.parse(&edit.text) {
+            Some(number) => crate::CellValue::Number(number),
+            None => {
+                edit.error = Some("Enter a number.".into());
+                return false;
+            }
+        },
+        crate::CellEditor::Choice(_) => crate::CellValue::Choice(edit.choice),
+        _ => crate::CellValue::Text(edit.text.clone()),
+    };
+    match model.set_cell(row, edit.column, value) {
+        Ok(()) => {
+            *edited = Some((edit.item, edit.column));
+            state.edit = None;
+            true
+        }
+        Err(error) => {
+            edit.error = Some(error);
+            false
+        }
     }
 }

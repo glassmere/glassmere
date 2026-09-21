@@ -76,6 +76,10 @@ name = "richtext"
 required-features = ["desktop", "syntax"]
 
 [[example]]
+name = "grid"
+required-features = ["desktop"]
+
+[[example]]
 name = "properties"
 required-features = ["desktop", "derive"]
 

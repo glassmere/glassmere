@@ -25,6 +25,7 @@ impl Tickets {
             label: label.into(),
             width,
             sortable,
+            editor: None,
         };
         let mut tickets = Self {
             count,

@@ -17,6 +17,7 @@ impl People {
             label: label.into(),
             width,
             sortable: true,
+            editor: None,
         };
         Self {
             columns: vec![

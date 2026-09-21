@@ -22,6 +22,42 @@ impl Context {
         true
     }
 
+    /// Display position of the grid cell of `row` under `point`.
+    fn grid_cell_at(&self, row: NodeId, point: Point) -> Option<usize> {
+        let mut pending = self.nodes.get(&row)?.children.clone();
+        while let Some(id) = pending.pop() {
+            let node = &self.nodes[&id];
+            if let Control::GridCell {
+                column,
+                header: false,
+                ..
+            } = node.control
+            {
+                if point.x >= node.bounds.x && point.x < node.bounds.x + node.bounds.width {
+                    return Some(column);
+                }
+            } else {
+                pending.extend(node.children.iter().copied());
+            }
+        }
+        None
+    }
+
+    /// The grid's row collection when `focused` is an editor inside one of its cells.
+    fn grid_of_editor(&self, focused: NodeId) -> Option<NodeId> {
+        let mut next = self.nodes.get(&focused)?.parent;
+        while let Some(id) = next {
+            let node = self.nodes.get(&id)?;
+            if let Control::CollectionRow { kind, .. } = node.control {
+                return (kind == CollectionKind::Grid)
+                    .then_some(node.parent)
+                    .flatten();
+            }
+            next = node.parent;
+        }
+        None
+    }
+
     pub(super) fn collection_action(&mut self, target: NodeId, action: &Action) -> Option<bool> {
         let node = self.nodes.get(&target)?;
         let Control::CollectionRow { item, .. } = node.control else {
@@ -50,10 +86,22 @@ impl Context {
     pub(super) fn collection_event(&mut self, event: &Event) -> Option<bool> {
         match event {
             Event::PointerDown | Event::PointerDownWithShift => {
-                let id = self.pointer.and_then(|point| self.hit_test(point))?;
+                let point = self.pointer?;
+                let id = self.hit_test(point)?;
                 let node = &self.nodes[&id];
                 if node.kind == Kind::CollectionRow && node.enabled {
-                    self.focus_control(node.parent.unwrap());
+                    let owner = node.parent.unwrap();
+                    // In a grid the press also says which cell it landed on.
+                    if let Control::CollectionRow {
+                        item,
+                        kind: CollectionKind::Grid,
+                        ..
+                    } = node.control
+                        && let Some(position) = self.grid_cell_at(id, point)
+                    {
+                        self.collection_queue(owner, CollectionInput::Cell { item, position });
+                    }
+                    self.focus_control(owner);
                     self.captured = Some(id);
                     return Some(true);
                 }
@@ -84,6 +132,36 @@ impl Context {
                     return Some(self.collection_queue(owner, CollectionInput::Toggle(item)));
                 }
             }
+            Event::KeyDown { key, shift, .. }
+                if matches!(key, Key::Enter | Key::Tab | Key::Escape)
+                    && self.popup.is_none()
+                    && self
+                        .focused
+                        .is_some_and(|id| self.grid_of_editor(id).is_some()) =>
+            {
+                // An editor inside a grid cell: these keys end the edit, and
+                // the grid decides where the cursor goes next.
+                let owner = self.grid_of_editor(self.focused?)?;
+                return Some(self.collection_queue(
+                    owner,
+                    CollectionInput::EditKey {
+                        key: *key,
+                        shift: *shift,
+                    },
+                ));
+            }
+            Event::Text(crate::TextEdit::Insert(text)) => {
+                let id = self.focused?;
+                let typed = matches!(
+                    self.nodes.get(&id)?.control,
+                    Control::Collection {
+                        kind: CollectionKind::Grid,
+                        ..
+                    }
+                ) && !text.chars().all(char::is_control);
+                return typed
+                    .then(|| self.collection_queue(id, CollectionInput::Type(text.clone())));
+            }
             Event::KeyDown { key, repeat, .. } => {
                 let id = self.focused?;
                 let node = &self.nodes[&id];
@@ -110,6 +188,14 @@ impl Context {
                     Key::Enter if !repeat => CollectionInput::Activate,
                     Key::Space if !repeat && kind == CollectionKind::Tree => {
                         CollectionInput::Toggle(selected?)
+                    }
+                    // Sideways moves the current cell the way the arrow points.
+                    Key::ArrowLeft | Key::ArrowRight if kind == CollectionKind::Grid => {
+                        let forward = (*key == Key::ArrowRight) != node.resolved.rtl();
+                        CollectionInput::Column(if forward { 1 } else { -1 })
+                    }
+                    Key::F2 | Key::Space if !repeat && kind == CollectionKind::Grid => {
+                        CollectionInput::Edit
                     }
                     Key::ArrowRight if kind == CollectionKind::Tree => {
                         CollectionInput::Expand(true)

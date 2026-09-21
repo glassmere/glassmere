@@ -122,6 +122,9 @@ impl ListState {
 pub struct ListResponse {
     pub changed: bool,
     pub activated: Option<ItemId>,
+    /// Grids: the row and model column whose edited value the model accepted
+    /// this frame.
+    pub edited: Option<(ItemId, usize)>,
     /// Realized indices, including bounded overscan.
     pub realized: Range<usize>,
 }
@@ -142,6 +145,32 @@ pub(crate) enum CollectionInput {
     Activate,
     Expand(bool),
     Toggle(ItemId),
+    /// Grids: a press landed on this cell of this row.
+    Cell {
+        item: ItemId,
+        position: usize,
+    },
+    /// Grids: move the current cell sideways by display positions.
+    Column(isize),
+    /// Grids: F2 or Space on the current cell.
+    Edit,
+    /// Grids: text typed while the grid itself has focus.
+    Type(String),
+    /// Grids: Enter, Tab or Escape while an editor in a cell has focus.
+    EditKey {
+        key: crate::Key,
+        shift: bool,
+    },
+}
+
+impl CollectionInput {
+    /// Inputs the grid handles itself; the list below it never sees them.
+    pub(crate) fn for_grid(&self) -> bool {
+        matches!(
+            self,
+            Self::Cell { .. } | Self::Column(_) | Self::Edit | Self::Type(_) | Self::EditKey { .. }
+        )
+    }
 }
 
 impl ListState {
@@ -203,6 +232,12 @@ impl ListState {
                     activated = self.selected;
                     None
                 }
+                // The grid took these out before the rows saw the rest.
+                CollectionInput::Cell { .. }
+                | CollectionInput::Column(_)
+                | CollectionInput::Edit
+                | CollectionInput::Type(_)
+                | CollectionInput::EditKey { .. } => None,
                 CollectionInput::Expand(expand) => {
                     if let Some(index) = current {
                         let id = model.item_id(index);
@@ -275,6 +310,7 @@ impl ListState {
         ListResponse {
             changed: old != self.selected,
             activated,
+            edited: None,
             realized: start..end,
         }
     }
@@ -416,17 +452,81 @@ pub enum SortDirection {
     Ascending,
     Descending,
 }
+/// What a cell holds, as its editor sees it.
+#[derive(Clone, Debug, PartialEq)]
+pub enum CellValue {
+    Text(String),
+    Number(f64),
+    Bool(bool),
+    /// An index into the column's choices.
+    Choice(usize),
+}
+
+/// How the cells of a column are edited in place.
+#[derive(Clone, Debug, PartialEq)]
+pub enum CellEditor {
+    Text,
+    /// Typed as text; committing parses, clamps and snaps it like a number
+    /// input. Boxed because the options carry a whole style; see `number`.
+    Number(Box<crate::NumberOptions>),
+    /// No editor opens: editing toggles the value.
+    Bool,
+    Choice(Vec<String>),
+}
+
+impl CellEditor {
+    pub fn number(options: crate::NumberOptions) -> Self {
+        Self::Number(Box::new(options))
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct GridColumn {
     pub label: String,
     pub width: f32,
     pub sortable: bool,
+    /// `None` makes the column read-only.
+    pub editor: Option<CellEditor>,
 }
+
+impl GridColumn {
+    /// A read-only, unsortable column.
+    pub fn new(label: impl Into<String>, width: f32) -> Self {
+        Self {
+            label: label.into(),
+            width,
+            sortable: false,
+            editor: None,
+        }
+    }
+
+    pub fn sortable(mut self, sortable: bool) -> Self {
+        self.sortable = sortable;
+        self
+    }
+
+    pub fn editor(mut self, editor: CellEditor) -> Self {
+        self.editor = Some(editor);
+        self
+    }
+}
+
 pub trait GridModel: ListModel {
     fn columns(&self) -> &[GridColumn];
     fn cell(&self, row: usize, column: usize) -> String;
     /// Return true after actually changing the application-owned order.
     fn sort(&mut self, column: usize, direction: SortDirection) -> bool;
+    /// What an editor starts from. Editable number, bool and choice columns
+    /// override this; text columns edit their displayed text.
+    fn value(&self, row: usize, column: usize) -> CellValue {
+        CellValue::Text(self.cell(row, column))
+    }
+    /// Stores an edited value. An error keeps the editor open and is shown
+    /// to the user, so say what is wrong with the value.
+    fn set_cell(&mut self, row: usize, column: usize, value: CellValue) -> Result<(), String> {
+        let _ = (row, column, value);
+        Err("This grid is read-only.".into())
+    }
 }
 #[derive(Clone, Debug, Default)]
 pub struct GridState {
@@ -434,6 +534,42 @@ pub struct GridState {
     pub sort: Option<(usize, SortDirection)>,
     /// What the user did to the columns.
     pub columns: GridColumns,
+    /// Model column of the current cell; its row is the selected row.
+    pub cursor: usize,
+    pub(crate) edit: Option<GridEdit>,
+    /// The next declaration gives the keyboard back to the rows.
+    pub(crate) refocus: bool,
+}
+
+/// A cell being edited in place.
+#[derive(Clone, Debug)]
+pub(crate) struct GridEdit {
+    pub item: ItemId,
+    pub column: usize,
+    /// Draft of a text or number editor.
+    pub text: String,
+    /// Draft of a choice editor.
+    pub choice: usize,
+    pub error: Option<String>,
+    /// The editor has had keyboard focus, so losing it means leaving the cell.
+    pub focused: bool,
+}
+
+impl GridState {
+    /// The row and model column being edited.
+    pub fn editing(&self) -> Option<(ItemId, usize)> {
+        self.edit.as_ref().map(|edit| (edit.item, edit.column))
+    }
+
+    /// Why the model refused the value of the open editor.
+    pub fn edit_error(&self) -> Option<&str> {
+        self.edit.as_ref()?.error.as_deref()
+    }
+
+    /// Closes the editor without storing anything.
+    pub fn cancel_edit(&mut self) {
+        self.edit = None;
+    }
 }
 
 /// A grid's column layout as the user arranged it: the model describes the

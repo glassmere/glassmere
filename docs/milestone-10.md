@@ -1,6 +1,6 @@
 # Milestone 10: the data grid
 
-Row 19 of the coverage table lists what a professional grid still lacks: column resizing and reordering, filtering, inline editing, frozen and virtual columns. Decisions taken at the start: column layout lives in the app-owned `GridState`; the model filters, like it sorts; editing uses a cell cursor with typed editors; and wide grids build on general two-axis scrolling in the engine rather than a grid-only mechanism. Slices: 10a horizontal scrolling and 10b column resize, reorder and hide (both below), 10c cell cursor and inline editing, 10d the filter row, 10e the horizontally scrolling grid with frozen and virtual columns.
+Row 19 of the coverage table lists what a professional grid still lacks: column resizing and reordering, filtering, inline editing, frozen and virtual columns. Decisions taken at the start: column layout lives in the app-owned `GridState`; the model filters, like it sorts; editing uses a cell cursor with typed editors; and wide grids build on general two-axis scrolling in the engine rather than a grid-only mechanism. Slices: 10a horizontal scrolling, 10b column resize, reorder and hide and 10c cell cursor and inline editing (all below), 10d the filter row, 10e the horizontally scrolling grid with frozen and virtual columns.
 
 # Milestone 10a: horizontal scrolling
 
@@ -81,3 +81,59 @@ The full suite is 208 tests plus 18 GPU tests; formatting and clippy (all featur
 - Keyboard resizing goes through the menu in 20 px steps, one menu trip per step.
 - No auto-fit to content on a double-click of the handle.
 - Column arrangement is not yet frozen or virtualized, and the header does not follow the rows sideways: 10e.
+
+# Milestone 10c: cell cursor and inline editing
+
+Implemented on 2026-09-21. A grid now has a current cell as well as a selected row, and cells are edited in place through typed editors. Values go to the model, which may refuse them with a message.
+
+## Run
+
+```powershell
+cargo run -p rust-gui --example grid --release
+```
+
+Two thousand people with a text, a choice, two number and a bool column.
+
+## Use
+
+```rust
+GridColumn::new("Name", 190.0).sortable(true).editor(CellEditor::Text)
+GridColumn::new("City", 130.0).editor(CellEditor::Choice(cities))
+GridColumn::new("Age", 80.0).editor(CellEditor::number(NumberOptions::default().range(18.0, 99.0)))
+GridColumn::new("Active", 80.0).editor(CellEditor::Bool)
+
+impl GridModel for People {
+    fn value(&self, row: usize, column: usize) -> CellValue { /* Number, Bool, Choice; Text by default */ }
+    fn set_cell(&mut self, row: usize, column: usize, value: CellValue) -> Result<(), String> { /* store or refuse */ }
+}
+if let Some((item, column)) = ui.data_grid("people", &mut people, &mut state, options).edited { /* stored */ }
+```
+
+## Contracts
+
+| Piece | Contract |
+| --- | --- |
+| `GridColumn` | Gains `editor: Option<CellEditor>` (`None` is read-only), `GridColumn::new(label, width)` and the builders `sortable` and `editor`. |
+| `CellEditor` | `Text`, `Number(options)` through `CellEditor::number`, `Bool`, `Choice(labels)`. `CellValue` is `Text`, `Number`, `Bool` or `Choice(index)`. |
+| `GridModel::value` | What an editor starts from; the default is the displayed text. `GridModel::set_cell` stores a value or returns a message; the default refuses everything, so existing models stay read-only. |
+| Cell cursor | `GridState::cursor` is the model column of the current cell; its row is the selected row. Left and Right move it the way they point, also in right-to-left grids; it stops at the ends and skips hidden columns. The current cell is tinted while the grid has the keyboard. A press on a cell makes it current. |
+| Opening a cell | F2, Space, Enter, a second press on the current cell, or typing, which replaces the content of a text or number cell. On a read-only column Enter activates the row as before and the others do nothing. |
+| Editors | Text and number cells become a text field in place, named after the column, with the keyboard. A number cell edits the bare number; its unit is shown, not typed. A choice cell becomes a combo box, and picking an entry is the whole edit. A bool cell opens nothing: it toggles. |
+| Ending an edit | Enter stores and moves down (Shift: up). Tab stores and moves one column on (Shift: back) and stays in the grid. Escape drops the draft. Leaving the cell any other way, such as clicking another row, stores it. Afterwards the rows have the keyboard again. |
+| Refusals | Text that is not a number gives "Enter a number."; anything else is the model's own message. The editor stays open, turns red, carries the message as its description, the cursor does not move, and `GridState::edit_error` returns the message. |
+| State and response | `GridState::editing()`, `edit_error()`, `cancel_edit()`. `ListResponse::edited` is the row and model column whose value the model accepted this frame. |
+| Engine | `Key::F2`. The rows' input queue carries grid inputs (cell presses, column moves, edit, typed text, and Enter, Tab or Escape while an editor inside a cell has focus); the grid takes them out before the list below sees the rest. |
+
+## Validation
+
+Six new core tests: F2 and Enter opening a text cell with the keyboard in it, a draft not reaching the model, Enter storing and moving down, Enter editing instead of activating, and Escape; the cell cursor with its ends, typing replacing, Tab and Shift+Tab, and a read-only column still activating on Enter; numbers with a bare draft, a refusal that keeps the editor and the cursor, a decimal comma, snapping and clamping; the model's own refusal message; bools toggling in place and a choice stored the moment it is picked, with the keyboard back on the rows; and a second click opening a cell while clicking away stores it. All six passed on their first run.
+
+The full suite is 214 tests plus 18 GPU tests; formatting and clippy (all features, and core alone) are clean, after boxing the number options that clippy found to make `CellEditor` 752 bytes wide; the facade builds without default features; the grid, application, workbench and controls examples pass `--smoke`. In the real grid example, Tab to the rows, Down, Right and Enter opened the Name cell of the selected row as a focused editor, and typed letters landed at the end of the name.
+
+## Remaining limits
+
+- One cell at a time: no range selection, no copy and paste of blocks.
+- Number cells are edited as text, without the stepper buttons or arrow-key stepping of `Ui::number_input`.
+- An editor scrolled out of the realized rows disappears until it is scrolled back; the draft is kept.
+- The current cell is not reported to assistive technology as the active descendant; the selected row is.
+- There is no double-click; a second press on the current cell stands in for it.
