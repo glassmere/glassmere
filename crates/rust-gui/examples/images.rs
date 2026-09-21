@@ -1,10 +1,12 @@
 //! Images: files decoded in the background (PNG, JPEG, WebP, GIF, SVG), fit
 //! modes, tinted vector icons, an image made in code, and background images
 //! with nine-slice frames from a stylesheet and from code. Edit or replace a
-//! file under `examples/assets` while this runs and it reloads.
+//! file under `examples/assets` while this runs and it reloads. The file card
+//! at the bottom can be dragged out of the window, onto the desktop or into
+//! another application.
 use rust_gui::{
-    AppOptions, BackgroundImage, Color, Image, ImageFit, ImageOptions, ImageTint, Length, Style,
-    Ui, run,
+    AppOptions, BackgroundImage, Color, DragOutcome, DragPayload, Image, ImageFit, ImageOptions,
+    ImageTint, Length, Style, Ui, run,
 };
 
 const ASSETS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/assets");
@@ -69,6 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let made = checker();
     let skin = skin();
     let mut liked = false;
+    let mut exported = "Drag the card out of the window to copy the file somewhere.";
     run(
         AppOptions {
             title: "Rust GUI / Images".into(),
@@ -272,6 +275,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         ui.column("skinned", skinned, |ui| ui.label("Raster skin"));
                     },
                 );
+
+                caption(ui, "export-caption", exported);
+                let card = Style {
+                    padding: 12.0,
+                    radius: 10.0,
+                    background: Some(Color::rgb(24, 35, 49)),
+                    ..Style::default()
+                };
+                let file = std::path::PathBuf::from(format!("{ASSETS}/dusk.png"));
+                match ui.drag_source(
+                    "export",
+                    "dusk.png, draggable file",
+                    DragPayload::Files(vec![file]),
+                    card,
+                    |ui| ui.label("dusk.png"),
+                ) {
+                    Some(DragOutcome::Dropped) => exported = "Dropped outside the window.",
+                    Some(DragOutcome::Cancelled) => exported = "The drag was cancelled.",
+                    None => {}
+                }
             });
         },
     )

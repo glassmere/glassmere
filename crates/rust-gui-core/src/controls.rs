@@ -365,6 +365,7 @@ pub(crate) enum ControlUpdate {
     Choice(usize),
     Collection(Vec<crate::collection::CollectionInput>),
     Drop(crate::DragPayload),
+    DragEnded(crate::DragOutcome),
     Dismiss,
     Dock(DockAction),
     TextOps(Vec<crate::text_area::AreaOp>),

@@ -8,6 +8,7 @@ pub mod hot;
 mod images;
 mod input;
 mod mailbox;
+mod os_drag;
 mod wakeup;
 pub use desktop::{DesktopClosed, DesktopHandle, WindowKey, run_windows};
 pub use dock::{DockWindowView, DockWindows};
@@ -335,6 +336,8 @@ struct Application<F> {
     retry_pending: bool,
     /// Framework diagnostics already printed.
     diagnostics_seen: usize,
+    /// A drag that was handed to the operating system and has not ended.
+    os_drag: Option<std::sync::mpsc::Receiver<rust_gui_core::DragOutcome>>,
     /// Some inspector is open, so the shared renderer profiles its frames.
     profile_gpu: bool,
     /// An inspector is looking at this window.
@@ -383,6 +386,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             hot_stopping: false,
             retry_pending: false,
             diagnostics_seen: 0,
+            os_drag: None,
             profile_gpu: false,
             inspected: false,
             started: Instant::now(),
@@ -838,6 +842,19 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         }
     }
 
+    /// Tells the source of a system drag how it ended, once that is known.
+    fn poll_os_drag(&mut self) {
+        use std::sync::mpsc::TryRecvError;
+        let outcome = match self.os_drag.as_ref().map(|done| done.try_recv()) {
+            None | Some(Err(TryRecvError::Empty)) => return,
+            Some(Ok(outcome)) => outcome,
+            Some(Err(TryRecvError::Disconnected)) => rust_gui_core::DragOutcome::Cancelled,
+        };
+        self.os_drag = None;
+        self.context.finish_exported_drag(outcome);
+        self.request_redraw();
+    }
+
     fn fail(&mut self, event_loop: &ActiveEventLoop, error: Box<dyn Error>) {
         self.error = Some(error);
         event_loop.exit();
@@ -871,6 +888,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
     }
 
     fn new_events(&mut self, cause: StartCause) {
+        self.poll_os_drag();
         if matches!(cause, StartCause::ResumeTimeReached { .. }) {
             if std::mem::take(&mut self.retry_pending) {
                 self.request_redraw();
@@ -934,7 +952,28 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                     x: position.x,
                     y: position.y,
                 };
+                let size = state
+                    .window
+                    .inner_size()
+                    .to_logical::<f32>(state.window.scale_factor());
+                let outside = position.x < 0.0
+                    || position.y < 0.0
+                    || position.x >= size.width
+                    || position.y >= size.height;
                 self.input(Event::PointerMoved(self.pointer));
+                // A drag that leaves the window becomes the system's, if the
+                // platform can carry its payload; otherwise it stays ours and
+                // may still come back.
+                if outside
+                    && self.os_drag.is_none()
+                    && let Some(payload) = self.context.dragging()
+                    && let Some(state) = &self.state
+                    && let Some(done) = os_drag::start(&state.window, payload)
+                {
+                    self.context.export_drag();
+                    self.os_drag = Some(done);
+                    self.poll_os_drag();
+                }
             }
             // ponytail: winit 0.30 carries no drop position and Windows sends no
             // CursorMoved during an OLE drag, so this uses the last known pointer;

@@ -169,6 +169,43 @@ fn keyboard_and_accessibility_drags_share_the_pointer_delivery_path() {
 }
 
 #[test]
+fn a_host_exports_an_active_drag_and_the_source_hears_how_it_ended_once() {
+    use rust_gui_core::DragOutcome;
+    let mut context = Context::new();
+    let files = DragPayload::Files(vec!["report.pdf".into()]);
+    let declare = |context: &mut Context| {
+        let mut outcome = None;
+        frame(context, |ui| {
+            outcome = ui.drag_source("source", "Report", files.clone(), boxed(), |ui| {
+                ui.label("Report")
+            });
+        });
+        outcome
+    };
+    declare(&mut context);
+    // Nothing to export before the drag threshold is passed.
+    context.event(Event::PointerMoved(center(&context, &["source"])));
+    context.event(Event::PointerDown);
+    assert_eq!(context.dragging(), None);
+    assert_eq!(context.export_drag(), None);
+    // The pointer leaves the window; the host takes the drag over.
+    context.event(Event::PointerMoved(Point { x: -40.0, y: 20.0 }));
+    assert_eq!(context.dragging(), Some(&files));
+    assert_eq!(context.export_drag(), Some(files.clone()));
+    assert_eq!(context.dragging(), None);
+    assert!(!dragging(&context, &["source"]));
+    assert_eq!(context.captured(), None);
+    assert_eq!(declare(&mut context), None);
+    // The system swallowed the release, so none is needed to end the drag.
+    context.finish_exported_drag(DragOutcome::Dropped);
+    assert_eq!(declare(&mut context), Some(DragOutcome::Dropped));
+    assert_eq!(declare(&mut context), None);
+    // An outcome without an export is nobody's.
+    context.finish_exported_drag(DragOutcome::Cancelled);
+    assert_eq!(declare(&mut context), None);
+}
+
+#[test]
 fn external_file_drops_merge_per_target_and_miss_empty_space() {
     let mut context = Context::new();
     let files = |context: &mut Context| {

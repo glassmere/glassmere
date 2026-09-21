@@ -25,5 +25,9 @@ accesskit_winit.workspace = true
 arboard.workspace = true
 sys-locale.workspace = true
 
+# Outgoing file drags. On Linux the crate wants a GTK window, which winit is not.
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+drag = "2.1"
+
 [lints]
 workspace = true

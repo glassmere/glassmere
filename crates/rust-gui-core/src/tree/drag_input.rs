@@ -13,6 +13,35 @@ impl Context {
         self.pending |= Dirty::ACCESSIBILITY;
         true
     }
+    /// The payload of the drag in progress, for a host that can hand it to the
+    /// operating system once the pointer leaves the window.
+    pub fn dragging(&self) -> Option<&DragPayload> {
+        self.drag
+            .as_ref()
+            .filter(|drag| drag.active)
+            .map(|drag| &drag.payload)
+    }
+    /// The host has handed the drag to the operating system: it stops being an
+    /// in-app drag, and the pointer is free again because the system swallows
+    /// the button release. Follow with `finish_exported_drag`.
+    pub fn export_drag(&mut self) -> Option<DragPayload> {
+        let drag = self.drag.as_ref().filter(|drag| drag.active)?;
+        let (source, payload) = (drag.source, drag.payload.clone());
+        self.cancel_drag();
+        self.captured = None;
+        self.exported_drag = Some(source);
+        Some(payload)
+    }
+    /// Tells the source of an exported drag how it ended.
+    pub fn finish_exported_drag(&mut self, outcome: crate::DragOutcome) {
+        if let Some(source) = self.exported_drag.take()
+            && self.nodes.contains_key(&source)
+        {
+            self.updates
+                .insert(source, ControlUpdate::DragEnded(outcome));
+            self.invalidate_paint(source);
+        }
+    }
     fn drop_at(&self, point: Point, kind: DropKind) -> Option<NodeId> {
         let mut order = Vec::new();
         self.order(self.root, &mut order);

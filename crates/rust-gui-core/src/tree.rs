@@ -523,6 +523,8 @@ pub struct Context {
     submitted: HashSet<NodeId>,
     pub(crate) popup: Option<PopupState>,
     drag: Option<Box<crate::drag::DragState>>,
+    /// Source of a drag the host handed to the operating system.
+    exported_drag: Option<NodeId>,
     dock_drag: Option<Box<dock_input::DockDrag>>,
     dock_grab: Option<dock_input::DockGrab>,
     clipboard_out: Option<String>,
@@ -716,6 +718,7 @@ impl Default for Context {
             submitted: HashSet::new(),
             popup: None,
             drag: None,
+            exported_drag: None,
             dock_drag: None,
             dock_grab: None,
             clipboard_out: None,

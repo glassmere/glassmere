@@ -220,6 +220,9 @@ impl Ui<'_> {
         }
     }
 
+    /// Drags inside the window are delivered to a `drop_target`. A host that
+    /// can hands a drag that leaves the window to the operating system (files
+    /// only today); how that ended is returned here, once.
     pub fn drag_source(
         &mut self,
         key: impl Into<String>,
@@ -227,12 +230,26 @@ impl Ui<'_> {
         payload: crate::DragPayload,
         style: Style,
         content: impl FnOnce(&mut Ui<'_>),
-    ) {
-        self.group(key.into(), Kind::DragSource, style, content);
+    ) -> Option<crate::DragOutcome> {
+        let key = key.into();
+        let update = self
+            .context
+            .child(
+                self.parent,
+                &WidgetKey::Named(key.clone()),
+                Kind::DragSource,
+            )
+            .and_then(|id| self.updates.remove(&id));
+        self.group(key, Kind::DragSource, style, content);
         self.elements.last_mut().unwrap().control = Control::DragSource {
             label: label.into(),
             payload,
         };
+        // Reported once, after a drag that left the window has ended.
+        match update {
+            Some(ControlUpdate::DragEnded(outcome)) => Some(outcome),
+            _ => None,
+        }
     }
 
     pub fn drop_target(

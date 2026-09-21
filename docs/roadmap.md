@@ -99,6 +99,7 @@ Work picked from the coverage table after the seven phases.
 - [x] Localization, part one: message lookup, Fluent catalogs with plurals and fallback, run-time language switching, the framework's own strings with Czech and German ([milestone 11a and 11b](milestone-11.md)).
 - [x] Localization, part two: a compile-time checked `tr!`, and CLDR numbers, dates and times through ICU4X behind the `icu` feature ([milestone 11c and 11d](milestone-11.md)).
 - [x] GPU pass timings through timestamp queries, renderer memory accounting and the driver's report, in a GPU tab of the inspector and in the CSV export ([milestone 12](milestone-12.md)).
-- [ ] Outgoing OS drags and gestures, CPU renderer.
+- [x] Outgoing OS file drags: a drag that leaves the window is handed to the system on Windows and macOS ([milestone 13a](milestone-13.md)).
+- [ ] Touch, multi-pointer input and gestures (milestone 13b to 13d), CPU renderer.
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

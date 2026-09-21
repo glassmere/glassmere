@@ -38,7 +38,7 @@ pub use dock::{
     DockWindow, DockWindowId, DockZone,
 };
 pub use document::{Indentation, Motion, Selection, TextDocument};
-pub use drag::{DragInfo, DragPayload, DropKind};
+pub use drag::{DragInfo, DragOutcome, DragPayload, DropKind};
 pub use editor::{CaretMovement, TextEdit, TextMove, TextSelection};
 pub use focus::{DialogOptions, DialogResponse, FocusScope};
 pub use image::{BackgroundImage, ImageFit, ImageOptions, ImageSource, ImageTint};

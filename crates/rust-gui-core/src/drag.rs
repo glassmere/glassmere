@@ -26,6 +26,16 @@ impl DragPayload {
     }
 }
 
+/// How a drag that the host handed to the operating system ended. The
+/// framework never touches the dragged files; an app that moves rather than
+/// copies acts on `Dropped` itself.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DragOutcome {
+    /// Another application, or another window, accepted the payload.
+    Dropped,
+    Cancelled,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct DragInfo {
     pub source: bool,

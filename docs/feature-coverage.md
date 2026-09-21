@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 12. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 13a. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -29,7 +29,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 23 | Mouse/touch/stylus support | Partial | Mouse only. Multi-pointer, gestures, pressure, smooth scrolling: not started. |
 | 24 | First-class keyboard shortcuts | Partial | Commands with platform-primary shortcuts. Missing: scopes, remapping, command palette. |
 | 25 | Command architecture | Partial | `Command` shares enabled state between button and shortcut; menus/palette do not consume commands yet. |
-| 26 | Clipboard and drag-and-drop | Partial | Text clipboard, in-process item/text drags, incoming OS file drops. Missing: images, custom types, outgoing OS drags, cross-window drags. |
+| 26 | Clipboard and drag-and-drop | Partial | Text clipboard, in-process item/text drags, incoming OS file drops, outgoing OS file drags on Windows and macOS with the outcome reported to the source (milestone 13a). Missing: images, custom types, outgoing text, outgoing drags on Linux, cross-window drags. |
 | 27 | Multi-window support | Partial | Independent windows on one device, native modal dialog windows that block their owner, shared state via `Arc`/mailboxes, DPI scaling. Missing: multi-monitor policy. |
 | 28 | Strong async integration | Partial | Bounded mailbox and wake handle; no executor is forced. Missing: cancellation, streams, async commands helpers. |
 | 29 | Optional reactive state | Not started | Ordinary Rust state is the only model. |
