@@ -91,6 +91,7 @@ Work picked from the coverage table after the seven phases.
 - [x] Background images and nine-slice through styles and stylesheets ([milestone 8b](milestone-8.md#milestone-8b-background-images-and-nine-slice)).
 - [x] Number input and autocomplete ([milestone 9a](milestone-9.md#milestone-9a-number-input-and-autocomplete)).
 - [x] Toasts with a thread-safe sender ([milestone 9b](milestone-9.md#milestone-9b-toasts)).
-- [ ] Property grid with a builder and a derive macro.
+- [x] Property grid with a builder ([milestone 9c](milestone-9.md#milestone-9c-property-grid)).
+- [ ] A derive macro for property grids.
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

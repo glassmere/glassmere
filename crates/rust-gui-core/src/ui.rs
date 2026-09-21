@@ -10,6 +10,8 @@ mod fields;
 pub use fields::suggest;
 mod image;
 mod overlays;
+mod property_grid;
+pub use property_grid::PropertyGrid;
 mod rich_editor;
 mod rich_text;
 mod text_area;

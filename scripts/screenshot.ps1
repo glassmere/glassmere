@@ -22,6 +22,8 @@ using System;
 using System.Runtime.InteropServices;
 public static class ShotNative {
     [StructLayout(LayoutKind.Sequential)] public struct Point { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out Rect rect);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint mapType);
@@ -148,8 +150,13 @@ try {
         $null = [ShotNative]::PostMessage($handle, 0x0205, [IntPtr]0, $position)
         Start-Sleep -Seconds 1
     }
-    $rectangle = $window.Current.BoundingRectangle
-    $bitmap = New-Object System.Drawing.Bitmap -ArgumentList @([int]$rectangle.Width, [int]$rectangle.Height)
+    # PrintWindow renders the whole window rectangle, which on Windows 11 includes
+    # invisible resize borders that the UI Automation rectangle leaves out; sizing
+    # the bitmap from the latter cropped the right and bottom edges.
+    $rectangle = New-Object ShotNative+Rect
+    $null = [ShotNative]::GetWindowRect([IntPtr]$window.Current.NativeWindowHandle, [ref]$rectangle)
+    $bitmap = New-Object System.Drawing.Bitmap -ArgumentList @(
+        ($rectangle.Right - $rectangle.Left), ($rectangle.Bottom - $rectangle.Top))
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
     $dc = $graphics.GetHdc()
     try {

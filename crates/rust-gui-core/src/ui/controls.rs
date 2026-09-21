@@ -126,6 +126,20 @@ impl Ui<'_> {
         label: impl Into<String>,
         checked: &mut bool,
     ) -> Response {
+        let label = label.into();
+        let shown = label.clone();
+        self.checkbox_shown(key, label, &shown, checked)
+    }
+
+    /// A checkbox whose visible text differs from its accessible label, for
+    /// layouts that show the name elsewhere.
+    pub(super) fn checkbox_shown(
+        &mut self,
+        key: impl Into<String>,
+        label: impl Into<String>,
+        shown: &str,
+        checked: &mut bool,
+    ) -> Response {
         let key = key.into();
         let label = label.into();
         let id = self
@@ -138,7 +152,9 @@ impl Ui<'_> {
         let mut response = self.control(
             key,
             Kind::Checkbox,
-            format!("{}  {label}", if *checked { "☑" } else { "☐" }),
+            format!("{}  {shown}", if *checked { "☑" } else { "☐" })
+                .trim_end()
+                .to_owned(),
             Style::button(),
             Control::Checkbox {
                 label,
@@ -231,6 +247,23 @@ impl Ui<'_> {
         selected: &mut usize,
         items: &[&str],
     ) -> Response {
+        let style = Style {
+            width: Length::Px(280.0),
+            height: Length::Px(44.0),
+            padding: 10.0,
+            ..Style::button()
+        };
+        self.combo_box_styled(key, label, selected, items, style)
+    }
+
+    pub fn combo_box_styled(
+        &mut self,
+        key: impl Into<String>,
+        label: impl Into<String>,
+        selected: &mut usize,
+        items: &[&str],
+        style: Style,
+    ) -> Response {
         let key = key.into();
         let label = label.into();
         let old = *selected;
@@ -254,12 +287,7 @@ impl Ui<'_> {
             key: WidgetKey::Named(key),
             kind: Kind::ComboBox,
             text: format!("{}  ▾", items.get(*selected).copied().unwrap_or("—")),
-            style: Style {
-                width: Length::Px(280.0),
-                height: Length::Px(44.0),
-                padding: 10.0,
-                ..Style::button()
-            },
+            style,
             enabled: self.enabled && !items.is_empty(),
             children,
             custom: None,

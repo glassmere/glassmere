@@ -102,6 +102,14 @@ cargo run -p rust-gui-dev -- -p rust-gui --example counter
 
 Rebuilds and restarts the app when sources change, with its state and window kept; watched files and stylesheets update in place. See [milestone 7g](docs/milestone-7.md#milestone-7g-hot-reload).
 
+Property grid:
+
+```powershell
+cargo run -p rust-gui --example properties --release
+```
+
+A card edited by the grid beside it. See [milestone 9c](docs/milestone-9.md#milestone-9c-property-grid).
+
 Images:
 
 ```powershell
@@ -150,6 +158,7 @@ The view may run more than once per input event. Put application actions behind 
 - Transitions, enter/exit effects, layout animations and keyframes with easing curves and a reduced-motion switch, rendered through offscreen GPU layers.
 - Bidirectional text editing with visual caret order and affinity, and right-to-left windows or subtrees with mirrored layout and widgets, detected from the OS locale.
 - Framework diagnostics in debug builds: unstable ids, needless relayout, excessive repainting, unnamed controls, oversized layers and huge containers, in the inspector, the log and `Context::diagnostics`.
+- A property grid bound directly to app values: groups, filter, resizable name column, reset buttons, numbers with units, colours and custom rows.
 - Toasts owned by the framework: timed, held while hovered, announced to screen readers, with an action button and a sender for other threads.
 - Number input with commit-on-Enter drafts, ranges, steps and units, and autocomplete over app-supplied matches.
 - Images: PNG, JPEG, WebP, GIF and SVG, decoded in the background with placeholders and live reload, fit modes, theme-following icon tints, background images with nine-slice frames from code or stylesheets, a shared GPU atlas and SVGs rasterized sharp at every size.
@@ -229,6 +238,7 @@ cargo run -p rust-gui --example docking -- --smoke
 cargo run -p rust-gui --example editor -- --smoke
 cargo run -p rust-gui --example richtext -- --smoke
 cargo run -p rust-gui --example images -- --smoke
+cargo run -p rust-gui --example properties -- --smoke
 cargo run -p rust-gui-core --example tree_bench --release
 ```
 

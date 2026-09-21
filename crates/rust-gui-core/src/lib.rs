@@ -10,6 +10,7 @@ mod editor;
 mod focus;
 mod image;
 mod panes;
+mod property_grid;
 mod rich_document;
 mod rich_editor;
 mod rich_text;
@@ -41,6 +42,7 @@ pub use image::{BackgroundImage, ImageFit, ImageOptions, ImageSource, ImageTint}
 pub use panes::{
     Axis, PopoverOptions, PopoverResponse, SplitOptions, TOOLTIP_DELAY, Tab, TabsResponse,
 };
+pub use property_grid::{PropertyGridOptions, PropertyGridResponse, PropertyGridState};
 pub use rich_document::{
     Block, BlockKind, InlineRun, Mark, Marks, RichDocument, RichMotion, RichPosition,
 };
@@ -67,5 +69,5 @@ pub use tree::{
     Action, CollectionInfo, Context, Dirty, Event, FrameStats, Key, Live, NodeDetails, NodeId,
     NodeSnapshot, NumericValue, Role, ScrollState, Semantics,
 };
-pub use ui::{DockOptions, DockPanel, DockResponse, Response, Ui, suggest};
+pub use ui::{DockOptions, DockPanel, DockResponse, PropertyGrid, Response, Ui, suggest};
 pub use widget::{Component, CustomWidget};

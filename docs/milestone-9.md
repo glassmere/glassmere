@@ -1,6 +1,6 @@
 # Milestone 9: the missing widgets
 
-Row 18 of the coverage table listed four widgets as missing: number input, autocomplete, toasts and a property grid. Slices: 9a number input and autocomplete and 9b toasts (both below), 9c property grid, 9d a derive macro for property grids.
+Row 18 of the coverage table listed four widgets as missing: number input, autocomplete, toasts and a property grid. Slices: 9a number input and autocomplete, 9b toasts and 9c the property grid (all below), 9d a derive macro for property grids.
 
 # Milestone 9a: number input and autocomplete
 
@@ -104,3 +104,65 @@ The example change first broke `scripts/test-controls.ps1`: a new button pushed 
 - Toast state is per window and is not kept across a development restart.
 - No progress toasts and no updating a toast in place; raise a new one.
 - Windows screen reader speech for the live regions was not listened to here; the roles and live settings are what AccessKit is given.
+
+# Milestone 9c: property grid
+
+Implemented on 2026-09-21. A two-column editor for named values, declared through a builder that binds each row straight to the app's own variables. It is composed from controls that already exist (text and number fields, the checkbox, the combo box, split panes, scroll views), so every editor keeps its keyboard, clipboard and accessibility behaviour.
+
+## Run
+
+```powershell
+cargo run -p rust-gui --example properties --release
+```
+
+A card next to the grid that edits it: text, a checkbox, a choice, numbers with units and ranges, two colours, nested groups, reset buttons, a read-only row and a custom row.
+
+## Use
+
+```rust
+let response = ui.property_grid("inspector", &mut state, PropertyGridOptions::new("Card").height(600.0), |grid| {
+    grid.group("Layout", |grid| {
+        grid.default(260.0).number("Width", &mut card.width, NumberOptions::default().range(80.0, 420.0).suffix(" px"));
+        grid.group("Box", |grid| { grid.number("Radius", &mut card.radius, NumberOptions::default()); });
+    });
+    grid.group("Appearance", |grid| {
+        grid.default(true).bool("Visible", &mut card.visible);
+        grid.choice("Align", &mut card.align, &["Start", "Center", "End"]);
+        grid.color("Fill", &mut card.fill);
+        grid.text("Title", &mut card.title);
+        grid.readonly("Characters", card.title.len().to_string());
+        grid.custom("Preset", |ui, label| ui.button_keyed("$value", format!("{label}: sunset")).clicked());
+    });
+});
+for path in &response.changed { /* "Layout/Width", "Appearance/Fill", ... */ }
+```
+
+## Contracts
+
+| Piece | Contract |
+| --- | --- |
+| `Ui::property_grid(key, &mut PropertyGridState, PropertyGridOptions, builder)` | A filter box, a header and the rows. `PropertyGridOptions`: `label` (names the filter box), `filter` (on), `height` (rows scroll inside it; otherwise the grid grows), `style` (full width by default). |
+| `PropertyGridState` | App-owned: `filter`, `collapsed` (group paths such as `Layout/Box`) and `name_share` (0.4). Keep it with the rest of a workspace to persist the grid's shape. |
+| Rows | `number` (the number input with all its options), `bool`, `text`, `choice` (index into labels), `color`, `readonly`, `custom`. Each returns whether it changed, and every editor carries the property's name as its accessible label, so the visible name in the first column is not repeated on screen. |
+| `grid.default(value)` | Gives the next row a reset button with the tooltip "Reset NAME", enabled while the value differs. A reset counts as a change. A default of another type than the row's value panics at declaration with both type names; a default followed by no row panics too. |
+| `color` | A swatch and a `#rrggbb` or `#rrggbbaa` field. The colour follows the text whenever it is a whole colour; anything else is a draft that is dropped when the field is left. |
+| Groups | Collapsible headers (buttons with "Collapse NAME" or "Expand NAME" tooltips) that nest; names indent by depth while the value column stays aligned. |
+| Filter | Case-insensitive on row and group names. While it has text: collapsed groups open, groups with no matching row hide, and a group whose own name matches shows all its rows. Clearing it brings the collapsed state back. |
+| Columns | The header is a split pane: its divider (draggable, focusable, arrow keys) sets `name_share`, and every row's name takes that share, so values start exactly under "Value" at every depth. |
+| `PropertyGridResponse` | `changed`: paths of the properties that changed this frame; `any()`. |
+| Also new | `Ui::combo_box_styled`. |
+
+## Validation
+
+Six new core tests: editors named after their properties, the value column aligned with the header at three depths, and a number, checkbox, text and custom row each reporting its path; reset restoring the default, enabled only while the value differs and absent without a default; colours following whole hex values including alpha and dropping a draft on blur; collapsing, the filter opening collapsed groups, hiding groups without matches, a group name showing all its rows, and the collapsed state returning; the header divider moving the value column; and the panic message for a default of the wrong type.
+
+The full suite is 194 tests plus 18 GPU tests; formatting and clippy (all features, and core alone) are clean; the facade builds without default features; the new example passes `--smoke`. Checked by eye in a release build, including after really typing "ra" into the filter: Characters, Radius inside Layout/Box, and all of Appearance (whose name contains "ra") remained. A headless probe confirmed every row ends exactly at the grid's right edge.
+
+That probe was needed because the capture made the rows look too wide. `scripts/screenshot.ps1` sized its bitmap from the UI Automation rectangle while `PrintWindow` renders the whole window rectangle including Windows 11's invisible resize borders, so every capture it ever made was shifted and lost its right and bottom edges (the toast that looked cut off in 9b was the same thing). It now sizes the bitmap from `GetWindowRect`.
+
+## Remaining limits
+
+- Rows are declared, not virtualized: thousands of properties should be filtered or split across grids.
+- No arrow-key movement between rows; Tab visits the editors row by row, with each group header and reset button on the way.
+- No multi-object editing (mixed values), no per-row validation messages, no colour picker beyond the hex field.
+- In a scrolling grid the 4 px scrollbar overlays the right edge of the editors.
