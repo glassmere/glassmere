@@ -6,6 +6,8 @@ use std::sync::Arc;
 mod collections;
 mod controls;
 mod dock;
+mod fields;
+pub use fields::suggest;
 mod image;
 mod overlays;
 mod rich_editor;

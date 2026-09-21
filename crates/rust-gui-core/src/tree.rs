@@ -78,6 +78,7 @@ pub enum Role {
     TabPanel,
     Splitter,
     Image,
+    SpinButton,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -313,6 +314,7 @@ impl Node {
 
     fn focusable(&self) -> bool {
         self.enabled
+            && self.control != Control::Stepper
             && (matches!(
                 self.kind,
                 Kind::Button
@@ -381,6 +383,9 @@ impl Node {
                 Control::Tab { .. } => Role::Tab,
                 Control::TabPanel => Role::TabPanel,
                 Control::Divider { .. } => Role::Splitter,
+                Control::TextInput {
+                    number: Some(_), ..
+                } => Role::SpinButton,
                 _ => match self.kind {
                     Kind::Label | Kind::RichText => Role::Label,
                     // An image without a name is decorative.
@@ -929,6 +934,7 @@ impl Context {
                     max,
                     step,
                 }),
+                Control::TextInput { number, .. } => number,
                 Control::Divider { fraction, .. } => Some(NumericValue {
                     value: f64::from(fraction) * 100.0,
                     min: 0.0,
@@ -938,7 +944,12 @@ impl Context {
                 _ => None,
             },
             expanded: if let Control::CollectionRow { expanded, .. } = node.control { expanded } else {
-                matches!(node.kind, Kind::ComboBox | Kind::MenuButton).then_some(self.popup.is_some_and(|popup| popup.owner == id))
+                let suggests = matches!(node.control, Control::TextInput { suggestions: Some(_), .. });
+                // An autocomplete list is open only while it has rows to show.
+                (suggests || matches!(node.kind, Kind::ComboBox | Kind::MenuButton)).then_some(
+                    self.popup.is_some_and(|popup| popup.owner == id)
+                        && (!suggests || !node.children.is_empty()),
+                )
             },
             active_descendant: self
                 .popup
@@ -1858,7 +1869,26 @@ impl Context {
                 }
             }
             let color = foreground;
-            if node.text_style()
+            if let Some((start, end)) = self.suggestion_match(node) {
+                // The part of a suggestion that was typed stands out.
+                let span = |text: &str, weight| rust_gui_scene::TextSpan {
+                    text: text.to_owned(),
+                    color: None,
+                    weight,
+                    italic: None,
+                    family: None,
+                };
+                scene.primitives.push(Primitive::RichText {
+                    rect,
+                    spans: vec![
+                        span(&node.text[..start], None),
+                        span(&node.text[start..end], Some(700)),
+                        span(&node.text[end..], None),
+                    ],
+                    style: node.text_style(),
+                    color,
+                });
+            } else if node.text_style()
                 == (TextStyle {
                     font_size: node.resolved.font_size,
                     ..TextStyle::default()
@@ -2029,6 +2059,14 @@ impl Context {
             return handled;
         }
         if let Event::Scroll { delta_y } = event {
+            // The wheel steps a number field only while it has the keyboard
+            // and the pointer, so scrolling a page never edits values in passing.
+            if let Some(id) = self.focused.filter(|id| self.hovered == Some(*id))
+                && delta_y != 0.0
+                && self.step_number(id, if delta_y < 0.0 { 1.0 } else { -1.0 })
+            {
+                return true;
+            }
             return self.scroll_at_pointer(delta_y);
         }
         let before = (

@@ -83,11 +83,14 @@ The [milestone report](milestone-5.md) describes the crates, contracts and valid
 - [x] Framework diagnostics: unstable ids, relayout, repainting, unnamed controls, oversized layers and huge containers, through an API, the inspector and logs ([milestone 7h](milestone-7.md#milestone-7h-framework-diagnostics)).
 - CPU rendering, outgoing OS drags, gestures and additional platform adapters.
 
-## 8. Beyond the roadmap: images delivered
+## 8. Beyond the roadmap: in progress
 
 Work picked from the coverage table after the seven phases.
 
 - [x] Images: scene image values, PNG/JPEG/WebP/GIF/SVG decoding, background-loaded image files with placeholders and live reload, the image widget with fit modes and tinting, a shared GPU atlas ([milestone 8a](milestone-8.md#milestone-8a-images)).
 - [x] Background images and nine-slice through styles and stylesheets ([milestone 8b](milestone-8.md#milestone-8b-background-images-and-nine-slice)).
+- [x] Number input and autocomplete ([milestone 9a](milestone-9.md#milestone-9a-number-input-and-autocomplete)).
+- [ ] Toasts with a thread-safe sender.
+- [ ] Property grid with a builder and a derive macro.
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

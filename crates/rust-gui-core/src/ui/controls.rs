@@ -2,6 +2,15 @@ use super::*;
 use crate::{Length, MenuItem, controls::slider_value, editor::single_line};
 use std::ops::RangeInclusive;
 
+/// What makes a text field a number or autocomplete field.
+#[derive(Default)]
+pub(super) struct FieldExtra {
+    pub number: Option<crate::NumericValue>,
+    pub suggestions: Option<Vec<MenuItem>>,
+    /// The suggestion popup while it is open.
+    pub children: Vec<Element>,
+}
+
 impl Ui<'_> {
     pub(super) fn take_update(&mut self, key: &str, kind: Kind) -> Option<ControlUpdate> {
         let id = self
@@ -38,18 +47,17 @@ impl Ui<'_> {
         label: impl Into<String>,
         value: &mut String,
     ) -> Response {
-        self.text_input_styled(
-            key,
-            label,
-            value,
-            "",
-            Style {
-                width: Length::Px(280.0),
-                height: Length::Px(44.0),
-                padding: 10.0,
-                ..Style::button()
-            },
-        )
+        self.text_input_styled(key, label, value, "", Self::field_style())
+    }
+
+    /// The look of a default text field.
+    pub(super) fn field_style() -> Style {
+        Style {
+            width: Length::Px(280.0),
+            height: Length::Px(44.0),
+            padding: 10.0,
+            ..Style::button()
+        }
     }
 
     pub fn text_input_styled(
@@ -58,9 +66,28 @@ impl Ui<'_> {
         label: impl Into<String>,
         value: &mut String,
         placeholder: &str,
-        mut style: Style,
+        style: Style,
     ) -> Response {
-        let key = key.into();
+        self.text_field(
+            key.into(),
+            label.into(),
+            value,
+            placeholder,
+            style,
+            FieldExtra::default(),
+        )
+    }
+
+    /// Every single-line field: plain, number and autocomplete.
+    pub(super) fn text_field(
+        &mut self,
+        key: String,
+        label: String,
+        value: &mut String,
+        placeholder: &str,
+        mut style: Style,
+        extra: FieldExtra,
+    ) -> Response {
         let mut changed = false;
         if let Some(ControlUpdate::Text(text)) = self.take_update(&key, Kind::TextInput) {
             changed = *value != text;
@@ -72,17 +99,23 @@ impl Ui<'_> {
             changed = true;
         }
         style.wrap = rust_gui_scene::TextWrap::None;
-        let mut response = self.control(
-            key,
-            Kind::TextInput,
-            String::new(),
+        let mut response = self.push(Element {
+            key: WidgetKey::Named(key),
+            kind: Kind::TextInput,
+            text: String::new(),
             style,
-            Control::TextInput {
-                label: label.into(),
+            enabled: self.enabled,
+            children: extra.children,
+            custom: None,
+            tooltip: None,
+            control: Control::TextInput {
+                label,
                 value: value.clone(),
                 placeholder: placeholder.into(),
+                number: extra.number,
+                suggestions: extra.suggestions,
             },
-        );
+        });
         response.changed = changed;
         response
     }

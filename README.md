@@ -150,6 +150,7 @@ The view may run more than once per input event. Put application actions behind 
 - Transitions, enter/exit effects, layout animations and keyframes with easing curves and a reduced-motion switch, rendered through offscreen GPU layers.
 - Bidirectional text editing with visual caret order and affinity, and right-to-left windows or subtrees with mirrored layout and widgets, detected from the OS locale.
 - Framework diagnostics in debug builds: unstable ids, needless relayout, excessive repainting, unnamed controls, oversized layers and huge containers, in the inspector, the log and `Context::diagnostics`.
+- Number input with commit-on-Enter drafts, ranges, steps and units, and autocomplete over app-supplied matches.
 - Images: PNG, JPEG, WebP, GIF and SVG, decoded in the background with placeholders and live reload, fit modes, theme-following icon tints, background images with nine-slice frames from code or stylesheets, a shared GPU atlas and SVGs rasterized sharp at every size.
 - Docking with an app-owned, persistable layout: split tree, tab groups, floating groups, detached windows, drop indicators and a keyboard panel menu.
 - Native winit host, logical coordinates, DPI scaling, zero-size handling and surface recovery.

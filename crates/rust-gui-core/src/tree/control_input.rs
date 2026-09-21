@@ -32,6 +32,23 @@ impl Context {
         if old_text != editor.text {
             self.updates
                 .insert(id, ControlUpdate::Text(editor.text.clone()));
+            // Typing offers suggestions; nothing is highlighted, so Enter
+            // still submits what was typed.
+            if matches!(
+                node.control,
+                Control::TextInput {
+                    suggestions: Some(_),
+                    ..
+                }
+            ) {
+                self.popup = Some(PopupState {
+                    owner: id,
+                    highlighted: usize::MAX,
+                    reveal_highlight: false,
+                    anchor: None,
+                    return_focus: None,
+                });
+            }
         }
         self.pending |= Dirty::ACCESSIBILITY;
         self.invalidate_paint(id);
@@ -128,7 +145,11 @@ impl Context {
         match &self.nodes.get(&owner)?.control {
             Control::Combo { items, .. }
             | Control::Menu { items }
-            | Control::ContextMenu { items } => Some(items),
+            | Control::ContextMenu { items }
+            | Control::TextInput {
+                suggestions: Some(items),
+                ..
+            } => Some(items),
             _ => None,
         }
     }
@@ -196,8 +217,90 @@ impl Context {
         {
             return false;
         }
+        // An autocomplete field takes the suggestion as its text, caret at the end.
+        if self.nodes[&owner].editor.is_some() {
+            let label = self.popup_items(owner).unwrap()[index].label.clone();
+            self.edit(owner, TextEdit::SelectAll);
+            self.edit(owner, TextEdit::Insert(label));
+        }
         self.updates.insert(owner, ControlUpdate::Choice(index));
         self.close_popup();
+        true
+    }
+
+    /// The typed part of an autocomplete suggestion row, as a byte range of
+    /// its label: the first match ignoring case.
+    pub(super) fn suggestion_match(&self, row: &Node) -> Option<(usize, usize)> {
+        let Control::Choice { .. } = row.control else {
+            return None;
+        };
+        let owner = self.nodes.get(&row.parent?)?.parent?;
+        let Control::TextInput {
+            value,
+            suggestions: Some(_),
+            ..
+        } = &self.nodes.get(&owner)?.control
+        else {
+            return None;
+        };
+        let typed: Vec<char> = value.trim().chars().flat_map(char::to_lowercase).collect();
+        if typed.is_empty() {
+            return None;
+        }
+        // Lowercasing can change byte lengths, so compare from every start
+        // in the label itself instead of searching a lowercased copy.
+        row.text.char_indices().find_map(|(start, _)| {
+            let mut wanted = typed.iter();
+            let mut next = wanted.next();
+            for (offset, character) in row.text[start..].char_indices() {
+                for lower in character.to_lowercase() {
+                    if next != Some(&lower) {
+                        return None;
+                    }
+                    next = wanted.next();
+                }
+                if next.is_none() {
+                    return Some((start, start + offset + character.len_utf8()));
+                }
+            }
+            None
+        })
+    }
+
+    /// A text field's current text, its declared number and whether it has focus.
+    pub(crate) fn field_state(&self, id: NodeId) -> Option<(String, Option<NumericValue>, bool)> {
+        let node = self.nodes.get(&id)?;
+        let Control::TextInput { number, .. } = node.control else {
+            return None;
+        };
+        Some((
+            node.editor.as_ref()?.text.clone(),
+            number,
+            self.focused == Some(id),
+        ))
+    }
+
+    /// Queues steps for a number field; several between two frames add up.
+    pub(super) fn step_number(&mut self, id: NodeId, steps: f64) -> bool {
+        let numeric = self.nodes.get(&id).is_some_and(|node| {
+            node.enabled
+                && matches!(
+                    node.control,
+                    Control::TextInput {
+                        number: Some(_),
+                        ..
+                    }
+                )
+        });
+        if !numeric {
+            return false;
+        }
+        let queued = match self.updates.get(&id) {
+            Some(ControlUpdate::Number(queued)) => *queued,
+            _ => 0.0,
+        };
+        self.updates
+            .insert(id, ControlUpdate::Number(queued + steps));
         true
     }
 
@@ -244,6 +347,30 @@ impl Context {
 
     fn popup_key(&mut self, key: Key) -> Option<bool> {
         let popup = self.popup?;
+        // An autocomplete field keeps typing while its list is open: only the
+        // arrows and Escape belong to the list, and Enter only with a highlight.
+        if self
+            .nodes
+            .get(&popup.owner)
+            .is_some_and(|owner| owner.editor.is_some())
+        {
+            let items = self.popup_items(popup.owner).map_or(0, <[_]>::len);
+            match key {
+                // An empty list shows nothing: forget it when the field is left.
+                Key::Escape | Key::Tab if items == 0 => {
+                    self.close_popup();
+                    return None;
+                }
+                _ if items == 0 => return None,
+                Key::Enter if popup.highlighted >= items => {
+                    self.close_popup();
+                    return None;
+                }
+                Key::Enter | Key::Escape | Key::Tab | Key::ArrowUp | Key::ArrowDown => {}
+                _ => return None,
+            }
+        }
+        let popup = self.popup?;
         match key {
             Key::Escape => Some(self.close_popup()),
             Key::Tab => {
@@ -261,15 +388,15 @@ impl Context {
                 if enabled.is_empty() {
                     return Some(self.close_popup());
                 }
-                let current = enabled
-                    .iter()
-                    .position(|index| *index == popup.highlighted)
-                    .unwrap_or(0);
-                let index = match key {
-                    Key::Home => 0,
-                    Key::End => enabled.len() - 1,
-                    Key::ArrowUp => (current + enabled.len() - 1) % enabled.len(),
-                    _ => (current + 1) % enabled.len(),
+                let current = enabled.iter().position(|index| *index == popup.highlighted);
+                let index = match (key, current) {
+                    (Key::Home, _) => 0,
+                    (Key::End, _) => enabled.len() - 1,
+                    // Nothing highlighted yet: Down enters at the top, Up at the bottom.
+                    (Key::ArrowUp, None) => enabled.len() - 1,
+                    (_, None) => 0,
+                    (Key::ArrowUp, Some(current)) => (current + enabled.len() - 1) % enabled.len(),
+                    (_, Some(current)) => (current + 1) % enabled.len(),
                 };
                 self.popup.as_mut().unwrap().highlighted = enabled[index];
                 self.popup.as_mut().unwrap().reveal_highlight = true;
@@ -384,6 +511,20 @@ impl Context {
                 }
                 let node = &self.nodes[&id];
                 if node.editor.is_some() {
+                    let steps = match key {
+                        Key::ArrowUp => 1.0,
+                        Key::ArrowDown => -1.0,
+                        Key::PageUp => 10.0,
+                        Key::PageDown => -10.0,
+                        _ => 0.0,
+                    };
+                    if steps != 0.0 && self.step_number(id, steps) {
+                        return Some(true);
+                    }
+                    // Down reopens the suggestions of an autocomplete field.
+                    if *key == Key::ArrowDown && self.open_popup(id) {
+                        return Some(true);
+                    }
                     let edit = match key {
                         Key::ArrowLeft => TextEdit::Move {
                             direction: TextMove::Left,
@@ -489,8 +630,28 @@ impl Context {
             Action::SetNumber(value) if node.kind == Kind::Divider => {
                 Some(self.set_fraction(target, (*value / 100.0) as f32))
             }
+            // A number field takes the value as text and commits it like Enter.
+            Action::SetNumber(value)
+                if matches!(
+                    node.control,
+                    Control::TextInput {
+                        number: Some(_),
+                        ..
+                    }
+                ) =>
+            {
+                self.edit(target, TextEdit::SelectAll);
+                self.edit(target, TextEdit::Insert(value.to_string()));
+                self.submitted.insert(target);
+                Some(true)
+            }
             Action::SetNumber(value) => Some(self.set_number(target, *value)),
             Action::Increment | Action::Decrement => {
+                let up = matches!(action, Action::Increment);
+                if self.step_number(target, if up { 1.0 } else { -1.0 }) {
+                    return Some(true);
+                }
+                let node = self.nodes.get(&target)?;
                 let Control::Slider { value, step, .. } = node.control else {
                     return Some(false);
                 };

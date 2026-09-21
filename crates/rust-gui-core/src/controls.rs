@@ -19,6 +19,125 @@ impl MenuItem {
     }
 }
 
+/// Range, step and formatting of `Ui::number_input`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NumberOptions {
+    /// Unbounded by default.
+    pub min: f64,
+    pub max: f64,
+    /// What one arrow key, wheel notch or button press adds, and the grid
+    /// committed values snap to (counted from `min`, or from zero without
+    /// one). Zero or less disables snapping.
+    pub step: f64,
+    /// Digits after the decimal point; `None` shows as many as `step` has.
+    pub decimals: Option<usize>,
+    /// Shown after the number, such as `" px"`; typing it is optional.
+    pub suffix: String,
+    /// Style of the whole field; 160 wide unless it says otherwise.
+    pub style: crate::Style,
+}
+
+impl Default for NumberOptions {
+    fn default() -> Self {
+        Self {
+            min: f64::NEG_INFINITY,
+            max: f64::INFINITY,
+            step: 1.0,
+            decimals: None,
+            suffix: String::new(),
+            style: crate::Style::default(),
+        }
+    }
+}
+
+impl NumberOptions {
+    pub fn range(mut self, min: f64, max: f64) -> Self {
+        (self.min, self.max) = (min, max.max(min));
+        self
+    }
+
+    pub fn step(mut self, step: f64) -> Self {
+        self.step = step;
+        self
+    }
+
+    pub fn decimals(mut self, decimals: usize) -> Self {
+        self.decimals = Some(decimals);
+        self
+    }
+
+    pub fn suffix(mut self, suffix: impl Into<String>) -> Self {
+        self.suffix = suffix.into();
+        self
+    }
+
+    pub fn style(mut self, style: crate::Style) -> Self {
+        self.style = style;
+        self
+    }
+
+    fn places(&self) -> usize {
+        self.decimals.unwrap_or_else(|| {
+            // The fewest digits that write the step exactly, up to nine.
+            (0..9)
+                .find(|places| {
+                    let scaled = self.step.abs() * 10f64.powi(*places);
+                    (scaled - scaled.round()).abs() < 1e-9
+                })
+                .unwrap_or(9) as usize
+        })
+    }
+
+    /// Clamps to the range, snaps to the step and drops floating-point dust.
+    pub fn constrain(&self, value: f64) -> f64 {
+        let origin = if self.min.is_finite() { self.min } else { 0.0 };
+        if !value.is_finite() {
+            return origin.min(self.max);
+        }
+        let snapped = if self.step > 0.0 {
+            origin + ((value - origin) / self.step).round() * self.step
+        } else {
+            value
+        };
+        let scale = 1e9;
+        ((snapped * scale).round() / scale).clamp(self.min, self.max)
+    }
+
+    pub fn format(&self, value: f64) -> String {
+        // Adding zero turns a negative zero into a plain one.
+        format!("{:.*}{}", self.places(), value + 0.0, self.suffix)
+    }
+
+    /// The constrained number in `text`, which may carry the suffix and use a
+    /// decimal comma; `None` when it is not a number.
+    pub fn parse(&self, text: &str) -> Option<f64> {
+        let text = text.trim();
+        let text = text
+            .strip_suffix(self.suffix.trim())
+            .unwrap_or(text)
+            .trim()
+            .replace('\u{2212}', "-");
+        let text = if text.contains('.') {
+            text
+        } else {
+            text.replace(',', ".")
+        };
+        text.parse::<f64>()
+            .ok()
+            .filter(|number| number.is_finite())
+            .map(|number| self.constrain(number))
+    }
+}
+
+/// What `Ui::autocomplete` reports besides the field's response.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AutocompleteResponse {
+    pub response: crate::Response,
+    /// Index of the suggestion taken this frame, in the list that was offered
+    /// when it was taken. `value` already holds its text.
+    pub picked: Option<usize>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) enum Control {
     #[default]
@@ -27,7 +146,14 @@ pub(crate) enum Control {
         label: String,
         value: String,
         placeholder: String,
+        /// Number fields: the committed value with its range, which arrow
+        /// keys, the wheel and assistive technology step.
+        number: Option<crate::NumericValue>,
+        /// Autocomplete fields: what the popup offers; `None` for plain inputs.
+        suggestions: Option<Vec<MenuItem>>,
     },
+    /// A button the keyboard skips because the field beside it has the keys.
+    Stepper,
     Checkbox {
         label: String,
         checked: bool,

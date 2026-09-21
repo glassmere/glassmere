@@ -8,7 +8,8 @@ param(
     [string]$Arguments = '',
     [string]$HoverName = '',
     [string]$RightClickName = '',
-    [int]$HoverSeconds = 1
+    [int]$HoverSeconds = 1,
+    [string]$TypeText = ''
 )
 # Launches an example, waits for its window, saves target/<Name>.png and exits it.
 $ErrorActionPreference = 'Stop'
@@ -48,8 +49,12 @@ try {
     foreach ($target in ($FocusName -split '\|' | Where-Object { $_ })) {
         # Focusing a control scrolls it into view through the framework's focus
         # reveal; off-screen controls join the accessibility tree once nearby.
-        $condition = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(
+        # A visible label often carries the same name as its field: take the focusable one.
+        $named = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(
             [System.Windows.Automation.AutomationElement]::NameProperty, $target)
+        $focusable = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(
+            [System.Windows.Automation.AutomationElement]::IsKeyboardFocusableProperty, $true)
+        $condition = New-Object System.Windows.Automation.AndCondition -ArgumentList @($named, $focusable)
         $element = $null
         for ($attempt = 0; $attempt -lt 50 -and $null -eq $element; $attempt++) {
             $element = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
@@ -57,6 +62,21 @@ try {
         }
         if ($null -eq $element) { throw "Accessible element not found: $target" }
         $element.SetFocus()
+        Start-Sleep -Seconds 1
+    }
+    if ($TypeText) {
+        $handle = [IntPtr]$window.Current.NativeWindowHandle
+        # Letters and digits only: winit derives text from key presses, and
+        # their virtual key codes equal their upper-case character codes.
+        foreach ($character in $TypeText.ToUpperInvariant().ToCharArray()) {
+            $code = [int]$character
+            $scan = [ShotNative]::MapVirtualKey($code, 0)
+            $flags = ([long]$scan -shl 16) -bor 1
+            $null = [ShotNative]::PostMessage($handle, 0x0100, [IntPtr]$code, [IntPtr]$flags)
+            Start-Sleep -Milliseconds 60
+            $null = [ShotNative]::PostMessage($handle, 0x0101, [IntPtr]$code, [IntPtr]($flags -bor 3221225472L))
+            Start-Sleep -Milliseconds 120
+        }
         Start-Sleep -Seconds 1
     }
     if ($TabAfter -gt 0) {

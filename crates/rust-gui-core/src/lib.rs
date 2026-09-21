@@ -27,7 +27,7 @@ pub use collection::{
     ModelError, SortDirection, TreeItem, TreeModel, VirtualListOptions,
 };
 pub use command::{Command, Shortcut, ShortcutKey};
-pub use controls::MenuItem;
+pub use controls::{AutocompleteResponse, MenuItem, NumberOptions};
 pub use dock::{
     DockArea, DockFloat, DockLayout, DockLayoutError, DockNode, DockPlace, DockTabs, DockTarget,
     DockWindow, DockWindowId, DockZone,
@@ -65,5 +65,5 @@ pub use tree::{
     Action, CollectionInfo, Context, Dirty, Event, FrameStats, Key, NodeDetails, NodeId,
     NodeSnapshot, NumericValue, Role, ScrollState, Semantics,
 };
-pub use ui::{DockOptions, DockPanel, DockResponse, Response, Ui};
+pub use ui::{DockOptions, DockPanel, DockResponse, Response, Ui, suggest};
 pub use widget::{Component, CustomWidget};

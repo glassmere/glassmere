@@ -54,6 +54,7 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     CoreRole::TabPanel => Role::TabPanel,
                     CoreRole::Splitter => Role::Splitter,
                     CoreRole::Image => Role::Image,
+                    CoreRole::SpinButton => Role::SpinButton,
                 }
             };
             let mut node = Node::new(role);
@@ -235,10 +236,13 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                 ) {
                     node.add_action(Action::Click);
                 }
-                if matches!(role, Role::TextInput | Role::Slider | Role::Splitter) {
+                if matches!(
+                    role,
+                    Role::TextInput | Role::Slider | Role::Splitter | Role::SpinButton
+                ) {
                     node.add_action(Action::SetValue);
                 }
-                if role == Role::Slider {
+                if matches!(role, Role::Slider | Role::SpinButton) {
                     node.add_action(Action::Increment);
                     node.add_action(Action::Decrement);
                 }

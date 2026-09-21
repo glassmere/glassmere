@@ -1,4 +1,20 @@
-use rust_gui::{AppOptions, Color, FontFamily, Length, MenuItem, Size, Style, TextWrap, run};
+use rust_gui::{
+    AppOptions, Color, FontFamily, Length, MenuItem, NumberOptions, Size, Style, TextWrap, run,
+    suggest,
+};
+
+const CITIES: [&str; 10] = [
+    "Berlin",
+    "Bern",
+    "Bergen",
+    "Bratislava",
+    "Brno",
+    "Brussels",
+    "Bucharest",
+    "Budapest",
+    "Prague",
+    "Paris",
+];
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
@@ -13,6 +29,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut mode = 0;
     let mut volume = 50.0;
     let mut theme = 0;
+    let mut quantity = 2.5;
+    let mut city = String::new();
     let mut action = String::from("none");
     let mut submissions = 0;
     run(
@@ -53,10 +71,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     });
                     ui.slider("volume", "Volume", &mut volume, 0.0..=100.0, 5.0);
                     ui.label("Theme"); ui.combo_box("theme", "Theme", &mut theme, &["Dark", "Light", "System"]);
+                    // Type, then Enter or Tab commits; arrows, PageUp/PageDown and the buttons step.
+                    ui.label("Quantity"); ui.number_input("quantity", "Quantity", &mut quantity, NumberOptions::default().range(0.0, 20.0).step(0.5).suffix(" kg"));
+                    // The app decides what matches; `suggest` is the simple substring source.
+                    let matches = suggest(&city, &CITIES, 6);
+                    ui.label("City"); ui.autocomplete("city", "City", &mut city, &matches);
                     if let Some(index) = ui.menu("actions", "Actions", &[MenuItem::new("Save draft"), MenuItem::disabled("Publish (unavailable)"), MenuItem::new("Reset name")]) {
                         action = if index == 0 { "saved".into() } else { name = "Hello".into(); "reset".into() };
                     }
                     ui.label_keyed("action", format!("Last action: {action}"));
+                    ui.label_keyed("fields", format!("Fields: {quantity} kg / {city}"));
                     ui.label_keyed("state", format!("State: {notifications} / {mode} / {volume:.0} / {theme}"));
                 });
             });
