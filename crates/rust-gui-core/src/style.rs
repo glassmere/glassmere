@@ -202,6 +202,9 @@ pub struct Style {
     /// not interactive.
     pub exit: Option<Effect>,
     pub animation: Option<Animation>,
+    /// Takes the node out of flow and places its top-left corner at this
+    /// offset from the parent's top-left corner.
+    pub offset: Option<(f32, f32)>,
 }
 
 impl Default for Style {
@@ -243,6 +246,7 @@ impl Default for Style {
             enter: None,
             exit: None,
             animation: None,
+            offset: None,
         }
     }
 }
@@ -301,6 +305,10 @@ impl Style {
     setter!(enter, enter, Effect, some);
     setter!(exit, exit, Effect, some);
     setter!(animation, animation, Animation, some);
+    pub fn offset(mut self, x: f32, y: f32) -> Self {
+        self.offset = Some((x, y));
+        self
+    }
     setter!(background, background, Color, some);
     setter!(foreground, foreground, Color, some);
     setter!(font_size, font_size, f32, some);
@@ -465,6 +473,17 @@ impl Style {
             grid_row: self
                 .area
                 .map_or_else(Default::default, |area| placement(area.row, area.row_span)),
+            position: if self.offset.is_some() {
+                Position::Absolute
+            } else {
+                Position::Relative
+            },
+            inset: self.offset.map_or_else(Rect::auto, |(x, y)| Rect {
+                left: LengthPercentageAuto::length(x),
+                top: LengthPercentageAuto::length(y),
+                right: LengthPercentageAuto::auto(),
+                bottom: LengthPercentageAuto::auto(),
+            }),
             ..taffy::Style::default()
         }
     }

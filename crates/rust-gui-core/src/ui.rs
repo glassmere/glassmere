@@ -4,7 +4,10 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 mod collections;
 mod controls;
+mod dock;
 mod overlays;
+
+pub use dock::{DockOptions, DockPanel, DockResponse};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum WidgetKey {
@@ -27,6 +30,10 @@ pub(crate) enum Kind {
     Split,
     SplitRow,
     Divider,
+    Dock,
+    DockGroup,
+    DockFloat,
+    DockHandle,
     ContextArea,
     Popover,
     Label,

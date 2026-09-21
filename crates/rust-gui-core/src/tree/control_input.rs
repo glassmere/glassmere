@@ -356,6 +356,11 @@ impl Context {
                             return Some(handled);
                         }
                     }
+                    Kind::DockHandle => {
+                        if let Some(handled) = self.dock_handle_key(id, *key) {
+                            return Some(handled);
+                        }
+                    }
                     _ => {}
                 }
                 let node = &self.nodes[&id];

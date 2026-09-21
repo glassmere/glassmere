@@ -299,6 +299,9 @@ impl Context {
 
     /// Opens the context menu of the deepest enabled area containing `point`.
     pub(super) fn open_context_menu_at(&mut self, point: Point) -> bool {
+        if let Some(opened) = self.open_strip_menu_at(point) {
+            return opened;
+        }
         let mut order = Vec::new();
         self.order(self.root, &mut order);
         let Some(owner) = order.into_iter().rev().find(|id| {
@@ -317,6 +320,16 @@ impl Context {
         let Some(focused) = self.focused else {
             return false;
         };
+        if let Some(menu) = self.strip_menu(focused) {
+            let anchor = self.nodes[&focused].bounds;
+            return self.open_popup_at(
+                menu,
+                Some(Point {
+                    x: anchor.x,
+                    y: anchor.y + anchor.height,
+                }),
+            );
+        }
         let mut next = Some(focused);
         while let Some(id) = next {
             let node = &self.nodes[&id];

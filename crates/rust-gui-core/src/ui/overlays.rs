@@ -23,6 +23,20 @@ impl Ui<'_> {
         tabs: &[Tab],
         content: impl FnOnce(&mut Ui<'_>, usize),
     ) -> TabsResponse {
+        self.tabs_with(key, selected, tabs, false, |_, _| {}, content)
+    }
+
+    /// `tabs` with extra strip content after the tabs. `fill` stretches the
+    /// panel over the parent's remaining height, as dock groups need.
+    pub(super) fn tabs_with(
+        &mut self,
+        key: impl Into<String>,
+        selected: &mut usize,
+        tabs: &[Tab],
+        fill: bool,
+        strip_extra: impl FnOnce(&mut Ui<'_>, usize),
+        content: impl FnOnce(&mut Ui<'_>, usize),
+    ) -> TabsResponse {
         let key = key.into();
         let old = *selected;
         if let Some(ControlUpdate::Choice(index)) = self.take_update(&key, Kind::Tabs) {
@@ -36,15 +50,27 @@ impl Ui<'_> {
             (theme.surface, theme.control_hover)
         };
         let count = tabs.len();
+        let stretch = |style: Style| {
+            if fill {
+                style.grow(1.0).shrink(1.0)
+            } else {
+                style
+            }
+        };
         self.group(
             key,
             Kind::Tabs,
-            Style::default().width(Length::Percent(1.0)).gap(0.0),
+            stretch(Style::default().width(Length::Percent(1.0)).gap(0.0)),
             |ui| {
+                let strip = Style::default().gap(2.0).align_items(Align::End);
                 ui.group(
                     "$strip".into(),
                     Kind::TabList,
-                    Style::default().gap(2.0).align_items(Align::End),
+                    if fill {
+                        strip.width(Length::Percent(1.0))
+                    } else {
+                        strip
+                    },
                     |ui| {
                         for (index, tab) in tabs.iter().enumerate() {
                             let active = index == current;
@@ -92,17 +118,20 @@ impl Ui<'_> {
                                 closed = Some(index);
                             }
                         }
+                        strip_extra(ui, current);
                     },
                 );
                 ui.elements.last_mut().unwrap().control = Control::TabList;
                 ui.group(
                     "$panel".into(),
                     Kind::TabPanel,
-                    Style::default()
-                        .width(Length::Percent(1.0))
-                        .padding(16.0)
-                        .radius(8.0)
-                        .background(surface),
+                    stretch(
+                        Style::default()
+                            .width(Length::Percent(1.0))
+                            .padding(if fill { 10.0 } else { 16.0 })
+                            .radius(8.0)
+                            .background(surface),
+                    ),
                     |ui| content(ui, current),
                 );
                 ui.elements.last_mut().unwrap().control = Control::TabPanel;
@@ -216,7 +245,14 @@ impl Ui<'_> {
             }
             _ => None,
         };
-        let popup = self.popup_children(&key, Kind::ContextArea, items, usize::MAX, true);
+        let popup = self.popup_children(
+            &key,
+            Kind::ContextArea,
+            items,
+            usize::MAX,
+            true,
+            Length::Px(220.0),
+        );
         self.group(key, Kind::ContextArea, style, |ui| {
             // The popup panel must be the first child, like combo and menu owners.
             ui.elements.extend(popup);

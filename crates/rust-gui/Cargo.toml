@@ -9,6 +9,8 @@ publish.workspace = true
 default = ["desktop"]
 desktop = ["dep:rust-gui-winit"]
 diagnostics = ["desktop", "rust-gui-winit/diagnostics"]
+# Serialize and Deserialize for `DockLayout`.
+serde = ["rust-gui-core/serde"]
 
 [dependencies]
 rust-gui-core.workspace = true
@@ -50,6 +52,10 @@ required-features = ["desktop"]
 
 [[example]]
 name = "animations"
+required-features = ["desktop"]
+
+[[example]]
+name = "docking"
 required-features = ["desktop"]
 
 [lints]

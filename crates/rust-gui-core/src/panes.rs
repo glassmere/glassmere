@@ -35,6 +35,7 @@ pub struct TabsResponse {
 
 /// Direction along which split panes are laid out.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Axis {
     /// Panes side by side; the divider moves left and right.
     Horizontal,

@@ -2,11 +2,13 @@
 mod accessibility;
 mod desktop;
 mod diagnostics;
+mod dock;
 mod graphics;
 mod input;
 mod mailbox;
 mod wakeup;
 pub use desktop::{DesktopClosed, DesktopHandle, WindowKey, run_windows};
+pub use dock::{DockWindowView, DockWindows};
 pub use graphics::{GpuMemoryPolicy, GraphicsBackend, GraphicsOptions};
 pub use mailbox::{Mailbox, MessageSender};
 use rust_gui_core::{Action, Context, DragPayload, Event, StyleSheet, TextEdit, Theme, Ui};

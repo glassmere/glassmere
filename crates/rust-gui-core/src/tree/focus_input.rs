@@ -225,6 +225,7 @@ impl Context {
                     | Kind::Choice
                     | Kind::Tab
                     | Kind::Divider
+                    | Kind::DockHandle
             )
     }
 

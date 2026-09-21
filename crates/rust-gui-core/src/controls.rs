@@ -76,6 +76,26 @@ pub(crate) enum Control {
     Split {
         axis: crate::Axis,
     },
+    Dock {
+        area: crate::DockArea,
+        native: bool,
+    },
+    DockGroup {
+        /// Visible panel ids in tab order.
+        panels: Vec<String>,
+        float: bool,
+    },
+    DockFloat,
+    /// A floating group's grip (`resize: false`) or resize corner, with the
+    /// float's declared rectangle. Floats are named by their first panel.
+    DockHandle {
+        float: String,
+        resize: bool,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    },
     Divider {
         axis: crate::Axis,
         fraction: f32,
@@ -142,6 +162,23 @@ pub(crate) enum ControlUpdate {
     Collection(Vec<crate::collection::CollectionInput>),
     Drop(crate::DragPayload),
     Dismiss,
+    Dock(DockAction),
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum DockAction {
+    Move {
+        panel: String,
+        target: crate::DockTarget,
+    },
+    FloatRect {
+        float: String,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    },
+    Raise(String),
 }
 
 #[derive(Clone, Copy, Debug)]

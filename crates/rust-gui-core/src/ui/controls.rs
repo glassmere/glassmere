@@ -209,7 +209,14 @@ impl Ui<'_> {
             .iter()
             .map(|label| MenuItem::new(*label))
             .collect::<Vec<_>>();
-        let children = self.popup_children(&key, Kind::ComboBox, &entries, *selected, false);
+        let children = self.popup_children(
+            &key,
+            Kind::ComboBox,
+            &entries,
+            *selected,
+            false,
+            Length::Percent(1.0),
+        );
         let mut response = self.push(Element {
             key: WidgetKey::Named(key),
             kind: Kind::ComboBox,
@@ -241,6 +248,29 @@ impl Ui<'_> {
         label: impl Into<String>,
         items: &[MenuItem],
     ) -> Option<usize> {
+        self.menu_styled(
+            key,
+            format!("{}  ▾", label.into()),
+            items,
+            Style {
+                width: Length::Px(220.0),
+                height: Length::Px(44.0),
+                padding: 10.0,
+                ..Style::button()
+            },
+            Length::Percent(1.0),
+        )
+    }
+
+    /// `menu` with a caller-chosen button look and popup width.
+    pub(super) fn menu_styled(
+        &mut self,
+        key: impl Into<String>,
+        text: impl Into<String>,
+        items: &[MenuItem],
+        style: Style,
+        popup_width: Length,
+    ) -> Option<usize> {
         let key = key.into();
         let choice = match self.take_update(&key, Kind::MenuButton) {
             Some(ControlUpdate::Choice(index))
@@ -250,17 +280,13 @@ impl Ui<'_> {
             }
             _ => None,
         };
-        let children = self.popup_children(&key, Kind::MenuButton, items, usize::MAX, true);
+        let children =
+            self.popup_children(&key, Kind::MenuButton, items, usize::MAX, true, popup_width);
         self.push(Element {
             key: WidgetKey::Named(key),
             kind: Kind::MenuButton,
-            text: format!("{}  ▾", label.into()),
-            style: Style {
-                width: Length::Px(220.0),
-                height: Length::Px(44.0),
-                padding: 10.0,
-                ..Style::button()
-            },
+            text: text.into(),
+            style,
             enabled: self.enabled && items.iter().any(|item| item.enabled),
             children,
             custom: None,
@@ -279,6 +305,7 @@ impl Ui<'_> {
         items: &[MenuItem],
         selected: usize,
         menu: bool,
+        width: Length,
     ) -> Vec<Element> {
         let owner = self
             .context
@@ -308,12 +335,8 @@ impl Ui<'_> {
             "$popup".into(),
             Kind::Popup,
             Style {
-                // Context menus size themselves; combo and menu popups match their owner.
-                width: if kind == Kind::ContextArea {
-                    Length::Px(220.0)
-                } else {
-                    Length::Percent(1.0)
-                },
+                // Percent widths match the owner; compact owners pass pixels.
+                width,
                 height: Length::Px((items.len() as f32 * 34.0 + 8.0).min(280.0)),
                 gap: 2.0,
                 padding: 4.0,

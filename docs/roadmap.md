@@ -61,7 +61,7 @@ The [milestone report](milestone-4.md) records the contracts, validation and lim
 
 The [milestone report](milestone-5.md) describes the crates, contracts and validation. [Feature coverage](feature-coverage.md) maps all 62 goals of the [original feature list](feature-list.md) to their status.
 
-## 6. Styling, theming and layout depth — in progress
+## 6. Styling, theming and layout depth — implementation delivered
 
 - [x] Theme tokens for every built-in control, dark and light themes, runtime switching and OS appearance ([milestone 6a](milestone-6.md)).
 - [x] Inherited text properties, typed style classes, per-state paint overrides.
@@ -71,9 +71,10 @@ The [milestone report](milestone-5.md) describes the crates, contracts and valid
 - [x] Tooltips with a core clock and host wake requests, closable tabs, split panes, context menus and popovers ([milestone 6d](milestone-6.md#milestone-6d-tooltips-tabs-split-panes-context-menus-and-popovers)).
 - [x] Transitions, enter/exit effects, layout animations and keyframes on GPU layers with group opacity and transforms ([milestone 6e](milestone-6.md#milestone-6e-animations)).
 
-## 7. Advanced features
+## 7. Advanced features — in progress
 
-- Docking, rich text/code editing, BiDi caret order, hot reload and framework diagnostics.
+- [x] Docking: split and tab-group layouts, drop indicators, in-window floating groups, detached OS windows, a keyboard panel menu, text and serde persistence ([milestone 7a](milestone-7.md#milestone-7a-docking)).
+- [ ] Rich text/code editing, BiDi caret order, hot reload and framework diagnostics.
 - CPU rendering, outgoing OS drags, gestures and additional platform adapters.
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

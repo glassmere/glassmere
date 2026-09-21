@@ -3,6 +3,7 @@ mod animation;
 mod collection;
 mod command;
 mod controls;
+mod dock;
 mod drag;
 mod editor;
 mod focus;
@@ -21,6 +22,10 @@ pub use collection::{
 };
 pub use command::{Command, Shortcut, ShortcutKey};
 pub use controls::MenuItem;
+pub use dock::{
+    DockArea, DockFloat, DockLayout, DockLayoutError, DockNode, DockPlace, DockTabs, DockTarget,
+    DockWindow, DockWindowId, DockZone,
+};
 pub use drag::{DragInfo, DragPayload, DropKind};
 pub use editor::{TextEdit, TextMove, TextSelection};
 pub use focus::{DialogOptions, DialogResponse, FocusScope};
@@ -38,5 +43,5 @@ pub use tree::{
     Action, CollectionInfo, Context, Dirty, Event, FrameStats, Key, NodeDetails, NodeId,
     NodeSnapshot, NumericValue, Role, ScrollState, Semantics,
 };
-pub use ui::{Response, Ui};
+pub use ui::{DockOptions, DockPanel, DockResponse, Response, Ui};
 pub use widget::{Component, CustomWidget};

@@ -5,7 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[features]
+serde = ["dep:serde"]
+
 [dependencies]
+serde = { workspace = true, optional = true }
 rust-gui-scene.workspace = true
 bitflags.workspace = true
 tracing.workspace = true

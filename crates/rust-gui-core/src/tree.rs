@@ -18,6 +18,7 @@ mod animation_state;
 mod collection_input;
 mod control_input;
 mod control_paint;
+mod dock_input;
 mod drag_input;
 mod focus_input;
 mod overlay_input;
@@ -310,6 +311,7 @@ impl Node {
                     | Kind::DragSource
                     | Kind::DropTarget
                     | Kind::Divider
+                    | Kind::DockHandle
             ) || matches!(self.control, Control::Tab { selected: true, .. })
                 || self.custom.as_ref().is_some_and(|widget| {
                     widget.semantics.role == Role::Button && widget.semantics.focusable
@@ -401,6 +403,9 @@ impl Node {
                 }
                 Control::Dialog { title, .. } => title.clone(),
                 Control::Divider { .. } => "Splitter".into(),
+                Control::DockFloat => "Floating panel".into(),
+                Control::DockHandle { resize: false, .. } => "Move floating panel".into(),
+                Control::DockHandle { resize: true, .. } => "Resize floating panel".into(),
                 _ => self.text.clone(),
             },
             disabled: !self.enabled,
@@ -431,6 +436,8 @@ pub struct Context {
     submitted: HashSet<NodeId>,
     pub(crate) popup: Option<PopupState>,
     drag: Option<Box<crate::drag::DragState>>,
+    dock_drag: Option<Box<dock_input::DockDrag>>,
+    dock_grab: Option<dock_input::DockGrab>,
     theme: Theme,
     stylesheet: StyleSheet,
     style_warnings: Vec<String>,
@@ -556,6 +563,8 @@ impl Default for Context {
             submitted: HashSet::new(),
             popup: None,
             drag: None,
+            dock_drag: None,
+            dock_grab: None,
             theme,
             stylesheet: StyleSheet::default(),
             style_warnings: Vec::new(),
@@ -936,6 +945,7 @@ impl Context {
                 self.paint(panel).append_to(&mut scene.primitives);
             }
             self.paint_ghosts(&mut scene);
+            self.paint_dock_drag(&mut scene, measurer);
             self.paint_tooltip(&mut scene, measurer);
             self.scene = scene;
             self.stats.scene_rebuilt = true;
@@ -1383,7 +1393,7 @@ impl Context {
                 Some(theme.control)
             }
             Kind::Popup | Kind::Popover => Some(theme.popup),
-            Kind::Divider => Some(if hovered || pressed {
+            Kind::Divider | Kind::DockHandle => Some(if hovered || pressed {
                 theme.accent
             } else {
                 theme.track
@@ -1622,7 +1632,8 @@ impl Context {
             };
             (node.activatable()
                 || node.focusable()
-                || matches!(node.kind, Kind::Popup | Kind::Popover)
+                // Floating groups block clicks to whatever lies under them.
+                || matches!(node.kind, Kind::Popup | Kind::Popover | Kind::DockFloat)
                 || dialog_surface)
                 && node.clip.contains(position)
         })
@@ -1639,6 +1650,9 @@ impl Context {
 
     fn handle_event(&mut self, event: Event) -> bool {
         if let Some(handled) = self.drag_event(&event) {
+            return handled;
+        }
+        if let Some(handled) = self.dock_event(&event) {
             return handled;
         }
         if let Event::Shortcut(shortcut) = &event {
