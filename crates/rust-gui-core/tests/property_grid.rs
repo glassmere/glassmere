@@ -306,3 +306,38 @@ fn a_default_of_the_wrong_type_is_a_programming_error_with_a_clear_message() {
         });
     });
 }
+
+#[test]
+fn a_scrolling_grid_keeps_its_rows_clear_of_the_scrollbar_and_under_the_header() {
+    let mut context = Context::new();
+    let mut state = PropertyGridState::default();
+    let mut values = [0.0; 12];
+    for _ in 0..2 {
+        context.run(ROOT, &mut MonospaceMeasurer, |ui| {
+            let options = PropertyGridOptions::new("Many").height(200.0);
+            ui.property_grid("grid", &mut state, options, |grid| {
+                for (index, value) in values.iter_mut().enumerate() {
+                    grid.number(&format!("Value {index}"), value, NumberOptions::default());
+                }
+            });
+        });
+    }
+    let bounds = |path: &[&str]| context.node(context.find(path).unwrap()).unwrap().bounds;
+    let scroll = bounds(&["grid", "$scroll"]);
+    assert_eq!(scroll.height, 200.0);
+    assert!(
+        context
+            .node(context.find(&["grid", "$scroll"]).unwrap())
+            .unwrap()
+            .scroll
+            .unwrap()
+            .maximum
+            > 0.0
+    );
+    let row = bounds(&["grid", "$scroll", "$rows", "row:Value 0"]);
+    assert!(row.x + row.width <= scroll.x + scroll.width - 4.0);
+    let editor = bounds(&["grid", "$scroll", "$rows", "row:Value 0", "$editor"]);
+    let header = bounds(&["grid", "$columns", "$second"]);
+    assert!((editor.x - header.x).abs() < 0.5);
+    assert_eq!(bounds(&["grid", "$filter"]).width, row.width);
+}

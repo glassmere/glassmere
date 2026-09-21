@@ -1,6 +1,6 @@
 # Milestone 9: the missing widgets
 
-Row 18 of the coverage table listed four widgets as missing: number input, autocomplete, toasts and a property grid. Slices: 9a number input and autocomplete, 9b toasts and 9c the property grid (all below), 9d a derive macro for property grids.
+Row 18 of the coverage table listed four widgets as missing: number input, autocomplete, toasts and a property grid. Slices: 9a number input and autocomplete, 9b toasts, 9c the property grid and 9d a derive macro for it (all below). Milestone 9 is complete.
 
 # Milestone 9a: number input and autocomplete
 
@@ -165,4 +165,65 @@ That probe was needed because the capture made the rows look too wide. `scripts/
 - Rows are declared, not virtualized: thousands of properties should be filtered or split across grids.
 - No arrow-key movement between rows; Tab visits the editors row by row, with each group header and reset button on the way.
 - No multi-object editing (mixed values), no per-row validation messages, no colour picker beyond the hex field.
-- In a scrolling grid the 4 px scrollbar overlays the right edge of the editors.
+
+# Milestone 9d: `#[derive(Properties)]`
+
+Implemented on 2026-09-21. A struct's fields become property grid rows. The derive expands to exactly the builder calls of 9c, so derived and hand-written rows mix freely. This completes milestone 9 and turns row 18 of the coverage table to Done.
+
+## Use
+
+```rust
+#[derive(Properties)]
+struct Card {
+    #[property(group = "Content")]
+    title: String,
+    #[property(choices("Start", "Center", "End"))]
+    align: usize,
+    #[property(group = "Layout", min = 80, max = 420, step = 10, suffix = " px", default = 260)]
+    width: f64,
+    #[property(name = "Corner radius", max = 60)]
+    corner_radius: u8,
+    #[property(flatten)]
+    shadow: Shadow,                       // another Properties struct: a nested group
+    #[property(group = "Appearance", default = Color::rgb(22, 105, 99))]
+    fill: Color,
+    #[property(readonly)]
+    revision: u32,
+    #[property(with = edit_anchor)]       // fn(&mut Ui<'_>, &str, &mut Anchor) -> bool
+    anchor: Anchor,
+    #[property(skip)]
+    cache: Vec<u8>,
+}
+
+ui.property_grid("inspector", &mut state, options, |grid| {
+    card.properties(grid);
+    grid.group("Extras", |grid| grid.readonly("Characters", card.title.len().to_string()));
+});
+```
+
+## Contracts
+
+| Piece | Contract |
+| --- | --- |
+| `Properties` (core) | `fn properties(&mut self, grid: &mut PropertyGrid)`. The derive implements it; it can be written by hand. |
+| `rust-gui-derive` | A proc-macro crate, re-exported as `rust_gui::Properties` behind the default `derive` feature. It depends on `syn` 2 with only its derive features, `quote` and `proc-macro2`, all of which the workspace already built. Generated code names `::rust_gui::...`, so it needs the facade crate. |
+| Editors by type | `bool`, `String`, `Color`; `f64` and `f32`; every integer type, which steps by one, shows no decimals and keeps its own range unless `min` or `max` narrow it; `usize` with `choices(...)` is a choice. All numbers travel through the grid as `f64`. |
+| Options | `name` (default: the field name with spaces and a capital), `group`, `default`, `min`, `max`, `step`, `decimals`, `suffix`, `choices("...")`, `readonly` (uses `Display`), `flatten`, `with = function`, `skip`. |
+| Groups | `group = "Name"` stays in force for the fields that follow until another is given; `group = ""` returns to the top level. Consecutive fields of one group share one `grid.group`. `flatten` nests the other struct's rows in a group named after the field, inside the current group. |
+| Errors | Reported at the offending field or option: an unsupported type lists the four ways out (`skip`, `flatten`, `readonly`, `with`), an unknown option lists the known ones, number options on other types and `choices` on a non-`usize` field say so, and enums or tuple structs are refused by name. |
+
+The `properties` example now derives its grid and adds two rows by hand. A scrolling grid also keeps its content 3 % narrower than the scroll view, so the scrollbar has a margin of its own instead of covering the editors' ends (seen in the first correct capture).
+
+## Validation
+
+Two new tests. In the facade crate, a derived struct with a nested one: every expected group and row exists and the skipped field does not; a float has its range, step, unit and default and resets; a `u8` clamps to its own minimum and the given maximum and rounds typed decimals; a nested struct reports nested paths; choices reset to their default; a read-only value and a `with` editor work. In core, a scrolling grid keeps its rows clear of the scrollbar and under the header. The four kinds of compile error were checked by compiling a throwaway file and reading the messages; there is no compile-fail test suite.
+
+The full suite is 196 tests plus 18 GPU tests; formatting and clippy (all features, and core alone) are clean; the facade builds without default features and with `desktop` alone (no derive, no decoders). All fourteen examples pass `--smoke` and the theming script reports `THEMING_OK`. The derived grid was checked by eye in a release build.
+
+## Remaining limits
+
+- Integers beyond 2^53 lose precision on their way through `f64`.
+- No enums as choices yet: a `usize` index with `choices(...)`, or `with`, covers them for now.
+- No `Option<T>` or collection fields.
+- `readonly` needs `Display`.
+- The derive needs the `rust-gui` facade crate; a project depending only on `rust-gui-core` writes `Properties` by hand.

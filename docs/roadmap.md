@@ -83,7 +83,7 @@ The [milestone report](milestone-5.md) describes the crates, contracts and valid
 - [x] Framework diagnostics: unstable ids, relayout, repainting, unnamed controls, oversized layers and huge containers, through an API, the inspector and logs ([milestone 7h](milestone-7.md#milestone-7h-framework-diagnostics)).
 - CPU rendering, outgoing OS drags, gestures and additional platform adapters.
 
-## 8. Beyond the roadmap: in progress
+## 8. Beyond the roadmap: images and the missing widgets delivered
 
 Work picked from the coverage table after the seven phases.
 
@@ -92,6 +92,6 @@ Work picked from the coverage table after the seven phases.
 - [x] Number input and autocomplete ([milestone 9a](milestone-9.md#milestone-9a-number-input-and-autocomplete)).
 - [x] Toasts with a thread-safe sender ([milestone 9b](milestone-9.md#milestone-9b-toasts)).
 - [x] Property grid with a builder ([milestone 9c](milestone-9.md#milestone-9c-property-grid)).
-- [ ] A derive macro for property grids.
+- [x] `#[derive(Properties)]` for property grids ([milestone 9d](milestone-9.md#milestone-9d-deriveproperties)).
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

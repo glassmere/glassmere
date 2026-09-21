@@ -1,5 +1,8 @@
 //! Immediate-style declarations over a retained, incremental UI kernel.
 pub use rust_gui_core::*;
+/// Derives `Properties`: property grid rows from a struct's fields.
+#[cfg(feature = "derive")]
+pub use rust_gui_derive::Properties;
 pub use rust_gui_devtools as devtools;
 #[cfg(feature = "images")]
 pub use rust_gui_image as image;

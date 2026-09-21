@@ -10,6 +10,13 @@ use std::any::Any;
 /// so the columns line up with the header.
 const COLUMN_GAP: f32 = 6.0;
 
+/// A value that knows its property grid rows. Usually derived with
+/// `#[derive(Properties)]` from the `rust-gui` crate; written by hand it is a
+/// function that calls the builder.
+pub trait Properties {
+    fn properties(&mut self, grid: &mut PropertyGrid<'_, '_>);
+}
+
 /// Declares the rows of a property grid; see `Ui::property_grid`.
 pub struct PropertyGrid<'a, 'u> {
     ui: &'a mut Ui<'u>,
@@ -50,6 +57,12 @@ fn parse_hex(text: &str) -> Option<Color> {
     ))
 }
 
+/// Share of the width the content takes in a scrolling grid, which leaves the
+/// scrollbar a margin of its own instead of covering the editors' ends.
+// ponytail: a percentage because styles have no one-sided padding; an inset
+// when they do.
+const BESIDE_SCROLLBAR: f32 = 0.97;
+
 fn fill() -> Style {
     Style {
         width: Length::Percent(1.0),
@@ -83,6 +96,11 @@ impl Ui<'_> {
             style.width = Length::Percent(1.0);
         }
         style.gap = 4.0;
+        let content_width = Length::Percent(if options.height.is_some() {
+            BESIDE_SCROLLBAR
+        } else {
+            1.0
+        });
         self.column(key, style, |ui| {
             if options.filter {
                 ui.text_input_styled(
@@ -90,7 +108,7 @@ impl Ui<'_> {
                     format!("Filter {}", options.label),
                     &mut state.filter,
                     "Filter",
-                    fill(),
+                    fill().width(content_width),
                 );
             }
             let header = |text: &'static str| {
@@ -115,7 +133,7 @@ impl Ui<'_> {
                     min_second: 100.0,
                     divider: COLUMN_GAP,
                     style: Style::default()
-                        .width(Length::Percent(1.0))
+                        .width(content_width)
                         .height(Length::Px(22.0)),
                 },
                 header("Property"),
@@ -140,7 +158,13 @@ impl Ui<'_> {
                 ..Style::default()
             };
             match options.height {
-                Some(height) => ui.scroll("$rows", body.height(Length::Px(height)), rows),
+                Some(height) => ui.scroll(
+                    "$scroll",
+                    Style::default()
+                        .width(Length::Percent(1.0))
+                        .height(Length::Px(height)),
+                    |ui| ui.column("$rows", body.width(content_width), rows),
+                ),
                 None => ui.column("$rows", body, rows),
             }
         });

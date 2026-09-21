@@ -6,13 +6,15 @@ rust-version.workspace = true
 publish.workspace = true
 
 [features]
-default = ["desktop", "syntax", "images"]
+default = ["desktop", "syntax", "images", "derive"]
 desktop = ["dep:rust-gui-winit"]
 diagnostics = ["desktop", "rust-gui-winit/diagnostics"]
 # `rust_gui::syntax`: syntect highlighting for the code editor.
 syntax = ["dep:rust-gui-syntax"]
 # `rust_gui::image`: PNG, JPEG, WebP, GIF and SVG decoding, and `Ui::image_file` on the desktop.
 images = ["dep:rust-gui-image", "rust-gui-winit?/images"]
+# `#[derive(Properties)]` for property grids.
+derive = ["dep:rust-gui-derive"]
 # Serialize and Deserialize for `DockLayout`.
 serde = ["rust-gui-core/serde"]
 
@@ -23,6 +25,7 @@ rust-gui-devtools.workspace = true
 rust-gui-winit = { workspace = true, optional = true }
 rust-gui-syntax = { workspace = true, optional = true }
 rust-gui-image = { workspace = true, optional = true }
+rust-gui-derive = { workspace = true, optional = true }
 
 [[example]]
 name = "counter"
@@ -74,7 +77,7 @@ required-features = ["desktop", "syntax"]
 
 [[example]]
 name = "properties"
-required-features = ["desktop"]
+required-features = ["desktop", "derive"]
 
 [[example]]
 name = "images"

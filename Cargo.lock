@@ -2479,6 +2479,7 @@ name = "rust-gui"
 version = "0.1.0"
 dependencies = [
  "rust-gui-core",
+ "rust-gui-derive",
  "rust-gui-devtools",
  "rust-gui-image",
  "rust-gui-scene",
@@ -2497,6 +2498,15 @@ dependencies = [
  "taffy",
  "tracing",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "rust-gui-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

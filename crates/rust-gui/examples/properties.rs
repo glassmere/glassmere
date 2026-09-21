@@ -1,22 +1,47 @@
-//! A property grid editing the card it sits next to: grouped rows, a filter,
-//! a draggable name column, reset buttons and a custom row.
+//! A property grid editing the card it sits next to. The rows come from
+//! `#[derive(Properties)]` on the card; two more are added by hand through the
+//! builder, which is what the derive expands to.
 use rust_gui::{
-    Align, AppOptions, Color, Justify, Length, NumberOptions, PropertyGridOptions,
-    PropertyGridState, Size, Style, run,
+    Align, AppOptions, Color, Justify, Length, Properties, PropertyGridOptions, PropertyGridState,
+    Size, Style, run,
 };
 
-struct Card {
-    title: String,
-    width: f64,
-    height: f64,
+#[derive(Properties)]
+struct Corners {
+    #[property(min = 0, max = 60, suffix = " px", default = 16)]
     radius: f64,
+    #[property(min = 0, max = 60, suffix = " px", default = 20)]
     padding: f64,
-    fill: Color,
-    text: Color,
-    align: usize,
+}
+
+#[derive(Properties)]
+struct Card {
+    #[property(group = "Content")]
+    title: String,
+    #[property(default = true)]
     bold: bool,
-    visible: bool,
+    #[property(choices("Start", "Center", "End"))]
+    align: usize,
+    #[property(
+        group = "Layout",
+        min = 80,
+        max = 420,
+        step = 10,
+        suffix = " px",
+        default = 260
+    )]
+    width: f64,
+    #[property(min = 80, max = 420, step = 10, suffix = " px", default = 140)]
+    height: f64,
+    #[property(flatten)]
+    corners: Corners,
+    #[property(group = "Appearance", default = Color::rgb(22, 105, 99))]
+    fill: Color,
+    #[property(default = Color::WHITE)]
+    text: Color,
+    #[property(min = 0.1, max = 1.0, step = 0.05, default = 1.0)]
     opacity: f64,
+    visible: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -26,8 +51,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         title: "Hello, properties".into(),
         width: 260.0,
         height: 140.0,
-        radius: 16.0,
-        padding: 20.0,
+        corners: Corners {
+            radius: 16.0,
+            padding: 20.0,
+        },
         fill: Color::rgb(22, 105, 99),
         text: Color::WHITE,
         align: 1,
@@ -67,8 +94,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let look = Style {
                             width: Length::Px(card.width as f32),
                             height: Length::Px(card.height as f32),
-                            radius: card.radius as f32,
-                            padding: card.padding as f32,
+                            radius: card.corners.radius as f32,
+                            padding: card.corners.padding as f32,
                             opacity: card.opacity as f32,
                             background: Some(card.fill),
                             foreground: Some(card.text),
@@ -86,38 +113,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .height(600.0)
                     .style(Style::default().width(Length::Px(380.0)));
                 let response = ui.property_grid("inspector", &mut state, options, |grid| {
-                    grid.group("Content", |grid| {
-                        grid.text("Title", &mut card.title);
-                        grid.default(true).bool("Bold", &mut card.bold);
-                        grid.choice("Align", &mut card.align, &["Start", "Center", "End"]);
+                    card.properties(grid);
+                    // Rows the derive cannot know about: a computed value and an
+                    // action that touches several fields.
+                    grid.group("Extras", |grid| {
                         grid.readonly("Characters", card.title.chars().count().to_string());
-                    });
-                    grid.group("Layout", |grid| {
-                        let size = NumberOptions::default()
-                            .range(80.0, 420.0)
-                            .step(10.0)
-                            .suffix(" px");
-                        grid.default(260.0)
-                            .number("Width", &mut card.width, size.clone());
-                        grid.default(140.0).number("Height", &mut card.height, size);
-                        grid.group("Box", |grid| {
-                            let small = NumberOptions::default().range(0.0, 60.0).suffix(" px");
-                            grid.default(16.0)
-                                .number("Radius", &mut card.radius, small.clone());
-                            grid.default(20.0)
-                                .number("Padding", &mut card.padding, small);
-                        });
-                    });
-                    grid.group("Appearance", |grid| {
-                        grid.default(Color::rgb(22, 105, 99))
-                            .color("Fill", &mut card.fill);
-                        grid.default(Color::WHITE).color("Text", &mut card.text);
-                        grid.default(1.0).number(
-                            "Opacity",
-                            &mut card.opacity,
-                            NumberOptions::default().range(0.1, 1.0).step(0.05),
-                        );
-                        grid.bool("Visible", &mut card.visible);
                         grid.custom("Preset", |ui, label| {
                             let clicked = ui
                                 .button_keyed("$value", format!("{label}: sunset"))

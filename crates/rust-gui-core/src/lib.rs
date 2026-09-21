@@ -69,5 +69,7 @@ pub use tree::{
     Action, CollectionInfo, Context, Dirty, Event, FrameStats, Key, Live, NodeDetails, NodeId,
     NodeSnapshot, NumericValue, Role, ScrollState, Semantics,
 };
-pub use ui::{DockOptions, DockPanel, DockResponse, PropertyGrid, Response, Ui, suggest};
+pub use ui::{
+    DockOptions, DockPanel, DockResponse, Properties, PropertyGrid, Response, Ui, suggest,
+};
 pub use widget::{Component, CustomWidget};

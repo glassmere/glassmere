@@ -158,6 +158,7 @@ The view may run more than once per input event. Put application actions behind 
 - Transitions, enter/exit effects, layout animations and keyframes with easing curves and a reduced-motion switch, rendered through offscreen GPU layers.
 - Bidirectional text editing with visual caret order and affinity, and right-to-left windows or subtrees with mirrored layout and widgets, detected from the OS locale.
 - Framework diagnostics in debug builds: unstable ids, needless relayout, excessive repainting, unnamed controls, oversized layers and huge containers, in the inspector, the log and `Context::diagnostics`.
+- `#[derive(Properties)]` turns a struct into property grid rows.
 - A property grid bound directly to app values: groups, filter, resizable name column, reset buttons, numbers with units, colours and custom rows.
 - Toasts owned by the framework: timed, held while hovered, announced to screen readers, with an action button and a sender for other threads.
 - Number input with commit-on-Enter drafts, ranges, steps and units, and autocomplete over app-supplied matches.
@@ -187,6 +188,7 @@ The view may run more than once per input event. Put application actions behind 
 | `rust-gui-render-wgpu` | Ordered GPU rendering, text shaping, glyph atlas and image atlas |
 | `rust-gui-winit` | Native windows, input, worker wakeups and mailboxes, AccessKit mapping, inspector hosting and presentation |
 | `rust-gui-image` | PNG, JPEG, WebP, GIF and SVG decoding and the background loader; `rust_gui::image` behind the default `images` feature |
+| `rust-gui-derive` | `#[derive(Properties)]`; `rust_gui::Properties` behind the default `derive` feature |
 | `rust-gui-devtools` | Frame/event recorder, inspector model, views and overlays; no platform dependencies |
 | `rust-gui-testing` | Headless harness, semantic finders and text snapshot assertions for application tests |
 
