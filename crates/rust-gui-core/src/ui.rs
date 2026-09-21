@@ -2,6 +2,7 @@ use crate::controls::{Control, ControlUpdate};
 use crate::{Component, Context, CustomWidget, NodeId, Style};
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::sync::Arc;
 mod collections;
 mod controls;
 mod dock;
@@ -16,6 +17,13 @@ pub use dock::{DockOptions, DockPanel, DockResponse};
 pub(crate) enum WidgetKey {
     Named(String),
     Position(usize),
+}
+
+/// What a declaration hands to the host besides the tree.
+#[derive(Default)]
+pub(crate) struct HostOutbox {
+    pub watched: Vec<std::path::PathBuf>,
+    pub hot_state: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,6 +129,7 @@ pub struct Ui<'a> {
     pub(crate) clipboard: &'a mut Option<String>,
     pub(crate) redraw: &'a mut bool,
     pub(crate) focus: &'a mut Option<(Option<NodeId>, WidgetKey)>,
+    pub(crate) host: &'a mut HostOutbox,
     /// Dialog layers, appended after normal content as root children.
     pub(crate) layers: &'a mut Vec<Element>,
     pub(crate) enabled: bool,
@@ -144,6 +153,35 @@ impl Ui<'_> {
     /// over frames without an input event or animation driving it.
     pub fn request_redraw(&mut self) {
         *self.redraw = true;
+    }
+
+    /// Content of a file the host keeps current: it is loaded after the first
+    /// declaration that asks for it, reloaded when it changes on disk, and a
+    /// redraw follows each change. `None` until the first load; a failed
+    /// reload keeps the last good content (see `Context::watch_error`).
+    pub fn watched_bytes(&mut self, path: impl AsRef<std::path::Path>) -> Option<Arc<[u8]>> {
+        let path = path.as_ref();
+        if !self.host.watched.iter().any(|known| known == path) {
+            self.host.watched.push(path.to_owned());
+        }
+        self.context.watched_bytes(path)
+    }
+
+    /// `watched_bytes` for UTF-8 text files; `None` also for invalid UTF-8.
+    pub fn watched_text(&mut self, path: impl AsRef<std::path::Path>) -> Option<Arc<str>> {
+        let path = path.as_ref();
+        self.watched_bytes(path)?;
+        self.context.watched_text(path)
+    }
+
+    /// Registers how to save the app's state for a development restart. The
+    /// closure runs only when the host is about to restart the app; the text
+    /// it returns is handed back by the host's `hot::saved_state` on the next
+    /// start.
+    pub fn hot_state(&mut self, save: impl FnOnce() -> String) {
+        if self.context.hot_save_requested() {
+            self.host.hot_state = Some(save());
+        }
     }
 
     /// Moves keyboard focus to the widget declared with `key` in this same
@@ -332,6 +370,7 @@ impl Ui<'_> {
             clipboard: self.clipboard,
             redraw: self.redraw,
             focus: self.focus,
+            host: self.host,
             layers: self.layers,
             enabled: self.enabled,
         };
@@ -443,6 +482,7 @@ impl Ui<'_> {
             clipboard: self.clipboard,
             redraw: self.redraw,
             focus: self.focus,
+            host: self.host,
             layers: self.layers,
             enabled: self.enabled,
         };

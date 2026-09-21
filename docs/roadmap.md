@@ -79,7 +79,8 @@ The [milestone report](milestone-5.md) describes the crates, contracts and valid
 - [x] The WYSIWYG rich text editor with a Markdown subset for persistence ([milestone 7d](milestone-7.md#milestone-7d-the-wysiwyg-rich-text-editor)).
 - [x] Bidirectional caret order: visual or logical arrows, caret affinity and direction flags in all three editors ([milestone 7e](milestone-7.md#milestone-7e-bidirectional-caret-order)).
 - [x] Inherited text and layout direction with OS locale detection, mirrored layout and widgets ([milestone 7f](milestone-7.md#milestone-7f-text-direction-and-right-to-left-layout)).
-- [ ] Hot reload and framework diagnostics.
+- [x] Hot reload: watched files, and a development runner that rebuilds and restarts with state and window kept ([milestone 7g](milestone-7.md#milestone-7g-hot-reload)).
+- [ ] Framework diagnostics.
 - CPU rendering, outgoing OS drags, gestures and additional platform adapters.
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

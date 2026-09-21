@@ -1,6 +1,6 @@
 # Milestone 7: advanced features
 
-Slices so far: 7a docking, 7b rich text with the code editor foundation, 7c code intelligence, 7d the WYSIWYG rich text editor, 7e bidirectional caret order and 7f text direction with right-to-left layout (below).
+Slices so far: 7a docking, 7b rich text with the code editor foundation, 7c code intelligence, 7d the WYSIWYG rich text editor, 7e bidirectional caret order, 7f text direction with right-to-left layout and 7g hot reload (below).
 
 # Milestone 7a: docking
 
@@ -354,3 +354,57 @@ Not verified natively: `Auto` on a right-to-left OS locale (this machine is left
 - Dock side zones, floating panels and the inspector stay physical by design; an app that wants a mirrored default dock layout builds it that way.
 - Buttons with a minimum width align their label to the start side, like left-to-right buttons do.
 - Checkbox and radio marks follow the direction of their label text, since the mark is part of the label.
+
+# Milestone 7g: hot reload
+
+Implemented on 2026-09-21. Stylesheets and themes already reloaded from disk. This slice adds files the view depends on, and Rust code itself through a development runner that rebuilds and restarts the app while keeping its state and window.
+
+## Run
+
+```powershell
+cargo run -p rust-gui-dev -- -p rust-gui --example counter
+```
+
+Click the counter a few times, then edit `crates/rust-gui/examples/counter.rs` (or any `.rs` or `.toml` under the current directory): the runner rebuilds, the window closes and reopens in the same place with the same count. Edit `crates/rust-gui/examples/counter-motd.txt` and the line under the title changes without any restart. A build error leaves the running app untouched.
+
+```rust
+// Files: current content, reloaded on change, redraw on reload.
+let message = ui.watched_text("assets/motd.txt");            // Option<Arc<str>>
+let bytes = ui.watched_bytes("assets/palette.bin");          // Option<Arc<[u8]>>
+
+// State across development restarts.
+let mut state: AppState = rust_gui::hot::saved_state()
+    .and_then(|text| AppState::parse(&text))
+    .unwrap_or_default();
+run(options, move |ui| {
+    ui.hot_state(|| state.to_text());     // called only when a restart is about to happen
+    view(ui, &mut state);
+})?;
+```
+
+## Contracts
+
+| API | Behavior |
+| --- | --- |
+| `Ui::watched_bytes(path)`, `Ui::watched_text(path)` | The content of a file the host keeps current. `None` until the first load, which happens right after the declaration that first asks; each change on disk delivers new content and a redraw. A failed reload keeps the last good content. A view that stops asking stops the watching. `watched_text` is `None` for bytes that are not UTF-8. |
+| `Context::watched_paths`, `watched_known`, `set_watched_file`, `watch_error` | The host side of the same contract, so other hosts and headless tests can deliver files themselves. The core does no file IO. |
+| Desktop host | One modification-time poller per window serves the stylesheet and the watched files, on a 500 ms tick. The tick now runs by the clock rather than by timer wakeups, so it also fires while a window redraws every frame; before, a running animation starved stylesheet reloads. |
+| `rust-gui-dev [--watch PATH]... [--poll MS] [cargo build args]... [-- app args]` | Builds with `cargo build`, takes the executable from cargo's JSON messages and runs it directly. `.rs` and `.toml` files under the watch roots (default: the current directory; `target` and dot directories are skipped) are polled; a change rebuilds. After a successful build the app is asked to stop, given five seconds, and the new build is started. A failed build leaves the running app alone. Closing the app ends the session with its exit code. |
+| Stop protocol | The runner passes two paths in `RUST_GUI_HOT_STATE` and `RUST_GUI_HOT_STOP`. When the stop file appears the host runs one more declaration with `Context::request_hot_save`, writes the text from `Ui::hot_state` plus the window's outer position and logical size to the state file, and closes. No signals and no unsafe code. |
+| `Ui::hot_state(save)`, `rust_gui::hot::saved_state()`, `hot::active()` | The app chooses its own state format. The closure runs only for a restart. On the next start `saved_state` returns the text and the first window reopens with the saved position and size. Outside the runner all of it is inert. |
+
+## Validation
+
+Seven new tests. Two core tests cover watched files (request, delivery, change, identical content, an error that keeps the last good content and reports once, non-UTF-8 bytes, a view that stops asking) and the hot state hook (the closure runs only on request, the text is taken once). Two host tests cover the state file format, including state text that contains the format's own keywords, and the poller for new, changed and missing files. Three runner tests cover argument splitting, extracting the executable from cargo's messages with escaped Windows paths, and source snapshots that ignore `target`, dot directories and other file types. The full suite is 155 tests plus 11 GPU tests; clippy is clean.
+
+Run for real on this machine: the counter example under the stop protocol stopped within one second of the stop file appearing, wrote `window 64 64 900 650.4` and `387 true true`, and a second start resumed from 387 and later saved 863. The `rust-gui-dev` binary built the example, started it, detected a change in a watched directory, rebuilt, stopped the app without hitting the timeout, started the new build and exited 0 when that one closed. The first attempt exposed the starved tick described above, which is fixed. The existing `scripts/test-theming.ps1` stylesheet reload check still passes through the shared poller.
+
+Not verified: that the restored window position looks right on a second monitor or a different scale factor, and editing `counter-motd.txt` while watching the window (the delivery path is tested headlessly and the poller in isolation).
+
+## Remaining limits
+
+- A restart costs a rebuild; this is not in-process code swapping, which would need native code loading and `unsafe`.
+- One window's state is saved: with several windows the last one to save wins, and only the first window's geometry is restored.
+- Polling has up to 500 ms latency and scans the watch roots on every tick; there are no OS change notifications.
+- Focus, scroll positions and other retained widget state are not part of the saved state unless the app includes them.
+- There are still no image or asset types; `watched_bytes` is the hook they will use.

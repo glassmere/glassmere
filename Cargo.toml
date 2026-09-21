@@ -9,6 +9,7 @@ members = [
     "crates/rust-gui-testing",
     "crates/rust-gui-devtools",
     "crates/rust-gui-syntax",
+    "crates/rust-gui-dev",
 ]
 
 [workspace.package]

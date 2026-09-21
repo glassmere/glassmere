@@ -4,6 +4,7 @@ mod desktop;
 mod diagnostics;
 mod dock;
 mod graphics;
+pub mod hot;
 mod input;
 mod mailbox;
 mod wakeup;
@@ -21,7 +22,7 @@ use std::{
     path::PathBuf,
     rc::Rc,
     sync::Arc,
-    time::{Duration, Instant, SystemTime},
+    time::{Duration, Instant},
 };
 use wakeup::UserEvent;
 pub use wakeup::WakeHandle;
@@ -304,7 +305,10 @@ struct Application<F> {
     /// Inspector decorations painted after the scene, in logical coordinates.
     overlay: Vec<Primitive>,
     overlay_dirty: bool,
-    stylesheet_modified: Option<SystemTime>,
+    poller: hot::Poller,
+    last_poll: Instant,
+    /// The development runner asked this process to stop.
+    hot_stopping: bool,
     retry_pending: bool,
     started: Instant,
 }
@@ -338,7 +342,9 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             inspector_requested: false,
             overlay: Vec::new(),
             overlay_dirty: false,
-            stylesheet_modified: None,
+            poller: hot::Poller::default(),
+            last_poll: Instant::now(),
+            hot_stopping: false,
             retry_pending: false,
             started: Instant::now(),
         }
@@ -351,11 +357,10 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
     /// The earliest moment this window needs the loop to wake without input.
     fn deadline(&self) -> Option<Instant> {
         let wake = self.context.next_wake().map(|at| self.started + at);
-        let poll = self
-            .options
-            .stylesheet
-            .is_some()
-            .then(|| Instant::now() + STYLESHEET_POLL);
+        let polls = self.options.stylesheet.is_some()
+            || !self.context.watched_paths().is_empty()
+            || hot::active();
+        let poll = polls.then(|| Instant::now() + STYLESHEET_POLL);
         let retry = self
             .retry_pending
             .then(|| Instant::now() + Duration::from_millis(100));
@@ -378,26 +383,84 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         let Some(path) = &self.options.stylesheet else {
             return Ok(false);
         };
-        let modified = std::fs::metadata(path)
-            .and_then(|metadata| metadata.modified())
-            .map_err(|error| format!("{}: {error}", path.display()))?;
-        if self.stylesheet_modified == Some(modified) {
+        let Some(content) = self.poller.changed(path) else {
             return Ok(false);
-        }
-        self.stylesheet_modified = Some(modified);
-        let text = std::fs::read_to_string(path)
-            .map_err(|error| format!("{}: {error}", path.display()))?;
+        };
+        let text =
+            String::from_utf8(content?).map_err(|error| format!("{}: {error}", path.display()))?;
         let sheet = StyleSheet::parse(&text)
             .map_err(|error| format!("{}:{}: {}", path.display(), error.line, error.message))?;
         self.context.set_stylesheet(sheet);
         Ok(true)
     }
 
-    fn poll_stylesheet(&mut self) {
-        match self.load_stylesheet() {
-            Ok(true) => self.request_redraw(),
-            Ok(false) => {}
-            Err(error) => eprintln!("stylesheet not reloaded: {error}"),
+    /// Loads files the view asked for and reloads the ones that changed.
+    fn load_watched(&mut self) -> bool {
+        let mut changed = false;
+        for path in self.context.watched_paths().to_vec() {
+            if let Some(content) = self.poller.changed(&path) {
+                if let Err(error) = &content {
+                    eprintln!("watched file not loaded: {error}");
+                }
+                changed |= self.context.set_watched_file(&path, content);
+            }
+        }
+        changed
+    }
+
+    /// The periodic tick: stylesheet, watched files and the development
+    /// runner's stop request.
+    fn poll_files(&mut self) {
+        let sheet = match self.load_stylesheet() {
+            Ok(changed) => changed,
+            Err(error) => {
+                eprintln!("stylesheet not reloaded: {error}");
+                false
+            }
+        };
+        if self.load_watched() || sheet {
+            self.request_redraw();
+        }
+        if !self.hot_stopping && hot::stop_requested() {
+            self.hot_stopping = true;
+            self.hot_save();
+            self.close_requested = true;
+        }
+    }
+
+    /// Declares once more so the view can hand over its state, then writes it
+    /// with the window's geometry for the next start.
+    fn hot_save(&mut self) {
+        let Some(state) = &self.state else {
+            return;
+        };
+        self.context.set_now(self.started.elapsed());
+        self.context.request_hot_save();
+        {
+            let shared = state.renderer.clone();
+            let mut shared = shared.borrow_mut();
+            self.context.run(
+                self.logical_size,
+                shared.renderer.text_system(),
+                &mut self.view,
+            );
+        }
+        let scale = state.window.scale_factor() as f32;
+        let size = state.window.inner_size();
+        let window = state
+            .window
+            .outer_position()
+            .ok()
+            .filter(|_| size.width > 0 && size.height > 0)
+            .map(|position| hot::SavedWindow {
+                x: position.x,
+                y: position.y,
+                width: size.width as f32 / scale,
+                height: size.height as f32 / scale,
+            });
+        let text = self.context.take_hot_state().unwrap_or_default();
+        if let Err(error) = hot::save(window, &text) {
+            eprintln!("hot state not saved: {error}");
         }
     }
 
@@ -444,6 +507,23 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         }
         if let Some(text) = self.context.take_clipboard() {
             input::write_clipboard(&mut self.clipboard.borrow_mut(), &text);
+        }
+        // Files asked for the first time load right away; the next frame shows them.
+        let fresh: Vec<_> = self
+            .context
+            .watched_paths()
+            .iter()
+            .filter(|path| !self.context.watched_known(path))
+            .cloned()
+            .collect();
+        for path in fresh {
+            if let Some(content) = self.poller.changed(&path) {
+                if let Err(error) = &content {
+                    eprintln!("watched file not loaded: {error}");
+                }
+                self.context.set_watched_file(&path, content);
+                state.window.request_redraw();
+            }
         }
         let scene_changed = stats.scene_rebuilt;
         let ime_target = self
@@ -658,7 +738,12 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             {
                 self.request_redraw();
             }
-            self.poll_stylesheet();
+        }
+        // By the clock, not by timer wakeups: a window that redraws every frame
+        // (an animation) never sleeps, and its files must still be polled.
+        if self.last_poll.elapsed() >= STYLESHEET_POLL {
+            self.last_poll = Instant::now();
+            self.poll_files();
         }
     }
 

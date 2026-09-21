@@ -430,6 +430,13 @@ impl Node {
     }
 }
 
+/// A file the host keeps current for `Ui::watched_bytes`.
+struct Watched {
+    bytes: Arc<[u8]>,
+    text: Option<Arc<str>>,
+    error: Option<String>,
+}
+
 pub struct Context {
     nodes: HashMap<NodeId, Node>,
     layout: taffy::TaffyTree<Measurement>,
@@ -458,6 +465,10 @@ pub struct Context {
     redraw_requested: bool,
     caret_movement: crate::CaretMovement,
     direction: crate::Direction,
+    watched: HashMap<std::path::PathBuf, Watched>,
+    watch_requests: Vec<std::path::PathBuf>,
+    hot_save: bool,
+    hot_state: Option<String>,
     theme: Theme,
     stylesheet: StyleSheet,
     style_warnings: Vec<String>,
@@ -618,6 +629,10 @@ impl Default for Context {
             redraw_requested: false,
             caret_movement: crate::CaretMovement::Visual,
             direction: crate::Direction::Ltr,
+            watched: HashMap::new(),
+            watch_requests: Vec::new(),
+            hot_save: false,
+            hot_state: None,
             theme,
             stylesheet: StyleSheet::default(),
             style_warnings: Vec::new(),
@@ -666,6 +681,88 @@ impl Context {
 
     pub fn caret_movement(&self) -> crate::CaretMovement {
         self.caret_movement
+    }
+
+    /// Files the last declaration asked for through `Ui::watched_bytes`. Hosts
+    /// load them, watch them for changes and report through `set_watched_file`.
+    pub fn watched_paths(&self) -> &[std::path::PathBuf] {
+        &self.watch_requests
+    }
+
+    /// Whether the host has delivered this file (or an error for it) yet.
+    pub fn watched_known(&self, path: &std::path::Path) -> bool {
+        self.watched.contains_key(path)
+    }
+
+    /// Delivers a file's content or a read error. An error keeps the last good
+    /// content. Returns whether a declaration should follow.
+    pub fn set_watched_file(
+        &mut self,
+        path: &std::path::Path,
+        content: std::result::Result<Vec<u8>, String>,
+    ) -> bool {
+        let old = self.watched.get(path);
+        let changed = match content {
+            Ok(bytes) => {
+                if old.is_some_and(|old| *old.bytes == *bytes && old.error.is_none()) {
+                    return false;
+                }
+                let text = std::str::from_utf8(&bytes).ok().map(Arc::from);
+                self.watched.insert(
+                    path.to_owned(),
+                    Watched {
+                        bytes: bytes.into(),
+                        text,
+                        error: None,
+                    },
+                );
+                true
+            }
+            Err(error) => {
+                let entry = self.watched.entry(path.to_owned()).or_insert(Watched {
+                    bytes: Arc::from([]),
+                    text: None,
+                    error: None,
+                });
+                let first = entry.error.as_deref() != Some(&error);
+                entry.error = Some(error);
+                first
+            }
+        };
+        if changed {
+            self.pending |= Dirty::PAINT;
+        }
+        changed
+    }
+
+    /// Why the last load of a watched file failed, if it did.
+    pub fn watch_error(&self, path: &std::path::Path) -> Option<&str> {
+        self.watched.get(path)?.error.as_deref()
+    }
+
+    pub(crate) fn watched_bytes(&self, path: &std::path::Path) -> Option<Arc<[u8]>> {
+        let watched = self.watched.get(path)?;
+        // A file that never loaded has no content to show.
+        (watched.error.is_none() || !watched.bytes.is_empty()).then(|| watched.bytes.clone())
+    }
+
+    pub(crate) fn watched_text(&self, path: &std::path::Path) -> Option<Arc<str>> {
+        self.watched.get(path)?.text.clone()
+    }
+
+    /// Asks the next declaration to save the app's state through
+    /// `Ui::hot_state`; hosts call this before a development restart.
+    pub fn request_hot_save(&mut self) {
+        self.hot_save = true;
+    }
+
+    pub(crate) fn hot_save_requested(&self) -> bool {
+        self.hot_save
+    }
+
+    /// The state text the last declaration saved, once.
+    pub fn take_hot_state(&mut self) -> Option<String> {
+        self.hot_state.take()
     }
 
     /// The direction of the whole window; subtrees override it with
@@ -916,6 +1013,7 @@ impl Context {
         let mut clipboard = None;
         let mut redraw = false;
         let mut focus = None;
+        let mut host = crate::ui::HostOutbox::default();
         let mut layers = Vec::new();
         self.stats.activations = clicks.len() + updates.len() + submitted.len();
         self.nodes.get_mut(&self.root).unwrap().resolved = self.root_text();
@@ -932,6 +1030,7 @@ impl Context {
             clipboard: &mut clipboard,
             redraw: &mut redraw,
             focus: &mut focus,
+            host: &mut host,
             layers: &mut layers,
             enabled: true,
         };
@@ -951,6 +1050,11 @@ impl Context {
             self.clipboard_out = clipboard;
         }
         self.redraw_requested = redraw;
+        self.watch_requests = host.watched;
+        if host.hot_state.is_some() {
+            self.hot_state = host.hot_state;
+            self.hot_save = false;
+        }
         if let Some(theme) = theme_request {
             // Declared token reads used the old theme; count this like an
             // activation so hosts declare once more before presenting.

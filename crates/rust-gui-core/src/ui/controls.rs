@@ -330,6 +330,7 @@ impl Ui<'_> {
             clipboard: self.clipboard,
             redraw: self.redraw,
             focus: self.focus,
+            host: self.host,
             layers: self.layers,
             enabled: self.enabled,
         };

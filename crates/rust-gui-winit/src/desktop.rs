@@ -269,6 +269,15 @@ impl Desktop {
             .with_visible(false)
             .with_title(&options.title)
             .with_inner_size(LogicalSize::new(options.size.width, options.size.height));
+        // A development restart puts the first window back where it was.
+        if owner.is_none()
+            && self.windows.is_empty()
+            && let Some(saved) = hot::saved_window()
+        {
+            attributes = attributes
+                .with_inner_size(LogicalSize::new(saved.width, saved.height))
+                .with_position(winit::dpi::PhysicalPosition::new(saved.x, saved.y));
+        }
         #[cfg(target_os = "windows")]
         if let Some(owner) = owner.and_then(|key| self.windows.get(&key)?.state.as_ref()) {
             use winit::platform::windows::WindowAttributesExtWindows;
@@ -696,13 +705,15 @@ impl ApplicationHandler<UserEvent> for Desktop {
         self.finish(event_loop);
     }
     fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
-        if !matches!(cause, StartCause::ResumeTimeReached { .. }) {
-            return;
-        }
         for app in self.windows.values_mut() {
             app.new_events(cause);
         }
-        self.schedule(event_loop);
+        if self.windows.values().any(|app| app.close_requested) {
+            // A development restart asked the window to stop.
+            self.finish(event_loop);
+        } else if matches!(cause, StartCause::ResumeTimeReached { .. }) {
+            self.schedule(event_loop);
+        }
     }
     fn exiting(&mut self, _: &ActiveEventLoop) {
         self.wake.close();

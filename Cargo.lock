@@ -2290,6 +2290,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-gui-dev"
+version = "0.1.0"
+
+[[package]]
 name = "rust-gui-devtools"
 version = "0.1.0"
 dependencies = [

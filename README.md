@@ -94,6 +94,14 @@ cargo run -p rust-gui --example richtext --release
 
 An editable document of headings, lists, quotes, code blocks and marked text with a toolbar, saved as Markdown. See [milestone 7d](docs/milestone-7.md#milestone-7d-the-wysiwyg-rich-text-editor).
 
+Hot reload while developing:
+
+```powershell
+cargo run -p rust-gui-dev -- -p rust-gui --example counter
+```
+
+Rebuilds and restarts the app when sources change, with its state and window kept; watched files and stylesheets update in place. See [milestone 7g](docs/milestone-7.md#milestone-7g-hot-reload).
+
 Docking:
 
 ```powershell
