@@ -128,10 +128,15 @@ impl Ui<'_> {
         // Menu entries name physical directions; the start is on the right in
         // a right-to-left grid.
         let (toward_start, toward_end) = if self.context.direction() == crate::Direction::Rtl {
-            ("Move right", "Move left")
+            ("rust-gui-grid-move-right", "rust-gui-grid-move-left")
         } else {
-            ("Move left", "Move right")
+            ("rust-gui-grid-move-left", "rust-gui-grid-move-right")
         };
+        let (toward_start, toward_end) = (
+            self.context.tr(toward_start, &[]),
+            self.context.tr(toward_end, &[]),
+        );
+        let invalid_number = self.context.tr("rust-gui-number-invalid", &[]);
         let domain = format!("grid-column:{key}");
         let mut response = ListResponse::default();
         let mut actions = Vec::new();
@@ -227,7 +232,8 @@ impl Ui<'_> {
                         }
                         // Enter and Tab store the value first; a refused value
                         // keeps the editor open and the cursor where it is.
-                        _ if !commit_edit(model, state, &columns, &mut edited) => {}
+                        _ if !commit_edit(model, state, &columns, &mut edited, &invalid_number) => {
+                        }
                         crate::Key::Enter => {
                             row_moves.push(CollectionInput::Move(step));
                             focus_rows = true;
@@ -323,23 +329,35 @@ impl Ui<'_> {
                                 gap: 0.0,
                                 ..Style::default()
                             };
+                            let text = |key: &str| ui.context.tr(key, &[]);
+                            let named = |key: &str| {
+                                ui.context
+                                    .tr(key, &[("name", descriptor.label.as_str().into())])
+                            };
+                            let resize_label = named("rust-gui-grid-resize");
                             let item = |label: &str, enabled| crate::MenuItem {
                                 label: label.into(),
                                 enabled,
                             };
                             let menu = [
-                                item(toward_start, position > 0),
-                                item(toward_end, position + 1 < visible.len()),
-                                item("Wider", width < crate::GridColumns::MAX_WIDTH),
-                                item("Narrower", width > crate::GridColumns::MIN_WIDTH),
-                                item(&format!("Hide {}", descriptor.label), visible.len() > 1),
-                                item("Show all columns", visible.len() < count),
-                                item("Reset columns", true),
+                                item(&toward_start, position > 0),
+                                item(&toward_end, position + 1 < visible.len()),
                                 item(
-                                    &format!("Freeze up to {}", descriptor.label),
+                                    &text("rust-gui-grid-wider"),
+                                    width < crate::GridColumns::MAX_WIDTH,
+                                ),
+                                item(
+                                    &text("rust-gui-grid-narrower"),
+                                    width > crate::GridColumns::MIN_WIDTH,
+                                ),
+                                item(&named("rust-gui-grid-hide"), visible.len() > 1),
+                                item(&text("rust-gui-grid-show-all"), visible.len() < count),
+                                item(&text("rust-gui-grid-reset"), true),
+                                item(
+                                    &named("rust-gui-grid-freeze"),
                                     state.columns.frozen != position + 1,
                                 ),
-                                item("Unfreeze columns", state.columns.frozen > 0),
+                                item(&text("rust-gui-grid-unfreeze"), state.columns.frozen > 0),
                             ];
                             let actions = &mut actions;
                             let domain = &domain;
@@ -410,7 +428,7 @@ impl Ui<'_> {
                                             custom: None,
                                             tooltip: None,
                                             control: Control::Sizer {
-                                                label: format!("Resize {}", descriptor.label),
+                                                label: resize_label.clone(),
                                                 size: width,
                                                 min: crate::GridColumns::MIN_WIDTH,
                                                 max: crate::GridColumns::MAX_WIDTH,
@@ -444,9 +462,12 @@ impl Ui<'_> {
                                 typed_filter |= ui
                                     .text_input_styled(
                                         column.to_string(),
-                                        format!("Filter {}", descriptor.label),
+                                        ui.context.tr(
+                                            "rust-gui-grid-filter",
+                                            &[("name", descriptor.label.as_str().into())],
+                                        ),
                                         text,
-                                        "Filter",
+                                        &ui.context.tr("rust-gui-filter-placeholder", &[]),
                                         field,
                                     )
                                     .changed;
@@ -566,7 +587,10 @@ impl Ui<'_> {
                 }
             },
         );
-        if (picked || left) && commit_edit(model, state, &columns, &mut edited) && picked {
+        if (picked || left)
+            && commit_edit(model, state, &columns, &mut edited, &invalid_number)
+            && picked
+        {
             // The combo box that had the keyboard is gone with the editor:
             // the next declaration hands the keyboard back to the rows.
             state.refocus = true;
@@ -984,6 +1008,8 @@ fn commit_edit(
     state: &mut GridState,
     columns: &[crate::GridColumn],
     edited: &mut Option<(crate::ItemId, usize)>,
+    // What to say about text that is not a number, in the user's language.
+    invalid: &str,
 ) -> bool {
     let Some(edit) = &mut state.edit else {
         return true;
@@ -1002,7 +1028,7 @@ fn commit_edit(
         crate::CellEditor::Number(options) => match options.parse(&edit.text) {
             Some(number) => crate::CellValue::Number(number),
             None => {
-                edit.error = Some("Enter a number.".into());
+                edit.error = Some(invalid.to_owned());
                 return false;
             }
         },

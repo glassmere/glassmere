@@ -11,6 +11,7 @@ members = [
     "crates/rust-gui-syntax",
     "crates/rust-gui-image",
     "crates/rust-gui-derive",
+    "crates/rust-gui-fluent",
     "crates/rust-gui-dev",
 ]
 
@@ -30,6 +31,7 @@ rust-gui-devtools = { path = "crates/rust-gui-devtools" }
 rust-gui-syntax = { path = "crates/rust-gui-syntax" }
 rust-gui-image = { path = "crates/rust-gui-image" }
 rust-gui-derive = { path = "crates/rust-gui-derive" }
+rust-gui-fluent = { path = "crates/rust-gui-fluent" }
 bitflags = "2.13"
 ropey = "1.6"
 serde = { version = "1.0.229", features = ["derive"] }

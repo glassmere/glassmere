@@ -30,11 +30,15 @@ impl<S> Harness<S> {
         harness
     }
 
-    /// Declares once and, like the desktop host, once more after consumed
-    /// activations so earlier labels reflect the new state.
+    /// Declares once and, like the desktop host, again while activations were
+    /// consumed (at most three more times), so earlier labels reflect the new
+    /// state even when a click leads to a language or theme switch.
     pub fn run(&mut self) -> FrameStats {
         let mut stats = self.declare();
-        if stats.activations > 0 {
+        for _ in 0..3 {
+            if stats.activations == 0 {
+                break;
+            }
             stats = self.declare();
         }
         stats

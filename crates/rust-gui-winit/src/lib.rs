@@ -519,11 +519,20 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         let mut stats = self
             .context
             .run(logical_size, renderer.text_system(), &mut self.view);
-        if stats.activations > 0 {
-            let second = self
+        // A consumed click may make the view ask for something that itself
+        // needs another declaration: a button that switches the language or
+        // the theme. Declare until it settles, within reason, so the frame
+        // that is presented is never a stale one.
+        let mut pending = stats.activations;
+        for _ in 0..3 {
+            if pending == 0 {
+                break;
+            }
+            let again = self
                 .context
                 .run(logical_size, renderer.text_system(), &mut self.view);
-            stats = merge(stats, second);
+            pending = again.activations;
+            stats = merge(stats, again);
         }
         if let Some(text) = self.context.take_clipboard() {
             input::write_clipboard(&mut self.clipboard.borrow_mut(), &text);

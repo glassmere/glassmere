@@ -95,6 +95,8 @@ Work picked from the coverage table after the seven phases.
 - [x] `#[derive(Properties)]` for property grids ([milestone 9d](milestone-9.md#milestone-9d-deriveproperties)).
 - [x] Horizontal scrolling in every scroll view and collection ([milestone 10a](milestone-10.md#milestone-10a-horizontal-scrolling)).
 - [x] Data grid: column resize, reorder and hide; cell cursor and typed inline editing; filter row; frozen and virtual columns ([milestone 10](milestone-10.md)).
-- [ ] Localization, GPU timings and memory statistics, outgoing OS drags and gestures, CPU renderer.
+- [x] Localization, part one: message lookup, Fluent catalogs with plurals and fallback, run-time language switching, the framework's own strings with Czech and German ([milestone 11a and 11b](milestone-11.md)).
+- [ ] Localization, part two: a compile-time checked `tr!`, ICU4X numbers and dates.
+- [ ] GPU timings and memory statistics, outgoing OS drags and gestures, CPU renderer.
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

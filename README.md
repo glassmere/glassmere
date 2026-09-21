@@ -102,6 +102,14 @@ cargo run -p rust-gui-dev -- -p rust-gui --example counter
 
 Rebuilds and restarts the app when sources change, with its state and window kept; watched files and stylesheets update in place. See [milestone 7g](docs/milestone-7.md#milestone-7g-hot-reload).
 
+Localization:
+
+```powershell
+cargo run -p rust-gui --example localization --release
+```
+
+Fluent catalogs, plurals, a language switch while running, and framework controls that follow the language. See [milestone 11](docs/milestone-11.md).
+
 Data grid:
 
 ```powershell
@@ -197,6 +205,7 @@ The view may run more than once per input event. Put application actions behind 
 | `rust-gui-render-wgpu` | Ordered GPU rendering, text shaping, glyph atlas and image atlas |
 | `rust-gui-winit` | Native windows, input, worker wakeups and mailboxes, AccessKit mapping, inspector hosting and presentation |
 | `rust-gui-image` | PNG, JPEG, WebP, GIF and SVG decoding and the background loader; `rust_gui::image` behind the default `images` feature |
+| `rust-gui-fluent` | Fluent catalogs for `Ui::tr`, with Czech and German for the framework's own texts; `rust_gui::fluent` behind the default `fluent` feature |
 | `rust-gui-derive` | `#[derive(Properties)]`; `rust_gui::Properties` behind the default `derive` feature |
 | `rust-gui-devtools` | Frame/event recorder, inspector model, views and overlays; no platform dependencies |
 | `rust-gui-testing` | Headless harness, semantic finders and text snapshot assertions for application tests |
@@ -251,6 +260,7 @@ cargo run -p rust-gui --example richtext -- --smoke
 cargo run -p rust-gui --example images -- --smoke
 cargo run -p rust-gui --example properties -- --smoke
 cargo run -p rust-gui --example grid -- --smoke
+cargo run -p rust-gui --example localization -- --smoke
 cargo run -p rust-gui-core --example tree_bench --release
 ```
 

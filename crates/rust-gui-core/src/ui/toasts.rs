@@ -120,7 +120,7 @@ impl Ui<'_> {
                     {
                         closed.push((*id, false));
                     }
-                    ui.tooltip("Dismiss");
+                    ui.tooltip(ui.context.tr("rust-gui-toast-dismiss", &[]));
                 });
                 ui.elements.last_mut().unwrap().control = Control::Toast {
                     label: toast.text.clone(),

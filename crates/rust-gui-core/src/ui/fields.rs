@@ -148,8 +148,18 @@ impl Ui<'_> {
                 },
             );
             for (key, symbol, name, enabled) in [
-                ("$less", "\u{2212}", "Decrease", *value > options.min),
-                ("$more", "+", "Increase", *value < options.max),
+                (
+                    "$less",
+                    "\u{2212}",
+                    ui.context.tr("rust-gui-number-decrease", &[]),
+                    *value > options.min,
+                ),
+                (
+                    "$more",
+                    "+",
+                    ui.context.tr("rust-gui-number-increase", &[]),
+                    *value < options.max,
+                ),
             ] {
                 ui.push(Element {
                     key: WidgetKey::Named(key.into()),
@@ -164,7 +174,7 @@ impl Ui<'_> {
                     enabled: ui.enabled && enabled,
                     children: Vec::new(),
                     custom: None,
-                    tooltip: Some(name.into()),
+                    tooltip: Some(name),
                     control: Control::Stepper,
                 });
             }

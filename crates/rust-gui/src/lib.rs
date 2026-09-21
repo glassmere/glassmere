@@ -4,6 +4,8 @@ pub use rust_gui_core::*;
 #[cfg(feature = "derive")]
 pub use rust_gui_derive::Properties;
 pub use rust_gui_devtools as devtools;
+#[cfg(feature = "fluent")]
+pub use rust_gui_fluent as fluent;
 #[cfg(feature = "images")]
 pub use rust_gui_image as image;
 pub use rust_gui_scene::{

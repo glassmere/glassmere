@@ -105,14 +105,18 @@ impl Ui<'_> {
             if options.filter {
                 ui.text_input_styled(
                     "$filter",
-                    format!("Filter {}", options.label),
+                    ui.context.tr(
+                        "rust-gui-grid-filter",
+                        &[("name", options.label.as_str().into())],
+                    ),
                     &mut state.filter,
-                    "Filter",
+                    &ui.context.tr("rust-gui-filter-placeholder", &[]),
                     fill().width(content_width),
                 );
             }
-            let header = |text: &'static str| {
+            let header = |key: &'static str| {
                 move |ui: &mut Ui<'_>| {
+                    let text = ui.context.tr(key, &[]);
                     ui.label_styled(
                         "$title",
                         text,
@@ -136,8 +140,8 @@ impl Ui<'_> {
                         .width(content_width)
                         .height(Length::Px(22.0)),
                 },
-                header("Property"),
-                header("Value"),
+                header("rust-gui-property-column"),
+                header("rust-gui-value-column"),
             );
             let rows = |ui: &mut Ui<'_>| {
                 let mut grid = PropertyGrid {
@@ -236,9 +240,11 @@ impl PropertyGrid<'_, '_> {
                 .button_styled("$header", format!("{indent}{arrow}  {name}"), true, header)
                 .clicked();
             ui.tooltip(if collapsed {
-                format!("Expand {name}")
+                ui.context
+                    .tr("rust-gui-property-expand", &[("name", name.into())])
             } else {
-                format!("Collapse {name}")
+                ui.context
+                    .tr("rust-gui-property-collapse", &[("name", name.into())])
             });
             if toggled && !state.collapsed.remove(&joined) {
                 state.collapsed.insert(joined.clone());
@@ -312,7 +318,10 @@ impl PropertyGrid<'_, '_> {
                 reset = ui
                     .button_styled("$reset", "\u{21ba}", differs, compact)
                     .clicked();
-                ui.tooltip(format!("Reset {name}"));
+                ui.tooltip(
+                    ui.context
+                        .tr("rust-gui-property-reset", &[("name", name.into())]),
+                );
             }
         });
         if changed || reset {

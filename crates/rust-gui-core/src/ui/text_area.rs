@@ -200,7 +200,7 @@ fn find_bar(ui: &mut Ui<'_>, find: &mut FindState, document: &mut TextDocument, 
                 if ui.button_styled("$close", "×", true, compact()).clicked() {
                     find.open = false;
                 }
-                ui.tooltip("Close the find bar");
+                ui.tooltip(ui.context.tr("rust-gui-find-close", &[]));
             });
             if find.replace {
                 ui.row("$replace", row.clone(), |ui| {

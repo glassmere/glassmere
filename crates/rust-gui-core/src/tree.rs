@@ -537,6 +537,8 @@ pub struct Context {
     hot_state: Option<String>,
     diagnostic: diagnostics::DiagnosticState,
     toast: toasts::ToastState,
+    pub(crate) messages: Option<Box<dyn crate::Messages>>,
+    pub(crate) missing_messages: std::sync::Mutex<Vec<String>>,
     theme: Theme,
     stylesheet: StyleSheet,
     style_warnings: Vec<String>,
@@ -727,6 +729,8 @@ impl Default for Context {
             hot_state: None,
             diagnostic: diagnostics::DiagnosticState::new(),
             toast: toasts::ToastState::default(),
+            messages: None,
+            missing_messages: std::sync::Mutex::new(Vec::new()),
             theme,
             stylesheet: StyleSheet::default(),
             style_warnings: Vec::new(),
@@ -759,6 +763,12 @@ impl Context {
             return;
         }
         self.theme = theme;
+        self.repaint_all();
+    }
+
+    /// Everything repaints and the accessibility tree is rebuilt: what a new
+    /// theme or a new language needs.
+    pub(crate) fn repaint_all(&mut self) {
         for node in self.nodes.values_mut() {
             node.paint_cache = None;
         }
@@ -944,7 +954,20 @@ impl Context {
             parent: node.parent,
             children: node.children.clone(),
             bounds: node.bounds,
-            semantics: node.semantics(),
+            semantics: {
+                let mut semantics = node.semantics();
+                let key = match node.control {
+                    Control::Divider { .. } => Some("rust-gui-splitter"),
+                    Control::DockFloat => Some("rust-gui-dock-floating"),
+                    Control::DockHandle { resize: false, .. } => Some("rust-gui-dock-move"),
+                    Control::DockHandle { resize: true, .. } => Some("rust-gui-dock-resize"),
+                    _ => None,
+                };
+                if let Some(key) = key {
+                    semantics.label = self.tr(key, &[]);
+                }
+                semantics
+            },
             focused: self.focused == Some(id),
             clip: node.clip,
             scroll: matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection).then_some(node.scroll),
@@ -1173,6 +1196,12 @@ impl Context {
         if host.hot_state.is_some() {
             self.hot_state = host.hot_state;
             self.hot_save = false;
+        }
+        if let Some(messages) = host.messages {
+            // Like a theme: texts already looked up in this declaration are
+            // in the old language, so the host declares once more.
+            self.set_messages(messages);
+            self.stats.activations += 1;
         }
         if let Some(theme) = theme_request {
             // Declared token reads used the old theme; count this like an

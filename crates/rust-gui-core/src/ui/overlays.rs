@@ -119,7 +119,10 @@ impl Ui<'_> {
                             }
                             if tab.closable {
                                 // The button shows only a symbol; this names it.
-                                ui.tooltip(format!("Close {}", tab.label));
+                                ui.tooltip(ui.context.tr(
+                                    "rust-gui-tab-close",
+                                    &[("name", tab.label.as_str().into())],
+                                ));
                             }
                         }
                         strip_extra(ui, current);

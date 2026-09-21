@@ -32,6 +32,8 @@ pub(crate) struct HostOutbox {
     pub watched: Vec<std::path::PathBuf>,
     pub images: Vec<std::path::PathBuf>,
     pub toasts: ToastOutbox,
+    /// A new message source, or `Some(None)` to remove the current one.
+    pub messages: Option<Option<Box<dyn crate::Messages>>>,
     pub hot_state: Option<String>,
 }
 
