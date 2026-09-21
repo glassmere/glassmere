@@ -227,3 +227,11 @@ The full suite is 196 tests plus 18 GPU tests; formatting and clippy (all featur
 - No `Option<T>` or collection fields.
 - `readonly` needs `Display`.
 - The derive needs the `rust-gui` facade crate; a project depending only on `rust-gui-core` writes `Properties` by hand.
+
+# Fix after milestone 9: focus rings flooding transparent nodes
+
+Reported on 2026-09-21: in the theming example a click on the window's background turned the whole page amber. The scene has no stroke primitive, so since milestone 6a the focus ring was painted as a rectangle in the focus colour with the node's background drawn back over it, inset by 2 px. A node without a background, such as a scroll page, had nothing to draw back, so the focus colour stayed. Every focusable node without an opaque background was affected; the theming example only made it obvious because its stylesheet sets a bright focus token.
+
+The fill-and-cover ring is now used only over an opaque background, where it keeps rounded corners on buttons and fields. Transparent and translucent nodes paint their background as usual and get four 2 px edges. A regression test clicks an empty scroll page and requires that no focus-coloured quad covers its middle, and that an opaque button keeps its single inset ring. Verified in the real theming window by clicking its background: the page keeps its colour and shows a thin ring. 197 tests pass and the theming script reports `THEMING_OK`. `scripts/screenshot.ps1` gained `-ClickAt "x,y"`.
+
+Not changed: a mouse click still shows the focus ring. Showing it only for keyboard focus would be a separate decision.

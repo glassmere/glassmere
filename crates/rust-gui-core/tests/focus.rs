@@ -469,3 +469,77 @@ fn duplicate_dialog_keys_are_rejected() {
         ui.dialog("same", &mut b, DialogOptions::new("B"), |_, _| {});
     });
 }
+
+#[test]
+fn a_focus_ring_never_floods_a_node_that_has_no_opaque_background() {
+    use rust_gui_core::{Length, Style};
+    use rust_gui_scene::{Color, Primitive, Rect};
+    let mut context = Context::new();
+    let view = |ui: &mut Ui<'_>| {
+        let page = Style {
+            width: Length::Percent(1.0),
+            height: Length::Percent(1.0),
+            padding: 40.0,
+            ..Style::default()
+        };
+        ui.scroll("page", page, |ui| {
+            ui.button_keyed("save", "Save");
+        });
+    };
+    frame(&mut context, view);
+    let focus = context.theme().focus;
+    let focus_quads = |context: &Context| -> Vec<Rect> {
+        context
+            .scene()
+            .primitives
+            .iter()
+            .filter_map(|primitive| match primitive {
+                Primitive::Quad { rect, color, .. } if *color == focus => Some(*rect),
+                _ => None,
+            })
+            .collect()
+    };
+
+    // Clicking the empty page focuses the scroll view, which has no background.
+    click(&mut context, Point { x: 300.0, y: 300.0 });
+    frame(&mut context, view);
+    assert_eq!(focused_key(&context), "page");
+    let ring = focus_quads(&context);
+    assert_eq!(ring.len(), 4, "four edges");
+    let middle = Point { x: 300.0, y: 300.0 };
+    assert!(
+        ring.iter().all(|edge| !edge.contains(middle)),
+        "the focus colour must not cover the page: {ring:?}"
+    );
+    assert!(ring.iter().all(|edge| edge.width.min(edge.height) <= 2.0));
+
+    // An opaque control keeps the rounded ring: focus colour, background inside.
+    let save = center(&context, &["page", "save"]);
+    click(&mut context, save);
+    frame(&mut context, view);
+    assert_eq!(focused_key(&context), "save");
+    let primitives = &context.scene().primitives;
+    let outer = primitives
+        .iter()
+        .position(|primitive| matches!(primitive, Primitive::Quad { color, .. } if *color == focus))
+        .unwrap();
+    let Primitive::Quad { rect: ring, .. } = primitives[outer] else {
+        unreachable!()
+    };
+    let Primitive::Quad {
+        rect: inside,
+        color,
+        ..
+    } = primitives[outer + 1]
+    else {
+        panic!("the background follows the ring");
+    };
+    assert_eq!(color.3, 255);
+    assert_ne!(color, Color::TRANSPARENT);
+    assert_eq!(
+        (inside.x, inside.width),
+        (ring.x + 2.0, ring.width - 4.0),
+        "inset by the ring's width"
+    );
+    assert_eq!(focus_quads(&context).len(), 1);
+}

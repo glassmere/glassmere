@@ -1853,7 +1853,14 @@ impl Context {
             });
         }
         scene.primitives.push(Primitive::PushClip(node.bounds));
-        if self.focused == Some(id) {
+        let focused = self.focused == Some(id);
+        // There is no stroke primitive. Over an opaque background the ring is
+        // the focus colour with the background drawn back inside it, which
+        // keeps rounded corners. That cannot work for a node that is
+        // transparent or translucent (a scroll page, a bare container): the
+        // focus colour would flood it. Those get four edges instead.
+        let opaque = background.filter(|background| background.3 == 255);
+        if let (true, Some(background)) = (focused, opaque) {
             scene.primitives.push(Primitive::Quad {
                 rect: node.bounds,
                 color: self.theme.focus,
@@ -1867,17 +1874,60 @@ impl Context {
             };
             scene.primitives.push(Primitive::Quad {
                 rect,
-                color: background.unwrap_or(Color::TRANSPARENT),
+                color: background,
                 radius: (radius - 2.0).max(0.0),
             });
-        } else if let Some(background) = background
-            && background.3 > 0
-        {
-            scene.primitives.push(Primitive::Quad {
-                rect: node.bounds,
-                color: background,
-                radius,
-            });
+        } else {
+            if let Some(background) = background
+                && background.3 > 0
+            {
+                scene.primitives.push(Primitive::Quad {
+                    rect: node.bounds,
+                    color: background,
+                    radius,
+                });
+            }
+            if focused {
+                let Rect {
+                    x,
+                    y,
+                    width,
+                    height,
+                } = node.bounds;
+                let ring = 2.0_f32.min(width / 2.0).min(height / 2.0);
+                for rect in [
+                    Rect {
+                        x,
+                        y,
+                        width,
+                        height: ring,
+                    },
+                    Rect {
+                        x,
+                        y: y + height - ring,
+                        width,
+                        height: ring,
+                    },
+                    Rect {
+                        x,
+                        y,
+                        width: ring,
+                        height,
+                    },
+                    Rect {
+                        x: x + width - ring,
+                        y,
+                        width: ring,
+                        height,
+                    },
+                ] {
+                    scene.primitives.push(Primitive::Quad {
+                        rect,
+                        color: self.theme.focus,
+                        radius: 0.0,
+                    });
+                }
+            }
         }
         self.paint_background_image(node, &mut scene, foreground, radius);
         if node.kind == Kind::RichText {

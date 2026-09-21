@@ -10,7 +10,8 @@ param(
     [string]$RightClickName = '',
     [int]$HoverSeconds = 1,
     [string]$TypeText = '',
-    [string]$InvokeNames = ''
+    [string]$InvokeNames = '',
+    [string]$ClickAt = ''
 )
 # Launches an example, waits for its window, saves target/<Name>.png and exits it.
 $ErrorActionPreference = 'Stop'
@@ -80,6 +81,16 @@ try {
             $null = [ShotNative]::PostMessage($handle, 0x0101, [IntPtr]$code, [IntPtr]($flags -bor 3221225472L))
             Start-Sleep -Milliseconds 120
         }
+        Start-Sleep -Seconds 1
+    }
+    if ($ClickAt) {
+        # A left click at "x,y" in client pixels, for places that have no name.
+        $x, $y = $ClickAt -split ',' | ForEach-Object { [int]$_ }
+        $handle = [IntPtr]$window.Current.NativeWindowHandle
+        $position = [IntPtr](($y -shl 16) -bor ($x -band 65535))
+        $null = [ShotNative]::PostMessage($handle, 0x0200, [IntPtr]0, $position)
+        $null = [ShotNative]::PostMessage($handle, 0x0201, [IntPtr]1, $position)
+        $null = [ShotNative]::PostMessage($handle, 0x0202, [IntPtr]0, $position)
         Start-Sleep -Seconds 1
     }
     foreach ($target in ($InvokeNames -split '\|' | Where-Object { $_ })) {
