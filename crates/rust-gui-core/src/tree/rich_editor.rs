@@ -3,7 +3,7 @@ use super::text_area_input::{content, insert_span};
 use super::*;
 use crate::rich_editor::{RichBlockView, RichGranularity, RichOp};
 use crate::{BlockKind, EditorCommand, Mark, RichMotion, RichPosition, TextEdit, TextMove};
-use rust_gui_scene::{FontFamily, TextGeometry};
+use rust_gui_scene::{Affinity, FontFamily, TextGeometry};
 
 /// Space between blocks; list items sit closer together.
 fn gap(above: BlockKind, below: BlockKind) -> f32 {
@@ -39,6 +39,11 @@ pub(super) struct RichEditorState {
     last_click: Option<(Duration, Point, u8)>,
     /// Column that consecutive vertical moves return to, in content pixels.
     goal_x: Option<f32>,
+    /// Which neighbour the caret belongs to, at direction boundaries and
+    /// between wrapped lines. It follows the cursor; the document only knows
+    /// offsets.
+    affinity: Affinity,
+    pending_affinity: Option<Affinity>,
 }
 
 fn block_style(base: &TextStyle, kind: BlockKind, font_size: f32) -> TextStyle {
@@ -93,6 +98,18 @@ impl Context {
 
     pub(super) fn rich_op(&mut self, id: NodeId, op: RichOp) {
         let vertical = matches!(op, RichOp::SetCursor { .. });
+        if let Some(state) = self
+            .nodes
+            .get_mut(&id)
+            .and_then(|node| node.rich_editor.as_mut())
+        {
+            state.pending_affinity = match op {
+                // Typed text keeps the caret with the character just entered.
+                RichOp::Insert(_) => Some(Affinity::Upstream),
+                RichOp::SetCursor { .. } => state.pending_affinity,
+                _ => None,
+            };
+        }
         match self.updates.get_mut(&id) {
             Some(ControlUpdate::RichOps(ops)) => ops.push(op),
             _ => {
@@ -111,7 +128,7 @@ impl Context {
     }
 
     /// The document position under a window point.
-    fn rich_position(&self, id: NodeId, point: Point) -> Option<RichPosition> {
+    fn rich_position(&self, id: NodeId, point: Point) -> Option<(RichPosition, Affinity)> {
         let node = self.nodes.get(&id)?;
         let state = node.rich_editor.as_ref()?;
         let content = content(node);
@@ -122,7 +139,7 @@ impl Context {
             .position(|layout| y < layout.y + layout.height + 5.0)
             .unwrap_or(state.layouts.len().checked_sub(1)?);
         let layout = &state.layouts[block];
-        let mut offset = layout.geometry.hit(Point {
+        let (mut offset, affinity) = layout.geometry.hit_affinity(Point {
             x: point.x - content.x - layout.indent,
             y: (y - layout.y).clamp(0.0, (layout.height - 1.0).max(0.0)),
         });
@@ -131,9 +148,79 @@ impl Context {
         {
             offset = offset.saturating_sub(len).max(at);
         }
-        Some(RichPosition {
-            block,
-            offset: offset.min(layout.view.text.len()),
+        Some((
+            RichPosition {
+                block,
+                offset: offset.min(layout.view.text.len()),
+            },
+            affinity,
+        ))
+    }
+
+    fn set_rich_affinity(&mut self, id: NodeId, affinity: Affinity) {
+        if let Some(state) = self
+            .nodes
+            .get_mut(&id)
+            .and_then(|node| node.rich_editor.as_mut())
+        {
+            state.pending_affinity = Some(affinity);
+        }
+    }
+
+    /// A visual Left or Right inside a block that contains right-to-left
+    /// text. `None` leaves the move to the document's logical motions.
+    fn rich_horizontal(
+        &mut self,
+        id: NodeId,
+        right: bool,
+        select: bool,
+        word: bool,
+    ) -> Option<RichOp> {
+        if self.caret_movement != crate::CaretMovement::Visual {
+            return None;
+        }
+        let node = self.nodes.get(&id)?;
+        let Control::RichEditor { cursor, .. } = node.control else {
+            return None;
+        };
+        let state = node.rich_editor.as_ref()?;
+        let layout = state.layouts.get(cursor.block)?;
+        if layout.preedit.is_some() || !layout.geometry.clusters.iter().any(|cluster| cluster.rtl) {
+            return None;
+        }
+        let rtl_line = layout
+            .geometry
+            .line_at(cursor.offset, state.affinity)
+            .is_some_and(|line| line.rtl);
+        let logical = |forward: bool, word: bool| RichOp::Move {
+            motion: match (forward, word) {
+                (true, false) => RichMotion::Right,
+                (false, false) => RichMotion::Left,
+                (true, true) => RichMotion::WordRight,
+                (false, true) => RichMotion::WordLeft,
+            },
+            select,
+        };
+        let Some((offset, affinity)) =
+            layout
+                .geometry
+                .visual_step(cursor.offset, state.affinity, right)
+        else {
+            // Leaving the visual line: its right end is the logical end only when LTR.
+            return Some(logical(right != rtl_line, word));
+        };
+        if word {
+            let forward = offset > cursor.offset || (offset == cursor.offset && right != rtl_line);
+            return Some(logical(forward, true));
+        }
+        self.set_rich_affinity(id, affinity);
+        Some(RichOp::SetCursor {
+            position: RichPosition {
+                block: cursor.block,
+                offset,
+            },
+            select,
+            granularity: RichGranularity::Char,
         })
     }
 
@@ -145,57 +232,59 @@ impl Context {
         };
         let state = node.rich_editor.as_ref()?;
         let layout = state.layouts.get(cursor.block)?;
-        let caret = layout.geometry.caret(cursor.offset);
+        let caret = layout.geometry.caret_at(cursor.offset, state.affinity);
         let x = state.goal_x.unwrap_or(caret.x + layout.indent);
         let page = content(node).height;
         let in_block = |block: usize, x: f32, y: f32| {
             let layout = &state.layouts[block];
-            RichPosition {
-                block,
-                offset: layout
-                    .geometry
-                    .hit(Point {
-                        x: x - layout.indent,
-                        y,
-                    })
-                    .min(layout.view.text.len()),
-            }
+            let (offset, affinity) = layout.geometry.hit_affinity(Point {
+                x: x - layout.indent,
+                y,
+            });
+            (
+                RichPosition {
+                    block,
+                    offset: offset.min(layout.view.text.len()),
+                },
+                affinity,
+            )
         };
-        let middle = caret.y + caret.height / 2.0;
-        let target = match key {
-            Key::Home => in_block(cursor.block, -1.0e6, middle),
-            Key::End => {
-                let end = in_block(cursor.block, 1.0e6, middle);
-                // The offset after a wrapped line's last character is drawn at
-                // the start of the next line; stay on this line instead.
-                let wrapped = layout.geometry.caret(end.offset).y > caret.y + 0.5;
-                let before = layout
-                    .geometry
-                    .clusters
-                    .iter()
-                    .find(|cluster| cluster.bytes.end == end.offset)
-                    .map(|cluster| cluster.bytes.start);
-                match before {
-                    Some(offset) if wrapped => RichPosition { offset, ..end },
-                    _ => end,
-                }
-            }
+        // Logical start and end of the visual line; the end keeps an upstream
+        // affinity, so the caret stays on this line when the text wraps.
+        let edge = |end: bool| {
+            let (offset, affinity) = layout
+                .geometry
+                .line_edge(cursor.offset, state.affinity, end);
+            (
+                RichPosition {
+                    block: cursor.block,
+                    offset,
+                },
+                affinity,
+            )
+        };
+        let (target, affinity) = match key {
+            Key::Home => edge(false),
+            Key::End => edge(true),
             Key::ArrowUp if caret.y > 0.5 => in_block(cursor.block, x, caret.y - 1.0),
             Key::ArrowUp if cursor.block > 0 => {
                 let above = state.layouts[cursor.block - 1].height;
                 in_block(cursor.block - 1, x, above - 1.0)
             }
-            Key::ArrowUp => RichPosition::default(),
+            Key::ArrowUp => (RichPosition::default(), Affinity::Downstream),
             Key::ArrowDown if caret.y + caret.height < layout.geometry.size.height - 0.5 => {
                 in_block(cursor.block, x, caret.y + caret.height + 1.0)
             }
             Key::ArrowDown if cursor.block + 1 < state.layouts.len() => {
                 in_block(cursor.block + 1, x, 1.0)
             }
-            Key::ArrowDown => RichPosition {
-                block: cursor.block,
-                offset: layout.view.text.len(),
-            },
+            Key::ArrowDown => (
+                RichPosition {
+                    block: cursor.block,
+                    offset: layout.view.text.len(),
+                },
+                Affinity::Upstream,
+            ),
             Key::PageUp | Key::PageDown => {
                 let caret = state.caret?;
                 let delta = if key == Key::PageUp { -page } else { page };
@@ -220,6 +309,7 @@ impl Context {
         {
             state.goal_x = Some(x);
         }
+        self.set_rich_affinity(id, affinity);
         Some(target)
     }
 
@@ -232,7 +322,8 @@ impl Context {
                 if node.kind != Kind::RichEditor || !node.enabled {
                     return None;
                 }
-                let position = self.rich_position(id, point)?;
+                let (position, affinity) = self.rich_position(id, point)?;
+                self.set_rich_affinity(id, affinity);
                 let now = self.now;
                 let state = self.nodes.get_mut(&id)?.rich_editor.as_mut()?;
                 let count = match state.last_click {
@@ -268,7 +359,8 @@ impl Context {
                     return None;
                 }
                 self.pointer = Some(*point);
-                let position = self.rich_position(id, *point)?;
+                let (position, affinity) = self.rich_position(id, *point)?;
+                self.set_rich_affinity(id, affinity);
                 self.rich_op(
                     id,
                     RichOp::SetCursor {
@@ -313,6 +405,13 @@ impl Context {
                     motion,
                     select: *shift,
                 };
+                if matches!(key, Key::ArrowLeft | Key::ArrowRight)
+                    && let Some(op) =
+                        self.rich_horizontal(id, *key == Key::ArrowRight, *shift, false)
+                {
+                    self.rich_op(id, op);
+                    return Some(true);
+                }
                 let op = match key {
                     Key::ArrowLeft => motion(RichMotion::Left),
                     Key::ArrowRight => motion(RichMotion::Right),
@@ -368,6 +467,13 @@ impl Context {
                 select,
                 word,
             } => {
+                if matches!(direction, TextMove::Left | TextMove::Right)
+                    && let Some(op) =
+                        self.rich_horizontal(id, *direction == TextMove::Right, *select, *word)
+                {
+                    self.rich_op(id, op);
+                    return true;
+                }
                 let motion = match (direction, word) {
                     (TextMove::Left, false) => RichMotion::Left,
                     (TextMove::Left, true) => RichMotion::WordLeft,
@@ -507,9 +613,15 @@ impl Context {
             let maximum = (y - area.height).max(0.0);
             changed |= node.scroll.maximum != maximum;
             node.scroll.maximum = maximum;
+            if state.cursor != Some(*cursor) {
+                state.affinity = state.pending_affinity.take().unwrap_or_default();
+            }
+            let affinity = state.affinity;
             let caret = state.layouts.get(cursor.block).map(|layout| {
-                let shift = layout.preedit.map_or(0, |(_, len)| len);
-                let caret = layout.geometry.caret(cursor.offset + shift);
+                let caret = match layout.preedit {
+                    Some((_, len)) => layout.geometry.caret(cursor.offset + len),
+                    None => layout.geometry.caret_at(cursor.offset, affinity),
+                };
                 (layout.y + caret.y, caret.height, layout.indent + caret.x)
             });
             if let Some((top, height, _)) = caret
@@ -708,6 +820,16 @@ impl Context {
                 color: theme.text,
                 radius: 0.0,
             });
+            let direction = state
+                .layouts
+                .get(cursor.block)
+                .filter(|layout| layout.preedit.is_none())
+                .and_then(|layout| {
+                    layout
+                        .geometry
+                        .mixed_direction(cursor.offset, state.affinity)
+                });
+            super::control_paint::caret_flag(scene, caret, direction, theme.text);
         }
         scene.primitives.push(Primitive::PopClip);
     }

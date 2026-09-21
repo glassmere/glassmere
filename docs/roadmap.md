@@ -77,7 +77,9 @@ The [milestone report](milestone-5.md) describes the crates, contracts and valid
 - [x] Rich text blocks with links, a rope-backed `TextDocument` and a virtualized code editor ([milestone 7b](milestone-7.md#milestone-7b-rich-text-and-the-code-editor-foundation)).
 - [x] Code intelligence: syntect highlighting, find and replace, bracket pairing and matching, multiple cursors, diagnostics ([milestone 7c](milestone-7.md#milestone-7c-code-intelligence)).
 - [x] The WYSIWYG rich text editor with a Markdown subset for persistence ([milestone 7d](milestone-7.md#milestone-7d-the-wysiwyg-rich-text-editor)).
-- [ ] BiDi caret order, hot reload and framework diagnostics.
+- [x] Bidirectional caret order: visual or logical arrows, caret affinity and direction flags in all three editors ([milestone 7e](milestone-7.md#milestone-7e-bidirectional-caret-order)).
+- [ ] Text direction styles and right-to-left layout mirroring.
+- [ ] Hot reload and framework diagnostics.
 - CPU rendering, outgoing OS drags, gestures and additional platform adapters.
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

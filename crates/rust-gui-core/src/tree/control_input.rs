@@ -24,6 +24,7 @@ impl Context {
         let Some(editor) = &mut node.editor else {
             return false;
         };
+        editor.visual = self.caret_movement == crate::CaretMovement::Visual;
         let old_text = editor.text.clone();
         if !editor.apply(edit) {
             return false;
@@ -84,13 +85,25 @@ impl Context {
             x: position.x - node.bounds.x - node.style.padding + editor.scroll_x,
             y: position.y - node.bounds.y - node.style.padding,
         };
-        let cursor = editor.geometry.hit(local);
+        let (cursor, affinity) = editor.geometry.hit_affinity(local);
         let anchor = if extend {
             editor.selection.anchor
         } else {
             cursor
         };
-        self.edit(id, TextEdit::Select { anchor, cursor })
+        let changed = self.edit(id, TextEdit::Select { anchor, cursor });
+        // The caret shows on the side of the character that was clicked.
+        if let Some(editor) = self
+            .nodes
+            .get_mut(&id)
+            .and_then(|node| node.editor.as_mut())
+            && editor.affinity != affinity
+        {
+            editor.affinity = affinity;
+            self.invalidate_paint(id);
+            return true;
+        }
+        changed
     }
 
     pub(super) fn focus_control(&mut self, id: NodeId) {

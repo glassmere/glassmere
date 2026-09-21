@@ -1,6 +1,6 @@
 # Milestone 7: advanced features
 
-Slices so far: 7a docking, 7b rich text with the code editor foundation, 7c code intelligence and 7d the WYSIWYG rich text editor (below).
+Slices so far: 7a docking, 7b rich text with the code editor foundation, 7c code intelligence, 7d the WYSIWYG rich text editor and 7e bidirectional caret order (below).
 
 # Milestone 7a: docking
 
@@ -255,8 +255,51 @@ Not verified natively: typing, shortcuts, IME and the toolbar in the real window
 
 - All blocks are shaped every time their content or the width changes; there is no virtualization, so very long documents will slow down. Undo snapshots copy the whole document.
 - Visual-line keys resolve against the last shaped frame, so several Up or Down presses between two frames move one line.
-- End on a wrapped line stops before its last character, because the offset after it is drawn at the start of the next line (no caret affinity yet).
+- (Resolved in 7e: End on a wrapped line now lands at the true end of the line through caret affinity.)
 - One font size per block; no images, tables, nested lists, alignment or colours.
 - Links can be set from code and are reported at the cursor, but there is no link dialog and no click-to-follow.
 - Paste is plain text; copy puts plain text on the clipboard.
 - Marks continue across Enter but a link does not.
+
+# Milestone 7e: bidirectional caret order
+
+Implemented on 2026-09-21. Left and Right now move the caret on screen through mixed left-to-right and right-to-left text, the caret has an affinity so one offset can sit on either side of a direction boundary or wrapped line, and all three editors use it. Logical movement stays available as a setting. Text direction styles and layout mirroring follow in 7f.
+
+## Run
+
+```powershell
+cargo run -p rust-gui --example editor --release   # the field above the code mixes Latin, Hebrew and Arabic
+```
+
+```rust
+context.set_caret_movement(CaretMovement::Logical);              // default: CaretMovement::Visual
+run(AppOptions { caret_movement: CaretMovement::Logical, ..AppOptions::default() }, view)?;
+```
+
+## Contracts
+
+| API | Behavior |
+| --- | --- |
+| `Affinity::{Downstream, Upstream}` | Which neighbour a caret belongs to: the leading edge of the character after the offset, or the trailing edge of the one before. They differ at direction boundaries and between wrapped lines. |
+| `TextGeometry::lines`, `TextLine { y, height, rtl, bytes }` | Every measurer now reports visual lines with their base direction and byte range. A wrapped line ends at the offset where the next one starts. |
+| `TextGeometry::caret_at(byte, affinity)`, `hit_affinity(point)`, `visual_step(byte, affinity, right)`, `line_edge(byte, affinity, end)`, `line_at`, `mixed_direction` | Caret rectangle for an affinity; a hit that remembers which side of a character was clicked; one step left or right on screen, landing on the far edge of the character stepped over and returning `None` at the visual end of a line; the logical start and end of the caret's visual line (the end is upstream, so it is drawn on that line); and the direction to flag when a line mixes directions. |
+| `CaretMovement::{Visual, Logical}`, `Context::set_caret_movement`, `AppOptions::caret_movement` | Visual (the default): Left is left on screen in every run, and Ctrl+Left and Ctrl+Right follow the direction of the run they are in. Logical: Left is backward in the text. Shift keeps extending the logical selection to wherever the caret lands, so a selection that crosses a boundary can show as two pieces. |
+| Single-line text input | Visual steps, affinity from clicks, typed text keeps the caret with the character just entered, Home and End set the matching affinity, and a selection collapses to the edge on the side of the arrow. If the shaped text is stale the move falls back to logical. |
+| Code editor | A single cursor on a line that contains right-to-left text steps visually; at the visual end of the line it leaves toward the neighbouring line on that side. Pure left-to-right lines, several cursors and logical mode use the document's motions as before. |
+| Rich text editor | The same inside blocks with right-to-left text, including right-to-left paragraphs. Up, Down, Home, End and clicks carry affinity, so End on a wrapped line now lands at the true end of that line instead of one character early, and Home from there stays on the line. |
+| Caret flag | In mixed-direction lines a small flag at the top of the caret points the way the text at the caret runs. |
+| `MonospaceMeasurer` | The headless measurer now lays out Hebrew and Arabic ranges right to left with a small reordering (runs against the base direction reverse, a right-to-left line mirrors), and reports lines, so bidirectional behaviour is testable without fonts. |
+
+## Validation
+
+Five new tests. Four core tests: geometry (both places of a boundary offset, a rightward walk that visits every screen position once with the expected offsets, the walk back, hits on either side of the boundary, a right-to-left paragraph starting at its right end, wrapped-line affinity, the flag); the text input moving one cell right per press in visual mode and jumping in logical mode, the logical selection produced by visual Shift+Left, clicks on both sides of the boundary, and typing at it; the code editor stepping across a Hebrew string literal and leaving the line at its visual end; and the rich editor in mixed and right-to-left paragraphs with the caret flag. One renderer test runs the real glyphon shaper with system fonts: twelve strictly increasing caret places for eleven characters of mixed text, two places for the boundary offset, and an upstream line end on wrapped text. The rich editor test for End on a wrapped line was updated to the true end. The full suite is 143 tests plus 11 GPU tests; clippy is clean. A screenshot of the example confirmed Latin, Hebrew and Arabic shaped in one field with the caret and its flag.
+
+Not verified natively: pressing the arrow keys in the real window. The stepping logic was run against the real shaper's geometry in a test, and the key path is covered headlessly.
+
+## Remaining limits
+
+- Visual moves in the two document editors resolve against the last shaped frame, so several arrow presses between two frames move one step.
+- In the code editor, visual movement applies to a single cursor; several cursors move logically.
+- Word moves follow the direction of the adjacent run but still stop at logical word boundaries.
+- The headless measurer's reordering is a simplification (neutrals follow the previous strong character, digits count as left-to-right); the real shaper implements the Unicode algorithm.
+- Paragraph direction is still detected from the first strong character; forcing it, and mirroring layouts for right-to-left locales, is the next slice.

@@ -61,6 +61,9 @@ pub struct AppOptions {
     /// Skips animations. ponytail: not read from the OS setting yet, winit has no
     /// cross-platform query; wire it per platform when one appears.
     pub reduced_motion: bool,
+    /// Whether Left and Right move on screen or in reading order in
+    /// bidirectional text.
+    pub caret_movement: rust_gui_core::CaretMovement,
 }
 
 impl Default for AppOptions {
@@ -75,6 +78,7 @@ impl Default for AppOptions {
             theme: ThemeChoice::System,
             stylesheet: None,
             reduced_motion: false,
+            caret_movement: rust_gui_core::CaretMovement::Visual,
         }
     }
 }
@@ -250,6 +254,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
     ) -> Self {
         let mut context = Context::new();
         context.set_reduced_motion(options.reduced_motion);
+        context.set_caret_movement(options.caret_movement);
         Self {
             options,
             view,

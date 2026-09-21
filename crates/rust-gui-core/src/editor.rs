@@ -1,6 +1,16 @@
-use rust_gui_scene::{Rect, TextGeometry, TextMeasurer, TextStyle, TextWrap};
+use rust_gui_scene::{Affinity, Rect, TextGeometry, TextMeasurer, TextStyle, TextWrap};
 use std::{collections::VecDeque, ops::Range};
 use unicode_segmentation::UnicodeSegmentation;
+
+/// What the Left and Right arrow keys mean in bidirectional text.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CaretMovement {
+    /// Left is left on screen, across direction boundaries.
+    #[default]
+    Visual,
+    /// Left is backward in the text, whichever way that looks.
+    Logical,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TextMove {
@@ -76,6 +86,10 @@ pub(crate) struct Editor {
     pub geometry: TextGeometry,
     pub scroll_x: f32,
     geometry_key: Option<(String, TextStyle)>,
+    /// Which neighbour the caret belongs to at a direction boundary.
+    pub affinity: Affinity,
+    /// Left and Right move on screen instead of in reading order.
+    pub visual: bool,
 }
 
 pub(crate) fn single_line(text: &str) -> String {
@@ -113,6 +127,8 @@ impl Editor {
             geometry: TextGeometry::default(),
             scroll_x: 0.0,
             geometry_key: None,
+            affinity: Affinity::Downstream,
+            visual: true,
         }
     }
 
@@ -239,8 +255,27 @@ impl Editor {
         }
     }
 
+    /// One visual step, when the shaped geometry still matches the text.
+    fn visual_step(&self, right: bool) -> Option<Option<(usize, Affinity)>> {
+        let current = self
+            .geometry_key
+            .as_ref()
+            .is_some_and(|(text, _)| *text == self.text);
+        (self.visual && current).then(|| {
+            self.geometry
+                .visual_step(self.selection.cursor, self.affinity, right)
+        })
+    }
+
     pub fn apply(&mut self, edit: TextEdit) -> bool {
-        let before = (self.text.clone(), self.selection, self.composition.clone());
+        let before = (
+            self.text.clone(),
+            self.selection,
+            self.composition.clone(),
+            self.affinity,
+        );
+        let moving = matches!(edit, TextEdit::Move { .. });
+        let typed = matches!(edit, TextEdit::Insert(_) | TextEdit::Commit(_));
         match edit {
             TextEdit::Preedit { text, selection } => {
                 self.composition = (!text.is_empty()).then(|| Composition {
@@ -274,14 +309,42 @@ impl Editor {
             } => {
                 self.composition = None;
                 let range = self.selection.range();
-                let cursor = match direction {
-                    TextMove::Start | TextMove::DocumentStart => 0,
-                    TextMove::End | TextMove::DocumentEnd => self.text.len(),
-                    TextMove::Left if !select && !range.is_empty() => range.start,
-                    TextMove::Right if !select && !range.is_empty() => range.end,
-                    TextMove::Left => self.adjacent(false, word),
-                    TextMove::Right => self.adjacent(true, word),
+                let right = direction == TextMove::Right;
+                let horizontal = matches!(direction, TextMove::Left | TextMove::Right);
+                let mut affinity = Affinity::Downstream;
+                let cursor = match (direction, self.visual_step(right)) {
+                    (TextMove::Start | TextMove::DocumentStart, _) => 0,
+                    (TextMove::End | TextMove::DocumentEnd, _) => {
+                        affinity = Affinity::Upstream;
+                        self.text.len()
+                    }
+                    // A selection collapses to its edge on the side of the arrow.
+                    (_, step) if horizontal && !select && !range.is_empty() => {
+                        let x = |byte| self.geometry.caret_at(byte, Affinity::Downstream).x;
+                        let flipped = step.is_some() && x(range.start) > x(range.end);
+                        if right != flipped {
+                            range.end
+                        } else {
+                            range.start
+                        }
+                    }
+                    (_, Some(step)) => match step {
+                        // In an RTL run the visual direction runs against the text.
+                        Some((byte, _)) if word => {
+                            self.adjacent(byte > self.selection.cursor, true)
+                        }
+                        Some((byte, side)) => {
+                            affinity = side;
+                            byte
+                        }
+                        None => {
+                            affinity = self.affinity;
+                            self.selection.cursor
+                        }
+                    },
+                    (_, None) => self.adjacent(right, word),
                 };
+                self.affinity = affinity;
                 self.selection.cursor = cursor;
                 if !select {
                     self.selection.anchor = cursor;
@@ -314,7 +377,21 @@ impl Editor {
                 }
             }
         }
-        before != (self.text.clone(), self.selection, self.composition.clone())
+        if !moving {
+            // Typed text keeps the caret with the character just entered.
+            self.affinity = if typed && self.selection.cursor > 0 {
+                Affinity::Upstream
+            } else {
+                Affinity::Downstream
+            };
+        }
+        before
+            != (
+                self.text.clone(),
+                self.selection,
+                self.composition.clone(),
+                self.affinity,
+            )
     }
 
     pub fn prepare(
@@ -332,8 +409,8 @@ impl Editor {
             self.geometry_key = Some(key);
         }
         let old_scroll = self.scroll_x;
-        if let Some(cursor) = self.display_cursor() {
-            let x = self.geometry.caret(cursor).x;
+        if let Some(caret) = self.caret() {
+            let x = caret.x;
             if x < self.scroll_x {
                 self.scroll_x = x;
             }
@@ -348,8 +425,19 @@ impl Editor {
     }
 
     pub fn caret(&self) -> Option<Rect> {
+        let affinity = if self.composing() {
+            Affinity::Downstream
+        } else {
+            self.affinity
+        };
         self.display_cursor()
-            .map(|cursor| self.geometry.caret(cursor))
+            .map(|cursor| self.geometry.caret_at(cursor, affinity))
+    }
+
+    /// Direction to flag on the caret, when its line mixes directions.
+    pub fn caret_direction(&self) -> Option<bool> {
+        let cursor = self.display_cursor()?;
+        self.geometry.mixed_direction(cursor, self.affinity)
     }
 }
 

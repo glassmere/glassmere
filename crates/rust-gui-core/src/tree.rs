@@ -453,6 +453,7 @@ pub struct Context {
     dock_grab: Option<dock_input::DockGrab>,
     clipboard_out: Option<String>,
     redraw_requested: bool,
+    caret_movement: crate::CaretMovement,
     theme: Theme,
     stylesheet: StyleSheet,
     style_warnings: Vec<String>,
@@ -601,6 +602,7 @@ impl Default for Context {
             dock_grab: None,
             clipboard_out: None,
             redraw_requested: false,
+            caret_movement: crate::CaretMovement::Visual,
             theme,
             stylesheet: StyleSheet::default(),
             style_warnings: Vec::new(),
@@ -642,6 +644,16 @@ impl Context {
         &self.stylesheet
     }
     /// Installs named classes and, if the sheet declares one, its theme.
+    /// Whether Left and Right move on screen (the default) or in reading
+    /// order inside bidirectional text. Applies to every text editor.
+    pub fn set_caret_movement(&mut self, movement: crate::CaretMovement) {
+        self.caret_movement = movement;
+    }
+
+    pub fn caret_movement(&self) -> crate::CaretMovement {
+        self.caret_movement
+    }
+
     pub fn set_stylesheet(&mut self, sheet: StyleSheet) {
         self.stylesheet = sheet;
         let theme = self.stylesheet.apply_to(&self.theme);

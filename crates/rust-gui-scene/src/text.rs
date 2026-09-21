@@ -53,11 +53,33 @@ pub struct TextCluster {
     pub rtl: bool,
 }
 
+/// One visual line: its box, base direction and the bytes it shows, without
+/// a trailing line break. A wrapped line ends where the next one starts.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextLine {
+    pub y: f32,
+    pub height: f32,
+    pub rtl: bool,
+    pub bytes: Range<usize>,
+}
+
+/// Which neighbour a caret belongs to where one byte offset has two places on
+/// screen: at direction boundaries and between wrapped lines.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Affinity {
+    /// With the character after the offset: its leading edge.
+    #[default]
+    Downstream,
+    /// With the character before the offset: its trailing edge.
+    Upstream,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TextGeometry {
     pub size: Size,
     pub carets: Vec<CaretStop>,
     pub clusters: Vec<TextCluster>,
+    pub lines: Vec<TextLine>,
 }
 
 impl TextGeometry {
@@ -101,6 +123,138 @@ impl TextGeometry {
                 distance(a).total_cmp(&distance(b))
             })
             .map_or(0, |stop| stop.byte)
+    }
+
+    fn edge(cluster: &TextCluster, leading: bool) -> Rect {
+        // The leading edge is the left of an LTR cluster and the right of an RTL one.
+        let x = if leading != cluster.rtl {
+            cluster.rect.x
+        } else {
+            cluster.rect.x + cluster.rect.width
+        };
+        Rect {
+            x,
+            width: 1.0,
+            ..cluster.rect
+        }
+    }
+
+    /// The caret rectangle of an offset with an affinity. Without a neighbour
+    /// on the preferred side, the other side is used.
+    pub fn caret_at(&self, byte: usize, affinity: Affinity) -> Rect {
+        let after = self
+            .clusters
+            .iter()
+            .find(|cluster| cluster.bytes.start == byte)
+            .map(|cluster| Self::edge(cluster, true));
+        let before = self
+            .clusters
+            .iter()
+            .find(|cluster| cluster.bytes.end == byte)
+            .map(|cluster| Self::edge(cluster, false));
+        match affinity {
+            Affinity::Downstream => after.or(before),
+            Affinity::Upstream => before.or(after),
+        }
+        .unwrap_or_else(|| self.caret(byte))
+    }
+
+    /// `hit` plus the side of the character that was hit, so the caret shows
+    /// where the pointer went even at a direction boundary or a wrapped end.
+    pub fn hit_affinity(&self, point: Point) -> (usize, Affinity) {
+        let byte = self.hit(point);
+        let cluster = self
+            .clusters
+            .iter()
+            .filter(|cluster| cluster.bytes.start == byte || cluster.bytes.end == byte)
+            .min_by(|a, b| {
+                let distance = |cluster: &TextCluster| {
+                    let rect = cluster.rect;
+                    let dy =
+                        (rect.y - point.y).max(0.0) + (point.y - rect.y - rect.height).max(0.0);
+                    let dx = (rect.x - point.x).max(0.0) + (point.x - rect.x - rect.width).max(0.0);
+                    dy * 10000.0 + dx
+                };
+                distance(a).total_cmp(&distance(b))
+            });
+        match cluster {
+            Some(cluster) if cluster.bytes.end == byte => (byte, Affinity::Upstream),
+            _ => (byte, Affinity::Downstream),
+        }
+    }
+
+    fn clusters_on(&self, y: f32) -> impl Iterator<Item = &TextCluster> {
+        self.clusters
+            .iter()
+            .filter(move |cluster| (cluster.rect.y - y).abs() < 0.5)
+    }
+
+    /// One step left or right on screen, across direction boundaries. `None`
+    /// at the visual end of the line, where the caller leaves the line.
+    pub fn visual_step(
+        &self,
+        byte: usize,
+        affinity: Affinity,
+        right: bool,
+    ) -> Option<(usize, Affinity)> {
+        let caret = self.caret_at(byte, affinity);
+        let center = |cluster: &TextCluster| cluster.rect.x + cluster.rect.width / 2.0;
+        let line = self.clusters_on(caret.y);
+        let next = if right {
+            line.filter(|cluster| center(cluster) > caret.x)
+                .min_by(|a, b| a.rect.x.total_cmp(&b.rect.x))
+        } else {
+            line.filter(|cluster| center(cluster) < caret.x)
+                .max_by(|a, b| a.rect.x.total_cmp(&b.rect.x))
+        }?;
+        // Land on the far edge of the cluster that was stepped over.
+        Some(if right != next.rtl {
+            (next.bytes.end, Affinity::Upstream)
+        } else {
+            (next.bytes.start, Affinity::Downstream)
+        })
+    }
+
+    /// The visual line a caret is drawn on.
+    pub fn line_at(&self, byte: usize, affinity: Affinity) -> Option<&TextLine> {
+        let caret = self.caret_at(byte, affinity);
+        self.lines
+            .iter()
+            .find(|line| (line.y - caret.y).abs() < 0.5)
+    }
+
+    /// Logical start or end of the caret's visual line. The end of a wrapped
+    /// line keeps an upstream affinity so it is drawn on that line.
+    pub fn line_edge(&self, byte: usize, affinity: Affinity, end: bool) -> (usize, Affinity) {
+        match self.line_at(byte, affinity) {
+            Some(line) if end => (line.bytes.end, Affinity::Upstream),
+            Some(line) => (line.bytes.start, Affinity::Downstream),
+            None => (byte, affinity),
+        }
+    }
+
+    /// Direction of the character a caret belongs to, when its line mixes
+    /// directions and the caret is therefore worth flagging.
+    pub fn mixed_direction(&self, byte: usize, affinity: Affinity) -> Option<bool> {
+        let caret = self.caret_at(byte, affinity);
+        let mut line = self.clusters_on(caret.y);
+        let first = line.next()?.rtl;
+        if line.all(|cluster| cluster.rtl == first) {
+            return None;
+        }
+        let own = |cluster: &&TextCluster| match affinity {
+            Affinity::Upstream => cluster.bytes.end == byte,
+            Affinity::Downstream => cluster.bytes.start == byte,
+        };
+        self.clusters
+            .iter()
+            .find(own)
+            .or_else(|| {
+                self.clusters
+                    .iter()
+                    .find(|cluster| cluster.bytes.start == byte || cluster.bytes.end == byte)
+            })
+            .map(|cluster| cluster.rtl)
     }
 
     /// Selection rectangles for each intersecting shaped grapheme.
@@ -195,56 +349,125 @@ impl TextMeasurer for MonospaceMeasurer {
             .filter(|width| width.is_finite())
             .unwrap_or(f32::MAX)
             .max(advance);
-        let mut x = 0.0_f32;
-        let mut y = 0.0;
-        let mut max_x = 0.0_f32;
-        let mut carets = Vec::new();
-        let mut clusters = Vec::new();
+        let per_line = if style.wrap == TextWrap::Word {
+            ((limit / advance).floor() as usize).max(1)
+        } else {
+            usize::MAX
+        };
+        // Visual lines in logical order: hard breaks and fixed-width wrapping.
+        let mut lines: Vec<Vec<(usize, &str)>> = vec![Vec::new()];
+        let mut starts = vec![0];
         for (byte, grapheme) in text.grapheme_indices(true) {
-            if style.wrap == TextWrap::Word && x > 0.0 && x + advance > limit {
-                x = 0.0;
-                y += line_height;
+            if grapheme == "\n" || grapheme == "\r\n" {
+                lines.push(Vec::new());
+                starts.push(byte + grapheme.len());
+                continue;
             }
-            carets.push(CaretStop {
-                byte,
-                rect: Rect {
-                    x,
-                    y,
-                    width: 1.0,
-                    height: line_height,
-                },
-            });
-            clusters.push(TextCluster {
-                bytes: byte..byte + grapheme.len(),
-                rect: Rect {
-                    x,
-                    y,
-                    width: advance,
-                    height: line_height,
-                },
-                rtl: false,
-            });
-            if grapheme == "\n" {
-                x = 0.0;
-                y += line_height;
-            } else {
-                x += advance;
-                max_x = max_x.max(x);
+            if lines.last().unwrap().len() >= per_line {
+                lines.push(Vec::new());
+                starts.push(byte);
             }
+            lines.last_mut().unwrap().push((byte, grapheme));
         }
-        carets.push(CaretStop {
-            byte: text.len(),
-            rect: Rect {
-                x,
+        let mut geometry = TextGeometry::default();
+        let mut max_x = 0.0_f32;
+        for (index, (items, start)) in lines.iter().zip(&starts).enumerate() {
+            let y = index as f32 * line_height;
+            // Strong characters set a direction; the rest follow their neighbour.
+            let strong: Vec<Option<bool>> = items
+                .iter()
+                .map(|(_, grapheme)| grapheme.chars().next().and_then(strong_rtl))
+                .collect();
+            let base = strong.iter().flatten().next().copied().unwrap_or(false);
+            let mut current = base;
+            let directions: Vec<bool> = strong
+                .iter()
+                .map(|direction| {
+                    current = direction.unwrap_or(current);
+                    current
+                })
+                .collect();
+            // Runs opposite to the base direction are reversed, then an RTL
+            // line is mirrored as a whole.
+            let mut order: Vec<usize> = Vec::with_capacity(items.len());
+            let mut at = 0;
+            while at < items.len() {
+                let mut end = at;
+                while end < items.len() && directions[end] == directions[at] {
+                    end += 1;
+                }
+                if directions[at] == base {
+                    order.extend(at..end);
+                } else {
+                    order.extend((at..end).rev());
+                }
+                at = end;
+            }
+            if base {
+                order.reverse();
+            }
+            for (slot, item) in order.iter().enumerate() {
+                let (byte, grapheme) = items[*item];
+                geometry.clusters.push(TextCluster {
+                    bytes: byte..byte + grapheme.len(),
+                    rect: Rect {
+                        x: slot as f32 * advance,
+                        y,
+                        width: advance,
+                        height: line_height,
+                    },
+                    rtl: directions[*item],
+                });
+            }
+            max_x = max_x.max(items.len() as f32 * advance);
+            let end = items
+                .last()
+                .map_or(*start, |(byte, grapheme)| byte + grapheme.len());
+            geometry.lines.push(TextLine {
                 y,
-                width: 1.0,
                 height: line_height,
-            },
-        });
-        TextGeometry {
-            size: Size::new(max_x, y + line_height),
-            carets,
-            clusters,
+                rtl: base,
+                bytes: *start..end,
+            });
+            if items.is_empty() {
+                geometry.carets.push(CaretStop {
+                    byte: *start,
+                    rect: Rect {
+                        x: 0.0,
+                        y,
+                        width: 1.0,
+                        height: line_height,
+                    },
+                });
+            }
         }
+        geometry.clusters.sort_by_key(|cluster| cluster.bytes.start);
+        for cluster in &geometry.clusters {
+            geometry.carets.push(CaretStop {
+                byte: cluster.bytes.start,
+                rect: TextGeometry::edge(cluster, true),
+            });
+        }
+        if let Some(last) = geometry.clusters.last()
+            && last.bytes.end == text.len()
+        {
+            geometry.carets.push(CaretStop {
+                byte: text.len(),
+                rect: TextGeometry::edge(last, false),
+            });
+        }
+        geometry.carets.sort_by_key(|caret| caret.byte);
+        geometry.size = Size::new(max_x, lines.len() as f32 * line_height);
+        geometry
+    }
+}
+
+/// Direction of a strong character in the synthetic measurer: Hebrew and
+/// Arabic blocks are right-to-left, letters and digits left-to-right.
+fn strong_rtl(ch: char) -> Option<bool> {
+    match ch {
+        '\u{0590}'..='\u{08FF}' | '\u{FB1D}'..='\u{FDFF}' | '\u{FE70}'..='\u{FEFF}' => Some(true),
+        ch if ch.is_alphanumeric() => Some(false),
+        _ => None,
     }
 }

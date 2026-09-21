@@ -1,5 +1,27 @@
 use super::*;
 
+/// A small flag at the top of a caret in mixed-direction text, pointing the
+/// way the text at the caret runs.
+pub(super) fn caret_flag(scene: &mut Scene, caret: Rect, rtl: Option<bool>, color: Color) {
+    let Some(rtl) = rtl else {
+        return;
+    };
+    scene.primitives.push(Primitive::Quad {
+        rect: Rect {
+            x: if rtl {
+                caret.x - 4.0
+            } else {
+                caret.x + caret.width
+            },
+            y: caret.y,
+            width: 4.0,
+            height: 2.0,
+        },
+        color,
+        radius: 0.0,
+    });
+}
+
 impl Context {
     pub(super) fn prepare_controls(&mut self, measurer: &mut impl TextMeasurer) {
         self.prepare_text_areas(measurer);
@@ -126,6 +148,12 @@ impl Context {
                     color: self.theme.text,
                     radius: 0.0,
                 });
+                caret_flag(
+                    scene,
+                    caret.translated(origin),
+                    editor.caret_direction(),
+                    self.theme.text,
+                );
             }
             scene.primitives.push(Primitive::PopClip);
         }

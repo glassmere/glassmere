@@ -57,6 +57,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Rebuilt when the window theme flips between dark and light.
     let mut highlighter: Option<(bool, SyntectHighlighter)> = None;
     let mut followed = String::from("none");
+    // Latin, Hebrew and Arabic in one field: arrows move on screen, and the
+    // caret carries a small flag showing the direction of the text it is in.
+    let mut mixed = String::from(
+        "name: \u{5e9}\u{5dc}\u{5d5}\u{5dd} \u{5e2}\u{5d5}\u{5dc}\u{5dd} (\u{633}\u{644}\u{627}\u{645}) ok",
+    );
     run(
         AppOptions {
             title: "Rust GUI / Editor".into(),
@@ -103,6 +108,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ) {
                     followed = target;
                 }
+                ui.text_input_styled(
+                    "mixed",
+                    "Bidirectional text",
+                    &mut mixed,
+                    "",
+                    Style {
+                        width: Length::Px(420.0),
+                        height: Length::Px(40.0),
+                        padding: 10.0,
+                        ..Style::button()
+                    },
+                );
                 let response = ui.code_editor(
                     "code",
                     &mut document,

@@ -1,7 +1,7 @@
 use super::*;
 use crate::text_area::{AreaLine, AreaOp, Granularity, MarkKind};
 use crate::{EditorCommand, Motion, TextEdit, TextMove};
-use rust_gui_scene::{FontFamily, TextGeometry, TextSpan};
+use rust_gui_scene::{Affinity, FontFamily, TextGeometry, TextSpan};
 
 struct LineLayout {
     line: AreaLine,
@@ -27,6 +27,11 @@ pub(super) struct AreaState {
     last_click: Option<(Duration, Point, u8)>,
     /// Escape was pressed: the next Tab moves focus instead of indenting.
     tab_escape: bool,
+    /// Which neighbour the primary caret belongs to. The document only knows
+    /// offsets, so this lives with the view and follows the primary cursor.
+    affinity: Affinity,
+    /// Affinity for the position the queued operations will lead to.
+    pending_affinity: Option<Affinity>,
 }
 
 /// What a declaration needs to know about the previous frame.
@@ -161,6 +166,15 @@ impl Context {
     }
 
     fn area_op(&mut self, id: NodeId, op: AreaOp) {
+        if let Some(area) = self.nodes.get_mut(&id).and_then(|node| node.area.as_mut()) {
+            area.pending_affinity = match op {
+                // Typed text keeps the caret with the character just entered.
+                AreaOp::Insert(_) => Some(Affinity::Upstream),
+                // Set by whoever resolved the position from the shaped line.
+                AreaOp::Pointer { .. } => area.pending_affinity,
+                _ => None,
+            };
+        }
         match self.updates.get_mut(&id) {
             Some(ControlUpdate::TextOps(ops)) => ops.push(op),
             _ => {
@@ -172,6 +186,10 @@ impl Context {
 
     /// The `(line, byte)` under a point, clamped into the declared lines.
     fn area_position(&self, id: NodeId, point: Point) -> Option<(usize, usize)> {
+        self.area_hit(id, point).map(|(line, byte, _)| (line, byte))
+    }
+
+    fn area_hit(&self, id: NodeId, point: Point) -> Option<(usize, usize, Affinity)> {
         let node = self.nodes.get(&id)?;
         let area = node.area.as_ref()?;
         let Control::TextArea { total_lines, .. } = node.control else {
@@ -184,10 +202,10 @@ impl Context {
             .checked_sub(area.first_line)
             .and_then(|index| area.layouts.get(index))
         else {
-            return Some((line, 0));
+            return Some((line, 0, Affinity::Downstream));
         };
         let x = point.x - content.x - area.gutter + area.scroll_x;
-        let mut byte = layout.geometry.hit(Point {
+        let (mut byte, affinity) = layout.geometry.hit_affinity(Point {
             x,
             y: area.line_height / 2.0,
         });
@@ -199,7 +217,70 @@ impl Context {
                 byte.saturating_sub(len).max(at)
             };
         }
-        Some((line, byte.min(layout.line.text.len())))
+        Some((line, byte.min(layout.line.text.len()), affinity))
+    }
+
+    fn set_pending_affinity(&mut self, id: NodeId, affinity: Affinity) {
+        if let Some(area) = self.nodes.get_mut(&id).and_then(|node| node.area.as_mut()) {
+            area.pending_affinity = Some(affinity);
+        }
+    }
+
+    /// A visual Left or Right for a single cursor on a line that contains
+    /// right-to-left text. Other lines, several cursors and logical movement
+    /// use the document's own motions.
+    fn area_visual(&mut self, id: NodeId, right: bool, select: bool, word: bool) -> Option<AreaOp> {
+        if self.caret_movement != crate::CaretMovement::Visual {
+            return None;
+        }
+        let node = self.nodes.get(&id)?;
+        let Control::TextArea {
+            primary,
+            first_line,
+            selection_count: 1,
+            ..
+        } = node.control
+        else {
+            return None;
+        };
+        let area = node.area.as_ref()?;
+        let layout = area.layouts.get(primary.0.checked_sub(first_line)?)?;
+        if layout.preedit.is_some() || !layout.geometry.clusters.iter().any(|cluster| cluster.rtl) {
+            return None;
+        }
+        let step = layout.geometry.visual_step(primary.1, area.affinity, right);
+        let rtl_line = layout.geometry.lines.first().is_some_and(|line| line.rtl);
+        let Some((byte, affinity)) = step else {
+            // Leaving the line: its right end is the logical end only when LTR.
+            return Some(AreaOp::Move {
+                motion: if right != rtl_line {
+                    Motion::Right
+                } else {
+                    Motion::Left
+                },
+                select,
+            });
+        };
+        if word {
+            // Inside a right-to-left run the arrow points against the text.
+            let forward = byte > primary.1 || (byte == primary.1 && right != rtl_line);
+            return Some(AreaOp::Move {
+                motion: if forward {
+                    Motion::WordRight
+                } else {
+                    Motion::WordLeft
+                },
+                select,
+            });
+        }
+        self.set_pending_affinity(id, affinity);
+        Some(AreaOp::Pointer {
+            line: primary.0,
+            byte,
+            select,
+            granularity: Granularity::Char,
+            add: false,
+        })
     }
 
     pub(super) fn text_area_event(&mut self, event: &Event) -> Option<bool> {
@@ -211,7 +292,8 @@ impl Context {
                 if node.kind != Kind::TextArea || !node.enabled {
                     return None;
                 }
-                let (line, byte) = self.area_position(id, point)?;
+                let (line, byte, affinity) = self.area_hit(id, point)?;
+                self.set_pending_affinity(id, affinity);
                 let now = self.now;
                 let area = self.nodes.get_mut(&id)?.area.as_mut()?;
                 let count = match area.last_click {
@@ -250,7 +332,8 @@ impl Context {
                     return None;
                 }
                 self.pointer = Some(*point);
-                let (line, byte) = self.area_position(id, *point)?;
+                let (line, byte, affinity) = self.area_hit(id, *point)?;
+                self.set_pending_affinity(id, affinity);
                 self.area_op(
                     id,
                     AreaOp::Pointer {
@@ -323,6 +406,16 @@ impl Context {
     }
 
     fn area_text(&mut self, id: NodeId, edit: &TextEdit) -> bool {
+        if let TextEdit::Move {
+            direction: direction @ (TextMove::Left | TextMove::Right),
+            select,
+            word,
+        } = edit
+            && let Some(op) = self.area_visual(id, *direction == TextMove::Right, *select, *word)
+        {
+            self.area_op(id, op);
+            return true;
+        }
         let op = match edit {
             TextEdit::Insert(text) => AreaOp::Insert(text.clone()),
             TextEdit::Backspace { word } => AreaOp::Backspace { word: *word },
@@ -392,6 +485,12 @@ impl Context {
             motion,
             select: shift,
         };
+        if matches!(key, Key::ArrowLeft | Key::ArrowRight)
+            && let Some(op) = self.area_visual(id, key == Key::ArrowRight, shift, false)
+        {
+            self.area_op(id, op);
+            return Some(true);
+        }
         let op = match key {
             Key::ArrowLeft => motion(Motion::Left),
             Key::ArrowRight => motion(Motion::Right),
@@ -506,15 +605,19 @@ impl Context {
             area.digit = digit;
             area.line_height = line_height;
 
+            if area.primary != Some(*primary) {
+                area.affinity = area.pending_affinity.take().unwrap_or_default();
+            }
+            let affinity = area.affinity;
             let content = content(node);
             let text_width = (content.width - gutter).max(1.0);
             let caret = primary
                 .0
                 .checked_sub(*first_line)
                 .and_then(|index| area.layouts.get(index))
-                .map(|layout| {
-                    let byte = primary.1 + layout.preedit.map_or(0, |(_, len)| len);
-                    layout.geometry.caret(byte)
+                .map(|layout| match layout.preedit {
+                    Some((_, len)) => layout.geometry.caret(primary.1 + len),
+                    None => layout.geometry.caret_at(primary.1, affinity),
                 });
             if let Some(caret) = caret
                 && (area.primary != Some(*primary) || area.preedit.is_some())
@@ -774,17 +877,33 @@ impl Context {
                     .preedit
                     .filter(|_| selection.primary)
                     .map_or(0, |(_, len)| len);
-                let caret = layout.geometry.caret(selection.cursor.1 + shift);
+                let affinity = if selection.primary && shift == 0 {
+                    area.affinity
+                } else {
+                    Affinity::Downstream
+                };
+                let caret = layout
+                    .geometry
+                    .caret_at(selection.cursor.1 + shift, affinity);
+                let rect = Rect {
+                    x: origin_x + caret.x,
+                    y: row(selection.cursor.0),
+                    width: 2.0,
+                    height: line_height,
+                };
                 scene.primitives.push(Primitive::Quad {
-                    rect: Rect {
-                        x: origin_x + caret.x,
-                        y: row(selection.cursor.0),
-                        width: 2.0,
-                        height: line_height,
-                    },
+                    rect,
                     color: theme.text,
                     radius: 0.0,
                 });
+                super::control_paint::caret_flag(
+                    scene,
+                    rect,
+                    layout
+                        .geometry
+                        .mixed_direction(selection.cursor.1 + shift, affinity),
+                    theme.text,
+                );
             }
         }
         scene.primitives.push(Primitive::PopClip);

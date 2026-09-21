@@ -33,7 +33,7 @@ pub use dock::{
 };
 pub use document::{Indentation, Motion, Selection, TextDocument};
 pub use drag::{DragInfo, DragPayload, DropKind};
-pub use editor::{TextEdit, TextMove, TextSelection};
+pub use editor::{CaretMovement, TextEdit, TextMove, TextSelection};
 pub use focus::{DialogOptions, DialogResponse, FocusScope};
 pub use panes::{
     Axis, PopoverOptions, PopoverResponse, SplitOptions, TOOLTIP_DELAY, Tab, TabsResponse,

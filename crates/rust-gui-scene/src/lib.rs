@@ -1,8 +1,8 @@
 //! Renderer-independent geometry, text measurement, and ordered paint commands.
 mod text;
 pub use text::{
-    CaretStop, FontFamily, MonospaceMeasurer, TextCluster, TextGeometry, TextMeasurer, TextSpan,
-    TextStyle, TextWrap,
+    Affinity, CaretStop, FontFamily, MonospaceMeasurer, TextCluster, TextGeometry, TextLine,
+    TextMeasurer, TextSpan, TextStyle, TextWrap,
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

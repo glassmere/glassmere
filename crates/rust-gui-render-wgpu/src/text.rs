@@ -1,6 +1,6 @@
 use glyphon::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Wrap};
 use rust_gui_scene::{
-    CaretStop, FontFamily, Rect, Size, TextCluster, TextGeometry, TextMeasurer, TextSpan,
+    CaretStop, FontFamily, Rect, Size, TextCluster, TextGeometry, TextLine, TextMeasurer, TextSpan,
     TextStyle, TextWrap,
 };
 use std::collections::{HashMap, HashSet};
@@ -297,6 +297,19 @@ impl TextSystem {
         }
         for run in buffer.layout_runs() {
             let base = bases.get(run.line_i).copied().unwrap_or(0);
+            let start = run
+                .glyphs
+                .iter()
+                .map(|glyph| glyph.start)
+                .min()
+                .unwrap_or(0);
+            let end = run.glyphs.iter().map(|glyph| glyph.end).max().unwrap_or(0);
+            result.lines.push(TextLine {
+                y: run.line_top,
+                height: run.line_height,
+                rtl: run.rtl,
+                bytes: base + start..base + end,
+            });
             for (byte, grapheme) in run.text.grapheme_indices(true) {
                 let Some(glyph) = run
                     .glyphs
@@ -380,7 +393,55 @@ impl TextSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_gui_scene::Point;
+    use rust_gui_scene::{Affinity, Point};
+
+    #[test]
+    fn shaped_bidirectional_text_steps_monotonically_and_reports_lines() {
+        let mut system = TextSystem::default();
+        let style = TextStyle::default();
+        let text = "abc \u{5d0}\u{5d1}\u{5d2} def";
+        let geometry = system.geometry(text, &style, None);
+        if !geometry.clusters.iter().any(|cluster| cluster.rtl) {
+            // No installed font shaped the Hebrew letters right to left.
+            return;
+        }
+        assert_eq!(geometry.lines.len(), 1);
+        assert!(!geometry.lines[0].rtl);
+        assert_eq!(geometry.lines[0].bytes, 0..text.len());
+        let mut at = (0, Affinity::Downstream);
+        let mut xs = vec![geometry.caret_at(at.0, at.1).x];
+        while let Some(next) = geometry.visual_step(at.0, at.1, true) {
+            at = next;
+            xs.push(geometry.caret_at(at.0, at.1).x);
+        }
+        // Eleven characters: twelve caret places, strictly left to right.
+        assert_eq!(xs.len(), 12);
+        assert!(xs.windows(2).all(|pair| pair[1] > pair[0]), "{xs:?}");
+        assert_eq!(at.0, text.len());
+        // The boundary offset has two places.
+        let upstream = geometry.caret_at(4, Affinity::Upstream).x;
+        let downstream = geometry.caret_at(4, Affinity::Downstream).x;
+        assert!(downstream > upstream + 1.0);
+
+        let wrapped = system.geometry(
+            "one two three four five six seven eight nine ten",
+            &TextStyle {
+                wrap: TextWrap::Word,
+                ..TextStyle::default()
+            },
+            Some(120.0),
+        );
+        assert!(wrapped.lines.len() > 2);
+        let end = wrapped.lines[0].bytes.end;
+        assert_eq!(
+            wrapped.line_edge(1, Affinity::Downstream, true),
+            (end, Affinity::Upstream)
+        );
+        assert_eq!(
+            wrapped.caret_at(end, Affinity::Upstream).y,
+            wrapped.lines[0].y
+        );
+    }
 
     #[test]
     fn rich_geometry_indexes_the_concatenated_spans_and_matches_plain_shaping() {

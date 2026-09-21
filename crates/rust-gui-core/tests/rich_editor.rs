@@ -166,11 +166,13 @@ fn vertical_and_line_keys_follow_the_wrapped_lines_with_a_sticky_column() {
     key(&mut context, Key::ArrowDown, false);
     frame(&mut context, &mut app);
     assert_eq!(app.document.cursor(), at(0, COLUMNS + 20));
-    // End stays on the wrapped line: before its last character, since the
-    // offset after it belongs to the next visual line.
+    // End goes to the true end of the wrapped line. The same offset starts the
+    // next line; the caret's affinity keeps it on this one, so Home returns here.
     key(&mut context, Key::End, false);
     frame(&mut context, &mut app);
-    assert_eq!(app.document.cursor(), at(0, COLUMNS * 2 - 1));
+    assert_eq!(app.document.cursor(), at(0, COLUMNS * 2));
+    let caret = context.ime_cursor_rect().unwrap();
+    assert!((caret.y - (PADDING + LINE)).abs() < 0.5, "{caret:?}");
     key(&mut context, Key::Home, false);
     frame(&mut context, &mut app);
     assert_eq!(app.document.cursor(), at(0, COLUMNS));
