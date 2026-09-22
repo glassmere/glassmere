@@ -111,5 +111,6 @@ Work picked from the coverage table after the seven phases.
 - [x] Gradients, shadows and an application's own GPU drawing ([milestone 18](milestone-18.md)).
 - [x] Forced paragraph direction, regular expression search, font baselines and responsive containers ([milestone 19](milestone-19.md)).
 - [x] Which screen a window opens on ([milestone 20](milestone-20.md)).
+- [x] Background jobs with cancellation, superseding and streams ([milestone 21](milestone-21.md)).
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

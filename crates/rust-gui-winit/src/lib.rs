@@ -7,7 +7,6 @@ mod graphics;
 pub mod hot;
 mod images;
 mod input;
-mod mailbox;
 mod os_drag;
 mod wakeup;
 pub use desktop::{DesktopClosed, DesktopHandle, WindowKey, run_windows};
@@ -63,8 +62,8 @@ pub enum Placement {
     /// platform's own, as the display settings show them.
     Named(String),
 }
-pub use mailbox::{Mailbox, MessageSender};
 use rust_gui_core::{Action, Context, DragPayload, Event, StyleSheet, TextEdit, Theme, Ui};
+pub use rust_gui_core::{Mailbox, MessageSender};
 use rust_gui_devtools::Recorder;
 use rust_gui_render_cpu::CpuRenderer;
 use rust_gui_render_wgpu::Renderer;

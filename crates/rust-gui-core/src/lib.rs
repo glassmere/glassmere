@@ -10,6 +10,7 @@ mod editor;
 mod focus;
 mod image;
 mod locale_format;
+mod mailbox;
 mod messages;
 mod panes;
 mod property_grid;
@@ -18,6 +19,7 @@ mod rich_editor;
 mod rich_text;
 mod style;
 mod stylesheet;
+mod task;
 mod text_area;
 mod theme;
 mod toast;
@@ -46,6 +48,7 @@ pub use events::{EventArea, UiEvent};
 pub use focus::{DialogOptions, DialogResponse, FocusScope};
 pub use image::{BackgroundImage, ImageFit, ImageOptions, ImageSource, ImageTint};
 pub use locale_format::{Date, DateStyle, LocaleFormat, Time};
+pub use mailbox::{Mailbox, MessageSender, message_channel};
 pub use messages::{BUILTIN_MESSAGES, MessageArg, Messages};
 pub use panes::{
     Axis, PopoverOptions, PopoverResponse, SplitOptions, TOOLTIP_DELAY, Tab, TabsResponse,
@@ -63,6 +66,7 @@ pub use style::{
     StateStyles, Style, Track, TrackSize,
 };
 pub use stylesheet::{StyleSheet, StyleSheetError};
+pub use task::{Cancel, TaskSender, Tasks};
 pub use text_area::{
     CodeEditorOptions, CodeEditorResponse, Diagnostic, EditorCommand, FindState, HighlightSpan,
     Highlighter, Severity,

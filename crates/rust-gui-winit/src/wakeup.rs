@@ -1,3 +1,4 @@
+use rust_gui_core::{Mailbox, MessageSender, Tasks, message_channel};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -64,5 +65,18 @@ impl WakeHandle {
     }
     pub(crate) fn close(&self) {
         self.0.closed.store(true, Ordering::Release);
+    }
+
+    /// A bounded mailbox whose sender wakes this window.
+    pub fn channel<T>(&self, capacity: usize) -> (MessageSender<T>, Mailbox<T>) {
+        let wake = self.clone();
+        message_channel(capacity, move || wake.request_redraw())
+    }
+
+    /// Background jobs whose messages wake this window. `capacity` is shared
+    /// by all of them.
+    pub fn tasks<K: Clone + Eq + std::hash::Hash, T>(&self, capacity: usize) -> Tasks<K, T> {
+        let wake = self.clone();
+        Tasks::new(capacity, move || wake.request_redraw())
     }
 }

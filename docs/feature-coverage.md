@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 20. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 21. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -31,7 +31,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 25 | Command architecture | Done | `Command` carries an id, a label, a binding, enabled state and a scope, shared by its button, its shortcut, `MenuItem::command` and the palette (milestone 16). |
 | 26 | Clipboard and drag-and-drop | Partial | Text clipboard, in-process item/text drags, incoming OS file drops, outgoing OS file drags on Windows and macOS with the outcome reported to the source (milestone 13a). Missing: images, custom types, outgoing text, outgoing drags on Linux, cross-window drags. |
 | 27 | Multi-window support | Done | Independent windows on one device, native modal dialog windows that block their owner, shared state via `Arc` and mailboxes, DPI scaling per screen, and `AppOptions::placement` for which screen a window opens on (milestone 20). Tried on one screen only. |
-| 28 | Strong async integration | Partial | Bounded mailbox and wake handle; no executor is forced. Missing: cancellation, streams, async commands helpers. |
+| 28 | Strong async integration | Done | Bounded mailbox and wake handle, and `Tasks` for jobs that can be cancelled, superseded by key, and stream many results, with a superseded job's results dropped before the view sees them (milestone 21). No executor is forced: a job is a thread or a future on the runtime the application already has. |
 | 29 | Optional reactive state | Not started | Ordinary Rust state is the only model. |
 | 30 | Ordinary Rust state | Done | Views borrow `&mut` application state. |
 | 31 | Observable dependency graph | Partial | Inspector shows per-node "last declaration changed" flags and repainted nodes; no dependency graph because there is no reactive layer. |
