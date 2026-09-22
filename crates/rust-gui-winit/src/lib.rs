@@ -225,6 +225,36 @@ pub(crate) const STYLESHEET_POLL: Duration = Duration::from_millis(500);
 pub(crate) static STARTED: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
 static STARTUP_REPORTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// The way winit names an edge, and the cursor that shows it.
+fn direction(edge: rust_gui_core::ResizeEdge) -> winit::window::ResizeDirection {
+    use rust_gui_core::ResizeEdge as Edge;
+    use winit::window::ResizeDirection as Direction;
+    match edge {
+        Edge::North => Direction::North,
+        Edge::South => Direction::South,
+        Edge::East => Direction::East,
+        Edge::West => Direction::West,
+        Edge::NorthEast => Direction::NorthEast,
+        Edge::NorthWest => Direction::NorthWest,
+        Edge::SouthEast => Direction::SouthEast,
+        Edge::SouthWest => Direction::SouthWest,
+    }
+}
+
+fn resize_cursor(edge: rust_gui_core::ResizeEdge) -> CursorIcon {
+    use rust_gui_core::ResizeEdge as Edge;
+    match edge {
+        Edge::North => CursorIcon::NResize,
+        Edge::South => CursorIcon::SResize,
+        Edge::East => CursorIcon::EResize,
+        Edge::West => CursorIcon::WResize,
+        Edge::NorthEast => CursorIcon::NeResize,
+        Edge::NorthWest => CursorIcon::NwResize,
+        Edge::SouthEast => CursorIcon::SeResize,
+        Edge::SouthWest => CursorIcon::SwResize,
+    }
+}
+
 /// Files the operating system started the application with: the arguments
 /// that name something on disk. An association opens a file this way, and so
 /// does dragging one onto the executable.
@@ -900,6 +930,28 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
     /// between frames, because a file dialog runs a message loop of its own
     /// and nothing may be borrowed across it.
     pub(crate) fn platform_requests(&mut self) {
+        // A window that draws its own title bar asks for what the system's
+        // one would have done. The platform takes the pointer over for a
+        // move or a resize, so this happens between frames, where nothing of
+        // this window's is borrowed.
+        for command in self.context.take_window_commands() {
+            let Some(state) = &self.state else {
+                continue;
+            };
+            match command {
+                rust_gui_core::WindowCommand::Drag => {
+                    let _ = state.window.drag_window();
+                }
+                rust_gui_core::WindowCommand::Resize(edge) => {
+                    let _ = state.window.drag_resize_window(direction(edge));
+                }
+                rust_gui_core::WindowCommand::Minimize => state.window.set_minimized(true),
+                rust_gui_core::WindowCommand::ToggleMaximize => {
+                    state.window.set_maximized(!state.window.is_maximized());
+                }
+                rust_gui_core::WindowCommand::Close => self.close_requested = true,
+            }
+        }
         for notification in self.context.take_notifications() {
             platform::notify(&notification);
         }
@@ -983,6 +1035,12 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         let logical_size = Size::new(size.width as f32 / scale, size.height as f32 / scale);
         self.logical_size = logical_size;
         self.context.set_now(self.started.elapsed());
+        // What a title bar of the application's own needs to know about its
+        // window before it draws itself.
+        self.context.set_window_info(rust_gui_core::WindowInfo {
+            maximized: state.window.is_maximized(),
+            focused: state.window.has_focus(),
+        });
         // Images decoded in the background since the last frame.
         self.images.deliver(&mut self.context);
         let mut stats =
@@ -1084,7 +1142,13 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         if self.frames == 0 {
             diagnostics::checkpoint("first_layout", state.device());
         }
-        state.window.set_cursor(
+        let grip = self
+            .context
+            .hovered()
+            .and_then(|id| self.context.resize_grip(id));
+        state.window.set_cursor(if let Some(edge) = grip {
+            resize_cursor(edge)
+        } else {
             match self.context.hovered().and_then(|id| self.context.node(id)) {
                 Some(node) if node.semantics.role == rust_gui_core::Role::TextInput => {
                     CursorIcon::Text
@@ -1097,8 +1161,8 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                 }
                 Some(node) if node.semantics.focusable => CursorIcon::Pointer,
                 _ => CursorIcon::Default,
-            },
-        );
+            }
+        });
         // The overlay is appended to a copy only while an inspector decorates
         // this window; ordinary frames render the retained scene directly.
         let decorated;

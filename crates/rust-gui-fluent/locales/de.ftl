@@ -29,3 +29,7 @@ rust-gui-dock-move = Schwebendes Panel verschieben
 rust-gui-dock-resize = Größe des schwebenden Panels ändern
 rust-gui-tab-close = Tab { $name } schließen
 rust-gui-find-close = Suchleiste schließen
+rust-gui-minimize = Minimieren
+rust-gui-maximize = Maximieren
+rust-gui-restore = Wiederherstellen
+rust-gui-close = Schließen

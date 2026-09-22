@@ -188,6 +188,10 @@ pub(crate) enum Control {
     /// Text written along the end edge of a control, such as a shortcut.
     Hint(String),
     EventArea(crate::EventArea),
+    /// A strip that moves the window, and maximizes it when pressed twice.
+    TitleBar,
+    /// An edge or a corner that resizes the window.
+    ResizeGrip(crate::ResizeEdge),
     TextInput {
         label: String,
         value: String,

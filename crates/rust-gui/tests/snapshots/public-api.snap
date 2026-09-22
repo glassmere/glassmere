@@ -427,6 +427,8 @@ rust-gui-core   field WidgetInput::focused
 rust-gui-core   field WidgetInput::hovered
 rust-gui-core   field WidgetInput::pressed
 rust-gui-core   field WidgetInput::size
+rust-gui-core   field WindowInfo::focused
+rust-gui-core   field WindowInfo::maximized
 rust-gui-core   fn Animation::alternate (mut self, alternate : bool) -> Self
 rust-gui-core   fn Animation::easing (mut self, easing : Easing) -> Self
 rust-gui-core   fn Animation::new (keyframes : Vec < Keyframe>, milliseconds : u64) -> Self
@@ -476,6 +478,7 @@ rust-gui-core   fn Context::node (& self, id : NodeId) -> Option < NodeSnapshot>
 rust-gui-core   fn Context::node_count (& self) -> usize
 rust-gui-core   fn Context::pressed (& self, id : NodeId) -> bool
 rust-gui-core   fn Context::request_hot_save (& mut self)
+rust-gui-core   fn Context::resize_grip (& self, id : NodeId) -> Option < crate :: ResizeEdge>
 rust-gui-core   fn Context::root (& self) -> NodeId
 rust-gui-core   fn Context::run (& mut self, size : Size, measurer : & mut impl TextMeasurer, view : impl FnOnce (& mut Ui < '_>),) -> FrameStats
 rust-gui-core   fn Context::scene (& self) -> & Scene
@@ -488,6 +491,8 @@ rust-gui-core   fn Context::set_opened_files (& mut self, paths : Vec < std :: p
 rust-gui-core   fn Context::set_stylesheet (& mut self, sheet : StyleSheet)
 rust-gui-core   fn Context::set_theme (& mut self, theme : Theme)
 rust-gui-core   fn Context::set_watched_file (& mut self, path : & std :: path :: Path, content : std :: result :: Result < Vec < u8>, String>,) -> bool
+rust-gui-core   fn Context::set_window_info (& mut self, info : crate :: WindowInfo)
+rust-gui-core   fn Context::size (& self) -> Size
 rust-gui-core   fn Context::snapshots (& self) -> Vec < NodeSnapshot>
 rust-gui-core   fn Context::state_graph (& self) -> & [crate :: GraphNode]
 rust-gui-core   fn Context::stats (& self) -> FrameStats
@@ -500,6 +505,7 @@ rust-gui-core   fn Context::take_menu (& mut self) -> Option < crate :: Menu>
 rust-gui-core   fn Context::take_notifications (& mut self) -> Vec < crate :: Notification>
 rust-gui-core   fn Context::take_paste_request (& mut self) -> bool
 rust-gui-core   fn Context::take_tray (& mut self) -> Option < Option < crate :: Tray>>
+rust-gui-core   fn Context::take_window_commands (& mut self) -> Vec < crate :: WindowCommand>
 rust-gui-core   fn Context::theme (& self) -> & Theme
 rust-gui-core   fn Context::watch_error (& self, path : & std :: path :: Path) -> Option < & str>
 rust-gui-core   fn Context::watched_known (& self, path : & std :: path :: Path) -> bool
@@ -660,6 +666,7 @@ rust-gui-core   fn PropertyGridOptions::height (mut self, height : f32) -> Self
 rust-gui-core   fn PropertyGridOptions::new (label : impl Into < String>) -> Self
 rust-gui-core   fn PropertyGridOptions::style (mut self, style : Style) -> Self
 rust-gui-core   fn PropertyGridResponse::any (& self) -> bool
+rust-gui-core   fn ResizeEdge::name (self) -> & 'static str
 rust-gui-core   fn ResolvedText::from_theme (theme : & Theme) -> Self
 rust-gui-core   fn ResolvedText::rtl (& self) -> bool
 rust-gui-core   fn ResolvedText::text_style (& self, wrap : TextWrap) -> TextStyle
@@ -868,6 +875,7 @@ rust-gui-core   fn Ui < '_>::pasted (& self) -> Option < & crate :: Clip>
 rust-gui-core   fn Ui < '_>::request_focus (& mut self, key : impl Into < String>)
 rust-gui-core   fn Ui < '_>::request_paste (& mut self)
 rust-gui-core   fn Ui < '_>::request_redraw (& mut self)
+rust-gui-core   fn Ui < '_>::resize_frame (& mut self, key : impl Into < String>, thickness : f32)
 rust-gui-core   fn Ui < '_>::responsive (& mut self, key : impl Into < String>, style : Style, content : impl FnOnce (& mut Ui < '_>, f32),) -> f32
 rust-gui-core   fn Ui < '_>::row (& mut self, key : impl Into < String>, style : Style, content : impl FnOnce (& mut Ui < '_>))
 rust-gui-core   fn Ui < '_>::scroll (& mut self, key : impl Into < String>, style : Style, content : impl FnOnce (& mut Ui < '_>),)
@@ -875,9 +883,14 @@ rust-gui-core   fn Ui < '_>::set_menu (& mut self, menu : crate :: Menu)
 rust-gui-core   fn Ui < '_>::set_theme (& mut self, theme : crate :: Theme)
 rust-gui-core   fn Ui < '_>::set_tray (& mut self, tray : Option < crate :: Tray>)
 rust-gui-core   fn Ui < '_>::theme (& self) -> & crate :: Theme
+rust-gui-core   fn Ui < '_>::title_bar (& mut self, key : impl Into < String>, style : Style, content : impl FnOnce (& mut Ui < '_>),)
 rust-gui-core   fn Ui < '_>::watched_bytes (& mut self, path : impl AsRef < std :: path :: Path>) -> Option < Arc < [u8]>>
 rust-gui-core   fn Ui < '_>::watched_text (& mut self, path : impl AsRef < std :: path :: Path>) -> Option < Arc < str>>
 rust-gui-core   fn Ui < '_>::widget (& mut self, key : impl Into < String>, style : Style, build : impl FnOnce (& crate :: WidgetInput) -> CustomWidget,) -> Response
+rust-gui-core   fn Ui < '_>::window (& self) -> crate :: WindowInfo
+rust-gui-core   fn Ui < '_>::window_buttons (& mut self, key : impl Into < String>)
+rust-gui-core   fn Ui < '_>::window_command (& mut self, command : crate :: WindowCommand)
+rust-gui-core   fn Ui < '_>::window_size (& self) -> rust_gui_scene :: Size
 rust-gui-core   fn crate :: Context::format_date (& self, date : Date, style : DateStyle) -> String
 rust-gui-core   fn crate :: Context::format_number (& self, value : f64, decimals : usize) -> String
 rust-gui-core   fn crate :: Context::format_time (& self, time : Time, seconds : bool) -> String
@@ -1068,6 +1081,14 @@ rust-gui-core   variant Motion::WordRight
 rust-gui-core   variant Repeat::Count
 rust-gui-core   variant Repeat::Forever
 rust-gui-core   variant Repeat::Once
+rust-gui-core   variant ResizeEdge::East
+rust-gui-core   variant ResizeEdge::North
+rust-gui-core   variant ResizeEdge::NorthEast
+rust-gui-core   variant ResizeEdge::NorthWest
+rust-gui-core   variant ResizeEdge::South
+rust-gui-core   variant ResizeEdge::SouthEast
+rust-gui-core   variant ResizeEdge::SouthWest
+rust-gui-core   variant ResizeEdge::West
 rust-gui-core   variant RichMotion::BlockEnd
 rust-gui-core   variant RichMotion::BlockStart
 rust-gui-core   variant RichMotion::DocumentEnd
@@ -1154,6 +1175,11 @@ rust-gui-core   variant UiEvent::PointerMoved
 rust-gui-core   variant UiEvent::PointerUp
 rust-gui-core   variant UiEvent::Scroll
 rust-gui-core   variant UiEvent::Text
+rust-gui-core   variant WindowCommand::Close
+rust-gui-core   variant WindowCommand::Drag
+rust-gui-core   variant WindowCommand::Minimize
+rust-gui-core   variant WindowCommand::Resize
+rust-gui-core   variant WindowCommand::ToggleMaximize
 rust-gui-core const BUILTIN_MESSAGES
 rust-gui-core const FILTER_DELAY
 rust-gui-core const TOKENS
@@ -1192,6 +1218,7 @@ rust-gui-core enum MessageArg
 rust-gui-core enum ModelError
 rust-gui-core enum Motion
 rust-gui-core enum Repeat
+rust-gui-core enum ResizeEdge
 rust-gui-core enum RichMotion
 rust-gui-core enum Role
 rust-gui-core enum Severity
@@ -1204,6 +1231,7 @@ rust-gui-core enum ToastKind
 rust-gui-core enum Track
 rust-gui-core enum TrackSize
 rust-gui-core enum UiEvent
+rust-gui-core enum WindowCommand
 rust-gui-core fn message_channel < T> (capacity : usize, wake : impl Fn () -> bool + Send + Sync + 'static,) -> (MessageSender < T>, Mailbox < T>)
 rust-gui-core fn text_matches (cell : & str, filter : & str) -> bool
 rust-gui-core struct Animation
@@ -1309,6 +1337,7 @@ rust-gui-core struct TreeModel
 rust-gui-core struct Ui
 rust-gui-core struct VirtualListOptions
 rust-gui-core struct WidgetInput
+rust-gui-core struct WindowInfo
 rust-gui-core trait Component
 rust-gui-core trait GridModel
 rust-gui-core trait Highlighter
@@ -1354,6 +1383,7 @@ rust-gui-core use tree :: diagnostics :: { DiagnosticKind, FrameDiagnostic, HUGE
 rust-gui-core use tree :: { Action, CollectionInfo, Context, Dirty, Event, FrameStats, GestureResponse, Key, Live, MemoryReport, NodeDetails, NodeId, NodeSnapshot, NumericValue, Pen, Role, ScrollState, Semantics, Swipe, SwipeDirection, TouchPhase, }
 rust-gui-core use ui :: { DockOptions, DockPanel, DockResponse, Properties, PropertyGrid, Response, Ui, suggest, }
 rust-gui-core use widget :: { Component, CustomWidget, WidgetInput }
+rust-gui-core use window :: { ResizeEdge, WindowCommand, WindowInfo }
 rust-gui-scene   field Affine::a
 rust-gui-scene   field Affine::b
 rust-gui-scene   field Affine::c

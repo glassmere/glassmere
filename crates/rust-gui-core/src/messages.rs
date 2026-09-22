@@ -84,6 +84,10 @@ pub const BUILTIN_MESSAGES: &[(&str, &str)] = &[
     ("rust-gui-dock-resize", "Resize floating panel"),
     ("rust-gui-tab-close", "Close { $name }"),
     ("rust-gui-find-close", "Close the find bar"),
+    ("rust-gui-minimize", "Minimize"),
+    ("rust-gui-maximize", "Maximize"),
+    ("rust-gui-restore", "Restore"),
+    ("rust-gui-close", "Close"),
 ];
 
 /// Substitutes `{ $name }` placeholders, the subset of Fluent the built-in

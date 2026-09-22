@@ -29,3 +29,7 @@ rust-gui-dock-move = Přesunout plovoucí panel
 rust-gui-dock-resize = Změnit velikost plovoucího panelu
 rust-gui-tab-close = Zavřít kartu { $name }
 rust-gui-find-close = Zavřít panel hledání
+rust-gui-minimize = Minimalizovat
+rust-gui-maximize = Maximalizovat
+rust-gui-restore = Obnovit
+rust-gui-close = Zavřít

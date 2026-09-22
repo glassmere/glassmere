@@ -29,6 +29,7 @@ mod toast;
 mod tree;
 mod ui;
 mod widget;
+mod window;
 
 pub use animation::{Animation, Easing, Effect, Keyframe, Repeat, Transform, Transition};
 pub use clipboard::Clip;
@@ -92,3 +93,4 @@ pub use ui::{
     DockOptions, DockPanel, DockResponse, Properties, PropertyGrid, Response, Ui, suggest,
 };
 pub use widget::{Component, CustomWidget, WidgetInput};
+pub use window::{ResizeEdge, WindowCommand, WindowInfo};

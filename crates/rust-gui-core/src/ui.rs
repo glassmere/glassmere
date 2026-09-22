@@ -44,6 +44,8 @@ pub(crate) struct HostOutbox {
     pub tray: Option<Option<crate::Tray>>,
     /// Commands a menu the framework drew itself chose.
     pub commands: Vec<String>,
+    /// What a title bar of the application's own asked the window to do.
+    pub window_commands: Vec<crate::WindowCommand>,
     pub images: Vec<std::path::PathBuf>,
     pub toasts: ToastOutbox,
     /// A new message source, or `Some(None)` to remove the current one.
@@ -233,6 +235,158 @@ impl Ui<'_> {
     /// the view declared, exactly as its button would.
     pub fn set_menu(&mut self, menu: crate::Menu) {
         self.host.menu = Some(menu);
+    }
+
+    /// Asks the window to move, resize, minimize, maximize or close itself.
+    /// `Ui::title_bar`, `Ui::window_buttons` and `Ui::resize_frame` are made
+    /// of these; this is for a frame of an entirely different shape.
+    pub fn window_command(&mut self, command: crate::WindowCommand) {
+        self.host.window_commands.push(command);
+    }
+
+    /// What the host says about the window: whether it is maximized and
+    /// whether it has the keyboard. Of the last frame, like everything a
+    /// declaration is given.
+    pub fn window(&self) -> crate::WindowInfo {
+        self.context.window_info()
+    }
+
+    /// The window's logical size, which is what `Ui::resize_frame` places
+    /// its grips by.
+    pub fn window_size(&self) -> rust_gui_scene::Size {
+        self.context.size()
+    }
+
+    /// A strip that moves the window, for a window with the system's title
+    /// bar turned off. Pressing it starts a move; pressing it twice
+    /// maximizes or restores. Whatever is declared inside it keeps working,
+    /// because a press that lands on a control there is that control's.
+    ///
+    /// ```ignore
+    /// ui.title_bar("bar", Style::default().padding(6.0), |ui| {
+    ///     ui.label("My application");
+    ///     ui.window_buttons("buttons");
+    /// });
+    /// ```
+    pub fn title_bar(
+        &mut self,
+        key: impl Into<String>,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_>),
+    ) {
+        // A row, so that a title, a menu and the buttons sit side by side
+        // the way a title bar's do.
+        self.row(key.into(), style, content);
+        self.elements.last_mut().unwrap().control = Control::TitleBar;
+    }
+
+    /// Minimize, maximize or restore, and close, as three buttons. The
+    /// middle one says which it is from `Ui::window`.
+    pub fn window_buttons(&mut self, key: impl Into<String>) {
+        let maximized = self.window().maximized;
+        let style = Style {
+            gap: 2.0,
+            ..Style::default()
+        };
+        self.row(key.into(), style, |ui| {
+            for (key, glyph, name, command) in [
+                (
+                    "minimize",
+                    "\u{2013}",
+                    "rust-gui-minimize",
+                    crate::WindowCommand::Minimize,
+                ),
+                (
+                    "maximize",
+                    if maximized { "\u{2750}" } else { "\u{25a1}" },
+                    if maximized {
+                        "rust-gui-restore"
+                    } else {
+                        "rust-gui-maximize"
+                    },
+                    crate::WindowCommand::ToggleMaximize,
+                ),
+                (
+                    "close",
+                    "\u{2715}",
+                    "rust-gui-close",
+                    crate::WindowCommand::Close,
+                ),
+            ] {
+                let pressed = ui
+                    .button_styled(
+                        key,
+                        glyph,
+                        true,
+                        Style {
+                            width: crate::Length::Px(40.0),
+                            height: crate::Length::Px(28.0),
+                            padding: 4.0,
+                            ..Style::button()
+                        },
+                    )
+                    .clicked();
+                // The glyph is what is drawn; the name is what is announced.
+                let label = ui.tr(name);
+                ui.tooltip(label);
+                if pressed {
+                    ui.window_command(command);
+                }
+            }
+        });
+    }
+
+    /// The eight edges and corners of a window that has no system border,
+    /// as narrow strips over everything else. Declare it once, at the end of
+    /// the view, so it lies above the content; a press on one starts a
+    /// resize. `thickness` is in logical pixels, and six is comfortable.
+    ///
+    /// The grips are placed from the size the window had last frame, so a
+    /// resize moves them a frame later, which nothing can see while the
+    /// platform is drawing the drag.
+    pub fn resize_frame(&mut self, key: impl Into<String>, thickness: f32) {
+        let size = self.window_size();
+        let side = thickness.max(1.0);
+        if size.width <= side * 2.0 || size.height <= side * 2.0 {
+            return;
+        }
+        // Out of flow and over the whole window, so that the grips sit on
+        // top of the content and displace none of it.
+        let frame = Style {
+            offset: Some((0.0, 0.0)),
+            width: crate::Length::Px(size.width),
+            height: crate::Length::Px(size.height),
+            ..Style::default()
+        };
+        self.group(key.into(), Kind::Container, frame, |ui| {
+            for edge in crate::ResizeEdge::ALL {
+                use crate::ResizeEdge::{
+                    East, North, NorthEast, NorthWest, South, SouthEast, SouthWest, West,
+                };
+                let (x, y, width, height) = match edge {
+                    North => (side, 0.0, size.width - side * 2.0, side),
+                    South => (side, size.height - side, size.width - side * 2.0, side),
+                    West => (0.0, side, side, size.height - side * 2.0),
+                    East => (size.width - side, side, side, size.height - side * 2.0),
+                    NorthWest => (0.0, 0.0, side, side),
+                    NorthEast => (size.width - side, 0.0, side, side),
+                    SouthWest => (0.0, size.height - side, side, side),
+                    SouthEast => (size.width - side, size.height - side, side, side),
+                };
+                ui.group(
+                    edge.name().to_owned(),
+                    Kind::Container,
+                    Style {
+                        offset: Some((x, y)),
+                        width: crate::Length::Px(width.max(0.0)),
+                        height: crate::Length::Px(height.max(0.0)),
+                        ..Style::default()
+                    },
+                    |_| {},
+                );
+                ui.elements.last_mut().unwrap().control = Control::ResizeGrip(edge);
+            }
+        });
     }
 
     /// Draws `menu` as a menu bar, for the platforms where a menu belongs

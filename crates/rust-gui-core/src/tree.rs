@@ -385,6 +385,11 @@ pub struct MemoryReport {
     pub image_bytes: usize,
 }
 
+/// A second press on a title bar this soon and this near the first means
+/// "maximize" rather than another move.
+const TITLE_DOUBLE_PRESS: Duration = Duration::from_millis(400);
+const TITLE_DOUBLE_PRESS_NEAR: f32 = 24.0;
+
 /// Inspector-facing facts about one node that ordinary semantics do not carry.
 #[derive(Clone, Debug)]
 pub struct NodeDetails {
@@ -514,11 +519,16 @@ impl Node {
     }
 
     /// Whether a press can land on this node: anything focusable or
-    /// activatable, and the pointer-only column sizer.
+    /// activatable, the pointer-only column sizer, and the window frame a
+    /// view draws for itself.
     fn takes_pointer(&self) -> bool {
         self.focusable()
             || self.activatable()
-            || (self.enabled && matches!(self.control, Control::Sizer { .. }))
+            || (self.enabled
+                && matches!(
+                    self.control,
+                    Control::Sizer { .. } | Control::TitleBar | Control::ResizeGrip(_)
+                ))
     }
 
     fn activatable(&self) -> bool {
@@ -545,6 +555,20 @@ impl Node {
             semantics.focusable = self.focusable();
             return semantics;
         }
+        let mut semantics = self.named();
+        // A control whose text is a symbol, or nothing at all, is announced
+        // by its tooltip: that is what makes an icon button nameable, and
+        // what the `Inaccessible` diagnostic already counts as a name.
+        if !semantics.label.chars().any(char::is_alphanumeric)
+            && let Some(tooltip) = self.tooltip.as_ref().filter(|text| !text.trim().is_empty())
+        {
+            semantics.label = tooltip.clone();
+        }
+        semantics
+    }
+
+    /// The name a control carries itself, before a tooltip is considered.
+    fn named(&self) -> Semantics {
         Semantics {
             role: match &self.control {
                 Control::Collection { kind, .. } => match kind {
@@ -708,6 +732,14 @@ pub struct Context {
     /// tray again asks for nothing.
     menu_shown: Option<crate::Menu>,
     tray_shown: Option<crate::Tray>,
+    /// What a title bar of the application's own asked the window to do,
+    /// what the host says about the window, and the size it was last given.
+    window_commands: Vec<crate::WindowCommand>,
+    window_info: crate::WindowInfo,
+    size: Size,
+    /// When and where the title bar was last pressed, for telling a second
+    /// press that means "maximize" from two separate ones.
+    last_title_press: Option<(Duration, Point)>,
     redraw_requested: bool,
     caret_movement: crate::CaretMovement,
     direction: crate::Direction,
@@ -928,6 +960,10 @@ impl Default for Context {
             tray_out: None,
             menu_shown: None,
             tray_shown: None,
+            window_commands: Vec::new(),
+            window_info: crate::WindowInfo::default(),
+            size: Size::default(),
+            last_title_press: None,
             redraw_requested: false,
             caret_movement: crate::CaretMovement::Visual,
             direction: crate::Direction::Ltr,
@@ -1182,6 +1218,38 @@ impl Context {
         self.clip_in.as_ref()
     }
 
+    /// What a view asked the window to do: move it, resize it, minimize,
+    /// maximize or close it. Hosts take these after a declaration.
+    pub fn take_window_commands(&mut self) -> Vec<crate::WindowCommand> {
+        std::mem::take(&mut self.window_commands)
+    }
+
+    /// What the host says about the window. Hosts set it before declaring;
+    /// a view reads it through `Ui::window`.
+    pub fn set_window_info(&mut self, info: crate::WindowInfo) {
+        if self.window_info != info {
+            self.window_info = info;
+            self.pending |= Dirty::PAINT;
+        }
+    }
+
+    pub(crate) fn window_info(&self) -> crate::WindowInfo {
+        self.window_info
+    }
+
+    /// The logical size the window was last declared at.
+    pub fn size(&self) -> Size {
+        self.size
+    }
+
+    /// The edge a node resizes the window by, for a host choosing a cursor.
+    pub fn resize_grip(&self, id: NodeId) -> Option<crate::ResizeEdge> {
+        match self.nodes.get(&id)?.control {
+            Control::ResizeGrip(edge) => Some(edge),
+            _ => None,
+        }
+    }
+
     /// A file dialog a view asked for. Hosts put it up after the
     /// declaration and answer with `set_chosen_files`.
     pub fn take_file_request(&mut self) -> Option<crate::FileRequest> {
@@ -1232,6 +1300,43 @@ impl Context {
     pub fn focused(&self) -> Option<NodeId> {
         self.focused
     }
+    /// A press on a title bar of the application's own moves the window, and
+    /// a second press near the first maximizes it instead; a press on an
+    /// edge resizes. The platform takes the pointer over from there, so
+    /// nothing more arrives until the drag is done.
+    fn press_window_frame(&mut self) {
+        let Some(control) = self
+            .captured
+            .and_then(|id| self.nodes.get(&id))
+            .map(|node| node.control.clone())
+        else {
+            return;
+        };
+        let at = self.pointer.unwrap_or_default();
+        match control {
+            Control::TitleBar => {
+                let again = self.last_title_press.is_some_and(|(when, from)| {
+                    self.now.saturating_sub(when) <= TITLE_DOUBLE_PRESS
+                        && (from.x - at.x).hypot(from.y - at.y) <= TITLE_DOUBLE_PRESS_NEAR
+                });
+                self.last_title_press = (!again).then_some((self.now, at));
+                self.window_commands.push(if again {
+                    crate::WindowCommand::ToggleMaximize
+                } else {
+                    crate::WindowCommand::Drag
+                });
+                // The platform swallows the release, so nothing is held.
+                self.captured = None;
+            }
+            Control::ResizeGrip(edge) => {
+                self.window_commands
+                    .push(crate::WindowCommand::Resize(edge));
+                self.captured = None;
+            }
+            _ => {}
+        }
+    }
+
     /// Whether the node is being held down, by pointer, touch or keyboard.
     pub fn pressed(&self, id: NodeId) -> bool {
         (self.captured == Some(id) && self.hovered == Some(id))
@@ -1715,6 +1820,7 @@ impl Context {
             spent: Duration::ZERO,
         };
         self.stats = FrameStats::default();
+        self.size = size;
         self.frame += 1;
         self.stats.frame = self.frame;
         self.damage.clear();
@@ -1815,6 +1921,7 @@ impl Context {
             self.menu_shown = Some(menu.clone());
             self.menu_out = Some(menu);
         }
+        self.window_commands.append(&mut host.window_commands);
         if let Some(tray) = host.tray
             && self.tray_shown != tray
         {
@@ -3130,6 +3237,7 @@ impl Context {
                 self.captured = self.hovered;
                 self.focused = self.hovered.filter(|id| self.nodes[id].focusable());
                 self.keyboard_pressed = None;
+                self.press_window_frame();
             }
             Event::PointerUp => {
                 if let Some(id) = self
