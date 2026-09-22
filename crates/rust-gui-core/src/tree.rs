@@ -1,5 +1,5 @@
 use crate::{
-    CustomWidget, Length, Style, Ui,
+    CustomWidget, Length, Shortcut, Style, Ui,
     focus::ScopeState,
     style::{Flow, Paint, ResolvedText},
     stylesheet::StyleSheet,
@@ -264,6 +264,8 @@ pub struct FrameStats {
     pub created: usize,
     pub reused: usize,
     pub removed: usize,
+    /// Subtrees `Ui::memo` kept without declaring them again.
+    pub skipped: usize,
     pub text_measures: usize,
     /// Number of root layout requests (Taffy caches unchanged subtrees internally).
     pub layout_passes: usize,
@@ -344,6 +346,8 @@ struct Node {
     /// Width of the label of a control that is not a text leaf, for
     /// right-aligning it in right-to-left UI.
     label_width: f32,
+    /// Width of a menu item's hint, which is written along the end edge.
+    hint_width: f32,
     /// Consecutive frames in which all of this node's new children replaced
     /// as many removed ones.
     churn: u8,
@@ -504,6 +508,10 @@ impl Node {
                 Control::DockFloat => "Floating panel".into(),
                 Control::DockHandle { resize: false, .. } => "Move floating panel".into(),
                 Control::DockHandle { resize: true, .. } => "Resize floating panel".into(),
+                // A shortcut is written beside the item, and read with it.
+                Control::Choice { hint, .. } | Control::Hint(hint) if !hint.is_empty() => {
+                    format!("{}, {hint}", self.text)
+                }
                 _ => self.text.clone(),
             },
             disabled: !self.enabled,
@@ -538,6 +546,13 @@ pub struct Context {
     pending_damage: Option<Rect>,
     damage: Vec<Rect>,
     updates: HashMap<NodeId, ControlUpdate>,
+    bindings: HashMap<String, Option<Shortcut>>,
+    /// Nodes that contain something with input waiting, so that a memoized
+    /// container above it declares again. Rebuilt for each declaration.
+    awaiting: HashSet<NodeId>,
+    /// Subtrees the declaration just skipped. A cell because `Ui` only holds
+    /// a shared reference to the context.
+    skipped: std::cell::Cell<usize>,
     submitted: HashSet<NodeId>,
     pub(crate) popup: Option<PopupState>,
     drag: Option<Box<crate::drag::DragState>>,
@@ -705,6 +720,7 @@ impl Default for Context {
             rich: None,
             rich_editor: None,
             label_width: 0.0,
+            hint_width: 0.0,
             churn: 0,
             layout_rect: Rect::default(),
             control: Control::None,
@@ -735,6 +751,9 @@ impl Default for Context {
             pending_damage: None,
             damage: Vec::new(),
             updates: HashMap::new(),
+            bindings: HashMap::new(),
+            awaiting: HashSet::new(),
+            skipped: std::cell::Cell::new(0),
             submitted: HashSet::new(),
             popup: None,
             drag: None,
@@ -1143,6 +1162,52 @@ impl Context {
         Some(id)
     }
 
+    /// How many parents a node has, for choosing the innermost of two.
+    pub(crate) fn depth(&self, id: NodeId) -> usize {
+        let mut depth = 0;
+        let mut next = self.nodes.get(&id).and_then(|node| node.parent);
+        while let Some(current) = next {
+            depth += 1;
+            next = self.nodes.get(&current).and_then(|node| node.parent);
+        }
+        depth
+    }
+
+    /// Bindings the user changed, by command id. `None` unbinds a command.
+    pub fn set_binding(&mut self, id: impl Into<String>, shortcut: Option<Shortcut>) {
+        self.bindings.insert(id.into(), shortcut);
+        self.pending |= Dirty::PAINT;
+        self.stats.activations += 1;
+    }
+
+    pub fn clear_bindings(&mut self) {
+        self.bindings.clear();
+        self.stats.activations += 1;
+    }
+
+    /// What the user bound a command to, when anything.
+    pub fn binding(&self, id: &str) -> Option<&Option<Shortcut>> {
+        self.bindings.get(id)
+    }
+
+    /// The state hash a memoized container was declared from.
+    pub(crate) fn memo_hash(&self, id: NodeId) -> Option<u64> {
+        match self.nodes.get(&id)?.control {
+            Control::Memo(hash) => Some(hash),
+            _ => None,
+        }
+    }
+
+    /// Whether anything in the subtree has input waiting to be applied. Kept
+    /// as a set of ancestors so that asking is a lookup, not a walk.
+    pub(crate) fn awaits_declaration(&self, id: NodeId) -> bool {
+        self.awaiting.contains(&id)
+    }
+
+    pub(crate) fn count_skipped(&self) {
+        self.skipped.set(self.skipped.get() + 1);
+    }
+
     pub(crate) fn child(
         &self,
         parent: Option<NodeId>,
@@ -1182,6 +1247,22 @@ impl Context {
         let mut host = crate::ui::HostOutbox::default();
         let mut layers = Vec::new();
         self.stats.activations = clicks.len() + updates.len() + submitted.len();
+        // Ancestors of everything with input waiting, so that a memoized
+        // container knows in one lookup whether it must declare again.
+        self.awaiting.clear();
+        let waiting: Vec<NodeId> = clicks
+            .iter()
+            .chain(updates.keys())
+            .chain(submitted.iter())
+            .copied()
+            .collect();
+        for id in waiting {
+            let mut ancestor = Some(id);
+            while let Some(node) = ancestor.filter(|id| self.awaiting.insert(*id)) {
+                ancestor = self.nodes.get(&node).and_then(|node| node.parent);
+            }
+        }
+        self.skipped.set(0);
         self.nodes.get_mut(&self.root).unwrap().resolved = self.root_text();
         let mut ui = Ui {
             context: self,
@@ -1257,18 +1338,27 @@ impl Context {
             self.pending |= Dirty::LAYOUT | Dirty::PAINT;
         }
         self.reconcile(self.root, elements, measurer);
+        self.stats.skipped = self.skipped.get();
+        let commands: Vec<_> = self
+            .nodes
+            .iter()
+            .filter(|(_, node)| node.enabled)
+            .filter_map(|(id, node)| match &node.control {
+                Control::Command {
+                    shortcut: Some(shortcut),
+                    ..
+                } => Some((*id, shortcut.clone())),
+                _ => None,
+            })
+            .collect();
         let mut shortcuts = HashSet::new();
-        for node in self.nodes.values().filter(|node| node.enabled) {
-            if let Control::Command {
-                shortcut: Some(shortcut),
-                ..
-            } = &node.control
-            {
-                assert!(
-                    shortcuts.insert(shortcut),
-                    "duplicate enabled command shortcut: {shortcut:?}"
-                );
-            }
+        for (id, shortcut) in commands {
+            // Two scopes may bind the same keys; one scope may not.
+            let scope = self.scope_of(id);
+            assert!(
+                shortcuts.insert((scope, shortcut.clone())),
+                "duplicate enabled command shortcut in one scope: {shortcut:?}"
+            );
         }
         self.repair_interaction();
         self.enforce_modal();
@@ -1407,6 +1497,13 @@ impl Context {
                 }
             });
             let resolved = element.style.resolve_text(&inherited);
+            // A memoized container that was not declared again keeps the
+            // children it has, so its subtree is never visited.
+            let kept = existing.is_some_and(|id| {
+                element.children.is_empty()
+                    && matches!(element.control, Control::Memo(hash)
+                        if self.memo_hash(id) == Some(hash))
+            });
             let id = if let Some(id) = existing {
                 self.stats.reused += 1;
                 let frame = self.frame;
@@ -1553,6 +1650,7 @@ impl Context {
                         rich: None,
                         rich_editor: None,
                         label_width: 0.0,
+                        hint_width: 0.0,
                         churn: 0,
                         layout_rect: Rect::default(),
                         key: element.key,
@@ -1613,7 +1711,9 @@ impl Context {
                 self.pending |= Dirty::all();
                 id
             };
-            self.reconcile(id, element.children, measurer);
+            if !kept {
+                self.reconcile(id, element.children, measurer);
+            }
             children.push(id);
         }
         removed_here += available.len();
@@ -2126,6 +2226,34 @@ impl Context {
                 });
             }
         }
+        // A menu item's shortcut, along the edge the text ends at.
+        if let Control::Choice { hint, .. } | Control::Hint(hint) = &node.control
+            && !hint.is_empty()
+            && node.hint_width > 0.0
+        {
+            let padding = node.style.padding.max(0.0);
+            let inner = (node.bounds.width - 2.0 * padding).max(0.0);
+            let offset = if node.resolved.rtl() {
+                0.0
+            } else {
+                (inner - node.hint_width).max(0.0)
+            };
+            scene.primitives.push(Primitive::StyledText {
+                rect: Rect {
+                    x: node.bounds.x + padding + offset,
+                    y: node.bounds.y + padding,
+                    width: node.hint_width,
+                    height: (node.bounds.height - 2.0 * padding).max(0.0),
+                },
+                text: hint.clone(),
+                style: node.text_style(),
+                color: if node.enabled {
+                    self.theme.text_muted
+                } else {
+                    self.theme.text_disabled
+                },
+            });
+        }
         if let Some(widget) = &node.custom {
             let offset = Point {
                 x: node.bounds.x,
@@ -2294,21 +2422,39 @@ impl Context {
             return handled;
         }
         if let Event::Shortcut(shortcut) = &event {
-            let target = self.nodes.iter().find_map(|(id, node)| {
-                if let Control::Command {
+            // The innermost scope that holds the focus wins, so a panel may
+            // take a shortcut the window also has.
+            let mut best: Option<(usize, NodeId)> = None;
+            for (id, node) in &self.nodes {
+                let Control::Command {
                     shortcut: Some(binding),
                     while_editing,
+                    scoped,
+                    ..
                 } = &node.control
+                else {
+                    continue;
+                };
+                if !node.enabled || binding != shortcut || !(*while_editing || !self.accepts_text())
                 {
-                    (node.enabled
-                        && binding == shortcut
-                        && (*while_editing || !self.accepts_text()))
-                    .then_some(*id)
-                } else {
-                    None
+                    continue;
                 }
-            });
-            return target.is_some_and(|id| self.activate(id));
+                let scope = self.scope_of(*id);
+                let inside = match (scope, self.focused) {
+                    (Some(scope), Some(focused)) => self.within(focused, scope),
+                    // A command outside every scope belongs to the window.
+                    (None, _) => true,
+                    (Some(_), None) => false,
+                };
+                if *scoped && !inside {
+                    continue;
+                }
+                let depth = if inside { self.depth(*id) } else { 0 };
+                if best.is_none_or(|(deepest, _)| depth > deepest) {
+                    best = Some((depth, *id));
+                }
+            }
+            return best.is_some_and(|(_, id)| self.activate(id));
         }
         if let Some(handled) = self.collection_event(&event) {
             return handled;

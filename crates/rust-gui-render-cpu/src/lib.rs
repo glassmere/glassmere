@@ -35,6 +35,9 @@ const MAX_SIDE: u32 = 8192;
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CpuStats {
     pub frames: u64,
+    /// Pixels of the target the last frame painted: all of them, or the
+    /// damaged part when the caller gave one.
+    pub redrawn: u64,
     /// Time the last `render` took.
     pub render: Duration,
     /// Offscreen layers of the last frame.
@@ -45,8 +48,12 @@ pub struct CpuStats {
 pub struct CpuRenderer {
     text: TextSystem,
     swash: SwashCache,
-    /// The finished frame; kept so that a frame of the same size allocates nothing.
+    /// The finished frame, kept so that a frame of the same size allocates
+    /// nothing and so that a damaged frame has something to paint over.
     target: Option<Pixmap>,
+    /// The size and scale the kept frame was painted at. Anything else, and
+    /// what is in the target is not the previous picture.
+    painted: Option<([u32; 2], u32)>,
     /// Texels ready to sample, by image and pixel size, with the frame that
     /// used them last: vector images rasterized, translucent ones converted.
     rasters: HashMap<(u64, [u32; 2]), (Pixmap, u64)>,
@@ -240,6 +247,7 @@ impl CpuRenderer {
             text,
             swash: SwashCache::new(),
             target: None,
+            painted: None,
             rasters: HashMap::new(),
             gamma: Gamma::new(),
             stats: CpuStats::default(),
@@ -255,17 +263,36 @@ impl CpuRenderer {
         self.stats
     }
 
-    /// Paints the scene in display-list order and returns RGBA8,
-    /// `physical_size[0] * physical_size[1] * 4` bytes in row order. `clear`
-    /// should be opaque; over a translucent one the result is premultiplied.
-    /// Scene geometry is in logical pixels and `scale` is physical pixels per
-    /// logical pixel. An empty or unusable target gives an empty slice.
+    /// Paints the whole scene. See `render_damaged`, which this calls with
+    /// nothing to reuse.
     pub fn render(
         &mut self,
         physical_size: [u32; 2],
         scale: f32,
         scene: &Scene,
         clear: Color,
+    ) -> &[u8] {
+        self.render_damaged(physical_size, scale, scene, clear, &[])
+    }
+
+    /// Paints the scene in display-list order and returns RGBA8,
+    /// `physical_size[0] * physical_size[1] * 4` bytes in row order. `clear`
+    /// should be opaque; over a translucent one the result is premultiplied.
+    /// Scene geometry is in logical pixels and `scale` is physical pixels per
+    /// logical pixel. An empty or unusable target gives an empty slice.
+    ///
+    /// `damage` is the logical rectangles that changed since the frame this
+    /// renderer painted last. Everything else keeps the pixels it had, so a
+    /// caret that blinks in a large window costs the caret. Give `&[]` when
+    /// anything else drew over the window, or when its previous picture is
+    /// not this renderer's last frame, and the whole scene is painted.
+    pub fn render_damaged(
+        &mut self,
+        physical_size: [u32; 2],
+        scale: f32,
+        scene: &Scene,
+        clear: Color,
+        damage: &[Rect],
     ) -> &[u8] {
         let started = Instant::now();
         let usable = !physical_size.contains(&0) && scale.is_finite() && scale > 0.0;
@@ -274,37 +301,60 @@ impl CpuRenderer {
             _ if usable => Pixmap::new(physical_size[0], physical_size[1]),
             _ => None,
         };
-        let Some(mut pixmap) = pixmap.filter(|_| usable) else {
+        let Some(pixmap) = pixmap.filter(|_| usable) else {
+            self.painted = None;
             return &[];
         };
-        pixmap.fill(tiny_skia::Color::from_rgba8(
-            clear.0, clear.1, clear.2, clear.3,
-        ));
+        // Only a frame this renderer painted at the same size and scale can
+        // be painted over rather than replaced.
+        let kept = self.painted == Some((physical_size, scale.to_bits()));
+        let region = match (kept, damage.is_empty()) {
+            (true, false) => damage
+                .iter()
+                .copied()
+                .reduce(|region, rect| region.union(rect))
+                .unwrap_or_default(),
+            _ => Rect {
+                x: 0.0,
+                y: 0.0,
+                width: physical_size[0] as f32 / scale,
+                height: physical_size[1] as f32 / scale,
+            },
+        };
+        self.painted = Some((physical_size, scale.to_bits()));
         self.stats.frames += 1;
         self.stats.layers = 0;
         self.stats.glyphs = 0;
-        let root = Surface {
+        let mut root = Surface {
             pixmap,
             origin: [0.0; 2],
             scale,
         };
-        let root = self.paint(scene, root);
+        // Clearing only the damaged pixels is what keeps the rest.
+        let cleared = root.pixels(region);
+        self.stats.redrawn = u64::from(cleared[2]) * u64::from(cleared[3]);
+        let stride = root.pixmap.width() as usize * 4;
+        let clear = [clear.0, clear.1, clear.2, clear.3];
+        let data = root.pixmap.data_mut();
+        for row in 0..cleared[3] {
+            let start = (cleared[1] + row) as usize * stride + cleared[0] as usize * 4;
+            for pixel in data[start..].as_chunks_mut::<4>().0[..cleared[2] as usize].iter_mut() {
+                *pixel = clear;
+            }
+        }
+        let root = self.paint(scene, region, root);
         let frame = self.stats.frames;
         self.rasters.retain(|_, (_, used)| frame - *used < 2);
         self.stats.render = started.elapsed();
         self.target.insert(root.pixmap).data()
     }
 
-    fn paint(&mut self, scene: &Scene, root: Surface) -> Surface {
-        let viewport = Rect {
-            x: 0.0,
-            y: 0.0,
-            width: root.size()[0] as f32 / root.scale,
-            height: root.size()[1] as f32 / root.scale,
-        };
+    /// `region` is what may be painted: the whole viewport, or the damage.
+    fn paint(&mut self, scene: &Scene, region: Rect, root: Surface) -> Surface {
         // Oversized layers render at a lower resolution, as on the GPU.
         let cap = root.size().map(|side| side.saturating_mul(2).min(MAX_SIDE));
-        let mut clips = vec![viewport];
+        // Every draw is clipped, so bounding the stack bounds the frame.
+        let mut clips = vec![region];
         let mut surfaces = vec![root];
         let mut frames: Vec<LayerFrame> = Vec::new();
         let mut active_text: HashSet<TextKey> = HashSet::new();

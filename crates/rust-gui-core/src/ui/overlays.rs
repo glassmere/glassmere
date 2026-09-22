@@ -236,6 +236,100 @@ impl Ui<'_> {
 
     /// Content with a right-click (or Shift+F10 / Menu key) menu. Returns the
     /// activated item index once, like `Ui::menu`.
+    /// Everything the window can do, filtered by what is typed. The
+    /// application owns whether it is open and the query; the id of the
+    /// command that was chosen comes back once, and closes it.
+    ///
+    /// Commands are shown with the shortcut the user would press, and a
+    /// disabled one cannot be chosen. The palette declares no commands of its
+    /// own, so it never takes a shortcut from the window.
+    pub fn command_palette(
+        &mut self,
+        key: impl Into<String>,
+        open: &mut bool,
+        query: &mut String,
+        commands: &[crate::Command],
+    ) -> Option<String> {
+        let key = key.into();
+        let mut chosen = None;
+        // Nothing is there on the frame the palette appears on.
+        let opened = self
+            .context
+            .child(
+                Some(self.context.root()),
+                &WidgetKey::Named(format!("$dialog:{key}")),
+                Kind::Dialog,
+            )
+            .is_none();
+        let title = self.context.tr("rust-gui-palette", &[]);
+        let options = crate::DialogOptions {
+            width: Length::Px(560.0),
+            ..crate::DialogOptions::new(title)
+        };
+        self.dialog(key, open, options, |ui, open| {
+            if opened {
+                // The palette is typed into the moment it appears.
+                ui.request_focus("query");
+            }
+            let placeholder = ui.context.tr("rust-gui-palette-query", &[]);
+            let field = ui.text_input("query", &placeholder, query);
+            let matches: Vec<crate::Command> = commands
+                .iter()
+                .filter(|command| crate::text_matches(&command.label, query))
+                .map(|command| ui.command(command))
+                .take(12)
+                .collect();
+            // Enter in the field takes the first command that can run.
+            if field.submitted {
+                chosen = matches
+                    .iter()
+                    .find(|command| command.enabled)
+                    .map(|command| command.id.clone());
+            }
+            let row = Style {
+                width: Length::Percent(1.0),
+                padding: 8.0,
+                radius: 6.0,
+                background: None,
+                ..Style::button()
+            };
+            ui.column(
+                "matches",
+                Style::default().gap(2.0).width(Length::Percent(1.0)),
+                |ui| {
+                    for (index, command) in matches.iter().enumerate() {
+                        if ui
+                            .button_styled(
+                                format!("match{index}"),
+                                &command.label,
+                                command.enabled,
+                                row.clone(),
+                            )
+                            .clicked()
+                        {
+                            chosen = Some(command.id.clone());
+                        }
+                        if let Some(shortcut) = &command.shortcut {
+                            ui.elements.last_mut().unwrap().control =
+                                Control::Hint(shortcut.describe());
+                        }
+                    }
+                    if matches.is_empty() {
+                        let nothing = ui.context.tr("rust-gui-palette-empty", &[]);
+                        ui.label_keyed("empty", nothing);
+                    }
+                },
+            );
+            if chosen.is_some() {
+                *open = false;
+            }
+        });
+        if chosen.is_some() {
+            query.clear();
+        }
+        chosen
+    }
+
     pub fn context_menu(
         &mut self,
         key: impl Into<String>,

@@ -3711,6 +3711,7 @@ name = "rust-gui-render-cpu"
 version = "0.1.0"
 dependencies = [
  "pollster",
+ "rust-gui-core",
  "rust-gui-render-wgpu",
  "rust-gui-scene",
  "rust-gui-text",

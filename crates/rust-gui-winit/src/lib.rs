@@ -240,6 +240,10 @@ struct Frame<'a> {
     clear: Color,
     /// The scene differs from the one the renderer prepared.
     changed: bool,
+    /// What changed since this renderer's last frame, in logical pixels.
+    /// Empty means everything, which is what a renderer that has nothing to
+    /// keep needs anyway.
+    damage: &'a [rust_gui_scene::Rect],
     /// The window's first frame, for the startup diagnostics.
     first: bool,
 }
@@ -497,6 +501,7 @@ impl WindowState {
                 frame.scene,
                 frame.clear,
                 frame.changed,
+                frame.damage,
             )?;
         }
         if frame.first {
@@ -533,12 +538,12 @@ impl WindowState {
                 .map_err(|error| format!("software surface not resized: {error}"))?;
             *size = [physical.width, physical.height];
         }
-        // The whole window every time: there is no retained scene here.
-        let pixels = renderer.render(
+        let pixels = renderer.render_damaged(
             [physical.width, physical.height],
             scale,
             frame.scene,
             frame.clear,
+            frame.damage,
         );
         let mut buffer = surface
             .buffer_mut()
@@ -923,6 +928,13 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                 .background
                 .unwrap_or(self.context.theme().window),
             changed: state.pending_scene || window_changed || self.overlay_dirty,
+            // Only a frame that was declared knows what changed in it, and
+            // only this window's own last frame is there to keep.
+            damage: if scene_changed && !window_changed && !self.overlay_dirty {
+                self.context.damage_regions()
+            } else {
+                &[]
+            },
             first: self.frames == 0,
         };
         let render = match &mut shared.renderer {
@@ -1336,6 +1348,7 @@ fn merge(
         created: first.created + second.created,
         reused: first.reused + second.reused,
         removed: first.removed + second.removed,
+        skipped: first.skipped + second.skipped,
         text_measures: first.text_measures + second.text_measures,
         layout_passes: first.layout_passes + second.layout_passes,
         scene_rebuilt: first.scene_rebuilt || second.scene_rebuilt,

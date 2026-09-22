@@ -123,6 +123,7 @@ fn renders_ordered_clipped_quads_and_shaped_text_at_two_x_scale() {
                     &scene,
                     Color::rgb(0, 0, 0),
                     false,
+                    &[],
                 )
                 .unwrap();
         }
@@ -147,6 +148,7 @@ fn renders_ordered_clipped_quads_and_shaped_text_at_two_x_scale() {
                     &scene,
                     Color::rgb(0, 0, 0),
                     changed,
+                    &[],
                 )
                 .unwrap();
         }
@@ -524,6 +526,17 @@ impl Gpu {
     }
 
     fn render(&mut self, scale: f32, primitives: &[Primitive], changed: bool) -> Vec<u8> {
+        self.damaged(scale, primitives, changed, &[])
+    }
+
+    /// A frame with the damage a host would name for it; empty means all of it.
+    fn damaged(
+        &mut self,
+        scale: f32,
+        primitives: &[Primitive],
+        changed: bool,
+        damage: &[Rect],
+    ) -> Vec<u8> {
         let scene = Scene {
             size: Size::new(SIDE as f32 / scale, SIDE as f32 / scale),
             primitives: primitives.to_vec(),
@@ -538,6 +551,7 @@ impl Gpu {
                 &scene,
                 Color::WHITE,
                 changed,
+                damage,
             )
             .unwrap();
         readback(&self.device, &self.queue, &self.texture, SIDE, SIDE)
@@ -1316,6 +1330,7 @@ fn memory_is_counted_by_category_and_the_peak_survives_eviction() {
                 + memory.image_atlas
                 + memory.image_textures
                 + memory.layers
+                + memory.canvas
                 + memory.profiling
         );
         assert!(memory.peak >= memory.total);
@@ -1395,4 +1410,142 @@ fn draw_calls_quads_and_passes_match_a_known_scene() {
         (2, 1, 1)
     );
     assert_eq!((stats.draw_calls, stats.passes), (5, 2));
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn damage_redraws_only_its_rectangles_and_keeps_the_rest() {
+    let mut gpu = Gpu::new();
+    let all = [rect(0.0, 0.0, SIDE as f32, SIDE as f32)];
+    let a = [quad(rect(8.0, 8.0, 40.0, 40.0), RED)];
+    let b = [quad(rect(70.0, 70.0, 40.0, 40.0), BLUE)];
+    // Until a host names damage there is no canvas and nothing changes.
+    let plain_a = gpu.render(1.0, &a, true);
+    let plain_b = gpu.render(1.0, &b, true);
+    let stats = gpu.renderer.stats();
+    assert_eq!(
+        (stats.memory.canvas, stats.redrawn),
+        (0, (SIDE * SIDE) as u64)
+    );
+
+    // The first damaged frame has nothing to keep, so it draws the lot.
+    let canvas_a = gpu.damaged(1.0, &a, true, &all);
+    let stats = gpu.renderer.stats();
+    assert_eq!(stats.redrawn, (SIDE * SIDE) as u64);
+    assert_eq!(stats.memory.canvas, (SIDE * SIDE * 4) as u64);
+    assert!(stats.memory.total > stats.memory.canvas);
+    assert!(
+        canvas_a == plain_a,
+        "the canvas lost colour on its way over"
+    );
+
+    // Damage over the top left quarter of B's quad, and nowhere else.
+    let mixed = gpu.damaged(1.0, &b, true, &[rect(64.0, 64.0, 32.0, 32.0)]);
+    assert_eq!(gpu.renderer.stats().redrawn, 32 * 32);
+    for y in 0..SIDE {
+        for x in 0..SIDE {
+            let at = (y * SIDE + x) * 4;
+            let damaged = (64..96).contains(&x) && (64..96).contains(&y);
+            let (expected, scene) = match damaged {
+                true => (&plain_b, 'B'),
+                false => (&plain_a, 'A'),
+            };
+            assert_eq!(
+                mixed[at..at + 4],
+                expected[at..at + 4],
+                "pixel ({x}, {y}) is not scene {scene}"
+            );
+        }
+    }
+    // The rest of B is absent, and A survived where B did not reach it.
+    assert_pixel(&mixed, 80, 80, [0, 0, 255]);
+    assert_pixel(&mixed, 105, 105, [255; 3]);
+    assert_pixel(&mixed, 20, 20, [255, 0, 0]);
+
+    // Empty damage means everything changed.
+    let full = gpu.damaged(1.0, &b, true, &[]);
+    assert_eq!(gpu.renderer.stats().redrawn, (SIDE * SIDE) as u64);
+    assert!(full == plain_b, "an undamaged frame is not a full redraw");
+
+    // Several rectangles are redrawn as one scissor over their union, so a
+    // pixel between them is redrawn too.
+    let mixed = gpu.damaged(
+        1.0,
+        &a,
+        true,
+        &[rect(8.0, 8.0, 20.0, 20.0), rect(28.0, 28.0, 20.0, 20.0)],
+    );
+    assert_eq!(gpu.renderer.stats().redrawn, 40 * 40);
+    assert_pixel(&mixed, 40, 10, [255, 0, 0]);
+    assert_pixel(&mixed, 80, 80, [0, 0, 255]);
+    assert_pixel(&mixed, 60, 60, [255; 3]);
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn a_resized_target_redraws_in_full_however_small_the_damage() {
+    const SMALL: usize = 64;
+    let mut gpu = Gpu::new();
+    let all = [rect(0.0, 0.0, SIDE as f32, SIDE as f32)];
+    // A canvas holding a red frame at the old size.
+    gpu.damaged(1.0, &[quad(all[0], RED)], true, &all);
+    assert_eq!(
+        gpu.renderer.stats().memory.canvas,
+        (SIDE * SIDE * 4) as u64,
+        "the canvas is the size of the target"
+    );
+
+    let small = gpu.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("resized target"),
+        size: wgpu::Extent3d {
+            width: SMALL as u32,
+            height: SMALL as u32,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let scene = Scene {
+        size: Size::new(SMALL as f32, SMALL as f32),
+        primitives: vec![quad(rect(0.0, 0.0, 10.0, 10.0), BLUE)],
+    };
+    gpu.renderer
+        .render_cached(
+            &gpu.device,
+            &gpu.queue,
+            &small.create_view(&Default::default()),
+            [SMALL as u32; 2],
+            1.0,
+            &scene,
+            Color::WHITE,
+            true,
+            &[rect(0.0, 0.0, 4.0, 4.0)],
+        )
+        .unwrap();
+    let stats = gpu.renderer.stats();
+    assert_eq!(stats.redrawn, (SMALL * SMALL) as u64);
+    assert_eq!(stats.memory.canvas, (SMALL * SMALL * 4) as u64);
+    let pixels = readback(&gpu.device, &gpu.queue, &small, SMALL, SMALL);
+    for y in 0..SMALL {
+        for x in 0..SMALL {
+            let [r, g, b, a] = pixels[(y * SMALL + x) * 4..][..4] else {
+                unreachable!()
+            };
+            // Blue on white: the two dim channels move together and blue stays
+            // full. A kept pixel of the red frame would have neither.
+            assert_eq!(
+                (r == g, b, a),
+                (true, 255, 255),
+                "({x}, {y}) is {r} {g} {b}"
+            );
+        }
+    }
+    // Drawn whole: the quad reaches well past the damage, and where the old
+    // frame was red the new one is its own white.
+    assert_eq!(pixels[(2 * SMALL + 7) * 4..][..4], [0, 0, 255, 255]);
+    assert_eq!(pixels[(40 * SMALL + 40) * 4..][..4], [255; 4]);
 }

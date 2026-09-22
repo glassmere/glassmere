@@ -1,5 +1,8 @@
 # German texts of the framework's own controls. An app catalog overrides any key.
 rust-gui-toast-dismiss = Schließen
+rust-gui-palette = Befehle
+rust-gui-palette-query = Befehle suchen
+rust-gui-palette-empty = Kein Befehl passt.
 rust-gui-number-decrease = Verringern
 rust-gui-number-increase = Erhöhen
 rust-gui-number-invalid = Geben Sie eine Zahl ein.

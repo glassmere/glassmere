@@ -2,6 +2,8 @@
 pub struct MenuItem {
     pub label: String,
     pub enabled: bool,
+    /// Written along the end edge of the item, such as `Ctrl+S`.
+    pub hint: String,
 }
 
 impl MenuItem {
@@ -9,12 +11,26 @@ impl MenuItem {
         Self {
             label: label.into(),
             enabled: true,
+            hint: String::new(),
         }
     }
     pub fn disabled(label: impl Into<String>) -> Self {
         Self {
-            label: label.into(),
             enabled: false,
+            ..Self::new(label)
+        }
+    }
+    /// A menu item for a command: its label, whether it is enabled, and its
+    /// shortcut as the hint. Pass `Ui::command(&command)` to honour a binding
+    /// the user changed.
+    pub fn command(command: &crate::Command) -> Self {
+        Self {
+            label: command.label.clone(),
+            enabled: command.enabled,
+            hint: command
+                .shortcut
+                .as_ref()
+                .map_or_else(String::new, crate::Shortcut::describe),
         }
     }
 }
@@ -166,6 +182,11 @@ pub struct AutocompleteResponse {
 pub(crate) enum Control {
     #[default]
     None,
+    /// A memoized container, holding the hash of the state it was declared
+    /// from. An unchanged hash keeps the subtree.
+    Memo(u64),
+    /// Text written along the end edge of a control, such as a shortcut.
+    Hint(String),
     TextInput {
         label: String,
         value: String,
@@ -311,6 +332,8 @@ pub(crate) enum Control {
     },
     Popover,
     Choice {
+        /// Written along the end edge, such as a shortcut.
+        hint: String,
         index: usize,
         selected: bool,
         menu: bool,
@@ -345,8 +368,10 @@ pub(crate) enum Control {
         sort: Option<crate::SortDirection>,
     },
     Command {
+        id: String,
         shortcut: Option<crate::Shortcut>,
         while_editing: bool,
+        scoped: bool,
     },
     DragSource {
         label: String,

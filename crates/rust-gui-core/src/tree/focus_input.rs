@@ -26,6 +26,11 @@ impl Context {
         scopes
     }
 
+    /// The innermost focus scope, dialog or popover holding `id`.
+    pub(super) fn scope_of(&self, id: NodeId) -> Option<NodeId> {
+        self.scopes_of(id).first().copied()
+    }
+
     fn traps(&self, scope: NodeId) -> bool {
         match &self.nodes[&scope].control {
             Control::FocusScope { scope } => scope.trap,

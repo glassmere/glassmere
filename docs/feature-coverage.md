@@ -1,14 +1,14 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 14c. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 16. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
 | 1 | Immediate-mode ergonomics, retained internals | Done | `ui.button(...)` over a retained tree with persistent focus, scroll, editing, caches and animation state. |
 | 2 | Stable widget identity | Done | Explicit/positional keys, monotonic `NodeId` shared by layout, input, focus, accessibility, testing and the inspector. |
-| 3 | Incremental updates | Partial | Property comparison limits layout/paint work; declarations still visit the whole view each frame. |
+| 3 | Incremental updates | Done | Property comparison limits layout and paint work, and `Ui::memo` keeps a subtree without declaring it again while the state it was declared from is unchanged, without missing the input inside it (milestone 15). |
 | 4 | Incremental layout | Done | Taffy dirty subtrees; same-size text changes skip layout. |
-| 5 | Incremental rendering | Partial | Damage tracking, subtree paint caches, retained GPU buffers and text batching exist; presentation still repaints the full surface. |
+| 5 | Incremental rendering | Done | Damage tracking, subtree paint caches, retained GPU buffers and text batching, and presentation that redraws only the damaged pixels on both renderers, proved frame by frame against a full repaint (milestone 15). |
 | 6 | First-class virtualization | Partial | Lists, trees and grids realize only the viewport (milestone 4). Huge documents/editors: planned (phase 6). |
 | 7 | Excellent text system | Partial | Unicode, graphemes, fallback, ligatures, emoji, IME, selection, clipboard, undo/redo, rich text blocks with links, syntect highlighting, a rope document with virtualized line rendering, a WYSIWYG rich text editor with Markdown persistence. Visual or logical caret order in bidirectional text with caret affinity, right-to-left alignment. Missing: forced paragraph base direction, regular expression search. |
 | 8 | Accessibility from day one | Done | AccessKit roles, labels, actions, keyboard navigation, tree visible in the inspector's Accessibility tab. Screen-reader speech review remains manual. |
@@ -27,8 +27,8 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 21 | Powerful event system | Partial | Pointer (left and right buttons), touch contacts, keyboard, drag/drop, capture per pointer, context-menu requests, timed wakes, pan, pinch and rotation gestures (milestone 13). Missing: bubbling/cancellation model, custom events. |
 | 22 | Input abstraction independent of the OS | Done | Core consumes `Event`; winit lives only in the host crate. |
 | 23 | Mouse/touch/stylus support | Partial | Mouse; touch and pen contacts as independent pointers with tap, pan, kinetic scrolling, long press and pressure readable from `Context::touches` (milestone 13b and 13c); `Ui::gesture_area` with pan, pinch and rotation from fingers, a trackpad or Ctrl with the wheel (milestone 13d). Missing: touch text selection, double tap and swipe recognizers, pen tilt and buttons. |
-| 24 | First-class keyboard shortcuts | Partial | Commands with platform-primary shortcuts. Missing: scopes, remapping, command palette. |
-| 25 | Command architecture | Partial | `Command` shares enabled state between button and shortcut; menus/palette do not consume commands yet. |
+| 24 | First-class keyboard shortcuts | Done | Commands with platform-primary shortcuts, scopes that follow the focus, user bindings through `Context::set_binding`, and `Ui::command_palette` (milestone 16). |
+| 25 | Command architecture | Done | `Command` carries an id, a label, a binding, enabled state and a scope, shared by its button, its shortcut, `MenuItem::command` and the palette (milestone 16). |
 | 26 | Clipboard and drag-and-drop | Partial | Text clipboard, in-process item/text drags, incoming OS file drops, outgoing OS file drags on Windows and macOS with the outcome reported to the source (milestone 13a). Missing: images, custom types, outgoing text, outgoing drags on Linux, cross-window drags. |
 | 27 | Multi-window support | Partial | Independent windows on one device, native modal dialog windows that block their owner, shared state via `Arc`/mailboxes, DPI scaling. Missing: multi-monitor policy. |
 | 28 | Strong async integration | Partial | Bounded mailbox and wake handle; no executor is forced. Missing: cancellation, streams, async commands helpers. |

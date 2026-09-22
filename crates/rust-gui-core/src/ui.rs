@@ -68,6 +68,9 @@ pub(crate) enum Kind {
     Toast,
     ContextArea,
     GestureArea,
+    /// A container that keeps its subtree when the state it was declared from
+    /// has not changed.
+    Memo,
     Popover,
     Label,
     Button,
@@ -313,12 +316,28 @@ impl Ui<'_> {
     /// One command declaration per window. Its shortcut and button share the
     /// same enabled check and one-shot clicked response.
     pub fn command_button(&mut self, key: impl Into<String>, command: &crate::Command) -> Response {
+        let command = self.command(command);
         let response = self.button_styled(key, &command.label, command.enabled, Style::button());
         self.elements.last_mut().unwrap().control = Control::Command {
-            shortcut: command.shortcut.clone(),
+            id: command.id,
+            shortcut: command.shortcut,
             while_editing: command.while_editing,
+            scoped: command.scoped,
         };
         response
+    }
+
+    /// The command as the user's bindings leave it. `command_button` applies
+    /// this itself; menus and palettes go through it to show the shortcut the
+    /// user will actually press.
+    pub fn command(&self, command: &crate::Command) -> crate::Command {
+        match self.context.binding(&command.id) {
+            Some(shortcut) => crate::Command {
+                shortcut: shortcut.clone(),
+                ..command.clone()
+            },
+            None => command.clone(),
+        }
     }
     fn push(&mut self, mut element: Element) -> Response {
         element.enabled &= self.enabled;
@@ -461,6 +480,45 @@ impl Ui<'_> {
             tooltip: None,
             control: Control::None,
         });
+    }
+
+    /// A column whose content is declared again only when `state` differs from
+    /// the last frame, or when something inside it has input waiting. The
+    /// retained subtree is kept as it was otherwise: it still paints, scrolls,
+    /// animates and takes part in layout, so this costs nothing in appearance.
+    ///
+    /// `state` must cover everything the content reads, and the content's
+    /// `Response` values are not delivered on a frame that was skipped. Use it
+    /// for a large subtree over stable data, not for a handful of widgets.
+    /// Returns whether the content ran.
+    pub fn memo<S: std::hash::Hash>(
+        &mut self,
+        key: impl Into<String>,
+        state: &S,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_>),
+    ) -> bool {
+        use std::hash::Hasher;
+        let key = key.into();
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        state.hash(&mut hasher);
+        let hash = hasher.finish();
+        let existing = self
+            .context
+            .child(self.parent, &WidgetKey::Named(key.clone()), Kind::Memo);
+        // Input waiting inside the subtree has to reach the widget that owns
+        // it, so the frame that carries it is never skipped.
+        let declare = existing.is_none_or(|id| {
+            self.context.memo_hash(id) != Some(hash) || self.context.awaits_declaration(id)
+        });
+        if declare {
+            self.group(key, Kind::Memo, style, content);
+        } else {
+            self.group(key, Kind::Memo, style, |_| {});
+            self.context.count_skipped();
+        }
+        self.elements.last_mut().unwrap().control = Control::Memo(hash);
+        declare
     }
 
     pub fn column(

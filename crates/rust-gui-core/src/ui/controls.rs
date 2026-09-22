@@ -428,6 +428,7 @@ impl Ui<'_> {
                         custom: None,
                         tooltip: None,
                         control: Control::Choice {
+                            hint: item.hint.clone(),
                             index,
                             selected: selected == index,
                             menu,

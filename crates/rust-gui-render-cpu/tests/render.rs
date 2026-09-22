@@ -352,3 +352,56 @@ fn text_is_drawn_where_it_was_measured_in_its_colour_and_clipped() {
         inked.len()
     );
 }
+
+#[test]
+fn a_damaged_frame_repaints_only_what_changed() {
+    let mut renderer = renderer();
+    let first = render(
+        &mut renderer,
+        1.0,
+        vec![
+            quad(rect(0.0, 0.0, 30.0, 30.0), RED, 0.0),
+            quad(rect(34.0, 34.0, 30.0, 30.0), BLUE, 0.0),
+        ],
+    );
+    assert_eq!(renderer.stats().redrawn, (SIDE * SIDE) as u64);
+
+    // The second scene keeps neither quad, but only the second one's corner
+    // is declared damaged, so that is all that may change.
+    let scene = Scene {
+        size: Size::new(SIDE as f32, SIDE as f32),
+        primitives: vec![quad(rect(40.0, 40.0, 24.0, 24.0), RED, 0.0)],
+    };
+    let damage = [rect(40.0, 40.0, 10.0, 10.0)];
+    let pixels = renderer
+        .render_damaged([SIDE as u32; 2], 1.0, &scene, Color::WHITE, &damage)
+        .to_vec();
+    assert_eq!(renderer.stats().redrawn, 100);
+    for (at, (new, old)) in pixels
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(first.as_chunks::<4>().0)
+        .enumerate()
+    {
+        let (x, y) = (at % SIDE, at / SIDE);
+        let inside = (40..50).contains(&x) && (40..50).contains(&y);
+        if inside {
+            assert_eq!(*new, [255, 0, 0, 255], "({x}, {y}) is inside the damage");
+        } else {
+            assert_eq!(new, old, "({x}, {y}) is outside the damage");
+        }
+    }
+
+    // Nothing to reuse: a different size, and the whole frame is painted.
+    let scene = Scene {
+        size: Size::new(32.0, 32.0),
+        primitives: vec![quad(rect(0.0, 0.0, 8.0, 8.0), BLUE, 0.0)],
+    };
+    let pixels = renderer
+        .render_damaged([32, 32], 1.0, &scene, Color::WHITE, &damage)
+        .to_vec();
+    assert_eq!(renderer.stats().redrawn, 32 * 32);
+    assert_eq!(pixels[..4], [0, 0, 255, 255]);
+    assert_eq!(pixels[(31 * 32 + 31) * 4..][..4], WHITE);
+}

@@ -114,6 +114,9 @@ pub struct RenderStats {
     pub passes: usize,
     pub draw_calls: usize,
     pub quads: usize,
+    /// Physical pixels the last frame redrew: the whole target, or the damage
+    /// the host asked for when the renderer could keep the rest.
+    pub redrawn: u64,
     /// GPU memory the renderer allocated, by category.
     pub memory: MemoryStats,
 }
@@ -138,6 +141,14 @@ pub struct Renderer {
     vertices: Vec<Vertex>,
     surfaces: Vec<Surface>,
     pool: Vec<LayerTexture>,
+    /// Holds the last frame at the size of the target, so a damaged frame can
+    /// redraw part of it and keep the rest.
+    canvas: Option<LayerTexture>,
+    /// The target the canvas was drawn for. While it differs from the one at
+    /// hand the canvas holds nothing usable and the frame must be redrawn whole.
+    canvas_holds: Option<([u32; 2], u32)>,
+    /// Start of the six vertices that put the canvas on the target.
+    blit: u32,
     prepared_target: Option<([u32; 2], u32)>,
     stats: RenderStats,
     profiling: bool,
@@ -248,6 +259,9 @@ impl Renderer {
             vertices: Vec::new(),
             surfaces: Vec::new(),
             pool: Vec::new(),
+            canvas: None,
+            canvas_holds: None,
+            blit: 0,
             prepared_target: None,
             stats: RenderStats::default(),
             profiling: false,
@@ -338,12 +352,18 @@ impl Renderer {
             scene,
             clear,
             true,
+            &[],
         )
     }
 
     /// Hosts may set `scene_changed` to false only if no scene primitive changed
     /// since the previous successful call. Target size/scale changes force preparation.
     /// Exposure redraws then reuse glyph and quad buffers without uploading again.
+    ///
+    /// `damage` lists the logical rectangles that changed since the previous
+    /// frame; empty means all of it. Where the renderer can honour damage it
+    /// redraws their union alone and takes the rest of the frame from an
+    /// offscreen canvas, so a host may only name damage that is the truth.
     #[allow(clippy::too_many_arguments)]
     pub fn render_cached(
         &mut self,
@@ -355,13 +375,15 @@ impl Renderer {
         scene: &Scene,
         clear: Color,
         scene_changed: bool,
+        damage: &[Rect],
     ) -> RenderResult<()> {
         if physical_size.contains(&0) || !scale.is_finite() || scale <= 0.0 {
             return Ok(());
         }
         let target_key = (physical_size, scale.to_bits());
+        let damage = self.prepare_canvas(device, queue, target_key, damage);
         if !scene_changed && self.prepared_target == Some(target_key) {
-            return self.draw(device, queue, target, clear);
+            return self.draw(device, queue, target, clear, damage);
         }
         self.prepared_target = None;
         self.viewport.update(
@@ -772,6 +794,25 @@ impl Renderer {
         // appear/disappear; exceptionally large past scenes do not remain retained.
         self.text_renderers.truncate(text_count.max(16));
         self.text_system.retain(&active_text);
+        // Last in the buffer, at the corners of the target: the canvas blit.
+        self.blit = vertices.len() as u32;
+        vertices.extend(
+            [
+                [0.0, 0.0],
+                [1.0, 0.0],
+                [0.0, 1.0],
+                [0.0, 1.0],
+                [1.0, 0.0],
+                [1.0, 1.0],
+            ]
+            .map(|[u, v]| Vertex {
+                position: [u * 2.0 - 1.0, 1.0 - v * 2.0],
+                local: [u, v],
+                size: [0.0; 2],
+                color: [0.0, 0.0, 0.0, 1.0],
+                radius: 0.0,
+            }),
+        );
         let bytes = bytemuck::cast_slice(&vertices);
         if !bytes.is_empty() {
             if bytes.len() as u64 > self.stats.quad_buffer_bytes {
@@ -832,7 +873,58 @@ impl Renderer {
         (memory.image_atlas, memory.image_textures) = self.images.bytes_by_kind();
         memory.layers = self.stats.layer_texture_bytes;
         memory.settle();
-        self.draw(device, queue, target, clear)
+        self.draw(device, queue, target, clear, damage)
+    }
+
+    /// Brings the canvas to the target at hand and works out how much of this
+    /// frame may be kept. `None` means redraw it whole: there is no damage to
+    /// go by, or the canvas is new, holds another target or does not fit.
+    fn prepare_canvas(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        target_key: ([u32; 2], u32),
+        damage: &[Rect],
+    ) -> Option<[u32; 4]> {
+        let (size, scale) = (target_key.0, f32::from_bits(target_key.1));
+        // Hosts that never name damage never pay for a canvas.
+        if damage.is_empty() && self.canvas.is_none() {
+            return None;
+        }
+        if self
+            .canvas
+            .as_ref()
+            .is_none_or(|canvas| canvas.size != size)
+        {
+            // A target past what the device can hold as a texture leaves no
+            // canvas at all, and those frames go to the target whole.
+            let limit = device.limits().max_texture_dimension_2d;
+            let canvas = size
+                .iter()
+                .all(|side| *side <= limit)
+                .then(|| self.layer_texture(device, queue, size));
+            let texel = u64::from(self.format.block_copy_size(None).unwrap_or(4));
+            self.stats.memory.canvas = canvas
+                .as_ref()
+                .map_or(0, |_| u64::from(size[0]) * u64::from(size[1]) * texel);
+            self.stats.memory.settle();
+            self.canvas = canvas;
+            self.canvas_holds = None;
+        }
+        let union = damage.iter().copied().reduce(Rect::union)?;
+        if self.canvas_holds != Some(target_key) {
+            return None;
+        }
+        Some(scissor(
+            union,
+            &Surface {
+                size,
+                origin: [0.0; 2],
+                scale,
+                texture: None,
+                draws: Vec::new(),
+            },
+        ))
     }
 
     fn layer_texture(
@@ -895,11 +987,17 @@ impl Renderer {
         queue: &wgpu::Queue,
         target: &wgpu::TextureView,
         clear: Color,
+        damage: Option<[u32; 4]>,
     ) -> RenderResult<()> {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("rust-gui frame"),
         });
         self.stats.frames += 1;
+        let target_size = self.surfaces[0].size;
+        self.stats.redrawn = match damage {
+            Some(clip) => u64::from(clip[2]) * u64::from(clip[3]),
+            None => u64::from(target_size[0]) * u64::from(target_size[1]),
+        };
         if self.profiling && self.timestamps_supported {
             self.timestamps
                 .get_or_insert_with(|| profile::Timestamps::new(device, queue))
@@ -914,8 +1012,14 @@ impl Renderer {
                     let texture = &self.pool[texture];
                     (&texture.view, &texture.viewport, [0.0; 4])
                 }
-                None => (target, &self.viewport, clear.linear()),
+                // The target's own pass goes to the canvas while there is one.
+                None => match &self.canvas {
+                    Some(canvas) => (&canvas.view, &self.viewport, clear.linear()),
+                    None => (target, &self.viewport, clear.linear()),
+                },
             };
+            // Only the target's pass may keep anything; layers are drawn afresh.
+            let confine = damage.filter(|_| surface.texture.is_none());
             let timestamp_writes = self
                 .timestamps
                 .as_ref()
@@ -939,12 +1043,16 @@ impl Renderer {
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: f64::from(clear[0]),
-                            g: f64::from(clear[1]),
-                            b: f64::from(clear[2]),
-                            a: f64::from(clear[3]),
-                        }),
+                        load: match confine {
+                            // Outside the scissor the canvas keeps the last frame.
+                            Some(_) => wgpu::LoadOp::Load,
+                            None => wgpu::LoadOp::Clear(wgpu::Color {
+                                r: f64::from(clear[0]),
+                                g: f64::from(clear[1]),
+                                b: f64::from(clear[2]),
+                                a: f64::from(clear[3]),
+                            }),
+                        },
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -954,43 +1062,78 @@ impl Renderer {
                 multiview_mask: None,
             });
             for draw in &surface.draws {
+                let clip = match draw {
+                    Draw::Quad { clip, .. }
+                    | Draw::Image { clip, .. }
+                    | Draw::Layer { clip, .. } => *clip,
+                    // Each text area carries its own bounds into glyphon.
+                    Draw::Text(_) => [0, 0, surface.size[0], surface.size[1]],
+                };
+                let clip = confine.map_or(clip, |damage| intersect(clip, damage));
+                if clip[2] == 0 || clip[3] == 0 {
+                    continue;
+                }
+                pass.set_scissor_rect(clip[0], clip[1], clip[2], clip[3]);
                 match draw {
-                    Draw::Quad { start, clip } => {
+                    Draw::Quad { start, .. } => {
                         pass.set_pipeline(&self.pipeline);
                         pass.set_vertex_buffer(0, self.quad_buffer.as_ref().unwrap().slice(..));
-                        pass.set_scissor_rect(clip[0], clip[1], clip[2], clip[3]);
                         pass.draw(*start..*start + 6, 0..1);
                     }
                     Draw::Text(index) => {
-                        pass.set_scissor_rect(0, 0, surface.size[0], surface.size[1]);
                         self.text_renderers[*index].render(&self.atlas, viewport, &mut pass)?;
                     }
                     Draw::Image {
                         texture,
                         start,
                         count,
-                        clip,
+                        ..
                     } => {
                         pass.set_pipeline(&self.image_pipeline);
                         pass.set_bind_group(0, self.images.bind_group(*texture), &[]);
                         pass.set_vertex_buffer(0, self.image_buffer.as_ref().unwrap().slice(..));
-                        pass.set_scissor_rect(clip[0], clip[1], clip[2], clip[3]);
                         pass.draw(*start..*start + *count, 0..1);
                     }
                     Draw::Layer {
                         surface: child,
                         start,
-                        clip,
+                        ..
                     } => {
                         let texture = self.surfaces[*child].texture.unwrap();
                         pass.set_pipeline(&self.layer_pipeline);
                         pass.set_bind_group(0, &self.pool[texture].bind_group, &[]);
                         pass.set_vertex_buffer(0, self.quad_buffer.as_ref().unwrap().slice(..));
-                        pass.set_scissor_rect(clip[0], clip[1], clip[2], clip[3]);
                         pass.draw(*start..*start + 6, 0..1);
                     }
                 }
             }
+        }
+        // A swapchain texture keeps nothing between frames, so the canvas goes
+        // on it whole. Premultiplied blending over nothing copies it exactly.
+        if let Some(canvas) = &self.canvas {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("rust-gui canvas"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(&self.layer_pipeline);
+            pass.set_bind_group(0, &canvas.bind_group, &[]);
+            pass.set_vertex_buffer(0, self.quad_buffer.as_ref().unwrap().slice(..));
+            pass.draw(self.blit..self.blit + 6, 0..1);
+        }
+        if self.canvas.is_some() {
+            self.canvas_holds = self.prepared_target;
         }
         let frame = self.stats.frames;
         let slot = self
@@ -1034,4 +1177,20 @@ fn scissor(rect: Rect, surface: &Surface) -> [u32; 4] {
         .max(0.0)
         .min(size[1] as f32) as u32;
     [x, y, right.saturating_sub(x), bottom.saturating_sub(y)]
+}
+
+/// Two scissors of one surface, as one. Empty where they do not meet.
+fn intersect(clip: [u32; 4], other: [u32; 4]) -> [u32; 4] {
+    let x = clip[0].max(other[0]);
+    let y = clip[1].max(other[1]);
+    [
+        x,
+        y,
+        (clip[0] + clip[2])
+            .min(other[0] + other[2])
+            .saturating_sub(x),
+        (clip[1] + clip[3])
+            .min(other[1] + other[3])
+            .saturating_sub(y),
+    ]
 }

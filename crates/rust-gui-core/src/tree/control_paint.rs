@@ -41,6 +41,25 @@ impl Context {
                 .measure_styled(&node.text, &node.text_style(), None)
                 .width;
         }
+        let hinted: Vec<_> = self
+            .nodes
+            .iter()
+            .filter_map(|(id, node)| {
+                matches!(&node.control,
+                    Control::Choice { hint, .. } | Control::Hint(hint) if !hint.is_empty())
+                .then_some(*id)
+            })
+            .collect();
+        for id in hinted {
+            let node = &self.nodes[&id];
+            let (Control::Choice { hint, .. } | Control::Hint(hint)) = &node.control else {
+                continue;
+            };
+            let width = measurer
+                .measure_styled(&hint.clone(), &node.text_style(), None)
+                .width;
+            self.nodes.get_mut(&id).unwrap().hint_width = width;
+        }
         self.prepare_rich_text(measurer);
         self.prepare_rich_editors(measurer);
         let ids: Vec<_> = self

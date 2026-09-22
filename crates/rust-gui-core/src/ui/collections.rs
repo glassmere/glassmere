@@ -343,8 +343,8 @@ impl Ui<'_> {
                             };
                             let resize_label = named("rust-gui-grid-resize");
                             let item = |label: &str, enabled| crate::MenuItem {
-                                label: label.into(),
                                 enabled,
+                                ..crate::MenuItem::new(label)
                             };
                             let menu = [
                                 item(&toward_start, position > 0),

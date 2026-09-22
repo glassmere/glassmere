@@ -53,6 +53,8 @@ pub struct MemoryStats {
     pub image_textures: u64,
     /// Offscreen layer textures, pooled ones included while pooled.
     pub layers: u64,
+    /// The offscreen canvas, which exists only once a host sends damage.
+    pub canvas: u64,
     /// Timestamp resolve and readback buffers while profiling.
     pub profiling: u64,
     /// Sum of the categories above.
@@ -69,6 +71,7 @@ impl MemoryStats {
             + self.image_atlas
             + self.image_textures
             + self.layers
+            + self.canvas
             + self.profiling;
         self.peak = self.peak.max(self.total);
     }

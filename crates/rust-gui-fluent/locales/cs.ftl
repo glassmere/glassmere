@@ -1,5 +1,8 @@
 # Czech texts of the framework's own controls. An app catalog overrides any key.
 rust-gui-toast-dismiss = Zavřít
+rust-gui-palette = Příkazy
+rust-gui-palette-query = Hledat příkazy
+rust-gui-palette-empty = Žádný příkaz neodpovídá.
 rust-gui-number-decrease = Snížit
 rust-gui-number-increase = Zvýšit
 rust-gui-number-invalid = Zadejte číslo.

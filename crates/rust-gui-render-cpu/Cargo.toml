@@ -12,6 +12,7 @@ rust-gui-text.workspace = true
 tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
 
 [dev-dependencies]
+rust-gui-core.workspace = true
 rust-gui-render-wgpu.workspace = true
 wgpu.workspace = true
 pollster.workspace = true

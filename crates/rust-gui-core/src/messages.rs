@@ -55,6 +55,9 @@ pub trait Messages {
 /// `{ $name }`, as in Fluent.
 pub const BUILTIN_MESSAGES: &[(&str, &str)] = &[
     ("rust-gui-toast-dismiss", "Dismiss"),
+    ("rust-gui-palette", "Commands"),
+    ("rust-gui-palette-query", "Search commands"),
+    ("rust-gui-palette-empty", "No command matches."),
     ("rust-gui-number-decrease", "Decrease"),
     ("rust-gui-number-increase", "Increase"),
     ("rust-gui-number-invalid", "Enter a number."),
