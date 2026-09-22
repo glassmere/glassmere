@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 27. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 28. Every row reads Done, which means the contract exists, is tested and is documented in a milestone report. Each note also says what that row still does not do.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -53,7 +53,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 47 | Modular crates | Done | core, scene, render-wgpu, winit, testing, devtools, facade. Layout/text/style/widgets live inside core and scene for now. |
 | 48 | No forced proprietary DSL | Done | Plain Rust. |
 | 49 | Compile-time checked UI APIs | Done | Typed styles, lengths and models; `tr!` checks a message key and its arguments, `style_sheet!` parses a stylesheet, and `#[derive(Properties)]` checks a field's editor, all while the crate compiles (milestones 11c, 27). What cannot be checked there panics at declaration with a message, listed in [the stability note](api-stability.md). |
-| 50 | Excellent documentation | Partial | Architecture and milestone reports. Missing: widget-building, custom renderer, state, accessibility and performance guides. |
+| 50 | Excellent documentation | Done | Seven guides, indexed in the README: [architecture](architecture.md), [state](state.md), [widgets](widgets.md), [accessibility](accessibility.md), [performance](performance.md), [renderers](renderers.md) and [API stability](api-stability.md), with a milestone report behind each piece of work (milestone 28). |
 | 51 | Stable public API | Done | [A written policy](api-stability.md) with tiers, versioning and deprecation, and a snapshot of every public item and method of the ten crates an application depends on, guarded by a test so that a change is deliberate (milestone 27). The version is 0.1: the promise is that changes are written down, not that there will be none. |
 | 52 | Strong benchmarks | Done | The `bench` example runs the four cases the list names: a million-row table, a hundred-thousand-node tree, a 3.2 MB text file and four hundred animating elements, with the 10,000-node declaration benchmark, the one-million-row list test and the 6,000-frame stress beside them (milestone 24). |
 | 53 | Low idle CPU/GPU usage | Done | Event-driven loop sleeps between events; no continuous redraw. |
@@ -65,4 +65,4 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 59 | Component ecosystem | Done | A reusable widget is a normal crate depending on the facade: `examples/dial-widget` is one, with its own library, example and tests (milestone 23). Version coupling is the facade alone, though the API is not yet stable (row 51). |
 | 60 | Excellent custom-widget API | Done | Size, paint, semantics with a value, the pointer, the keyboard and the wheel in the widget's own coordinates, hover, press, focus and enablement, theme and stylesheet access, and the same test harness the built-in controls use (milestone 23). |
 | 61 | Clear performance model | Done | [The performance guide](performance.md): what makes each phase run, what a frame costs in the four hardest cases, what startup and the binary weigh, and which inspector tab answers which question (milestone 24). |
-| 62 | Central promise | Partial | Retained incremental engine behind an immediate-style API is in place; capability, styling and tooling breadth continue in phases 6 and later. |
+| 62 | Central promise | Done | A retained incremental engine behind an immediate-style API, with the capability, styling, tooling, accessibility and text work of the sixty-one rows above it. [Milestone 28](milestone-28.md) sets the six claims of the promise against what exists, and every row names what it still does not do. |

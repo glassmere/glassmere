@@ -4,6 +4,18 @@ A native Rust GUI framework prototype: immediate-style declarations over a retai
 
 Based on the [shared architecture discussion](https://chatgpt.com/share/6aaf8bcf-a0f8-83eb-9b44-21ab4373c0c8) and the [original feature list](docs/feature-list.md). Implemented milestones and remaining work are tracked in the [roadmap](docs/roadmap.md) and the [feature coverage](docs/feature-coverage.md) table.
 
+## The guides
+
+| Guide | What it answers |
+| --- | --- |
+| [Architecture](docs/architecture.md) | How a frame works, and what invalidates what. |
+| [State](docs/state.md) | Where state lives, how answers come back, threads, and the optional reactive store. |
+| [Widgets](docs/widgets.md) | The three ways to add something, and what a widget of your own gets. |
+| [Accessibility](docs/accessibility.md) | What a node says, how the keyboard works, and how to test it without a screen reader. |
+| [Performance](docs/performance.md) | What makes a frame expensive, what it costs, and how to see it. |
+| [Renderers](docs/renderers.md) | The scene contract, colour, damage, and writing one of your own. |
+| [API stability](docs/api-stability.md) | What is public, what may change, and what guards it. |
+
 ## Run
 
 Install a current stable Rust toolchain and the native build prerequisites for your OS, then:

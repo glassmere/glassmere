@@ -118,5 +118,6 @@ Work picked from the coverage table after the seven phases.
 - [x] Images and private formats on the clipboard, drags that cross between windows, and diagnostics for files and fonts ([milestone 25](milestone-25.md)).
 - [x] File dialogs, notifications, menus, a tray icon and file associations ([milestone 26](milestone-26.md)).
 - [x] Three platforms in the build, a stylesheet checked while compiling, and the public API written down ([milestone 27](milestone-27.md)).
+- [x] The widget, renderer, state and accessibility guides, and the promise set against what exists ([milestone 28](milestone-28.md)).
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.
