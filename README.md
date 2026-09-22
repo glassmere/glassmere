@@ -201,6 +201,7 @@ The view may run more than once per input event. Put application actions behind 
 - Touch: tap, pan with inertia, long press for the context menu or to pick up a drag, and two controls under two fingers at once. `Ui::gesture_area` reports pan, pinch and rotation from fingers, a trackpad or Ctrl with the wheel.
 - Files dragged out of a window are handed to the operating system on Windows and macOS; the source hears whether they were dropped.
 - `Ui::memo` keeps a subtree without declaring it again, and both renderers redraw only the pixels that changed.
+- `Ui::event_area` watches or intercepts the events of a subtree, and `Ui::emit` sends one of the application's own.
 - Commands carry their scope and binding, and feed buttons, shortcuts, menu items and `Ui::command_palette`.
 - F12 inspector window with per-node change flags, frame timings, CSV export and `tracing` spans.
 - GPU tab: pass times from timestamp queries where the adapter has them, draw calls, renderer memory by category and the driver's report; measured only while an inspector is open.

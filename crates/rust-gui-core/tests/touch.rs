@@ -27,6 +27,7 @@ fn touch(context: &mut Context, id: u64, phase: TouchPhase, position: Point) -> 
         phase,
         position,
         force: None,
+        pen: None,
     })
 }
 
@@ -349,4 +350,72 @@ fn losing_focus_or_the_pressed_node_drops_the_contact_safely() {
     assert_eq!(context.touches().count(), 0);
     page(&mut context, &mut state);
     assert_eq!(state.clicks, 0);
+}
+
+#[test]
+fn a_rest_or_a_second_tap_in_text_selects_a_word_and_the_drag_extends_it() {
+    let mut context = Context::new();
+    let mut typed = String::from("alpha beta gamma");
+    let declare = |context: &mut Context, typed: &mut String| {
+        context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
+            ui.text_input("field", "Field", typed);
+        });
+    };
+    fn selected(context: &Context, text: &str) -> Option<String> {
+        let node = context.node(context.find(&["field"]).unwrap()).unwrap();
+        node.text_selection
+            .filter(|selection| selection.anchor != selection.cursor)
+            .map(|selection| text[selection.range()].to_owned())
+    }
+    declare(&mut context, &mut typed);
+    let bounds = context
+        .node(context.find(&["field"]).unwrap())
+        .unwrap()
+        .bounds;
+    // The first word begins at the start edge, wherever the text is measured.
+    let start = at(bounds.x + 2.0, bounds.y + bounds.height / 2.0);
+    let along = |across: f32| at(bounds.x + 2.0 + across, bounds.y + bounds.height / 2.0);
+
+    // Resting in the text selects the word under the finger, without a menu.
+    context.set_now(Duration::ZERO);
+    touch(&mut context, 1, TouchPhase::Started, start);
+    context.set_now(Duration::from_millis(600));
+    declare(&mut context, &mut typed);
+    assert_eq!(selected(&context, &typed).as_deref(), Some("alpha"));
+    assert!(context.find(&["field", "$popup"]).is_none(), "no menu");
+
+    // Dragging on from there extends the selection instead of panning.
+    touch(
+        &mut context,
+        1,
+        TouchPhase::Moved,
+        along(bounds.width / 2.0),
+    );
+    declare(&mut context, &mut typed);
+    let extended = selected(&context, &typed).unwrap_or_default();
+    assert!(
+        extended.starts_with("alpha") && extended.len() > 5,
+        "{extended}"
+    );
+    touch(
+        &mut context,
+        1,
+        TouchPhase::Ended,
+        along(bounds.width / 2.0),
+    );
+    declare(&mut context, &mut typed);
+
+    // A second tap selects the word under it as well.
+    context.set_now(Duration::from_millis(2000));
+    for when in [2000, 2100] {
+        context.set_now(Duration::from_millis(when));
+        touch(&mut context, 2, TouchPhase::Started, start);
+        touch(&mut context, 2, TouchPhase::Ended, start);
+    }
+    declare(&mut context, &mut typed);
+    assert_eq!(selected(&context, &typed).as_deref(), Some("alpha"));
+    // And typing replaces what was selected, which is the point of it.
+    context.event(Event::Text(rust_gui_core::TextEdit::Insert("one".into())));
+    declare(&mut context, &mut typed);
+    assert_eq!(typed, "one beta gamma");
 }

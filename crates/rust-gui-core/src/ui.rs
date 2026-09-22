@@ -29,6 +29,8 @@ pub(crate) enum WidgetKey {
 /// What a declaration hands to the host besides the tree.
 #[derive(Default)]
 pub(crate) struct HostOutbox {
+    /// Custom events `Ui::emit` sent, with the node they came from.
+    pub emitted: Vec<(crate::NodeId, crate::UiEvent)>,
     pub watched: Vec<std::path::PathBuf>,
     pub images: Vec<std::path::PathBuf>,
     pub toasts: ToastOutbox,
@@ -68,6 +70,8 @@ pub(crate) enum Kind {
     Toast,
     ContextArea,
     GestureArea,
+    /// A container that watches what reaches the widgets inside it.
+    EventArea,
     /// A container that keeps its subtree when the state it was declared from
     /// has not changed.
     Memo,
@@ -519,6 +523,47 @@ impl Ui<'_> {
         }
         self.elements.last_mut().unwrap().control = Control::Memo(hash);
         declare
+    }
+
+    /// A column that watches the events of the widgets inside it, and may
+    /// stop them. What reached it since the last declaration comes back in
+    /// the order it arrived.
+    ///
+    /// A capturing area sees an event before the widgets inside, so consuming
+    /// it keeps it from them; an ordinary one sees what they did not take, on
+    /// the way up. Areas nest: outermost first going down, innermost first
+    /// coming up, and a consumed event stops there.
+    pub fn event_area(
+        &mut self,
+        key: impl Into<String>,
+        area: crate::EventArea,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_>),
+    ) -> Vec<crate::UiEvent> {
+        let key = key.into();
+        let arrived = self
+            .context
+            .child(self.parent, &WidgetKey::Named(key.clone()), Kind::EventArea)
+            .map(|id| self.context.take_area_events(id))
+            .unwrap_or_default();
+        self.group(key, Kind::EventArea, style, content);
+        self.elements.last_mut().unwrap().control = Control::EventArea(area);
+        arrived
+    }
+
+    /// Tells the areas above this point something. The event travels up from
+    /// the container being declared and arrives on the next declaration, like
+    /// every other input.
+    pub fn emit(&mut self, name: impl Into<String>, data: impl Into<String>) {
+        if let Some(parent) = self.parent {
+            self.host.emitted.push((
+                parent,
+                crate::UiEvent::Custom {
+                    name: name.into(),
+                    data: data.into(),
+                },
+            ));
+        }
     }
 
     pub fn column(

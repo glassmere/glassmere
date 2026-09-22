@@ -23,6 +23,7 @@ fn touch(context: &mut Context, id: u64, phase: TouchPhase, position: Point) -> 
         phase,
         position,
         force: Some(0.25 * id as f32),
+        pen: None,
     })
 }
 
@@ -240,4 +241,80 @@ fn resting_on_a_canvas_opens_its_menu_or_else_keeps_the_finger_for_a_pan() {
     touch(&mut context, 1, TouchPhase::Ended, at(200.0, 260.0));
     page(&mut context, &mut state);
     assert!(!state.gesture.changed() && state.gesture.tapped.is_none());
+}
+
+#[test]
+fn a_second_tap_and_a_flick_are_told_apart_from_a_tap_and_a_pan() {
+    let (mut context, mut state) = (Context::new(), Page::default());
+    page(&mut context, &mut state);
+    let spot = at(200.0, 200.0);
+    let tap = |context: &mut Context, at: Point, when: u64| {
+        context.set_now(Duration::from_millis(when));
+        touch(context, 1, TouchPhase::Started, at);
+        touch(context, 1, TouchPhase::Ended, at);
+    };
+    tap(&mut context, spot, 1000);
+    page(&mut context, &mut state);
+    assert!(state.gesture.tapped.is_some() && state.gesture.double_tapped.is_none());
+
+    // Soon after and near enough: a double tap, which is a tap as well.
+    tap(&mut context, at(spot.x + 4.0, spot.y), 1200);
+    page(&mut context, &mut state);
+    assert!(state.gesture.tapped.is_some() && state.gesture.double_tapped.is_some());
+    // A third does not pair with the second.
+    tap(&mut context, spot, 1300);
+    page(&mut context, &mut state);
+    assert!(state.gesture.double_tapped.is_none());
+    // Too late, and too far.
+    tap(&mut context, spot, 2000);
+    page(&mut context, &mut state);
+    tap(&mut context, at(spot.x + 60.0, spot.y), 2100);
+    page(&mut context, &mut state);
+    assert!(state.gesture.double_tapped.is_none());
+
+    // A flick: far and fast in one direction.
+    context.set_now(Duration::from_millis(3000));
+    touch(&mut context, 1, TouchPhase::Started, spot);
+    for step in 1..=4u64 {
+        context.set_now(Duration::from_millis(3000 + step * 10));
+        touch(
+            &mut context,
+            1,
+            TouchPhase::Moved,
+            at(spot.x - 30.0 * step as f32, spot.y),
+        );
+    }
+    touch(
+        &mut context,
+        1,
+        TouchPhase::Ended,
+        at(spot.x - 120.0, spot.y),
+    );
+    page(&mut context, &mut state);
+    let swipe = state.gesture.swipe.expect("a swipe");
+    assert_eq!(swipe.direction, rust_gui_core::SwipeDirection::Left);
+    assert!(swipe.speed > 1000.0, "{swipe:?}");
+    assert!(state.gesture.tapped.is_none(), "a flick is not a tap");
+
+    // A slow drag over the same distance is a pan, not a swipe.
+    context.set_now(Duration::from_millis(4000));
+    touch(&mut context, 1, TouchPhase::Started, spot);
+    for step in 1..=4u64 {
+        context.set_now(Duration::from_millis(4000 + step * 200));
+        touch(
+            &mut context,
+            1,
+            TouchPhase::Moved,
+            at(spot.x - 30.0 * step as f32, spot.y),
+        );
+    }
+    touch(
+        &mut context,
+        1,
+        TouchPhase::Ended,
+        at(spot.x - 120.0, spot.y),
+    );
+    page(&mut context, &mut state);
+    assert!(state.gesture.swipe.is_none());
+    assert!(state.gesture.pan_x < -100.0, "it panned instead");
 }

@@ -32,6 +32,7 @@ pub use collection::{
     VirtualListOptions, text_matches,
 };
 pub use command::{Command, Shortcut, ShortcutKey};
+mod events;
 pub use controls::{AutocompleteResponse, MenuItem, NumberOptions};
 pub use dock::{
     DockArea, DockFloat, DockLayout, DockLayoutError, DockNode, DockPlace, DockTabs, DockTarget,
@@ -40,6 +41,7 @@ pub use dock::{
 pub use document::{Indentation, Motion, Selection, TextDocument};
 pub use drag::{DragInfo, DragOutcome, DragPayload, DropKind};
 pub use editor::{CaretMovement, TextEdit, TextMove, TextSelection};
+pub use events::{EventArea, UiEvent};
 pub use focus::{DialogOptions, DialogResponse, FocusScope};
 pub use image::{BackgroundImage, ImageFit, ImageOptions, ImageSource, ImageTint};
 pub use locale_format::{Date, DateStyle, LocaleFormat, Time};
@@ -72,7 +74,8 @@ pub use tree::diagnostics::{
 };
 pub use tree::{
     Action, CollectionInfo, Context, Dirty, Event, FrameStats, GestureResponse, Key, Live,
-    NodeDetails, NodeId, NodeSnapshot, NumericValue, Role, ScrollState, Semantics, TouchPhase,
+    NodeDetails, NodeId, NodeSnapshot, NumericValue, Pen, Role, ScrollState, Semantics, Swipe,
+    SwipeDirection, TouchPhase,
 };
 pub use ui::{
     DockOptions, DockPanel, DockResponse, Properties, PropertyGrid, Response, Ui, suggest,

@@ -26,7 +26,7 @@ impl Context {
         }
     }
 
-    fn edit(&mut self, id: NodeId, edit: TextEdit) -> bool {
+    pub(super) fn edit(&mut self, id: NodeId, edit: TextEdit) -> bool {
         let Some(node) = self.nodes.get_mut(&id).filter(|node| node.enabled) else {
             return false;
         };
@@ -108,7 +108,7 @@ impl Context {
         self.set_number(id, min + f64::from(fraction) * (max - min))
     }
 
-    fn editor_pointer(&mut self, id: NodeId, position: Point, extend: bool) -> bool {
+    pub(super) fn editor_pointer(&mut self, id: NodeId, position: Point, extend: bool) -> bool {
         let node = &self.nodes[&id];
         let Some(editor) = &node.editor else {
             return false;

@@ -21,6 +21,11 @@ const FLING_MINIMUM: f32 = 50.0;
 const FLING_DECAY: f32 = 0.325;
 /// Positions older than this do not count toward the speed at release.
 const VELOCITY_WINDOW: Duration = Duration::from_millis(100);
+/// How soon after a tap, and how near it, a second one is a double tap.
+const DOUBLE_TAP: Duration = Duration::from_millis(400);
+const DOUBLE_TAP_NEAR: f32 = 24.0;
+/// Pixels a second a flick must reach to be a swipe rather than a pan.
+const SWIPE_SPEED: f32 = 350.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TouchPhase {
@@ -29,6 +34,35 @@ pub enum TouchPhase {
     Ended,
     /// The system took the contact away, such as for a gesture of its own.
     Cancelled,
+}
+
+/// A quick flick over a gesture area, reported when the finger lifts.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Swipe {
+    pub direction: SwipeDirection,
+    /// Logical pixels a second.
+    pub speed: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SwipeDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+/// What a pen reports besides where it is. No desktop backend gives these
+/// today; the contact carries them for one that does.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Pen {
+    /// Away from straight up, in degrees, along each axis.
+    pub tilt_x: f32,
+    pub tilt_y: f32,
+    /// The button on the barrel is held.
+    pub barrel: bool,
+    /// The other end of the pen is being used.
+    pub eraser: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -62,6 +96,10 @@ pub struct GestureResponse {
     pub center: Option<Point>,
     /// A tap that was neither a pan nor a long press.
     pub tapped: Option<Point>,
+    /// A second tap soon after the first, at the same place.
+    pub double_tapped: Option<Point>,
+    /// A flick, once the finger has lifted.
+    pub swipe: Option<Swipe>,
     /// The firmest contact in the area, 0 to 1, where the device reports it.
     pub pressure: Option<f32>,
 }
@@ -76,6 +114,8 @@ impl Default for GestureResponse {
             rotation: 0.0,
             center: None,
             tapped: None,
+            double_tapped: None,
+            swipe: None,
             pressure: None,
         }
     }
@@ -103,6 +143,7 @@ pub(super) struct Touch {
     /// Recent positions, for the speed at release.
     samples: VecDeque<(Duration, Point)>,
     force: Option<f32>,
+    pen: Option<Pen>,
     /// Left the slop, so neither a tap nor a long press any more.
     travelled: bool,
     /// The long press had its chance.
@@ -191,10 +232,11 @@ impl Context {
         phase: TouchPhase,
         position: Point,
         force: Option<f32>,
+        pen: Option<Pen>,
     ) -> bool {
         let handled = match phase {
-            TouchPhase::Started => self.touch_started(id, position, force),
-            TouchPhase::Moved => self.touch_moved(id, position, force),
+            TouchPhase::Started => self.touch_started(id, position, force, pen),
+            TouchPhase::Moved => self.touch_moved(id, position, force, pen),
             TouchPhase::Ended => self.touch_ended(id, position),
             TouchPhase::Cancelled => self.touches.remove(&id).is_some_and(|mut touch| {
                 self.as_touch(&mut touch, Self::release_press);
@@ -207,7 +249,13 @@ impl Context {
         handled
     }
 
-    fn touch_started(&mut self, id: u64, position: Point, force: Option<f32>) -> bool {
+    fn touch_started(
+        &mut self,
+        id: u64,
+        position: Point,
+        force: Option<f32>,
+        pen: Option<Pen>,
+    ) -> bool {
         self.fling = None;
         // A contact the host never ended must not leave its press behind.
         if let Some(mut stale) = self.touches.remove(&id) {
@@ -226,6 +274,7 @@ impl Context {
             since: self.now,
             samples: VecDeque::from([(self.now, position)]),
             force,
+            pen,
             travelled: false,
             rested: false,
         };
@@ -266,11 +315,17 @@ impl Context {
         true
     }
 
-    fn touch_moved(&mut self, id: u64, position: Point, force: Option<f32>) -> bool {
+    fn touch_moved(
+        &mut self,
+        id: u64,
+        position: Point,
+        force: Option<f32>,
+        pen: Option<Pen>,
+    ) -> bool {
         let Some(mut touch) = self.touches.remove(&id) else {
             return false;
         };
-        touch.force = force;
+        (touch.force, touch.pen) = (force, pen);
         touch.samples.push_back((self.now, position));
         while touch
             .samples
@@ -325,6 +380,14 @@ impl Context {
             return false;
         };
         match touch.mode {
+            Mode::Pressing if self.tapped_again(position) => {
+                // A second tap selects the word under it, as a double click
+                // does, and otherwise behaves like the first.
+                self.as_touch(&mut touch, |context| {
+                    context.handle_event(Event::PointerUp);
+                    context.select_word_at(position)
+                });
+            }
             Mode::Pressing | Mode::Dragging => {
                 let dragging = touch.mode == Mode::Dragging;
                 self.as_touch(&mut touch, |context| {
@@ -354,10 +417,17 @@ impl Context {
                 }
             }
             Mode::Gesture(area) => {
-                if !touch.travelled && self.gesture_partner(area).is_none() {
+                let alone = self.gesture_partner(area).is_none();
+                if !touch.travelled && alone {
+                    let again = self.tapped_again(position);
                     self.gesture(area, position, |gesture, local| {
-                        gesture.tapped = Some(local)
+                        gesture.tapped = Some(local);
+                        if again {
+                            gesture.double_tapped = Some(local);
+                        }
                     });
+                } else if alone && let Some(swipe) = touch.swipe(self.now) {
+                    self.gesture(area, position, |gesture, _| gesture.swipe = Some(swipe));
                 }
             }
             Mode::Panning | Mode::Held => {}
@@ -392,6 +462,14 @@ impl Context {
                     self.pending |= Dirty::PAINT;
                 }
                 self.touches.insert(id, touch);
+                continue;
+            }
+            // Resting in text selects the word and keeps the press, so the
+            // drag that follows extends the selection.
+            if self.as_touch(&mut touch, |context| context.select_word_at(at)) {
+                touch.mode = Mode::Dragging;
+                self.touches.insert(id, touch);
+                self.pending |= Dirty::PAINT;
                 continue;
             }
             touch.mode = Mode::Held;
@@ -443,16 +521,56 @@ impl Context {
         }
     }
 
-    /// Contacts that are down: their id, position and, where the device
-    /// reports it, pressure from 0 to 1.
-    pub fn touches(&self) -> impl Iterator<Item = (u64, Point, Option<f32>)> + '_ {
+    /// Contacts that are down: their id, position, pressure from 0 to 1 where
+    /// the device reports it, and what a pen reports.
+    pub fn touches(&self) -> impl Iterator<Item = (u64, Point, Option<f32>, Option<Pen>)> + '_ {
         self.touches
             .iter()
-            .map(|(id, touch)| (*id, touch.last_seen(), touch.force))
+            .map(|(id, touch)| (*id, touch.last_seen(), touch.force, touch.pen))
     }
 }
 
 impl Context {
+    /// Whether this tap follows another soon enough and near enough. Records
+    /// it either way.
+    fn tapped_again(&mut self, position: Point) -> bool {
+        let again = self.last_tap.is_some_and(|(when, at)| {
+            self.now.saturating_sub(when) <= DOUBLE_TAP
+                && (at.x - position.x).hypot(at.y - position.y) <= DOUBLE_TAP_NEAR
+        });
+        // A third tap starts again rather than counting as another double.
+        self.last_tap = (!again).then_some((self.now, position));
+        again
+    }
+
+    /// Selects the word a contact rested or tapped twice on, where there is
+    /// an editor to select in. The press is kept, so the drag extends it.
+    fn select_word_at(&mut self, position: Point) -> bool {
+        let Some(id) = self.hit_test(position) else {
+            return false;
+        };
+        if !self
+            .nodes
+            .get(&id)
+            .is_some_and(|node| node.editor.is_some())
+        {
+            return false;
+        }
+        self.focus_control(id);
+        self.editor_pointer(id, position, false);
+        let back = crate::TextEdit::Move {
+            direction: crate::TextMove::Left,
+            select: false,
+            word: true,
+        };
+        let forward = crate::TextEdit::Move {
+            direction: crate::TextMove::Right,
+            select: true,
+            word: true,
+        };
+        self.edit(id, back) | self.edit(id, forward)
+    }
+
     /// The gesture area a new contact at `position` belongs to. A control
     /// inside the area is pressed as anywhere else, and whatever lies over
     /// the area (a popup, a dialog) keeps the contact from it.
@@ -583,6 +701,33 @@ impl Context {
 }
 
 impl Touch {
+    /// The flick this contact ended with, when it was quick enough and
+    /// clearly along one axis.
+    fn swipe(&self, now: Duration) -> Option<Swipe> {
+        let (first, last) = (self.samples.front()?, self.samples.back()?);
+        let seconds = last.0.saturating_sub(first.0).as_secs_f32();
+        if seconds <= 0.0 || now.saturating_sub(last.0) > VELOCITY_WINDOW {
+            return None;
+        }
+        let (dx, dy) = (
+            (last.1.x - first.1.x) / seconds,
+            (last.1.y - first.1.y) / seconds,
+        );
+        let (speed, sideways) = (dx.hypot(dy), dx.abs() > dy.abs());
+        if speed < SWIPE_SPEED {
+            return None;
+        }
+        Some(Swipe {
+            direction: match (sideways, dx > 0.0, dy > 0.0) {
+                (true, true, _) => SwipeDirection::Right,
+                (true, false, _) => SwipeDirection::Left,
+                (false, _, true) => SwipeDirection::Down,
+                (false, _, false) => SwipeDirection::Up,
+            },
+            speed,
+        })
+    }
+
     fn awaits_long_press(&self) -> bool {
         !self.rested && !self.travelled && matches!(self.mode, Mode::Pressing | Mode::Gesture(_))
     }

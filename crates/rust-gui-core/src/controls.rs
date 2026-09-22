@@ -187,6 +187,7 @@ pub(crate) enum Control {
     Memo(u64),
     /// Text written along the end edge of a control, such as a shortcut.
     Hint(String),
+    EventArea(crate::EventArea),
     TextInput {
         label: String,
         value: String,

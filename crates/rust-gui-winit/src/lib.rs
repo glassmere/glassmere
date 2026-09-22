@@ -1261,6 +1261,8 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                         y: position.y,
                     },
                     force: touch.force.map(|force| force.normalized() as f32),
+                    // winit reports no tilt or barrel button in 0.30.
+                    pen: None,
                 });
             }
             WindowEvent::MouseWheel { delta, .. } => {

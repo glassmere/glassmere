@@ -34,7 +34,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-pub use touch_input::{GestureResponse, TouchPhase};
+pub use touch_input::{GestureResponse, Pen, Swipe, SwipeDirection, TouchPhase};
 
 /// Monotonic within a Context; a removed node's identity is never reused there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -246,6 +246,8 @@ pub enum Event {
         position: Point,
         /// Pressure from 0 to 1, where the device reports it.
         force: Option<f32>,
+        /// Tilt and buttons, for a pen that reports them.
+        pen: Option<Pen>,
     },
     /// A pinch on a trackpad, or Ctrl with the wheel, for the gesture area
     /// under the pointer: 1.1 is a tenth larger. Not handled when there is no
@@ -547,6 +549,12 @@ pub struct Context {
     damage: Vec<Rect>,
     updates: HashMap<NodeId, ControlUpdate>,
     bindings: HashMap<String, Option<Shortcut>>,
+    /// Event areas of the last declaration, and what has reached each of them
+    /// since. Both are empty in a view that declares none, and the dispatch
+    /// then costs a lookup.
+    areas: HashMap<NodeId, crate::EventArea>,
+    /// A cell because `Ui` holds the context by a shared reference.
+    pending_area_events: std::cell::RefCell<HashMap<NodeId, Vec<crate::UiEvent>>>,
     /// Nodes that contain something with input waiting, so that a memoized
     /// container above it declares again. Rebuilt for each declaration.
     awaiting: HashSet<NodeId>,
@@ -573,6 +581,8 @@ pub struct Context {
     diagnostic: diagnostics::DiagnosticState,
     toast: toasts::ToastState,
     touches: HashMap<u64, touch_input::Touch>,
+    /// When and where the last tap ended, for telling a double tap.
+    last_tap: Option<(Duration, Point)>,
     fling: Option<touch_input::Fling>,
     pub(crate) messages: Option<Box<dyn crate::Messages>>,
     pub(crate) format: Option<Box<dyn crate::LocaleFormat>>,
@@ -752,6 +762,8 @@ impl Default for Context {
             damage: Vec::new(),
             updates: HashMap::new(),
             bindings: HashMap::new(),
+            areas: HashMap::new(),
+            pending_area_events: std::cell::RefCell::new(HashMap::new()),
             awaiting: HashSet::new(),
             skipped: std::cell::Cell::new(0),
             submitted: HashSet::new(),
@@ -773,6 +785,7 @@ impl Default for Context {
             diagnostic: diagnostics::DiagnosticState::new(),
             toast: toasts::ToastState::default(),
             touches: HashMap::new(),
+            last_tap: None,
             fling: None,
             messages: None,
             format: None,
@@ -1162,6 +1175,147 @@ impl Context {
         Some(id)
     }
 
+    /// What has reached an event area since its last declaration.
+    pub(crate) fn take_area_events(&self, id: NodeId) -> Vec<crate::UiEvent> {
+        self.pending_area_events
+            .borrow_mut()
+            .remove(&id)
+            .unwrap_or_default()
+    }
+
+    /// The path from the root down to `id`.
+    fn path_to(&self, id: NodeId) -> Vec<NodeId> {
+        let mut path = Vec::new();
+        let mut next = Some(id);
+        while let Some(current) = next {
+            path.push(current);
+            next = self.nodes.get(&current).and_then(|node| node.parent);
+        }
+        path.reverse();
+        path
+    }
+
+    /// Offers an event to the areas along a path, first going down to the
+    /// node it concerns and then coming back up. True when one consumed it,
+    /// and the widgets under it must not see it.
+    fn travel(&mut self, event: crate::UiEvent, path: &[NodeId]) -> bool {
+        let mut arrived: Vec<(NodeId, bool)> = Vec::new();
+        let mut consumed = false;
+        // Down first: an area that captures may take the event away from the
+        // widgets inside it.
+        for id in path {
+            let Some(area) = self.areas.get(id) else {
+                continue;
+            };
+            if area.capture && area.watches(&event) {
+                arrived.push((*id, area.consume));
+                if area.consume {
+                    consumed = true;
+                    break;
+                }
+            }
+        }
+        if !consumed {
+            // Then up, innermost first, over what the widgets left.
+            for id in path.iter().rev() {
+                let Some(area) = self.areas.get(id) else {
+                    continue;
+                };
+                if !area.capture && area.watches(&event) {
+                    arrived.push((*id, area.consume));
+                    if area.consume {
+                        break;
+                    }
+                }
+            }
+        }
+        if arrived.is_empty() {
+            return false;
+        }
+        let mut pending = self.pending_area_events.borrow_mut();
+        for (id, _) in &arrived {
+            pending.entry(*id).or_default().push(event.clone());
+        }
+        drop(pending);
+        // Something is waiting for a declaration that will report it.
+        self.stats.activations += 1;
+        consumed
+    }
+
+    /// The innermost node a point is inside, whatever it is. Areas contain
+    /// things rather than taking the pointer themselves, so this is not the
+    /// hit test.
+    fn deepest_at(&self, point: Point) -> Option<NodeId> {
+        let mut order = Vec::new();
+        self.order(self.root, &mut order);
+        order
+            .into_iter()
+            .rev()
+            .find(|id| self.nodes[id].clip.contains(point))
+    }
+
+    /// Where an event goes: what it is over, or what has the focus.
+    fn travelled(&mut self, event: &Event) -> bool {
+        if self.areas.is_empty() {
+            return false;
+        }
+        let pointer = self.pointer;
+        let (carried, target) = match event {
+            Event::PointerDown | Event::PointerDownWithShift => (
+                pointer.map(crate::UiEvent::PointerDown),
+                pointer.and_then(|at| self.deepest_at(at)),
+            ),
+            Event::PointerUp => (
+                pointer.map(crate::UiEvent::PointerUp),
+                pointer.and_then(|at| self.deepest_at(at)),
+            ),
+            Event::PointerMoved(at) => (
+                Some(crate::UiEvent::PointerMoved(*at)),
+                self.deepest_at(*at),
+            ),
+            Event::Scroll { delta_x, delta_y } => (
+                Some(crate::UiEvent::Scroll {
+                    delta_x: *delta_x,
+                    delta_y: *delta_y,
+                }),
+                pointer.and_then(|at| self.deepest_at(at)),
+            ),
+            Event::KeyDown { key, shift, .. } => (
+                Some(crate::UiEvent::Key {
+                    key: *key,
+                    shift: *shift,
+                }),
+                self.focused,
+            ),
+            Event::Text(TextEdit::Insert(text)) => {
+                (Some(crate::UiEvent::Text(text.clone())), self.focused)
+            }
+            _ => (None, None),
+        };
+        let Some(carried) = carried else {
+            return false;
+        };
+        // Without a node under it, an event still belongs to the window.
+        let path = target.map_or_else(|| vec![self.root], |id| self.path_to(id));
+        let consumed = self.travel(carried, &path);
+        // Where the pointer is remains the window's business: an area may
+        // keep a move from the widgets, but not from the context.
+        if consumed && let Event::PointerMoved(at) = event {
+            self.pointer = Some(*at);
+        }
+        consumed
+    }
+
+    /// Sends what `Ui::emit` left, from the node that emitted it.
+    fn deliver_emitted(&mut self, emitted: Vec<(NodeId, crate::UiEvent)>) {
+        for (from, event) in emitted {
+            if self.nodes.contains_key(&from) {
+                let path = self.path_to(from);
+                self.travel(event, &path);
+            }
+        }
+    }
+
     /// How many parents a node has, for choosing the innermost of two.
     pub(crate) fn depth(&self, id: NodeId) -> usize {
         let mut depth = 0;
@@ -1298,6 +1452,7 @@ impl Context {
             self.clipboard_out = clipboard;
         }
         self.redraw_requested = redraw;
+        self.deliver_emitted(std::mem::take(&mut host.emitted));
         self.watch_requests = host.watched;
         self.image_requests = host.images;
         self.trim_images();
@@ -1360,6 +1515,17 @@ impl Context {
                 "duplicate enabled command shortcut in one scope: {shortcut:?}"
             );
         }
+        self.areas = self
+            .nodes
+            .iter()
+            .filter_map(|(id, node)| match node.control {
+                Control::EventArea(area) => Some((*id, area)),
+                _ => None,
+            })
+            .collect();
+        self.pending_area_events
+            .borrow_mut()
+            .retain(|id, _| self.areas.contains_key(id));
         self.repair_interaction();
         self.enforce_modal();
         self.focus_new_popovers();
@@ -2343,6 +2509,17 @@ impl Context {
     }
 
     pub fn hit_test(&self, position: Point) -> Option<NodeId> {
+        // A capturing area that consumes pointer events stands between the
+        // pointer and everything under it, like a scrim: nothing there is
+        // hovered, pressed or dragged while it is up.
+        if !self.areas.is_empty()
+            && let Some(deepest) = self.deepest_at(position)
+            && self.path_to(deepest).iter().any(|id| {
+                matches!(self.areas.get(id), Some(area) if area.capture && area.consume && area.pointer)
+            })
+        {
+            return None;
+        }
         let mut order = Vec::new();
         self.order(self.root, &mut order);
         for popover in self.popovers() {
@@ -2379,14 +2556,21 @@ impl Context {
     /// Returns true if a declaration/redraw is needed. Pointer capture survives
     /// leaving the window, but activation requires release over the same button.
     pub fn event(&mut self, event: Event) -> bool {
+        // Areas see an event before and after the widgets, and may keep it
+        // from them.
+        if self.travelled(&event) {
+            self.note_focus();
+            return true;
+        }
         match event {
             Event::Touch {
                 id,
                 phase,
                 position,
                 force,
+                pen,
             } => {
-                let handled = self.touch_event(id, phase, position, force);
+                let handled = self.touch_event(id, phase, position, force, pen);
                 self.note_focus();
                 return handled;
             }
