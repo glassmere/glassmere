@@ -1,4 +1,4 @@
-use rust_gui_core::{Action, Context, Dirty, Event, Key, MonospaceMeasurer, Store, Style};
+use rust_gui_core::{Action, Context, Dirty, Event, Key, Length, MonospaceMeasurer, Store, Style};
 use rust_gui_devtools::{Inspector, InspectorModel, InspectorResponse, Recorder, Tab};
 use rust_gui_scene::Size;
 use std::time::Duration;
@@ -177,4 +177,56 @@ fn the_state_tab_lists_a_stores_values_their_edges_and_what_moved_last() {
 /// The state tab needs no frame history.
 fn recorderless() -> Recorder {
     Recorder::new(1)
+}
+
+#[test]
+fn the_scene_tab_counts_what_is_held_and_lists_the_layers() {
+    let mut context = Context::new();
+    context.run(TARGET, &mut MonospaceMeasurer, |ui| {
+        ui.column("page", Style::default(), |ui| {
+            ui.label_keyed("title", "Hello");
+            // An opacity makes a layer, which is what the tab is for.
+            ui.container(
+                "faded",
+                Style::default()
+                    .width(Length::Px(120.0))
+                    .height(Length::Px(40.0))
+                    .opacity(0.5),
+                |ui| {
+                    ui.label_keyed("inside", "Faded");
+                },
+            );
+        });
+    });
+    let mut model = InspectorModel::capture(&context, "Target", TARGET, &Recorder::new(1));
+    model.viewport = VIEWPORT;
+    assert!(model.memory.nodes >= 5, "{:?}", model.memory);
+    assert!(model.memory.scene_primitives > 0);
+    assert!(model.memory.text_bytes > 0);
+    assert_eq!(model.layers.len(), 1);
+    assert_eq!(model.layers[0].opacity, 0.5);
+    assert!(model.layers[0].primitives > 0);
+
+    let mut inspector = Inspector::showing(Tab::Scene);
+    let mut host = Context::new();
+    host.run(VIEWPORT, &mut MonospaceMeasurer, |ui| {
+        inspector.ui(ui, &model);
+    });
+    let nodes = host
+        .find(&["inspector", "memory-0"])
+        .and_then(|id| host.details(id))
+        .expect("the first memory line");
+    assert!(
+        nodes
+            .text
+            .contains(&format!("{} nodes", model.memory.nodes)),
+        "{}",
+        nodes.text
+    );
+    let layer = host
+        .find(&["inspector", "layers", "layer-0"])
+        .and_then(|id| host.details(id))
+        .expect("the layer row");
+    assert!(layer.text.contains("opacity 0.50"), "{}", layer.text);
+    assert!(host.diagnostics().is_empty(), "{:?}", host.diagnostics());
 }

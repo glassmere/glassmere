@@ -213,6 +213,44 @@ impl Default for AppOptions {
 // (notify) is the upgrade path if half-second latency or idle wakeups matter.
 pub(crate) const STYLESHEET_POLL: Duration = Duration::from_millis(500);
 
+/// When the host was asked to run, for the startup measurement. Whatever
+/// happened before that, including loading the executable, is not in it.
+pub(crate) static STARTED: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+static STARTUP_REPORTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Prints how far into startup one step of it was reached, so that a slow
+/// start can be blamed on the right thing. Costs an environment lookup.
+pub(crate) fn startup_stage(stage: &str) {
+    if std::env::var_os("RUST_GUI_STARTUP").is_none()
+        || STARTUP_REPORTED.load(std::sync::atomic::Ordering::Acquire)
+    {
+        return;
+    }
+    if let Some(started) = STARTED.get() {
+        eprintln!(
+            "RUST_GUI_STARTUP {stage}_ms={:.1}",
+            started.elapsed().as_secs_f64() * 1000.0
+        );
+    }
+}
+
+/// Prints how long the first window took to show something, when
+/// `RUST_GUI_STARTUP` is set. Only the first frame of the first window is
+/// reported; later windows and inspectors are not startup.
+fn report_startup() {
+    if std::env::var_os("RUST_GUI_STARTUP").is_none()
+        || STARTUP_REPORTED.swap(true, std::sync::atomic::Ordering::AcqRel)
+    {
+        return;
+    }
+    if let Some(started) = STARTED.get() {
+        eprintln!(
+            "RUST_GUI_STARTUP first_frame_ms={:.1}",
+            started.elapsed().as_secs_f64() * 1000.0
+        );
+    }
+}
+
 pub fn run(options: AppOptions, view: impl FnMut(&mut Ui<'_>) + 'static) -> Result<()> {
     run_with_wakeup(options, |_| view)
 }
@@ -223,6 +261,7 @@ pub fn run_with_wakeup<F: FnMut(&mut Ui<'_>) + 'static>(
     options: AppOptions,
     setup: impl FnOnce(WakeHandle) -> F,
 ) -> Result<()> {
+    let _ = STARTED.set(Instant::now());
     desktop::run_single(options, setup)
 }
 
@@ -399,8 +438,10 @@ impl WindowState {
         ));
         descriptor.backends = backend;
         let instance = wgpu::Instance::new(descriptor);
+        crate::startup_stage("gpu_instance");
         diagnostics::checkpoint("gpu_instance", None);
         let surface = instance.create_surface(window.clone())?;
+        crate::startup_stage("surface_created");
         diagnostics::checkpoint("surface_created", None);
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -411,6 +452,7 @@ impl WindowState {
             .await?;
         #[cfg(feature = "diagnostics")]
         eprintln!("GPU_ADAPTER {:?}", adapter.get_info());
+        crate::startup_stage("adapter_detected");
         diagnostics::checkpoint("adapter_detected", None);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
@@ -424,6 +466,7 @@ impl WindowState {
                 ..Default::default()
             })
             .await?;
+        crate::startup_stage("gpu_device");
         diagnostics::checkpoint("gpu_device", Some(&device));
         let size = window.inner_size();
         let mut config = surface
@@ -439,8 +482,10 @@ impl WindowState {
         config.desired_maximum_frame_latency =
             diagnostics::frame_latency(options.maximum_frame_latency.max(1));
         surface.configure(&device, &config);
+        crate::startup_stage("presentation_buffers");
         diagnostics::checkpoint("presentation_buffers", Some(&device));
         let renderer = Renderer::new(&device, &queue, config.format);
+        crate::startup_stage("renderer_and_fonts");
         diagnostics::checkpoint("renderer_and_fonts", Some(&device));
         Ok(Self {
             surfaces: Surfaces::Gpu {
@@ -1015,6 +1060,9 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             state.window.request_redraw();
         }
         self.frames += 1;
+        if self.frames == 1 {
+            report_startup();
+        }
         self.recorder.frame(stats, render, frame_started.elapsed());
         if matches!(self.frames, 60 | 600 | 6000) {
             let stage = match self.frames {
@@ -1417,5 +1465,8 @@ fn merge(
         declare: first.declare + second.declare,
         layout: first.layout + second.layout,
         paint: first.paint + second.paint,
+        shaping: first.shaping + second.shaping,
+        elements: first.elements + second.elements,
+        element_bytes: first.element_bytes + second.element_bytes,
     }
 }

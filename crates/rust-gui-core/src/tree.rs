@@ -293,6 +293,92 @@ pub struct FrameStats {
     pub layout: Duration,
     /// CPU time spent generating and flattening paint chunks; zero when skipped.
     pub paint: Duration,
+    /// CPU time the text measurer spent shaping and measuring, which is part
+    /// of declare, layout and paint rather than extra to them.
+    pub shaping: Duration,
+    /// Elements the view built this frame. Each one is a declaration the
+    /// framework allocated and threw away, so this is what a frame costs in
+    /// allocation, and what `Ui::memo` saves.
+    pub elements: usize,
+    /// Bytes of keys and text those elements carried.
+    pub element_bytes: usize,
+}
+
+/// The application's measurer, timed. Wrapping it rather than the call sites
+/// means every path through the framework is counted, including the ones
+/// layout takes on its own.
+struct Timed<'a, M> {
+    inner: &'a mut M,
+    spent: Duration,
+}
+
+impl<M: TextMeasurer> TextMeasurer for Timed<'_, M> {
+    fn measure_styled(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> Size {
+        let started = Instant::now();
+        let measured = self.inner.measure_styled(text, style, width);
+        self.spent += started.elapsed();
+        measured
+    }
+
+    fn geometry(
+        &mut self,
+        text: &str,
+        style: &TextStyle,
+        width: Option<f32>,
+    ) -> rust_gui_scene::TextGeometry {
+        let started = Instant::now();
+        let geometry = self.inner.geometry(text, style, width);
+        self.spent += started.elapsed();
+        geometry
+    }
+
+    fn geometry_rich(
+        &mut self,
+        spans: &[crate::TextSpan],
+        style: &TextStyle,
+        width: Option<f32>,
+    ) -> rust_gui_scene::TextGeometry {
+        let started = Instant::now();
+        let geometry = self.inner.geometry_rich(spans, style, width);
+        self.spent += started.elapsed();
+        geometry
+    }
+
+    fn ascent(&mut self, style: &TextStyle) -> f32 {
+        let started = Instant::now();
+        let ascent = self.inner.ascent(style);
+        self.spent += started.elapsed();
+        ascent
+    }
+
+    fn measure(&mut self, text: &str, font_size: f32) -> Size {
+        let started = Instant::now();
+        let measured = self.inner.measure(text, font_size);
+        self.spent += started.elapsed();
+        measured
+    }
+}
+
+/// What the framework is holding on the CPU. Counted by walking the tree, so
+/// it is exact for what it names and silent about what it cannot see: the
+/// layout engine's own arena, the allocator's overhead, and the glyph atlas,
+/// which lives on the GPU behind glyphon.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MemoryReport {
+    pub nodes: usize,
+    /// The nodes themselves, without what they point at.
+    pub node_bytes: usize,
+    /// Text, keys and resolved style strings the nodes hold.
+    pub text_bytes: usize,
+    /// Primitives in the last scene, and what they occupy.
+    pub scene_primitives: usize,
+    pub scene_bytes: usize,
+    /// Nodes holding a paint cache, and the primitives in those caches.
+    pub cached_nodes: usize,
+    pub cached_primitives: usize,
+    /// Decoded images kept, and their pixels.
+    pub images: usize,
+    pub image_bytes: usize,
 }
 
 /// Inspector-facing facts about one node that ordinary semantics do not carry.
@@ -318,6 +404,17 @@ struct PaintChunk {
 }
 
 impl PaintChunk {
+    /// Primitives in this chunk and everything under it.
+    fn count(&self) -> usize {
+        self.before.len()
+            + self.after.len()
+            + self
+                .children
+                .iter()
+                .map(|child| child.count())
+                .sum::<usize>()
+    }
+
     fn append_to(&self, output: &mut Vec<Primitive>) {
         output.extend_from_slice(&self.before);
         for child in &self.children {
@@ -574,6 +671,13 @@ pub struct Context {
     /// Subtrees the declaration just skipped. A cell because `Ui` only holds
     /// a shared reference to the context.
     skipped: std::cell::Cell<usize>,
+    /// Elements the view built, and the bytes of key and text in them.
+    declared: std::cell::Cell<usize>,
+    declared_bytes: std::cell::Cell<usize>,
+    /// Element vectors from earlier declarations, waiting to be filled
+    /// again. A declaration is thrown away every frame; the memory it used
+    /// does not have to be.
+    spare: std::cell::RefCell<Vec<Vec<Element>>>,
     submitted: HashSet<NodeId>,
     pub(crate) popup: Option<PopupState>,
     drag: Option<Box<crate::drag::DragState>>,
@@ -780,6 +884,9 @@ impl Default for Context {
             pending_area_events: std::cell::RefCell::new(HashMap::new()),
             awaiting: HashSet::new(),
             skipped: std::cell::Cell::new(0),
+            declared: std::cell::Cell::new(0),
+            declared_bytes: std::cell::Cell::new(0),
+            spare: std::cell::RefCell::new(Vec::new()),
             submitted: HashSet::new(),
             popup: None,
             drag: None,
@@ -983,6 +1090,36 @@ impl Context {
         self.pending |= Dirty::PAINT;
     }
     /// Unknown class names requested since the stylesheet was installed.
+    /// What this window's tree, scene and caches occupy. Walks every node,
+    /// so ask for it when an inspector is open rather than every frame.
+    pub fn memory(&self) -> MemoryReport {
+        let mut report = MemoryReport {
+            nodes: self.nodes.len(),
+            node_bytes: self.nodes.len() * std::mem::size_of::<Node>(),
+            scene_primitives: self.scene.primitives.len(),
+            scene_bytes: self.scene.primitives.len() * std::mem::size_of::<Primitive>(),
+            ..MemoryReport::default()
+        };
+        for node in self.nodes.values() {
+            report.text_bytes += node.text.len()
+                + match &node.key {
+                    crate::ui::WidgetKey::Named(key) => key.len(),
+                    crate::ui::WidgetKey::Position(_) => 0,
+                };
+            if let Some(chunk) = &node.paint_cache {
+                report.cached_nodes += 1;
+                report.cached_primitives += chunk.count();
+            }
+        }
+        for loaded in self.images.values() {
+            report.images += 1;
+            report.image_bytes += loaded
+                .pixels()
+                .map_or(0, |(_, _, pixels): (u32, u32, &[u8])| pixels.len());
+        }
+        report
+    }
+
     pub fn style_warnings(&self) -> &[String] {
         &self.style_warnings
     }
@@ -1417,6 +1554,30 @@ impl Context {
         self.awaiting.contains(&id)
     }
 
+    /// An empty element vector, reusing one from an earlier frame when
+    /// there is one.
+    pub(crate) fn take_spare(&self) -> Vec<Element> {
+        self.spare.borrow_mut().pop().unwrap_or_default()
+    }
+
+    /// Keeps an emptied vector for the next declaration. The cap is well
+    /// above any real declaration's depth and breadth, so this holds on to
+    /// nothing that matters.
+    pub(crate) fn give_spare(&self, mut vector: Vec<Element>) {
+        const KEEP: usize = 512;
+        let mut spare = self.spare.borrow_mut();
+        if spare.len() < KEEP && vector.capacity() > 0 {
+            vector.clear();
+            spare.push(vector);
+        }
+    }
+
+    /// One more element, with the bytes its key and text carry.
+    pub(crate) fn count_element(&self, bytes: usize) {
+        self.declared.set(self.declared.get() + 1);
+        self.declared_bytes.set(self.declared_bytes.get() + bytes);
+    }
+
     pub(crate) fn count_skipped(&self) {
         self.skipped.set(self.skipped.get() + 1);
     }
@@ -1439,6 +1600,10 @@ impl Context {
         measurer: &mut impl TextMeasurer,
         view: impl FnOnce(&mut Ui<'_>),
     ) -> FrameStats {
+        let measurer = &mut Timed {
+            inner: measurer,
+            spent: Duration::ZERO,
+        };
         self.stats = FrameStats::default();
         self.frame += 1;
         self.stats.frame = self.frame;
@@ -1477,12 +1642,14 @@ impl Context {
             }
         }
         self.skipped.set(0);
+        self.declared.set(0);
+        self.declared_bytes.set(0);
         self.nodes.get_mut(&self.root).unwrap().resolved = self.root_text();
         let mut ui = Ui {
             context: self,
             parent: Some(self.root),
             clicks: &mut clicks,
-            elements: Vec::new(),
+            elements: self.take_spare(),
             keys: HashSet::new(),
             updates: &mut updates,
             submitted: &mut submitted,
@@ -1706,6 +1873,9 @@ impl Context {
         }
         self.diagnose_paint();
         self.stats.dirty = self.pending;
+        self.stats.shaping = measurer.spent;
+        self.stats.elements = self.declared.get();
+        self.stats.element_bytes = self.declared_bytes.get();
         self.pending = Dirty::empty();
         self.stats
     }
@@ -1724,7 +1894,8 @@ impl Context {
             .collect();
         let mut children = Vec::with_capacity(elements.len());
         let (mut created_here, mut removed_here) = (0usize, 0usize);
-        for element in elements {
+        let mut elements = elements;
+        for element in elements.drain(..) {
             let existing = available.remove(&element.key).filter(|id| {
                 if self.nodes[id].kind == element.kind {
                     true
@@ -1954,6 +2125,7 @@ impl Context {
             }
             children.push(id);
         }
+        self.give_spare(elements);
         removed_here += available.len();
         for id in available.into_values() {
             self.remove_with_exit(id);

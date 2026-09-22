@@ -113,6 +113,7 @@ impl DesktopHandle {
 /// their AppOptions graphics field is superseded by this desktop-wide policy.
 /// Setup must enqueue at least one window. Closing the last window exits.
 pub fn run_windows(graphics: GraphicsOptions, setup: impl FnOnce(DesktopHandle)) -> Result<()> {
+    let _ = crate::STARTED.set(std::time::Instant::now());
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     let proxy = event_loop.create_proxy();
     let wake = WakeHandle::new(proxy.clone());

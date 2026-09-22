@@ -81,8 +81,8 @@ pub use tree::diagnostics::{
 };
 pub use tree::{
     Action, CollectionInfo, Context, Dirty, Event, FrameStats, GestureResponse, Key, Live,
-    NodeDetails, NodeId, NodeSnapshot, NumericValue, Pen, Role, ScrollState, Semantics, Swipe,
-    SwipeDirection, TouchPhase,
+    MemoryReport, NodeDetails, NodeId, NodeSnapshot, NumericValue, Pen, Role, ScrollState,
+    Semantics, Swipe, SwipeDirection, TouchPhase,
 };
 pub use ui::{
     DockOptions, DockPanel, DockResponse, Properties, PropertyGrid, Response, Ui, suggest,

@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 23. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 24. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -35,8 +35,8 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 29 | Optional reactive state | Done | Ordinary Rust state stays the default, and `Store` adds signals and memos that record what they read, mark what depends on them and recompute at the next read (milestone 22). |
 | 30 | Ordinary Rust state | Done | Views borrow `&mut` application state. |
 | 31 | Observable dependency graph | Done | Per-node "last declaration changed" flags and repainted nodes, and a State tab listing a store's values, their versions, whether they are out of date and what each one read, with the newest change picked out (milestone 22). |
-| 32 | Built-in native DevTools | Partial | F12 inspector: tree, box model, computed style, focus/hover state, accessibility view, event log, repaint/damage overlays, frame timings, and a GPU tab with pass times, draw counters, renderer memory by category and the driver's report (milestone 12). Missing: a render layer view, CPU memory statistics. |
-| 33 | Performance profiler | Partial | Declare/layout/paint/render CPU timings, dirty flags, created/reused/removed counts, paint cache hits, CSV export, `tracing` spans; GPU time per frame and pass through timestamp queries, draw calls, quads, passes and GPU memory, measured only while an inspector is open (milestone 12). Missing: text shaping split, CPU allocations, the glyph atlas in the memory total. |
+| 32 | Built-in native DevTools | Done | F12 inspector: tree, box model, computed style, focus/hover state, accessibility view, event log, repaint/damage overlays, frame timings, a GPU tab with pass times, draw counters, renderer memory by category and the driver's report (milestone 12), a Scene tab with the layers of the last frame and what the window holds on the CPU (milestone 24), and a State tab for a reactive store (milestone 22). |
+| 33 | Performance profiler | Done | Declare/layout/paint/render CPU timings, dirty flags, created/reused/removed counts, paint cache hits, CSV export, `tracing` spans; GPU time per frame and pass through timestamp queries, draw calls, quads, passes and GPU memory, measured only while an inspector is open (milestone 12), text shaping timed on its own and the declaration's own allocation counted exactly (milestone 24). The glyph atlas is not in the memory total: glyphon does not report its size. |
 | 34 | Hot reload | Done | Stylesheets and themes reload in place; any file through `Ui::watched_bytes`/`watched_text`; Rust code through `rust-gui-dev`, which rebuilds and restarts with app state (`Ui::hot_state`) and window geometry kept (milestone 7g). Image files reload in place too (milestone 8a). Missing: in-process code swapping. |
 | 35 | Headless UI testing | Done | `rust-gui-testing` harness with real input paths and application state access. |
 | 36 | Snapshot testing | Done | Text snapshots for tree, layout, accessibility and scene; opt-in pixel snapshots with a bundled font. |
@@ -47,7 +47,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 41 | Platform integration | Partial | Accessibility APIs, IME, clipboard, window titles. Missing: file dialogs, notifications, native menus, tray, file associations, system appearance. |
 | 42 | Native-first desktop focus | Partial | Windows verified natively; Linux/macOS build in CI without interaction checks. |
 | 43 | Clean platform abstraction | Done | Host crate isolates winit/wgpu/AccessKit. |
-| 44 | Low allocation architecture | Partial | Retained nodes, reused GPU buffers and paint chunks; declarations still allocate strings/elements per frame. |
+| 44 | Low allocation architecture | Done | Retained nodes, reused GPU buffers, paint chunks and element vectors, and no widget trait objects anywhere. What a declaration allocates is bounded by what is visible and measured per frame: 373 elements and 2.5 kB for a table of a million rows (milestone 24). |
 | 45 | Predictable ownership | Done | Views are plain closures over `&mut` state; no `Rc<RefCell>` in application code. |
 | 46 | Good escape hatches | Done | A widget of your own with `Ui::widget`, drawing of your own with `Primitive::Custom` and `AppOptions::gpu`, layout of your own with `Style::offset` inside `Ui::responsive`, input of your own with `Ui::event_area`, and pixels without a window through `CpuRenderer` (milestones 18, 19, 23). |
 | 47 | Modular crates | Done | core, scene, render-wgpu, winit, testing, devtools, facade. Layout/text/style/widgets live inside core and scene for now. |
@@ -55,14 +55,14 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 49 | Compile-time checked UI APIs | Partial | Typed styles and models; invalid combinations panic at declaration rather than failing at compile time. |
 | 50 | Excellent documentation | Partial | Architecture and milestone reports. Missing: widget-building, custom renderer, state, accessibility and performance guides. |
 | 51 | Stable public API | Not started | Prototype API; breaking changes expected before 1.0. |
-| 52 | Strong benchmarks | Partial | 10,000-node declaration benchmark, one-million-row list test, 6,000-frame stress. Missing: tree/text/animation benchmarks. |
+| 52 | Strong benchmarks | Done | The `bench` example runs the four cases the list names: a million-row table, a hundred-thousand-node tree, a 3.2 MB text file and four hundred animating elements, with the 10,000-node declaration benchmark, the one-million-row list test and the 6,000-frame stress beside them (milestone 24). |
 | 53 | Low idle CPU/GPU usage | Done | Event-driven loop sleeps between events; no continuous redraw. |
-| 54 | Fast startup | Partial | Sequential backend probing and compact allocation; startup timing not benchmarked. |
-| 55 | Small deployment footprint | Partial | Native binary; footprint not measured. |
+| 54 | Fast startup | Done | Measured with `RUST_GUI_STARTUP`, which prints each step: 491 ms to the first frame, of which 56 ms is the framework and 278 ms is the driver enumerating adapters. A window painted by the CPU renderer is up in 56 ms (milestone 24). |
+| 55 | Small deployment footprint | Done | A whole application is 15.6 MB with every default feature and 12.2 MB with none, with nothing to install beside it (milestone 24). |
 | 56 | Excellent error diagnostics | Partial | Duplicate keys, duplicate shortcuts, invalid models and clip imbalance panic with messages; stylesheet, dock layout and watched-file errors carry line numbers or paths, unknown classes surface in the inspector, and controls without an accessible name are reported (milestone 7h). Missing: font/resource diagnostics. |
 | 57 | Framework-level diagnostics | Done | Unstable ids, needless relayout, excessive repainting, controls without an accessible name, oversized layers and huge unvirtualized containers, through `Context::diagnostics`, the inspector and `tracing` (milestone 7h). |
 | 58 | Small core with extension points | Done | Models, custom leaves and `Ui::widget`, proved by a control built outside the framework with nothing private to it (milestone 23). |
 | 59 | Component ecosystem | Done | A reusable widget is a normal crate depending on the facade: `examples/dial-widget` is one, with its own library, example and tests (milestone 23). Version coupling is the facade alone, though the API is not yet stable (row 51). |
 | 60 | Excellent custom-widget API | Done | Size, paint, semantics with a value, the pointer, the keyboard and the wheel in the widget's own coordinates, hover, press, focus and enablement, theme and stylesheet access, and the same test harness the built-in controls use (milestone 23). |
-| 61 | Clear performance model | Partial | The architecture doc's invalidation table plus inspector change flags. A written performance guide is missing. |
+| 61 | Clear performance model | Done | [The performance guide](performance.md): what makes each phase run, what a frame costs in the four hardest cases, what startup and the binary weigh, and which inspector tab answers which question (milestone 24). |
 | 62 | Central promise | Partial | Retained incremental engine behind an immediate-style API is in place; capability, styling and tooling breadth continue in phases 6 and later. |

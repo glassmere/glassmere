@@ -385,7 +385,7 @@ impl Ui<'_> {
             context: self.context,
             parent: owner,
             clicks: self.clicks,
-            elements: Vec::new(),
+            elements: self.context.take_spare(),
             keys: HashSet::new(),
             updates: self.updates,
             submitted: self.submitted,

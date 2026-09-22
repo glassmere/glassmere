@@ -5,10 +5,10 @@
 //! inspector, then applies the [`InspectorResponse`] and [`Inspector::overlay`]
 //! back to the inspected window.
 use rust_gui_core::{
-    Context, FontFamily, FrameStats, GraphNode, ItemId, Length, ListModel, ListState, NodeDetails,
-    NodeId, NodeSnapshot, StateKind, Style, TextWrap, Ui, VirtualListOptions,
+    Context, FontFamily, FrameStats, GraphNode, ItemId, Length, ListModel, ListState, MemoryReport,
+    NodeDetails, NodeId, NodeSnapshot, StateKind, Style, TextWrap, Ui, VirtualListOptions,
 };
-use rust_gui_scene::{Color, Primitive, Rect, Size};
+use rust_gui_scene::{Affine, Color, Primitive, Rect, Size};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     time::Duration,
@@ -61,21 +61,24 @@ impl GpuSnapshot {
 }
 
 impl FrameRecord {
-    pub const CSV_HEADER: &'static str = "frame,declare_us,layout_us,paint_us,render_us,total_us,created,reused,removed,text_measures,layout_passes,paint_nodes,paint_cache_hits,scene_rebuilt,dirty,gpu_us,draw_calls,gpu_memory_bytes";
+    pub const CSV_HEADER: &'static str = "frame,declare_us,layout_us,paint_us,shaping_us,render_us,total_us,created,reused,removed,elements,element_bytes,text_measures,layout_passes,paint_nodes,paint_cache_hits,scene_rebuilt,dirty,gpu_us,draw_calls,gpu_memory_bytes";
 
     pub fn csv_row(&self) -> String {
         let s = &self.stats;
         format!(
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{:?},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{:?},{},{},{}",
             s.frame,
             s.declare.as_micros(),
             s.layout.as_micros(),
             s.paint.as_micros(),
+            s.shaping.as_micros(),
             self.render.as_micros(),
             self.total.as_micros(),
             s.created,
             s.reused,
             s.removed,
+            s.elements,
+            s.element_bytes,
             s.text_measures,
             s.layout_passes,
             s.paint_nodes,
@@ -92,16 +95,17 @@ impl FrameRecord {
     }
 
     /// Column titles for [`FrameRecord::summary`] rows.
-    const SUMMARY_HEADER: &'static str = "frame   declare  layout   paint  render     gpu   total ms   +new ~reused -gone  painted   dirty";
+    const SUMMARY_HEADER: &'static str = "frame   declare  layout   paint  shaping  render     gpu   total ms   +new ~reused -gone  painted   dirty";
 
     fn summary(&self) -> String {
         let s = &self.stats;
         format!(
-            "{:<7} {:>7.2} {:>7.2} {:>7.2} {:>7.2} {:>7} {:>7.2}    {:>4} {:>7} {:>5}  {:>3}/{:<4} {}",
+            "{:<7} {:>7.2} {:>7.2} {:>7.2} {:>7.2} {:>7.2} {:>7} {:>7.2}    {:>4} {:>7} {:>5}  {:>3}/{:<4} {}",
             s.frame,
             millis(s.declare),
             millis(s.layout),
             millis(s.paint),
+            millis(s.shaping),
             millis(self.render),
             self.gpu
                 .map_or_else(|| "-".to_owned(), |gpu| format!("{:.2}", millis(gpu))),
@@ -264,6 +268,10 @@ pub struct InspectorModel {
     pub gpu: Option<GpuSnapshot>,
     /// The reactive store the window observed, if it observed one.
     pub state: Vec<GraphNode>,
+    /// What the window is holding on the CPU.
+    pub memory: MemoryReport,
+    /// The layers of the last scene.
+    pub layers: Vec<LayerRow>,
 }
 
 impl Default for InspectorModel {
@@ -285,6 +293,8 @@ impl Default for InspectorModel {
             diagnostics: Vec::new(),
             gpu: None,
             state: Vec::new(),
+            memory: MemoryReport::default(),
+            layers: Vec::new(),
         }
     }
 }
@@ -323,6 +333,8 @@ impl InspectorModel {
             warnings: context.style_warnings().to_vec(),
             diagnostics: context.diagnostics().to_vec(),
             state: context.state_graph().to_vec(),
+            memory: context.memory(),
+            layers: layers(&context.scene().primitives),
             gpu: recorder.gpu_snapshot().cloned(),
             ..Self::default()
         }
@@ -355,8 +367,56 @@ pub enum Tab {
     Events,
     Frames,
     Gpu,
+    Scene,
     State,
     Diagnostics,
+}
+
+/// One group in the last scene: what a renderer draws to an offscreen image
+/// and composites back. Layers cost a texture and a pass each, so a view
+/// that makes many of them is worth seeing.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LayerRow {
+    /// How many layers it sits inside.
+    pub depth: usize,
+    pub bounds: Rect,
+    pub opacity: f32,
+    pub transform: Affine,
+    /// Primitives inside it, including those of the layers inside it.
+    pub primitives: usize,
+}
+
+/// The layers of a scene, outermost first, in the order they are drawn.
+fn layers(primitives: &[Primitive]) -> Vec<LayerRow> {
+    let mut rows: Vec<LayerRow> = Vec::new();
+    let mut open: Vec<usize> = Vec::new();
+    for primitive in primitives {
+        match primitive {
+            Primitive::PushLayer {
+                bounds,
+                opacity,
+                transform,
+            } => {
+                open.push(rows.len());
+                rows.push(LayerRow {
+                    depth: open.len() - 1,
+                    bounds: *bounds,
+                    opacity: *opacity,
+                    transform: *transform,
+                    primitives: 0,
+                });
+            }
+            Primitive::PopLayer => {
+                open.pop();
+            }
+            _ => {
+                for index in &open {
+                    rows[*index].primitives += 1;
+                }
+            }
+        }
+    }
+    rows
 }
 
 /// Requests the inspector makes of the inspected window.
@@ -474,6 +534,7 @@ impl Inspector {
                             (Tab::Events, "Events".to_owned()),
                             (Tab::Frames, "Frames".to_owned()),
                             (Tab::Gpu, "GPU".to_owned()),
+                            (Tab::Scene, format!("Scene ({})", model.layers.len())),
                             (Tab::State, format!("State ({})", model.state.len())),
                             (
                                 Tab::Diagnostics,
@@ -491,6 +552,17 @@ impl Inspector {
                                 self.tab = tab;
                             }
                         }
+                    },
+                );
+                // Their own row: with seven tabs there is no width left for
+                // them beside the strip.
+                ui.row(
+                    "overlays",
+                    Style {
+                        gap: 12.0,
+                        ..Style::default()
+                    },
+                    |ui| {
                         ui.checkbox("damage", "Damage", &mut self.show_damage);
                         ui.checkbox("repaints", "Repaints", &mut self.show_repaints);
                     },
@@ -667,6 +739,7 @@ impl Inspector {
                         );
                     }
                     Tab::Gpu => gpu_tab(ui, model, &mono),
+                    Tab::Scene => scene_tab(ui, model, &mono),
                     Tab::State => state_tab(ui, model, &mono),
                     Tab::Frames => {
                         let count = model.frames.len().max(1) as f64;
@@ -677,11 +750,12 @@ impl Inspector {
                         ui.label_keyed(
                             "summary",
                             format!(
-                                "{} frames recorded  ·  average declare {:.2} ms  ·  layout {:.2}  ·  paint {:.2}  ·  render {:.2}  ·  total {:.2}",
+                                "{} frames recorded  ·  average declare {:.2} ms  ·  layout {:.2}  ·  paint {:.2}  ·  shaping {:.2}  ·  render {:.2}  ·  total {:.2}",
                                 model.frames.len(),
                                 average(|frame| frame.stats.declare),
                                 average(|frame| frame.stats.layout),
                                 average(|frame| frame.stats.paint),
+                                average(|frame| frame.stats.shaping),
                                 average(|frame| frame.render),
                                 average(|frame| frame.total)
                             ),
@@ -1130,6 +1204,90 @@ fn truncate(text: &str) -> String {
     } else {
         short
     }
+}
+
+/// What the window holds on the CPU, and the layers of its last scene.
+fn scene_tab(ui: &mut Ui<'_>, model: &InspectorModel, mono: &Style) {
+    let memory = &model.memory;
+    let kb = |bytes: usize| format!("{:.1} kB", bytes as f64 / 1024.0);
+    for (index, line) in [
+        format!(
+            "{} nodes  ·  {} flat  ·  {} of text and keys",
+            memory.nodes,
+            kb(memory.node_bytes),
+            kb(memory.text_bytes)
+        ),
+        format!(
+            "{} primitives in the scene  ·  {}",
+            memory.scene_primitives,
+            kb(memory.scene_bytes)
+        ),
+        format!(
+            "{} paint caches holding {} primitives",
+            memory.cached_nodes, memory.cached_primitives
+        ),
+        format!(
+            "{} images decoded  ·  {}",
+            memory.images,
+            kb(memory.image_bytes)
+        ),
+        "The layout engine's own arena, the allocator's overhead and the glyph atlas are not counted here; the atlas lives on the GPU."
+            .to_owned(),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        ui.label_styled(
+            format!("memory-{index}"),
+            line,
+            Style {
+                foreground: Some(if index == 4 { MUTED } else { ACCENT }),
+                width: Length::Percent(1.0),
+                wrap: TextWrap::Word,
+                ..mono.clone()
+            },
+        );
+    }
+    if model.layers.is_empty() {
+        ui.label_styled(
+            "no-layers",
+            "No layers in the last scene. One is made by an opacity or a transform.",
+            Style {
+                foreground: Some(MUTED),
+                ..mono.clone()
+            },
+        );
+        return;
+    }
+    ui.scroll(
+        "layers",
+        Style {
+            width: Length::Percent(1.0),
+            height: Length::Px((model.viewport.height - 260.0).max(120.0)),
+            gap: 2.0,
+            ..Style::default()
+        },
+        |ui| {
+            for (index, layer) in model.layers.iter().enumerate() {
+                let moved = layer.transform != Affine::IDENTITY;
+                ui.label_styled(
+                    format!("layer-{index}"),
+                    format!(
+                        "{}{:.0}x{:.0} at {:.0},{:.0}  ·  {} primitives  ·  opacity {:.2}{}",
+                        "  ".repeat(layer.depth),
+                        layer.bounds.width,
+                        layer.bounds.height,
+                        layer.bounds.x,
+                        layer.bounds.y,
+                        layer.primitives,
+                        layer.opacity,
+                        if moved { "  ·  transformed" } else { "" }
+                    ),
+                    mono.clone(),
+                );
+            }
+        },
+    );
 }
 
 /// The reactive store: what it holds, what each derived value read, and what

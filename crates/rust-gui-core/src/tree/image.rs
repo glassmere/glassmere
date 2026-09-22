@@ -10,6 +10,13 @@ pub(super) struct LoadedImage {
     error: Option<String>,
 }
 
+impl LoadedImage {
+    /// The decoded pixels, when it is a raster image that loaded.
+    pub(super) fn pixels(&self) -> Option<(u32, u32, &[u8])> {
+        self.image.as_ref()?.pixels()
+    }
+}
+
 /// Decoded pixels kept for files no declaration asks for any more, so that
 /// switching back to a view does not decode again. Past this they are dropped.
 const UNUSED_IMAGE_BYTES: usize = 64 << 20;

@@ -373,6 +373,13 @@ impl Ui<'_> {
             "duplicate widget key among siblings: {:?}",
             element.key
         );
+        self.context.count_element(
+            element.text.len()
+                + match &element.key {
+                    WidgetKey::Named(key) => key.len(),
+                    WidgetKey::Position(_) => 0,
+                },
+        );
         let existing = self.context.child(self.parent, &element.key, element.kind);
         let response = existing
             .map(|id| Response {
@@ -469,7 +476,7 @@ impl Ui<'_> {
             context: self.context,
             parent,
             clicks: self.clicks,
-            elements: Vec::new(),
+            elements: self.context.take_spare(),
             keys: HashSet::new(),
             updates: self.updates,
             submitted: self.submitted,
@@ -688,7 +695,7 @@ impl Ui<'_> {
             context: self.context,
             parent: layer,
             clicks: self.clicks,
-            elements: Vec::new(),
+            elements: self.context.take_spare(),
             keys: HashSet::new(),
             updates: self.updates,
             submitted: self.submitted,
