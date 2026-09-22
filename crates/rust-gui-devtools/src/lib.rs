@@ -5,8 +5,8 @@
 //! inspector, then applies the [`InspectorResponse`] and [`Inspector::overlay`]
 //! back to the inspected window.
 use rust_gui_core::{
-    Context, FontFamily, FrameStats, ItemId, Length, ListModel, ListState, NodeDetails, NodeId,
-    NodeSnapshot, Style, TextWrap, Ui, VirtualListOptions,
+    Context, FontFamily, FrameStats, GraphNode, ItemId, Length, ListModel, ListState, NodeDetails,
+    NodeId, NodeSnapshot, StateKind, Style, TextWrap, Ui, VirtualListOptions,
 };
 use rust_gui_scene::{Color, Primitive, Rect, Size};
 use std::{
@@ -262,6 +262,8 @@ pub struct InspectorModel {
     pub diagnostics: Vec<rust_gui_core::FrameDiagnostic>,
     /// The renderer's latest report, when the host supplies one.
     pub gpu: Option<GpuSnapshot>,
+    /// The reactive store the window observed, if it observed one.
+    pub state: Vec<GraphNode>,
 }
 
 impl Default for InspectorModel {
@@ -282,6 +284,7 @@ impl Default for InspectorModel {
             warnings: Vec::new(),
             diagnostics: Vec::new(),
             gpu: None,
+            state: Vec::new(),
         }
     }
 }
@@ -319,6 +322,7 @@ impl InspectorModel {
             events: recorder.events().iter().cloned().collect(),
             warnings: context.style_warnings().to_vec(),
             diagnostics: context.diagnostics().to_vec(),
+            state: context.state_graph().to_vec(),
             gpu: recorder.gpu_snapshot().cloned(),
             ..Self::default()
         }
@@ -351,6 +355,7 @@ pub enum Tab {
     Events,
     Frames,
     Gpu,
+    State,
     Diagnostics,
 }
 
@@ -469,6 +474,7 @@ impl Inspector {
                             (Tab::Events, "Events".to_owned()),
                             (Tab::Frames, "Frames".to_owned()),
                             (Tab::Gpu, "GPU".to_owned()),
+                            (Tab::State, format!("State ({})", model.state.len())),
                             (
                                 Tab::Diagnostics,
                                 format!("Diagnostics ({})", model.diagnostics.len()),
@@ -661,6 +667,7 @@ impl Inspector {
                         );
                     }
                     Tab::Gpu => gpu_tab(ui, model, &mono),
+                    Tab::State => state_tab(ui, model, &mono),
                     Tab::Frames => {
                         let count = model.frames.len().max(1) as f64;
                         let average = |pick: fn(&FrameRecord) -> Duration| {
@@ -1123,6 +1130,80 @@ fn truncate(text: &str) -> String {
     } else {
         short
     }
+}
+
+/// The reactive store: what it holds, what each derived value read, and what
+/// moved last. Empty until the window calls `Ui::observe`.
+fn state_tab(ui: &mut Ui<'_>, model: &InspectorModel, mono: &Style) {
+    if model.state.is_empty() {
+        ui.label_styled(
+            "none",
+            "No reactive store observed. Call Ui::observe(&store) in the window's view.",
+            Style {
+                foreground: Some(MUTED),
+                ..mono.clone()
+            },
+        );
+        return;
+    }
+    let newest = model
+        .state
+        .iter()
+        .map(|node| node.changed_at)
+        .max()
+        .unwrap_or_default();
+    let width = model
+        .state
+        .iter()
+        .map(|node| node.name.len())
+        .max()
+        .unwrap_or(1);
+    ui.scroll(
+        "state",
+        Style {
+            width: Length::Percent(1.0),
+            height: Length::Px((model.viewport.height - 132.0).max(120.0)),
+            gap: 2.0,
+            ..Style::default()
+        },
+        |ui| {
+            for (index, node) in model.state.iter().enumerate() {
+                let inputs: Vec<&str> = node
+                    .inputs
+                    .iter()
+                    .filter_map(|input| model.state.get(*input))
+                    .map(|input| input.name.as_str())
+                    .collect();
+                let kind = match node.kind {
+                    StateKind::Signal => "signal",
+                    StateKind::Memo => "memo  ",
+                };
+                let mut row = format!(
+                    "{kind}  {:width$}  v{}",
+                    node.name,
+                    node.version,
+                    width = width
+                );
+                if node.dirty {
+                    row.push_str("  out of date");
+                }
+                if !inputs.is_empty() {
+                    row.push_str(&format!("  <- {}", inputs.join(", ")));
+                }
+                // What moved on the last change stands out, which is the
+                // question the graph is usually opened to answer.
+                let changed = node.changed_at == newest && newest > 0;
+                ui.label_styled(
+                    format!("state-{index}"),
+                    row,
+                    Style {
+                        foreground: Some(if changed { ACCENT } else { MUTED }),
+                        ..mono.clone()
+                    },
+                );
+            }
+        },
+    );
 }
 
 impl ListModel for Rows<'_> {

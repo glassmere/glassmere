@@ -414,6 +414,7 @@ impl Ui<'_> {
             updates: self.updates,
             submitted: self.submitted,
             warnings: self.warnings,
+            observed: self.observed,
             theme_request: self.theme_request,
             clipboard: self.clipboard,
             redraw: self.redraw,

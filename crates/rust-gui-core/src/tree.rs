@@ -590,6 +590,7 @@ pub struct Context {
     theme: Theme,
     stylesheet: StyleSheet,
     style_warnings: Vec<String>,
+    state_graph: Vec<crate::GraphNode>,
     noted_focus: Option<NodeId>,
     pending_restore: Option<NodeId>,
     now: Duration,
@@ -793,6 +794,7 @@ impl Default for Context {
             theme,
             stylesheet: StyleSheet::default(),
             style_warnings: Vec::new(),
+            state_graph: Vec::new(),
             noted_focus: None,
             pending_restore: None,
             now: Duration::ZERO,
@@ -970,6 +972,11 @@ impl Context {
     /// Unknown class names requested since the stylesheet was installed.
     pub fn style_warnings(&self) -> &[String] {
         &self.style_warnings
+    }
+
+    /// What `Ui::observe` last saw of a reactive store, for the inspector.
+    pub fn state_graph(&self) -> &[crate::GraphNode] {
+        &self.state_graph
     }
     pub fn focused(&self) -> Option<NodeId> {
         self.focused
@@ -1394,6 +1401,7 @@ impl Context {
         let mut updates = std::mem::take(&mut self.updates);
         let mut submitted = std::mem::take(&mut self.submitted);
         let mut warnings = std::mem::take(&mut self.style_warnings);
+        let mut observed = None;
         let mut theme_request = None;
         let mut clipboard = None;
         let mut redraw = false;
@@ -1427,6 +1435,7 @@ impl Context {
             updates: &mut updates,
             submitted: &mut submitted,
             warnings: &mut warnings,
+            observed: &mut observed,
             theme_request: &mut theme_request,
             clipboard: &mut clipboard,
             redraw: &mut redraw,
@@ -1448,6 +1457,11 @@ impl Context {
         }
         elements.extend(layers);
         self.style_warnings = warnings;
+        // After the view, so the graph holds what this frame read.
+        self.state_graph = observed
+            .as_ref()
+            .map(crate::Store::graph)
+            .unwrap_or_default();
         if clipboard.is_some() {
             self.clipboard_out = clipboard;
         }

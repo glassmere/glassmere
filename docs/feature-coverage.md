@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 21. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 22. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -32,9 +32,9 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 26 | Clipboard and drag-and-drop | Partial | Text clipboard, in-process item/text drags, incoming OS file drops, outgoing OS file drags on Windows and macOS with the outcome reported to the source (milestone 13a). Missing: images, custom types, outgoing text, outgoing drags on Linux, cross-window drags. |
 | 27 | Multi-window support | Done | Independent windows on one device, native modal dialog windows that block their owner, shared state via `Arc` and mailboxes, DPI scaling per screen, and `AppOptions::placement` for which screen a window opens on (milestone 20). Tried on one screen only. |
 | 28 | Strong async integration | Done | Bounded mailbox and wake handle, and `Tasks` for jobs that can be cancelled, superseded by key, and stream many results, with a superseded job's results dropped before the view sees them (milestone 21). No executor is forced: a job is a thread or a future on the runtime the application already has. |
-| 29 | Optional reactive state | Not started | Ordinary Rust state is the only model. |
+| 29 | Optional reactive state | Done | Ordinary Rust state stays the default, and `Store` adds signals and memos that record what they read, mark what depends on them and recompute at the next read (milestone 22). |
 | 30 | Ordinary Rust state | Done | Views borrow `&mut` application state. |
-| 31 | Observable dependency graph | Partial | Inspector shows per-node "last declaration changed" flags and repainted nodes; no dependency graph because there is no reactive layer. |
+| 31 | Observable dependency graph | Done | Per-node "last declaration changed" flags and repainted nodes, and a State tab listing a store's values, their versions, whether they are out of date and what each one read, with the newest change picked out (milestone 22). |
 | 32 | Built-in native DevTools | Partial | F12 inspector: tree, box model, computed style, focus/hover state, accessibility view, event log, repaint/damage overlays, frame timings, and a GPU tab with pass times, draw counters, renderer memory by category and the driver's report (milestone 12). Missing: a render layer view, CPU memory statistics. |
 | 33 | Performance profiler | Partial | Declare/layout/paint/render CPU timings, dirty flags, created/reused/removed counts, paint cache hits, CSV export, `tracing` spans; GPU time per frame and pass through timestamp queries, draw calls, quads, passes and GPU memory, measured only while an inspector is open (milestone 12). Missing: text shaping split, CPU allocations, the glyph atlas in the memory total. |
 | 34 | Hot reload | Done | Stylesheets and themes reload in place; any file through `Ui::watched_bytes`/`watched_text`; Rust code through `rust-gui-dev`, which rebuilds and restarts with app state (`Ui::hot_state`) and window geometry kept (milestone 7g). Image files reload in place too (milestone 8a). Missing: in-process code swapping. |

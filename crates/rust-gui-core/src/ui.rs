@@ -149,6 +149,9 @@ pub struct Ui<'a> {
     pub(crate) updates: &'a mut HashMap<NodeId, ControlUpdate>,
     pub(crate) submitted: &'a mut HashSet<NodeId>,
     pub(crate) warnings: &'a mut Vec<String>,
+    /// The store `Ui::observe` asked for, read after the declaration so the
+    /// graph shows what this frame read, whenever `observe` was called.
+    pub(crate) observed: &'a mut Option<crate::Store>,
     pub(crate) theme_request: &'a mut Option<crate::Theme>,
     /// Text a copy or cut produced, handed to the host after the declaration.
     pub(crate) clipboard: &'a mut Option<String>,
@@ -170,6 +173,14 @@ impl Ui<'_> {
     /// so token reads made earlier in the view see the new theme too.
     pub fn set_theme(&mut self, theme: crate::Theme) {
         *self.theme_request = Some(theme);
+    }
+
+    /// Shows a reactive store's dependency graph in the inspector: what its
+    /// values are, what each derived one read, and which moved last. The
+    /// store is otherwise none of the framework's business, so nothing is
+    /// observed unless this is called.
+    pub fn observe(&mut self, store: &crate::Store) {
+        *self.observed = Some(store.clone());
     }
 
     /// A named class from the installed stylesheet. Unknown names return the
@@ -463,6 +474,7 @@ impl Ui<'_> {
             updates: self.updates,
             submitted: self.submitted,
             warnings: self.warnings,
+            observed: self.observed,
             theme_request: self.theme_request,
             clipboard: self.clipboard,
             redraw: self.redraw,
@@ -681,6 +693,7 @@ impl Ui<'_> {
             updates: self.updates,
             submitted: self.submitted,
             warnings: self.warnings,
+            observed: self.observed,
             theme_request: self.theme_request,
             clipboard: self.clipboard,
             redraw: self.redraw,

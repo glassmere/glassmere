@@ -201,6 +201,7 @@ The view may run more than once per input event. Put application actions behind 
 - Touch: tap, pan with inertia, long press for the context menu or to pick up a drag, and two controls under two fingers at once. `Ui::gesture_area` reports pan, pinch and rotation from fingers, a trackpad or Ctrl with the wheel.
 - Files dragged out of a window are handed to the operating system on Windows and macOS; the source hears whether they were dropped.
 - `Ui::memo` keeps a subtree without declaring it again, and both renderers redraw only the pixels that changed.
+- Optional reactive state: `Store` signals and memos that record what they read, and an inspector tab that shows the graph.
 - `Tasks` runs background jobs that can be cancelled and superseded, and a superseded job's results never reach the view.
 - Gradients and shadows on both renderers, and `AppOptions::gpu` hands a rectangle to an application's own wgpu drawing.
 - `Ui::event_area` watches or intercepts the events of a subtree, and `Ui::emit` sends one of the application's own.

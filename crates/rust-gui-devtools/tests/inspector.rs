@@ -1,4 +1,4 @@
-use rust_gui_core::{Action, Context, Dirty, Event, Key, MonospaceMeasurer, Style};
+use rust_gui_core::{Action, Context, Dirty, Event, Key, MonospaceMeasurer, Store, Style};
 use rust_gui_devtools::{Inspector, InspectorModel, InspectorResponse, Recorder, Tab};
 use rust_gui_scene::Size;
 use std::time::Duration;
@@ -135,4 +135,46 @@ fn the_diagnostics_tab_lists_entries_and_selecting_one_shows_its_node_in_the_tre
     assert_eq!(inspector.selected(), context.find(&["page", "nameless"]));
     // The inspector's own UI raises no diagnostics.
     assert!(host.diagnostics().is_empty(), "{:?}", host.diagnostics());
+}
+
+#[test]
+fn the_state_tab_lists_a_stores_values_their_edges_and_what_moved_last() {
+    let store = Store::new();
+    let celsius = store.signal("celsius", 20i32);
+    let read = celsius.clone();
+    let fahrenheit = store.memo("fahrenheit", move || read.get() * 9 / 5 + 32);
+    let mut context = Context::new();
+    let declare = |context: &mut Context| {
+        context.run(TARGET, &mut MonospaceMeasurer, |ui| {
+            ui.observe(&store);
+            ui.label_keyed("reading", format!("{}", fahrenheit.get()));
+        });
+    };
+    declare(&mut context);
+    celsius.set(100);
+    declare(&mut context);
+
+    let mut model = InspectorModel::capture(&context, "Target", TARGET, &recorderless());
+    model.viewport = VIEWPORT;
+    assert_eq!(model.state.len(), 2);
+    let mut inspector = Inspector::showing(Tab::State);
+    let mut host = Context::new();
+    host.run(VIEWPORT, &mut MonospaceMeasurer, |ui| {
+        inspector.ui(ui, &model);
+    });
+    let row = |index: usize| {
+        let id = host
+            .find(&["inspector", "state", &format!("state-{index}")])
+            .expect("a row for every value");
+        host.details(id).expect("the row").text
+    };
+    assert_eq!(row(0), "signal  celsius     v1");
+    assert_eq!(row(1), "memo    fahrenheit  v2  <- celsius");
+    // The signal moved last, so it is the one picked out.
+    assert!(host.diagnostics().is_empty(), "{:?}", host.diagnostics());
+}
+
+/// The state tab needs no frame history.
+fn recorderless() -> Recorder {
+    Recorder::new(1)
 }

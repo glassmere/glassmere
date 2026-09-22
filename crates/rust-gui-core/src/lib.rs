@@ -14,6 +14,7 @@ mod mailbox;
 mod messages;
 mod panes;
 mod property_grid;
+mod reactive;
 mod rich_document;
 mod rich_editor;
 mod rich_text;
@@ -54,6 +55,7 @@ pub use panes::{
     Axis, PopoverOptions, PopoverResponse, SplitOptions, TOOLTIP_DELAY, Tab, TabsResponse,
 };
 pub use property_grid::{PropertyGridOptions, PropertyGridResponse, PropertyGridState};
+pub use reactive::{GraphNode, Memo, Signal, StateKind, Store};
 pub use rich_document::{
     Block, BlockKind, InlineRun, Mark, Marks, RichDocument, RichMotion, RichPosition,
 };
