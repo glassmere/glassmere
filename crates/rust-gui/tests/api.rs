@@ -19,7 +19,7 @@ use std::{
 const SNAPSHOTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/snapshots");
 
 /// The crates an application writes against, in the order it meets them.
-const CRATES: [&str; 10] = [
+const CRATES: [&str; 11] = [
     "rust-gui",
     "rust-gui-core",
     "rust-gui-scene",
@@ -30,6 +30,7 @@ const CRATES: [&str; 10] = [
     "rust-gui-testing",
     "rust-gui-devtools",
     "rust-gui-image",
+    "rust-gui-win32",
 ];
 
 #[test]

@@ -472,6 +472,7 @@ rust-gui-core   fn Context::find (& self, path : & [& str]) -> Option < NodeId>
 rust-gui-core   fn Context::focused (& self) -> Option < NodeId>
 rust-gui-core   fn Context::hit_test (& self, position : Point) -> Option < NodeId>
 rust-gui-core   fn Context::hovered (& self) -> Option < NodeId>
+rust-gui-core   fn Context::maximize_button (& self) -> Option < Rect>
 rust-gui-core   fn Context::memory (& self) -> MemoryReport
 rust-gui-core   fn Context::new () -> Self
 rust-gui-core   fn Context::node (& self, id : NodeId) -> Option < NodeSnapshot>
@@ -1832,3 +1833,10 @@ rust-gui-image   fn Loader::request (& self, path : PathBuf)
 rust-gui-image fn decode (bytes : & [u8]) -> Result < Image, String>
 rust-gui-image fn load (path : & Path) -> Result < Image, String>
 rust-gui-image struct Loader
+rust-gui-win32   fn Caption::set_maximize (& self, button : Option < (i32, i32, i32, i32)>)
+rust-gui-win32   fn Caption::take (& self) -> Vec < CaptionEvent>
+rust-gui-win32   variant CaptionEvent::Hover
+rust-gui-win32   variant CaptionEvent::Left
+rust-gui-win32 enum CaptionEvent
+rust-gui-win32 fn attach (window : isize) -> Option < Caption>
+rust-gui-win32 struct Caption

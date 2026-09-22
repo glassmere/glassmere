@@ -190,6 +190,9 @@ pub(crate) enum Control {
     EventArea(crate::EventArea),
     /// A strip that moves the window, and maximizes it when pressed twice.
     TitleBar,
+    /// The maximize button of a title bar the application draws. Windows
+    /// asks where it is, to offer its snap layouts over it.
+    MaximizeButton,
     /// An edge or a corner that resizes the window.
     ResizeGrip(crate::ResizeEdge),
     TextInput {

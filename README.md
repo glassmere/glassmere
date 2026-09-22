@@ -214,7 +214,7 @@ The view may run more than once per input event. Put application actions behind 
 - Files dragged out of a window are handed to the operating system on Windows and macOS; the source hears whether they were dropped.
 - `Ui::memo` keeps a subtree without declaring it again, and both renderers redraw only the pixels that changed.
 - [The API stability note](docs/api-stability.md) says what is public and how it changes, guarded by a snapshot of the whole surface.
-- `Ui::title_bar`, `Ui::window_buttons` and `Ui::resize_frame` let a window with no system frame move, maximize and resize itself.
+- `Ui::title_bar`, `Ui::window_buttons` and `Ui::resize_frame` let a window with no system frame move, maximize and resize itself, and Windows offers its snap layouts over the maximize button.
 - Behind the `platform` feature: native file dialogs, notifications, an application menu, a tray icon and the files an association opens.
 - `Ui::copy` and `Ui::request_paste` carry text, images and the application's own formats, and a drag can cross to another of its windows.
 - [The performance guide](docs/performance.md) says what makes a frame expensive, what it costs and how to see it.

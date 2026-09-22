@@ -329,6 +329,11 @@ impl Ui<'_> {
                 // The glyph is what is drawn; the name is what is announced.
                 let label = ui.tr(name);
                 ui.tooltip(label);
+                if matches!(command, crate::WindowCommand::ToggleMaximize) {
+                    // Windows asks where this one is, to offer its snap
+                    // layouts when the pointer rests over it.
+                    ui.elements.last_mut().unwrap().control = Control::MaximizeButton;
+                }
                 if pressed {
                     ui.window_command(command);
                 }

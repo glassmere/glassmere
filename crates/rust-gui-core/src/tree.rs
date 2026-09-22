@@ -740,6 +740,9 @@ pub struct Context {
     /// When and where the title bar was last pressed, for telling a second
     /// press that means "maximize" from two separate ones.
     last_title_press: Option<(Duration, Point)>,
+    /// Where the maximize button of a title bar the view draws itself is,
+    /// for a host that has to tell the platform.
+    maximize_button: Option<Rect>,
     redraw_requested: bool,
     caret_movement: crate::CaretMovement,
     direction: crate::Direction,
@@ -964,6 +967,7 @@ impl Default for Context {
             window_info: crate::WindowInfo::default(),
             size: Size::default(),
             last_title_press: None,
+            maximize_button: None,
             redraw_requested: false,
             caret_movement: crate::CaretMovement::Visual,
             direction: crate::Direction::Ltr,
@@ -1235,6 +1239,13 @@ impl Context {
 
     pub(crate) fn window_info(&self) -> crate::WindowInfo {
         self.window_info
+    }
+
+    /// Where the maximize button of a title bar the view draws itself sits,
+    /// in logical coordinates, for a host that tells the platform so that it
+    /// can offer its own window layouts over it.
+    pub fn maximize_button(&self) -> Option<Rect> {
+        self.maximize_button
     }
 
     /// The logical size the window was last declared at.
@@ -1989,6 +2000,11 @@ impl Context {
                 "duplicate enabled command shortcut in one scope: {shortcut:?}"
             );
         }
+        self.maximize_button = self
+            .nodes
+            .values()
+            .find(|node| node.control == Control::MaximizeButton)
+            .map(|node| node.bounds);
         self.areas = self
             .nodes
             .iter()

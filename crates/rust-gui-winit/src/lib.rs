@@ -746,6 +746,10 @@ struct Application<F> {
     /// The platform's menu and tray icon, kept alive while they are shown.
     menu: Option<platform::NativeMenu>,
     tray: Option<platform::NativeTray>,
+    /// Where Windows is told the application's own maximize button is, so
+    /// that it offers its snap layouts over it.
+    #[cfg(windows)]
+    caption: Option<rust_gui_win32::Caption>,
     /// Some inspector is open, so the shared renderer profiles its frames.
     profile_gpu: bool,
     /// An inspector is looking at this window.
@@ -800,6 +804,8 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             families_seen: std::collections::HashSet::new(),
             menu: None,
             tray: None,
+            #[cfg(windows)]
+            caption: None,
             profile_gpu: false,
             inspected: false,
             started: Instant::now(),
@@ -930,6 +936,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
     /// between frames, because a file dialog runs a message loop of its own
     /// and nothing may be borrowed across it.
     pub(crate) fn platform_requests(&mut self) {
+        self.caption_frame();
         // A window that draws its own title bar asks for what the system's
         // one would have done. The platform takes the pointer over for a
         // move or a resize, so this happens between frames, where nothing of
@@ -973,6 +980,55 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             self.request_redraw();
         }
     }
+
+    /// Tells Windows where the application's own maximize button is, and
+    /// turns what its window procedure saw over it into ordinary events: the
+    /// button belongs to the caption as far as Windows is concerned, so no
+    /// mouse message of its own reaches it. On every other platform this
+    /// does nothing.
+    #[cfg(windows)]
+    fn caption_frame(&mut self) {
+        use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+        let Some(state) = &self.state else {
+            return;
+        };
+        let scale = state.window.scale_factor() as f32;
+        if self.caption.is_none() {
+            let handle = state.window.window_handle().map(|handle| handle.as_raw());
+            let Ok(RawWindowHandle::Win32(handle)) = handle else {
+                return;
+            };
+            self.caption = rust_gui_win32::attach(isize::from(handle.hwnd));
+        }
+        let Some(caption) = &self.caption else {
+            return;
+        };
+        caption.set_maximize(self.context.maximize_button().map(|button| {
+            (
+                (button.x * scale) as i32,
+                (button.y * scale) as i32,
+                ((button.x + button.width) * scale) as i32,
+                ((button.y + button.height) * scale) as i32,
+            )
+        }));
+        let seen = caption.take();
+        for event in seen {
+            match event {
+                rust_gui_win32::CaptionEvent::Hover(x, y) => {
+                    self.pointer = Point {
+                        x: x as f32 / scale,
+                        y: y as f32 / scale,
+                    };
+                    self.input(Event::PointerMoved(self.pointer));
+                }
+                rust_gui_win32::CaptionEvent::Left => self.input(Event::PointerLeft),
+            }
+            self.request_redraw();
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn caption_frame(&mut self) {}
 
     /// Says so when a style asked for a font family that is not installed.
     /// The text is drawn in another one either way; the point is that the

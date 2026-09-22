@@ -12,6 +12,7 @@ using System.Runtime.InteropServices;
 public static class BarNative {
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extra);
     [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll")] public static extern IntPtr SendMessageW(IntPtr window, uint message, IntPtr wparam, IntPtr lparam);
 }
 '@
 
@@ -87,6 +88,23 @@ try {
     Write-Output ("RESIZED by {0},{1}" -f [int]($resized.Width - $before.Width), [int]($resized.Height - $before.Height))
     if ($resized.Width -ge $before.Width - 40 -or $resized.Height -ge $before.Height - 20) {
         throw 'the corner did not resize the window'
+    }
+
+    # Windows asks the window itself where its maximize button is, and only
+    # an answer of HTMAXBUTTON (9) makes it offer the snap layouts there.
+    $handle = [IntPtr]$window.Current.NativeWindowHandle
+    foreach ($pair in @(@{ Name = 'Maximize'; Want = 9 }, @{ Name = 'Close'; Want = 1 })) {
+        $condition = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(
+            [System.Windows.Automation.AutomationElement]::NameProperty, $pair.Name)
+        $button = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+        if ($null -eq $button) { throw ("the {0} button has no accessible name" -f $pair.Name) }
+        $rectangle = $button.Current.BoundingRectangle
+        $x = [int]($rectangle.X + $rectangle.Width / 2)
+        $y = [int]($rectangle.Y + $rectangle.Height / 2)
+        $answer = [BarNative]::SendMessageW($handle, 0x0084, [IntPtr]::Zero,
+            [IntPtr](($y -shl 16) -bor ($x -band 0xffff))).ToInt32()
+        Write-Output ("HITTEST {0} -> {1}" -f $pair.Name, $answer)
+        if ($answer -ne $pair.Want) { throw ("{0} answered {1}" -f $pair.Name, $answer) }
     }
 
     # And the button minimizes it.
