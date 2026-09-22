@@ -103,6 +103,7 @@ Work picked from the coverage table after the seven phases.
 - [x] Touch with every contact a pointer of its own: tap, pan with inertia, long press, two controls at once ([milestone 13b and 13c](milestone-13.md)).
 - [x] `Ui::gesture_area`: pan, pinch and rotation from fingers, a trackpad or Ctrl with the wheel ([milestone 13d](milestone-13.md)).
 - [x] Text shaping in a crate of its own, shared by the renderers ([milestone 14a](milestone-14.md)).
-- [ ] CPU renderer: headless (14b), then the window fallback (14c).
+- [x] `CpuRenderer`: the display list rasterized to pixels without a graphics adapter ([milestone 14b](milestone-14.md)).
+- [ ] CPU renderer as the desktop host's fallback (14c).
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

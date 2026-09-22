@@ -31,6 +31,7 @@ serde = ["rust-gui-core/serde"]
 rust-gui-core.workspace = true
 rust-gui-scene.workspace = true
 rust-gui-devtools.workspace = true
+rust-gui-render-cpu.workspace = true
 rust-gui-winit = { workspace = true, optional = true }
 rust-gui-syntax = { workspace = true, optional = true }
 rust-gui-image = { workspace = true, optional = true }

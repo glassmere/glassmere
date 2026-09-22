@@ -6,6 +6,7 @@ members = [
     "crates/rust-gui-scene",
     "crates/rust-gui-text",
     "crates/rust-gui-render-wgpu",
+    "crates/rust-gui-render-cpu",
     "crates/rust-gui-winit",
     "crates/rust-gui-testing",
     "crates/rust-gui-devtools",
@@ -27,6 +28,7 @@ publish = false
 rust-gui-core = { path = "crates/rust-gui-core" }
 rust-gui-scene = { path = "crates/rust-gui-scene" }
 rust-gui-text = { path = "crates/rust-gui-text" }
+rust-gui-render-cpu = { path = "crates/rust-gui-render-cpu" }
 rust-gui-render-wgpu = { path = "crates/rust-gui-render-wgpu" }
 rust-gui-winit = { path = "crates/rust-gui-winit" }
 rust-gui-testing = { path = "crates/rust-gui-testing" }

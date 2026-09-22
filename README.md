@@ -215,6 +215,7 @@ The view may run more than once per input event. Put application actions behind 
 | `rust-gui-scene` | Geometry, colors, measurement interface and display list; no platform dependencies |
 | `rust-gui-text` | Fonts, shaping, measuring and text geometry on cosmic-text, shared by the renderers |
 | `rust-gui-render-wgpu` | Ordered GPU rendering, glyph atlas and image atlas |
+| `rust-gui-render-cpu` | The same display list rasterized without a GPU, for screenshots, export and as the host's fallback |
 | `rust-gui-winit` | Native windows, input, worker wakeups and mailboxes, AccessKit mapping, inspector hosting and presentation |
 | `rust-gui-image` | PNG, JPEG, WebP, GIF and SVG decoding and the background loader; `rust_gui::image` behind the default `images` feature |
 | `rust-gui-fluent` | Fluent catalogs for `Ui::tr`, with Czech and German for the framework's own texts; `rust_gui::fluent` behind the default `fluent` feature |

@@ -10,6 +10,8 @@ pub use rust_gui_fluent as fluent;
 pub use rust_gui_icu as icu;
 #[cfg(feature = "images")]
 pub use rust_gui_image as image;
+/// Renders a scene to pixels without a graphics adapter.
+pub use rust_gui_render_cpu::{CpuRenderer, CpuStats};
 pub use rust_gui_scene::{
     Affine, Affinity, Color, Image, Point, Primitive, Rect, Scene, Size, VectorImage,
 };

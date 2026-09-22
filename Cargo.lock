@@ -3576,6 +3576,7 @@ dependencies = [
  "rust-gui-fluent",
  "rust-gui-icu",
  "rust-gui-image",
+ "rust-gui-render-cpu",
  "rust-gui-scene",
  "rust-gui-syntax",
  "rust-gui-winit",
@@ -3642,6 +3643,18 @@ dependencies = [
  "image",
  "resvg",
  "rust-gui-scene",
+]
+
+[[package]]
+name = "rust-gui-render-cpu"
+version = "0.1.0"
+dependencies = [
+ "pollster",
+ "rust-gui-render-wgpu",
+ "rust-gui-scene",
+ "rust-gui-text",
+ "tiny-skia 0.12.0",
+ "wgpu",
 ]
 
 [[package]]
