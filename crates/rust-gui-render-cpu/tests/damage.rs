@@ -276,3 +276,146 @@ fn closing_a_menu_by_its_own_button_leaves_nothing_of_it_behind() {
         "the menu is closed"
     );
 }
+
+/// Everything the examples draw over their content: a tooltip on a dwell, a
+/// context menu, a popover, a modal dialog with its scrim, and a toast that
+/// expires on its own. Each covers part of the window and then goes, which
+/// is where stale pixels come from.
+#[test]
+fn every_overlay_leaves_the_window_as_it_found_it() {
+    use rust_gui_core::{DialogOptions, MenuItem, PopoverOptions, TOOLTIP_DELAY, Toast};
+    use std::time::Duration;
+
+    #[derive(Default)]
+    struct Over {
+        dialog: bool,
+        popover: bool,
+        toasted: bool,
+    }
+
+    let mut context = Context::new();
+    let mut app = Over::default();
+    let mut incremental = CpuRenderer::with_text_system(fonts());
+    let mut whole = CpuRenderer::with_text_system(fonts());
+    let physical = [SIZE.width as u32, SIZE.height as u32];
+    let mut clock = Duration::ZERO;
+    let mut frame = |context: &mut Context, app: &mut Over, tick: Duration, step: &str| {
+        clock += tick;
+        context.set_now(clock);
+        let declare = |context: &mut Context, app: &mut Over| {
+            context.run(SIZE, &mut MonospaceMeasurer, |ui| {
+                ui.column("page", Style::default().padding(8.0).gap(6.0), |ui| {
+                    ui.label_keyed("title", "Overlays");
+                    ui.button_keyed("hover", "Hover me");
+                    ui.tooltip("What this button does");
+                    ui.context_menu(
+                        "area",
+                        &[MenuItem::new("Cut"), MenuItem::new("Copy")],
+                        Style::default()
+                            .width(Length::Percent(1.0))
+                            .height(Length::Px(60.0)),
+                        |ui| ui.label_keyed("inside", "Right click here"),
+                    );
+                    ui.popover(
+                        "popover",
+                        &mut app.popover,
+                        PopoverOptions::default(),
+                        |ui| {
+                            ui.label_keyed("note", "A popover over the page");
+                        },
+                    );
+                    for row in 0..4 {
+                        ui.label_keyed(format!("row{row}"), format!("A line of text {row}"));
+                    }
+                    ui.dialog(
+                        "dialog",
+                        &mut app.dialog,
+                        DialogOptions::new("A dialog"),
+                        |ui, _| ui.label_keyed("body", "Over everything"),
+                    );
+                    if !app.toasted {
+                        app.toasted = true;
+                        ui.toast(Toast::new("Saved").duration(Duration::from_millis(600)));
+                    }
+                });
+            })
+        };
+        let stats = declare(context, app);
+        if stats.activations > 0 {
+            declare(context, app);
+        }
+        let damage: Vec<_> = context.damage_regions().to_vec();
+        let scene = context.scene();
+        let partial = incremental
+            .render_damaged(physical, 1.0, scene, CLEAR, &damage)
+            .to_vec();
+        let full = whole.render(physical, 1.0, scene, CLEAR).to_vec();
+        let differing = partial
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(full.as_chunks::<4>().0)
+            .enumerate()
+            .filter(|(_, (left, right))| left != right)
+            .map(|(at, _)| (at % physical[0] as usize, at / physical[0] as usize))
+            .collect::<Vec<_>>();
+        assert!(
+            differing.is_empty(),
+            "after {step}, {} pixels differ, first: {:?}",
+            differing.len(),
+            &differing[..differing.len().min(4)]
+        );
+    };
+    let tick = Duration::from_millis(16);
+    frame(&mut context, &mut app, tick, "the first frame");
+    // The toast is raised on the first frame and expires on its own.
+    for step in 0..60 {
+        frame(&mut context, &mut app, tick, &format!("toast frame {step}"));
+    }
+
+    let at = |context: &Context, path: &[&str]| {
+        let bounds = context.node(context.find(path).unwrap()).unwrap().bounds;
+        Point {
+            x: bounds.x + bounds.width / 2.0,
+            y: bounds.y + bounds.height / 2.0,
+        }
+    };
+    // A tooltip appears after the dwell and goes when the pointer leaves.
+    let hover = at(&context, &["page", "hover"]);
+    context.event(Event::PointerMoved(hover));
+    frame(&mut context, &mut app, tick, "hovering");
+    frame(
+        &mut context,
+        &mut app,
+        TOOLTIP_DELAY,
+        "the tooltip appearing",
+    );
+    frame(&mut context, &mut app, tick, "the tooltip settling");
+    context.event(Event::PointerMoved(Point { x: 4.0, y: 4.0 }));
+    frame(&mut context, &mut app, tick, "the tooltip going");
+
+    // A context menu over the page, then dismissed with Escape.
+    let area = at(&context, &["page", "area"]);
+    context.event(Event::ContextMenu(area));
+    frame(&mut context, &mut app, tick, "the context menu");
+    context.event(Event::KeyDown {
+        key: Key::Escape,
+        shift: false,
+        repeat: false,
+    });
+    frame(&mut context, &mut app, tick, "dismissing the context menu");
+
+    // A popover, opened and closed by the application.
+    app.popover = true;
+    frame(&mut context, &mut app, tick, "the popover");
+    app.popover = false;
+    frame(&mut context, &mut app, tick, "closing the popover");
+
+    // A modal dialog, with the scrim over everything.
+    app.dialog = true;
+    frame(&mut context, &mut app, tick, "the dialog");
+    frame(&mut context, &mut app, tick, "the dialog settling");
+    app.dialog = false;
+    frame(&mut context, &mut app, tick, "closing the dialog");
+    frame(&mut context, &mut app, tick, "after the dialog");
+}

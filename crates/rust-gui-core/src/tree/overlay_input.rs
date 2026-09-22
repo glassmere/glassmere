@@ -133,6 +133,7 @@ impl Context {
         if rect.y + height > viewport.height {
             rect.y = (anchor.map_or(node.bounds.y, |pointer| pointer.y) - height - 6.0).max(0.0);
         }
+        self.painted_overlay(rect);
         scene.primitives.push(Primitive::Quad {
             rect,
             color: self.theme.popup,

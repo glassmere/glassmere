@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 32. Every row reads Done, which means the contract exists, is tested and is documented in a milestone report. Each note also says what that row still does not do.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 33. Every row reads Done, which means the contract exists, is tested and is documented in a milestone report. Each note also says what that row still does not do.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -8,7 +8,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 2 | Stable widget identity | Done | Explicit/positional keys, monotonic `NodeId` shared by layout, input, focus, accessibility, testing and the inspector. |
 | 3 | Incremental updates | Done | Property comparison limits layout and paint work, and `Ui::memo` keeps a subtree without declaring it again while the state it was declared from is unchanged, without missing the input inside it (milestone 15). |
 | 4 | Incremental layout | Done | Taffy dirty subtrees; same-size text changes skip layout. |
-| 5 | Incremental rendering | Done | Damage tracking, subtree paint caches, retained GPU buffers and text batching, and presentation that redraws only the damaged pixels on both renderers, proved frame by frame against a full repaint (milestone 15). |
+| 5 | Incremental rendering | Done | Damage tracking, subtree paint caches, retained GPU buffers and text batching, and presentation that redraws only the damaged pixels on both renderers, proved frame by frame against a full repaint, including every overlay a window draws over itself (milestones 15, 32, 33). |
 | 6 | First-class virtualization | Done | Lists, trees and grids realize only the viewport (milestone 4) and the code editor only the visible lines (milestone 7b). Measured: a million-row table declares 373 elements a frame, a hundred-thousand-node tree 139, and a 3.2 MB file opens in 47 microseconds (milestone 24). |
 | 7 | Excellent text system | Done | Unicode, graphemes, fallback, ligatures, emoji, IME, selection, clipboard, undo/redo, rich text blocks with links, syntect highlighting, a rope document with virtualized line rendering, a WYSIWYG rich text editor with Markdown persistence. Visual or logical caret order in bidirectional text with caret affinity, right-to-left alignment. A paragraph can be forced to start in either direction, and the find bar searches by regular expression behind the `regex` feature (milestone 19). Missing: vertical writing modes, hyphenation. |
 | 8 | Accessibility from day one | Done | AccessKit roles, labels, actions, keyboard navigation, tree visible in the inspector's Accessibility tab. Screen-reader speech review remains manual. |

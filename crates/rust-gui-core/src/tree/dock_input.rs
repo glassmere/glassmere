@@ -511,15 +511,18 @@ impl Context {
     }
 
     /// Drop preview, indicators and the dragged tab's label. Painted above content.
-    pub(super) fn paint_dock_drag(&self, scene: &mut Scene, measurer: &mut impl TextMeasurer) {
+    pub(super) fn paint_dock_drag(&mut self, scene: &mut Scene, measurer: &mut impl TextMeasurer) {
         let Some(drag) = self.dock_drag.as_ref().filter(|drag| drag.active) else {
             return;
         };
+        // Nothing here is a node, so every rectangle names itself as damage.
+        let mut painted = Vec::new();
         let theme = &self.theme;
         let accent = theme.accent;
         if let Some((_, preview)) = &drag.target
             && preview.width > 0.0
         {
+            painted.push(*preview);
             scene.primitives.push(Primitive::Quad {
                 rect: *preview,
                 color: Color(accent.0, accent.1, accent.2, 70),
@@ -536,6 +539,7 @@ impl Context {
         }
         let pointer = self.pointer.unwrap_or_default();
         for (zone, rect) in indicators {
+            painted.push(rect);
             scene.primitives.push(Primitive::Quad {
                 rect,
                 color: theme.popup,
@@ -569,6 +573,7 @@ impl Context {
             width: measured.width + 16.0,
             height: measured.height + 12.0,
         };
+        painted.push(rect);
         scene.primitives.push(Primitive::Quad {
             rect,
             color: theme.popup,
@@ -585,5 +590,8 @@ impl Context {
             style,
             color: theme.text,
         });
+        for rect in painted {
+            self.painted_overlay(rect);
+        }
     }
 }

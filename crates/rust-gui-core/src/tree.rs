@@ -743,6 +743,10 @@ pub struct Context {
     /// Where the maximize button of a title bar the view draws itself is,
     /// for a host that has to tell the platform.
     maximize_button: Option<Rect>,
+    /// What the overlays painted straight into the last scene. They are not
+    /// nodes, so nothing invalidates them: the frame one appears, moves or
+    /// goes has to name its rectangle itself.
+    painted_overlays: Vec<Rect>,
     redraw_requested: bool,
     caret_movement: crate::CaretMovement,
     direction: crate::Direction,
@@ -968,6 +972,7 @@ impl Default for Context {
             size: Size::default(),
             last_title_press: None,
             maximize_button: None,
+            painted_overlays: Vec::new(),
             redraw_requested: false,
             caret_movement: crate::CaretMovement::Visual,
             direction: crate::Direction::Ltr,
@@ -2119,6 +2124,12 @@ impl Context {
                 self.paint(panel).append_to(&mut scene.primitives);
             }
             self.paint_ghosts(&mut scene);
+            // Whatever the overlays drew last time is repainted whether they
+            // draw it again or not, because nothing else knows they were
+            // there.
+            for rect in std::mem::take(&mut self.painted_overlays) {
+                self.add_damage(rect);
+            }
             self.paint_dock_drag(&mut scene, measurer);
             self.paint_tooltip(&mut scene, measurer);
             self.scene = scene;
@@ -2609,6 +2620,13 @@ impl Context {
         for child in children {
             self.update_bounds(child, origin, clip);
         }
+    }
+
+    /// An overlay painted into the scene rather than declared as a node:
+    /// its rectangle is damaged now and again on the frame it goes.
+    pub(super) fn painted_overlay(&mut self, rect: Rect) {
+        self.add_damage(rect);
+        self.painted_overlays.push(rect);
     }
 
     fn add_damage(&mut self, rect: Rect) {
