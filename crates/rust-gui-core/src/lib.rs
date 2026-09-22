@@ -1,5 +1,6 @@
 //! Stable identity, reconciliation, layout, input, and semantic metadata.
 mod animation;
+mod clipboard;
 mod collection;
 mod command;
 mod controls;
@@ -29,6 +30,7 @@ mod ui;
 mod widget;
 
 pub use animation::{Animation, Easing, Effect, Keyframe, Repeat, Transform, Transition};
+pub use clipboard::Clip;
 pub use collection::{
     CellEditor, CellValue, FILTER_DELAY, GridColumn, GridColumns, GridModel, GridState, ItemId,
     ItemOrder, ListModel, ListResponse, ListState, ModelError, SortDirection, TreeItem, TreeModel,

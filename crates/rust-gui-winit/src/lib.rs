@@ -669,7 +669,7 @@ struct Application<F> {
     error: Option<Box<dyn Error>>,
     frames: u64,
     accessibility_requested: bool,
-    clipboard: Rc<RefCell<Option<arboard::Clipboard>>>,
+    clipboard: Rc<RefCell<input::HostClipboard>>,
     restore_focus: Option<rust_gui_core::NodeId>,
     close_requested: bool,
     pointer: Point,
@@ -689,6 +689,12 @@ struct Application<F> {
     diagnostics_seen: usize,
     /// A drag that was handed to the operating system and has not ended.
     os_drag: Option<std::sync::mpsc::Receiver<rust_gui_core::DragOutcome>>,
+    /// An in-app drag has left this window and the platform would not carry
+    /// it. The desktop decides whether another of its windows is under the
+    /// pointer.
+    pub(crate) drag_escaped: bool,
+    /// Font families already reported as missing, so each is said once.
+    families_seen: std::collections::HashSet<String>,
     /// Some inspector is open, so the shared renderer profiles its frames.
     profile_gpu: bool,
     /// An inspector is looking at this window.
@@ -701,7 +707,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         options: AppOptions,
         view: F,
         state: WindowState,
-        clipboard: Rc<RefCell<Option<arboard::Clipboard>>>,
+        clipboard: Rc<RefCell<input::HostClipboard>>,
         wake: WakeHandle,
     ) -> Self {
         let mut context = Context::new();
@@ -738,6 +744,8 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             retry_pending: false,
             diagnostics_seen: 0,
             os_drag: None,
+            drag_escaped: false,
+            families_seen: std::collections::HashSet::new(),
             profile_gpu: false,
             inspected: false,
             started: Instant::now(),
@@ -864,6 +872,31 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         }
     }
 
+    /// Says so when a style asked for a font family that is not installed.
+    /// The text is drawn in another one either way; the point is that the
+    /// application finds out.
+    fn check_families(
+        context: &mut Context,
+        seen: &mut std::collections::HashSet<String>,
+        fonts: &rust_gui_render_wgpu::TextSystem,
+    ) {
+        let missing: Vec<String> = context
+            .requested_families()
+            .into_iter()
+            .filter(|name| !seen.contains(name) && !fonts.has_family(name))
+            .collect();
+        if missing.is_empty() {
+            return;
+        }
+        for name in &missing {
+            seen.insert(name.clone());
+        }
+        context.report_font(format!(
+            "font families not installed, so another font is used: {}",
+            missing.join(", ")
+        ));
+    }
+
     fn request_redraw(&self) {
         if let Some(state) = &self.state {
             state.window.request_redraw();
@@ -919,6 +952,18 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                     .run(logical_size, shared.renderer.text_system(), &mut self.view);
             pending = again.activations;
             stats = merge(stats, again);
+        }
+        Self::check_families(
+            &mut self.context,
+            &mut self.families_seen,
+            shared.renderer.text_system(),
+        );
+        if let Some(clip) = self.context.take_clip() {
+            self.clipboard.borrow_mut().write_clip(clip);
+        }
+        if self.context.take_paste_request() {
+            let clip = self.clipboard.borrow_mut().read_clip();
+            self.context.set_clip(clip);
         }
         if let Some(text) = self.context.take_clipboard() {
             input::write_clipboard(&mut self.clipboard.borrow_mut(), &text);
@@ -1178,8 +1223,47 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         Ok(())
     }
 
-    fn input(&mut self, event: Event) {
+    pub(crate) fn input(&mut self, event: Event) {
         self.offer(event);
+    }
+
+    /// Where the pointer is on the desktop, in physical pixels, which is the
+    /// only frame of reference two windows share.
+    pub(crate) fn screen_pointer(&self) -> Option<(f64, f64)> {
+        let state = self.state.as_ref()?;
+        let origin = state.window.inner_position().ok()?;
+        let scale = state.window.scale_factor();
+        Some((
+            f64::from(origin.x) + f64::from(self.pointer.x) * scale,
+            f64::from(origin.y) + f64::from(self.pointer.y) * scale,
+        ))
+    }
+
+    /// That point back in this window's own logical coordinates.
+    pub(crate) fn local_pointer(&self, (x, y): (f64, f64)) -> Option<Point> {
+        let state = self.state.as_ref()?;
+        let origin = state.window.inner_position().ok()?;
+        let scale = state.window.scale_factor();
+        Some(Point {
+            x: ((x - f64::from(origin.x)) / scale) as f32,
+            y: ((y - f64::from(origin.y)) / scale) as f32,
+        })
+    }
+
+    /// Whether that point is inside this window.
+    pub(crate) fn covers(&self, (x, y): (f64, f64)) -> bool {
+        let Some(state) = &self.state else {
+            return false;
+        };
+        let Ok(origin) = state.window.inner_position() else {
+            return false;
+        };
+        let size = state.window.inner_size();
+        let (left, top) = (f64::from(origin.x), f64::from(origin.y));
+        x >= left
+            && y >= top
+            && x < left + f64::from(size.width)
+            && y < top + f64::from(size.height)
     }
 
     /// Like `input`, and says whether the event was taken.
@@ -1319,15 +1403,20 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                 // A drag that leaves the window becomes the system's, if the
                 // platform can carry its payload; otherwise it stays ours and
                 // may still come back.
-                if outside
-                    && self.os_drag.is_none()
-                    && let Some(payload) = self.context.dragging()
-                    && let Some(state) = &self.state
-                    && let Some(done) = os_drag::start(&state.window, payload)
-                {
-                    self.context.export_drag();
-                    self.os_drag = Some(done);
-                    self.poll_os_drag();
+                if outside && self.os_drag.is_none() && self.context.dragging().is_some() {
+                    let exported = self
+                        .state
+                        .as_ref()
+                        .and_then(|state| os_drag::start(&state.window, self.context.dragging()?));
+                    if let Some(done) = exported {
+                        self.context.export_drag();
+                        self.os_drag = Some(done);
+                        self.poll_os_drag();
+                    } else {
+                        // Another window of this application may be under the
+                        // pointer. Only the desktop knows where they are.
+                        self.drag_escaped = true;
+                    }
                 }
             }
             // ponytail: winit 0.30 carries no drop position and Windows sends no

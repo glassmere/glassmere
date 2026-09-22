@@ -291,3 +291,91 @@ fn duplicate_enabled_shortcuts_are_rejected_at_declaration() {
         ui.command_button("b", &command);
     });
 }
+
+/// A drag that leaves one window for another of the same application. The
+/// host carries the payload; both windows are ordinary contexts.
+#[test]
+fn a_drag_crosses_to_another_window_and_the_source_hears_how_it_ended() {
+    use rust_gui_core::DragOutcome;
+    let (mut first, mut second) = (Context::new(), Context::new());
+    let item = DragPayload::Item {
+        domain: "card".into(),
+        id: rust_gui_core::ItemId(7),
+    };
+    let payload = item.clone();
+    let mut source_outcome = None;
+    let declare_first = |context: &mut Context, outcome: &mut Option<DragOutcome>| {
+        frame(context, |ui| {
+            *outcome = ui.drag_source("source", "Card", payload.clone(), boxed(), |ui| {
+                ui.label("Card")
+            });
+        });
+    };
+    let mut dropped = None;
+    let declare_second = |context: &mut Context, dropped: &mut Option<DragPayload>| {
+        frame(context, |ui| {
+            let landed = ui.drop_target("bin", "Item bin", DropKind::Item, boxed(), |_| {});
+            if landed.is_some() {
+                *dropped = landed;
+            }
+        });
+    };
+    declare_first(&mut first, &mut source_outcome);
+    declare_second(&mut second, &mut dropped);
+
+    // The drag starts, then the pointer leaves the first window.
+    first.event(Event::PointerMoved(center(&first, &["source"])));
+    first.event(Event::PointerDown);
+    first.event(Event::PointerMoved(Point { x: 600.0, y: 20.0 }));
+    let carried = first.export_drag().expect("the host takes it over");
+    assert_eq!(carried, item);
+    declare_first(&mut first, &mut source_outcome);
+    assert!(!dragging(&first, &["source"]));
+
+    // The host finds the second window under the pointer and hands it over.
+    let over = center(&second, &["bin"]);
+    assert!(second.adopt_drag(carried.clone(), over));
+    declare_second(&mut second, &mut dropped);
+    assert!(can_drop(&second, &["bin"]), "the target lights up");
+    assert!(second.accepts_drop(over, &carried), "and would take it");
+    second.event(Event::PointerUp);
+    declare_second(&mut second, &mut dropped);
+    assert_eq!(dropped, Some(item));
+
+    // The window it came from is told, once.
+    first.finish_exported_drag(DragOutcome::Dropped);
+    declare_first(&mut first, &mut source_outcome);
+    assert_eq!(source_outcome, Some(DragOutcome::Dropped));
+    declare_first(&mut first, &mut source_outcome);
+    assert_eq!(source_outcome, None);
+}
+
+/// Carrying it on to a third window, or back, takes it away again without
+/// telling the window it started in anything.
+#[test]
+fn an_adopted_drag_can_be_taken_back_without_ending_it() {
+    let mut context = Context::new();
+    let text = DragPayload::Text("hello".into());
+    let mut dropped = None;
+    let declare = |context: &mut Context, dropped: &mut Option<DragPayload>| {
+        frame(context, |ui| {
+            let landed = ui.drop_target("bin", "Text bin", DropKind::Text, boxed(), |_| {});
+            if landed.is_some() {
+                *dropped = landed;
+            }
+        });
+    };
+    declare(&mut context, &mut dropped);
+    let over = center(&context, &["bin"]);
+    assert!(context.adopt_drag(text.clone(), over));
+    // A second window cannot adopt what it already carries.
+    assert!(!context.adopt_drag(text.clone(), over));
+    assert_eq!(context.withdraw_drag(), Some(text.clone()));
+    assert_eq!(context.withdraw_drag(), None);
+    declare(&mut context, &mut dropped);
+    assert!(!can_drop(&context, &["bin"]));
+    // Nothing was dropped and nothing was exported, so no outcome is owed.
+    context.event(Event::PointerUp);
+    declare(&mut context, &mut dropped);
+    assert_eq!(dropped, None);
+}

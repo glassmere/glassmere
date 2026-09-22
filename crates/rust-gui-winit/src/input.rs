@@ -1,5 +1,9 @@
 use crate::Application;
-use rust_gui_core::{Action, Context, EditorCommand, Event, Key, NodeId, TextEdit, TextMove, Ui};
+use rust_gui_core::{
+    Action, Clip, Context, EditorCommand, Event, Key, NodeId, TextEdit, TextMove, Ui,
+};
+#[cfg(feature = "images")]
+use rust_gui_scene::Image;
 use winit::{
     event::{ElementState, KeyEvent},
     keyboard::{Key as WinitKey, ModifiersState, NamedKey},
@@ -184,23 +188,105 @@ trait ClipboardAccess {
     fn write(&mut self, text: &str) -> Result<(), ()>;
 }
 
-impl ClipboardAccess for Option<arboard::Clipboard> {
-    fn read(&mut self) -> Result<String, ()> {
-        if self.is_none() {
-            *self = Some(arboard::Clipboard::new().map_err(|_| ())?);
+/// The system clipboard, and what this application last put on it. The text
+/// that went with our private bytes is kept so that we can tell whether the
+/// clipboard is still ours: if something else has copied since, the text has
+/// changed and the bytes are stale.
+#[derive(Default)]
+pub(crate) struct HostClipboard {
+    system: Option<arboard::Clipboard>,
+    owned: Option<(String, String, Vec<u8>)>,
+}
+
+impl HostClipboard {
+    fn system(&mut self) -> Result<&mut arboard::Clipboard, ()> {
+        if self.system.is_none() {
+            self.system = Some(arboard::Clipboard::new().map_err(|_| ())?);
         }
-        self.as_mut().unwrap().get_text().map_err(|_| ())
+        self.system.as_mut().ok_or(())
+    }
+
+    /// Puts a copy on the clipboard. An image and text cannot go on together
+    /// through this platform layer, so an image wins; anything private stays
+    /// here, beside the text that identifies it.
+    pub(crate) fn write_clip(&mut self, clip: Clip) {
+        self.owned = clip
+            .custom
+            .as_ref()
+            .map(|(format, bytes)| (clip.text.clone(), format.clone(), bytes.clone()));
+        #[cfg(feature = "images")]
+        if let Some((width, height, pixels)) = clip.image.as_ref().and_then(Image::pixels) {
+            let straight = straight_rgba(pixels);
+            if let Ok(system) = self.system() {
+                let _ = system.set_image(arboard::ImageData {
+                    width: width as usize,
+                    height: height as usize,
+                    bytes: straight.into(),
+                });
+            }
+            return;
+        }
+        if !clip.text.is_empty() {
+            let _ = self.write(&clip.text);
+        }
+    }
+
+    /// What is on the clipboard now. Private bytes come back only while the
+    /// text beside them is still the one they were copied with.
+    pub(crate) fn read_clip(&mut self) -> Clip {
+        let text = self.read().unwrap_or_default();
+        let mut clip = Clip::text(text.clone());
+        #[cfg(feature = "images")]
+        if let Ok(system) = self.system()
+            && let Ok(image) = system.get_image()
+            && let Some(image) = Image::from_rgba8(
+                image.width as u32,
+                image.height as u32,
+                image.bytes.into_owned(),
+            )
+        {
+            clip.image = Some(image);
+        }
+        clip.custom = self
+            .owned
+            .as_ref()
+            .filter(|(copied, _, _)| *copied == text)
+            .map(|(_, format, bytes)| (format.clone(), bytes.clone()));
+        clip
+    }
+}
+
+/// Undoes the premultiplication scenes carry, which is what the platform
+/// clipboards want.
+#[cfg(feature = "images")]
+fn straight_rgba(premultiplied: &[u8]) -> Vec<u8> {
+    let mut straight = Vec::with_capacity(premultiplied.len());
+    for pixel in premultiplied.as_chunks::<4>().0 {
+        let alpha = pixel[3];
+        for channel in &pixel[..3] {
+            straight.push(if alpha == 0 {
+                0
+            } else {
+                ((u32::from(*channel) * 255 + u32::from(alpha) / 2) / u32::from(alpha)).min(255)
+                    as u8
+            });
+        }
+        straight.push(alpha);
+    }
+    straight
+}
+
+impl ClipboardAccess for HostClipboard {
+    fn read(&mut self) -> Result<String, ()> {
+        self.system()?.get_text().map_err(|_| ())
     }
     fn write(&mut self, text: &str) -> Result<(), ()> {
-        if self.is_none() {
-            *self = Some(arboard::Clipboard::new().map_err(|_| ())?);
-        }
-        self.as_mut().unwrap().set_text(text).map_err(|_| ())
+        self.system()?.set_text(text).map_err(|_| ())
     }
 }
 
 /// Best effort: a cut already happened in the document and stays undoable.
-pub(super) fn write_clipboard(clipboard: &mut Option<arboard::Clipboard>, text: &str) {
+pub(super) fn write_clipboard(clipboard: &mut HostClipboard, text: &str) {
     let _ = clipboard.write(text);
 }
 
@@ -459,5 +545,40 @@ mod tests {
         window_focus(&mut context, &mut restore, false);
         context.run(Size::new(400.0, 200.0), &mut MonospaceMeasurer, |_| {});
         assert!(!window_focus(&mut context, &mut restore, true));
+    }
+}
+
+#[cfg(test)]
+mod clipboard_tests {
+    use super::*;
+
+    /// Takes over the system clipboard, so it is opt-in:
+    /// `cargo test -p rust-gui-winit --features images -- --ignored`.
+    #[test]
+    #[ignore = "writes to the system clipboard"]
+    #[cfg(feature = "images")]
+    fn an_image_and_private_bytes_survive_a_round_trip_through_the_platform() {
+        let mut clipboard = HostClipboard::default();
+        // Half-transparent blue, premultiplied as scenes hold it.
+        let image = Image::from_premultiplied(2, 1, vec![255, 0, 0, 255, 0, 0, 64, 128])
+            .expect("two pixels");
+        clipboard.write_clip(Clip::text("Shape").with_image(image.clone()));
+        let read = clipboard.read_clip();
+        let (width, height, pixels) = read.image.as_ref().and_then(Image::pixels).expect("pixels");
+        assert_eq!((width, height), (2, 1));
+        assert_eq!(&pixels[..4], &[255, 0, 0, 255]);
+        // Straight blue 128 out of alpha 128 comes back premultiplied to 64.
+        assert_eq!(pixels[7], 128);
+        assert!(pixels[6].abs_diff(64) <= 1, "{:?}", &pixels[4..]);
+
+        // Private bytes come back while the text beside them is still ours.
+        clipboard.write_clip(Clip::custom("app/shape", vec![7, 8]).with_text("Shape"));
+        assert_eq!(
+            clipboard.read_clip().bytes("app/shape"),
+            Some(&[7, 8][..]),
+            "the clipboard is still ours"
+        );
+        clipboard.write_clip(Clip::text("something else"));
+        assert_eq!(clipboard.read_clip().bytes("app/shape"), None);
     }
 }

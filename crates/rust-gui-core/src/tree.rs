@@ -674,6 +674,8 @@ pub struct Context {
     /// Elements the view built, and the bytes of key and text in them.
     declared: std::cell::Cell<usize>,
     declared_bytes: std::cell::Cell<usize>,
+    /// Font families the declaration named, for the host to check.
+    families: std::cell::RefCell<std::collections::BTreeSet<String>>,
     /// Element vectors from earlier declarations, waiting to be filled
     /// again. A declaration is thrown away every frame; the memory it used
     /// does not have to be.
@@ -686,6 +688,11 @@ pub struct Context {
     dock_drag: Option<Box<dock_input::DockDrag>>,
     dock_grab: Option<dock_input::DockGrab>,
     clipboard_out: Option<String>,
+    /// What `Ui::copy` left for the host, what `Ui::request_paste` asked
+    /// for, and what the host last read back.
+    clip_out: Option<crate::Clip>,
+    paste_requested: bool,
+    clip_in: Option<crate::Clip>,
     redraw_requested: bool,
     caret_movement: crate::CaretMovement,
     direction: crate::Direction,
@@ -886,6 +893,7 @@ impl Default for Context {
             skipped: std::cell::Cell::new(0),
             declared: std::cell::Cell::new(0),
             declared_bytes: std::cell::Cell::new(0),
+            families: std::cell::RefCell::new(std::collections::BTreeSet::new()),
             spare: std::cell::RefCell::new(Vec::new()),
             submitted: HashSet::new(),
             popup: None,
@@ -894,6 +902,9 @@ impl Default for Context {
             dock_drag: None,
             dock_grab: None,
             clipboard_out: None,
+            clip_out: None,
+            paste_requested: false,
+            clip_in: None,
             redraw_requested: false,
             caret_movement: crate::CaretMovement::Visual,
             direction: crate::Direction::Ltr,
@@ -1010,7 +1021,10 @@ impl Context {
                     error: None,
                 });
                 let first = entry.error.as_deref() != Some(&error);
-                entry.error = Some(error);
+                entry.error = Some(error.clone());
+                if first {
+                    self.diagnose_resource(path, &error);
+                }
                 first
             }
         };
@@ -1122,6 +1136,27 @@ impl Context {
 
     pub fn style_warnings(&self) -> &[String] {
         &self.style_warnings
+    }
+
+    /// What `Ui::copy` left, for the host to put on the clipboard.
+    pub fn take_clip(&mut self) -> Option<crate::Clip> {
+        self.clip_out.take()
+    }
+
+    /// Whether a view asked for what is on the clipboard. Answer with
+    /// `set_clip`, which asks for a declaration of its own.
+    pub fn take_paste_request(&mut self) -> bool {
+        std::mem::take(&mut self.paste_requested)
+    }
+
+    /// What the host read from the clipboard.
+    pub fn set_clip(&mut self, clip: crate::Clip) {
+        self.clip_in = Some(clip);
+        self.redraw_requested = true;
+    }
+
+    pub(crate) fn pasted(&self) -> Option<&crate::Clip> {
+        self.clip_in.as_ref()
     }
 
     /// What `Ui::observe` last saw of a reactive store, for the inspector.
@@ -1572,6 +1607,15 @@ impl Context {
         }
     }
 
+    /// A font family a style named, kept for the host to check once the
+    /// declaration is over.
+    pub(crate) fn note_family(&self, name: &str) {
+        let mut families = self.families.borrow_mut();
+        if !families.contains(name) {
+            families.insert(name.to_owned());
+        }
+    }
+
     /// One more element, with the bytes its key and text carry.
     pub(crate) fn count_element(&self, bytes: usize) {
         self.declared.set(self.declared.get() + 1);
@@ -1644,6 +1688,7 @@ impl Context {
         self.skipped.set(0);
         self.declared.set(0);
         self.declared_bytes.set(0);
+        self.families.borrow_mut().clear();
         self.nodes.get_mut(&self.root).unwrap().resolved = self.root_text();
         let mut ui = Ui {
             context: self,
@@ -1687,6 +1732,10 @@ impl Context {
         self.redraw_requested = redraw;
         self.deliver_emitted(std::mem::take(&mut host.emitted));
         self.watch_requests = host.watched;
+        if host.clip.is_some() {
+            self.clip_out = host.clip;
+        }
+        self.paste_requested |= host.paste;
         self.image_requests = host.images;
         self.trim_images();
         self.apply_toasts(host.toasts);

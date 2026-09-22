@@ -16,6 +16,11 @@ pub enum DiagnosticKind {
     OversizedLayer,
     /// A container declares a very large number of children directly.
     HugeCollection,
+    /// A file the view asked for could not be read or decoded.
+    Resource,
+    /// A style asks for a font family that is not installed, so the text is
+    /// drawn in another one.
+    Font,
 }
 
 /// One framework warning. Repeats of the same kind on the same node count up
@@ -86,6 +91,18 @@ impl Context {
         self.diagnostic.enabled
     }
 
+    /// Reports a font family the host could not find. Hosts call this after
+    /// a declaration, for the families `requested_families` names.
+    pub fn report_font(&mut self, message: impl Into<String>) {
+        self.diagnose(DiagnosticKind::Font, None, message.into());
+    }
+
+    /// Families a style named during the last declaration, for a host that
+    /// can tell whether they are installed.
+    pub fn requested_families(&self) -> Vec<String> {
+        self.families.borrow().iter().cloned().collect()
+    }
+
     pub fn clear_diagnostics(&mut self) {
         self.diagnostic.entries.clear();
     }
@@ -107,6 +124,17 @@ impl Context {
         }
         keys.reverse();
         keys.join("/")
+    }
+
+    /// A file that could not be used. Named rather than pointed at, because
+    /// the node that asked for it is often long gone by the time the host
+    /// answers.
+    pub(super) fn diagnose_resource(&mut self, path: &std::path::Path, error: &str) {
+        self.diagnose(
+            DiagnosticKind::Resource,
+            None,
+            format!("{}: {error}", path.display()),
+        );
     }
 
     pub(super) fn diagnose(&mut self, kind: DiagnosticKind, node: Option<NodeId>, message: String) {

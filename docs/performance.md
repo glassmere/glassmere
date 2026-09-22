@@ -55,10 +55,10 @@ Release builds of the counter example, which is a whole application:
 
 | Build | Size |
 | --- | --- |
-| Default features: desktop, syntax, images, derive, fluent, regex | 15.6 MB |
-| `--no-default-features --features desktop` | 12.2 MB |
+| Default features: desktop, syntax, images, derive, fluent, regex | 15.8 MB |
+| `--no-default-features --features desktop` | 12.3 MB |
 
-There is nothing to install beside it and no runtime to ship. On Windows the debug information is in a separate `.pdb`, so `-C strip=symbols` changes nothing: both numbers above are what is deployed. The 3.4 MB difference is syntax highlighting, image decoding, translation catalogs and regular expressions, each of which is a feature an application turns off if it does not use it.
+There is nothing to install beside it and no runtime to ship. On Windows the debug information is in a separate `.pdb`, so `-C strip=symbols` changes nothing: both numbers above are what is deployed. The 3.5 MB difference is syntax highlighting, image decoding, translation catalogs and regular expressions, each of which is a feature an application turns off if it does not use it.
 
 ## Allocation
 

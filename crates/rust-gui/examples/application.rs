@@ -113,6 +113,8 @@ struct State {
     tree: TreeModel,
     tree_state: ListState,
     archived: Vec<ItemId>,
+    /// Tickets dragged from the main window into the details window.
+    linked: Vec<ItemId>,
     files: Vec<String>,
     saves: u32,
     background: u32,
@@ -149,6 +151,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tree,
         tree_state: ListState::default(),
         archived: Vec::new(),
+        linked: Vec::new(),
         files: Vec::new(),
         saves: 0,
         background: 0,
@@ -300,7 +303,7 @@ fn open_details(desktop: &DesktopHandle, shared: &Shared, state: &mut State, smo
         .open_window(
             AppOptions {
                 title: "Rust GUI / Ticket details".into(),
-                size: Size::new(440.0, 280.0),
+                size: Size::new(440.0, 460.0),
                 frame_limit: smoke.then_some(3),
                 ..AppOptions::default()
             },
@@ -315,6 +318,44 @@ fn open_details(desktop: &DesktopHandle, shared: &Shared, state: &mut State, smo
                             ui.label_keyed("status", format!("Status: {}", Tickets::status(id)));
                         }
                         None => ui.label_keyed("ticket", "No ticket selected in the main window."),
+                    }
+                    drop(state);
+                    // A drag that starts in the main window and ends here:
+                    // the desktop carries the payload across.
+                    let linked = {
+                        let state = shared.lock().unwrap();
+                        if state.linked.is_empty() {
+                            "Drag a ticket here to link it".to_owned()
+                        } else {
+                            format!(
+                                "Linked: {}",
+                                state
+                                    .linked
+                                    .iter()
+                                    .map(|id| format!("#{}", id.0))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            )
+                        }
+                    };
+                    let dropped = ui.drop_target(
+                        "link",
+                        "Link ticket",
+                        DropKind::Item,
+                        Style {
+                            padding: 12.0,
+                            radius: 8.0,
+                            width: Length::Px(380.0),
+                            height: Length::Px(64.0),
+                            background: Some(Color::rgb(64, 48, 96)),
+                            ..Style::default()
+                        },
+                        |ui| {
+                            ui.label_keyed("text", linked);
+                        },
+                    );
+                    if let Some(DragPayload::Item { id, .. }) = dropped {
+                        shared.lock().unwrap().linked.push(id);
                     }
                     ui.label_styled("hint", "Selection changes in the main window redraw this one. Close it from the title bar.", Style {
                         font_size: Some(13.0), foreground: Some(Color::rgb(162, 180, 198)), width: Length::Px(380.0), wrap: TextWrap::Word, ..Style::default()

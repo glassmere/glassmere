@@ -181,6 +181,25 @@ struct InspectorLink {
     shared: Rc<RefCell<InspectorShared>>,
 }
 
+/// A drag that has left the window it started in. The pointer stays
+/// captured by that window while a button is held, so its events are what
+/// carry the payload over the others.
+struct Crossing {
+    source: WindowKey,
+    /// The window holding the payload now, if the pointer is over one.
+    over: Option<WindowKey>,
+    payload: rust_gui_core::DragPayload,
+}
+
+/// What a window event says about the pointer, which is all the carrying
+/// needs to know.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PointerNews {
+    Moved,
+    Released,
+    Nothing,
+}
+
 struct Desktop {
     windows: HashMap<WindowKey, Application<View>>,
     pending: Vec<Pending>,
@@ -194,7 +213,10 @@ struct Desktop {
     wake: WakeHandle,
     next: Arc<AtomicU64>,
     graphics: GraphicsOptions,
-    clipboard: Rc<RefCell<Option<arboard::Clipboard>>>,
+    /// A drag being carried from the window it started in to another of this
+    /// application's windows.
+    crossing: Option<Crossing>,
+    clipboard: Rc<RefCell<input::HostClipboard>>,
     error: Option<Box<dyn Error>>,
 }
 
@@ -250,6 +272,99 @@ impl WindowState {
 }
 
 impl Desktop {
+    /// Carries a drag that has left its window over the application's other
+    /// windows, and finishes it when the button comes up. Called after the
+    /// window's own handling, so the source has already seen the event.
+    fn carry_drag(&mut self, key: WindowKey, news: PointerNews) {
+        let escaped = self
+            .windows
+            .get_mut(&key)
+            .is_some_and(|app| std::mem::take(&mut app.drag_escaped));
+        let Some(at) = self.windows.get(&key).and_then(Application::screen_pointer) else {
+            return;
+        };
+        if self.crossing.is_none() {
+            // Nothing starts unless another window is actually under it.
+            if !escaped || self.window_at(at, Some(key)).is_none() {
+                return;
+            }
+            let Some(payload) = self
+                .windows
+                .get_mut(&key)
+                .and_then(|app| app.context.export_drag())
+            else {
+                return;
+            };
+            self.crossing = Some(Crossing {
+                source: key,
+                over: None,
+                payload,
+            });
+        }
+        let Some(mut crossing) = self.crossing.take() else {
+            return;
+        };
+        match news {
+            PointerNews::Moved => {
+                let target = self.window_at(at, None);
+                if target != crossing.over {
+                    if let Some(old) = crossing.over
+                        && let Some(app) = self.windows.get_mut(&old)
+                    {
+                        app.context.withdraw_drag();
+                        app.request_redraw();
+                    }
+                    if let Some(new) = target
+                        && let Some(app) = self.windows.get_mut(&new)
+                        && let Some(local) = app.local_pointer(at)
+                    {
+                        app.context.adopt_drag(crossing.payload.clone(), local);
+                        app.request_redraw();
+                    }
+                    crossing.over = target;
+                } else if let Some(over) = target.filter(|over| *over != key)
+                    && let Some(app) = self.windows.get_mut(&over)
+                    && let Some(local) = app.local_pointer(at)
+                {
+                    // A window the pointer is merely over has no events of
+                    // its own while another holds the pointer, so its moves
+                    // come from here. The source window moved itself.
+                    app.input(Event::PointerMoved(local));
+                }
+                self.crossing = Some(crossing);
+            }
+            PointerNews::Released => {
+                let mut dropped = false;
+                if let Some(over) = crossing.over
+                    && let Some(app) = self.windows.get_mut(&over)
+                    && let Some(local) = app.local_pointer(at)
+                {
+                    dropped = app.context.accepts_drop(local, &crossing.payload);
+                    app.input(Event::PointerUp);
+                }
+                if let Some(source) = self.windows.get_mut(&crossing.source) {
+                    source.context.finish_exported_drag(if dropped {
+                        rust_gui_core::DragOutcome::Dropped
+                    } else {
+                        rust_gui_core::DragOutcome::Cancelled
+                    });
+                    source.request_redraw();
+                }
+            }
+            PointerNews::Nothing => self.crossing = Some(crossing),
+        }
+    }
+
+    /// Which window that point on the desktop is inside. Overlapping windows
+    /// are not ordered here, so the first match wins.
+    fn window_at(&self, at: (f64, f64), except: Option<WindowKey>) -> Option<WindowKey> {
+        self.windows
+            .iter()
+            .filter(|(key, _)| Some(**key) != except)
+            .find(|(_, app)| app.covers(at))
+            .map(|(key, _)| *key)
+    }
+
     /// The screen a window should open on, or `None` to leave it to the
     /// system. A named screen that is not there falls back to the primary
     /// one, so unplugging a monitor does not hide a window.
@@ -299,7 +414,8 @@ impl Desktop {
             wake,
             next,
             graphics,
-            clipboard: Rc::new(RefCell::new(None)),
+            crossing: None,
+            clipboard: Rc::new(RefCell::new(input::HostClipboard::default())),
             error: None,
         }
     }
@@ -774,7 +890,17 @@ impl ApplicationHandler<UserEvent> for Desktop {
         );
         let app = self.windows.get_mut(&key).unwrap();
         (app.profile_gpu, app.inspected) = (profile_gpu, inspected);
+        let news = match &event {
+            WindowEvent::CursorMoved { .. } => PointerNews::Moved,
+            WindowEvent::MouseInput {
+                state: winit::event::ElementState::Released,
+                button: winit::event::MouseButton::Left,
+                ..
+            } => PointerNews::Released,
+            _ => PointerNews::Nothing,
+        };
         app.window_event(event_loop, event);
+        self.carry_drag(key, news);
         if redraw {
             if self.inspectors.contains_key(&key) {
                 self.apply_inspector(key);

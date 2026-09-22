@@ -24,7 +24,7 @@ The full tables are in [the performance guide](performance.md), which is the oth
 - A table of a million rows declares 353 elements and 2.3 kB and takes 0.53 ms a frame; jumping to a random row costs 1.4 ms. A tree of a hundred thousand nodes is 0.18 ms. A 3.2 MB text file opens in 47 µs and takes 40 µs a frame while typing. Four hundred animating elements cost 0.9 ms.
 - The one slow case is collapsing a branch of the hundred-thousand-node tree, at 6 ms, and that is the example's own model rebuilding its visible order, not the framework.
 - Startup to the first frame is 491 ms, of which the framework's own share is 56 ms: the same window painted by the CPU renderer, which skips the graphics stack, is up in 56 ms. Between the graphics instance and the adapter there are 278 ms of the driver enumerating adapters.
-- A whole application is 15.6 MB with every default feature and 12.2 MB with none of them. On Windows the debug information is in a separate file, so there is nothing to strip.
+- A whole application is 15.8 MB with every default feature and 12.3 MB with none of them. On Windows the debug information is in a separate file, so there is nothing to strip.
 - Element pooling was worth a few percent on declaration-heavy frames, which is about the size of the run-to-run noise here. It was kept because it makes the per-frame allocation bounded rather than merely small.
 
 ## Validation

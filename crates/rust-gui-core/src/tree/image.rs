@@ -52,6 +52,8 @@ impl Context {
                 if entry.error.as_deref() == Some(&error) {
                     return false;
                 }
+                self.diagnose_resource(path, &error);
+                let entry = self.images.entry(path.to_owned()).or_default();
                 entry.error = Some(error);
             }
         }

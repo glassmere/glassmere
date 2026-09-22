@@ -134,6 +134,17 @@ impl TextSystem {
         }
     }
 
+    /// Whether a named family is installed. A style that asks for one that
+    /// is not gets the default font instead, silently, which is what makes
+    /// it worth reporting.
+    pub fn has_family(&self, name: &str) -> bool {
+        self.fonts.db().faces().any(|face| {
+            face.families
+                .iter()
+                .any(|(family, _)| family.eq_ignore_ascii_case(name))
+        })
+    }
+
     pub fn ensure(&mut self, text: &str, font_size: f32) -> TextKey {
         self.ensure_styled(
             text,

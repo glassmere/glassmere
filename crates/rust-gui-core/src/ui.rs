@@ -32,6 +32,10 @@ pub(crate) struct HostOutbox {
     /// Custom events `Ui::emit` sent, with the node they came from.
     pub emitted: Vec<(crate::NodeId, crate::UiEvent)>,
     pub watched: Vec<std::path::PathBuf>,
+    /// What `Ui::copy` put on the clipboard, and whether `Ui::request_paste`
+    /// asked for what is on it.
+    pub clip: Option<crate::Clip>,
+    pub paste: bool,
     pub images: Vec<std::path::PathBuf>,
     pub toasts: ToastOutbox,
     /// A new message source, or `Some(None)` to remove the current one.
@@ -173,6 +177,28 @@ impl Ui<'_> {
     /// so token reads made earlier in the view see the new theme too.
     pub fn set_theme(&mut self, theme: crate::Theme) {
         *self.theme_request = Some(theme);
+    }
+
+    /// Puts something on the clipboard once this declaration is over. The
+    /// text goes to the system clipboard, the image with it where the
+    /// platform can carry one, and any private bytes stay in this
+    /// application.
+    pub fn copy(&mut self, clip: crate::Clip) {
+        self.host.clip = Some(clip);
+    }
+
+    /// Asks for what is on the clipboard. It arrives on the next
+    /// declaration, through `Ui::pasted`, because reading a clipboard is the
+    /// host's business and can be slow.
+    pub fn request_paste(&mut self) {
+        self.host.paste = true;
+    }
+
+    /// What the host last read from the clipboard, after
+    /// [`Ui::request_paste`]. It stays readable until the next request, so a
+    /// view can paste on the frame it asked and read it again later.
+    pub fn pasted(&self) -> Option<&crate::Clip> {
+        self.context.pasted()
     }
 
     /// Shows a reactive store's dependency graph in the inspector: what its
@@ -373,6 +399,9 @@ impl Ui<'_> {
             "duplicate widget key among siblings: {:?}",
             element.key
         );
+        if let Some(crate::FontFamily::Named(name)) = &element.style.font_family {
+            self.context.note_family(name);
+        }
         self.context.count_element(
             element.text.len()
                 + match &element.key {

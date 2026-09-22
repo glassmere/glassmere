@@ -206,3 +206,52 @@ fn oversized_layers_and_huge_containers_are_reported_and_checks_can_be_turned_of
     frame(&mut quiet, view);
     assert!(quiet.diagnostics().is_empty());
 }
+
+/// Files that could not be used, and font families that are not there.
+#[test]
+fn resources_that_fail_and_fonts_that_are_missing_are_reported() {
+    let mut context = Context::new();
+    context.set_diagnostics(true);
+    let path = std::path::Path::new("logo.png");
+    context.run(ROOT, &mut MonospaceMeasurer, |ui| {
+        ui.image_file("logo", path, rust_gui_core::ImageOptions::default());
+        ui.label_styled(
+            "title",
+            "Title",
+            Style {
+                font_family: Some(rust_gui_core::FontFamily::Named("Nonesuch".into())),
+                ..Style::default()
+            },
+        );
+    });
+    // The host tells the framework what it could not decode.
+    context.set_image_file(path, Err("not a PNG".into()));
+    let resource = context
+        .diagnostics()
+        .iter()
+        .find(|entry| entry.kind == rust_gui_core::DiagnosticKind::Resource)
+        .expect("the failed image");
+    assert!(resource.message.contains("logo.png") && resource.message.contains("not a PNG"));
+    // The same failure again is one entry, not two.
+    context.set_image_file(path, Err("not a PNG".into()));
+    assert_eq!(
+        context
+            .diagnostics()
+            .iter()
+            .filter(|entry| entry.kind == rust_gui_core::DiagnosticKind::Resource)
+            .count(),
+        1
+    );
+
+    // The families a style named are offered to the host, which knows which
+    // fonts are installed.
+    assert_eq!(context.requested_families(), ["Nonesuch"]);
+    context.report_font("font families not installed: Nonesuch");
+    assert!(
+        context
+            .diagnostics()
+            .iter()
+            .any(|entry| entry.kind == rust_gui_core::DiagnosticKind::Font
+                && entry.message.contains("Nonesuch"))
+    );
+}

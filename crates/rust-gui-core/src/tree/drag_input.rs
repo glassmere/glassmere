@@ -32,6 +32,51 @@ impl Context {
         self.exported_drag = Some(source);
         Some(payload)
     }
+    /// Takes over a drag that started in another window of the same
+    /// application. Nothing here is its source, so no node shows as the one
+    /// being dragged, but drop targets light up and a release drops it.
+    pub fn adopt_drag(&mut self, payload: DragPayload, at: Point) -> bool {
+        if self.drag.is_some() {
+            return false;
+        }
+        self.pointer = Some(at);
+        let over = self.drop_at(at, payload.kind());
+        self.drag = Some(Box::new(DragState {
+            source: self.root,
+            payload,
+            start: at,
+            active: true,
+            over,
+        }));
+        self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
+        self.invalidate_paint(self.root);
+        if let Some(over) = over {
+            self.invalidate_paint(over);
+        }
+        true
+    }
+
+    /// Takes an adopted drag back, because the pointer has left this window
+    /// for another. Unlike `export_drag` this tells nobody it ended: the
+    /// window it started in still owns its source.
+    pub fn withdraw_drag(&mut self) -> Option<DragPayload> {
+        let payload = self
+            .drag
+            .as_ref()
+            .filter(|drag| drag.active)?
+            .payload
+            .clone();
+        self.cancel_drag();
+        Some(payload)
+    }
+
+    /// Whether dropping this payload at this point would land on a target
+    /// that takes it. A host carrying a drag between windows asks before it
+    /// reports the drag as dropped.
+    pub fn accepts_drop(&self, at: Point, payload: &DragPayload) -> bool {
+        self.drop_at(at, payload.kind()).is_some()
+    }
+
     /// Tells the source of an exported drag how it ended.
     pub fn finish_exported_drag(&mut self, outcome: crate::DragOutcome) {
         if let Some(source) = self.exported_drag.take()
