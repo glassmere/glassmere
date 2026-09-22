@@ -9,9 +9,15 @@ use glyphon::{
     Cache, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
 };
 use rust_gui_scene::{Color, Point, Primitive, Rect, Scene};
-use std::{collections::HashSet, error::Error};
+use std::{
+    collections::{HashMap, HashSet},
+    error::Error,
+};
 
 pub type RenderResult<T> = Result<T, Box<dyn Error>>;
+
+/// Gradient stops one ramp can hold. A ramp given more keeps the first eight.
+pub const MAX_GRADIENT_STOPS: usize = 8;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -21,6 +27,72 @@ struct Vertex {
     size: [f32; 2],
     color: [f32; 4],
     radius: f32,
+}
+
+// ponytail: the stops ride along in every vertex, which is wide but keeps the
+// ramp to one buffer and no bind group. A uniform buffer if scenes ever hold
+// thousands of gradients.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct GradientVertex {
+    position: [f32; 2],
+    /// Position inside the rectangle, then its size, in logical pixels.
+    local: [f32; 4],
+    /// Where the ramp starts and ends, in the rectangle's own units.
+    ends: [f32; 4],
+    /// Where the stops sit; slots past the last stop repeat it.
+    offsets: [f32; MAX_GRADIENT_STOPS],
+    /// Corner radius, and 1 for a radial ramp.
+    shape: [f32; 2],
+    /// The stop colours, in linear light.
+    colors: [[f32; 4]; MAX_GRADIENT_STOPS],
+}
+
+impl GradientVertex {
+    const ATTRIBUTES: [wgpu::VertexAttribute; 14] = wgpu::vertex_attr_array![
+        0 => Float32x2, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4,
+        5 => Float32x2, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4, 9 => Float32x4,
+        10 => Float32x4, 11 => Float32x4, 12 => Float32x4, 13 => Float32x4
+    ];
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct ShadowVertex {
+    position: [f32; 2],
+    /// Position relative to the blurred rectangle's centre, then its half extents.
+    outer: [f32; 4],
+    /// The same for the rectangle an inset shadow darkens the inside of.
+    inner: [f32; 4],
+    /// Blur standard deviation, 1 for an inset shadow, then the corner radius
+    /// of the blurred rectangle and of the original one.
+    params: [f32; 4],
+    color: [f32; 4],
+}
+
+impl ShadowVertex {
+    const ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
+        0 => Float32x2, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4
+    ];
+}
+
+/// An application's own drawing for one `Primitive::Custom` id.
+pub type CustomDrawFn = Box<dyn FnMut(CustomDraw<'_>)>;
+
+/// What an application's own wgpu code is handed for a `Primitive::Custom`
+/// (see `Renderer::set_custom_draw`). The pass is scissored to the primitive's
+/// clipped rectangle and the renderer restores its own state afterwards.
+pub struct CustomDraw<'a> {
+    pub device: &'a wgpu::Device,
+    pub queue: &'a wgpu::Queue,
+    pub pass: &'a mut wgpu::RenderPass<'static>,
+    /// The primitive's rectangle, in the logical pixels of the surface being
+    /// drawn: the scene's own coordinates, unless this is inside a layer that
+    /// renders offscreen.
+    pub rect: Rect,
+    /// Physical pixels per logical one, and the size of what is drawn into.
+    pub scale: f32,
+    pub target_size: [u32; 2],
 }
 
 enum Draw {
@@ -42,6 +114,21 @@ enum Draw {
     Layer {
         surface: usize,
         start: u32,
+        clip: [u32; 4],
+    },
+    Gradient {
+        start: u32,
+        clip: [u32; 4],
+    },
+    Shadow {
+        start: u32,
+        clip: [u32; 4],
+    },
+    /// The application's own drawing. Nothing happens while no callback is
+    /// registered for `id`, this frame or a later replay of it.
+    Custom {
+        id: u64,
+        rect: Rect,
         clip: [u32; 4],
     },
 }
@@ -98,6 +185,9 @@ pub struct RenderStats {
     pub layer_texture_bytes: u64,
     /// Batched image draw calls in the prepared frame.
     pub image_draws: usize,
+    /// Gradient and shadow draw calls in the prepared frame, one each.
+    pub gradients: usize,
+    pub shadows: usize,
     /// Image uploads so far; a cached image does not upload again.
     pub image_uploads: u64,
     /// Shared atlas pages, standalone textures for large images, and the size
@@ -110,7 +200,9 @@ pub struct RenderStats {
     /// In the prepared frame: render passes (the target plus one per offscreen
     /// layer), draw calls the renderer issues, and how many of those are quads.
     /// A text batch counts as one draw call; glyphon's own draws inside it are
-    /// not visible from here. Layer composites and image batches are one each.
+    /// not visible from here. Layer composites, image batches, gradients,
+    /// shadows and custom draws are one each, a custom draw included while its
+    /// id has no callback: those come and go between frames.
     pub passes: usize,
     pub draw_calls: usize,
     pub quads: usize,
@@ -125,6 +217,15 @@ pub struct Renderer {
     pipeline: wgpu::RenderPipeline,
     layer_pipeline: wgpu::RenderPipeline,
     image_pipeline: wgpu::RenderPipeline,
+    gradient_pipeline: wgpu::RenderPipeline,
+    shadow_pipeline: wgpu::RenderPipeline,
+    gradient_buffer: Option<wgpu::Buffer>,
+    gradient_buffer_bytes: u64,
+    gradient_vertices: Vec<GradientVertex>,
+    shadow_buffer: Option<wgpu::Buffer>,
+    shadow_buffer_bytes: u64,
+    shadow_vertices: Vec<ShadowVertex>,
+    custom: HashMap<u64, CustomDrawFn>,
     images: image::ImageCache,
     image_buffer: Option<wgpu::Buffer>,
     image_buffer_bytes: u64,
@@ -232,6 +333,28 @@ impl Renderer {
             image_buffer: None,
             image_buffer_bytes: 0,
             image_vertices: Vec::new(),
+            // Gradients and shadows leave straight alpha, as quads do.
+            gradient_pipeline: pipeline(
+                "rust-gui gradients",
+                include_str!("gradient.wgsl"),
+                wgpu::BlendState::ALPHA_BLENDING,
+                std::mem::size_of::<GradientVertex>(),
+                &GradientVertex::ATTRIBUTES,
+            ),
+            shadow_pipeline: pipeline(
+                "rust-gui shadows",
+                include_str!("shadow.wgsl"),
+                wgpu::BlendState::ALPHA_BLENDING,
+                std::mem::size_of::<ShadowVertex>(),
+                &ShadowVertex::ATTRIBUTES,
+            ),
+            gradient_buffer: None,
+            gradient_buffer_bytes: 0,
+            gradient_vertices: Vec::new(),
+            shadow_buffer: None,
+            shadow_buffer_bytes: 0,
+            shadow_vertices: Vec::new(),
+            custom: HashMap::new(),
             pipeline: pipeline(
                 "rust-gui quads",
                 include_str!("quad.wgsl"),
@@ -330,6 +453,18 @@ impl Renderer {
         self.images.budget = bytes;
     }
 
+    /// What draws a `Primitive::Custom` carrying `id`: the application's own
+    /// wgpu code, inside the renderer's pass, in display-list order. `None`
+    /// forgets the id again, and a primitive whose id is not registered draws
+    /// nothing. Callbacks are not part of the prepared frame, so registering
+    /// one takes effect on the next frame, replay or not.
+    pub fn set_custom_draw(&mut self, id: u64, draw: Option<CustomDrawFn>) {
+        match draw {
+            Some(draw) => self.custom.insert(id, draw),
+            None => self.custom.remove(&id),
+        };
+    }
+
     /// Paint in display-list order. `physical_size` and `scale` describe the target;
     /// scene geometry remains in logical pixels. Targets must be nonzero and sRGB.
     #[allow(clippy::too_many_arguments)]
@@ -404,6 +539,10 @@ impl Renderer {
         vertices.clear();
         let mut image_vertices = std::mem::take(&mut self.image_vertices);
         image_vertices.clear();
+        let mut gradient_vertices = std::mem::take(&mut self.gradient_vertices);
+        gradient_vertices.clear();
+        let mut shadow_vertices = std::mem::take(&mut self.shadow_vertices);
+        shadow_vertices.clear();
         self.images.begin();
         let mut draws = self
             .surfaces
@@ -703,6 +842,150 @@ impl Renderer {
                         }),
                     }
                 }
+                Primitive::Gradient {
+                    rect,
+                    radius,
+                    from,
+                    to,
+                    stops,
+                    radial,
+                } => {
+                    let surface = &mut surfaces[current];
+                    let scissor = scissor(clip.intersect(*rect), surface);
+                    // A ramp needs two ends; one colour is a quad.
+                    if scissor[2] == 0 || scissor[3] == 0 || stops.len() < 2 {
+                        continue;
+                    }
+                    let kept = stops.len().min(MAX_GRADIENT_STOPS);
+                    let mut offsets = [0.0; MAX_GRADIENT_STOPS];
+                    let mut colors = [[0.0; 4]; MAX_GRADIENT_STOPS];
+                    for (index, (offset, color)) in offsets.iter_mut().zip(&mut colors).enumerate()
+                    {
+                        // Stops past the eighth are dropped; the slots left over
+                        // repeat the last one and mix into nothing.
+                        let stop = stops[index.min(kept - 1)];
+                        *offset = stop.at;
+                        *color = stop.color.linear();
+                    }
+                    let (origin, scale, size) = (surface.origin, surface.scale, surface.size);
+                    let start = gradient_vertices.len() as u32;
+                    for [x, y] in [
+                        [0.0, 0.0],
+                        [1.0, 0.0],
+                        [0.0, 1.0],
+                        [0.0, 1.0],
+                        [1.0, 0.0],
+                        [1.0, 1.0],
+                    ] {
+                        gradient_vertices.push(GradientVertex {
+                            position: [
+                                ((rect.x - origin[0]) + x * rect.width) * scale / size[0] as f32
+                                    * 2.0
+                                    - 1.0,
+                                1.0 - ((rect.y - origin[1]) + y * rect.height) * scale
+                                    / size[1] as f32
+                                    * 2.0,
+                            ],
+                            local: [x * rect.width, y * rect.height, rect.width, rect.height],
+                            ends: [from.x, from.y, to.x, to.y],
+                            offsets,
+                            shape: [*radius, f32::from(u8::from(*radial))],
+                            colors,
+                        });
+                    }
+                    surface.draws.push(Draw::Gradient {
+                        start,
+                        clip: scissor,
+                    });
+                }
+                Primitive::Shadow {
+                    rect,
+                    radius,
+                    color,
+                    blur,
+                    spread,
+                    offset,
+                    inset,
+                } => {
+                    let blur = blur.max(0.0);
+                    // The blurred rectangle: grown by the spread, moved by the
+                    // offset. A spread that eats it leaves nothing to blur.
+                    let half = [
+                        (rect.width / 2.0 + spread).max(0.0),
+                        (rect.height / 2.0 + spread).max(0.0),
+                    ];
+                    let centre = [
+                        rect.x + rect.width / 2.0 + offset.x,
+                        rect.y + rect.height / 2.0 + offset.y,
+                    ];
+                    let reach = 3.0 * blur;
+                    // A Gaussian is spent three standard deviations out, and an
+                    // inset shadow never leaves the rectangle it darkens.
+                    let drawn = if *inset {
+                        *rect
+                    } else {
+                        Rect {
+                            x: centre[0] - half[0] - reach,
+                            y: centre[1] - half[1] - reach,
+                            width: (half[0] + reach) * 2.0,
+                            height: (half[1] + reach) * 2.0,
+                        }
+                    };
+                    let surface = &mut surfaces[current];
+                    let scissor = scissor(clip.intersect(drawn), surface);
+                    if scissor[2] == 0 || scissor[3] == 0 {
+                        continue;
+                    }
+                    let inner = [rect.width / 2.0, rect.height / 2.0];
+                    let middle = [rect.x + inner[0], rect.y + inner[1]];
+                    let (origin, scale, size) = (surface.origin, surface.scale, surface.size);
+                    let start = shadow_vertices.len() as u32;
+                    for [x, y] in [
+                        [0.0, 0.0],
+                        [1.0, 0.0],
+                        [0.0, 1.0],
+                        [0.0, 1.0],
+                        [1.0, 0.0],
+                        [1.0, 1.0],
+                    ] {
+                        let point = [drawn.x + x * drawn.width, drawn.y + y * drawn.height];
+                        shadow_vertices.push(ShadowVertex {
+                            position: [
+                                (point[0] - origin[0]) * scale / size[0] as f32 * 2.0 - 1.0,
+                                1.0 - (point[1] - origin[1]) * scale / size[1] as f32 * 2.0,
+                            ],
+                            outer: [point[0] - centre[0], point[1] - centre[1], half[0], half[1]],
+                            inner: [
+                                point[0] - middle[0],
+                                point[1] - middle[1],
+                                inner[0],
+                                inner[1],
+                            ],
+                            params: [blur, f32::from(u8::from(*inset)), radius + spread, *radius],
+                            color: color.linear(),
+                        });
+                    }
+                    surface.draws.push(Draw::Shadow {
+                        start,
+                        clip: scissor,
+                    });
+                }
+                Primitive::Custom { rect, id } => {
+                    let surface = &mut surfaces[current];
+                    let scissor = scissor(clip.intersect(*rect), surface);
+                    if scissor[2] == 0 || scissor[3] == 0 {
+                        continue;
+                    }
+                    surface.draws.push(Draw::Custom {
+                        id: *id,
+                        rect: Rect {
+                            x: rect.x - surface.origin[0],
+                            y: rect.y - surface.origin[1],
+                            ..*rect
+                        },
+                        clip: scissor,
+                    });
+                }
                 Primitive::Text { rect, color, .. }
                 | Primitive::StyledText { rect, color, .. }
                 | Primitive::RichText { rect, color, .. } => {
@@ -842,6 +1125,24 @@ impl Renderer {
             queue.write_buffer(self.image_buffer.as_ref().unwrap(), 0, bytes);
         }
         self.image_vertices = image_vertices;
+        upload(
+            device,
+            queue,
+            "rust-gui retained gradient vertices",
+            &mut self.gradient_buffer,
+            &mut self.gradient_buffer_bytes,
+            bytemuck::cast_slice(&gradient_vertices),
+        );
+        self.gradient_vertices = gradient_vertices;
+        upload(
+            device,
+            queue,
+            "rust-gui retained shadow vertices",
+            &mut self.shadow_buffer,
+            &mut self.shadow_buffer_bytes,
+            bytemuck::cast_slice(&shadow_vertices),
+        );
+        self.shadow_vertices = shadow_vertices;
         let count = |wanted: fn(&Draw) -> bool| {
             surfaces
                 .iter()
@@ -850,6 +1151,8 @@ impl Renderer {
                 .count()
         };
         self.stats.image_draws = count(|draw| matches!(draw, Draw::Image { .. }));
+        self.stats.gradients = count(|draw| matches!(draw, Draw::Gradient { .. }));
+        self.stats.shadows = count(|draw| matches!(draw, Draw::Shadow { .. }));
         self.stats.quads = count(|draw| matches!(draw, Draw::Quad { .. }));
         self.stats.draw_calls = count(|_| true);
         self.stats.passes = surfaces.len();
@@ -869,7 +1172,10 @@ impl Renderer {
             .map(|texture| u64::from(texture.size[0]) * u64::from(texture.size[1]) * texel)
             .sum();
         let memory = &mut self.stats.memory;
-        memory.buffers = self.stats.quad_buffer_bytes + self.image_buffer_bytes;
+        memory.buffers = self.stats.quad_buffer_bytes
+            + self.image_buffer_bytes
+            + self.gradient_buffer_bytes
+            + self.shadow_buffer_bytes;
         (memory.image_atlas, memory.image_textures) = self.images.bytes_by_kind();
         memory.layers = self.stats.layer_texture_bytes;
         memory.settle();
@@ -1036,36 +1342,43 @@ impl Renderer {
                         end_of_pass_write_index: Some(index + 1),
                     }
                 });
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("rust-gui scene"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: match confine {
-                            // Outside the scissor the canvas keeps the last frame.
-                            Some(_) => wgpu::LoadOp::Load,
-                            None => wgpu::LoadOp::Clear(wgpu::Color {
-                                r: f64::from(clear[0]),
-                                g: f64::from(clear[1]),
-                                b: f64::from(clear[2]),
-                                a: f64::from(clear[3]),
-                            }),
+            // The lifetime is dropped so custom draws can be handed the pass;
+            // the encoder stays locked until the pass ends either way.
+            let mut pass = encoder
+                .begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("rust-gui scene"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view,
+                        depth_slice: None,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: match confine {
+                                // Outside the scissor the canvas keeps the last frame.
+                                Some(_) => wgpu::LoadOp::Load,
+                                None => wgpu::LoadOp::Clear(wgpu::Color {
+                                    r: f64::from(clear[0]),
+                                    g: f64::from(clear[1]),
+                                    b: f64::from(clear[2]),
+                                    a: f64::from(clear[3]),
+                                }),
+                            },
+                            store: wgpu::StoreOp::Store,
                         },
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                })
+                .forget_lifetime();
             for draw in &surface.draws {
                 let clip = match draw {
                     Draw::Quad { clip, .. }
                     | Draw::Image { clip, .. }
-                    | Draw::Layer { clip, .. } => *clip,
+                    | Draw::Layer { clip, .. }
+                    | Draw::Gradient { clip, .. }
+                    | Draw::Shadow { clip, .. }
+                    | Draw::Custom { clip, .. } => *clip,
                     // Each text area carries its own bounds into glyphon.
                     Draw::Text(_) => [0, 0, surface.size[0], surface.size[1]],
                 };
@@ -1104,6 +1417,33 @@ impl Renderer {
                         pass.set_bind_group(0, &self.pool[texture].bind_group, &[]);
                         pass.set_vertex_buffer(0, self.quad_buffer.as_ref().unwrap().slice(..));
                         pass.draw(*start..*start + 6, 0..1);
+                    }
+                    Draw::Gradient { start, .. } => {
+                        pass.set_pipeline(&self.gradient_pipeline);
+                        pass.set_vertex_buffer(0, self.gradient_buffer.as_ref().unwrap().slice(..));
+                        pass.draw(*start..*start + 6, 0..1);
+                    }
+                    Draw::Shadow { start, .. } => {
+                        pass.set_pipeline(&self.shadow_pipeline);
+                        pass.set_vertex_buffer(0, self.shadow_buffer.as_ref().unwrap().slice(..));
+                        pass.draw(*start..*start + 6, 0..1);
+                    }
+                    Draw::Custom { id, rect, .. } => {
+                        if let Some(draw) = self.custom.get_mut(id) {
+                            draw(CustomDraw {
+                                device,
+                                queue,
+                                pass: &mut pass,
+                                rect: *rect,
+                                scale: surface.scale,
+                                target_size: surface.size,
+                            });
+                            // Pipeline, vertex buffer and scissor are set again
+                            // by every draw that follows, but nothing else is:
+                            // the viewport a callback left would stay.
+                            let size = surface.size.map(|side| side as f32);
+                            pass.set_viewport(0.0, 0.0, size[0], size[1], 0.0, 1.0);
+                        }
                     }
                 }
             }
@@ -1152,6 +1492,31 @@ impl Renderer {
         self.atlas.trim();
         Ok(())
     }
+}
+
+/// Puts `bytes` in `buffer`, growing it to the next power of two first where
+/// they do not fit. `capacity` is what the buffer holds now.
+fn upload(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    label: &str,
+    buffer: &mut Option<wgpu::Buffer>,
+    capacity: &mut u64,
+    bytes: &[u8],
+) {
+    if bytes.is_empty() {
+        return;
+    }
+    if bytes.len() as u64 > *capacity {
+        *capacity = (bytes.len() as u64).next_power_of_two();
+        *buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size: *capacity,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        }));
+    }
+    queue.write_buffer(buffer.as_ref().unwrap(), 0, bytes);
 }
 
 /// `rect` in the surface's own physical pixels, rounded outward and clamped.

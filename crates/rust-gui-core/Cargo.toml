@@ -7,9 +7,13 @@ publish.workspace = true
 
 [features]
 serde = ["dep:serde"]
+# Regular expressions in the editor's find bar. Without it a search that asks
+# for one reports that the feature is off.
+regex = ["dep:regex"]
 
 [dependencies]
 serde = { workspace = true, optional = true }
+regex = { version = "1.11", optional = true }
 rust-gui-scene.workspace = true
 bitflags.workspace = true
 tracing.workspace = true

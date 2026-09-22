@@ -108,5 +108,8 @@ Work picked from the coverage table after the seven phases.
 - [x] `Ui::memo` and damage-limited presentation on both renderers ([milestone 15](milestone-15.md)).
 - [x] Commands with scopes, user bindings, menu hints and a palette ([milestone 16](milestone-16.md)).
 - [x] `Ui::event_area` with capture, bubbling and cancellation, custom events, double tap, swipe and touch text selection ([milestone 17](milestone-17.md)).
+- [x] Gradients, shadows and an application's own GPU drawing ([milestone 18](milestone-18.md)).
+- [x] Forced paragraph direction, regular expression search, font baselines and responsive containers ([milestone 19](milestone-19.md)).
+- [x] Which screen a window opens on ([milestone 20](milestone-20.md)).
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

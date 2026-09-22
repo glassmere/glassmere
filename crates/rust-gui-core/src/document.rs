@@ -939,6 +939,53 @@ impl TextDocument {
     /// ranges. Matches do not span lines.
     // ponytail: compares lowercased chars line by line; move to a streaming
     // searcher if documents reach tens of megabytes.
+    /// Every match of a regular expression, ascending, or why the pattern
+    /// could not be used. Matches never cross a line.
+    pub fn find_all_regex(
+        &self,
+        pattern: &str,
+        case_sensitive: bool,
+    ) -> Result<Vec<Range<usize>>, String> {
+        if pattern.is_empty() {
+            return Ok(Vec::new());
+        }
+        #[cfg(not(feature = "regex"))]
+        {
+            let _ = case_sensitive;
+            Err("regular expressions need the `regex` feature".to_owned())
+        }
+        #[cfg(feature = "regex")]
+        {
+            let expression = regex::RegexBuilder::new(pattern)
+                .case_insensitive(!case_sensitive)
+                .size_limit(1 << 20)
+                .build()
+                .map_err(|error| {
+                    // The first line of the crate's error names the fault.
+                    error
+                        .to_string()
+                        .lines()
+                        .find(|line| !line.trim().is_empty())
+                        .unwrap_or("invalid pattern")
+                        .trim()
+                        .to_owned()
+                })?;
+            let mut matches = Vec::new();
+            let mut start = 0;
+            for line in self.rope.lines() {
+                let text = line.to_string();
+                for found in expression.find_iter(&text) {
+                    // An empty match would never move on, and highlights nothing.
+                    if !found.is_empty() {
+                        matches.push(start + found.start()..start + found.end());
+                    }
+                }
+                start += text.len();
+            }
+            Ok(matches)
+        }
+    }
+
     pub fn find_all(
         &self,
         query: &str,

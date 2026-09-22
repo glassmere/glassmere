@@ -319,6 +319,23 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         "radius" => style.radius = number(value)?,
         "background" => style.background = Some(color(value)?),
         "foreground" => style.foreground = Some(color(value)?),
+        // `shadow: 0 4 12 #0008` is offset x, offset y, blur and colour,
+        // with an optional spread and the word `inset`.
+        "shadow" => {
+            style.shadow = if value == "none" {
+                None
+            } else {
+                Some(Box::new(shadow(value)?))
+            }
+        }
+        // `gradient: 0 0 1 1 #fff #000`, or `radial 0.5 0.5 1 0.5 ...`.
+        "gradient" => {
+            style.gradient = if value == "none" {
+                None
+            } else {
+                Some(Box::new(gradient(value)?))
+            }
+        }
         "background-image" => {
             style.background_image = if value == "none" {
                 None
@@ -627,6 +644,67 @@ fn length(value: &str) -> Result<Length, String> {
         return Ok(Length::Percent(number(percent)? / 100.0));
     }
     Ok(Length::Px(number(value)?))
+}
+
+/// `x y blur [spread] #rrggbb[aa] [inset]`.
+fn shadow(value: &str) -> Result<crate::Shadow, String> {
+    let mut words: Vec<&str> = value.split_whitespace().collect();
+    let inset = words.last() == Some(&"inset");
+    if inset {
+        words.pop();
+    }
+    let hex = words
+        .pop()
+        .ok_or_else(|| format!("shadow `{value}` needs a colour"))?;
+    if words.len() < 3 || words.len() > 4 {
+        return Err(format!(
+            "shadow `{value}` is `x y blur [spread] colour [inset]`"
+        ));
+    }
+    Ok(crate::Shadow {
+        color: color(hex)?,
+        offset: (number(words[0])?, number(words[1])?),
+        blur: number(words[2])?,
+        spread: words
+            .get(3)
+            .map(|spread| number(spread))
+            .transpose()?
+            .unwrap_or(0.0),
+        inset,
+    })
+}
+
+/// `[radial] fromx fromy tox toy colour colour [colour...]`, with the stops
+/// spread evenly along the ramp.
+fn gradient(value: &str) -> Result<crate::Gradient, String> {
+    let mut words: Vec<&str> = value.split_whitespace().collect();
+    let radial = words.first() == Some(&"radial");
+    if radial {
+        words.remove(0);
+    }
+    if words.len() < 6 {
+        return Err(format!(
+            "gradient `{value}` is `[radial] fromx fromy tox toy colour colour ...`"
+        ));
+    }
+    let point = |x: &str, y: &str| Ok::<_, String>((number(x)?, number(y)?));
+    let colours = &words[4..];
+    let last = (colours.len() - 1).max(1) as f32;
+    Ok(crate::Gradient {
+        from: point(words[0], words[1])?,
+        to: point(words[2], words[3])?,
+        stops: colours
+            .iter()
+            .enumerate()
+            .map(|(index, hex)| {
+                Ok(crate::GradientStop {
+                    at: index as f32 / last,
+                    color: color(hex)?,
+                })
+            })
+            .collect::<Result<_, String>>()?,
+        radial,
+    })
 }
 
 fn color(value: &str) -> Result<Color, String> {

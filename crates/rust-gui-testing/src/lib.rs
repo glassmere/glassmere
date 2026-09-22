@@ -273,6 +273,44 @@ impl<S> Harness<S> {
                     color,
                     radius,
                 } => format!("Quad {} {} r={radius:.1}", rect(*r), hex(*color)),
+                Primitive::Gradient {
+                    rect: r,
+                    radius,
+                    from,
+                    to,
+                    stops,
+                    radial,
+                } => format!(
+                    "Gradient {} r={radius:.1} {}{:.2},{:.2}..{:.2},{:.2} {}",
+                    rect(*r),
+                    if *radial { "radial " } else { "" },
+                    from.x,
+                    from.y,
+                    to.x,
+                    to.y,
+                    stops
+                        .iter()
+                        .map(|stop| format!("{:.2}:{}", stop.at, hex(stop.color)))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                ),
+                Primitive::Shadow {
+                    rect: r,
+                    radius,
+                    color,
+                    blur,
+                    spread,
+                    offset,
+                    inset,
+                } => format!(
+                    "Shadow {} r={radius:.1} {} blur={blur:.1} spread={spread:.1} at={:.1},{:.1}{}",
+                    rect(*r),
+                    hex(*color),
+                    offset.x,
+                    offset.y,
+                    if *inset { " inset" } else { "" }
+                ),
+                Primitive::Custom { rect: r, id } => format!("Custom {} #{id}", rect(*r)),
                 Primitive::Text {
                     rect: r,
                     text,

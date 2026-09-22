@@ -1,6 +1,6 @@
 use rust_gui_render_cpu::CpuRenderer;
 use rust_gui_scene::{
-    Affine, Color, Image, Primitive, Rect, Scene, Size, TextMeasurer, TextStyle, VectorImage,
+    Affine, Color, Image, Point, Primitive, Rect, Scene, Size, TextMeasurer, TextStyle, VectorImage,
 };
 use rust_gui_text::TextSystem;
 
@@ -404,4 +404,162 @@ fn a_damaged_frame_repaints_only_what_changed() {
     assert_eq!(renderer.stats().redrawn, 32 * 32);
     assert_eq!(pixels[..4], [0, 0, 255, 255]);
     assert_eq!(pixels[(31 * 32 + 31) * 4..][..4], WHITE);
+}
+
+/// A ramp straight across the rectangle.
+fn gradient(rect: Rect, stops: Vec<rust_gui_scene::GradientStop>) -> Primitive {
+    Primitive::Gradient {
+        rect,
+        radius: 0.0,
+        from: Point { x: 0.0, y: 0.0 },
+        to: Point { x: 1.0, y: 0.0 },
+        stops,
+        radial: false,
+    }
+}
+
+fn stop(at: f32, color: Color) -> rust_gui_scene::GradientStop {
+    rust_gui_scene::GradientStop { at, color }
+}
+
+#[test]
+fn a_gradient_mixes_its_stops_in_linear_light_and_stops_at_eight() {
+    let mut renderer = renderer();
+    let pixels = render(
+        &mut renderer,
+        1.0,
+        vec![gradient(
+            rect(0.0, 0.0, 64.0, 16.0),
+            vec![stop(0.0, RED), stop(1.0, BLUE)],
+        )],
+    );
+    // Half of each in linear light is 188, not the 128 an sRGB mix gives.
+    assert_near(pixel(&pixels, 32, 8), [188, 0, 188, 255]);
+    // The ends are all but pure: a pixel's centre is already a little along.
+    let (first, last) = (pixel(&pixels, 0, 0), pixel(&pixels, 63, 15));
+    assert!(first[0] > 240 && first[2] < 40, "{first:?}");
+    assert!(last[2] > 240 && last[0] < 40, "{last:?}");
+    // Along the ramp only: every row is the same.
+    assert_eq!(pixel(&pixels, 20, 2), pixel(&pixels, 20, 14));
+
+    // A stop in the middle bends the ramp.
+    let pixels = render(
+        &mut renderer,
+        1.0,
+        vec![gradient(
+            rect(0.0, 0.0, 64.0, 16.0),
+            vec![stop(0.0, RED), stop(0.25, BLUE), stop(1.0, RED)],
+        )],
+    );
+    let bend = pixel(&pixels, 16, 8);
+    assert!(bend[2] > 240 && bend[0] < 40, "{bend:?}");
+    assert!(pixel(&pixels, 40, 8)[0] > 150, "on its way back to red");
+
+    // The ninth stop and beyond are dropped, as the shader has room for eight.
+    let mut many = vec![stop(0.0, RED)];
+    many.extend((1..8).map(|index| stop(index as f32 / 7.0, BLUE)));
+    many.push(stop(1.0, Color::rgb(0, 255, 0)));
+    let pixels = render(
+        &mut renderer,
+        1.0,
+        vec![gradient(rect(0.0, 0.0, 64.0, 16.0), many)],
+    );
+    let end = pixel(&pixels, 63, 8);
+    assert!(
+        end[2] > 240 && end[1] < 40,
+        "the green ninth stop was dropped: {end:?}"
+    );
+
+    // A radial one runs outward from its centre.
+    let pixels = render(
+        &mut renderer,
+        1.0,
+        vec![Primitive::Gradient {
+            rect: rect(0.0, 0.0, 64.0, 64.0),
+            radius: 0.0,
+            from: Point { x: 0.5, y: 0.5 },
+            to: Point { x: 1.0, y: 0.5 },
+            stops: vec![stop(0.0, RED), stop(1.0, BLUE)],
+            radial: true,
+        }],
+    );
+    // The middle pixel's centre is already a little way out.
+    let centre = pixel(&pixels, 32, 32);
+    assert!(centre[0] > 240 && centre[2] < 60, "{centre:?}");
+    let edge = pixel(&pixels, 63, 32);
+    let corner = pixel(&pixels, 60, 60);
+    assert!(edge[2] > 200 && corner[2] > 200, "{edge:?} {corner:?}");
+    assert!(
+        pixel(&pixels, 40, 32)[0] > pixel(&pixels, 56, 32)[0],
+        "it fades outward"
+    );
+}
+
+#[test]
+fn a_shadow_falls_around_its_rectangle_and_an_inset_one_stays_inside() {
+    let mut renderer = renderer();
+    let pixels = render(
+        &mut renderer,
+        1.0,
+        vec![Primitive::Shadow {
+            rect: rect(20.0, 20.0, 24.0, 24.0),
+            radius: 6.0,
+            color: Color(0, 0, 0, 255),
+            blur: 4.0,
+            spread: 0.0,
+            offset: Point { x: 0.0, y: 0.0 },
+            inset: false,
+        }],
+    );
+    // Dark under it, fading outward, and gone three deviations away.
+    assert!(pixel(&pixels, 32, 32)[0] < 20);
+    let near = pixel(&pixels, 32, 17)[0];
+    let far = pixel(&pixels, 32, 10)[0];
+    assert!(near < far && far > 200, "{near} then {far}");
+    assert_eq!(pixel(&pixels, 32, 2), WHITE, "nothing past the blur");
+    assert_eq!(pixel(&pixels, 0, 0), WHITE);
+
+    // An offset moves it without moving anything else.
+    let moved = render(
+        &mut renderer,
+        1.0,
+        vec![Primitive::Shadow {
+            rect: rect(20.0, 20.0, 24.0, 24.0),
+            radius: 6.0,
+            color: Color(0, 0, 0, 255),
+            blur: 4.0,
+            spread: 0.0,
+            offset: Point { x: 8.0, y: 0.0 },
+            inset: false,
+        }],
+    );
+    assert_eq!(pixel(&moved, 40, 32), pixel(&pixels, 32, 32));
+
+    // An inset one darkens the inside edge and leaves the middle alone.
+    let inside = render(
+        &mut renderer,
+        1.0,
+        vec![
+            quad(rect(8.0, 8.0, 48.0, 48.0), Color::WHITE, 8.0),
+            Primitive::Shadow {
+                rect: rect(8.0, 8.0, 48.0, 48.0),
+                radius: 8.0,
+                color: Color(0, 0, 0, 255),
+                blur: 5.0,
+                spread: 0.0,
+                offset: Point { x: 0.0, y: 0.0 },
+                inset: true,
+            },
+        ],
+    );
+    let (edge, middle) = (
+        u32::from(pixel(&inside, 10, 32)[0]),
+        u32::from(pixel(&inside, 32, 32)[0]),
+    );
+    assert!(
+        edge + 20 < middle,
+        "the edge is darkened: {edge} against {middle}"
+    );
+    assert_eq!(pixel(&inside, 32, 32), WHITE, "the middle is left alone");
+    assert_eq!(pixel(&inside, 2, 32), WHITE, "and nothing spills out");
 }

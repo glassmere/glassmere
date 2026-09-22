@@ -525,6 +525,32 @@ impl Ui<'_> {
         declare
     }
 
+    /// A column that tells its content how much room it had on the last
+    /// frame, so that a view can change with the space it is given: a wide
+    /// window shows two panes, a narrow one shows tabs.
+    ///
+    /// The width is the content box, inside the padding, and it is zero on
+    /// the frame the container appears, because nothing has been laid out
+    /// yet. A view that changes its structure at a threshold therefore
+    /// settles on the second frame. The width is returned as well.
+    pub fn responsive(
+        &mut self,
+        key: impl Into<String>,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_>, f32),
+    ) -> f32 {
+        let key = key.into();
+        let inside = self
+            .context
+            .child(self.parent, &WidgetKey::Named(key.clone()), Kind::Container)
+            .and_then(|id| self.context.node(id))
+            .map_or(0.0, |node| {
+                (node.bounds.width - 2.0 * style.padding.max(0.0)).max(0.0)
+            });
+        self.group(key, Kind::Container, style, |ui| content(ui, inside));
+        inside
+    }
+
     /// A column that watches the events of the widgets inside it, and may
     /// stop them. What reached it since the last declaration comes back in
     /// the order it arrived.

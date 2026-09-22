@@ -295,7 +295,7 @@ fn children_shrink_only_when_asked_and_respect_minimums() {
 }
 
 #[test]
-fn baseline_alignment_lines_up_text_bottoms_across_font_sizes() {
+fn baseline_alignment_lines_up_the_text_of_different_sizes() {
     let mut context = Context::new();
     frame(&mut context, |ui| {
         ui.row(
@@ -316,12 +316,21 @@ fn baseline_alignment_lines_up_text_bottoms_across_font_sizes() {
     let large = bounds(&context, &["row", "large"]);
     let padded = bounds(&context, &["row", "padded"]);
     assert!(large.height > small.height);
-    assert_eq!(small.y + small.height, large.y + large.height);
-    assert_eq!(padded.y + padded.height, large.y + large.height);
+    // The synthetic measurer puts the baseline at four fifths of the size,
+    // and padding pushes it down with the text.
+    let baseline =
+        |rect: rust_gui_scene::Rect, size: f32, padding: f32| rect.y + padding + size * 0.8;
+    let line = baseline(large, 32.0, 0.0);
+    let same = |value: f32| (value - line).abs() < 0.01;
+    assert!(same(baseline(small, 12.0, 0.0)), "{small:?} against {line}");
+    assert!(same(baseline(padded, 16.0, 10.0)), "{padded:?}");
+    assert_eq!(large.y, 0.0, "the lowest baseline stays where it is");
     assert!(
-        small.y > 0.0,
-        "the smaller label moves down to the shared line"
+        small.y > 0.0 && padded.y > 0.0,
+        "the others move down to the shared line"
     );
+    // Bottoms no longer line up, because a baseline is not a bottom.
+    assert!(small.y + small.height != large.y + large.height);
 }
 
 #[test]
@@ -385,4 +394,52 @@ fn stylesheets_express_layout_constraints_tracks_and_alignment() {
     assert!(error("class a { align-items: middle }").contains("unknown alignment"));
     assert!(error("class a { justify-content: around }").contains("unknown justify-content"));
     assert!(error("class a { area: 1 }").contains("area needs"));
+}
+
+#[test]
+fn a_container_tells_its_content_how_much_room_it_had() {
+    let mut context = Context::new();
+    let mut seen = Vec::new();
+    let declare = |context: &mut Context, width: f32, seen: &mut Vec<f32>| {
+        context.run(
+            rust_gui_scene::Size::new(width, 200.0),
+            &mut MonospaceMeasurer,
+            |ui| {
+                ui.responsive(
+                    "page",
+                    Style::default().width(Length::Percent(1.0)).padding(10.0),
+                    |ui, room| {
+                        seen.push(room);
+                        // A narrow page stacks what a wide one puts in a row.
+                        if room >= 300.0 {
+                            ui.row("wide", Style::default(), |ui| {
+                                ui.label_keyed("a", "a");
+                                ui.label_keyed("b", "b");
+                            });
+                        } else {
+                            ui.column("narrow", Style::default(), |ui| {
+                                ui.label_keyed("a", "a");
+                            });
+                        }
+                    },
+                );
+            },
+        );
+    };
+    // Nothing has been laid out on the first frame, so the content is told
+    // nothing and the narrow shape appears.
+    declare(&mut context, 500.0, &mut seen);
+    assert_eq!(seen, [0.0]);
+    assert!(context.find(&["page", "narrow"]).is_some());
+
+    // The second frame knows the room and changes shape.
+    declare(&mut context, 500.0, &mut seen);
+    assert_eq!(seen[1], 480.0);
+    assert!(context.find(&["page", "wide"]).is_some());
+
+    // And it changes back when the window is made smaller.
+    declare(&mut context, 200.0, &mut seen);
+    declare(&mut context, 200.0, &mut seen);
+    assert_eq!(seen[3], 180.0);
+    assert!(context.find(&["page", "narrow"]).is_some());
 }

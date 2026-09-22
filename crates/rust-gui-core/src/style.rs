@@ -190,6 +190,12 @@ pub struct Style {
     /// Grid items only: explicit placement instead of auto-flow.
     pub area: Option<GridArea>,
     pub background: Option<Color>,
+    /// A ramp of colours instead of a flat `background`, painted under
+    /// `background_image`.
+    pub gradient: Option<Box<Gradient>>,
+    /// Painted behind the node, or inside its edges. Boxed because most
+    /// nodes have none.
+    pub shadow: Option<Box<Shadow>>,
     /// Painted over `background` and under the content; see `BackgroundImage`.
     pub background_image: Option<crate::BackgroundImage>,
     pub foreground: Option<Color>,
@@ -219,6 +225,10 @@ pub struct Style {
     pub offset: Option<(f32, f32)>,
     /// Inherited like text properties; `None` takes the parent's direction.
     pub direction: Option<Direction>,
+    /// Forces the direction a paragraph starts in, whatever its first strong
+    /// character is. Inherited. `None` lets the text decide, which is what
+    /// mixed content usually wants.
+    pub base_direction: Option<Direction>,
 }
 
 impl Default for Style {
@@ -231,6 +241,9 @@ impl Default for Style {
             min_height: Length::Auto,
             max_height: Length::Auto,
             aspect_ratio: None,
+            base_direction: None,
+            gradient: None,
+            shadow: None,
             padding: 0.0,
             gap: 12.0,
             grow: 0.0,
@@ -282,7 +295,115 @@ macro_rules! setter {
     };
 }
 
+/// A ramp of colours filling a node. `from` and `to` are in the node's own
+/// units, where (0, 0) is its top left corner and (1, 1) its bottom right.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Gradient {
+    pub from: (f32, f32),
+    pub to: (f32, f32),
+    /// At least two; fewer draws nothing.
+    pub stops: Vec<rust_gui_scene::GradientStop>,
+    /// A ramp outward from `from` rather than along the line to `to`.
+    pub radial: bool,
+}
+
+impl Gradient {
+    /// Top to bottom.
+    pub fn down(from: Color, to: Color) -> Self {
+        Self::linear((0.0, 0.0), (0.0, 1.0), from, to)
+    }
+
+    pub fn linear(from: (f32, f32), to: (f32, f32), start: Color, end: Color) -> Self {
+        Self {
+            from,
+            to,
+            stops: vec![
+                rust_gui_scene::GradientStop {
+                    at: 0.0,
+                    color: start,
+                },
+                rust_gui_scene::GradientStop {
+                    at: 1.0,
+                    color: end,
+                },
+            ],
+            radial: false,
+        }
+    }
+
+    /// Outward from the middle to the edge.
+    pub fn radial(centre: Color, edge: Color) -> Self {
+        Self {
+            radial: true,
+            ..Self::linear((0.5, 0.5), (1.0, 0.5), centre, edge)
+        }
+    }
+
+    pub fn stops(mut self, stops: Vec<rust_gui_scene::GradientStop>) -> Self {
+        self.stops = stops;
+        self
+    }
+}
+
+/// A blurred rounded rectangle behind a node, or inside its edges.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Shadow {
+    pub color: Color,
+    /// Standard deviation of the blur, in logical pixels.
+    pub blur: f32,
+    /// Grows the rectangle before blurring it.
+    pub spread: f32,
+    pub offset: (f32, f32),
+    pub inset: bool,
+}
+
+impl Shadow {
+    pub fn new(color: Color, blur: f32) -> Self {
+        Self {
+            color,
+            blur,
+            spread: 0.0,
+            offset: (0.0, 0.0),
+            inset: false,
+        }
+    }
+
+    /// The usual lift: down a little, blurred, behind the node.
+    pub fn lift(color: Color, blur: f32, down: f32) -> Self {
+        Self {
+            offset: (0.0, down),
+            ..Self::new(color, blur)
+        }
+    }
+
+    pub fn spread(mut self, spread: f32) -> Self {
+        self.spread = spread;
+        self
+    }
+
+    pub fn inset(mut self) -> Self {
+        self.inset = true;
+        self
+    }
+}
+
 impl Style {
+    /// Forces the direction paragraphs inside start in.
+    pub fn base_direction(mut self, direction: Direction) -> Self {
+        self.base_direction = Some(direction);
+        self
+    }
+
+    pub fn gradient(mut self, gradient: Gradient) -> Self {
+        self.gradient = Some(Box::new(gradient));
+        self
+    }
+
+    pub fn shadow(mut self, shadow: Shadow) -> Self {
+        self.shadow = Some(Box::new(shadow));
+        self
+    }
+
     /// Themed control surface with the default control padding and radius.
     pub fn button() -> Self {
         Self {
@@ -368,6 +489,7 @@ impl Style {
             font_weight: self.font_weight.unwrap_or(inherited.font_weight),
             italic: self.italic.unwrap_or(inherited.italic),
             direction: self.direction.unwrap_or(inherited.direction),
+            base_direction: self.base_direction.or(inherited.base_direction),
         }
     }
 
@@ -393,7 +515,10 @@ impl Style {
             Align::Center => AlignItems::Center,
             Align::End => AlignItems::End,
             Align::Stretch => AlignItems::Stretch,
-            Align::Baseline => AlignItems::Baseline,
+            // Taffy would take a leaf's bottom edge for its baseline; the
+            // real one comes from the font, so the rows are lined up after
+            // layout instead. See `Context::align_baselines`.
+            Align::Baseline => AlignItems::FlexStart,
         };
         let justify = |value: Justify| match value {
             Justify::Start => AlignContent::Start,
@@ -522,6 +647,8 @@ pub struct ResolvedText {
     pub font_weight: u16,
     pub italic: bool,
     pub direction: Direction,
+    /// A paragraph direction the application forced.
+    pub base_direction: Option<Direction>,
 }
 
 impl ResolvedText {
@@ -533,6 +660,7 @@ impl ResolvedText {
             font_weight: 400,
             italic: false,
             direction: Direction::Ltr,
+            base_direction: None,
         }
     }
 
@@ -548,6 +676,7 @@ impl ResolvedText {
             italic: self.italic,
             wrap,
             rtl: self.rtl(),
+            base: self.base_direction.map(|base| base == Direction::Rtl),
         }
     }
 }

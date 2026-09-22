@@ -182,20 +182,30 @@ fn find_bar(ui: &mut Ui<'_>, find: &mut FindState, document: &mut TextDocument, 
                     find.step(document, true);
                 }
                 ui.checkbox("$case", "Match case", &mut find.case_sensitive);
-                ui.checkbox("$word", "Whole word", &mut find.whole_word);
+                ui.enabled(!find.regex, |ui| {
+                    ui.checkbox("$word", "Whole word", &mut find.whole_word);
+                });
+                ui.checkbox("$regex", "Regular expression", &mut find.regex);
                 find.refresh(document);
                 let current = document.primary().range();
                 let position = find.matches().iter().position(|range| *range == current);
                 let muted = ui.theme().text_muted;
+                let count = match (find.matches().len(), position) {
+                    (0, _) if find.query.is_empty() => String::new(),
+                    (0, _) => "No results".into(),
+                    (total, Some(index)) => format!("{} of {total}", index + 1),
+                    (total, None) => format!("{total} results"),
+                };
+                // A pattern that cannot be used says so where the count would be.
+                // No token means trouble, so the accent stands in for one.
+                let (text, colour) = match find.error() {
+                    Some(error) => (error.to_owned(), ui.theme().accent),
+                    None => (count, muted),
+                };
                 ui.label_styled(
                     "$count",
-                    match (find.matches().len(), position) {
-                        (0, _) if find.query.is_empty() => String::new(),
-                        (0, _) => "No results".into(),
-                        (total, Some(index)) => format!("{} of {total}", index + 1),
-                        (total, None) => format!("{total} results"),
-                    },
-                    Style::default().font_size(13.0).foreground(muted),
+                    text,
+                    Style::default().font_size(13.0).foreground(colour),
                 );
                 if ui.button_styled("$close", "×", true, compact()).clicked() {
                     find.open = false;

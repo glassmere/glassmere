@@ -215,6 +215,14 @@ impl TextSystem {
             buffer.set_size(&mut self.fonts, width, None);
             let base = attrs(&style.family, style.weight, style.italic);
             if spans.is_empty() {
+                // A forced paragraph direction is an isolate around the text:
+                // the bidi algorithm then starts in that direction whatever
+                // the first strong character is.
+                let forced = style.base.map(|rtl| {
+                    let mark = if rtl { '\u{2067}' } else { '\u{2066}' };
+                    format!("{mark}{text}\u{2069}")
+                });
+                let text = forced.as_deref().unwrap_or(text);
                 buffer.set_text(&mut self.fonts, text, &base, Shaping::Advanced, None);
             } else {
                 // A span colour overrides the text area's default colour per glyph.
@@ -277,6 +285,15 @@ impl TextMeasurer for TextSystem {
     fn geometry(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> TextGeometry {
         let key = self.ensure_styled(text, style, width);
         Self::extract(&self.buffers[&key], text)
+    }
+
+    /// The font's own ascent for this size, from a line shaped with it.
+    fn ascent(&mut self, style: &TextStyle) -> f32 {
+        let key = self.ensure_styled("M", style, None);
+        self.buffers[&key]
+            .layout_runs()
+            .next()
+            .map_or(style.font_size * 0.8, |run| run.line_y)
     }
 
     fn geometry_rich(

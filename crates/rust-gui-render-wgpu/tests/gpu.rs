@@ -1,7 +1,7 @@
-use rust_gui_render_wgpu::{Renderer, TextSystem, wgpu};
+use rust_gui_render_wgpu::{CustomDraw, Renderer, TextSystem, wgpu};
 use rust_gui_scene::{
-    Affine, Color, FontFamily, Image, Point, Primitive, Rect, Scene, Size, TextMeasurer, TextSpan,
-    TextStyle, TextWrap, VectorImage,
+    Affine, Color, FontFamily, GradientStop, Image, Point, Primitive, Rect, Scene, Size,
+    TextMeasurer, TextSpan, TextStyle, TextWrap, VectorImage,
 };
 
 /// GPU tests take turns. The test harness starts one thread per core, and many
@@ -1548,4 +1548,287 @@ fn a_resized_target_redraws_in_full_however_small_the_damage() {
     // frame was red the new one is its own white.
     assert_eq!(pixels[(2 * SMALL + 7) * 4..][..4], [0, 0, 255, 255]);
     assert_eq!(pixels[(40 * SMALL + 40) * 4..][..4], [255; 4]);
+}
+
+fn point(x: f32, y: f32) -> Point {
+    Point { x, y }
+}
+
+fn stop(at: f32, color: Color) -> GradientStop {
+    GradientStop { at, color }
+}
+
+/// A ramp mixes where it is told to, and it mixes light: half red and half blue
+/// is (188, 0, 188), a value an sRGB mix of the two would never reach.
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn linear_gradient_mixes_its_stops_in_linear_light() {
+    let mut gpu = Gpu::new();
+    let band = rect(24.0, 24.0, 81.0, 40.0);
+    let round = rect(24.0, 72.0, 40.0, 40.0);
+    let across = |rect, radius| Primitive::Gradient {
+        rect,
+        radius,
+        from: point(0.0, 0.0),
+        to: point(1.0, 0.0),
+        stops: vec![stop(0.0, RED), stop(1.0, BLUE)],
+        radial: false,
+    };
+    let pixels = gpu.render(1.0, &[across(band, 0.0), across(round, 20.0)], true);
+    assert_eq!(gpu.renderer.stats().gradients, 2);
+    // Half of each, in linear light: an sRGB mix would give (128, 0, 128).
+    assert_pixel(&pixels, 64, 44, [188, 0, 188]);
+    // Clear of the boundary pixels, which the rounded-box coverage softens
+    // exactly as it does a quad's.
+    for x in [26, 44, 64, 84, 102] {
+        let at = (x as f32 + 0.5 - band.x) / band.width;
+        assert_pixel(&pixels, x, 44, [srgb(1.0 - at), 0, srgb(at)]);
+    }
+    // The ramp runs along x alone.
+    assert_pixel(&pixels, 64, 25, [188, 0, 188]);
+    assert_pixel(&pixels, 64, 62, [188, 0, 188]);
+    // Outside the rectangle, and outside the rounded corners, the background.
+    for (x, y) in [(20, 44), (108, 44), (64, 20), (64, 66), (25, 73), (62, 110)] {
+        assert_pixel(&pixels, x, y, [255; 3]);
+    }
+    // Only the first eight stops are kept: the green ninth and tenth never
+    // reach the ramp, which ends in the blue of the eighth.
+    let mut many = vec![stop(0.0, RED)];
+    many.extend((1..8).map(|index| stop(index as f32 / 9.0, BLUE)));
+    many.push(stop(8.0 / 9.0, Color::rgb(0, 255, 0)));
+    many.push(stop(1.0, Color::rgb(0, 255, 0)));
+    let pixels = gpu.render(
+        1.0,
+        &[Primitive::Gradient {
+            rect: band,
+            radius: 0.0,
+            from: point(0.0, 0.0),
+            to: point(1.0, 0.0),
+            stops: many,
+            radial: false,
+        }],
+        true,
+    );
+    for x in [44, 64, 84, 102] {
+        assert_pixel(&pixels, x, 44, [0, 0, 255]);
+    }
+}
+
+/// `from` is the middle and `to` the far corner, both in the rectangle's own
+/// units, so the ramp ends where the corner is.
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn radial_gradient_runs_from_its_centre_to_the_far_corner() {
+    let mut gpu = Gpu::new();
+    let square = rect(24.0, 24.0, 81.0, 81.0);
+    let pixels = gpu.render(
+        1.0,
+        &[Primitive::Gradient {
+            rect: square,
+            radius: 0.0,
+            from: point(0.5, 0.5),
+            to: point(1.0, 1.0),
+            stops: vec![stop(0.0, RED), stop(1.0, BLUE)],
+            radial: true,
+        }],
+        true,
+    );
+    // The middle of the rectangle is a pixel centre here, and the first stop.
+    assert_pixel(&pixels, 64, 64, [255, 0, 0]);
+    let at = |x: usize, y: usize| {
+        let u = (x as f32 + 0.5 - square.x) / square.width - 0.5;
+        let v = (y as f32 + 0.5 - square.y) / square.height - 0.5;
+        u.hypot(v) / 0.5f32.hypot(0.5)
+    };
+    // Near the far corners the ramp is all but spent, and it is the same in
+    // every direction from the middle. Boundary pixels are left to the
+    // coverage, which softens them as it does a quad's.
+    for (x, y) in [(102, 102), (26, 26), (102, 26), (64, 30), (95, 64)] {
+        let at = at(x, y);
+        assert!(at > 0.5, "({x}, {y}) is only {at} along the ramp");
+        assert_pixel(&pixels, x, y, [srgb(1.0 - at), 0, srgb(at)]);
+    }
+    assert!(at(102, 102) > 0.93, "the corner is where the ramp ends");
+    assert_pixel(&pixels, 20, 20, [255; 3]);
+}
+
+/// A shadow darkens around its rectangle, out to the spread and three standard
+/// deviations, and no further.
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn shadow_blurs_around_its_rectangle_and_ends_three_deviations_out() {
+    let mut gpu = Gpu::new();
+    let cast = |offset, spread| Primitive::Shadow {
+        rect: rect(44.0, 44.0, 40.0, 40.0),
+        radius: 0.0,
+        color: Color(0, 0, 0, 255),
+        blur: 6.0,
+        spread,
+        offset,
+        inset: false,
+    };
+    let grey = |pixels: &[u8], x: usize, y: usize| pixels[(y * SIDE + x) * 4];
+    let pixels = gpu.render(1.0, &[cast(point(0.0, 0.0), 0.0)], true);
+    assert_eq!(gpu.renderer.stats().shadows, 1);
+    // Under the rectangle the shadow is whole, and it fades outward.
+    assert!(grey(&pixels, 64, 64) < 20, "{}", grey(&pixels, 64, 64));
+    let near = grey(&pixels, 64, 86);
+    assert!(near > grey(&pixels, 64, 64) && near < 240, "{near}");
+    assert!(near < grey(&pixels, 64, 94));
+    assert!(grey(&pixels, 64, 94) <= grey(&pixels, 64, 100));
+    // Three standard deviations out the Gaussian is spent; nothing is drawn
+    // past it, and the corners of the target never hear about it.
+    assert_pixel(&pixels, 64, 104, [255; 3]);
+    assert_pixel(&pixels, 10, 10, [255; 3]);
+
+    // The spread grows the rectangle before it is blurred, so the shadow
+    // reaches that much further and stops there.
+    let spread = gpu.render(1.0, &[cast(point(0.0, 0.0), 4.0)], true);
+    assert!(grey(&spread, 64, 90) < grey(&pixels, 64, 90));
+    assert_pixel(&spread, 64, 108, [255; 3]);
+
+    // The offset moves the whole shadow, and takes it off the left edge.
+    let moved = gpu.render(1.0, &[cast(point(16.0, 0.0), 0.0)], true);
+    for (x, y) in [(46, 64), (64, 64), (64, 90), (86, 50)] {
+        let (there, here) = (grey(&moved, x + 16, y), grey(&pixels, x, y));
+        assert!(
+            there.abs_diff(here) <= 1,
+            "({x}, {y}) is {there}, was {here}"
+        );
+    }
+    assert!(grey(&moved, 42, 64) > grey(&pixels, 42, 64) + 20);
+}
+
+/// An inset shadow is the same blur inverted: the inside edge darkens, the
+/// middle stays clear and nothing leaves the rectangle.
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn inset_shadow_darkens_the_inside_edge_and_leaves_the_middle() {
+    let mut gpu = Gpu::new();
+    let pixels = gpu.render(
+        1.0,
+        &[Primitive::Shadow {
+            rect: rect(24.0, 24.0, 80.0, 80.0),
+            radius: 0.0,
+            color: Color(0, 0, 0, 255),
+            blur: 6.0,
+            spread: 0.0,
+            offset: point(0.0, 0.0),
+            inset: true,
+        }],
+        true,
+    );
+    let grey = |x: usize, y: usize| pixels[(y * SIDE + x) * 4];
+    assert_pixel(&pixels, 64, 64, [255; 3]);
+    for (x, y) in [(25, 64), (102, 64), (64, 25), (64, 102)] {
+        assert!(grey(x, y) < 215, "({x}, {y}) is {}", grey(x, y));
+    }
+    assert!(grey(25, 64) < grey(31, 64) && grey(31, 64) < grey(64, 64));
+    // Outside the rectangle an inset shadow draws nothing at all.
+    for (x, y) in [(20, 64), (108, 64), (64, 20), (64, 108)] {
+        assert_pixel(&pixels, x, y, [255; 3]);
+    }
+}
+
+/// A pipeline of the test's own, as an application's custom draw would have:
+/// one triangle over the whole clip space in solid green, which the renderer's
+/// scissor cuts down to the primitive's rectangle.
+fn solid_pipeline(device: &wgpu::Device) -> wgpu::RenderPipeline {
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("custom draw"),
+        source: wgpu::ShaderSource::Wgsl(
+            "@vertex
+             fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
+                 let x = f32(i32(index) / 2) * 4.0 - 1.0;
+                 let y = f32(i32(index) % 2) * 4.0 - 1.0;
+                 return vec4<f32>(x, y, 0.0, 1.0);
+             }
+             @fragment
+             fn fs_main() -> @location(0) vec4<f32> {
+                 return vec4<f32>(0.0, 1.0, 0.0, 1.0);
+             }"
+            .into(),
+        ),
+    });
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("custom draw"),
+        layout: None,
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_main"),
+            compilation_options: Default::default(),
+            buffers: &[],
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs_main"),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::TextureFormat::Rgba8UnormSrgb.into())],
+        }),
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+        cache: None,
+    })
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn custom_draws_where_it_is_told_and_an_unknown_id_draws_nothing() {
+    let mut gpu = Gpu::new();
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let calls = std::sync::Arc::clone(&seen);
+    let mut pipeline = None;
+    gpu.renderer.set_custom_draw(
+        7,
+        Some(Box::new(move |draw: CustomDraw<'_>| {
+            calls
+                .lock()
+                .unwrap()
+                .push((draw.rect, draw.scale, draw.target_size));
+            let pipeline = pipeline.get_or_insert_with(|| solid_pipeline(draw.device));
+            draw.pass.set_pipeline(pipeline);
+            draw.pass.draw(0..3, 0..1);
+        })),
+    );
+    let mine = rect(32.0, 40.0, 48.0, 24.0);
+    let scene = [
+        quad(rect(0.0, 0.0, 128.0, 128.0), RED),
+        Primitive::Custom { rect: mine, id: 7 },
+        Primitive::Custom {
+            rect: rect(0.0, 100.0, 40.0, 20.0),
+            id: 99,
+        },
+        quad(rect(64.0, 40.0, 16.0, 24.0), BLUE),
+    ];
+    let pixels = gpu.render(1.0, &scene, true);
+    let (green, red, blue) = ([0, 255, 0], [255, 0, 0], [0, 0, 255]);
+    for (x, y) in [(33, 41), (63, 62)] {
+        assert_pixel(&pixels, x, y, green);
+    }
+    // The quad after it still covers it: a custom draw keeps its place in the
+    // display list.
+    assert_pixel(&pixels, 70, 45, blue);
+    assert_pixel(&pixels, 76, 55, blue);
+    // The unknown id draws nothing, and nothing else moved.
+    for (x, y) in [(10, 105), (30, 110), (31, 41), (33, 39), (10, 10)] {
+        assert_pixel(&pixels, x, y, red);
+    }
+
+    // The callback is told the scale, and the scissor follows it.
+    let pixels = gpu.render(2.0, &scene, true);
+    assert_pixel(&pixels, 70, 82, green);
+    assert_pixel(&pixels, 62, 82, red);
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec![(mine, 1.0, [128, 128]), (mine, 2.0, [128, 128])]
+    );
+
+    // Forgotten, the id draws nothing and the callback is not called again.
+    gpu.renderer.set_custom_draw(7, None);
+    let pixels = gpu.render(1.0, &scene, true);
+    assert_pixel(&pixels, 33, 41, red);
+    assert_pixel(&pixels, 70, 45, blue);
+    assert_eq!(seen.lock().unwrap().len(), 2);
 }

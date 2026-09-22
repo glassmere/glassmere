@@ -29,6 +29,11 @@ pub struct TextStyle {
     /// edge whatever their content. Left-to-right UI keeps each line on the
     /// side its own content asks for.
     pub rtl: bool,
+    /// The direction the paragraph starts in, whatever its first strong
+    /// character is: `Some(true)` for right to left, `Some(false)` for left to
+    /// right, `None` to let the text decide. Editors leave it unset, because
+    /// forcing it shifts the byte offsets a caret is placed by.
+    pub base: Option<bool>,
 }
 
 impl Default for TextStyle {
@@ -40,6 +45,7 @@ impl Default for TextStyle {
             italic: false,
             wrap: TextWrap::None,
             rtl: false,
+            base: None,
         }
     }
 }
@@ -325,6 +331,14 @@ pub trait TextMeasurer {
     ) -> TextGeometry {
         let text: String = spans.iter().map(|span| span.text.as_str()).collect();
         self.geometry(&text, style, width)
+    }
+
+    /// How far the first line's baseline sits below the top of the block.
+    /// The default is a typical Latin ascent; a measurer with real font
+    /// metrics answers with them, and that is what baseline alignment lines
+    /// text of different sizes up by.
+    fn ascent(&mut self, style: &TextStyle) -> f32 {
+        style.font_size * 0.8
     }
 
     fn measure(&mut self, text: &str, font_size: f32) -> Size {

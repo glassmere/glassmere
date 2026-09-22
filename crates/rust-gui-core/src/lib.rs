@@ -32,6 +32,7 @@ pub use collection::{
     VirtualListOptions, text_matches,
 };
 pub use command::{Command, Shortcut, ShortcutKey};
+pub use rust_gui_scene::GradientStop;
 mod events;
 pub use controls::{AutocompleteResponse, MenuItem, NumberOptions};
 pub use dock::{
@@ -58,8 +59,8 @@ pub use rich_text::{RichRun, RichText};
 pub use rust_gui_scene::{FontFamily, TextSpan, TextStyle, TextWrap};
 pub use rust_gui_scene::{MonospaceMeasurer, TextMeasurer};
 pub use style::{
-    Align, Direction, GridArea, Justify, Length, Paint, ResolvedText, StateStyles, Style, Track,
-    TrackSize,
+    Align, Direction, Gradient, GridArea, Justify, Length, Paint, ResolvedText, Shadow,
+    StateStyles, Style, Track, TrackSize,
 };
 pub use stylesheet::{StyleSheet, StyleSheetError};
 pub use text_area::{

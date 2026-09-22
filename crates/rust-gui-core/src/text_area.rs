@@ -94,8 +94,12 @@ pub struct FindState {
     pub replacement: String,
     pub case_sensitive: bool,
     pub whole_word: bool,
+    /// Read the query as a regular expression. `whole_word` is ignored then;
+    /// write the boundaries into the pattern.
+    pub regex: bool,
     matches: Vec<Range<usize>>,
-    searched: Option<(u64, String, bool, bool)>,
+    searched: Option<(u64, String, bool, bool, bool)>,
+    error: Option<String>,
 }
 
 impl FindState {
@@ -104,16 +108,34 @@ impl FindState {
         &self.matches
     }
 
-    /// Searches again only when the document or the query changed.
-    pub(crate) fn refresh(&mut self, document: &TextDocument) {
+    /// Why the last search found nothing, when it was the query's fault.
+    pub fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+
+    /// Searches again only when the document or the query changed. The find
+    /// bar calls this itself; an application that searches without one calls
+    /// it before reading `matches`.
+    pub fn refresh(&mut self, document: &TextDocument) {
         let key = (
             document.revision(),
             self.query.clone(),
             self.case_sensitive,
             self.whole_word,
+            self.regex,
         );
         if self.searched.as_ref() != Some(&key) {
-            self.matches = document.find_all(&self.query, self.case_sensitive, self.whole_word);
+            (self.matches, self.error) = if self.regex {
+                match document.find_all_regex(&self.query, self.case_sensitive) {
+                    Ok(matches) => (matches, None),
+                    Err(error) => (Vec::new(), Some(error)),
+                }
+            } else {
+                (
+                    document.find_all(&self.query, self.case_sensitive, self.whole_word),
+                    None,
+                )
+            };
             self.searched = Some(key);
         }
     }

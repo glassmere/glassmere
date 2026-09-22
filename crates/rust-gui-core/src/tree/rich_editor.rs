@@ -53,6 +53,7 @@ pub(super) struct RichEditorState {
 
 fn block_style(base: &TextStyle, kind: BlockKind, font_size: f32) -> TextStyle {
     TextStyle {
+        base: base.base,
         font_size: font_size * RichBlockView::font_scale(kind),
         family: if kind == BlockKind::Code {
             FontFamily::Monospace

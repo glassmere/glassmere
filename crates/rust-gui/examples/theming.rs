@@ -61,6 +61,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         ui.label("Nested rows inherit too.");
                     });
                 });
+                ui.row("decorated", Style { gap: 16.0, ..Style::default() }, |ui| {
+                    // A ramp and a shadow, from the typed API.
+                    ui.container("ramp", Style { padding: 16.0, radius: 12.0, width: Length::Px(220.0), height: Length::Px(90.0), ..Style::default() }
+                        .gradient(rust_gui::Gradient::linear((0.0, 0.0), (1.0, 1.0), theme.accent, theme.control))
+                        .shadow(rust_gui::Shadow::lift(rust_gui::Color(0, 0, 0, 150), 10.0, 6.0)), |ui| {
+                        ui.label_styled("ramp-text", "Gradient and shadow", Style { font_weight: Some(700), foreground: Some(theme.text), ..Style::default() });
+                    });
+                    ui.container("glow", Style { padding: 16.0, radius: 45.0, width: Length::Px(90.0), height: Length::Px(90.0), ..Style::default() }
+                        .gradient(rust_gui::Gradient::radial(theme.accent, rust_gui::Color(0, 0, 0, 0))), |_| {});
+                    ui.container("well", Style { padding: 16.0, radius: 12.0, width: Length::Px(180.0), height: Length::Px(90.0), background: Some(theme.window), ..Style::default() }
+                        .shadow(rust_gui::Shadow::new(rust_gui::Color(0, 0, 0, 170), 8.0).inset()), |ui| {
+                        ui.label_styled("well-text", "Inset", Style { foreground: Some(theme.text_muted), ..Style::default() });
+                    });
+                });
                 ui.container("states", Style { padding: 20.0, gap: 12.0, radius: 12.0, width: Length::Percent(1.0), background: Some(theme.surface), ..Style::default() }, |ui| {
                     ui.label_styled("heading", "Typed classes and state overrides in Rust", Style { font_weight: Some(700), ..Style::default() });
                     let outlined = Style::button()

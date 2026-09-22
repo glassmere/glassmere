@@ -20,7 +20,7 @@
 //! its exact area here and feathered by the shader there, and what is resampled
 //! is filtered on sRGB-encoded values here and in linear light there. Both show
 //! at edges, never across a flat area.
-use rust_gui_scene::{Affine, Color, Image, Point, Primitive, Rect, Scene};
+use rust_gui_scene::{Affine, Color, GradientStop, Image, Point, Primitive, Rect, Scene};
 use rust_gui_text::cosmic_text::{SwashCache, SwashContent};
 use rust_gui_text::{TextKey, TextSystem};
 use std::collections::{HashMap, HashSet};
@@ -31,6 +31,9 @@ use tiny_skia::{
 
 /// The longest side a vector image or a layer is rasterized at.
 const MAX_SIDE: u32 = 8192;
+/// Stops of a gradient past this are dropped, as on the GPU, where the shader
+/// holds a fixed number of them.
+pub const MAX_GRADIENT_STOPS: usize = 8;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CpuStats {
@@ -223,6 +226,54 @@ fn rounded(rect: Rect, radius: f32) -> Option<tiny_skia::Path> {
     path.cubic_to(left, top + bend, left + bend, top, left + radius, top);
     path.close();
     path.finish()
+}
+
+/// Abramowitz and Stegun 7.1.26, the approximation shader code uses.
+fn erf(x: f32) -> f32 {
+    let (sign, magnitude) = (x.signum(), x.abs());
+    let mut value =
+        1.0 + (0.278_393 + (0.230_389 + 0.078_108 * magnitude * magnitude) * magnitude) * magnitude;
+    value *= value;
+    sign - sign / (value * value)
+}
+
+fn gaussian(x: f32, sigma: f32) -> f32 {
+    (-(x * x) / (2.0 * sigma * sigma)).exp() / ((2.0 * std::f32::consts::PI).sqrt() * sigma)
+}
+
+/// How much of a rounded rectangle covers a point, with a soft pixel edge.
+fn rounded_coverage(point: [f32; 2], half: [f32; 2], corner: f32) -> f32 {
+    let q = [
+        point[0].abs() - half[0] + corner,
+        point[1].abs() - half[1] + corner,
+    ];
+    let outside = [q[0].max(0.0), q[1].max(0.0)];
+    let distance = outside[0].hypot(outside[1]) + q[0].max(q[1]).min(0.0) - corner;
+    (0.5 - distance).clamp(0.0, 1.0)
+}
+
+/// The Gaussian integral over a rounded box: an erf along one axis, sampled
+/// four times along the other.
+fn rounded_box_shadow(half: [f32; 2], point: [f32; 2], sigma: f32, corner: f32) -> f32 {
+    let shadow_x = |x: f32, y: f32| {
+        let delta = (half[1] - corner - y.abs()).min(0.0);
+        let curved = half[0] - corner + (corner * corner - delta * delta).max(0.0).sqrt();
+        let scale = (0.5f32).sqrt() / sigma;
+        let low = 0.5 + 0.5 * erf((x - curved) * scale);
+        let high = 0.5 + 0.5 * erf((x + curved) * scale);
+        high - low
+    };
+    let (low, high) = (point[1] - half[1], point[1] + half[1]);
+    let start = (-3.0 * sigma).clamp(low, high);
+    let end = (3.0 * sigma).clamp(low, high);
+    let step = (end - start) / 4.0;
+    let mut y = start + step * 0.5;
+    let mut value = 0.0;
+    for _ in 0..4 {
+        value += shadow_x(point[0], point[1] - y) * gaussian(y, sigma) * step;
+        y += step;
+    }
+    value
 }
 
 fn affine(affine: Affine) -> Transform {
@@ -540,6 +591,51 @@ impl CpuRenderer {
                         self.image(surface, visible, *rect, image, *source, *tint, *radius);
                     }
                 }
+                Primitive::Gradient {
+                    rect,
+                    radius,
+                    from,
+                    to,
+                    stops,
+                    radial,
+                } => {
+                    let visible = surface.pixels(clip.intersect(*rect));
+                    if visible[2] > 0 && visible[3] > 0 && stops.len() >= 2 {
+                        self.gradient(surface, visible, *rect, *radius, *from, *to, stops, *radial);
+                    }
+                }
+                Primitive::Shadow {
+                    rect,
+                    radius,
+                    color,
+                    blur,
+                    spread,
+                    offset,
+                    inset,
+                } => {
+                    let cast = Rect {
+                        x: rect.x + offset.x,
+                        y: rect.y + offset.y,
+                        ..*rect
+                    };
+                    // A blur reaches about three standard deviations out.
+                    let reach = if *inset { 0.0 } else { spread + 3.0 * blur };
+                    let touched = Rect {
+                        x: cast.x - reach,
+                        y: cast.y - reach,
+                        width: cast.width + 2.0 * reach,
+                        height: cast.height + 2.0 * reach,
+                    };
+                    let visible = surface.pixels(clip.intersect(touched));
+                    if visible[2] > 0 && visible[3] > 0 && color.3 > 0 {
+                        self.shadow(
+                            surface, visible, cast, *radius, *color, *blur, *spread, *inset,
+                        );
+                    }
+                }
+                // Whatever draws these knows its own renderer; this one does
+                // not, and leaves the rectangle as it is.
+                Primitive::Custom { .. } => {}
                 Primitive::Text { rect, color, .. }
                 | Primitive::StyledText { rect, color, .. }
                 | Primitive::RichText { rect, color, .. } => {
@@ -639,6 +735,184 @@ impl CpuRenderer {
                 } else if alpha > 0 {
                     self.gamma.over(pixel, self.gamma.light(rgb, alpha), alpha);
                 }
+            }
+        }
+    }
+
+    /// Fills `rect` with a ramp of colours, mixed in linear light as the GPU
+    /// mixes them.
+    #[allow(clippy::too_many_arguments)]
+    fn gradient(
+        &self,
+        surface: &mut Surface,
+        visible: [u32; 4],
+        rect: Rect,
+        radius: f32,
+        from: Point,
+        to: Point,
+        stops: &[GradientStop],
+        radial: bool,
+    ) {
+        if rect.width <= 0.0 || rect.height <= 0.0 {
+            return;
+        }
+        // Stops in linear light, in order, with anything out of order or out
+        // of range pushed into place so that the walk below is monotone.
+        let mut ramp: Vec<(f32, [f32; 3], f32)> = Vec::with_capacity(stops.len());
+        for stop in stops.iter().take(MAX_GRADIENT_STOPS) {
+            let at = stop.at.clamp(0.0, 1.0);
+            let at = ramp
+                .last()
+                .map_or(at, |(last, _, _): &(f32, _, _)| at.max(*last));
+            ramp.push((
+                at,
+                [stop.color.0, stop.color.1, stop.color.2]
+                    .map(|channel| f32::from(self.gamma.linear[usize::from(channel)])),
+                f32::from(stop.color.3),
+            ));
+        }
+        let Some(mut mask) = Mask::new(visible[2], visible[3]) else {
+            return;
+        };
+        let Some(path) = rounded(rect, radius) else {
+            return;
+        };
+        mask.fill_path(
+            &path,
+            FillRule::Winding,
+            true,
+            toward(surface.transform(), visible),
+        );
+        let (axis_x, axis_y) = (to.x - from.x, to.y - from.y);
+        let length = axis_x * axis_x + axis_y * axis_y;
+        let stride = surface.pixmap.width() as usize * 4;
+        let (origin, scale) = (surface.origin, surface.scale);
+        let coverage = mask.data();
+        let data = surface.pixmap.data_mut();
+        for row in 0..visible[3] {
+            // The rectangle's own units, where its corners are 0 and 1.
+            let y =
+                ((origin[1] + ((visible[1] + row) as f32 + 0.5) / scale) - rect.y) / rect.height;
+            let start = (visible[1] + row) as usize * stride + visible[0] as usize * 4;
+            let line = &coverage[row as usize * visible[2] as usize..][..visible[2] as usize];
+            for (column, cover) in line.iter().enumerate() {
+                if *cover == 0 {
+                    continue;
+                }
+                let x = ((origin[0] + ((visible[0] + column as u32) as f32 + 0.5) / scale)
+                    - rect.x)
+                    / rect.width;
+                let (dx, dy) = (x - from.x, y - from.y);
+                let at = if length <= f32::EPSILON {
+                    1.0
+                } else if radial {
+                    (dx * dx + dy * dy).sqrt() / length.sqrt()
+                } else {
+                    (dx * axis_x + dy * axis_y) / length
+                }
+                .clamp(0.0, 1.0);
+                // The pair the point falls between, or the end it is past.
+                let next = ramp.iter().position(|(stop, _, _)| *stop >= at);
+                let (light, alpha) = match next {
+                    None => (ramp[ramp.len() - 1].1, ramp[ramp.len() - 1].2),
+                    Some(0) => (ramp[0].1, ramp[0].2),
+                    Some(index) => {
+                        let (low, high) = (&ramp[index - 1], &ramp[index]);
+                        let span = high.0 - low.0;
+                        let mixed = if span <= f32::EPSILON {
+                            0.0
+                        } else {
+                            (at - low.0) / span
+                        };
+                        (
+                            std::array::from_fn(|channel| {
+                                low.1[channel] + (high.1[channel] - low.1[channel]) * mixed
+                            }),
+                            low.2 + (high.2 - low.2) * mixed,
+                        )
+                    }
+                };
+                let alpha = alpha * f32::from(*cover) / 255.0;
+                let scaled = (alpha.round().clamp(0.0, 255.0)) as u32;
+                if scaled == 0 {
+                    continue;
+                }
+                let pixel = &mut data[start + column * 4..][..4];
+                let premultiplied = light
+                    .map(|channel| (channel * alpha / 255.0).round().clamp(0.0, 4095.0) as u32);
+                self.gamma.over(pixel, premultiplied, scaled);
+            }
+        }
+    }
+
+    /// A blurred rounded rectangle, by the same approximation the GPU uses:
+    /// four Gaussian-weighted samples of an erf-integrated rounded profile.
+    #[allow(clippy::too_many_arguments)]
+    fn shadow(
+        &self,
+        surface: &mut Surface,
+        visible: [u32; 4],
+        rect: Rect,
+        radius: f32,
+        color: Color,
+        blur: f32,
+        spread: f32,
+        inset: bool,
+    ) {
+        let half = [
+            rect.width / 2.0 + if inset { 0.0 } else { spread },
+            rect.height / 2.0 + if inset { 0.0 } else { spread },
+        ];
+        if half[0] <= 0.0 || half[1] <= 0.0 {
+            return;
+        }
+        let centre = [rect.x + rect.width / 2.0, rect.y + rect.height / 2.0];
+        let corner = (radius + if inset { 0.0 } else { spread }).clamp(0.0, half[0].min(half[1]));
+        let sigma = blur.max(0.0);
+        let rgb = [color.0, color.1, color.2];
+        let stride = surface.pixmap.width() as usize * 4;
+        let (origin, scale) = (surface.origin, surface.scale);
+        // Inside a rectangle the blur only darkens its own edge, so the plain
+        // coverage of the rectangle bounds it.
+        let inner = inset.then(|| {
+            let mut mask = Mask::new(visible[2], visible[3])?;
+            let path = rounded(rect, radius)?;
+            mask.fill_path(
+                &path,
+                FillRule::Winding,
+                true,
+                toward(surface.transform(), visible),
+            );
+            Some(mask)
+        });
+        if inset && inner.as_ref().is_none_or(Option::is_none) {
+            return;
+        }
+        let inner = inner.flatten();
+        let data = surface.pixmap.data_mut();
+        for row in 0..visible[3] {
+            let y = origin[1] + ((visible[1] + row) as f32 + 0.5) / scale - centre[1];
+            let start = (visible[1] + row) as usize * stride + visible[0] as usize * 4;
+            for column in 0..visible[2] {
+                let x = origin[0] + ((visible[0] + column) as f32 + 0.5) / scale - centre[0];
+                let mut coverage = if sigma <= 0.0 {
+                    rounded_coverage([x, y], half, corner)
+                } else {
+                    rounded_box_shadow(half, [x, y], sigma, corner)
+                };
+                if inset {
+                    let at = (row * visible[2] + column) as usize;
+                    let within = inner
+                        .as_ref()
+                        .map_or(0.0, |mask| f32::from(mask.data()[at]) / 255.0);
+                    coverage = (1.0 - coverage) * within;
+                }
+                let alpha = (coverage.clamp(0.0, 1.0) * f32::from(color.3)).round() as u32;
+                if alpha == 0 {
+                    continue;
+                }
+                let pixel = &mut data[start + column as usize * 4..][..4];
+                self.gamma.over(pixel, self.gamma.light(rgb, alpha), alpha);
             }
         }
     }

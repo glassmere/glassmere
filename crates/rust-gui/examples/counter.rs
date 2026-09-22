@@ -2,6 +2,11 @@ use rust_gui::{AppOptions, Color, Length, Style, run};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
+    // `--gpu-hook` draws one rectangle with the application's own wgpu code,
+    // through `AppOptions::gpu` and `Primitive::Custom`.
+    let hook = std::env::args().any(|arg| arg == "--gpu-hook");
+    let drawn = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = drawn.clone();
     let stress = std::env::args().any(|arg| arg == "--stress");
     let arguments: Vec<_> = std::env::args().collect();
     let stress_frames = arguments
@@ -23,6 +28,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     run(
         AppOptions {
             title: "Rust GUI / Kernel playground".into(),
+            gpu: hook.then(|| {
+                rust_gui::GpuSetup::new(move |renderer| {
+                    let counted = counted.clone();
+                    renderer.set_custom_draw(
+                        7,
+                        Some(Box::new(move |draw| {
+                            // A real callback would draw here; this one only
+                            // reports that it was asked to, and where.
+                            let seen = counted.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            if seen == 0 {
+                                println!(
+                                    "GPU_HOOK rect={:?} scale={} target={:?}",
+                                    draw.rect, draw.scale, draw.target_size
+                                );
+                            }
+                        })),
+                    );
+                })
+            }),
+            // `--centered` opens it in the middle of the screen, or of the
+            // one named after `--screen`.
+            placement: match std::env::args().position(|arg| arg == "--screen") {
+                Some(at) => {
+                    rust_gui::Placement::Named(std::env::args().nth(at + 1).unwrap_or_default())
+                }
+                None if std::env::args().any(|arg| arg == "--centered") => {
+                    rust_gui::Placement::Centered
+                }
+                None => rust_gui::Placement::default(),
+            },
             frame_limit: if stress {
                 Some(stress_frames)
             } else {
@@ -35,6 +70,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 count += 1;
                 show_details = count % 60 < 30;
                 reversed = (count / 30) % 2 == 0;
+            }
+            if hook {
+                // A leaf that says "the application draws this part".
+                ui.custom(
+                    "canvas",
+                    rust_gui::Style::default(),
+                    rust_gui::CustomWidget {
+                        size: rust_gui::Size::new(120.0, 60.0),
+                        semantics: rust_gui::Semantics {
+                            role: rust_gui::Role::Group,
+                            label: "Application drawing".into(),
+                            disabled: false,
+                            focusable: false,
+                        },
+                        primitives: vec![rust_gui::Primitive::Custom {
+                            rect: rust_gui::Rect {
+                                x: 0.0,
+                                y: 0.0,
+                                width: 120.0,
+                                height: 60.0,
+                            },
+                            id: 7,
+                        }],
+                    },
+                );
             }
             ui.hot_state(|| format!("{count} {show_details} {reversed}"));
             let message = ui.watched_text(motd);

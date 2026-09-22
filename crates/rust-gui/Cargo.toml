@@ -10,8 +10,8 @@ publish.workspace = true
 messages = "examples/locales/en.ftl"
 
 [features]
-default = ["desktop", "syntax", "images", "derive", "fluent"]
-desktop = ["dep:rust-gui-winit"]
+default = ["desktop", "syntax", "images", "derive", "fluent", "regex"]
+desktop = ["dep:rust-gui-winit", "dep:rust-gui-render-wgpu"]
 diagnostics = ["desktop", "rust-gui-winit/diagnostics"]
 # `rust_gui::syntax`: syntect highlighting for the code editor.
 syntax = ["dep:rust-gui-syntax"]
@@ -24,6 +24,8 @@ icu = ["dep:rust-gui-icu"]
 fluent = ["dep:rust-gui-fluent"]
 # `#[derive(Properties)]` for property grids.
 derive = ["dep:rust-gui-derive"]
+# Regular expressions in the code editor's find bar.
+regex = ["rust-gui-core/regex"]
 # Serialize and Deserialize for `DockLayout`.
 serde = ["rust-gui-core/serde"]
 
@@ -33,6 +35,7 @@ rust-gui-scene.workspace = true
 rust-gui-devtools.workspace = true
 rust-gui-render-cpu.workspace = true
 rust-gui-winit = { workspace = true, optional = true }
+rust-gui-render-wgpu = { workspace = true, optional = true }
 rust-gui-syntax = { workspace = true, optional = true }
 rust-gui-image = { workspace = true, optional = true }
 rust-gui-derive = { workspace = true, optional = true }

@@ -12,6 +12,10 @@ pub use rust_gui_icu as icu;
 pub use rust_gui_image as image;
 /// Renders a scene to pixels without a graphics adapter.
 pub use rust_gui_render_cpu::{CpuRenderer, CpuStats};
+/// The GPU renderer, for applications that draw with wgpu themselves through
+/// `AppOptions::gpu`. See `Renderer::set_custom_draw`.
+#[cfg(feature = "desktop")]
+pub use rust_gui_render_wgpu as render;
 pub use rust_gui_scene::{
     Affine, Affinity, Color, Image, Point, Primitive, Rect, Scene, Size, VectorImage,
 };
@@ -22,6 +26,6 @@ pub use rust_gui_winit::hot;
 #[cfg(feature = "desktop")]
 pub use rust_gui_winit::{
     AppOptions, DesktopClosed, DesktopHandle, DirectionChoice, DockWindowView, DockWindows,
-    GpuMemoryPolicy, GraphicsBackend, GraphicsOptions, Mailbox, MessageSender, ThemeChoice,
-    WakeHandle, WindowKey, run, run_windows, run_with_wakeup,
+    GpuMemoryPolicy, GpuSetup, GraphicsBackend, GraphicsOptions, Mailbox, MessageSender, Placement,
+    ThemeChoice, WakeHandle, WindowKey, run, run_windows, run_with_wakeup,
 };

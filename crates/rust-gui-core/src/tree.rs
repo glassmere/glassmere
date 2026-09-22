@@ -2245,6 +2245,25 @@ impl Context {
                 transform,
             });
         }
+        // A shadow is behind the node, so it is drawn before the clip that
+        // bounds the node's own painting.
+        if let Some(shadow) = &node.style.shadow
+            && !shadow.inset
+            && shadow.color.3 > 0
+        {
+            scene.primitives.push(Primitive::Shadow {
+                rect: node.bounds,
+                radius,
+                color: shadow.color,
+                blur: shadow.blur,
+                spread: shadow.spread,
+                offset: Point {
+                    x: shadow.offset.0,
+                    y: shadow.offset.1,
+                },
+                inset: false,
+            });
+        }
         scene.primitives.push(Primitive::PushClip(node.bounds));
         let focused = self.focused == Some(id);
         // There is no stroke primitive. Over an opaque background the ring is
@@ -2278,6 +2297,25 @@ impl Context {
                     rect: node.bounds,
                     color: background,
                     radius,
+                });
+            }
+            // A ramp fills the node over whatever flat colour it has.
+            if let Some(gradient) = &node.style.gradient
+                && gradient.stops.len() >= 2
+            {
+                scene.primitives.push(Primitive::Gradient {
+                    rect: node.bounds,
+                    radius,
+                    from: Point {
+                        x: gradient.from.0,
+                        y: gradient.from.1,
+                    },
+                    to: Point {
+                        x: gradient.to.0,
+                        y: gradient.to.1,
+                    },
+                    stops: gradient.stops.clone(),
+                    radial: gradient.radial,
                 });
             }
             if focused {
@@ -2418,6 +2456,23 @@ impl Context {
                 } else {
                     self.theme.text_disabled
                 },
+            });
+        }
+        if let Some(shadow) = &node.style.shadow
+            && shadow.inset
+            && shadow.color.3 > 0
+        {
+            scene.primitives.push(Primitive::Shadow {
+                rect: node.bounds,
+                radius,
+                color: shadow.color,
+                blur: shadow.blur,
+                spread: shadow.spread,
+                offset: Point {
+                    x: shadow.offset.0,
+                    y: shadow.offset.1,
+                },
+                inset: true,
             });
         }
         if let Some(widget) = &node.custom {

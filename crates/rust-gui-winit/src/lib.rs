@@ -13,6 +13,56 @@ mod wakeup;
 pub use desktop::{DesktopClosed, DesktopHandle, WindowKey, run_windows};
 pub use dock::{DockWindowView, DockWindows};
 pub use graphics::{GpuMemoryPolicy, GraphicsBackend, GraphicsOptions};
+
+/// What an application draws itself, registered once the window's renderer
+/// exists. Inside it, `Renderer::set_custom_draw` takes a callback for an id,
+/// and a `Primitive::Custom` with that id in a `CustomWidget` is where it
+/// draws. Nothing runs on a window painted without a graphics adapter.
+///
+/// ```ignore
+/// AppOptions {
+///     gpu: Some(GpuSetup::new(|renderer| {
+///         renderer.set_custom_draw(7, Some(Box::new(|draw| { /* wgpu here */ })));
+///     })),
+///     ..AppOptions::default()
+/// }
+/// ```
+/// `Send` because the options travel to the thread a window opens on; the
+/// closure itself runs there, on the renderer's own thread.
+#[derive(Clone)]
+pub struct GpuSetup(SharedSetup);
+
+type SharedSetup = std::sync::Arc<std::sync::Mutex<dyn FnMut(&mut Renderer) + Send>>;
+
+impl GpuSetup {
+    pub fn new(setup: impl FnMut(&mut Renderer) + Send + 'static) -> Self {
+        Self(std::sync::Arc::new(std::sync::Mutex::new(setup)))
+    }
+}
+
+impl std::fmt::Debug for GpuSetup {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("GpuSetup")
+    }
+}
+
+/// Which screen a window opens on, and where.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum Placement {
+    /// Wherever the system puts it, which is usually sensible.
+    #[default]
+    System,
+    /// In the middle of the screen the pointer is on, or of the primary one.
+    Centered,
+    /// In the middle of the screen its owner is on. A window without an owner
+    /// is centred on the pointer's screen instead, so a dialog stays with the
+    /// window it belongs to.
+    WithOwner,
+    /// In the middle of the screen whose name contains this text, ignoring
+    /// case, or of the primary one when nothing matches. The names are the
+    /// platform's own, as the display settings show them.
+    Named(String),
+}
 pub use mailbox::{Mailbox, MessageSender};
 use rust_gui_core::{Action, Context, DragPayload, Event, StyleSheet, TextEdit, Theme, Ui};
 use rust_gui_devtools::Recorder;
@@ -119,6 +169,11 @@ pub struct AppOptions {
     /// Useful for unattended native-window smoke checks; None runs until closed.
     pub frame_limit: Option<u64>,
     pub graphics: GraphicsOptions,
+    /// Registers the application's own GPU drawing when the window opens.
+    pub gpu: Option<GpuSetup>,
+    /// Which screen the window opens on. Multiple monitors otherwise need no
+    /// care: each window follows the scale factor of the screen it is on.
+    pub placement: Placement,
     /// F12 opens an inspector window for this window; `RUST_GUI_INSPECT` opens it at start.
     pub devtools: bool,
     pub theme: ThemeChoice,
@@ -142,6 +197,8 @@ impl Default for AppOptions {
             background: None,
             frame_limit: None,
             graphics: GraphicsOptions::default(),
+            gpu: None,
+            placement: Placement::default(),
             devtools: true,
             theme: ThemeChoice::System,
             stylesheet: None,

@@ -249,6 +249,38 @@ impl WindowState {
 }
 
 impl Desktop {
+    /// The screen a window should open on, or `None` to leave it to the
+    /// system. A named screen that is not there falls back to the primary
+    /// one, so unplugging a monitor does not hide a window.
+    fn screen_for(
+        &self,
+        event_loop: &ActiveEventLoop,
+        owner: Option<WindowKey>,
+        placement: &Placement,
+    ) -> Option<winit::monitor::MonitorHandle> {
+        let primary = || {
+            event_loop
+                .primary_monitor()
+                .or_else(|| event_loop.available_monitors().next())
+        };
+        match placement {
+            Placement::System => None,
+            Placement::Centered => primary(),
+            Placement::WithOwner => owner
+                .and_then(|key| self.windows.get(&key)?.state.as_ref())
+                .and_then(|state| state.window.current_monitor())
+                .or_else(primary),
+            Placement::Named(name) => event_loop
+                .available_monitors()
+                .find(|screen| {
+                    screen
+                        .name()
+                        .is_some_and(|screen| screen.to_lowercase().contains(&name.to_lowercase()))
+                })
+                .or_else(primary),
+        }
+    }
+
     fn new(
         proxy: EventLoopProxy<UserEvent>,
         wake: WakeHandle,
@@ -285,6 +317,9 @@ impl Desktop {
             .with_visible(false)
             .with_title(&options.title)
             .with_inner_size(LogicalSize::new(options.size.width, options.size.height));
+        // Where the window opens, when the application asked for something
+        // other than what the system would do.
+        let screen = self.screen_for(event_loop, owner, &options.placement);
         // A development restart puts the first window back where it was.
         if owner.is_none()
             && self.windows.is_empty()
@@ -307,6 +342,16 @@ impl Desktop {
         #[cfg(not(target_os = "windows"))]
         let _ = owner;
         let window = Arc::new(event_loop.create_window(attributes)?);
+        // Centred by the frame the user sees, which is only known once the
+        // window exists, and in the screen's own pixels.
+        if let Some(screen) = screen {
+            let (size, screen_size) = (window.outer_size(), screen.size());
+            let corner = screen.position();
+            window.set_outer_position(winit::dpi::PhysicalPosition::new(
+                corner.x + (screen_size.width as i32 - size.width as i32) / 2,
+                corner.y + (screen_size.height as i32 - size.height as i32) / 2,
+            ));
+        }
         diagnostics::checkpoint("native_window", None);
         let mut state =
             if let Some(source) = self.windows.values().find_map(|app| app.state.as_ref()) {
@@ -314,6 +359,14 @@ impl Desktop {
             } else {
                 pollster::block_on(WindowState::new(window, event_loop, &self.graphics))?
             };
+        // What the application draws itself, now that there is a renderer to
+        // register it with. A window without an adapter has none.
+        if let Some(setup) = &options.gpu
+            && let Painter::Gpu(renderer) = &mut state.renderer.borrow_mut().renderer
+            && let Ok(mut setup) = setup.0.lock()
+        {
+            setup(renderer);
+        }
         state.accessibility = Some(accesskit_winit::Adapter::with_event_loop_proxy(
             event_loop,
             &state.window,

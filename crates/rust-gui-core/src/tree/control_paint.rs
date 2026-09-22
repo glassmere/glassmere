@@ -23,7 +23,72 @@ pub(super) fn caret_flag(scene: &mut Scene, caret: Rect, rtl: Option<bool>, colo
 }
 
 impl Context {
+    /// How far a node's first baseline sits below its top edge, when it holds
+    /// text at all. A container answers with its first child that does.
+    fn baseline_of(&self, id: NodeId, measurer: &mut impl TextMeasurer) -> Option<f32> {
+        let node = self.nodes.get(&id)?;
+        if node.kind.text_leaf() && !node.text.is_empty() {
+            let padding = node.style.padding.max(0.0);
+            return Some(padding + measurer.ascent(&node.text_style()));
+        }
+        node.children.iter().find_map(|child| {
+            let inside = self.nodes.get(child)?.bounds.y - node.bounds.y;
+            Some(inside + self.baseline_of(*child, measurer)?)
+        })
+    }
+
+    fn shift(&mut self, id: NodeId, by: f32) {
+        let Some(node) = self.nodes.get_mut(&id) else {
+            return;
+        };
+        node.bounds.y += by;
+        node.clip.y += by;
+        node.paint_cache = None;
+        for child in self.nodes[&id].children.clone() {
+            self.shift(child, by);
+        }
+    }
+
+    /// Lines the children of a row up by the baseline of their text rather
+    /// than by their boxes, which is what makes labels of different sizes sit
+    /// on one line.
+    fn align_baselines(&mut self, measurer: &mut impl TextMeasurer) {
+        let rows: Vec<NodeId> = self
+            .nodes
+            .iter()
+            .filter(|(_, node)| {
+                node.style.align_items == crate::Align::Baseline && node.children.len() > 1
+            })
+            .map(|(id, _)| *id)
+            .collect();
+        for row in rows {
+            let children = self.nodes[&row].children.clone();
+            let baselines: Vec<Option<f32>> = children
+                .iter()
+                .map(|child| {
+                    let inside = self.nodes[child].bounds.y - self.nodes[&row].bounds.y;
+                    self.baseline_of(*child, measurer)
+                        .map(|baseline| inside + baseline)
+                })
+                .collect();
+            let Some(lowest) = baselines.iter().flatten().copied().reduce(f32::max) else {
+                continue;
+            };
+            for (child, baseline) in children.iter().zip(&baselines) {
+                let Some(baseline) = baseline else {
+                    continue;
+                };
+                let by = lowest - baseline;
+                if by.abs() > 0.01 {
+                    self.shift(*child, by);
+                    self.pending |= Dirty::PAINT;
+                }
+            }
+        }
+    }
+
     pub(super) fn prepare_controls(&mut self, measurer: &mut impl TextMeasurer) {
+        self.align_baselines(measurer);
         self.prepare_text_areas(measurer);
         let labelled: Vec<_> = self
             .nodes

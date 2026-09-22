@@ -4,7 +4,9 @@
 //! the same picture, and this states how close that is.
 use rust_gui_render_cpu::CpuRenderer;
 use rust_gui_render_wgpu::Renderer;
-use rust_gui_scene::{Affine, Color, Image, Primitive, Rect, Scene, Size, TextStyle, VectorImage};
+use rust_gui_scene::{
+    Affine, Color, GradientStop, Image, Point, Primitive, Rect, Scene, Size, TextStyle, VectorImage,
+};
 use rust_gui_text::TextSystem;
 
 const SIDE: u32 = 256;
@@ -134,6 +136,64 @@ fn scene(scale: f32) -> Scene {
                 radius: 0.0,
             },
             Primitive::PopLayer,
+            // A ramp and a shadow, which both renderers approximate the same
+            // way and which are the easiest thing to get subtly wrong.
+            Primitive::Shadow {
+                rect: rect(196.0, 24.0, 40.0, 30.0),
+                radius: 8.0,
+                color: Color(0, 0, 0, 200),
+                blur: 6.0,
+                spread: 2.0,
+                offset: Point { x: 3.0, y: 4.0 },
+                inset: false,
+            },
+            Primitive::Gradient {
+                rect: rect(196.0, 24.0, 40.0, 30.0),
+                radius: 8.0,
+                from: Point { x: 0.0, y: 0.0 },
+                to: Point { x: 1.0, y: 1.0 },
+                stops: vec![
+                    GradientStop {
+                        at: 0.0,
+                        color: Color::rgb(240, 200, 90),
+                    },
+                    GradientStop {
+                        at: 0.45,
+                        color: Color(120, 40, 200, 180),
+                    },
+                    GradientStop {
+                        at: 1.0,
+                        color: Color::rgb(30, 160, 210),
+                    },
+                ],
+                radial: false,
+            },
+            Primitive::Gradient {
+                rect: rect(196.0, 150.0, 48.0, 48.0),
+                radius: 24.0,
+                from: Point { x: 0.5, y: 0.5 },
+                to: Point { x: 1.0, y: 0.5 },
+                stops: vec![
+                    GradientStop {
+                        at: 0.0,
+                        color: Color::rgb(255, 255, 255),
+                    },
+                    GradientStop {
+                        at: 1.0,
+                        color: Color(0, 0, 0, 0),
+                    },
+                ],
+                radial: true,
+            },
+            Primitive::Shadow {
+                rect: rect(20.0, 190.0, 60.0, 40.0),
+                radius: 10.0,
+                color: Color(0, 0, 0, 160),
+                blur: 5.0,
+                spread: 0.0,
+                offset: Point { x: 0.0, y: 0.0 },
+                inset: true,
+            },
         ],
     }
 }

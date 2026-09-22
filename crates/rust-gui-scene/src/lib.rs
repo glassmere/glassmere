@@ -249,7 +249,48 @@ pub enum Primitive {
         opacity: f32,
         transform: Affine,
     },
+    /// A rounded rectangle filled with a ramp of colours. `from` and `to` are
+    /// in the rectangle's own units, where (0, 0) is its top left corner and
+    /// (1, 1) its bottom right one. A linear ramp runs from one to the other;
+    /// a radial one runs outward from `from` to the distance of `to`.
+    Gradient {
+        rect: Rect,
+        radius: f32,
+        from: Point,
+        to: Point,
+        /// Sorted by position, which runs from 0 to 1. Fewer than two stops
+        /// draws nothing.
+        stops: Vec<GradientStop>,
+        radial: bool,
+    },
+    /// A blurred rounded rectangle, behind whatever is drawn after it or
+    /// inside the rectangle itself. `blur` is the standard deviation of a
+    /// Gaussian in logical pixels, and `spread` grows the rectangle before
+    /// blurring it.
+    Shadow {
+        rect: Rect,
+        radius: f32,
+        color: Color,
+        blur: f32,
+        spread: f32,
+        offset: Point,
+        inset: bool,
+    },
+    /// Whatever the application draws itself. Renderers that know the `id`
+    /// draw it in `rect`; the others leave the rectangle empty.
+    Custom {
+        rect: Rect,
+        id: u64,
+    },
     PopLayer,
+}
+
+/// One colour of a gradient, and where it sits along it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GradientStop {
+    /// 0 at the start of the ramp, 1 at its end.
+    pub at: f32,
+    pub color: Color,
 }
 
 impl Primitive {
@@ -323,6 +364,42 @@ impl Primitive {
                 transform: Affine::translate(-offset.x, -offset.y)
                     .then(*transform)
                     .then(Affine::translate(offset.x, offset.y)),
+            },
+            Self::Gradient {
+                rect,
+                radius,
+                from,
+                to,
+                stops,
+                radial,
+            } => Self::Gradient {
+                rect: rect.translated(offset),
+                radius: *radius,
+                from: *from,
+                to: *to,
+                stops: stops.clone(),
+                radial: *radial,
+            },
+            Self::Shadow {
+                rect,
+                radius,
+                color,
+                blur,
+                spread,
+                offset: shadow,
+                inset,
+            } => Self::Shadow {
+                rect: rect.translated(offset),
+                radius: *radius,
+                color: *color,
+                blur: *blur,
+                spread: *spread,
+                offset: *shadow,
+                inset: *inset,
+            },
+            Self::Custom { rect, id } => Self::Custom {
+                rect: rect.translated(offset),
+                id: *id,
             },
             Self::PopLayer => Self::PopLayer,
         }
