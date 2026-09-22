@@ -69,3 +69,54 @@ pub struct WindowInfo {
     pub maximized: bool,
     pub focused: bool,
 }
+
+/// What the three caption buttons look like. On Windows they are the
+/// system's own: the same glyphs from the same font, at the size and in the
+/// boxes the shell uses, so a title bar an application draws is not a
+/// near-miss of the one beside it. Everywhere else they are drawn from
+/// characters every font has.
+pub(crate) mod caption {
+    use rust_gui_scene::Color;
+
+    /// The font the glyphs come from, when the platform has one of its own.
+    /// Windows 10 has the same code points in Segoe MDL2 Assets, which the
+    /// text system falls back to, and says so as a font diagnostic.
+    #[cfg(windows)]
+    pub(crate) const FONT: Option<&&str> = Some(&"Segoe Fluent Icons");
+    #[cfg(not(windows))]
+    pub(crate) const FONT: Option<&&str> = None;
+
+    /// Segoe's caption glyphs, and plain characters where there is no Segoe.
+    #[cfg(windows)]
+    pub(crate) const MINIMIZE: &str = "\u{e921}";
+    #[cfg(windows)]
+    pub(crate) const MAXIMIZE: &str = "\u{e922}";
+    #[cfg(windows)]
+    pub(crate) const RESTORE: &str = "\u{e923}";
+    #[cfg(windows)]
+    pub(crate) const CLOSE: &str = "\u{e8bb}";
+    #[cfg(not(windows))]
+    pub(crate) const MINIMIZE: &str = "\u{2013}";
+    #[cfg(not(windows))]
+    pub(crate) const MAXIMIZE: &str = "\u{25a1}";
+    #[cfg(not(windows))]
+    pub(crate) const RESTORE: &str = "\u{2750}";
+    #[cfg(not(windows))]
+    pub(crate) const CLOSE: &str = "\u{2715}";
+
+    /// The glyph's size, and the room around it. The shell's own buttons
+    /// are 46 by 32 at a scale factor of one; these are square, because a
+    /// box that hugs its glyph is a box the glyph is centred in.
+    pub(crate) const SIZE: f32 = 10.0;
+    pub(crate) const PADDING: f32 = 9.0;
+
+    /// How much of the text colour a hovered or pressed button is washed
+    /// with, out of 255.
+    pub(crate) const WASH_HOVER: u8 = 26;
+    pub(crate) const WASH_PRESSED: u8 = 46;
+
+    /// What closing looks like under the pointer, which is the one colour
+    /// every desktop agrees on.
+    pub(crate) const CLOSE_HOVER: Color = Color::rgb(196, 43, 28);
+    pub(crate) const CLOSE_PRESSED: Color = Color::rgb(155, 35, 23);
+}

@@ -1,5 +1,7 @@
 use crate::controls::{Control, ControlUpdate};
+use crate::window::caption;
 use crate::{Component, Context, CustomWidget, NodeId, Style};
+use rust_gui_scene::Color;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -284,21 +286,26 @@ impl Ui<'_> {
     /// middle one says which it is from `Ui::window`.
     pub fn window_buttons(&mut self, key: impl Into<String>) {
         let maximized = self.window().maximized;
-        let style = Style {
-            gap: 2.0,
-            ..Style::default()
-        };
-        self.row(key.into(), style, |ui| {
+        let foreground = self.theme().text;
+        // A wash of the text colour, which is how a desktop marks a caption
+        // button: light over a dark title bar, dark over a light one.
+        let wash = |alpha: u8| Color(foreground.0, foreground.1, foreground.2, alpha);
+        let (hover, pressed) = (wash(caption::WASH_HOVER), wash(caption::WASH_PRESSED));
+        self.row(key.into(), Style::default(), |ui| {
             for (key, glyph, name, command) in [
                 (
                     "minimize",
-                    "\u{2013}",
+                    caption::MINIMIZE,
                     "rust-gui-minimize",
                     crate::WindowCommand::Minimize,
                 ),
                 (
                     "maximize",
-                    if maximized { "\u{2750}" } else { "\u{25a1}" },
+                    if maximized {
+                        caption::RESTORE
+                    } else {
+                        caption::MAXIMIZE
+                    },
                     if maximized {
                         "rust-gui-restore"
                     } else {
@@ -308,24 +315,39 @@ impl Ui<'_> {
                 ),
                 (
                     "close",
-                    "\u{2715}",
+                    caption::CLOSE,
                     "rust-gui-close",
                     crate::WindowCommand::Close,
                 ),
             ] {
-                let pressed = ui
-                    .button_styled(
-                        key,
-                        glyph,
-                        true,
-                        Style {
-                            width: crate::Length::Px(40.0),
-                            height: crate::Length::Px(28.0),
-                            padding: 4.0,
-                            ..Style::button()
-                        },
-                    )
-                    .clicked();
+                // Closing is the one that is dangerous, and every desktop
+                // says so the same way: red under the pointer, white on it.
+                let closing = matches!(command, crate::WindowCommand::Close);
+                let over = |background: Color| crate::Paint {
+                    background: Some(background),
+                    foreground: closing.then_some(Color::WHITE),
+                    ..crate::Paint::default()
+                };
+                // The box hugs the glyph rather than being given a size,
+                // because that is what centres it: a text leaf is drawn from
+                // its content corner, wherever its box ends.
+                let style = Style {
+                    padding: caption::PADDING,
+                    radius: 0.0,
+                    background: Some(Color(0, 0, 0, 0)),
+                    foreground: Some(foreground),
+                    font_family: caption::FONT
+                        .map(|name| rust_gui_scene::FontFamily::Named((*name).to_owned())),
+                    font_size: Some(caption::SIZE),
+                    ..Style::default()
+                }
+                .on_hover(over(if closing { caption::CLOSE_HOVER } else { hover }))
+                .on_pressed(over(if closing {
+                    caption::CLOSE_PRESSED
+                } else {
+                    pressed
+                }));
+                let clicked = ui.button_styled(key, glyph, true, style).clicked();
                 // The glyph is what is drawn; the name is what is announced.
                 let label = ui.tr(name);
                 ui.tooltip(label);
@@ -334,7 +356,7 @@ impl Ui<'_> {
                     // layouts when the pointer rests over it.
                     ui.elements.last_mut().unwrap().control = Control::MaximizeButton;
                 }
-                if pressed {
+                if clicked {
                     ui.window_command(command);
                 }
             }
