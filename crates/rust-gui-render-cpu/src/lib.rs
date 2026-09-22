@@ -10,7 +10,8 @@
 //!
 //! It follows the display list exactly as `rust-gui-render-wgpu` does: the
 //! same clip stack, the same layers snapped to the pixel grid, the same shaped
-//! text from `rust-gui-text`, and, like an sRGB render target, it blends in
+//! text from `rust-gui-text`, the same premultiplied linear texels, and, like
+//! an sRGB render target, it blends in
 //! linear light, so translucent fills, faded layers and the soft edges of
 //! glyphs come out the same. tiny-skia supplies geometry: the coverage of
 //! rounded corners and the resampling of images and transformed layers.
@@ -25,8 +26,7 @@ use rust_gui_text::{TextKey, TextSystem};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 use tiny_skia::{
-    FillRule, FilterQuality, Mask, Paint, PathBuilder, Pattern, Pixmap, PixmapPaint, PixmapRef,
-    SpreadMode, Transform,
+    FillRule, FilterQuality, Mask, PathBuilder, Pixmap, PixmapPaint, PixmapRef, Transform,
 };
 
 /// The longest side a vector image or a layer is rasterized at.
@@ -47,7 +47,8 @@ pub struct CpuRenderer {
     swash: SwashCache,
     /// The finished frame; kept so that a frame of the same size allocates nothing.
     target: Option<Pixmap>,
-    /// Vector images by identity and pixel size, with the frame that used them last.
+    /// Texels ready to sample, by image and pixel size, with the frame that
+    /// used them last: vector images rasterized, translucent ones converted.
     rasters: HashMap<(u64, [u32; 2]), (Pixmap, u64)>,
     gamma: Gamma,
     stats: CpuStats,
@@ -633,6 +634,10 @@ impl CpuRenderer {
         }
     }
 
+    /// Draws part of an image into `rect`, over the surface's `visible`
+    /// pixels, which are already clipped. Sampled in linear light, as the
+    /// GPU's sRGB textures are, so that scaling a translucent image gives the
+    /// same colours.
     #[allow(clippy::too_many_arguments)]
     fn image(
         &mut self,
@@ -661,118 +666,194 @@ impl CpuRenderer {
                         1
                     }
                 };
-                let size = [
+                [
                     side(natural.width, rect.width, source.width),
                     side(natural.height, rect.height, source.height),
-                ];
-                if !self.raster(image, size) {
-                    return;
-                }
-                size
+                ]
             }
         };
         let (width, height) = (size[0], size[1]);
+        let prepared = self.prepare(image, size);
         let pixels = match image.pixels() {
-            Some((_, _, pixels)) => pixels,
-            None => self.rasters[&(image.id(), size)].0.data(),
-        };
-        // Image units per pixel; 1 for a raster image.
-        let (unit_x, unit_y) = (natural.width / width as f32, natural.height / height as f32);
-        // Only the source's own pixels may be sampled, or the neighbours of a
-        // nine-slice piece would bleed into it: crop them out.
-        let span = |at: f32, length: f32, unit: f32, side: u32| {
-            let (from, to) = (at / unit, (at + length) / unit);
-            let low = from.min(to).floor().clamp(0.0, side as f32 - 1.0) as u32;
-            let high = (from.max(to).ceil() as u32).clamp(low + 1, side);
-            (low, high - low)
-        };
-        let (crop_x, crop_width) = span(source.x, source.width, unit_x, width);
-        let (crop_y, crop_height) = span(source.y, source.height, unit_y, height);
-        let mut owned = None;
-        if (crop_width, crop_height) != (width, height) || tint.is_some() {
-            let Some(mut copy) = Pixmap::new(crop_width, crop_height) else {
-                return;
-            };
-            for (row, target) in copy
-                .data_mut()
-                .chunks_exact_mut(crop_width as usize * 4)
-                .enumerate()
-            {
-                let start = ((crop_y as usize + row) * width as usize + crop_x as usize) * 4;
-                target.copy_from_slice(&pixels[start..start + target.len()]);
-                if let Some(Color(r, g, b, a)) = tint {
-                    // The tint's colour with the image's alpha, premultiplied.
-                    for pixel in target.as_chunks_mut::<4>().0 {
-                        let alpha = u32::from(pixel[3]) * u32::from(a) / 255;
-                        let scaled = |channel: u8| (u32::from(channel) * alpha / 255) as u8;
-                        *pixel = [scaled(r), scaled(g), scaled(b), alpha as u8];
-                    }
-                }
-            }
-            owned = Some(copy);
-        }
-        let texels = match &owned {
-            Some(copy) => copy.as_ref(),
-            None => match PixmapRef::from_bytes(pixels, width, height) {
-                Some(texels) => texels,
+            Some((_, _, pixels)) if !prepared => pixels,
+            _ => match self.rasters.get(&(image.id(), size)) {
+                Some((texels, _)) => texels.data(),
                 None => return,
             },
         };
-        let (Some(path), Some(mut placed)) =
-            (rounded(rect, radius), Pixmap::new(visible[2], visible[3]))
+        // Image units per pixel; 1 for a raster image.
+        let (unit_x, unit_y) = (natural.width / width as f32, natural.height / height as f32);
+        // The texels the source rectangle covers. Nothing outside may be
+        // sampled, or the neighbours of a nine-slice piece would bleed in.
+        let span = |at: f32, length: f32, unit: f32, side: u32| {
+            let (from, to) = (at / unit, (at + length) / unit);
+            let low = from.min(to).floor().clamp(0.0, side as f32 - 1.0);
+            let high = from.max(to).ceil().clamp(low + 1.0, side as f32);
+            (low as i32, high as i32 - 1)
+        };
+        let horizontal = span(source.x, source.width, unit_x, width);
+        let vertical = span(source.y, source.height, unit_y, height);
+        // A surface pixel's centre as a texel coordinate, one axis at a time:
+        // the centre is a logical point, the logical point is a point of the
+        // source rectangle, and that is a texel. A mirrored source slopes down.
+        let map = |origin: f32, edge: f32, at: f32, extent: f32, length: f32, unit: f32| {
+            let slope = extent / (length * unit * surface.scale);
+            let start = (at + (origin - edge) * extent / length) / unit - 0.5 + slope * 0.5;
+            (slope, start)
+        };
+        let (slope_x, start_x) = map(
+            surface.origin[0],
+            rect.x,
+            source.x,
+            source.width,
+            rect.width,
+            unit_x,
+        );
+        let (slope_y, start_y) = map(
+            surface.origin[1],
+            rect.y,
+            source.y,
+            source.height,
+            rect.height,
+            unit_y,
+        );
+        if ![slope_x, start_x, slope_y, start_y]
+            .iter()
+            .all(|value| value.is_finite())
+        {
+            return;
+        }
+        // Rounded corners are anti-aliased and square ones are not, so that
+        // nine-slice pieces and sprites meet without a seam, as on the GPU.
+        let (Some(path), Some(mut mask)) =
+            (rounded(rect, radius), Mask::new(visible[2], visible[3]))
         else {
             return;
         };
-        // Cropped pixels to image units, to the source's corner, to `rect`.
-        // A negative source length mirrors.
-        let placement = Transform::from_translate(crop_x as f32, crop_y as f32)
-            .post_scale(unit_x, unit_y)
-            .post_translate(-source.x, -source.y)
-            .post_scale(rect.width / source.width, rect.height / source.height)
-            .post_translate(rect.x, rect.y);
-        let paint = Paint {
-            shader: Pattern::new(
-                texels,
-                SpreadMode::Pad,
-                FilterQuality::Bilinear,
-                1.0,
-                placement,
-            ),
-            // Square images meet their neighbours without a seam, as on the GPU.
-            anti_alias: radius > 0.0,
-            ..Paint::default()
-        };
-        // Resampled into the visible pixels alone, which is the clip, then
-        // laid over them.
-        placed.fill_path(
+        mask.fill_path(
             &path,
-            &paint,
             FillRule::Winding,
+            radius > 0.0,
             toward(surface.transform(), visible),
-            None,
         );
-        let corner = [visible[0] as i32, visible[1] as i32];
-        self.picture(surface, placed.as_ref(), corner, visible, 255);
+        // A tint replaces the image's colours and keeps its alpha.
+        let tinted = tint.map(|Color(red, green, blue, alpha)| {
+            (
+                [red, green, blue]
+                    .map(|channel| f32::from(self.gamma.linear[usize::from(channel)])),
+                f32::from(alpha) / 255.0,
+            )
+        });
+        let texel = |x: i32, y: i32| {
+            let x = x.clamp(horizontal.0, horizontal.1) as usize;
+            let y = y.clamp(vertical.0, vertical.1) as usize;
+            let at = (y * width as usize + x) * 4;
+            [
+                f32::from(self.gamma.linear[usize::from(pixels[at])]),
+                f32::from(self.gamma.linear[usize::from(pixels[at + 1])]),
+                f32::from(self.gamma.linear[usize::from(pixels[at + 2])]),
+                f32::from(pixels[at + 3]) * (4095.0 / 255.0),
+            ]
+        };
+        let between = |low: [f32; 4], high: [f32; 4], at: f32| {
+            std::array::from_fn(|channel| low[channel] + (high[channel] - low[channel]) * at)
+        };
+        let stride = surface.pixmap.width() as usize * 4;
+        let coverage = mask.data();
+        let data = surface.pixmap.data_mut();
+        for row in 0..visible[3] {
+            let y = start_y + slope_y * (visible[1] + row) as f32;
+            let (top, down) = (y.floor(), y - y.floor());
+            let start = (visible[1] + row) as usize * stride + visible[0] as usize * 4;
+            let line = &coverage[row as usize * visible[2] as usize..][..visible[2] as usize];
+            for (column, cover) in line.iter().enumerate() {
+                if *cover == 0 {
+                    continue;
+                }
+                let x = start_x + slope_x * (visible[0] + column as u32) as f32;
+                let (left, across) = (x.floor(), x - x.floor());
+                let (left, top) = (left as i32, top as i32);
+                let sampled = between(
+                    between(texel(left, top), texel(left + 1, top), across),
+                    between(texel(left, top + 1), texel(left + 1, top + 1), across),
+                    down,
+                );
+                let cover = f32::from(*cover) / 255.0;
+                let (light, alpha) = match tinted {
+                    Some((tint, opacity)) => (
+                        tint.map(|channel| channel * sampled[3] / 4095.0 * opacity * cover),
+                        sampled[3] * opacity * cover,
+                    ),
+                    None => (
+                        [sampled[0] * cover, sampled[1] * cover, sampled[2] * cover],
+                        sampled[3] * cover,
+                    ),
+                };
+                let alpha = (alpha / 4095.0 * 255.0).round().clamp(0.0, 255.0) as u32;
+                if alpha == 0 {
+                    continue;
+                }
+                let pixel = &mut data[start + column * 4..][..4];
+                self.gamma.over(
+                    pixel,
+                    light.map(|channel| channel.round().clamp(0.0, 4095.0) as u32),
+                    alpha,
+                );
+            }
+        }
     }
 
-    /// Makes sure the vector image is rasterized at `size` and marks it used.
-    fn raster(&mut self, image: &Image, size: [u32; 2]) -> bool {
+    /// Makes the image's texels ready to sample and marks them used: a vector
+    /// image rasterized at `size`, and a translucent image premultiplied in
+    /// linear light. True when they are in the cache rather than in the image.
+    fn prepare(&mut self, image: &Image, size: [u32; 2]) -> bool {
         let frame = self.stats.frames;
         if let Some(entry) = self.rasters.get_mut(&(image.id(), size)) {
             entry.1 = frame;
             return true;
         }
-        let (Some(vector), Some(mut pixmap)) = (image.vector(), Pixmap::new(size[0], size[1]))
-        else {
-            return false;
+        let settled = |pixel: &[u8; 4]| matches!(pixel[3], 0 | 255);
+        let mut texels = match image.pixels() {
+            // Texels that are opaque or clear need no conversion, which is
+            // most images: only their alpha would have been divided out.
+            Some((_, _, pixels)) if pixels.as_chunks::<4>().0.iter().all(settled) => return false,
+            Some((width, height, pixels)) => {
+                let Some(mut texels) = Pixmap::new(width, height) else {
+                    return false;
+                };
+                texels.data_mut().copy_from_slice(pixels);
+                texels
+            }
+            None => {
+                let (Some(vector), Some(mut texels)) =
+                    (image.vector(), Pixmap::new(size[0], size[1]))
+                else {
+                    return false;
+                };
+                let data = vector.rasterize(size[0], size[1]);
+                // A vector image that returns the wrong amount is not drawn.
+                if data.len() != texels.data().len() {
+                    return false;
+                }
+                texels.data_mut().copy_from_slice(&data);
+                texels
+            }
         };
-        let data = vector.rasterize(size[0], size[1]);
-        // A vector image that returns the wrong amount is not drawn.
-        if data.len() != pixmap.data().len() {
-            return false;
+        // Scene images are premultiplied in sRGB space and blending is linear,
+        // so a translucent texel is stored as the sRGB encoding of its
+        // premultiplied linear colour, exactly as the GPU's textures hold it.
+        for pixel in texels.data_mut().as_chunks_mut::<4>().0 {
+            let alpha = u32::from(pixel[3]);
+            if settled(pixel) {
+                continue;
+            }
+            for channel in &mut pixel[..3] {
+                let straight = (u32::from(*channel) * 255 / alpha).min(255) as usize;
+                let light = f32::from(self.gamma.linear[straight]) * alpha as f32 / 255.0;
+                *channel = self.gamma.back[light.round().clamp(0.0, 4095.0) as usize];
+            }
         }
-        pixmap.data_mut().copy_from_slice(&data);
-        self.rasters.insert((image.id(), size), (pixmap, frame));
+        self.rasters.insert((image.id(), size), (texels, frame));
         true
     }
 

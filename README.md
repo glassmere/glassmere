@@ -248,6 +248,8 @@ let options = AppOptions {
 };
 ```
 
+When no adapter can be used at all, the host says so and paints the window with the CPU renderer instead, so the application still runs. `GraphicsBackend::Cpu` or `RUST_GUI_RENDERER=cpu` asks for that path on a working machine. See [milestone 14](docs/milestone-14.md).
+
 On the local RTX 3070, the optimized counter now uses about 67 MiB of private resident RAM versus the original 115 MiB, with 122 MiB of private commit versus 385 MiB. This remains a substantial graphics/driver baseline. See [memory measurements](docs/memory.md) for startup attribution, the 6,000-frame stress run and reproduction steps.
 
 ## Validation

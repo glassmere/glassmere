@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 14b. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-21, after milestone 14c. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -18,7 +18,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 12 | Excellent theming | Done | Dark and light token themes, runtime switching, OS preference via winit, stylesheet token overlays and user sheets (milestone 6a). |
 | 13 | Animations in the property system | Done | `Style::transition`, `enter`/`exit` effects, `layout_transition`, keyframe `Animation`, easing curves, reduced motion; composited as GPU layers. Missing: spring physics, per-property timing, OS reduced-motion detection. |
 | 14 | Renderer-independent UI core | Done | Core emits a `Scene` display list; no wgpu types in core. |
-| 15 | Multiple rendering backends | Partial | wgpu (Direct3D 12, Vulkan, Metal, OpenGL) and `CpuRenderer`, which rasterizes the same display list without an adapter and agrees with the GPU within a measured tolerance (milestone 14b). Missing: the desktop host does not fall back to it yet. |
+| 15 | Multiple rendering backends | Done | wgpu (Direct3D 12, Vulkan, Metal, OpenGL) and `CpuRenderer`, which rasterizes the same display list without an adapter and agrees with the GPU within a measured tolerance (milestone 14b). The desktop host paints with it when no adapter works, and on request, through softbuffer (milestone 14c). |
 | 16 | Efficient GPU architecture | Partial | Instanced quads, glyph atlas, a shared image atlas with vector images rasterized per size (milestone 8a), offscreen layers, batching, rectangular clipping. Missing: shadows, paths, gradients, custom shaders, mipmaps. |
 | 17 | Custom rendering escape hatch | Partial | `CustomWidget` leaves paint primitives; no embedded 2D/3D or direct GPU hook yet. |
 | 18 | Rich widget library | Done | Button, checkbox, radio, slider, text input, combo, menu, context menu, tooltip, popover, tabs, split panes, tree, virtual list, data grid, modal and non-modal dialogs, docking, rich text, code editor, rich text editor, images, number input and autocomplete (milestone 9a), toasts (milestone 9b) and a property grid with a derive macro (milestones 9c and 9d). |

@@ -16,11 +16,13 @@ pub use graphics::{GpuMemoryPolicy, GraphicsBackend, GraphicsOptions};
 pub use mailbox::{Mailbox, MessageSender};
 use rust_gui_core::{Action, Context, DragPayload, Event, StyleSheet, TextEdit, Theme, Ui};
 use rust_gui_devtools::Recorder;
+use rust_gui_render_cpu::CpuRenderer;
 use rust_gui_render_wgpu::Renderer;
 use rust_gui_scene::{Color, Point, Primitive, Scene, Size};
 use std::{
     cell::RefCell,
     error::Error,
+    num::NonZeroU32,
     path::PathBuf,
     rc::Rc,
     sync::Arc,
@@ -169,12 +171,7 @@ pub fn run_with_wakeup<F: FnMut(&mut Ui<'_>) + 'static>(
 }
 
 struct WindowState {
-    instance: wgpu::Instance,
-    adapter: wgpu::Adapter,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    surface: wgpu::Surface<'static>,
-    config: wgpu::SurfaceConfiguration,
+    surfaces: Surfaces,
     renderer: Rc<RefCell<SharedRenderer>>,
     pending_scene: bool,
     accessibility: Option<accesskit_winit::Adapter>,
@@ -183,10 +180,68 @@ struct WindowState {
     ime_enabled: bool,
 }
 
+/// The display's software presentation, shared by its windows.
+type CpuContext = Rc<softbuffer::Context<winit::event_loop::OwnedDisplayHandle>>;
+type CpuSurface = softbuffer::Surface<winit::event_loop::OwnedDisplayHandle, Arc<Window>>;
+
+/// How a window's pixels reach the screen.
+enum Surfaces {
+    Gpu {
+        instance: wgpu::Instance,
+        adapter: wgpu::Adapter,
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        surface: wgpu::Surface<'static>,
+        config: wgpu::SurfaceConfiguration,
+    },
+    Cpu {
+        context: CpuContext,
+        surface: CpuSurface,
+        /// What the surface was last sized to; zero asks for a resize.
+        size: [u32; 2],
+    },
+}
+
 struct SharedRenderer {
-    renderer: Renderer,
+    renderer: Painter,
     window: Option<WindowId>,
     gpu: GpuRouting,
+}
+
+/// The renderer the windows of one display share.
+/// Boxed: both are a few kilobytes, and this lives behind an `Rc` anyway.
+enum Painter {
+    Gpu(Box<Renderer>),
+    Cpu(Box<CpuRenderer>),
+}
+
+impl Painter {
+    /// Both renderers lay text out with the system they will draw it with.
+    fn text_system(&mut self) -> &mut rust_gui_render_wgpu::TextSystem {
+        match self {
+            Self::Gpu(renderer) => renderer.text_system(),
+            Self::Cpu(renderer) => renderer.text_system(),
+        }
+    }
+}
+
+/// What a presentation leaves for the caller to do.
+enum Presented {
+    Drawn(Duration),
+    /// Nothing was shown; a redraw was asked for where one is needed.
+    Skipped,
+    /// The surface was busy: come back shortly.
+    Retry,
+}
+
+/// What to paint, and what the renderer needs to know about it.
+struct Frame<'a> {
+    scene: &'a Scene,
+    clear: Color,
+    /// The scene differs from the one the renderer prepared.
+    changed: bool,
+    /// The window's first frame, for the startup diagnostics.
+    first: bool,
 }
 
 /// GPU times come back a few frames late and the renderer is shared, so the
@@ -210,6 +265,10 @@ impl WindowState {
         event_loop: &ActiveEventLoop,
         options: &GraphicsOptions,
     ) -> Result<Self> {
+        let renderer = std::env::var("RUST_GUI_RENDERER").ok();
+        if options.wants_cpu(renderer.as_deref()) {
+            return Self::cpu(window, Self::display(event_loop)?, None);
+        }
         // Initializing every compiled backend loads unused driver stacks and
         // enumerates their adapters. Try one backend, dropping failed attempts
         // before opening the next. WGPU_BACKEND restricts the candidate set.
@@ -218,11 +277,55 @@ impl WindowState {
             wgpu::Instance::enabled_backend_features(),
             environment.as_deref(),
         );
-        graphics::first_available(candidates, |backend| {
+        match graphics::first_available(candidates, |backend| {
             Self::with_backend(window.clone(), event_loop, backend, options)
         })
         .await
-        .map_err(Into::into)
+        {
+            Ok(state) => Ok(state),
+            // Painting without an adapter is slower, and it is how the
+            // application runs at all on a machine whose drivers cannot.
+            Err(error) => {
+                eprintln!("rust-gui: {error}. Falling back to the CPU renderer.");
+                Self::cpu(window, Self::display(event_loop)?, None)
+            }
+        }
+    }
+
+    fn display(event_loop: &ActiveEventLoop) -> Result<CpuContext> {
+        softbuffer::Context::new(event_loop.owned_display_handle())
+            .map(Rc::new)
+            .map_err(|error| format!("no software presentation: {error}").into())
+    }
+
+    /// A window painted by `CpuRenderer`, sharing the renderer of the windows
+    /// that are already open when there are any.
+    fn cpu(
+        window: Arc<Window>,
+        context: CpuContext,
+        renderer: Option<Rc<RefCell<SharedRenderer>>>,
+    ) -> Result<Self> {
+        let surface = softbuffer::Surface::new(&context, window.clone())
+            .map_err(|error| format!("no software presentation: {error}"))?;
+        Ok(Self {
+            surfaces: Surfaces::Cpu {
+                context,
+                surface,
+                size: [0; 2],
+            },
+            renderer: renderer.unwrap_or_else(|| {
+                Rc::new(RefCell::new(SharedRenderer {
+                    renderer: Painter::Cpu(Box::new(CpuRenderer::new())),
+                    window: None,
+                    gpu: GpuRouting::default(),
+                }))
+            }),
+            pending_scene: true,
+            accessibility: None,
+            window,
+            ime_target: None,
+            ime_enabled: false,
+        })
     }
 
     async fn with_backend(
@@ -280,14 +383,16 @@ impl WindowState {
         let renderer = Renderer::new(&device, &queue, config.format);
         diagnostics::checkpoint("renderer_and_fonts", Some(&device));
         Ok(Self {
-            instance,
-            adapter,
-            device,
-            queue,
-            surface,
-            config,
+            surfaces: Surfaces::Gpu {
+                instance,
+                adapter,
+                device,
+                queue,
+                surface,
+                config,
+            },
             renderer: Rc::new(RefCell::new(SharedRenderer {
-                renderer,
+                renderer: Painter::Gpu(Box::new(renderer)),
                 window: None,
                 gpu: GpuRouting::default(),
             })),
@@ -301,11 +406,151 @@ impl WindowState {
 
     fn resize(&mut self) {
         let size = self.window.inner_size();
-        if size.width > 0 && size.height > 0 {
-            self.config.width = size.width;
-            self.config.height = size.height;
-            self.surface.configure(&self.device, &self.config);
+        if size.width == 0 || size.height == 0 {
+            return;
         }
+        match &mut self.surfaces {
+            Surfaces::Gpu {
+                device,
+                surface,
+                config,
+                ..
+            } => {
+                config.width = size.width;
+                config.height = size.height;
+                surface.configure(device, config);
+            }
+            // A software surface is sized by the frame that is about to use it.
+            Surfaces::Cpu { size, .. } => *size = [0; 2],
+        }
+    }
+
+    /// The graphics device, for the startup and memory diagnostics.
+    fn device(&self) -> Option<&wgpu::Device> {
+        match &self.surfaces {
+            Surfaces::Gpu { device, .. } => Some(device),
+            Surfaces::Cpu { .. } => None,
+        }
+    }
+
+    fn adapter_name(&self) -> String {
+        match &self.surfaces {
+            Surfaces::Gpu { adapter, .. } => {
+                let info = adapter.get_info();
+                format!("{} ({:?})", info.name, info.backend)
+            }
+            Surfaces::Cpu { .. } => "CPU renderer, no graphics adapter".to_owned(),
+        }
+    }
+
+    fn present_gpu(&mut self, renderer: &mut Renderer, frame: Frame<'_>) -> Result<Presented> {
+        let Surfaces::Gpu {
+            device,
+            queue,
+            surface,
+            ..
+        } = &self.surfaces
+        else {
+            return Ok(Presented::Skipped);
+        };
+        // Cheap handle clones, so that a lost surface can be replaced below.
+        let (device, queue) = (device.clone(), queue.clone());
+        let (texture, suboptimal) = match surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(texture) => (texture, false),
+            wgpu::CurrentSurfaceTexture::Suboptimal(texture) => (texture, true),
+            wgpu::CurrentSurfaceTexture::Occluded => return Ok(Presented::Skipped),
+            wgpu::CurrentSurfaceTexture::Timeout => return Ok(Presented::Retry),
+            wgpu::CurrentSurfaceTexture::Outdated => {
+                self.resize();
+                self.window.request_redraw();
+                return Ok(Presented::Skipped);
+            }
+            wgpu::CurrentSurfaceTexture::Lost => {
+                if let Surfaces::Gpu {
+                    instance, surface, ..
+                } = &mut self.surfaces
+                {
+                    *surface = instance.create_surface(self.window.clone())?;
+                }
+                self.resize();
+                self.window.request_redraw();
+                return Ok(Presented::Skipped);
+            }
+            wgpu::CurrentSurfaceTexture::Validation => {
+                return Err("Surface validation failed".into());
+            }
+        };
+        let target = texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let size = self.window.inner_size();
+        let scale = self.window.scale_factor() as f32;
+        let started = Instant::now();
+        {
+            let _render_span = tracing::trace_span!("rust_gui.render").entered();
+            renderer.render_cached(
+                &device,
+                &queue,
+                &target,
+                [size.width, size.height],
+                scale,
+                frame.scene,
+                frame.clear,
+                frame.changed,
+            )?;
+        }
+        if frame.first {
+            diagnostics::checkpoint("first_render", Some(&device));
+        }
+        self.window.pre_present_notify();
+        texture.present();
+        let render = started.elapsed();
+        if frame.first {
+            diagnostics::checkpoint("first_present", Some(&device));
+        }
+        if suboptimal {
+            self.resize();
+        }
+        Ok(Presented::Drawn(render))
+    }
+
+    fn present_cpu(&mut self, renderer: &mut CpuRenderer, frame: Frame<'_>) -> Result<Presented> {
+        let physical = self.window.inner_size();
+        let scale = self.window.scale_factor() as f32;
+        let (Some(width), Some(height)) = (
+            NonZeroU32::new(physical.width),
+            NonZeroU32::new(physical.height),
+        ) else {
+            return Ok(Presented::Skipped);
+        };
+        let Surfaces::Cpu { surface, size, .. } = &mut self.surfaces else {
+            return Ok(Presented::Skipped);
+        };
+        let started = Instant::now();
+        if *size != [physical.width, physical.height] {
+            surface
+                .resize(width, height)
+                .map_err(|error| format!("software surface not resized: {error}"))?;
+            *size = [physical.width, physical.height];
+        }
+        // The whole window every time: there is no retained scene here.
+        let pixels = renderer.render(
+            [physical.width, physical.height],
+            scale,
+            frame.scene,
+            frame.clear,
+        );
+        let mut buffer = surface
+            .buffer_mut()
+            .map_err(|error| format!("no software buffer: {error}"))?;
+        for (out, pixel) in buffer.iter_mut().zip(pixels.as_chunks::<4>().0) {
+            *out = u32::from(pixel[0]) << 16 | u32::from(pixel[1]) << 8 | u32::from(pixel[2]);
+        }
+        self.window.pre_present_notify();
+        buffer
+            .present()
+            .map_err(|error| format!("software frame not presented: {error}"))?;
+        Ok(Presented::Drawn(started.elapsed()))
     }
 }
 
@@ -541,18 +786,19 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         let shared_renderer = state.renderer.clone();
         let mut shared = shared_renderer.borrow_mut();
         let window_changed = shared.window != Some(state.window.id());
-        let renderer = &mut shared.renderer;
         // The same for every window of the device: switching it per window
         // would drop the readbacks that are still on their way.
-        renderer.set_profiling(self.profile_gpu);
+        if let Painter::Gpu(renderer) = &mut shared.renderer {
+            renderer.set_profiling(self.profile_gpu);
+        }
         let logical_size = Size::new(size.width as f32 / scale, size.height as f32 / scale);
         self.logical_size = logical_size;
         self.context.set_now(self.started.elapsed());
         // Images decoded in the background since the last frame.
         self.images.deliver(&mut self.context);
-        let mut stats = self
-            .context
-            .run(logical_size, renderer.text_system(), &mut self.view);
+        let mut stats =
+            self.context
+                .run(logical_size, shared.renderer.text_system(), &mut self.view);
         // A consumed click may make the view ask for something that itself
         // needs another declaration: a button that switches the language or
         // the theme. Declare until it settles, within reason, so the frame
@@ -562,9 +808,9 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             if pending == 0 {
                 break;
             }
-            let again = self
-                .context
-                .run(logical_size, renderer.text_system(), &mut self.view);
+            let again =
+                self.context
+                    .run(logical_size, shared.renderer.text_system(), &mut self.view);
             pending = again.activations;
             stats = merge(stats, again);
         }
@@ -635,7 +881,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             self.accessibility_requested = false;
         }
         if self.frames == 0 {
-            diagnostics::checkpoint("first_layout", Some(&state.device));
+            diagnostics::checkpoint("first_layout", state.device());
         }
         state.window.set_cursor(
             match self.context.hovered().and_then(|id| self.context.node(id)) {
@@ -652,36 +898,6 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                 _ => CursorIcon::Default,
             },
         );
-        let (frame, suboptimal) = match state.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(frame) => (frame, false),
-            wgpu::CurrentSurfaceTexture::Suboptimal(frame) => (frame, true),
-            wgpu::CurrentSurfaceTexture::Occluded => return Ok(()),
-            wgpu::CurrentSurfaceTexture::Timeout => {
-                self.retry_pending = true;
-                event_loop.set_control_flow(ControlFlow::WaitUntil(
-                    Instant::now() + Duration::from_millis(100),
-                ));
-                return Ok(());
-            }
-            wgpu::CurrentSurfaceTexture::Outdated => {
-                state.resize();
-                state.window.request_redraw();
-                return Ok(());
-            }
-            wgpu::CurrentSurfaceTexture::Lost => {
-                state.surface = state.instance.create_surface(state.window.clone())?;
-                state.resize();
-                state.window.request_redraw();
-                return Ok(());
-            }
-            wgpu::CurrentSurfaceTexture::Validation => {
-                return Err("Surface validation failed".into());
-            }
-        };
-        let target = frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let render_started = Instant::now();
         // The overlay is appended to a copy only while an inspector decorates
         // this window; ordinary frames render the retained scene directly.
         let decorated;
@@ -700,38 +916,35 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             };
             &decorated
         };
-        {
-            let _render_span = tracing::trace_span!("rust_gui.render").entered();
-            renderer.render_cached(
-                &state.device,
-                &state.queue,
-                &target,
-                [size.width, size.height],
-                scale,
-                scene,
-                self.options
-                    .background
-                    .unwrap_or(self.context.theme().window),
-                state.pending_scene || window_changed || self.overlay_dirty,
-            )?;
-        }
+        let frame = Frame {
+            scene,
+            clear: self
+                .options
+                .background
+                .unwrap_or(self.context.theme().window),
+            changed: state.pending_scene || window_changed || self.overlay_dirty,
+            first: self.frames == 0,
+        };
+        let render = match &mut shared.renderer {
+            Painter::Gpu(renderer) => state.present_gpu(renderer, frame)?,
+            Painter::Cpu(renderer) => state.present_cpu(renderer, frame)?,
+        };
+        let render = match render {
+            Presented::Drawn(render) => render,
+            Presented::Skipped => return Ok(()),
+            Presented::Retry => {
+                self.retry_pending = true;
+                event_loop.set_control_flow(ControlFlow::WaitUntil(
+                    Instant::now() + Duration::from_millis(100),
+                ));
+                return Ok(());
+            }
+        };
         state.pending_scene = false;
         self.overlay_dirty = false;
-        if self.frames == 0 {
-            diagnostics::checkpoint("first_render", Some(&state.device));
-        }
-        state.window.pre_present_notify();
-        frame.present();
         // Fifo presentation paces this loop to the display while anything animates.
         if self.context.animating() {
             state.window.request_redraw();
-        }
-        let render = render_started.elapsed();
-        if self.frames == 0 {
-            diagnostics::checkpoint("first_present", Some(&state.device));
-        }
-        if suboptimal {
-            state.resize();
         }
         self.frames += 1;
         self.recorder.frame(stats, render, frame_started.elapsed());
@@ -741,8 +954,10 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                 600 => "frame_600",
                 _ => "frame_6000",
             };
-            diagnostics::render_statistics(stage, renderer.stats());
-            diagnostics::checkpoint(stage, Some(&state.device));
+            if let Painter::Gpu(renderer) = &shared.renderer {
+                diagnostics::render_statistics(stage, renderer.stats());
+            }
+            diagnostics::checkpoint(stage, state.device());
         }
         if let Some(limit) = self.options.frame_limit {
             if self.frames >= limit {
@@ -759,70 +974,88 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                 .map_or(0, |record| record.stats.frame);
             let shared = &mut *shared;
             let window = state.window.id();
-            let stats = shared.renderer.stats();
-            let routing = &mut shared.gpu;
-            routing.drawn.push_back((stats.frames, window, core_frame));
-            while routing.drawn.len() > 32 {
-                routing.drawn.pop_front();
-            }
-            // Whatever completed goes to the window that drew it, which may
-            // not be this one.
-            if let Some(profile) = shared.renderer.gpu_profile()
-                && routing.routed != Some(profile.frame)
-            {
-                routing.routed = Some(profile.frame);
-                if let Some((_, owner, frame)) = routing
-                    .drawn
-                    .iter()
-                    .find(|(drawn, ..)| *drawn == profile.frame)
-                {
-                    let passes = profile
-                        .passes
-                        .iter()
-                        .map(|pass| (pass.label.clone(), pass.duration))
-                        .collect();
-                    // ponytail: one entry per window that ever drew while an
-                    // inspector was open, overwritten and never pruned; prune
-                    // on window close if apps start opening thousands.
-                    routing
-                        .arrived
-                        .insert(*owner, (*frame, profile.total, passes));
+            match &shared.renderer {
+                // Nothing to measure, and the inspector says why rather than
+                // showing counters that would all be zero.
+                Painter::Cpu(_) => {
+                    if self.inspected {
+                        self.recorder.gpu(
+                            rust_gui_devtools::GpuSnapshot {
+                                adapter: state.adapter_name(),
+                                software: true,
+                                ..Default::default()
+                            },
+                            None,
+                        );
+                    }
                 }
-            }
-            if self.inspected {
-                let arrived = routing.arrived.remove(&window);
-                let memory = stats.memory;
-                let snapshot = rust_gui_devtools::GpuSnapshot {
-                    adapter: {
-                        let info = state.adapter.get_info();
-                        format!("{} ({:?})", info.name, info.backend)
-                    },
-                    timestamps: shared.renderer.timestamps_supported(),
-                    passes: match &arrived {
-                        Some((_, _, passes)) => passes.clone(),
-                        None => self
-                            .recorder
-                            .gpu_snapshot()
-                            .map(|last| last.passes.clone())
-                            .unwrap_or_default(),
-                    },
-                    draw_calls: stats.draw_calls as u32,
-                    quads: stats.quads as u32,
-                    text_batches: stats.text_batches as u32,
-                    render_passes: stats.passes as u32,
-                    memory: vec![
-                        ("Vertex and uniform buffers".into(), memory.buffers),
-                        ("Image atlas".into(), memory.image_atlas),
-                        ("Image textures".into(), memory.image_textures),
-                        ("Offscreen layers".into(), memory.layers),
-                        ("Profiling".into(), memory.profiling),
-                    ],
-                    memory_peak: memory.peak,
-                    driver: Renderer::driver_memory(&state.device)
-                        .map(|driver| (driver.allocated, driver.reserved)),
-                };
-                self.recorder
-                    .gpu(snapshot, arrived.map(|(frame, total, _)| (frame, total)));
+                Painter::Gpu(renderer) => {
+                    let stats = renderer.stats();
+                    let routing = &mut shared.gpu;
+                    routing.drawn.push_back((stats.frames, window, core_frame));
+                    while routing.drawn.len() > 32 {
+                        routing.drawn.pop_front();
+                    }
+                    // Whatever completed goes to the window that drew it, which may
+                    // not be this one.
+                    if let Some(profile) = renderer.gpu_profile()
+                        && routing.routed != Some(profile.frame)
+                    {
+                        routing.routed = Some(profile.frame);
+                        if let Some((_, owner, frame)) = routing
+                            .drawn
+                            .iter()
+                            .find(|(drawn, ..)| *drawn == profile.frame)
+                        {
+                            let passes = profile
+                                .passes
+                                .iter()
+                                .map(|pass| (pass.label.clone(), pass.duration))
+                                .collect();
+                            // ponytail: one entry per window that ever drew while an
+                            // inspector was open, overwritten and never pruned; prune
+                            // on window close if apps start opening thousands.
+                            routing
+                                .arrived
+                                .insert(*owner, (*frame, profile.total, passes));
+                        }
+                    }
+                    if self.inspected {
+                        let arrived = routing.arrived.remove(&window);
+                        let memory = stats.memory;
+                        let snapshot = rust_gui_devtools::GpuSnapshot {
+                            adapter: state.adapter_name(),
+                            software: false,
+                            timestamps: renderer.timestamps_supported(),
+                            passes: match &arrived {
+                                Some((_, _, passes)) => passes.clone(),
+                                None => self
+                                    .recorder
+                                    .gpu_snapshot()
+                                    .map(|last| last.passes.clone())
+                                    .unwrap_or_default(),
+                            },
+                            draw_calls: stats.draw_calls as u32,
+                            quads: stats.quads as u32,
+                            text_batches: stats.text_batches as u32,
+                            render_passes: stats.passes as u32,
+                            memory: vec![
+                                ("Vertex and uniform buffers".into(), memory.buffers),
+                                ("Image atlas".into(), memory.image_atlas),
+                                ("Image textures".into(), memory.image_textures),
+                                ("Offscreen layers".into(), memory.layers),
+                                ("Profiling".into(), memory.profiling),
+                            ],
+                            memory_peak: memory.peak,
+                            driver: state
+                                .device()
+                                .and_then(Renderer::driver_memory)
+                                .map(|driver| (driver.allocated, driver.reserved)),
+                        };
+                        self.recorder
+                            .gpu(snapshot, arrived.map(|(frame, total, _)| (frame, total)));
+                    }
+                }
             }
         }
         shared.window = Some(state.window.id());

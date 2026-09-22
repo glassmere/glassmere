@@ -48,10 +48,12 @@ impl VectorImage for Rings {
 
 /// A dark page with everything a scene can hold.
 fn scene(scale: f32) -> Scene {
+    // Opaque at the top and nearly clear at the bottom, so that translucent
+    // pixels are laid over the page as well as over the card.
     let mut gradient = Vec::new();
     for y in 0..16u32 {
         for x in 0..16u32 {
-            gradient.extend([(x * 16) as u8, (y * 16) as u8, 160, 255]);
+            gradient.extend([(x * 16) as u8, (y * 16) as u8, 160, (255 - y * 16) as u8]);
         }
     }
     let photo = Image::from_rgba8(16, 16, gradient).unwrap();

@@ -14,11 +14,14 @@ images = ["dep:rust-gui-image"]
 rust-gui-core.workspace = true
 rust-gui-scene.workspace = true
 rust-gui-render-wgpu.workspace = true
+rust-gui-render-cpu.workspace = true
 rust-gui-devtools.workspace = true
 rust-gui-image = { workspace = true, optional = true }
 tracing.workspace = true
 wgpu.workspace = true
 winit.workspace = true
+# Hands the CPU renderer's pixels to a window when there is no usable adapter.
+softbuffer = "0.4"
 pollster.workspace = true
 accesskit.workspace = true
 accesskit_winit.workspace = true

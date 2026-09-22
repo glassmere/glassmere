@@ -51,3 +51,33 @@ The workspace suite is 255 tests plus 24 opt-in GPU tests; formatting and clippy
 - A quad's edge is covered by its exact area here and feathered by the GPU's shader there, and what is resampled (images, turned or scaled layers) is filtered on sRGB-encoded values here and in linear light there. Both show only at edges.
 - Nothing is cached between frames but the target and the vector rasters: every frame repaints the whole scene, and a layer or a clipped draw allocates a buffer of its own. The renderer is correct and available, not fast; there are no damage rectangles and no threads.
 - No `RenderStats` counterpart for draw calls or GPU memory, and the inspector's GPU tab stays empty on this renderer.
+
+# Milestone 14c: the window fallback
+
+Implemented on 2026-09-22. A window whose graphics adapter cannot be used is painted by `CpuRenderer` instead, so the application runs where no driver does. This completes milestone 14.
+
+| Piece | Contract |
+| --- | --- |
+| When | `GraphicsBackend::Cpu` or `RUST_GUI_RENDERER=cpu` asks for it. Otherwise the host probes graphics backends as before, and if every one fails it prints what failed, says it is falling back, and opens the window anyway. |
+| Presentation | softbuffer hands the renderer's pixels to the window. One context per display, shared by its windows; the surface is resized when the window's size changes. |
+| Shared | One `CpuRenderer` per display, as one `Renderer` is shared by a device's windows, so fonts and shaped text are laid out once. A second window, such as the inspector, shares it. |
+| Inside the host | `WindowState` holds a `Surfaces` enum (the wgpu instance, adapter, device, queue, surface and configuration, or the software surface) and the shared renderer holds a `Painter` enum. Presenting a frame is now `present_gpu` or `present_cpu`, which return what the caller should do: a frame time, nothing to show, or come back shortly. Everything else in a frame, from declaring to accessibility and the cursor, is untouched. |
+| Inspector | The GPU tab of a window painted this way says so and shows nothing else, rather than counters that would all be zero (`GpuSnapshot::software`). |
+| Not changed | Input, accessibility, IME, hot reload, dialogs, docking and multiple windows all work as before, because only presentation differs. |
+
+## Validation
+
+Two unit tests in `graphics.rs` cover the choice: the option and the environment variable ask for the CPU renderer, an explicit choice leaves no adapter to try, and the default asks for neither.
+
+The rest needs a window, so it was checked on a real desktop. All 17 examples pass their smoke run with `RUST_GUI_RENDERER=cpu`, including the ones that open several windows. The controls gallery painted this way is indistinguishable from the same window on the GPU, and the images example draws its photos, SVG icons, nine-slice frames and translucent code-made image the same. The inspector opens on a CPU-painted window, is itself painted by the same renderer, and its GPU tab reports the fallback. `scripts/test-theming.ps1`, `scripts/test-controls.ps1` and `scripts/test-touch.ps1` still pass on the GPU path after the host was restructured.
+
+The workspace suite is 256 tests plus 24 opt-in GPU tests; formatting and clippy (all features, and core alone) are clean; the facade builds without default features.
+
+Speed, in a release build on this machine: the counter example, a 900 by 650 window at 125% scaling, takes about 2 to 3 ms a frame with everything included, declaring the view again, laying it out, painting it and presenting it. That is not a comparison with the GPU path, which is paced by the display.
+
+## Remaining limits
+
+- Tried on Windows only. The softbuffer surface is created the same way everywhere, but Linux and macOS are not run here.
+- The whole window is repainted every frame: there is no damage tracking, so a large window with an animation costs more than it should.
+- `GraphicsOptions` other than the backend (bindings, frame latency, memory policy) mean nothing to this path, and a fallback ignores an explicitly chosen graphics API rather than failing.
+- The inspector's GPU tab has no CPU counterpart: the renderer's own statistics (layers, glyphs, the time a frame took) are not shown.

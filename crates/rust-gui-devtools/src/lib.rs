@@ -34,6 +34,9 @@ pub struct FrameRecord {
 pub struct GpuSnapshot {
     /// Adapter name and backend, such as `NVIDIA GeForce RTX 4070 (Dx12)`.
     pub adapter: String,
+    /// The window is painted without a graphics adapter, so the rest of this
+    /// says nothing and the tab reports the fallback instead.
+    pub software: bool,
     /// Whether the adapter can time passes. Without it only the CPU's render
     /// time is known, which measures the driver's queue, not the GPU.
     pub timestamps: bool,
@@ -1262,6 +1265,19 @@ fn gpu_tab(ui: &mut Ui<'_>, model: &InspectorModel, mono: &Style) {
         return;
     };
     ui.label_keyed("adapter", gpu.adapter.clone());
+    if gpu.software {
+        ui.label_styled(
+            "software",
+            "This window is painted by the CPU renderer, so there is nothing on a GPU to \
+             measure. The render column of the Frames tab is the time that took.",
+            Style {
+                wrap: rust_gui_core::TextWrap::Word,
+                width: Length::Percent(1.0),
+                ..muted
+            },
+        );
+        return;
+    }
     let timed: Vec<Duration> = model.frames.iter().filter_map(|frame| frame.gpu).collect();
     if gpu.timestamps {
         let average =

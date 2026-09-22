@@ -104,6 +104,6 @@ Work picked from the coverage table after the seven phases.
 - [x] `Ui::gesture_area`: pan, pinch and rotation from fingers, a trackpad or Ctrl with the wheel ([milestone 13d](milestone-13.md)).
 - [x] Text shaping in a crate of its own, shared by the renderers ([milestone 14a](milestone-14.md)).
 - [x] `CpuRenderer`: the display list rasterized to pixels without a graphics adapter ([milestone 14b](milestone-14.md)).
-- [ ] CPU renderer as the desktop host's fallback (14c).
+- [x] The desktop host paints with the CPU renderer when no adapter works, and on request ([milestone 14c](milestone-14.md)). Milestone 14 is complete.
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

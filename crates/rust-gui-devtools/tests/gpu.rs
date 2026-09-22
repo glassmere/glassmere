@@ -19,6 +19,7 @@ fn declare(context: &mut Context, recorder: &mut Recorder) {
 fn snapshot(timestamps: bool) -> GpuSnapshot {
     GpuSnapshot {
         adapter: "Test adapter (Dx12)".into(),
+        software: false,
         timestamps,
         passes: if timestamps {
             vec![
@@ -127,4 +128,20 @@ fn without_timestamps_or_without_a_report_the_tab_says_so() {
     assert!(has("does not report the driver's allocator"));
     // Memory and counters do not depend on timestamps.
     assert!(has("12 draw calls") && has("20.0 MiB"));
+
+    // A window painted without an adapter says so and claims nothing else.
+    recorder.gpu(
+        GpuSnapshot {
+            adapter: "CPU renderer, no graphics adapter".into(),
+            software: true,
+            ..GpuSnapshot::default()
+        },
+        None,
+    );
+    let model = InspectorModel::capture(&context, "Target", TARGET, &recorder);
+    let labels = shown(&model);
+    let has = |needle: &str| labels.iter().any(|label| label.contains(needle));
+    assert!(has("CPU renderer, no graphics adapter"));
+    assert!(has("painted by the CPU renderer"));
+    assert!(!has("draw calls") && !has("MiB") && !has("timestamp"));
 }

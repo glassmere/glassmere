@@ -199,9 +199,23 @@ struct Desktop {
 
 impl WindowState {
     fn sharing(window: Arc<Window>, source: &Self) -> Result<Self> {
-        let surface = source.instance.create_surface(window.clone())?;
-        let capabilities = surface.get_capabilities(&source.adapter);
-        if !capabilities.formats.contains(&source.config.format) {
+        let Surfaces::Gpu {
+            instance,
+            adapter,
+            device,
+            queue,
+            config,
+            ..
+        } = &source.surfaces
+        else {
+            let Surfaces::Cpu { context, .. } = &source.surfaces else {
+                unreachable!()
+            };
+            return Self::cpu(window, context.clone(), Some(source.renderer.clone()));
+        };
+        let surface = instance.create_surface(window.clone())?;
+        let capabilities = surface.get_capabilities(adapter);
+        if !capabilities.formats.contains(&config.format) {
             return Err(
                 "new window cannot present using the shared graphics device and format".into(),
             );
@@ -210,18 +224,20 @@ impl WindowState {
         let config = wgpu::SurfaceConfiguration {
             width: size.width.max(1),
             height: size.height.max(1),
-            ..source.config.clone()
+            ..config.clone()
         };
-        surface.configure(&source.device, &config);
+        surface.configure(device, &config);
         #[cfg(feature = "diagnostics")]
         eprintln!("GPU_SHARED_DEVICE window={:?}", window.id());
         Ok(Self {
-            instance: source.instance.clone(),
-            adapter: source.adapter.clone(),
-            device: source.device.clone(),
-            queue: source.queue.clone(),
-            surface,
-            config,
+            surfaces: Surfaces::Gpu {
+                instance: instance.clone(),
+                adapter: adapter.clone(),
+                device: device.clone(),
+                queue: queue.clone(),
+                surface,
+                config,
+            },
             renderer: source.renderer.clone(),
             pending_scene: true,
             accessibility: None,

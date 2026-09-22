@@ -9,6 +9,9 @@ pub enum GraphicsBackend {
     Vulkan,
     Metal,
     OpenGl,
+    /// No graphics adapter: windows are painted by the CPU renderer. Slower,
+    /// and how an application runs at all where no driver works.
+    Cpu,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -68,11 +71,19 @@ impl GraphicsOptions {
             GraphicsBackend::Vulkan => B::VULKAN,
             GraphicsBackend::Metal => B::METAL,
             GraphicsBackend::OpenGl => B::GL,
+            GraphicsBackend::Cpu => B::empty(),
         } & compiled;
         [B::METAL, B::DX12, B::VULKAN, B::GL]
             .into_iter()
             .filter(|backend| requested.contains(*backend))
             .collect()
+    }
+
+    /// Whether windows should be painted without a graphics adapter. The
+    /// environment variable is there to try the fallback on a working machine.
+    pub(crate) fn wants_cpu(&self, environment: Option<&str>) -> bool {
+        self.backend == GraphicsBackend::Cpu
+            || environment.is_some_and(|value| value.eq_ignore_ascii_case("cpu"))
     }
 
     pub(crate) fn limits(&self) -> wgpu::Limits {
@@ -128,6 +139,20 @@ mod tests {
             GraphicsOptions::default().candidates(B::VULKAN | B::DX12 | B::GL, Some("vulkan,gl")),
             vec![B::VULKAN, B::GL]
         );
+    }
+
+    #[test]
+    fn the_cpu_renderer_is_asked_for_by_the_option_or_the_environment() {
+        let cpu = GraphicsOptions {
+            backend: GraphicsBackend::Cpu,
+            ..Default::default()
+        };
+        assert!(cpu.wants_cpu(None));
+        // An explicit choice leaves no adapter to try.
+        assert!(cpu.candidates(B::all(), Some("vulkan")).is_empty());
+        let auto = GraphicsOptions::default();
+        assert!(!auto.wants_cpu(None) && !auto.wants_cpu(Some("vulkan")));
+        assert!(auto.wants_cpu(Some("CPU")));
     }
 
     #[test]
