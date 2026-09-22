@@ -443,3 +443,69 @@ fn a_container_tells_its_content_how_much_room_it_had() {
     assert_eq!(seen[3], 180.0);
     assert!(context.find(&["page", "narrow"]).is_some());
 }
+
+/// Where a line of text sits in a box larger than it is. The properties a
+/// container places its children with place a leaf's own text, which is what
+/// centres a glyph in a caption button.
+#[test]
+fn a_text_leaf_is_placed_in_its_box_by_the_same_properties_a_container_uses() {
+    use rust_gui_scene::Primitive;
+
+    let mut context = Context::new();
+    let boxed = |justify: Justify, align: Align| Style {
+        width: Length::Px(200.0),
+        height: Length::Px(100.0),
+        justify_content: justify,
+        align_items: align,
+        padding: 0.0,
+        ..Style::default()
+    };
+    let text = |context: &Context| {
+        context
+            .scene()
+            .primitives
+            .iter()
+            .find_map(|primitive| match primitive {
+                Primitive::Text { rect, text, .. } if text == "x" => Some(*rect),
+                _ => None,
+            })
+            .expect("the text")
+    };
+
+    frame(&mut context, |ui| {
+        ui.label_styled("one", "x", boxed(Justify::Start, Align::Start));
+    });
+    let start = text(&context);
+    assert_eq!((start.x, start.y), (0.0, 0.0));
+
+    frame(&mut context, |ui| {
+        ui.label_styled("one", "x", boxed(Justify::Center, Align::Center));
+    });
+    let centre = text(&context);
+    assert!(centre.x > 0.0 && centre.x < 100.0, "{centre:?}");
+    assert!(centre.y > 0.0 && centre.y < 50.0, "{centre:?}");
+
+    frame(&mut context, |ui| {
+        ui.label_styled("one", "x", boxed(Justify::End, Align::End));
+    });
+    // At the end the text is moved by all the room the box has spare, which
+    // is twice what centring moves it by.
+    let end = text(&context);
+    assert!((end.x - centre.x * 2.0).abs() < 0.01, "{end:?}");
+    assert!((end.y - centre.y * 2.0).abs() < 0.01, "{end:?}");
+
+    // Padding still comes first: the box the text is placed in is inside it.
+    frame(&mut context, |ui| {
+        ui.label_styled(
+            "one",
+            "x",
+            Style {
+                padding: 10.0,
+                ..boxed(Justify::Center, Align::Center)
+            },
+        );
+    });
+    let padded = text(&context);
+    assert!((padded.x - centre.x).abs() < 0.01, "{padded:?}");
+    assert!((padded.y - centre.y).abs() < 0.01, "{padded:?}");
+}

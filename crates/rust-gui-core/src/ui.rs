@@ -328,11 +328,14 @@ impl Ui<'_> {
                     foreground: closing.then_some(Color::WHITE),
                     ..crate::Paint::default()
                 };
-                // The box hugs the glyph rather than being given a size,
-                // because that is what centres it: a text leaf is drawn from
-                // its content corner, wherever its box ends.
                 let style = Style {
-                    padding: caption::PADDING,
+                    width: crate::Length::Px(caption::WIDTH),
+                    height: crate::Length::Px(caption::HEIGHT),
+                    // The glyph sits in the middle of the box, which is the
+                    // size the shell's own buttons are.
+                    justify_content: crate::Justify::Center,
+                    align_items: crate::Align::Center,
+                    padding: 0.0,
                     radius: 0.0,
                     background: Some(Color(0, 0, 0, 0)),
                     foreground: Some(foreground),

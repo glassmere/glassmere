@@ -2870,21 +2870,37 @@ impl Context {
                 width: (node.bounds.width - 2.0 * padding).max(0.0),
                 height: (node.bounds.height - 2.0 * padding).max(0.0),
             };
-            // Wrapped blocks are aligned by the shaper; a single line in a wider
-            // box is moved to the right here.
-            if node.resolved.rtl() && node.style.wrap == TextWrap::None {
-                // Text leaves were measured for layout; other labelled controls
-                // (sliders) are measured while controls are prepared.
-                let width = if node.kind.text_leaf() {
-                    self.layout
-                        .get_node_context(node.layout_id)
-                        .map_or(0.0, |measured| measured.size.width)
-                } else {
-                    node.label_width
+            // Where the text sits in a box wider or taller than it is. A
+            // wrapped block is aligned line by line by the shaper; this
+            // places the block itself, which is what centres a glyph in a
+            // caption button.
+            //
+            // Text leaves were measured for layout; other labelled controls
+            // (sliders) are measured while controls are prepared.
+            let measured = node
+                .kind
+                .text_leaf()
+                .then(|| self.layout.get_node_context(node.layout_id))
+                .flatten()
+                .map(|measured| measured.size);
+            let width = measured.map_or(node.label_width, |size| size.width);
+            if width > 0.0 && node.style.wrap == TextWrap::None {
+                let spare = (rect.width - width).max(0.0);
+                rect.x += match node.style.justify_content {
+                    crate::Justify::Center => spare / 2.0,
+                    crate::Justify::End => spare,
+                    // Right-to-left text without an opinion goes to the end.
+                    _ if node.resolved.rtl() => spare,
+                    _ => 0.0,
                 };
-                if width > 0.0 {
-                    rect.x += (rect.width - width).max(0.0);
-                }
+            }
+            if let Some(size) = measured.filter(|size| size.height > 0.0) {
+                let spare = (rect.height - size.height).max(0.0);
+                rect.y += match node.style.align_items {
+                    crate::Align::Center => spare / 2.0,
+                    crate::Align::End => spare,
+                    _ => 0.0,
+                };
             }
             let color = foreground;
             if let Some((start, end)) = self.suggestion_match(node) {

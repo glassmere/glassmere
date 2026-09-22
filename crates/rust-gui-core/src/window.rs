@@ -104,11 +104,11 @@ pub(crate) mod caption {
     #[cfg(not(windows))]
     pub(crate) const CLOSE: &str = "\u{2715}";
 
-    /// The glyph's size, and the room around it. The shell's own buttons
-    /// are 46 by 32 at a scale factor of one; these are square, because a
-    /// box that hugs its glyph is a box the glyph is centred in.
+    /// The box each one sits in and the glyph's size in it, which are the
+    /// shell's own measurements at a scale factor of one.
+    pub(crate) const WIDTH: f32 = 46.0;
+    pub(crate) const HEIGHT: f32 = 32.0;
     pub(crate) const SIZE: f32 = 10.0;
-    pub(crate) const PADDING: f32 = 9.0;
 
     /// How much of the text colour a hovered or pressed button is washed
     /// with, out of 255.

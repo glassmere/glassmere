@@ -250,6 +250,10 @@ pub struct Renderer {
     canvas_holds: Option<([u32; 2], u32)>,
     /// Start of the six vertices that put the canvas on the target.
     blit: u32,
+    /// Paints the clear colour over a damaged rectangle, which a loaded
+    /// attachment has no other way of getting.
+    clear_pipeline: wgpu::RenderPipeline,
+    clear_quad: Option<wgpu::Buffer>,
     prepared_target: Option<([u32; 2], u32)>,
     stats: RenderStats,
     profiling: bool,
@@ -308,6 +312,23 @@ impl Renderer {
             };
         let quad_attributes = wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Float32x2, 3 => Float32x4, 4 => Float32];
         let quad_stride = std::mem::size_of::<Vertex>();
+        // Replaces rather than blends: this is a clear, so what was there
+        // has to go, whatever its alpha.
+        let replace = wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::One,
+            dst_factor: wgpu::BlendFactor::Zero,
+            operation: wgpu::BlendOperation::Add,
+        };
+        let clear_pipeline = pipeline(
+            "rust-gui damage clear",
+            include_str!("quad.wgsl"),
+            wgpu::BlendState {
+                color: replace,
+                alpha: replace,
+            },
+            quad_stride,
+            &quad_attributes,
+        );
         let cache = Cache::new(device);
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("rust-gui layers"),
@@ -385,6 +406,8 @@ impl Renderer {
             canvas: None,
             canvas_holds: None,
             blit: 0,
+            clear_pipeline,
+            clear_quad: None,
             prepared_target: None,
             stats: RenderStats::default(),
             profiling: false,
@@ -1309,6 +1332,43 @@ impl Renderer {
                 .get_or_insert_with(|| profile::Timestamps::new(device, queue))
                 .collect(device);
         }
+        // A pass that loads the last frame is never cleared, so whatever the
+        // damaged rectangle held stays under what is drawn over it. Anything
+        // that was there and is not drawn again, a popup above all, would
+        // show through. The clear colour goes down first.
+        if damage.is_some() {
+            let size = target_size.map(|side| side as f32);
+            let colour = clear.linear();
+            // A pixel wider than the surface on every side, so that the
+            // shape's own antialiasing falls outside it.
+            let vertices: Vec<Vertex> = [
+                [0.0, 0.0],
+                [1.0, 0.0],
+                [0.0, 1.0],
+                [0.0, 1.0],
+                [1.0, 0.0],
+                [1.0, 1.0],
+            ]
+            .into_iter()
+            .map(|[u, v]| Vertex {
+                position: [u * 2.0 - 1.0, 1.0 - v * 2.0],
+                local: [u * (size[0] + 2.0) - 1.0, v * (size[1] + 2.0) - 1.0],
+                size: [size[0] + 2.0, size[1] + 2.0],
+                color: colour,
+                radius: 0.0,
+            })
+            .collect();
+            let bytes = bytemuck::cast_slice(&vertices);
+            let buffer = self.clear_quad.get_or_insert_with(|| {
+                device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("rust-gui damage clear"),
+                    size: bytes.len() as u64,
+                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                })
+            });
+            queue.write_buffer(buffer, 0, bytes);
+        }
         let mut timed = Vec::new();
         // Children first: every layer is complete before its parent samples it.
         for surface in self.surfaces.iter().rev() {
@@ -1371,6 +1431,14 @@ impl Renderer {
                     multiview_mask: None,
                 })
                 .forget_lifetime();
+            if let Some(clip) = confine
+                && let Some(quad) = &self.clear_quad
+            {
+                pass.set_pipeline(&self.clear_pipeline);
+                pass.set_vertex_buffer(0, quad.slice(..));
+                pass.set_scissor_rect(clip[0], clip[1], clip[2], clip[3]);
+                pass.draw(0..6, 0..1);
+            }
             for draw in &surface.draws {
                 let clip = match draw {
                     Draw::Quad { clip, .. }

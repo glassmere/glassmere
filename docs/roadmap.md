@@ -122,5 +122,6 @@ Work picked from the coverage table after the seven phases.
 - [x] A title bar, window buttons and resize edges an application draws itself ([milestone 29](milestone-29.md)).
 - [x] The snap layouts Windows offers over a maximize button of your own ([milestone 30](milestone-30.md)).
 - [x] Caption buttons with the system's own glyphs and states ([milestone 31](milestone-31.md)).
+- [x] Text placed in its box, and a damaged rectangle that is cleared before it is drawn again ([milestone 32](milestone-32.md)).
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

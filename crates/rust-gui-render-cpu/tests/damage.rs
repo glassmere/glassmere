@@ -186,3 +186,93 @@ fn a_frame_painted_from_damage_is_the_frame_painted_in_full() {
     context.event(Event::FocusLost);
     frame(&mut context, &mut app, "losing focus");
 }
+
+/// A menu in a title bar: opened by a click, closed by another on the same
+/// button. What the popup covered has to be painted again when it goes.
+#[test]
+fn closing_a_menu_by_its_own_button_leaves_nothing_of_it_behind() {
+    use rust_gui_core::{Command, Menu, MenuEntry};
+
+    let mut context = Context::new();
+    let menu = Menu::new([MenuEntry::submenu(
+        "File",
+        [
+            MenuEntry::Command(Command::with_id("open", "Open...", None)),
+            MenuEntry::Separator,
+            MenuEntry::Command(Command::with_id("save", "Save as...", None)),
+        ],
+    )]);
+    let mut incremental = CpuRenderer::with_text_system(fonts());
+    let mut whole = CpuRenderer::with_text_system(fonts());
+    let physical = [SIZE.width as u32, SIZE.height as u32];
+    let mut frame = |context: &mut Context, step: &str| {
+        let declare = |context: &mut Context| {
+            context.run(SIZE, &mut MonospaceMeasurer, |ui| {
+                ui.title_bar("bar", Style::default().padding(6.0).gap(8.0), |ui| {
+                    ui.label_keyed("name", "Title bar");
+                    ui.menu_bar("menu", &menu);
+                });
+                ui.column("page", Style::default().padding(8.0).gap(6.0), |ui| {
+                    for row in 0..6 {
+                        ui.label_keyed(format!("row{row}"), format!("A line of text {row}"));
+                    }
+                });
+            })
+        };
+        // As a host does it: a declaration that consumed input is followed
+        // by another, and only then is the frame presented. What the first
+        // one changed has to survive into that frame.
+        let stats = declare(context);
+        if stats.activations > 0 {
+            declare(context);
+        }
+        let damage: Vec<_> = context.damage_regions().to_vec();
+        let scene = context.scene();
+        let partial = incremental
+            .render_damaged(physical, 1.0, scene, CLEAR, &damage)
+            .to_vec();
+        let full = whole.render(physical, 1.0, scene, CLEAR).to_vec();
+        let differing = partial
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(full.as_chunks::<4>().0)
+            .enumerate()
+            .filter(|(_, (left, right))| left != right)
+            .map(|(at, _)| (at % physical[0] as usize, at / physical[0] as usize))
+            .collect::<Vec<_>>();
+        assert!(
+            differing.is_empty(),
+            "after {step}, {} pixels differ, first: {:?}",
+            differing.len(),
+            &differing[..differing.len().min(4)]
+        );
+    };
+    frame(&mut context, "the first frame");
+
+    let button = context
+        .node(context.find(&["bar", "menu", "menu0"]).unwrap())
+        .unwrap()
+        .bounds;
+    let at = Point {
+        x: button.x + button.width / 2.0,
+        y: button.y + button.height / 2.0,
+    };
+    let click = |context: &mut Context| {
+        context.event(Event::PointerMoved(at));
+        context.event(Event::PointerDown);
+        context.event(Event::PointerUp);
+    };
+    click(&mut context);
+    frame(&mut context, "opening the menu");
+    assert!(
+        context.find(&["bar", "menu", "menu0", "$popup"]).is_some(),
+        "the menu is open"
+    );
+    click(&mut context);
+    frame(&mut context, "closing it with the same button");
+    assert!(
+        context.find(&["bar", "menu", "menu0", "$popup"]).is_none(),
+        "the menu is closed"
+    );
+}

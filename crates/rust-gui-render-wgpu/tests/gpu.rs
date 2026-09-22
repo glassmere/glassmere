@@ -1832,3 +1832,36 @@ fn custom_draws_where_it_is_told_and_an_unknown_id_draws_nothing() {
     assert_pixel(&pixels, 70, 45, blue);
     assert_eq!(seen.lock().unwrap().len(), 2);
 }
+
+/// A damaged rectangle is cleared before it is drawn again. Without that,
+/// whatever it held stays under the new frame, and anything that was there
+/// and is gone, a popup above all, shows through it.
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn what_a_damaged_rectangle_held_is_gone_when_nothing_replaces_it() {
+    let mut gpu = Gpu::new();
+    let page = quad(rect(0.0, 0.0, 128.0, 128.0), BLUE);
+    let popup = quad(rect(20.0, 20.0, 60.0, 40.0), RED);
+    let over = rect(20.0, 20.0, 60.0, 40.0);
+
+    // The first frame establishes the canvas: a page with a popup over it.
+    gpu.damaged(1.0, &[page.clone(), popup.clone()], true, &[]);
+    let with_popup = gpu.damaged(1.0, &[page.clone(), popup], true, &[over]);
+    assert_pixel(&with_popup, 40, 30, [255, 0, 0]);
+
+    // The popup goes, and the only news is the rectangle it was in.
+    let without = gpu.damaged(1.0, std::slice::from_ref(&page), true, &[over]);
+    assert_pixel(&without, 40, 30, [0, 0, 255]);
+    assert_pixel(&without, 100, 100, [0, 0, 255]);
+
+    // The same where nothing at all is drawn in the damaged rectangle: what
+    // is left has to be the clear colour, not the last frame.
+    let bare = gpu.damaged(
+        1.0,
+        &[quad(rect(0.0, 90.0, 128.0, 38.0), BLUE)],
+        true,
+        &[over],
+    );
+    assert_pixel(&bare, 40, 30, [255; 3]);
+    assert_pixel(&bare, 40, 100, [0, 0, 255]);
+}
