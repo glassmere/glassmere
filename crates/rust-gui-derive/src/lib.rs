@@ -34,7 +34,23 @@ use proc_macro2::TokenStream as Tokens;
 use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Error, Expr, Fields, LitStr, Path, Type, parse_macro_input};
 
+mod sheet;
 mod tr;
+
+/// A stylesheet parsed while the crate compiles:
+/// `style_sheet!("styles/app.style")`.
+///
+/// The path is relative to the crate's manifest. An unknown property, a
+/// value the parser cannot read and an unclosed rule are compile errors that
+/// name the line, and editing the file rebuilds the crate. It expands to a
+/// `StyleSheet`, already parsed, that cannot fail at start.
+#[proc_macro]
+pub fn style_sheet(input: TokenStream) -> TokenStream {
+    let path = parse_macro_input!(input as LitStr);
+    sheet::expand(path)
+        .unwrap_or_else(Error::into_compile_error)
+        .into()
+}
 
 /// A localized text whose key and arguments are checked while compiling:
 /// `tr!(ui, "files-selected", count = files.len())`.

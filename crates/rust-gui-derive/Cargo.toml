@@ -15,6 +15,9 @@ quote = { version = "1.0", default-features = false, features = ["proc-macro"] }
 proc-macro2 = { version = "1.0", default-features = false, features = ["proc-macro"] }
 # Reads the default-locale catalog that `tr!` checks keys and arguments against.
 fluent-syntax = "0.12.0"
+# `style_sheet!` parses with the framework's own parser rather than a second
+# one that would drift from it.
+rust-gui-core.workspace = true
 
 [lints]
 workspace = true

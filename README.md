@@ -201,6 +201,7 @@ The view may run more than once per input event. Put application actions behind 
 - Touch: tap, pan with inertia, long press for the context menu or to pick up a drag, and two controls under two fingers at once. `Ui::gesture_area` reports pan, pinch and rotation from fingers, a trackpad or Ctrl with the wheel.
 - Files dragged out of a window are handed to the operating system on Windows and macOS; the source hears whether they were dropped.
 - `Ui::memo` keeps a subtree without declaring it again, and both renderers redraw only the pixels that changed.
+- [The API stability note](docs/api-stability.md) says what is public and how it changes, guarded by a snapshot of the whole surface.
 - Behind the `platform` feature: native file dialogs, notifications, an application menu, a tray icon and the files an association opens.
 - `Ui::copy` and `Ui::request_paste` carry text, images and the application's own formats, and a drag can cross to another of its windows.
 - [The performance guide](docs/performance.md) says what makes a frame expensive, what it costs and how to see it.

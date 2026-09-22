@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 26. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 27. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -45,16 +45,16 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 39 | Localization | Done | Right-to-left windows and subtrees with mirrored layout and widgets, direction detected from the OS locale (milestone 7f). Fluent message catalogs with plurals, a fallback chain and run-time language switching; the framework's own strings translatable, with Czech and German shipped (milestones 11a and 11b); a compile-time checked `tr!` and CLDR numbers, dates and times through the opt-in `icu` feature, followed by the number widgets (milestones 11c and 11d). Missing: relative times, lists, currencies, other calendars. |
 | 40 | High-DPI support | Done | Per-window scale factor, fractional scaling, DPI-aware accessibility bounds. |
 | 41 | Platform integration | Done | Accessibility APIs, IME, clipboard, window titles and decorations, and the desktop's light and dark preference. Behind the `platform` feature: file dialogs, notifications, the application menu, a tray icon, and the files an association opens (milestone 26). A window menu bar is the framework's own on Windows and Linux, where the platform's needs unsafe calls. |
-| 42 | Native-first desktop focus | Partial | Windows verified natively; Linux/macOS build in CI without interaction checks. |
+| 42 | Native-first desktop focus | Done | Windows verified by hand and by script. Windows, Linux and macOS run formatting, the whole suite with every feature, clippy and a windowed smoke run on every push, Linux under Xvfb with the CPU renderer (milestone 27). Interactive checks are Windows only. |
 | 43 | Clean platform abstraction | Done | Host crate isolates winit/wgpu/AccessKit. |
 | 44 | Low allocation architecture | Done | Retained nodes, reused GPU buffers, paint chunks and element vectors, and no widget trait objects anywhere. What a declaration allocates is bounded by what is visible and measured per frame: 373 elements and 2.5 kB for a table of a million rows (milestone 24). |
 | 45 | Predictable ownership | Done | Views are plain closures over `&mut` state; no `Rc<RefCell>` in application code. |
 | 46 | Good escape hatches | Done | A widget of your own with `Ui::widget`, drawing of your own with `Primitive::Custom` and `AppOptions::gpu`, layout of your own with `Style::offset` inside `Ui::responsive`, input of your own with `Ui::event_area`, and pixels without a window through `CpuRenderer` (milestones 18, 19, 23). |
 | 47 | Modular crates | Done | core, scene, render-wgpu, winit, testing, devtools, facade. Layout/text/style/widgets live inside core and scene for now. |
 | 48 | No forced proprietary DSL | Done | Plain Rust. |
-| 49 | Compile-time checked UI APIs | Partial | Typed styles and models; invalid combinations panic at declaration rather than failing at compile time. |
+| 49 | Compile-time checked UI APIs | Done | Typed styles, lengths and models; `tr!` checks a message key and its arguments, `style_sheet!` parses a stylesheet, and `#[derive(Properties)]` checks a field's editor, all while the crate compiles (milestones 11c, 27). What cannot be checked there panics at declaration with a message, listed in [the stability note](api-stability.md). |
 | 50 | Excellent documentation | Partial | Architecture and milestone reports. Missing: widget-building, custom renderer, state, accessibility and performance guides. |
-| 51 | Stable public API | Not started | Prototype API; breaking changes expected before 1.0. |
+| 51 | Stable public API | Done | [A written policy](api-stability.md) with tiers, versioning and deprecation, and a snapshot of every public item and method of the ten crates an application depends on, guarded by a test so that a change is deliberate (milestone 27). The version is 0.1: the promise is that changes are written down, not that there will be none. |
 | 52 | Strong benchmarks | Done | The `bench` example runs the four cases the list names: a million-row table, a hundred-thousand-node tree, a 3.2 MB text file and four hundred animating elements, with the 10,000-node declaration benchmark, the one-million-row list test and the 6,000-frame stress beside them (milestone 24). |
 | 53 | Low idle CPU/GPU usage | Done | Event-driven loop sleeps between events; no continuous redraw. |
 | 54 | Fast startup | Done | Measured with `RUST_GUI_STARTUP`, which prints each step: 491 ms to the first frame, of which 56 ms is the framework and 278 ms is the driver enumerating adapters. A window painted by the CPU renderer is up in 56 ms (milestone 24). |

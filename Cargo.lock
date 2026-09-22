@@ -3848,6 +3848,7 @@ dependencies = [
 name = "rust-gui"
 version = "0.1.0"
 dependencies = [
+ "quote",
  "rust-gui-core",
  "rust-gui-derive",
  "rust-gui-devtools",
@@ -3858,7 +3859,9 @@ dependencies = [
  "rust-gui-render-wgpu",
  "rust-gui-scene",
  "rust-gui-syntax",
+ "rust-gui-testing",
  "rust-gui-winit",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -3882,6 +3885,7 @@ dependencies = [
  "fluent-syntax",
  "proc-macro2",
  "quote",
+ "rust-gui-core",
  "syn 2.0.119",
 ]
 
