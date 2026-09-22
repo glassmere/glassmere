@@ -21,7 +21,7 @@ A control that ends up with no name is reported as an `Inaccessible` diagnostic,
 
 ## Naming things
 
-- A control's text is its name. An icon button has none, so give it one: `ui.button_styled` with a label, or a tooltip, which is used as the name when there is no text.
+- A control's text is its name. An icon button has none, so give it one: `ui.button_styled` with a label, or a tooltip, which becomes the name whenever the text has no letter or digit in it.
 - `VirtualListOptions::label`, `CodeEditorOptions::label` and the other options structs carry the name for controls that have no text of their own.
 - Labels are translated through `Ui::tr`; identities are not, which is why `Command::with_id` separates the two.
 
