@@ -271,8 +271,8 @@ fn custom_button(color: Color) -> CustomWidget {
         semantics: Semantics {
             role: Role::Button,
             label: "Custom action".into(),
-            disabled: false,
             focusable: true,
+            ..Semantics::default()
         },
         primitives: vec![Primitive::Quad {
             rect: Rect {
@@ -284,6 +284,7 @@ fn custom_button(color: Color) -> CustomWidget {
             color,
             radius: 2.0,
         }],
+        ..CustomWidget::default()
     }
 }
 

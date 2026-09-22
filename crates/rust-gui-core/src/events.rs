@@ -30,7 +30,7 @@ pub enum UiEvent {
 }
 
 impl UiEvent {
-    fn pointer(&self) -> bool {
+    pub(crate) fn pointer(&self) -> bool {
         matches!(
             self,
             Self::PointerDown(_) | Self::PointerUp(_) | Self::PointerMoved(_)

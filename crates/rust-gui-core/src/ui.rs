@@ -775,6 +775,58 @@ impl Ui<'_> {
         self.group(key.into(), Kind::Container, style, |ui| component.ui(ui));
     }
 
+    /// A widget of the application's own, with the input, state, style and
+    /// semantics a built-in one has. The returned `CustomWidget` says how big
+    /// it is, what it paints, what it is for and what it listens to; what it
+    /// heard last time is handed to `build` first, with pointer positions in
+    /// the widget's own coordinates.
+    ///
+    /// The widget keeps its state where the application keeps the rest: in a
+    /// struct of its own, passed in. Styling is `ui.theme()` and
+    /// `ui.class(..)` like anywhere else, and the `style` here is the node's,
+    /// so padding, size and background work as they do on a container.
+    pub fn widget(
+        &mut self,
+        key: impl Into<String>,
+        style: Style,
+        build: impl FnOnce(&crate::WidgetInput) -> CustomWidget,
+    ) -> Response {
+        let key = WidgetKey::Named(key.into());
+        let mut input = crate::WidgetInput {
+            enabled: self.enabled,
+            ..crate::WidgetInput::default()
+        };
+        if let Some(id) = self.context.child(self.parent, &key, Kind::Custom) {
+            let bounds = self
+                .context
+                .node(id)
+                .map_or_else(rust_gui_scene::Rect::default, |node| node.bounds);
+            input.size = rust_gui_scene::Size::new(bounds.width, bounds.height);
+            input.hovered = self.context.hovered() == Some(id);
+            input.focused = self.context.focused() == Some(id);
+            input.pressed = self.context.pressed(id);
+            input.events = self
+                .context
+                .take_area_events(id)
+                .into_iter()
+                .map(|event| crate::WidgetInput::local(event, bounds))
+                .collect();
+        }
+        let widget = build(&input);
+        widget.validate();
+        self.push(Element {
+            key,
+            kind: Kind::Custom,
+            text: String::new(),
+            style,
+            enabled: !widget.semantics.disabled,
+            children: Vec::new(),
+            custom: Some(widget),
+            tooltip: None,
+            control: Control::None,
+        })
+    }
+
     pub fn custom(
         &mut self,
         key: impl Into<String>,

@@ -52,8 +52,9 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Role {
+    #[default]
     Group,
     Label,
     Button,
@@ -87,12 +88,21 @@ pub enum Role {
     Alert,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// What a node is, for the keyboard, the accessibility tree and the tests.
+/// A widget of the application's own fills this in itself; `value` and
+/// `numeric` are what assistive technology reads out, so a dial that reports
+/// neither is a dial that says nothing.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Semantics {
     pub role: Role,
     pub label: String,
     pub disabled: bool,
+    /// Joins the tab order and can be given the keyboard, whatever the role.
     pub focusable: bool,
+    /// What it holds, read out after the label.
+    pub value: Option<String>,
+    /// What it holds on a scale, for a slider or a dial.
+    pub numeric: Option<NumericValue>,
 }
 
 #[derive(Clone, Debug)]
@@ -396,9 +406,10 @@ impl Node {
                     | Kind::RichEditor
             ) || matches!(self.control, Control::Tab { selected: true, .. })
                 || matches!(self.control, Control::RichText { links: 1.., .. })
-                || self.custom.as_ref().is_some_and(|widget| {
-                    widget.semantics.role == Role::Button && widget.semantics.focusable
-                }))
+                || self
+                    .custom
+                    .as_ref()
+                    .is_some_and(|widget| widget.semantics.focusable))
     }
 
     /// Whether a press can land on this node: anything focusable or
@@ -518,6 +529,8 @@ impl Node {
             },
             disabled: !self.enabled,
             focusable: self.focusable(),
+            value: None,
+            numeric: None,
         }
     }
 }
@@ -981,6 +994,15 @@ impl Context {
     pub fn focused(&self) -> Option<NodeId> {
         self.focused
     }
+    /// Whether the node is being held down, by pointer, touch or keyboard.
+    pub fn pressed(&self, id: NodeId) -> bool {
+        (self.captured == Some(id) && self.hovered == Some(id))
+            || self.touch_pressed(id)
+            || self
+                .keyboard_pressed
+                .is_some_and(|(pressed, _)| pressed == id)
+    }
+
     pub fn hovered(&self) -> Option<NodeId> {
         self.hovered
     }
@@ -1056,7 +1078,11 @@ impl Context {
                 Control::Combo {
                     items, selected, ..
                 } => items.get(*selected).map(|item| item.label.clone()),
-                _ => None,
+                // A widget of the application's own says what it holds.
+                _ => node
+                    .custom
+                    .as_ref()
+                    .and_then(|widget| widget.semantics.value.clone()),
             },
             checked: match node.control {
                 Control::Checkbox { checked, .. } => Some(checked),
@@ -1099,7 +1125,7 @@ impl Context {
                     max: 100.0,
                     step: 1.0,
                 }),
-                _ => None,
+                _ => node.custom.as_ref().and_then(|widget| widget.semantics.numeric),
             },
             live: match node.control {
                 Control::Toast {
@@ -1190,6 +1216,17 @@ impl Context {
             .unwrap_or_default()
     }
 
+    /// Whether the area on this node may keep pointer events from what is
+    /// under it. A widget of the application's own may not: it is what is
+    /// under it, and focus, hover and press are services to it rather than
+    /// competitors for the event.
+    fn may_consume_pointer(&self, id: NodeId) -> bool {
+        !self
+            .nodes
+            .get(&id)
+            .is_some_and(|node| node.custom.is_some())
+    }
+
     /// The path from the root down to `id`.
     fn path_to(&self, id: NodeId) -> Vec<NodeId> {
         let mut path = Vec::new();
@@ -1208,15 +1245,25 @@ impl Context {
     fn travel(&mut self, event: crate::UiEvent, path: &[NodeId]) -> bool {
         let mut arrived: Vec<(NodeId, bool)> = Vec::new();
         let mut consumed = false;
+        let consumable = |context: &Self, id: NodeId| match &event {
+            // The frame keeps these two, so nothing can trap the keyboard.
+            crate::UiEvent::Key {
+                key: Key::Tab | Key::Escape,
+                ..
+            } => false,
+            event if event.pointer() => context.may_consume_pointer(id),
+            _ => true,
+        };
         // Down first: an area that captures may take the event away from the
         // widgets inside it.
         for id in path {
-            let Some(area) = self.areas.get(id) else {
+            let Some(area) = self.areas.get(id).copied() else {
                 continue;
             };
             if area.capture && area.watches(&event) {
-                arrived.push((*id, area.consume));
-                if area.consume {
+                let consuming = area.consume && consumable(self, *id);
+                arrived.push((*id, consuming));
+                if consuming {
                     consumed = true;
                     break;
                 }
@@ -1225,9 +1272,11 @@ impl Context {
         if !consumed {
             // Then up, innermost first, over what the widgets left.
             for id in path.iter().rev() {
-                let Some(area) = self.areas.get(id) else {
+                let Some(area) = self.areas.get(id).copied() else {
                     continue;
                 };
+                // Consuming here keeps the event from the areas further out,
+                // not from the widgets: they have not acted yet.
                 if !area.capture && area.watches(&event) {
                     arrived.push((*id, area.consume));
                     if area.consume {
@@ -1272,13 +1321,16 @@ impl Context {
                 pointer.map(crate::UiEvent::PointerDown),
                 pointer.and_then(|at| self.deepest_at(at)),
             ),
+            // A press holds the pointer, so a drag goes on reaching what it
+            // started on however far it wanders.
             Event::PointerUp => (
                 pointer.map(crate::UiEvent::PointerUp),
-                pointer.and_then(|at| self.deepest_at(at)),
+                self.captured
+                    .or_else(|| pointer.and_then(|at| self.deepest_at(at))),
             ),
             Event::PointerMoved(at) => (
                 Some(crate::UiEvent::PointerMoved(*at)),
-                self.deepest_at(*at),
+                self.captured.or_else(|| self.deepest_at(*at)),
             ),
             Event::Scroll { delta_x, delta_y } => (
                 Some(crate::UiEvent::Scroll {
@@ -1534,7 +1586,13 @@ impl Context {
             .iter()
             .filter_map(|(id, node)| match node.control {
                 Control::EventArea(area) => Some((*id, area)),
-                _ => None,
+                // A widget of the application's own hears what it asked to.
+                _ => node
+                    .custom
+                    .as_ref()
+                    .map(|widget| widget.input)
+                    .filter(|input| *input != crate::EventArea::default())
+                    .map(|input| (*id, input)),
             })
             .collect();
         self.pending_area_events
@@ -2150,11 +2208,7 @@ impl Context {
     /// state: theme defaults for the widget kind, then the style's overrides.
     fn appearance(&self, id: NodeId, node: &Node) -> crate::animation::Shown {
         let theme = &self.theme;
-        let pressed = (self.captured == Some(id) && self.hovered == Some(id))
-            || self.touch_pressed(id)
-            || self
-                .keyboard_pressed
-                .is_some_and(|(pressed, _)| pressed == id);
+        let pressed = self.pressed(id);
         let hovered = self.hovered == Some(id);
         let focused = self.focused == Some(id);
         let mut background = node.style.background.or(match node.kind {
@@ -2585,6 +2639,7 @@ impl Context {
             && let Some(deepest) = self.deepest_at(position)
             && self.path_to(deepest).iter().any(|id| {
                 matches!(self.areas.get(id), Some(area) if area.capture && area.consume && area.pointer)
+                    && self.may_consume_pointer(*id)
             })
         {
             return None;

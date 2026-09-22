@@ -16,6 +16,8 @@ members = [
     "crates/rust-gui-fluent",
     "crates/rust-gui-icu",
     "crates/rust-gui-dev",
+    # A widget built the way a third party would build one.
+    "examples/dial-widget",
 ]
 
 [workspace.package]

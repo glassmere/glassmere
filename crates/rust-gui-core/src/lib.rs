@@ -87,4 +87,4 @@ pub use tree::{
 pub use ui::{
     DockOptions, DockPanel, DockResponse, Properties, PropertyGrid, Response, Ui, suggest,
 };
-pub use widget::{Component, CustomWidget};
+pub use widget::{Component, CustomWidget, WidgetInput};

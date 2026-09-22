@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 22. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 23. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -49,7 +49,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 43 | Clean platform abstraction | Done | Host crate isolates winit/wgpu/AccessKit. |
 | 44 | Low allocation architecture | Partial | Retained nodes, reused GPU buffers and paint chunks; declarations still allocate strings/elements per frame. |
 | 45 | Predictable ownership | Done | Views are plain closures over `&mut` state; no `Rc<RefCell>` in application code. |
-| 46 | Good escape hatches | Partial | Custom leaves and models; arbitrary input contracts for custom widgets are missing. |
+| 46 | Good escape hatches | Done | A widget of your own with `Ui::widget`, drawing of your own with `Primitive::Custom` and `AppOptions::gpu`, layout of your own with `Style::offset` inside `Ui::responsive`, input of your own with `Ui::event_area`, and pixels without a window through `CpuRenderer` (milestones 18, 19, 23). |
 | 47 | Modular crates | Done | core, scene, render-wgpu, winit, testing, devtools, facade. Layout/text/style/widgets live inside core and scene for now. |
 | 48 | No forced proprietary DSL | Done | Plain Rust. |
 | 49 | Compile-time checked UI APIs | Partial | Typed styles and models; invalid combinations panic at declaration rather than failing at compile time. |
@@ -61,8 +61,8 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 55 | Small deployment footprint | Partial | Native binary; footprint not measured. |
 | 56 | Excellent error diagnostics | Partial | Duplicate keys, duplicate shortcuts, invalid models and clip imbalance panic with messages; stylesheet, dock layout and watched-file errors carry line numbers or paths, unknown classes surface in the inspector, and controls without an accessible name are reported (milestone 7h). Missing: font/resource diagnostics. |
 | 57 | Framework-level diagnostics | Done | Unstable ids, needless relayout, excessive repainting, controls without an accessible name, oversized layers and huge unvirtualized containers, through `Context::diagnostics`, the inspector and `tracing` (milestone 7h). |
-| 58 | Small core with extension points | Partial | Models and custom leaves are public; third-party controls need a richer widget contract. |
-| 59 | Component ecosystem | Not started | |
-| 60 | Excellent custom-widget API | Partial | Size, paint and semantics; missing input, state and style contracts. |
+| 58 | Small core with extension points | Done | Models, custom leaves and `Ui::widget`, proved by a control built outside the framework with nothing private to it (milestone 23). |
+| 59 | Component ecosystem | Done | A reusable widget is a normal crate depending on the facade: `examples/dial-widget` is one, with its own library, example and tests (milestone 23). Version coupling is the facade alone, though the API is not yet stable (row 51). |
+| 60 | Excellent custom-widget API | Done | Size, paint, semantics with a value, the pointer, the keyboard and the wheel in the widget's own coordinates, hover, press, focus and enablement, theme and stylesheet access, and the same test harness the built-in controls use (milestone 23). |
 | 61 | Clear performance model | Partial | The architecture doc's invalidation table plus inspector change flags. A written performance guide is missing. |
 | 62 | Central promise | Partial | Retained incremental engine behind an immediate-style API is in place; capability, styling and tooling breadth continue in phases 6 and later. |

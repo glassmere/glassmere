@@ -79,10 +79,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     rust_gui::CustomWidget {
                         size: rust_gui::Size::new(120.0, 60.0),
                         semantics: rust_gui::Semantics {
-                            role: rust_gui::Role::Group,
                             label: "Application drawing".into(),
-                            disabled: false,
-                            focusable: false,
+                            ..rust_gui::Semantics::default()
                         },
                         primitives: vec![rust_gui::Primitive::Custom {
                             rect: rust_gui::Rect {
@@ -93,6 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             },
                             id: 7,
                         }],
+                        ..rust_gui::CustomWidget::default()
                     },
                 );
             }

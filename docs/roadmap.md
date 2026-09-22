@@ -113,5 +113,6 @@ Work picked from the coverage table after the seven phases.
 - [x] Which screen a window opens on ([milestone 20](milestone-20.md)).
 - [x] Background jobs with cancellation, superseding and streams ([milestone 21](milestone-21.md)).
 - [x] Optional reactive state and its dependency graph in the inspector ([milestone 22](milestone-22.md)).
+- [x] A widget contract a third party can build on, proved from outside ([milestone 23](milestone-23.md)).
 
 Each phase needs its own acceptance criteria before expanding the public API. Items that appear only in the feature list are tracked in the coverage table.

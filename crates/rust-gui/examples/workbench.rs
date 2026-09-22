@@ -33,8 +33,8 @@ fn custom_action(count: u32) -> CustomWidget {
         semantics: Semantics {
             role: Role::Button,
             label: format!("Custom action: {count}"),
-            disabled: false,
             focusable: true,
+            ..Semantics::default()
         },
         primitives: vec![
             Primitive::Quad {
@@ -59,6 +59,7 @@ fn custom_action(count: u32) -> CustomWidget {
                 color: Color::WHITE,
             },
         ],
+        ..CustomWidget::default()
     }
 }
 
