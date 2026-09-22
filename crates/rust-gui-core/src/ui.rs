@@ -36,6 +36,14 @@ pub(crate) struct HostOutbox {
     /// asked for what is on it.
     pub clip: Option<crate::Clip>,
     pub paste: bool,
+    /// A file dialog to put up, notifications to post, and the native menu
+    /// and tray icon as the view last declared them.
+    pub files: Option<crate::FileRequest>,
+    pub notifications: Vec<crate::Notification>,
+    pub menu: Option<crate::Menu>,
+    pub tray: Option<Option<crate::Tray>>,
+    /// Commands a menu the framework drew itself chose.
+    pub commands: Vec<String>,
     pub images: Vec<std::path::PathBuf>,
     pub toasts: ToastOutbox,
     /// A new message source, or `Some(None)` to remove the current one.
@@ -199,6 +207,104 @@ impl Ui<'_> {
     /// view can paste on the frame it asked and read it again later.
     pub fn pasted(&self) -> Option<&crate::Clip> {
         self.context.pasted()
+    }
+
+    /// Puts up a file dialog once this declaration is over. The answer
+    /// arrives through [`Ui::chosen_files`] on a later frame.
+    pub fn choose_file(&mut self, request: crate::FileRequest) {
+        self.host.files = Some(request);
+    }
+
+    /// What the last file dialog answered: the paths chosen, or an empty
+    /// slice when it was cancelled. `None` until one has been answered. It
+    /// stays readable until the next dialog.
+    pub fn chosen_files(&self) -> Option<&[std::path::PathBuf]> {
+        self.context.chosen_files()
+    }
+
+    /// Posts a message to the desktop's notification area.
+    pub fn notify(&mut self, notification: crate::Notification) {
+        self.host.notifications.push(notification);
+    }
+
+    /// The window's native menu bar. Declaring the same menu again changes
+    /// nothing, so a view may set it every frame. Choosing an item sends
+    /// `Event::Command` with that command's id, which activates the command
+    /// the view declared, exactly as its button would.
+    pub fn set_menu(&mut self, menu: crate::Menu) {
+        self.host.menu = Some(menu);
+    }
+
+    /// Draws `menu` as a menu bar, for the platforms where a menu belongs
+    /// to the window rather than to the application. Choosing an item
+    /// activates that command, exactly as the platform's own menu does, so a
+    /// view handles both the same way: through the command it declared.
+    ///
+    /// Two levels are shown. A submenu inside a submenu is drawn as a
+    /// heading with its items under it, because the framework's own menus
+    /// do not nest.
+    pub fn menu_bar(&mut self, key: impl Into<String>, menu: &crate::Menu) {
+        let style = Style {
+            gap: 4.0,
+            ..Style::default()
+        };
+        let mut chosen = None;
+        self.row(key.into(), style, |ui| {
+            for (index, entry) in menu.entries.iter().enumerate() {
+                let crate::MenuEntry::Submenu { label, entries } = entry else {
+                    continue;
+                };
+                let mut flat = Vec::new();
+                crate::platform::flatten(entries, 0, &mut flat);
+                let items: Vec<crate::MenuItem> = flat
+                    .iter()
+                    .map(|(depth, command)| match command {
+                        Some(command) => crate::MenuItem {
+                            label: format!("{}{}", "  ".repeat(*depth), command.label),
+                            enabled: command.enabled,
+                            hint: command
+                                .shortcut
+                                .as_ref()
+                                .map(crate::Shortcut::describe)
+                                .unwrap_or_default(),
+                        },
+                        None => crate::MenuItem {
+                            label: "─".repeat(12),
+                            enabled: false,
+                            hint: String::new(),
+                        },
+                    })
+                    .collect();
+                if let Some(picked) = ui.menu_styled(
+                    format!("menu{index}"),
+                    label.clone(),
+                    &items,
+                    Style {
+                        padding: 8.0,
+                        ..Style::button()
+                    },
+                    crate::Length::Px(260.0),
+                ) && let Some((_, Some(command))) = flat.get(picked)
+                {
+                    chosen = Some(command.id.clone());
+                }
+            }
+        });
+        if let Some(id) = chosen {
+            self.host.commands.push(id);
+        }
+    }
+
+    /// The application's tray icon, or `None` to take it away.
+    pub fn set_tray(&mut self, tray: Option<crate::Tray>) {
+        self.host.tray = Some(tray);
+    }
+
+    /// Files the operating system asked the application to open, from the
+    /// command line or from an association. Empty when it was started
+    /// without any.
+    pub fn opened_files(&self) -> &[std::path::PathBuf] {
+        self.context.opened_files()
     }
 
     /// Shows a reactive store's dependency graph in the inspector: what its

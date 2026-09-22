@@ -58,7 +58,7 @@ impl Shortcut {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Command {
     /// Identity for binding overrides, and what a palette returns. Labels are
     /// translated; this is not.

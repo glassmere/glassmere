@@ -1,6 +1,6 @@
 # Feature coverage
 
-Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 25. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
+Status of the 62 goals in [the original feature list](feature-list.md) as of 2026-09-22, after milestone 26. "Done" means the contract exists, is tested and is documented in a milestone report; "Partial" names what exists and what is missing; "Planned" points at the roadmap phase.
 
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
@@ -44,7 +44,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | 38 | Deterministic rendering/testing | Done | Synthetic measurer for logic tests; bundled Fira Mono for pixel references. Cross-driver tolerance still to be confirmed in CI. |
 | 39 | Localization | Done | Right-to-left windows and subtrees with mirrored layout and widgets, direction detected from the OS locale (milestone 7f). Fluent message catalogs with plurals, a fallback chain and run-time language switching; the framework's own strings translatable, with Czech and German shipped (milestones 11a and 11b); a compile-time checked `tr!` and CLDR numbers, dates and times through the opt-in `icu` feature, followed by the number widgets (milestones 11c and 11d). Missing: relative times, lists, currencies, other calendars. |
 | 40 | High-DPI support | Done | Per-window scale factor, fractional scaling, DPI-aware accessibility bounds. |
-| 41 | Platform integration | Partial | Accessibility APIs, IME, clipboard, window titles. Missing: file dialogs, notifications, native menus, tray, file associations, system appearance. |
+| 41 | Platform integration | Done | Accessibility APIs, IME, clipboard, window titles and decorations, and the desktop's light and dark preference. Behind the `platform` feature: file dialogs, notifications, the application menu, a tray icon, and the files an association opens (milestone 26). A window menu bar is the framework's own on Windows and Linux, where the platform's needs unsafe calls. |
 | 42 | Native-first desktop focus | Partial | Windows verified natively; Linux/macOS build in CI without interaction checks. |
 | 43 | Clean platform abstraction | Done | Host crate isolates winit/wgpu/AccessKit. |
 | 44 | Low allocation architecture | Done | Retained nodes, reused GPU buffers, paint chunks and element vectors, and no widget trait objects anywhere. What a declaration allocates is bounded by what is visible and measured per frame: 373 elements and 2.5 kB for a table of a million rows (milestone 24). |

@@ -8,6 +8,7 @@ pub mod hot;
 mod images;
 mod input;
 mod os_drag;
+mod platform;
 mod wakeup;
 pub use desktop::{DesktopClosed, DesktopHandle, WindowKey, run_windows};
 pub use dock::{DockWindowView, DockWindows};
@@ -186,6 +187,10 @@ pub struct AppOptions {
     pub caret_movement: rust_gui_core::CaretMovement,
     /// Layout and text direction of the window.
     pub direction: DirectionChoice,
+    /// The system's title bar and border. Without them the window has no way
+    /// to be moved or resized but the one the application draws.
+    pub decorations: bool,
+    pub resizable: bool,
 }
 
 impl Default for AppOptions {
@@ -204,6 +209,8 @@ impl Default for AppOptions {
             reduced_motion: false,
             caret_movement: rust_gui_core::CaretMovement::Visual,
             direction: DirectionChoice::Auto,
+            decorations: true,
+            resizable: true,
         }
     }
 }
@@ -217,6 +224,17 @@ pub(crate) const STYLESHEET_POLL: Duration = Duration::from_millis(500);
 /// happened before that, including loading the executable, is not in it.
 pub(crate) static STARTED: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
 static STARTUP_REPORTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Files the operating system started the application with: the arguments
+/// that name something on disk. An association opens a file this way, and so
+/// does dragging one onto the executable.
+fn opened_files() -> Vec<PathBuf> {
+    std::env::args_os()
+        .skip(1)
+        .map(PathBuf::from)
+        .filter(|path| path.exists())
+        .collect()
+}
 
 /// Prints how far into startup one step of it was reached, so that a slow
 /// start can be blamed on the right thing. Costs an environment lookup.
@@ -695,6 +713,9 @@ struct Application<F> {
     pub(crate) drag_escaped: bool,
     /// Font families already reported as missing, so each is said once.
     families_seen: std::collections::HashSet<String>,
+    /// The platform's menu and tray icon, kept alive while they are shown.
+    menu: Option<platform::NativeMenu>,
+    tray: Option<platform::NativeTray>,
     /// Some inspector is open, so the shared renderer profiles its frames.
     profile_gpu: bool,
     /// An inspector is looking at this window.
@@ -711,6 +732,7 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         wake: WakeHandle,
     ) -> Self {
         let mut context = Context::new();
+        context.set_opened_files(opened_files());
         context.set_reduced_motion(options.reduced_motion);
         context.set_caret_movement(options.caret_movement);
         context.set_direction(options.direction.resolve());
@@ -746,6 +768,8 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             os_drag: None,
             drag_escaped: false,
             families_seen: std::collections::HashSet::new(),
+            menu: None,
+            tray: None,
             profile_gpu: false,
             inspected: false,
             started: Instant::now(),
@@ -869,6 +893,32 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         let text = self.context.take_hot_state().unwrap_or_default();
         if let Err(error) = hot::save(window, &text) {
             eprintln!("hot state not saved: {error}");
+        }
+    }
+
+    /// Fulfils what the last declaration asked the desktop for. Called
+    /// between frames, because a file dialog runs a message loop of its own
+    /// and nothing may be borrowed across it.
+    pub(crate) fn platform_requests(&mut self) {
+        for notification in self.context.take_notifications() {
+            platform::notify(&notification);
+        }
+        if let Some(menu) = self.context.take_menu() {
+            // Dropping the old one first: two menus is one too many.
+            self.menu = None;
+            self.menu = platform::NativeMenu::install(&menu);
+        }
+        if let Some(tray) = self.context.take_tray() {
+            self.tray = None;
+            self.tray = tray.as_ref().and_then(platform::NativeTray::install);
+        }
+        if let Some(request) = self.context.take_file_request()
+            && let Some(state) = &self.state
+        {
+            let window = state.window.clone();
+            let paths = platform::choose_files(&window, request);
+            self.context.set_chosen_files(paths);
+            self.request_redraw();
         }
     }
 

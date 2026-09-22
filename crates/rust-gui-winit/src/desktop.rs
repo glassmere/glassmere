@@ -216,6 +216,9 @@ struct Desktop {
     /// A drag being carried from the window it started in to another of this
     /// application's windows.
     crossing: Option<Crossing>,
+    /// The window that last took the keyboard, for menus and tray icons,
+    /// which belong to the application rather than to a window.
+    focused: Option<WindowKey>,
     clipboard: Rc<RefCell<input::HostClipboard>>,
     error: Option<Box<dyn Error>>,
 }
@@ -415,6 +418,7 @@ impl Desktop {
             next,
             graphics,
             crossing: None,
+            focused: None,
             clipboard: Rc::new(RefCell::new(input::HostClipboard::default())),
             error: None,
         }
@@ -433,6 +437,8 @@ impl Desktop {
         let mut attributes = Window::default_attributes()
             .with_visible(false)
             .with_title(&options.title)
+            .with_decorations(options.decorations)
+            .with_resizable(options.resizable)
             .with_inner_size(LogicalSize::new(options.size.width, options.size.height));
         // Where the window opens, when the application asked for something
         // other than what the system would do.
@@ -890,6 +896,9 @@ impl ApplicationHandler<UserEvent> for Desktop {
         );
         let app = self.windows.get_mut(&key).unwrap();
         (app.profile_gpu, app.inspected) = (profile_gpu, inspected);
+        if matches!(event, WindowEvent::Focused(true)) {
+            self.focused = Some(key);
+        }
         let news = match &event {
             WindowEvent::CursorMoved { .. } => PointerNews::Moved,
             WindowEvent::MouseInput {
@@ -923,6 +932,26 @@ impl ApplicationHandler<UserEvent> for Desktop {
             self.schedule(event_loop);
         }
     }
+    /// Between frames: what the declarations asked the desktop for, and
+    /// what the desktop's own menus have to say back.
+    fn about_to_wait(&mut self, _: &ActiveEventLoop) {
+        for app in self.windows.values_mut() {
+            app.platform_requests();
+        }
+        for id in crate::platform::chosen_commands() {
+            // A menu belongs to the application, so the command goes to the
+            // window that has the keyboard, or to the first one.
+            let target = self
+                .focused
+                .filter(|key| self.windows.contains_key(key))
+                .or_else(|| self.windows.keys().copied().next());
+            if let Some(app) = target.and_then(|key| self.windows.get_mut(&key)) {
+                app.input(Event::Command(id));
+                app.request_redraw();
+            }
+        }
+    }
+
     fn exiting(&mut self, _: &ActiveEventLoop) {
         self.wake.close();
     }

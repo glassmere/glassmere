@@ -239,6 +239,10 @@ pub enum Event {
     },
     Text(TextEdit),
     Shortcut(crate::Shortcut),
+    /// A command chosen somewhere outside the window: a native menu, a tray
+    /// icon, or an application's own path to it. Activates the command
+    /// declared with this id, as its button would.
+    Command(String),
     /// The host supplies a logical drop point for external data.
     DropAt {
         position: Point,
@@ -693,6 +697,17 @@ pub struct Context {
     clip_out: Option<crate::Clip>,
     paste_requested: bool,
     clip_in: Option<crate::Clip>,
+    /// What the host has been asked for, and what it has answered.
+    file_request: Option<crate::FileRequest>,
+    chosen_files: Option<Vec<std::path::PathBuf>>,
+    opened_files: Vec<std::path::PathBuf>,
+    notifications: Vec<crate::Notification>,
+    menu_out: Option<crate::Menu>,
+    tray_out: Option<Option<crate::Tray>>,
+    /// What the host has been given, so that declaring the same menu or
+    /// tray again asks for nothing.
+    menu_shown: Option<crate::Menu>,
+    tray_shown: Option<crate::Tray>,
     redraw_requested: bool,
     caret_movement: crate::CaretMovement,
     direction: crate::Direction,
@@ -905,6 +920,14 @@ impl Default for Context {
             clip_out: None,
             paste_requested: false,
             clip_in: None,
+            file_request: None,
+            chosen_files: None,
+            opened_files: Vec::new(),
+            notifications: Vec::new(),
+            menu_out: None,
+            tray_out: None,
+            menu_shown: None,
+            tray_shown: None,
             redraw_requested: false,
             caret_movement: crate::CaretMovement::Visual,
             direction: crate::Direction::Ltr,
@@ -1157,6 +1180,49 @@ impl Context {
 
     pub(crate) fn pasted(&self) -> Option<&crate::Clip> {
         self.clip_in.as_ref()
+    }
+
+    /// A file dialog a view asked for. Hosts put it up after the
+    /// declaration and answer with `set_chosen_files`.
+    pub fn take_file_request(&mut self) -> Option<crate::FileRequest> {
+        self.file_request.take()
+    }
+
+    /// What the dialog answered; an empty list means it was cancelled.
+    pub fn set_chosen_files(&mut self, paths: Vec<std::path::PathBuf>) {
+        self.chosen_files = Some(paths);
+        self.redraw_requested = true;
+    }
+
+    pub(crate) fn chosen_files(&self) -> Option<&[std::path::PathBuf]> {
+        self.chosen_files.as_deref()
+    }
+
+    /// Files the operating system asked the application to open. Hosts set
+    /// this before the first declaration and whenever more arrive.
+    pub fn set_opened_files(&mut self, paths: Vec<std::path::PathBuf>) {
+        self.opened_files = paths;
+        self.redraw_requested = true;
+    }
+
+    pub(crate) fn opened_files(&self) -> &[std::path::PathBuf] {
+        &self.opened_files
+    }
+
+    /// Notifications a view asked for, in the order it asked.
+    pub fn take_notifications(&mut self) -> Vec<crate::Notification> {
+        std::mem::take(&mut self.notifications)
+    }
+
+    /// The native menu a view last declared, taken once so that a host
+    /// rebuilds it only when it changes.
+    pub fn take_menu(&mut self) -> Option<crate::Menu> {
+        self.menu_out.take()
+    }
+
+    /// The tray icon a view last declared, or `Some(None)` to take it away.
+    pub fn take_tray(&mut self) -> Option<Option<crate::Tray>> {
+        self.tray_out.take()
     }
 
     /// What `Ui::observe` last saw of a reactive store, for the inspector.
@@ -1731,11 +1797,30 @@ impl Context {
         }
         self.redraw_requested = redraw;
         self.deliver_emitted(std::mem::take(&mut host.emitted));
+        for id in std::mem::take(&mut host.commands) {
+            self.event(crate::Event::Command(id));
+        }
         self.watch_requests = host.watched;
         if host.clip.is_some() {
             self.clip_out = host.clip;
         }
         self.paste_requested |= host.paste;
+        if host.files.is_some() {
+            self.file_request = host.files;
+        }
+        self.notifications.append(&mut host.notifications);
+        if let Some(menu) = host.menu
+            && self.menu_shown.as_ref() != Some(&menu)
+        {
+            self.menu_shown = Some(menu.clone());
+            self.menu_out = Some(menu);
+        }
+        if let Some(tray) = host.tray
+            && self.tray_shown != tray
+        {
+            self.tray_shown = tray.clone();
+            self.tray_out = Some(tray);
+        }
         self.image_requests = host.images;
         self.trim_images();
         self.apply_toasts(host.toasts);
@@ -2950,6 +3035,24 @@ impl Context {
         if let Some(handled) = self.rich_text_event(&event) {
             return handled;
         }
+        if let Event::Command(wanted) = &event {
+            // The innermost enabled command with that id, wherever the focus
+            // is: a menu belongs to the window, not to what has the keyboard.
+            let mut best: Option<(usize, NodeId)> = None;
+            for (id, node) in &self.nodes {
+                let Control::Command { id: declared, .. } = &node.control else {
+                    continue;
+                };
+                if !node.enabled || declared != wanted {
+                    continue;
+                }
+                let depth = self.depth(*id);
+                if best.is_none_or(|(deepest, _)| depth > deepest) {
+                    best = Some((depth, *id));
+                }
+            }
+            return best.is_some_and(|(_, id)| self.activate(id));
+        }
         if let Event::Shortcut(shortcut) = &event {
             // The innermost scope that holds the focus wins, so a panel may
             // take a shortcut the window also has.
@@ -3116,6 +3219,7 @@ impl Context {
             Event::Scroll { .. } => unreachable!(),
             Event::Text(_)
             | Event::Shortcut(_)
+            | Event::Command(_)
             | Event::DropAt { .. }
             | Event::ContextMenu(_)
             | Event::Editor(_)

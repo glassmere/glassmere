@@ -26,6 +26,9 @@ fluent = ["dep:rust-gui-fluent"]
 derive = ["dep:rust-gui-derive"]
 # Regular expressions in the code editor's find bar.
 regex = ["rust-gui-core/regex"]
+# Native file dialogs, notifications, application menus and tray icons. Not
+# on by default: four dependencies an application may not want.
+platform = ["desktop", "rust-gui-winit/platform"]
 # Serialize and Deserialize for `DockLayout`.
 serde = ["rust-gui-core/serde"]
 
@@ -45,6 +48,10 @@ rust-gui-icu = { workspace = true, optional = true }
 [[example]]
 name = "counter"
 required-features = ["desktop"]
+
+[[example]]
+name = "platform"
+required-features = ["platform"]
 
 [[example]]
 name = "workbench"
