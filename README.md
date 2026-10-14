@@ -180,7 +180,7 @@ The view may run more than once per input event. Put application actions behind 
 
 ## Implemented
 
-- Parent-scoped explicit keys, positional convenience keys, monotonic `NodeId`s, reconciliation and removal.
+- Parent-scoped explicit keys, call-site keys for everything else, monotonic `NodeId`s, reconciliation and removal.
 - Separate tree/style/layout/paint/accessibility/text invalidation flags and frame counters.
 - Cached Taffy flex and grid layout with tracks, areas, min/max, aspect ratio, alignment and opt-in shrinking; Row / Column / Container / Grid.
 - A renderer-independent scene with ordered rounded quads, text and rectangular clips.
@@ -250,7 +250,7 @@ The view may run more than once per input event. Put application actions behind 
 
 ## Identity and performance
 
-A widget is identified by where it is declared among its siblings, which is what a view with a fixed shape wants. Wrap it in `ui.keyed(id, |ui| ..)` for conditional or reordered content, where position stops meaning the same thing from one frame to the next. Keys are unique **within a parent**; a duplicate panics in a debug build, and in a release build is left out and reported as a diagnostic. Changing a widget's kind or moving it to a different parent creates a new identity. Removed IDs are not recycled within a context.
+A widget is identified by the line that declares it, so a widget declared conditionally does not disturb the ones after it. Repeats of one line, such as a loop body, are told apart by order; wrap them in `ui.keyed(id, |ui| ..)` when items can be inserted, removed or reordered. Keys are unique **within a parent**; a duplicate panics in a debug build, and in a release build is left out and reported as a diagnostic. Changing a widget's kind or moving it to a different parent creates a new identity. Removed IDs are not recycled within a context.
 
 Keys that change every frame throw away focus, scroll offset, selection and undo history for everything under them. The `UnstableIds` diagnostic catches that, and in debug builds says so once on stderr as well as in the inspector.
 

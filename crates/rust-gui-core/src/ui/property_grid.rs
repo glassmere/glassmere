@@ -83,6 +83,7 @@ impl Ui<'_> {
     ///     });
     /// });
     /// ```
+    #[track_caller]
     pub fn property_grid(
         &mut self,
         state: &mut PropertyGridState,

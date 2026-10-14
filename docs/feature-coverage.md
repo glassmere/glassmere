@@ -5,7 +5,7 @@ Status of the 62 goals in [the original feature list](feature-list.md) as of 202
 | # | Goal | Status | Notes |
 | ---: | --- | --- | --- |
 | 1 | Immediate-mode ergonomics, retained internals | Done | `ui.button(...)` over a retained tree with persistent focus, scroll, editing, caches and animation state. |
-| 2 | Stable widget identity | Done | Explicit/positional keys, monotonic `NodeId` shared by layout, input, focus, accessibility, testing and the inspector. |
+| 2 | Stable widget identity | Done | Explicit and call-site keys, monotonic `NodeId` shared by layout, input, focus, accessibility, testing and the inspector. |
 | 3 | Incremental updates | Done | Property comparison limits layout and paint work, and `Ui::memo` keeps a subtree without declaring it again while the state it was declared from is unchanged, without missing the input inside it (milestone 15). |
 | 4 | Incremental layout | Done | Taffy dirty subtrees; same-size text changes skip layout. |
 | 5 | Incremental rendering | Done | Damage tracking, subtree paint caches, retained GPU buffers and text batching, and presentation that redraws only the damaged pixels on both renderers, proved frame by frame against a full repaint, including every overlay a window draws over itself (milestones 15, 32, 33). |

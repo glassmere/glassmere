@@ -5,6 +5,7 @@ use rust_gui_scene::Image;
 impl Ui<'_> {
     /// A decoded image. It takes its natural size unless the style gives one;
     /// `ImageOptions::fit` decides how it fills a box of another shape.
+    #[track_caller]
     pub fn image(&mut self, image: &Image, options: ImageOptions) {
         let key = self.next_key();
         self.image_element(key, Some(image.clone()), false, options);
@@ -14,6 +15,7 @@ impl Ui<'_> {
     /// changes on disk. Until it arrives, and when it cannot be decoded, a
     /// placeholder fills the box, so give the style a size to keep the layout
     /// from jumping. See `Context::image_error` for failures.
+    #[track_caller]
     pub fn image_file(&mut self, path: impl AsRef<std::path::Path>, options: ImageOptions) {
         let key = self.next_key();
         let path = path.as_ref();
@@ -24,6 +26,7 @@ impl Ui<'_> {
         self.image_element(key, image, failed, options);
     }
 
+    #[track_caller]
     fn image_element(
         &mut self,
         key: WidgetKey,

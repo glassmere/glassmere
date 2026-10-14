@@ -122,3 +122,19 @@ fn mismatching_snapshots_name_the_first_differing_line() {
     );
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn tree_snapshots_name_unkeyed_widgets_by_place_not_source_line() {
+    let harness = Harness::new(Size::new(200.0, 200.0), (), |_, ui| {
+        ui.label("first");
+        ui.column(Style::default(), |ui| {
+            ui.button("inner");
+        });
+    });
+    let tree = harness.snapshot_tree();
+    assert!(!tree.contains(".rs:"), "{tree}");
+    assert!(
+        tree.contains("#0 Label") && tree.contains("#1 Column"),
+        "{tree}"
+    );
+}

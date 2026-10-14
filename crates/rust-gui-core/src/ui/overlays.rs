@@ -7,6 +7,7 @@ use rust_gui_scene::Color;
 impl Ui<'_> {
     /// Attaches hover help to the previously declared widget. It appears after a
     /// short dwell and doubles as the widget's accessible description.
+    #[track_caller]
     pub fn tooltip(&mut self, text: impl Into<String>) {
         if let Some(element) = self.declared() {
             element.tooltip = Some(text.into());
@@ -16,6 +17,7 @@ impl Ui<'_> {
     /// A tab strip over one panel. Clicking or Arrow/Home/End on the focused
     /// tab selects at once; only the selected tab is in the Tab order, and Tab
     /// moves on into the panel. Closable tabs report their close button.
+    #[track_caller]
     pub fn tabs(
         &mut self,
         selected: &mut usize,
@@ -27,6 +29,7 @@ impl Ui<'_> {
 
     /// `tabs` with extra strip content after the tabs. `fill` stretches the
     /// panel over the parent's remaining height, as dock groups need.
+    #[track_caller]
     pub(super) fn tabs_with(
         &mut self,
         selected: &mut usize,
@@ -155,6 +158,7 @@ impl Ui<'_> {
     /// Two panes separated by a draggable divider. `fraction` is the first
     /// pane's share of the space along `axis`; pixel minimums clamp both sides.
     /// The divider is focusable and moves with the arrow keys, Home and End.
+    #[track_caller]
     pub fn split(
         &mut self,
         fraction: &mut f32,
@@ -250,16 +254,17 @@ impl Ui<'_> {
     /// Commands are shown with the shortcut the user would press, and a
     /// disabled one cannot be chosen. The palette declares no commands of its
     /// own, so it never takes a shortcut from the window.
+    #[track_caller]
     pub fn command_palette(
         &mut self,
         open: &mut bool,
         query: &mut String,
         commands: &[crate::Command],
     ) -> Option<String> {
-        // Dialogs need a plain name; a positional key has none of its own.
+        // Dialogs need a plain name; a call-site key has none of its own.
         let name = match self.next_key() {
             WidgetKey::Named(name) => name,
-            WidgetKey::Position(_) => "$palette".to_owned(),
+            WidgetKey::Site(..) => "$palette".to_owned(),
         };
         let mut chosen = None;
         // Nothing is there on the frame the palette appears on.
@@ -341,6 +346,7 @@ impl Ui<'_> {
         chosen
     }
 
+    #[track_caller]
     pub fn context_menu(
         &mut self,
         items: &[MenuItem],
@@ -381,6 +387,7 @@ impl Ui<'_> {
     /// An anchored, non-modal panel below the previously declared widget while
     /// `*open`. Focus moves inside on open and returns to the anchor on close;
     /// Escape or a press outside the panel and its anchor clears `*open`.
+    #[track_caller]
     pub fn popover(
         &mut self,
         open: &mut bool,
@@ -423,6 +430,7 @@ impl Ui<'_> {
             elements: self.context.take_spare(),
             keys: HashSet::new(),
             declared: None,
+            sites: HashMap::new(),
             updates: self.updates,
             submitted: self.submitted,
             warnings: self.warnings,

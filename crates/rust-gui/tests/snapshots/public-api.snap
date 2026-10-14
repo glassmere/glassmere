@@ -224,6 +224,7 @@ rust-gui-core   field MenuItem::enabled
 rust-gui-core   field MenuItem::hint
 rust-gui-core   field MenuItem::label
 rust-gui-core   field NodeDetails::changed
+rust-gui-core   field NodeDetails::explicit
 rust-gui-core   field NodeDetails::key
 rust-gui-core   field NodeDetails::kind
 rust-gui-core   field NodeDetails::painted

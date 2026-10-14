@@ -52,6 +52,7 @@ impl Context {
             elements: self.take_spare(),
             keys: HashSet::new(),
             declared: None,
+            sites: HashMap::new(),
             updates: &mut updates,
             submitted: &mut submitted,
             warnings: &mut warnings,

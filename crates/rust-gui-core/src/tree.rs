@@ -733,7 +733,7 @@ impl Context {
             report.text_bytes += node.text.len()
                 + match &node.key {
                     crate::ui::WidgetKey::Named(key) => key.len(),
-                    crate::ui::WidgetKey::Position(_) => 0,
+                    crate::ui::WidgetKey::Site(..) => 0,
                 };
             if let Some(chunk) = &node.paint_cache {
                 report.cached_nodes += 1;

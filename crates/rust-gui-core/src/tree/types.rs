@@ -300,8 +300,12 @@ pub struct MemoryReport {
 /// Inspector-facing facts about one node that ordinary semantics do not carry.
 #[derive(Clone, Debug)]
 pub struct NodeDetails {
-    /// Explicit key, or `#index` for positional children.
+    /// Explicit key, or the declaring call site as `file.rs:line:column`,
+    /// with `#n` for the n-th repeat of one site.
     pub key: String,
+    /// Whether the key was given with `Ui::keyed` rather than taken from
+    /// the call site.
+    pub explicit: bool,
     pub kind: String,
     pub text: String,
     pub style: Style,

@@ -242,9 +242,21 @@ impl<S> Harness<S> {
             }
             let depth = self.path(node.id).matches('/').count();
             let details = self.context.details(node.id).unwrap();
+            // A call-site key names a source line, which moves whenever the
+            // file is edited; the place among siblings keeps snapshots stable.
+            let key = if details.explicit {
+                details.key
+            } else {
+                let index = node
+                    .parent
+                    .and_then(|parent| self.context.node(parent))
+                    .and_then(|parent| parent.children.iter().position(|id| *id == node.id))
+                    .unwrap_or_default();
+                format!("#{index}")
+            };
             let mut prefix = format!(
                 "{} {} {:?} {:?}",
-                details.key, details.kind, node.semantics.role, node.semantics.label
+                key, details.kind, node.semantics.role, node.semantics.label
             );
             if node.semantics.disabled {
                 prefix += " [disabled]";

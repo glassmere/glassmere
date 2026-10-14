@@ -14,12 +14,14 @@ pub(super) struct FieldExtra {
 }
 
 impl Ui<'_> {
+    #[track_caller]
     pub(super) fn take_update(&mut self, key: &WidgetKey, kind: Kind) -> Option<ControlUpdate> {
         let id = self.context.child(self.parent, key, kind)?;
         let update = self.updates.remove(&id);
         self.enabled.then_some(update).flatten()
     }
 
+    #[track_caller]
     fn control(
         &mut self,
         key: WidgetKey,
@@ -44,6 +46,7 @@ impl Ui<'_> {
     /// A single-line text field. `ui.text_input("Name", &mut name)` is the
     /// whole of it, and [`TextInput::new`] carries a placeholder or a style.
     /// The label is what a screen reader announces, not what is drawn.
+    #[track_caller]
     pub fn text_input(&mut self, input: impl Into<TextInput>, value: &mut String) -> Response {
         let input = input.into();
         let key = self.next_key();
@@ -59,6 +62,7 @@ impl Ui<'_> {
     }
 
     /// The look of a default text field.
+    #[track_caller]
     pub(super) fn field_style() -> Style {
         Style {
             width: Length::Px(280.0),
@@ -69,6 +73,7 @@ impl Ui<'_> {
     }
 
     /// Every single-line field: plain, number and autocomplete.
+    #[track_caller]
     pub(super) fn text_field(
         &mut self,
         key: WidgetKey,
@@ -113,6 +118,7 @@ impl Ui<'_> {
 
     /// A checkbox. The label is both what is drawn and what a screen reader
     /// announces.
+    #[track_caller]
     pub fn checkbox(&mut self, label: impl Into<String>, checked: &mut bool) -> Response {
         let label = label.into();
         let shown = label.clone();
@@ -121,6 +127,7 @@ impl Ui<'_> {
 
     /// A checkbox whose visible text differs from its accessible label, for
     /// layouts that show the name elsewhere.
+    #[track_caller]
     pub(super) fn checkbox_shown(
         &mut self,
         label: impl Into<String>,
@@ -152,6 +159,7 @@ impl Ui<'_> {
     }
 
     /// One of a set of choices, selected while `*selected == option`.
+    #[track_caller]
     pub fn radio(
         &mut self,
         label: impl Into<String>,
@@ -182,6 +190,7 @@ impl Ui<'_> {
     }
 
     /// A slider over `range`, snapping to `step`.
+    #[track_caller]
     pub fn slider(
         &mut self,
         label: impl Into<String>,
@@ -226,6 +235,7 @@ impl Ui<'_> {
     /// A drop-down over `items`, `*selected` being the one shown.
     /// `ui.combo_box("Theme", &mut choice, &items)` is the whole of it, and
     /// [`ComboBox::new`] carries a style.
+    #[track_caller]
     pub fn combo_box(
         &mut self,
         combo: impl Into<ComboBox>,
@@ -273,6 +283,7 @@ impl Ui<'_> {
     }
 
     /// A popup menu. The returned item index is emitted once on activation.
+    #[track_caller]
     pub fn menu(&mut self, label: impl Into<String>, items: &[MenuItem]) -> Option<usize> {
         let key = self.next_key();
         self.menu_styled(
@@ -290,6 +301,7 @@ impl Ui<'_> {
     }
 
     /// `menu` with a caller-chosen button look and popup width.
+    #[track_caller]
     pub(super) fn menu_styled(
         &mut self,
         key: WidgetKey,
@@ -324,6 +336,7 @@ impl Ui<'_> {
         choice
     }
 
+    #[track_caller]
     pub(super) fn popup_children(
         &mut self,
         key: &WidgetKey,
@@ -349,6 +362,7 @@ impl Ui<'_> {
             elements: self.context.take_spare(),
             keys: HashSet::new(),
             declared: None,
+            sites: HashMap::new(),
             updates: self.updates,
             submitted: self.submitted,
             warnings: self.warnings,

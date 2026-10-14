@@ -8,6 +8,7 @@ impl Ui<'_> {
     /// strikethrough, inline code and links. Input is queued and applied
     /// here, like `code_editor`. Ctrl+B, Ctrl+I and Ctrl+U toggle marks; the
     /// optional toolbar offers marks and block kinds.
+    #[track_caller]
     pub fn rich_text_editor(
         &mut self,
         document: &mut RichDocument,
@@ -26,6 +27,7 @@ impl Ui<'_> {
         response
     }
 
+    #[track_caller]
     fn rich_editor_body(
         &mut self,
         document: &mut RichDocument,
@@ -89,6 +91,7 @@ impl Ui<'_> {
 
     /// Mark and block buttons reflecting the state at the cursor. Returns
     /// whether one was used.
+    #[track_caller]
     fn rich_toolbar(&mut self, document: &mut RichDocument) -> bool {
         let theme = self.theme().clone();
         let marks = document.marks();

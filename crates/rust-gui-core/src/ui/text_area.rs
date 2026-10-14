@@ -245,6 +245,7 @@ impl Ui<'_> {
     /// operations and applied here, so the document is never touched between
     /// declarations. Tab indents; Escape followed by Tab leaves the editor.
     /// With `options.find`, Ctrl+F and Ctrl+H open a find bar above the text.
+    #[track_caller]
     pub fn code_editor(
         &mut self,
         document: &mut TextDocument,
@@ -263,6 +264,7 @@ impl Ui<'_> {
         response
     }
 
+    #[track_caller]
     fn editor_body(
         &mut self,
         document: &mut TextDocument,

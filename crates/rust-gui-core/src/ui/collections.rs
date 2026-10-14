@@ -8,6 +8,7 @@ use crate::{
 impl Ui<'_> {
     /// Fixed-height rows with bounded realization. State belongs to the app;
     /// transient row NodeIds are deliberately not stored in the model.
+    #[track_caller]
     pub fn virtual_list(
         &mut self,
         model: &mut impl ListModel,
@@ -37,6 +38,7 @@ impl Ui<'_> {
 
     /// Custom row content. Application editing state must live outside the row,
     /// since nodes leaving the realized range are removed.
+    #[track_caller]
     pub fn virtual_list_with<M: ListModel>(
         &mut self,
         model: &mut M,
@@ -50,6 +52,7 @@ impl Ui<'_> {
 
     /// Tree rows with custom content. The model supplies depth, expansion and
     /// parents; Right/Left and disclosure clicks call `set_expanded`.
+    #[track_caller]
     pub fn tree_view_with<M: ListModel>(
         &mut self,
         model: &mut M,
@@ -61,6 +64,7 @@ impl Ui<'_> {
         self.collection(key, model, state, options, CollectionKind::Tree, row)
     }
 
+    #[track_caller]
     pub fn tree_view(
         &mut self,
         model: &mut impl ListModel,
@@ -90,6 +94,7 @@ impl Ui<'_> {
     /// dragging a header onto another moves it there, and each header has a
     /// context menu (right-click, Shift+F10 or the Menu key) that moves,
     /// resizes, hides and restores columns from the keyboard.
+    #[track_caller]
     pub fn data_grid(
         &mut self,
         model: &mut impl GridModel,
@@ -136,10 +141,7 @@ impl Ui<'_> {
             self.context.tr(toward_end, &[]),
         );
         let invalid_number = self.context.tr("rust-gui-number-invalid", &[]);
-        let domain = match &key {
-            WidgetKey::Named(name) => format!("grid-column:{name}"),
-            WidgetKey::Position(index) => format!("grid-column:{index}"),
-        };
+        let domain = format!("grid-column:{}", key.describe());
         let mut response = ListResponse::default();
         let mut actions = Vec::new();
 
@@ -708,6 +710,7 @@ impl Ui<'_> {
         response
     }
 
+    #[track_caller]
     fn collection<M: ListModel>(
         &mut self,
         key: WidgetKey,

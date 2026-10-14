@@ -95,6 +95,7 @@ impl Ui<'_> {
     /// floating groups. Tabs drag onto drop indicators, other tab strips or
     /// empty space (floating), and every group has a panel menu that offers
     /// the same moves from the keyboard. `content` declares one visible panel.
+    #[track_caller]
     pub fn dock(
         &mut self,
         layout: &mut DockLayout,
@@ -107,6 +108,7 @@ impl Ui<'_> {
 
     /// The dock of one detached window. Declares nothing once the window has
     /// left the layout, which is the app's cue to close the OS window.
+    #[track_caller]
     pub fn dock_window(
         &mut self,
         layout: &mut DockLayout,
@@ -118,6 +120,7 @@ impl Ui<'_> {
         self.dock_area(layout, DockArea::Window(window), panels, options, content)
     }
 
+    #[track_caller]
     fn dock_area(
         &mut self,
         layout: &mut DockLayout,

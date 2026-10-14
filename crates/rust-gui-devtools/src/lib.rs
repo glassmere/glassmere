@@ -473,6 +473,7 @@ impl Inspector {
         self.tree.selected().map(|id| NodeId(id.0))
     }
 
+    #[track_caller]
     pub fn ui(&mut self, ui: &mut Ui<'_>, model: &InspectorModel) -> InspectorResponse {
         let mut response = InspectorResponse::default();
         let list_height = (model.viewport.height - 132.0).max(120.0);

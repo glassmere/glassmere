@@ -155,10 +155,8 @@ impl Context {
     /// Key, kind, style and change facts for inspectors and test harnesses.
     pub fn details(&self, id: NodeId) -> Option<NodeDetails> {
         self.nodes.get(&id).map(|node| NodeDetails {
-            key: match &node.key {
-                WidgetKey::Named(name) => name.clone(),
-                WidgetKey::Position(index) => format!("#{index}"),
-            },
+            key: node.key.describe(),
+            explicit: matches!(node.key, WidgetKey::Named(_)),
             kind: format!("{:?}", node.kind),
             text: node.text.clone(),
             style: node.style.clone(),

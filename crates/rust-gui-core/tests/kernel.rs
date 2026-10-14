@@ -99,6 +99,105 @@ fn duplicate_sibling_keys_are_rejected() {
     });
 }
 
+/// One view that shows a notice only sometimes, ahead of a button.
+fn notice_then_button(ui: &mut Ui<'_>, notice: bool) {
+    if notice {
+        ui.label("Saved");
+    }
+    ui.button("Send");
+}
+
+fn send(context: &Context) -> Option<rust_gui_core::NodeId> {
+    context
+        .snapshots()
+        .into_iter()
+        .find(|node| node.semantics.label == "Send")
+        .map(|node| node.id)
+}
+
+#[test]
+fn a_widget_after_a_conditional_one_keeps_its_identity_and_focus() {
+    let mut context = Context::new();
+    frame(&mut context, |ui| notice_then_button(ui, false));
+    let before = send(&context);
+    context.event(Event::KeyDown {
+        key: Key::Tab,
+        shift: false,
+        repeat: false,
+    });
+    assert_eq!(context.focused(), before);
+    // The notice appears ahead of it: the button is still the same widget.
+    frame(&mut context, |ui| notice_then_button(ui, true));
+    assert_eq!(send(&context), before);
+    assert_eq!(context.focused(), before);
+    frame(&mut context, |ui| notice_then_button(ui, false));
+    assert_eq!(send(&context), before);
+}
+
+#[test]
+fn repeats_of_one_call_site_are_told_apart_by_order() {
+    let mut context = Context::new();
+    let view = |ui: &mut Ui<'_>| {
+        for name in ["a", "b", "c"] {
+            ui.button(name);
+        }
+    };
+    frame(&mut context, view);
+    let ids: Vec<_> = context
+        .snapshots()
+        .into_iter()
+        .filter(|node| ["a", "b", "c"].contains(&node.semantics.label.as_str()))
+        .map(|node| node.id)
+        .collect();
+    assert_eq!(ids.len(), 3);
+    frame(&mut context, view);
+    let again: Vec<_> = context
+        .snapshots()
+        .into_iter()
+        .filter(|node| ["a", "b", "c"].contains(&node.semantics.label.as_str()))
+        .map(|node| node.id)
+        .collect();
+    assert_eq!(again, ids);
+}
+
+#[test]
+fn every_widget_is_identified_by_the_application_line_that_declared_it() {
+    let mut context = Context::new();
+    let (mut text, mut checked, mut choice, mut number) = (String::new(), false, 0, 1.0);
+    frame(&mut context, |ui| {
+        ui.label("label");
+        ui.button("button");
+        ui.text_input("text", &mut text);
+        ui.checkbox("checkbox", &mut checked);
+        ui.radio("radio", &mut choice, 0);
+        ui.slider("slider", &mut number, 0.0..=2.0, 1.0);
+        ui.combo_box("combo", &mut choice, &["one", "two"]);
+        ui.number_input(
+            "number",
+            &mut number,
+            rust_gui_core::NumberOptions::default(),
+        );
+        ui.column(Style::default(), |_| {});
+        ui.row(Style::default(), |_| {});
+        ui.grid(Style::default(), |_| {});
+        ui.container(Style::default(), |_| {});
+        ui.scroll(Style::default(), |_| {});
+    });
+    let root = context.snapshots()[0].id;
+    let keys: Vec<String> = context
+        .snapshots()
+        .into_iter()
+        .filter(|node| node.parent == Some(root))
+        .map(|node| context.details(node.id).unwrap().key)
+        .collect();
+    assert_eq!(keys.len(), 13);
+    for key in keys {
+        // A key at a line of the framework's own means a method in between
+        // lost `#[track_caller]`, and a conditional sibling would shift it.
+        assert!(key.starts_with("kernel.rs:"), "{key}");
+    }
+}
+
 #[test]
 fn paint_changes_skip_layout_and_text_changes_update_geometry() {
     let mut context = Context::new();

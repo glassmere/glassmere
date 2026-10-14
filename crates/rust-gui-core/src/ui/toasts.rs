@@ -30,6 +30,7 @@ impl Ui<'_> {
     /// pointer or the keyboard is on any toast. Four show at once and later
     /// ones wait. A toast equal to one already there restarts it instead of
     /// stacking. Call it when something happens, not every frame.
+    #[track_caller]
     pub fn toast(&mut self, toast: Toast) -> ToastId {
         let id = self.context.next_toast_id();
         self.host.toasts.raised.push((id, toast));
@@ -38,6 +39,7 @@ impl Ui<'_> {
     }
 
     /// The next click on a toast's action button, once.
+    #[track_caller]
     pub fn toast_action(&mut self) -> Option<ToastAction> {
         let action = self.context.toast_action_at(self.host.toasts.taken)?;
         self.host.toasts.taken += 1;
@@ -45,12 +47,14 @@ impl Ui<'_> {
     }
 
     /// For raising toasts in this window from other threads.
+    #[track_caller]
     pub fn toast_sender(&self) -> ToastSender {
         self.context.toast_sender()
     }
 
     /// The toast stack, declared by the context after the app's view as the
     /// topmost layer.
+    #[track_caller]
     pub(crate) fn declare_toasts(&mut self) {
         let toasts: Vec<(ToastId, Toast)> = self
             .context

@@ -4,6 +4,7 @@ use crate::{Component, Context, CustomWidget, NodeId, Style};
 use rust_gui_scene::Color;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::panic::Location;
 use std::sync::Arc;
 mod builders;
 pub use builders::{Button, ComboBox, Label, TextInput};
@@ -27,12 +28,27 @@ pub use dock::{DockOptions, DockPanel, DockResponse};
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum WidgetKey {
     Named(String),
-    Position(usize),
+    /// Where in the source the widget was declared, and how many siblings
+    /// declared from the same place came before it.
+    Site(&'static Location<'static>, u32),
 }
 
 impl WidgetKey {
     pub(crate) fn named(key: impl Into<String>) -> Self {
         Self::Named(key.into())
+    }
+
+    /// The key as a path segment: the name, or `file.rs:line:column`, with
+    /// `#n` for the n-th repeat of one site such as a loop body.
+    pub(crate) fn describe(&self) -> String {
+        match self {
+            Self::Named(name) => name.clone(),
+            Self::Site(site, nth) => {
+                let file = site.file().rsplit(['/', '\\']).next().unwrap_or_default();
+                let at = format!("{file}:{}:{}", site.line(), site.column());
+                if *nth == 0 { at } else { format!("{at}#{nth}") }
+            }
+        }
     }
 }
 
@@ -166,10 +182,11 @@ impl Response {
 
 /// Declarations are rebuilt on input; matching nodes and layout caches persist.
 ///
-/// A widget is identified by where it is declared: the first button in a row
-/// is the same button next frame. That is enough until children are declared
-/// conditionally or reordered, when [`Ui::keyed`] names one instead. Keys are
-/// scoped to the parent.
+/// A widget is identified by where it is declared: the source line that
+/// declares a button declares the same button next frame, whatever was
+/// declared conditionally before it. Repeats of one line, such as a loop
+/// body, are told apart by order, and [`Ui::keyed`] names them when items
+/// move. Keys are scoped to the parent.
 pub struct Ui<'a> {
     pub(crate) context: &'a Context,
     pub(crate) parent: Option<NodeId>,
@@ -182,6 +199,8 @@ pub struct Ui<'a> {
     /// Where in `elements` the last declaration went, or `None` when it was
     /// skipped as a misuse.
     pub(crate) declared: Option<usize>,
+    /// How many widgets each source location has declared here so far.
+    pub(crate) sites: HashMap<&'static Location<'static>, u32>,
     pub(crate) updates: &'a mut HashMap<NodeId, ControlUpdate>,
     pub(crate) submitted: &'a mut HashSet<NodeId>,
     pub(crate) warnings: &'a mut Vec<String>,
@@ -201,12 +220,14 @@ pub struct Ui<'a> {
 
 impl Ui<'_> {
     /// Design tokens of the active theme, for application-owned surfaces.
+    #[track_caller]
     pub fn theme(&self) -> &crate::Theme {
         self.context.theme()
     }
 
     /// Switches the theme after this declaration; the host declares once more
     /// so token reads made earlier in the view see the new theme too.
+    #[track_caller]
     pub fn set_theme(&mut self, theme: crate::Theme) {
         *self.theme_request = Some(theme);
     }
@@ -215,6 +236,7 @@ impl Ui<'_> {
     /// text goes to the system clipboard, the image with it where the
     /// platform can carry one, and any private bytes stay in this
     /// application.
+    #[track_caller]
     pub fn copy(&mut self, clip: crate::Clip) {
         self.host.clip = Some(clip);
     }
@@ -222,6 +244,7 @@ impl Ui<'_> {
     /// Asks for what is on the clipboard. It arrives on the next
     /// declaration, through `Ui::pasted`, because reading a clipboard is the
     /// host's business and can be slow.
+    #[track_caller]
     pub fn request_paste(&mut self) {
         self.host.paste = true;
     }
@@ -229,12 +252,14 @@ impl Ui<'_> {
     /// What the host last read from the clipboard, after
     /// [`Ui::request_paste`]. It stays readable until the next request, so a
     /// view can paste on the frame it asked and read it again later.
+    #[track_caller]
     pub fn pasted(&self) -> Option<&crate::Clip> {
         self.context.pasted()
     }
 
     /// Puts up a file dialog once this declaration is over. The answer
     /// arrives through [`Ui::chosen_files`] on a later frame.
+    #[track_caller]
     pub fn choose_file(&mut self, request: crate::FileRequest) {
         self.host.files = Some(request);
     }
@@ -242,11 +267,13 @@ impl Ui<'_> {
     /// What the last file dialog answered: the paths chosen, or an empty
     /// slice when it was cancelled. `None` until one has been answered. It
     /// stays readable until the next dialog.
+    #[track_caller]
     pub fn chosen_files(&self) -> Option<&[std::path::PathBuf]> {
         self.context.chosen_files()
     }
 
     /// Posts a message to the desktop's notification area.
+    #[track_caller]
     pub fn notify(&mut self, notification: crate::Notification) {
         self.host.notifications.push(notification);
     }
@@ -255,6 +282,7 @@ impl Ui<'_> {
     /// nothing, so a view may set it every frame. Choosing an item sends
     /// `Event::Command` with that command's id, which activates the command
     /// the view declared, exactly as its button would.
+    #[track_caller]
     pub fn set_menu(&mut self, menu: crate::Menu) {
         self.host.menu = Some(menu);
     }
@@ -262,6 +290,7 @@ impl Ui<'_> {
     /// Asks the window to move, resize, minimize, maximize or close itself.
     /// `Ui::title_bar`, `Ui::window_buttons` and `Ui::resize_frame` are made
     /// of these; this is for a frame of an entirely different shape.
+    #[track_caller]
     pub fn window_command(&mut self, command: crate::WindowCommand) {
         self.host.window_commands.push(command);
     }
@@ -269,12 +298,14 @@ impl Ui<'_> {
     /// What the host says about the window: whether it is maximized and
     /// whether it has the keyboard. Of the last frame, like everything a
     /// declaration is given.
+    #[track_caller]
     pub fn window(&self) -> crate::WindowInfo {
         self.context.window_info()
     }
 
     /// The window's logical size, which is what `Ui::resize_frame` places
     /// its grips by.
+    #[track_caller]
     pub fn window_size(&self) -> rust_gui_scene::Size {
         self.context.size()
     }
@@ -290,6 +321,7 @@ impl Ui<'_> {
     ///     ui.window_buttons();
     /// });
     /// ```
+    #[track_caller]
     pub fn title_bar(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_>)) {
         // A row, so that a title, a menu and the buttons sit side by side
         // the way a title bar's do.
@@ -299,6 +331,7 @@ impl Ui<'_> {
 
     /// Minimize, maximize or restore, and close, as three buttons. The
     /// middle one says which it is from `Ui::window`.
+    #[track_caller]
     pub fn window_buttons(&mut self) {
         let maximized = self.window().maximized;
         let foreground = self.theme().text;
@@ -389,6 +422,7 @@ impl Ui<'_> {
     /// The grips are placed from the size the window had last frame, so a
     /// resize moves them a frame later, which nothing can see while the
     /// platform is drawing the drag.
+    #[track_caller]
     pub fn resize_frame(&mut self, thickness: f32) {
         let size = self.window_size();
         let side = thickness.max(1.0);
@@ -443,6 +477,7 @@ impl Ui<'_> {
     /// Two levels are shown. A submenu inside a submenu is drawn as a
     /// heading with its items under it, because the framework's own menus
     /// do not nest.
+    #[track_caller]
     pub fn menu_bar(&mut self, menu: &crate::Menu) {
         let style = Style {
             gap: 4.0,
@@ -496,6 +531,7 @@ impl Ui<'_> {
     }
 
     /// The application's tray icon, or `None` to take it away.
+    #[track_caller]
     pub fn set_tray(&mut self, tray: Option<crate::Tray>) {
         self.host.tray = Some(tray);
     }
@@ -503,6 +539,7 @@ impl Ui<'_> {
     /// Files the operating system asked the application to open, from the
     /// command line or from an association. Empty when it was started
     /// without any.
+    #[track_caller]
     pub fn opened_files(&self) -> &[std::path::PathBuf] {
         self.context.opened_files()
     }
@@ -511,6 +548,7 @@ impl Ui<'_> {
     /// values are, what each derived one read, and which moved last. The
     /// store is otherwise none of the framework's business, so nothing is
     /// observed unless this is called.
+    #[track_caller]
     pub fn observe(&mut self, store: &crate::Store) {
         *self.observed = Some(store.clone());
     }
@@ -519,6 +557,7 @@ impl Ui<'_> {
     /// default style and are reported through `Context::style_warnings`.
     /// Asks the host for another frame after this one, for work that spreads
     /// over frames without an input event or animation driving it.
+    #[track_caller]
     pub fn request_redraw(&mut self) {
         *self.redraw = true;
     }
@@ -527,6 +566,7 @@ impl Ui<'_> {
     /// declaration that asks for it, reloaded when it changes on disk, and a
     /// redraw follows each change. `None` until the first load; a failed
     /// reload keeps the last good content (see `Context::watch_error`).
+    #[track_caller]
     pub fn watched_bytes(&mut self, path: impl AsRef<std::path::Path>) -> Option<Arc<[u8]>> {
         let path = path.as_ref();
         if !self.host.watched.iter().any(|known| known == path) {
@@ -536,6 +576,7 @@ impl Ui<'_> {
     }
 
     /// `watched_bytes` for UTF-8 text files; `None` also for invalid UTF-8.
+    #[track_caller]
     pub fn watched_text(&mut self, path: impl AsRef<std::path::Path>) -> Option<Arc<str>> {
         let path = path.as_ref();
         self.watched_bytes(path)?;
@@ -546,6 +587,7 @@ impl Ui<'_> {
     /// closure runs only when the host is about to restart the app; the text
     /// it returns is handed back by the host's `hot::saved_state` on the next
     /// start.
+    #[track_caller]
     pub fn hot_state(&mut self, save: impl FnOnce() -> String) {
         if self.context.hot_save_requested() {
             self.host.hot_state = Some(save());
@@ -554,10 +596,12 @@ impl Ui<'_> {
 
     /// Moves keyboard focus to the widget declared with `key` in this same
     /// container, once this declaration has been reconciled.
+    #[track_caller]
     pub fn request_focus(&mut self, key: impl Into<String>) {
         *self.focus = Some((self.parent, WidgetKey::Named(key.into())));
     }
 
+    #[track_caller]
     pub fn class(&mut self, name: &str) -> Style {
         match self.context.stylesheet().class(name) {
             Some(style) => style.clone(),
@@ -574,6 +618,7 @@ impl Ui<'_> {
     /// Drags inside the window are delivered to a `drop_target`. A host that
     /// can hands a drag that leaves the window to the operating system (files
     /// only today); how that ended is returned here, once.
+    #[track_caller]
     pub fn drag_source(
         &mut self,
         label: impl Into<String>,
@@ -602,6 +647,7 @@ impl Ui<'_> {
     /// Reports what happened since the last declaration; the app applies it
     /// to its own view state. Controls inside are pressed as anywhere else.
     /// A pinch on a trackpad and Ctrl with the wheel arrive as `scale`.
+    #[track_caller]
     pub fn gesture_area(
         &mut self,
         style: Style,
@@ -620,6 +666,7 @@ impl Ui<'_> {
         response
     }
 
+    #[track_caller]
     pub fn drop_target(
         &mut self,
         label: impl Into<String>,
@@ -647,6 +694,7 @@ impl Ui<'_> {
     }
     /// One command declaration per window. Its shortcut and button share the
     /// same enabled check and one-shot clicked response.
+    #[track_caller]
     pub fn command_button(&mut self, command: &crate::Command) -> Response {
         let command = self.command(command);
         let response = self.button(
@@ -666,6 +714,7 @@ impl Ui<'_> {
     /// The command as the user's bindings leave it. `command_button` applies
     /// this itself; menus and palettes go through it to show the shortcut the
     /// user will actually press.
+    #[track_caller]
     pub fn command(&self, command: &crate::Command) -> crate::Command {
         match self.context.binding(&command.id) {
             Some(shortcut) => crate::Command {
@@ -675,6 +724,7 @@ impl Ui<'_> {
             None => command.clone(),
         }
     }
+    #[track_caller]
     fn push(&mut self, mut element: Element) -> Response {
         element.enabled &= self.enabled;
         // A background file becomes its image once the host has delivered it,
@@ -703,7 +753,7 @@ impl Ui<'_> {
             element.text.len()
                 + match &element.key {
                     WidgetKey::Named(key) => key.len(),
-                    WidgetKey::Position(_) => 0,
+                    WidgetKey::Site(..) => 0,
                 },
         );
         let existing = self.context.child(self.parent, &element.key, element.kind);
@@ -724,6 +774,7 @@ impl Ui<'_> {
     /// A use of the API the framework does not support. A debug build stops
     /// with `message`; a release build leaves out what was being declared
     /// and reports a [`crate::DiagnosticKind::Misuse`] diagnostic instead.
+    #[track_caller]
     pub(crate) fn misuse(&mut self, message: String) {
         assert!(!self.context.misuse_panics(), "{message}");
         self.declared = None;
@@ -731,23 +782,27 @@ impl Ui<'_> {
     }
 
     /// The element the last declaration added, unless it was skipped.
+    #[track_caller]
     pub(crate) fn declared(&mut self) -> Option<&mut Element> {
         self.declared.and_then(|index| self.elements.get_mut(index))
     }
 
     /// Takes the element the last declaration added back out.
+    #[track_caller]
     pub(crate) fn take_declared(&mut self) -> Option<Element> {
         let index = self.declared.take()?;
         (index + 1 == self.elements.len()).then(|| self.elements.pop())?
     }
 
     /// Gives the element just declared the control that makes it what it is.
+    #[track_caller]
     pub(crate) fn set_control(&mut self, control: Control) {
         if let Some(element) = self.declared() {
             element.control = control;
         }
     }
 
+    #[track_caller]
     fn leaf(
         &mut self,
         key: WidgetKey,
@@ -771,22 +826,28 @@ impl Ui<'_> {
 
     /// What the next element is identified by: the name [`Ui::keyed`] gave
     /// it, or failing that where it is being declared.
+    #[track_caller]
     pub(crate) fn next_key(&mut self) -> WidgetKey {
-        match self.pending_key.take() {
-            Some(key) => WidgetKey::Named(key),
-            None => WidgetKey::Position(self.elements.len()),
+        if let Some(key) = self.pending_key.take() {
+            return WidgetKey::Named(key);
         }
+        let site = Location::caller();
+        let nth = self.sites.entry(site).or_default();
+        *nth += 1;
+        WidgetKey::Site(site, *nth - 1)
     }
 
     /// Names the next widget declared inside, so the framework can follow it
     /// when its siblings change.
     ///
-    /// A widget is normally identified by where it is declared, which is what
-    /// a view with a fixed shape wants. Declare children conditionally or in
-    /// an order that moves, though, and position stops meaning the same thing
-    /// from one frame to the next: focus, scroll offset, selection and undo
-    /// history follow the identity, so they end up on the wrong row. A key
-    /// taken from the data fixes that.
+    /// A widget is normally identified by the line that declares it, which
+    /// survives conditional siblings. A line that runs in a loop declares its
+    /// widgets in order, though, and when items are inserted, removed or
+    /// reordered that order stops meaning the same thing from one frame to
+    /// the next: focus, scroll offset, selection and undo history follow the
+    /// identity, so they end up on the wrong row. A key taken from the data
+    /// fixes that. A helper of the application's that declares widgets can be
+    /// `#[track_caller]`, so its widgets are told apart by where it is called.
     ///
     /// ```ignore
     /// for pane in &panes {
@@ -797,6 +858,7 @@ impl Ui<'_> {
     /// ```
     ///
     /// The name is scoped to the parent, and two siblings may not share one.
+    #[track_caller]
     pub fn keyed<R>(
         &mut self,
         key: impl Into<String>,
@@ -810,6 +872,7 @@ impl Ui<'_> {
 
     /// A piece of text. `ui.label("Ready")` is the whole of it, and
     /// [`Label::new`] carries a style when one is wanted.
+    #[track_caller]
     pub fn label(&mut self, label: impl Into<Label>) {
         let label = label.into();
         let key = self.next_key();
@@ -825,6 +888,7 @@ impl Ui<'_> {
     /// A button, which reports what happened to it through [`Response`].
     /// `ui.button("Save")` is the whole of it, and [`Button::new`] carries a
     /// style or a disabled state.
+    #[track_caller]
     pub fn button(&mut self, button: impl Into<Button>) -> Response {
         let button = button.into();
         let key = self.next_key();
@@ -837,6 +901,7 @@ impl Ui<'_> {
         )
     }
 
+    #[track_caller]
     fn group(
         &mut self,
         key: WidgetKey,
@@ -853,6 +918,7 @@ impl Ui<'_> {
             elements: self.context.take_spare(),
             keys: HashSet::new(),
             declared: None,
+            sites: HashMap::new(),
             updates: self.updates,
             submitted: self.submitted,
             warnings: self.warnings,
@@ -889,6 +955,7 @@ impl Ui<'_> {
     /// `Response` values are not delivered on a frame that was skipped. Use it
     /// for a large subtree over stable data, not for a handful of widgets.
     /// Returns whether the content ran.
+    #[track_caller]
     pub fn memo<S: std::hash::Hash>(
         &mut self,
         state: &S,
@@ -924,6 +991,7 @@ impl Ui<'_> {
     /// the frame the container appears, because nothing has been laid out
     /// yet. A view that changes its structure at a threshold therefore
     /// settles on the second frame. The width is returned as well.
+    #[track_caller]
     pub fn responsive(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_>, f32)) -> f32 {
         let key = self.next_key();
         let inside = self
@@ -945,6 +1013,7 @@ impl Ui<'_> {
     /// it keeps it from them; an ordinary one sees what they did not take, on
     /// the way up. Areas nest: outermost first going down, innermost first
     /// coming up, and a consumed event stops there.
+    #[track_caller]
     pub fn event_area(
         &mut self,
         area: crate::EventArea,
@@ -965,6 +1034,7 @@ impl Ui<'_> {
     /// Tells the areas above this point something. The event travels up from
     /// the container being declared and arrives on the next declaration, like
     /// every other input.
+    #[track_caller]
     pub fn emit(&mut self, name: impl Into<String>, data: impl Into<String>) {
         if let Some(parent) = self.parent {
             self.host.emitted.push((
@@ -978,12 +1048,14 @@ impl Ui<'_> {
     }
 
     /// Children one under the other.
+    #[track_caller]
     pub fn column(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_>)) {
         let key = self.next_key();
         self.group(key, Kind::Column, style, content);
     }
 
     /// Children side by side.
+    #[track_caller]
     pub fn row(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_>)) {
         let key = self.next_key();
         self.group(key, Kind::Row, style, content);
@@ -993,6 +1065,7 @@ impl Ui<'_> {
     /// implicit rows sized by `auto_rows`; a child's `area` places it explicitly.
     /// Items without a width stretch to their cell. Percentage widths resolve
     /// against the grid container, not the cell, so prefer `Length::Auto` to fill.
+    #[track_caller]
     pub fn grid(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_>)) {
         let key = self.next_key();
         self.group(key, Kind::Grid, style, content);
@@ -1002,6 +1075,7 @@ impl Ui<'_> {
     /// when `scope.trap` is set, focus returns to the previously focused node
     /// when a `scope.restore` group disappears, and re-entering by Tab lands on
     /// the last focused child. `scope.arrows` adds geometric arrow-key navigation.
+    #[track_caller]
     pub fn focus_scope(
         &mut self,
         scope: crate::FocusScope,
@@ -1019,6 +1093,7 @@ impl Ui<'_> {
     /// Escape or a scrim click clears `*open` and reports `dismissed` once.
     /// `content` receives the open flag so buttons inside can close the dialog.
     /// Dialog keys are unique across the whole view, and later dialogs stack on top.
+    #[track_caller]
     pub fn dialog(
         &mut self,
         key: impl Into<String>,
@@ -1060,6 +1135,7 @@ impl Ui<'_> {
             elements: self.context.take_spare(),
             keys: HashSet::new(),
             declared: None,
+            sites: HashMap::new(),
             updates: self.updates,
             submitted: self.submitted,
             warnings: self.warnings,
@@ -1116,6 +1192,7 @@ impl Ui<'_> {
     }
 
     /// A vertical group with its own background, padding, and rectangular clip.
+    #[track_caller]
     pub fn container(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_>)) {
         let key = self.next_key();
         self.group(key, Kind::Container, style, content);
@@ -1123,11 +1200,13 @@ impl Ui<'_> {
 
     /// A vertical scroll viewport. Give it a constrained height. Positive wheel
     /// deltas move toward the end; offsets survive keyed reconciliation.
+    #[track_caller]
     pub fn scroll(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_>)) {
         let key = self.next_key();
         self.group(key, Kind::Scroll, style, content);
     }
 
+    #[track_caller]
     pub fn component(&mut self, style: Style, component: &mut impl Component) {
         let key = self.next_key();
         self.group(key, Kind::Container, style, |ui| component.ui(ui));
@@ -1143,6 +1222,7 @@ impl Ui<'_> {
     /// struct of its own, passed in. Styling is `ui.theme()` and
     /// `ui.class(..)` like anywhere else, and the `style` here is the node's,
     /// so padding, size and background work as they do on a container.
+    #[track_caller]
     pub fn widget(
         &mut self,
         style: Style,
@@ -1187,6 +1267,7 @@ impl Ui<'_> {
         })
     }
 
+    #[track_caller]
     pub fn custom(&mut self, style: Style, widget: CustomWidget) -> Response {
         if let Err(message) = widget.validate() {
             self.misuse(message);
@@ -1213,15 +1294,18 @@ impl Ui<'_> {
     // Each of these is the public method with a name given to it.
 
     /// Names the next element declared, and hands the `Ui` back to declare it.
+    #[track_caller]
     pub(crate) fn at(&mut self, key: impl Into<String>) -> &mut Self {
         self.pending_key = Some(key.into());
         self
     }
 
+    #[track_caller]
     pub(crate) fn label_keyed_at(&mut self, key: impl Into<String>, text: impl Into<String>) {
         self.at(key).label(text.into());
     }
 
+    #[track_caller]
     pub(crate) fn label_at(
         &mut self,
         key: impl Into<String>,
@@ -1231,6 +1315,7 @@ impl Ui<'_> {
         self.at(key).label(Label::new(text).style(style));
     }
 
+    #[track_caller]
     pub(crate) fn button_at(
         &mut self,
         key: impl Into<String>,
@@ -1242,6 +1327,7 @@ impl Ui<'_> {
             .button(Button::new(text).enabled(enabled).style(style))
     }
 
+    #[track_caller]
     pub(crate) fn text_input_at(
         &mut self,
         key: impl Into<String>,
@@ -1256,6 +1342,7 @@ impl Ui<'_> {
         )
     }
 
+    #[track_caller]
     pub(crate) fn combo_box_at(
         &mut self,
         key: impl Into<String>,
@@ -1268,6 +1355,7 @@ impl Ui<'_> {
             .combo_box(ComboBox::new(label).style(style), selected, items)
     }
 
+    #[track_caller]
     pub(crate) fn checkbox_at(
         &mut self,
         key: impl Into<String>,
@@ -1277,6 +1365,7 @@ impl Ui<'_> {
         self.at(key).checkbox(label, checked)
     }
 
+    #[track_caller]
     pub(crate) fn column_at(
         &mut self,
         key: impl Into<String>,
@@ -1286,6 +1375,7 @@ impl Ui<'_> {
         self.at(key).column(style, content);
     }
 
+    #[track_caller]
     pub(crate) fn row_at(
         &mut self,
         key: impl Into<String>,
@@ -1295,6 +1385,7 @@ impl Ui<'_> {
         self.at(key).row(style, content);
     }
 
+    #[track_caller]
     pub(crate) fn container_at(
         &mut self,
         key: impl Into<String>,
@@ -1304,6 +1395,7 @@ impl Ui<'_> {
         self.at(key).container(style, content);
     }
 
+    #[track_caller]
     pub(crate) fn scroll_at(
         &mut self,
         key: impl Into<String>,
@@ -1313,6 +1405,7 @@ impl Ui<'_> {
         self.at(key).scroll(style, content);
     }
 
+    #[track_caller]
     pub(crate) fn focus_scope_at(
         &mut self,
         key: impl Into<String>,
@@ -1323,6 +1416,7 @@ impl Ui<'_> {
         self.at(key).focus_scope(scope, style, content);
     }
 
+    #[track_caller]
     pub fn enabled(&mut self, enabled: bool, content: impl FnOnce(&mut Ui<'_>)) {
         let previous = self.enabled;
         self.enabled &= enabled;

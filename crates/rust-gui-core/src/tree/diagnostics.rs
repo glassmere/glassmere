@@ -33,7 +33,7 @@ pub enum DiagnosticKind {
 pub struct FrameDiagnostic {
     pub kind: DiagnosticKind,
     pub node: Option<NodeId>,
-    /// Keys from the root, such as `page/list/#3`.
+    /// Keys from the root, such as `page/list/main.rs:42:9#3`.
     pub path: String,
     pub message: String,
     pub count: u32,
@@ -141,10 +141,7 @@ impl Context {
                 break;
             };
             if node.parent.is_some() {
-                keys.push(match &node.key {
-                    WidgetKey::Named(name) => name.clone(),
-                    WidgetKey::Position(index) => format!("#{index}"),
-                });
+                keys.push(node.key.describe());
             }
             next = node.parent;
         }

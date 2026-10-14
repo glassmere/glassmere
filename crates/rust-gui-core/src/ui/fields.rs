@@ -10,6 +10,7 @@ impl Ui<'_> {
     /// stays allowed. Up and Down move through the list, Enter or a click
     /// takes a suggestion, Escape closes the list, and Enter without a
     /// highlighted suggestion submits what was typed.
+    #[track_caller]
     pub fn autocomplete<S: AsRef<str>>(
         &mut self,
         label: impl Into<String>,
@@ -73,6 +74,7 @@ impl Ui<'_> {
     /// text that is not a number reverts. Up and Down step once, PageUp and
     /// PageDown ten times, and the wheel steps while the field has both the
     /// keyboard and the pointer.
+    #[track_caller]
     pub fn number_input(
         &mut self,
         label: impl Into<String>,
