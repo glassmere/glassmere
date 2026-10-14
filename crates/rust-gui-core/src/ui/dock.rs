@@ -269,13 +269,13 @@ impl Ui<'_> {
                         });
                     },
                 );
-                ui.elements.last_mut().unwrap().control = Control::DockFloat;
+                ui.set_control(Control::DockFloat);
             }
         });
-        self.elements.last_mut().unwrap().control = Control::Dock {
+        self.set_control(Control::Dock {
             area,
             native: options.native_windows,
-        };
+        });
         let Pass {
             menu,
             mut closed,
@@ -429,10 +429,10 @@ fn group(ui: &mut Ui<'_>, tabs: &mut DockTabs, pass: &RefCell<Pass<'_>>, float: 
             },
         );
     });
-    ui.elements.last_mut().unwrap().control = Control::DockGroup {
+    ui.set_control(Control::DockGroup {
         panels: ids.clone(),
         float,
-    };
+    });
     let mut pass = pass.borrow_mut();
     if response.changed {
         tabs.active = visible[selected].0;

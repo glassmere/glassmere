@@ -21,6 +21,10 @@ pub enum DiagnosticKind {
     /// A style asks for a font family that is not installed, so the text is
     /// drawn in another one.
     Font,
+    /// The view used the API in a way it does not support, such as two
+    /// siblings with one key. Debug builds panic instead; release builds
+    /// leave the offending widget out and always report it.
+    Misuse,
 }
 
 /// One framework warning. Repeats of the same kind on the same node count up
@@ -61,12 +65,15 @@ pub(super) struct DiagnosticState {
     /// The first node that made this frame's layout dirty.
     pub layout_cause: Option<NodeId>,
     pub bounds_changed: bool,
+    /// Whether a misuse panics rather than being skipped and reported.
+    pub misuse_panics: bool,
 }
 
 impl DiagnosticState {
     pub fn new() -> Self {
         Self {
             enabled: cfg!(debug_assertions),
+            misuse_panics: cfg!(debug_assertions),
             ..Self::default()
         }
     }
@@ -101,6 +108,25 @@ impl Context {
     /// can tell whether they are installed.
     pub fn requested_families(&self) -> Vec<String> {
         self.families.borrow().iter().cloned().collect()
+    }
+
+    /// Whether a misuse of the API panics, as it does in debug builds, or
+    /// leaves the widget out and is reported as a
+    /// [`DiagnosticKind::Misuse`] diagnostic, as in release builds.
+    pub(crate) fn misuse_panics(&self) -> bool {
+        self.diagnostic.misuse_panics
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_misuse_panics(&mut self, panics: bool) {
+        self.diagnostic.misuse_panics = panics;
+    }
+
+    /// Panics in a debug build; otherwise reports `message`, even with the
+    /// other checks off, because what it describes was left out.
+    pub(super) fn misuse(&mut self, node: Option<NodeId>, message: String) {
+        assert!(!self.diagnostic.misuse_panics, "{message}");
+        self.record(DiagnosticKind::Misuse, node, message);
     }
 
     pub fn clear_diagnostics(&mut self) {
@@ -138,9 +164,12 @@ impl Context {
     }
 
     pub(super) fn diagnose(&mut self, kind: DiagnosticKind, node: Option<NodeId>, message: String) {
-        if !self.diagnostic.enabled {
-            return;
+        if self.diagnostic.enabled {
+            self.record(kind, node, message);
         }
+    }
+
+    fn record(&mut self, kind: DiagnosticKind, node: Option<NodeId>, message: String) {
         let frame = self.frame;
         if let Some(entry) = self
             .diagnostic
@@ -325,5 +354,86 @@ impl Context {
                 ),
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Context, DiagnosticKind, MonospaceMeasurer, PopoverOptions, Ui};
+    use rust_gui_scene::Size;
+
+    /// A context that treats misuse as a release build does, with the other
+    /// checks off to show misuse is reported regardless.
+    fn release() -> Context {
+        let mut context = Context::new();
+        context.set_misuse_panics(false);
+        context.set_diagnostics(false);
+        context
+    }
+
+    fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) {
+        context.run(Size::new(800.0, 600.0), &mut MonospaceMeasurer, view);
+    }
+
+    fn labels(context: &Context) -> Vec<String> {
+        context
+            .snapshots()
+            .into_iter()
+            .map(|node| node.semantics.label)
+            .filter(|label| !label.is_empty())
+            .collect()
+    }
+
+    fn misuses(context: &Context) -> Vec<String> {
+        context
+            .diagnostics()
+            .iter()
+            .filter(|entry| entry.kind == DiagnosticKind::Misuse)
+            .map(|entry| entry.message.clone())
+            .collect()
+    }
+
+    #[test]
+    fn a_duplicate_key_leaves_the_second_widget_out_and_reports_it() {
+        let mut context = release();
+        frame(&mut context, |ui| {
+            ui.keyed("same", |ui| ui.label("first"));
+            ui.keyed("same", |ui| ui.label("second"));
+            // Would have landed on "first" had the skip not been tracked.
+            ui.tooltip("help");
+            ui.label("after");
+        });
+        assert_eq!(labels(&context), ["first", "after"]);
+        let first = context.nodes.values().find(|node| node.text == "first");
+        assert_eq!(first.unwrap().tooltip, None);
+        let reported = misuses(&context);
+        assert_eq!(reported.len(), 1);
+        assert!(reported[0].contains("duplicate widget key"), "{reported:?}");
+    }
+
+    #[test]
+    fn a_popover_without_an_anchor_is_left_out() {
+        let mut context = release();
+        let mut open = true;
+        frame(&mut context, |ui| {
+            ui.popover(&mut open, PopoverOptions::default(), |ui| {
+                ui.label("inside")
+            });
+            ui.label("after");
+        });
+        assert_eq!(labels(&context), ["after"]);
+        assert!(misuses(&context)[0].contains("popover needs a preceding anchor"));
+    }
+
+    #[test]
+    fn a_slider_over_an_empty_range_is_left_out() {
+        let mut context = release();
+        let mut value = 0.0;
+        frame(&mut context, |ui| {
+            ui.slider("volume", &mut value, 1.0..=1.0, 0.1);
+            ui.label("after");
+        });
+        assert_eq!(labels(&context), ["after"]);
+        assert!(misuses(&context)[0].contains("slider requires"));
     }
 }

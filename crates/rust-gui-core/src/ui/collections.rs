@@ -109,13 +109,14 @@ impl Ui<'_> {
         }
         let key = self.next_key();
         let columns = model.columns().to_vec();
-        assert!(
-            !columns.is_empty()
-                && columns
-                    .iter()
-                    .all(|column| column.width.is_finite() && column.width > 0.0),
-            "grid columns need finite positive widths"
-        );
+        if columns.is_empty()
+            || !columns
+                .iter()
+                .all(|column| column.width.is_finite() && column.width > 0.0)
+        {
+            self.misuse("grid columns need finite positive widths".to_owned());
+            return ListResponse::default();
+        }
         let count = columns.len();
         let visible = state.columns.visible(count);
         let widths: Vec<f32> = visible
@@ -410,15 +411,12 @@ impl Ui<'_> {
                                                                     column,
                                                                 ));
                                                             }
-                                                            ui.elements
-                                                                .last_mut()
-                                                                .unwrap()
-                                                                .control = Control::GridCell {
+                                                            ui.set_control(Control::GridCell {
                                                                 row: 0,
                                                                 column: position,
                                                                 header: true,
                                                                 sort: direction,
-                                                            };
+                                                            });
                                                         },
                                                     );
                                                 },
@@ -599,12 +597,12 @@ impl Ui<'_> {
                                             ..cell
                                         },
                                     );
-                                    ui.elements.last_mut().unwrap().control = Control::GridCell {
+                                    ui.set_control(Control::GridCell {
                                         row: index,
                                         column: position,
                                         header: false,
                                         sort: None,
-                                    };
+                                    });
                                 }
                             },
                         );
@@ -656,11 +654,11 @@ impl Ui<'_> {
         } else {
             state.filter_due = None;
         }
-        self.elements.last_mut().unwrap().control = Control::Grid {
+        self.set_control(Control::Grid {
             label: options.label,
             rows: model.len(),
             columns: visible.len(),
-        };
+        });
         // The header only recorded what happened; the state changes here,
         // outside the closures that were reading it.
         for action in actions {
@@ -719,6 +717,10 @@ impl Ui<'_> {
         kind: CollectionKind,
         mut row: impl FnMut(&mut Ui<'_>, &M, usize, bool),
     ) -> ListResponse {
+        if let Err(message) = options.check(model.len()) {
+            self.misuse(message.to_owned());
+            return ListResponse::default();
+        }
         let owner = self.context.child(self.parent, &key, Kind::Collection);
         let node = owner.and_then(|id| self.context.node(id));
         let input = owner.and_then(|id| self.updates.remove(&id));
@@ -798,7 +800,7 @@ impl Ui<'_> {
                         }
                     },
                 );
-                ui.elements.last_mut().unwrap().control = Control::CollectionRow {
+                ui.set_control(Control::CollectionRow {
                     label: model.label(index),
                     item,
                     index,
@@ -807,7 +809,7 @@ impl Ui<'_> {
                     kind,
                     depth: model.depth(index),
                     expanded: model.expanded(index),
-                };
+                });
             }
             ui.label_at(
                 "$after",
@@ -819,14 +821,14 @@ impl Ui<'_> {
                 },
             );
         });
-        self.elements.last_mut().unwrap().control = Control::Collection {
+        self.set_control(Control::Collection {
             label: options.label,
             kind,
             count,
             row_height: options.row_height,
             offset: state.offset,
             selected,
-        };
+        });
         response
     }
 }

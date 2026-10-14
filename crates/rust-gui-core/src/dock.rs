@@ -183,6 +183,14 @@ impl DockNode {
         }
     }
 
+    /// The first tab group in reading order; every node has one.
+    fn first_group_mut(&mut self) -> &mut DockTabs {
+        match self {
+            Self::Tabs(tabs) => tabs,
+            Self::Split { first, .. } => first.first_group_mut(),
+        }
+    }
+
     /// The tab-group node that contains `panel`.
     fn group_node_mut(&mut self, panel: &str) -> Option<&mut DockNode> {
         match self {
@@ -567,9 +575,7 @@ impl DockLayout {
                     }
                 };
                 if *zone == DockZone::Center {
-                    let mut groups = Vec::new();
-                    root.groups_mut(&mut groups);
-                    let tabs = groups.into_iter().next().expect("a node has a group");
+                    let tabs = root.first_group_mut();
                     tabs.panels.push(panel.to_owned());
                     tabs.active = tabs.panels.len() - 1;
                     return true;

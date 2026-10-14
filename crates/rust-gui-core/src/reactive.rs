@@ -114,15 +114,25 @@ impl Inner {
     }
 
     /// A memo that writes would make what others read depend on when they
-    /// read it, so it is a mistake rather than a policy.
-    fn ensure_not_computing(&self) {
+    /// read it, so it is a mistake rather than a policy: a debug build
+    /// panics, and a release build drops the write and logs it. Returns
+    /// whether the write may go ahead.
+    fn may_write(&self) -> bool {
         let computing = self.tracking.borrow().last().map(|(id, _)| *id);
-        if let Some(id) = computing {
-            let name = self.slots.borrow()[id].name.clone();
-            panic!("`{name}` changed state while it was computing; a memo may only read");
+        let Some(id) = computing else {
+            return true;
+        };
+        let name = self.slots.borrow()[id].name.clone();
+        let message =
+            format!("`{name}` changed state while it was computing; a memo may only read");
+        if cfg!(debug_assertions) {
+            panic!("{message}");
         }
+        tracing::error!(target: "rust_gui::diagnostics", "{message}");
+        false
     }
 
+    /// A cycle has no value to fall back on, so it panics in every build.
     fn begin(&self, id: usize) {
         {
             let mut slots = self.slots.borrow_mut();
@@ -263,8 +273,7 @@ impl<T> Signal<T> {
     where
         T: PartialEq,
     {
-        self.store.ensure_not_computing();
-        if *self.value.borrow() == value {
+        if !self.store.may_write() || *self.value.borrow() == value {
             return;
         }
         *self.value.borrow_mut() = value;
@@ -274,7 +283,9 @@ impl<T> Signal<T> {
     /// Changes in place, for a value too large to rebuild or not worth
     /// comparing. Always counts as a change.
     pub fn update(&self, change: impl FnOnce(&mut T)) {
-        self.store.ensure_not_computing();
+        if !self.store.may_write() {
+            return;
+        }
         change(&mut self.value.borrow_mut());
         self.store.changed(self.id);
     }

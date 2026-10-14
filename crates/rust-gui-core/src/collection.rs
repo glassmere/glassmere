@@ -180,7 +180,29 @@ impl CollectionInput {
     }
 }
 
+impl VirtualListOptions {
+    /// Why a list of `len` rows cannot be shown with these options, if it
+    /// cannot.
+    pub(crate) fn check(&self, len: usize) -> Result<(), &'static str> {
+        if !(self.height.is_finite()
+            && self.height > 0.0
+            && self.row_height.is_finite()
+            && self.row_height >= 1.0)
+        {
+            return Err("virtual lists require finite positive height and row height >= 1");
+        }
+        if self.overscan > 128 {
+            return Err("virtual list overscan must be bounded (<= 128)");
+        }
+        if len as f64 * f64::from(self.row_height) - f64::from(self.height) > 1_000_000_000.0 {
+            return Err("virtual content exceeds supported logical extent");
+        }
+        Ok(())
+    }
+}
+
 impl ListState {
+    /// `options` have passed [`VirtualListOptions::check`] for this model.
     pub(crate) fn update(
         &mut self,
         model: &mut impl ListModel,
@@ -188,17 +210,6 @@ impl ListState {
         offset: Option<f32>,
         options: &VirtualListOptions,
     ) -> ListResponse {
-        assert!(
-            options.height.is_finite()
-                && options.height > 0.0
-                && options.row_height.is_finite()
-                && options.row_height >= 1.0,
-            "virtual lists require finite positive height and row height >= 1"
-        );
-        assert!(
-            options.overscan <= 128,
-            "virtual list overscan must be bounded (<= 128)"
-        );
         let old = self.selected;
         let native_offset = offset.unwrap_or(self.offset);
         // Preserve the top logical item across model reorder when the user has
@@ -289,10 +300,6 @@ impl ListState {
         let maximum = (model.len() as f64 * f64::from(options.row_height)
             - f64::from(options.height))
         .max(0.0);
-        assert!(
-            maximum <= 1_000_000_000.0,
-            "virtual content exceeds supported logical extent"
-        );
         if let Some(index) = self.reveal.take().and_then(|id| model.index_of(id)) {
             let top = index as f32 * options.row_height;
             let bottom = top + options.row_height;

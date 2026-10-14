@@ -1069,6 +1069,7 @@ rust-gui-core   variant DateStyle::Short
 rust-gui-core   variant DiagnosticKind::Font
 rust-gui-core   variant DiagnosticKind::HugeCollection
 rust-gui-core   variant DiagnosticKind::Inaccessible
+rust-gui-core   variant DiagnosticKind::Misuse
 rust-gui-core   variant DiagnosticKind::OversizedLayer
 rust-gui-core   variant DiagnosticKind::Relayout
 rust-gui-core   variant DiagnosticKind::Repaint

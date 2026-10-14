@@ -190,10 +190,10 @@ impl Ui<'_> {
         step: f64,
     ) -> Response {
         let (min, max) = (*range.start(), *range.end());
-        assert!(
-            min.is_finite() && max.is_finite() && min < max && step.is_finite() && step > 0.0,
-            "slider requires finite ordered bounds and a positive step"
-        );
+        if !(min.is_finite() && max.is_finite() && min < max && step.is_finite() && step > 0.0) {
+            self.misuse("slider requires finite ordered bounds and a positive step".to_owned());
+            return Response::default();
+        }
         let key = self.next_key();
         let label = label.into();
         let old = *value;
@@ -348,6 +348,7 @@ impl Ui<'_> {
             clicks: self.clicks,
             elements: self.context.take_spare(),
             keys: HashSet::new(),
+            declared: None,
             updates: self.updates,
             submitted: self.submitted,
             warnings: self.warnings,

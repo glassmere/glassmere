@@ -8,7 +8,7 @@ impl Ui<'_> {
     /// Attaches hover help to the previously declared widget. It appears after a
     /// short dwell and doubles as the widget's accessible description.
     pub fn tooltip(&mut self, text: impl Into<String>) {
-        if let Some(element) = self.elements.last_mut() {
+        if let Some(element) = self.declared() {
             element.tooltip = Some(text.into());
         }
     }
@@ -126,7 +126,7 @@ impl Ui<'_> {
                         strip_extra(ui, current);
                     },
                 );
-                ui.elements.last_mut().unwrap().control = Control::TabList;
+                ui.set_control(Control::TabList);
                 ui.group(
                     WidgetKey::named("$panel"),
                     Kind::TabPanel,
@@ -139,13 +139,13 @@ impl Ui<'_> {
                     ),
                     |ui| content(ui, current),
                 );
-                ui.elements.last_mut().unwrap().control = Control::TabPanel;
+                ui.set_control(Control::TabPanel);
             },
         );
-        self.elements.last_mut().unwrap().control = Control::Tabs {
+        self.set_control(Control::Tabs {
             count,
             selected: current,
-        };
+        });
         TabsResponse {
             changed: old != *selected,
             closed,
@@ -238,7 +238,7 @@ impl Ui<'_> {
                 second,
             );
         });
-        self.elements.last_mut().unwrap().control = Control::Split { axis };
+        self.set_control(Control::Split { axis });
     }
 
     /// Content with a right-click (or Shift+F10 / Menu key) menu. Returns the
@@ -322,8 +322,7 @@ impl Ui<'_> {
                             chosen = Some(command.id.clone());
                         }
                         if let Some(shortcut) = &command.shortcut {
-                            ui.elements.last_mut().unwrap().control =
-                                Control::Hint(shortcut.describe());
+                            ui.set_control(Control::Hint(shortcut.describe()));
                         }
                     }
                     if matches.is_empty() {
@@ -373,9 +372,9 @@ impl Ui<'_> {
             }
             content(ui);
         });
-        self.elements.last_mut().unwrap().control = Control::ContextMenu {
+        self.set_control(Control::ContextMenu {
             items: items.to_vec(),
-        };
+        });
         choice
     }
 
@@ -389,8 +388,9 @@ impl Ui<'_> {
         content: impl FnOnce(&mut Ui<'_>),
     ) -> PopoverResponse {
         let key = self.next_key();
-        let Some(anchor) = self.elements.last() else {
-            panic!("popover needs a preceding anchor widget in the same parent");
+        let Some(anchor) = self.declared.and_then(|index| self.elements.get(index)) else {
+            self.misuse("popover needs a preceding anchor widget in the same parent".to_owned());
+            return PopoverResponse { dismissed: false };
         };
         let anchor_id = self.context.child(self.parent, &anchor.key, anchor.kind);
         let popover_id = anchor_id.and_then(|id| self.context.child(Some(id), &key, Kind::Popover));
@@ -422,6 +422,7 @@ impl Ui<'_> {
             clicks: self.clicks,
             elements: self.context.take_spare(),
             keys: HashSet::new(),
+            declared: None,
             updates: self.updates,
             submitted: self.submitted,
             warnings: self.warnings,
@@ -446,7 +447,9 @@ impl Ui<'_> {
             tooltip: None,
             control: Control::Popover,
         };
-        self.elements.last_mut().unwrap().children.push(element);
+        if let Some(anchor) = self.declared() {
+            anchor.children.push(element);
+        }
         PopoverResponse { dismissed }
     }
 }

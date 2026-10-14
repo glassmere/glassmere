@@ -180,10 +180,10 @@ impl PropertyGrid<'_, '_> {
     }
 
     fn finish(&mut self) {
-        assert!(
-            self.default.is_none(),
-            "PropertyGrid::default was not followed by a row"
-        );
+        if self.default.take().is_some() {
+            self.ui
+                .misuse("PropertyGrid::default was not followed by a row".to_owned());
+        }
     }
 
     /// Gives the next row a reset button that restores `value`; it is enabled
@@ -197,10 +197,13 @@ impl PropertyGrid<'_, '_> {
         let (value, given) = self.default.take()?;
         match value.downcast::<T>() {
             Ok(value) => Some(*value),
-            Err(_) => panic!(
-                "property `{name}` holds a {} but its default is a {given}",
-                std::any::type_name::<T>()
-            ),
+            Err(_) => {
+                self.ui.misuse(format!(
+                    "property `{name}` holds a {} but its default is a {given}",
+                    std::any::type_name::<T>()
+                ));
+                None
+            }
         }
     }
 
@@ -265,7 +268,7 @@ impl PropertyGrid<'_, '_> {
         });
         // A filter hides groups that have nothing to show.
         if !filter.is_empty() && rows == 0 {
-            self.ui.elements.pop();
+            self.ui.take_declared();
         }
         self.rows += rows;
     }

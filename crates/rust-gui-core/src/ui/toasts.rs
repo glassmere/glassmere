@@ -124,15 +124,16 @@ impl Ui<'_> {
                         ui.tooltip(ui.context.tr("rust-gui-toast-dismiss", &[]));
                     },
                 );
-                ui.elements.last_mut().unwrap().control = Control::Toast {
+                ui.set_control(Control::Toast {
                     label: toast.text.clone(),
                     assertive: toast.kind == ToastKind::Error,
-                };
+                });
             }
         });
         // Above dialogs: a toast raised from a modal dialog must be visible.
-        let stack = self.elements.pop().unwrap();
-        self.layers.push(stack);
+        if let Some(stack) = self.take_declared() {
+            self.layers.push(stack);
+        }
         self.host.toasts.closed.extend(closed);
     }
 }

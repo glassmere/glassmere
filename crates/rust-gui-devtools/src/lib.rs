@@ -155,7 +155,8 @@ pub struct Recorder {
 
 impl Recorder {
     pub fn new(capacity: usize) -> Self {
-        assert!(capacity > 0, "recorder capacity must be positive");
+        debug_assert!(capacity > 0, "recorder capacity must be positive");
+        let capacity = capacity.max(1);
         Self {
             frames: VecDeque::with_capacity(capacity),
             events: VecDeque::with_capacity(capacity),
@@ -310,9 +311,9 @@ impl InspectorModel {
                 .parent
                 .and_then(|parent| index.get(&parent))
                 .map_or(0, |position: &usize| nodes[*position].depth + 1);
-            let details = context
-                .details(snapshot.id)
-                .expect("snapshots only list live nodes");
+            let Some(details) = context.details(snapshot.id) else {
+                continue;
+            };
             index.insert(snapshot.id, nodes.len());
             nodes.push(InspectedNode {
                 snapshot,

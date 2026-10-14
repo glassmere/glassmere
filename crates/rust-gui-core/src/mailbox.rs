@@ -69,7 +69,8 @@ pub struct Mailbox<T> {
 }
 impl<T> Mailbox<T> {
     pub fn drain(&self, limit: usize) -> Vec<T> {
-        assert!(limit > 0, "mailbox drain limit must be positive");
+        debug_assert!(limit > 0, "mailbox drain limit must be positive");
+        let limit = limit.max(1);
         let messages: Vec<_> = self.receiver.try_iter().take(limit).collect();
         self.shared
             .pending
@@ -92,7 +93,8 @@ pub fn message_channel<T>(
     capacity: usize,
     wake: impl Fn() -> bool + Send + Sync + 'static,
 ) -> (MessageSender<T>, Mailbox<T>) {
-    assert!(capacity > 0, "mailbox capacity must be positive");
+    debug_assert!(capacity > 0, "mailbox capacity must be positive");
+    let capacity = capacity.max(1);
     let (sender, receiver) = mpsc::sync_channel(capacity);
     let shared = Arc::new(Shared {
         pending: AtomicUsize::new(0),

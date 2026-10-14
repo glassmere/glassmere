@@ -63,6 +63,8 @@ pub(crate) struct HostOutbox {
     /// New locale-aware formatting, or `Some(None)` to remove it.
     pub format: Option<Option<Box<dyn crate::LocaleFormat>>>,
     pub hot_state: Option<String>,
+    /// Misuses a release build skipped, with the parent they were declared in.
+    pub misuse: Vec<(Option<crate::NodeId>, String)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -177,6 +179,9 @@ pub struct Ui<'a> {
     pub(crate) clicks: &'a mut HashSet<NodeId>,
     pub(crate) elements: Vec<Element>,
     pub(crate) keys: HashSet<WidgetKey>,
+    /// Where in `elements` the last declaration went, or `None` when it was
+    /// skipped as a misuse.
+    pub(crate) declared: Option<usize>,
     pub(crate) updates: &'a mut HashMap<NodeId, ControlUpdate>,
     pub(crate) submitted: &'a mut HashSet<NodeId>,
     pub(crate) warnings: &'a mut Vec<String>,
@@ -289,7 +294,7 @@ impl Ui<'_> {
         // A row, so that a title, a menu and the buttons sit side by side
         // the way a title bar's do.
         self.row(style, content);
-        self.elements.last_mut().unwrap().control = Control::TitleBar;
+        self.set_control(Control::TitleBar);
     }
 
     /// Minimize, maximize or restore, and close, as three buttons. The
@@ -367,7 +372,7 @@ impl Ui<'_> {
                 if matches!(command, crate::WindowCommand::ToggleMaximize) {
                     // Windows asks where this one is, to offer its snap
                     // layouts when the pointer rests over it.
-                    ui.elements.last_mut().unwrap().control = Control::MaximizeButton;
+                    ui.set_control(Control::MaximizeButton);
                 }
                 if clicked {
                     ui.window_command(command);
@@ -425,7 +430,7 @@ impl Ui<'_> {
                     },
                     |_| {},
                 );
-                ui.elements.last_mut().unwrap().control = Control::ResizeGrip(edge);
+                ui.set_control(Control::ResizeGrip(edge));
             }
         });
     }
@@ -582,10 +587,10 @@ impl Ui<'_> {
             .child(self.parent, &key, Kind::DragSource)
             .and_then(|id| self.updates.remove(&id));
         self.group(key, Kind::DragSource, style, content);
-        self.elements.last_mut().unwrap().control = Control::DragSource {
+        self.set_control(Control::DragSource {
             label: label.into(),
             payload,
-        };
+        });
         // Reported once, after a drag that left the window has ended.
         match update {
             Some(ControlUpdate::DragEnded(outcome)) => Some(outcome),
@@ -634,10 +639,10 @@ impl Ui<'_> {
             _ => None,
         };
         self.group(key, Kind::DropTarget, style, content);
-        self.elements.last_mut().unwrap().control = Control::DropTarget {
+        self.set_control(Control::DropTarget {
             label: label.into(),
             accepts,
-        };
+        });
         payload
     }
     /// One command declaration per window. Its shortcut and button share the
@@ -649,12 +654,12 @@ impl Ui<'_> {
                 .enabled(command.enabled)
                 .style(Style::button()),
         );
-        self.elements.last_mut().unwrap().control = Control::Command {
+        self.set_control(Control::Command {
             id: command.id,
             shortcut: command.shortcut,
             while_editing: command.while_editing,
             scoped: command.scoped,
-        };
+        });
         response
     }
 
@@ -684,11 +689,13 @@ impl Ui<'_> {
                 background.source = crate::ImageSource::Image(image);
             }
         }
-        assert!(
-            self.keys.insert(element.key.clone()),
-            "duplicate widget key among siblings: {:?}",
-            element.key
-        );
+        if !self.keys.insert(element.key.clone()) {
+            self.misuse(format!(
+                "duplicate widget key among siblings: {:?}",
+                element.key
+            ));
+            return Response::default();
+        }
         if let Some(crate::FontFamily::Named(name)) = &element.style.font_family {
             self.context.note_family(name);
         }
@@ -709,8 +716,36 @@ impl Ui<'_> {
                 submitted: element.enabled && self.submitted.remove(&id),
             })
             .unwrap_or_default();
+        self.declared = Some(self.elements.len());
         self.elements.push(element);
         response
+    }
+
+    /// A use of the API the framework does not support. A debug build stops
+    /// with `message`; a release build leaves out what was being declared
+    /// and reports a [`crate::DiagnosticKind::Misuse`] diagnostic instead.
+    pub(crate) fn misuse(&mut self, message: String) {
+        assert!(!self.context.misuse_panics(), "{message}");
+        self.declared = None;
+        self.host.misuse.push((self.parent, message));
+    }
+
+    /// The element the last declaration added, unless it was skipped.
+    pub(crate) fn declared(&mut self) -> Option<&mut Element> {
+        self.declared.and_then(|index| self.elements.get_mut(index))
+    }
+
+    /// Takes the element the last declaration added back out.
+    pub(crate) fn take_declared(&mut self) -> Option<Element> {
+        let index = self.declared.take()?;
+        (index + 1 == self.elements.len()).then(|| self.elements.pop())?
+    }
+
+    /// Gives the element just declared the control that makes it what it is.
+    pub(crate) fn set_control(&mut self, control: Control) {
+        if let Some(element) = self.declared() {
+            element.control = control;
+        }
     }
 
     fn leaf(
@@ -817,6 +852,7 @@ impl Ui<'_> {
             clicks: self.clicks,
             elements: self.context.take_spare(),
             keys: HashSet::new(),
+            declared: None,
             updates: self.updates,
             submitted: self.submitted,
             warnings: self.warnings,
@@ -876,7 +912,7 @@ impl Ui<'_> {
             self.group(key, Kind::Memo, style, |_| {});
             self.context.count_skipped();
         }
-        self.elements.last_mut().unwrap().control = Control::Memo(hash);
+        self.set_control(Control::Memo(hash));
         declare
     }
 
@@ -922,7 +958,7 @@ impl Ui<'_> {
             .map(|id| self.context.take_area_events(id))
             .unwrap_or_default();
         self.group(key, Kind::EventArea, style, content);
-        self.elements.last_mut().unwrap().control = Control::EventArea(area);
+        self.set_control(Control::EventArea(area));
         arrived
     }
 
@@ -974,7 +1010,7 @@ impl Ui<'_> {
     ) {
         let key = self.next_key();
         self.group(key, Kind::FocusScope, style, content);
-        self.elements.last_mut().unwrap().control = Control::FocusScope { scope };
+        self.set_control(Control::FocusScope { scope });
     }
 
     /// A dialog layer over the whole window while `*open`. Modal dialogs paint a
@@ -1023,6 +1059,7 @@ impl Ui<'_> {
             clicks: self.clicks,
             elements: self.context.take_spare(),
             keys: HashSet::new(),
+            declared: None,
             updates: self.updates,
             submitted: self.submitted,
             warnings: self.warnings,
@@ -1133,7 +1170,10 @@ impl Ui<'_> {
                 .collect();
         }
         let widget = build(&input);
-        widget.validate();
+        if let Err(message) = widget.validate() {
+            self.misuse(message);
+            return Response::default();
+        }
         self.push(Element {
             key,
             kind: Kind::Custom,
@@ -1148,7 +1188,10 @@ impl Ui<'_> {
     }
 
     pub fn custom(&mut self, style: Style, widget: CustomWidget) -> Response {
-        widget.validate();
+        if let Err(message) = widget.validate() {
+            self.misuse(message);
+            return Response::default();
+        }
         let key = self.next_key();
         self.push(Element {
             key,

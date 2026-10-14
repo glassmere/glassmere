@@ -51,6 +51,7 @@ impl Context {
             clicks: &mut clicks,
             elements: self.take_spare(),
             keys: HashSet::new(),
+            declared: None,
             updates: &mut updates,
             submitted: &mut submitted,
             warnings: &mut warnings,
@@ -67,14 +68,14 @@ impl Context {
         ui.declare_toasts();
         let mut elements = ui.elements;
         let mut dialog_keys = HashSet::new();
-        for layer in &layers {
-            assert!(
-                dialog_keys.insert(layer.key.clone()),
-                "duplicate dialog key: {:?}",
-                layer.key
-            );
+        for layer in layers {
+            if dialog_keys.insert(layer.key.clone()) {
+                elements.push(layer);
+            } else {
+                host.misuse
+                    .push((None, format!("duplicate dialog key: {:?}", layer.key)));
+            }
         }
-        elements.extend(layers);
         self.style_warnings = warnings;
         // After the view, so the graph holds what this frame read.
         self.state_graph = observed
@@ -143,6 +144,9 @@ impl Context {
 
     /// Takes in what the view asked the host for during the declaration.
     fn apply_outbox(&mut self, mut host: crate::ui::HostOutbox) {
+        for (node, message) in std::mem::take(&mut host.misuse) {
+            self.misuse(node, message);
+        }
         self.deliver_emitted(std::mem::take(&mut host.emitted));
         for id in std::mem::take(&mut host.commands) {
             self.event(crate::Event::Command(id));
@@ -225,10 +229,12 @@ impl Context {
         for (id, shortcut) in commands {
             // Two scopes may bind the same keys; one scope may not.
             let scope = self.scope_of(id);
-            assert!(
-                shortcuts.insert((scope, shortcut.clone())),
-                "duplicate enabled command shortcut in one scope: {shortcut:?}"
-            );
+            if !shortcuts.insert((scope, shortcut.clone())) {
+                self.misuse(
+                    Some(id),
+                    format!("duplicate enabled command shortcut in one scope: {shortcut:?}"),
+                );
+            }
         }
         self.maximize_button = self
             .nodes

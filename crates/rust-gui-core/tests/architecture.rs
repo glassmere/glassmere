@@ -337,7 +337,7 @@ fn custom_leaf_shares_activation_and_updates_paint_without_layout() {
 }
 
 #[test]
-#[should_panic(expected = "custom widget clip underflow")]
+#[should_panic(expected = "custom widget pops a clip it never pushed")]
 fn custom_widgets_cannot_pop_the_host_clip() {
     let mut widget = custom_button(Color::WHITE);
     widget.primitives.insert(0, Primitive::PopClip);
