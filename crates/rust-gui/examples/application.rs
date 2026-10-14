@@ -1,6 +1,6 @@
 use rust_gui::{
     AppOptions, Color, Command, DesktopHandle, DragPayload, DropKind, GraphicsOptions, GridColumn,
-    GridModel, GridState, ItemId, ItemOrder, Key, Length, ListModel, ListState, Shortcut,
+    GridModel, GridState, ItemId, ItemOrder, Key, Label, Length, ListModel, ListState, Shortcut,
     ShortcutKey, Size, SortDirection, Style, TextWrap, TreeItem, TreeModel, Ui, VirtualListOptions,
     WindowKey, run_windows,
 };
@@ -215,36 +215,36 @@ fn main_window(
         font_weight: Some(700),
         ..Style::default()
     };
-    ui.scroll("page", Style { width: Length::Percent(1.0), height: Length::Percent(1.0), padding: 24.0, gap: 14.0, ..Style::default() }, |ui| {
-        ui.label_styled("title", "Application workbench", Style { font_size: Some(28.0), font_weight: Some(700), ..Style::default() });
-        ui.label_styled("intro", "Virtualized list, tree and grid over 50,000 application-owned rows, commands with shortcuts, drag and drop, a worker mailbox and a second window.", Style {
+    ui.scroll(Style { width: Length::Percent(1.0), height: Length::Percent(1.0), padding: 24.0, gap: 14.0, ..Style::default() }, |ui| {
+        ui.label(Label::new("Application workbench").style(Style { font_size: Some(28.0), font_weight: Some(700), ..Style::default() }));
+        ui.label(Label::new("Virtualized list, tree and grid over 50,000 application-owned rows, commands with shortcuts, drag and drop, a worker mailbox and a second window.").style(Style {
             width: Length::Percent(1.0), wrap: TextWrap::Word, ..muted.clone()
-        });
-        ui.row("commands", Style { gap: 8.0, ..Style::default() }, |ui| {
-            if ui.command_button("save", &Command::new("Save   Ctrl+S", Some(Shortcut::primary('s')))).clicked() {
+        }));
+        ui.row(Style { gap: 8.0, ..Style::default() }, |ui| {
+            if ui.command_button(&Command::new("Save   Ctrl+S", Some(Shortcut::primary('s')))).clicked() {
                 state.saves += 1;
             }
-            if ui.command_button("new", &Command::new("New ticket   Ctrl+N", Some(Shortcut::primary('n')))).clicked() {
+            if ui.command_button(&Command::new("New ticket   Ctrl+N", Some(Shortcut::primary('n')))).clicked() {
                 state.tickets.append();
             }
-            if ui.command_button("details", &Command::new("Details window   Ctrl+D", Some(Shortcut::primary('d')))).clicked() {
+            if ui.command_button(&Command::new("Details window   Ctrl+D", Some(Shortcut::primary('d')))).clicked() {
                 open_details(desktop, shared, state, smoke);
             }
             let archive = Command {
                 enabled: state.list.selected().is_some(),
                 ..Command::new("Archive selected   Delete", Some(Shortcut { key: ShortcutKey::Named(Key::Delete), control: false, alt: false, shift: false, super_key: false }))
             };
-            if ui.command_button("archive", &archive).clicked()
+            if ui.command_button(&archive).clicked()
                 && let Some(id) = state.list.selected()
             {
                 state.archived.push(id);
             }
         });
-        ui.label_keyed("status", format!("Saved {} times  ·  {} tickets created by the worker  ·  {} archived", state.saves, state.background, state.archived.len()));
-        ui.row("panels", Style { gap: 24.0, width: Length::Percent(1.0), ..Style::default() }, |ui| {
-            ui.column("left", Style { width: Length::Px(480.0), gap: 10.0, ..Style::default() }, |ui| {
-                ui.label_styled("list-heading", format!("Tickets ({})  ·  Enter opens details", state.tickets.len()), heading.clone());
-                let response = ui.virtual_list("tickets", &mut state.tickets, &mut state.list, VirtualListOptions {
+        ui.label(format!("Saved {} times  ·  {} tickets created by the worker  ·  {} archived", state.saves, state.background, state.archived.len()));
+        ui.row(Style { gap: 24.0, width: Length::Percent(1.0), ..Style::default() }, |ui| {
+            ui.column(Style { width: Length::Px(480.0), gap: 10.0, ..Style::default() }, |ui| {
+                ui.label(Label::new(format!("Tickets ({})  ·  Enter opens details", state.tickets.len())).style(heading.clone()));
+                let response = ui.virtual_list(&mut state.tickets, &mut state.list, VirtualListOptions {
                     label: "Tickets".into(), height: 280.0, row_height: 30.0, ..VirtualListOptions::default()
                 });
                 if response.changed && let Some(key) = state.details {
@@ -253,34 +253,34 @@ fn main_window(
                 if response.activated.is_some() {
                     open_details(desktop, shared, state, smoke);
                 }
-                ui.label_styled("tree-heading", "Areas  ·  arrows expand and collapse", heading.clone());
-                ui.tree_view("areas", &mut state.tree, &mut state.tree_state, VirtualListOptions {
+                ui.label(Label::new("Areas  ·  arrows expand and collapse").style(heading.clone()));
+                ui.tree_view(&mut state.tree, &mut state.tree_state, VirtualListOptions {
                     label: "Areas".into(), height: 180.0, row_height: 30.0, ..VirtualListOptions::default()
                 });
             });
-            ui.column("right", Style { gap: 10.0, ..Style::default() }, |ui| {
-                ui.label_styled("grid-heading", "Grid  ·  click a header to sort", heading.clone());
-                ui.data_grid("grid", &mut state.tickets, &mut state.grid, VirtualListOptions {
+            ui.column(Style { gap: 10.0, ..Style::default() }, |ui| {
+                ui.label(Label::new("Grid  ·  click a header to sort").style(heading.clone()));
+                ui.data_grid(&mut state.tickets, &mut state.grid, VirtualListOptions {
                     label: "Ticket grid".into(), height: 300.0, row_height: 30.0,
                     style: Style { width: Length::Px(380.0), ..Style::default() }, ..VirtualListOptions::default()
                 });
-                ui.label_styled("dnd-heading", "Drag and drop", heading.clone());
-                ui.row("dnd", Style { gap: 12.0, ..Style::default() }, |ui| {
+                ui.label(Label::new("Drag and drop").style(heading.clone()));
+                ui.row(Style { gap: 12.0, ..Style::default() }, |ui| {
                     let selected = state.list.selected();
                     let panel = Style { padding: 12.0, radius: 8.0, width: Length::Px(180.0), height: Length::Px(72.0), ..Style::default() };
                     ui.enabled(selected.is_some(), |ui| {
-                        ui.drag_source("source", "Selected ticket", DragPayload::Item { domain: "ticket".into(), id: selected.unwrap_or(ItemId(0)) }, Style { background: Some(Color::rgb(22, 105, 99)), ..panel.clone() }, |ui| {
-                            ui.label_keyed("text", selected.map_or("Select a ticket to drag".into(), |id| format!("Drag ticket #{}", id.0)));
+                        ui.drag_source("Selected ticket", DragPayload::Item { domain: "ticket".into(), id: selected.unwrap_or(ItemId(0)) }, Style { background: Some(Color::rgb(22, 105, 99)), ..panel.clone() }, |ui| {
+                            ui.label(selected.map_or("Select a ticket to drag".into(), |id| format!("Drag ticket #{}", id.0)));
                         });
                     });
-                    let dropped = ui.drop_target("archive", "Archive", DropKind::Item, Style { background: Some(Color::rgb(64, 48, 96)), ..panel.clone() }, |ui| {
-                        ui.label_keyed("text", format!("Archive: {} tickets", state.archived.len()));
+                    let dropped = ui.drop_target("Archive", DropKind::Item, Style { background: Some(Color::rgb(64, 48, 96)), ..panel.clone() }, |ui| {
+                        ui.label(format!("Archive: {} tickets", state.archived.len()));
                     });
                     if let Some(DragPayload::Item { id, .. }) = dropped {
                         state.archived.push(id);
                     }
-                    let files = ui.drop_target("files", "Drop files", DropKind::Files, Style { background: Some(Color::rgb(35, 52, 74)), ..panel.clone() }, |ui| {
-                        ui.label_keyed("text", if state.files.is_empty() { "Drop files from the OS here".into() } else { state.files.join(", ") });
+                    let files = ui.drop_target("Drop files", DropKind::Files, Style { background: Some(Color::rgb(35, 52, 74)), ..panel.clone() }, |ui| {
+                        ui.label(if state.files.is_empty() { "Drop files from the OS here".into() } else { state.files.join(", ") });
                     });
                     if let Some(DragPayload::Files(paths)) = files {
                         state.files = paths.iter().map(|path| path.file_name().map_or_else(|| path.display().to_string(), |name| name.to_string_lossy().into_owned())).collect();
@@ -288,9 +288,9 @@ fn main_window(
                 });
             });
         });
-        ui.label_styled("footer", "Space picks up the focused source, Enter drops on the focused target, Escape cancels. Both windows share one GPU device, font system and clipboard.", Style {
+        ui.label(Label::new("Space picks up the focused source, Enter drops on the focused target, Escape cancels. Both windows share one GPU device, font system and clipboard.").style(Style {
             width: Length::Percent(1.0), wrap: TextWrap::Word, ..muted
-        });
+        }));
     });
 }
 
@@ -309,15 +309,15 @@ fn open_details(desktop: &DesktopHandle, shared: &Shared, state: &mut State, smo
             },
             move |ui| {
                 let state = shared.lock().unwrap();
-                ui.column("page", Style { padding: 24.0, gap: 12.0, ..Style::default() }, |ui| {
-                    ui.label_styled("title", "Ticket details", Style { font_size: Some(22.0), font_weight: Some(700), ..Style::default() });
+                ui.column(Style { padding: 24.0, gap: 12.0, ..Style::default() }, |ui| {
+                    ui.label(Label::new("Ticket details").style(Style { font_size: Some(22.0), font_weight: Some(700), ..Style::default() }));
                     match state.list.selected() {
                         Some(id) => {
-                            ui.label_keyed("ticket", format!("Ticket #{}", id.0));
-                            ui.label_keyed("priority", format!("Priority {}", Tickets::priority(id)));
-                            ui.label_keyed("status", format!("Status: {}", Tickets::status(id)));
+                            ui.label(format!("Ticket #{}", id.0));
+                            ui.label(format!("Priority {}", Tickets::priority(id)));
+                            ui.label(format!("Status: {}", Tickets::status(id)));
                         }
-                        None => ui.label_keyed("ticket", "No ticket selected in the main window."),
+                        None => ui.label("No ticket selected in the main window."),
                     }
                     drop(state);
                     // A drag that starts in the main window and ends here:
@@ -338,28 +338,22 @@ fn open_details(desktop: &DesktopHandle, shared: &Shared, state: &mut State, smo
                             )
                         }
                     };
-                    let dropped = ui.drop_target(
-                        "link",
-                        "Link ticket",
-                        DropKind::Item,
-                        Style {
+                    let dropped = ui.drop_target("Link ticket", DropKind::Item, Style {
                             padding: 12.0,
                             radius: 8.0,
                             width: Length::Px(380.0),
                             height: Length::Px(64.0),
                             background: Some(Color::rgb(64, 48, 96)),
                             ..Style::default()
-                        },
-                        |ui| {
-                            ui.label_keyed("text", linked);
-                        },
-                    );
+                        }, |ui| {
+                            ui.label(linked);
+                        });
                     if let Some(DragPayload::Item { id, .. }) = dropped {
                         shared.lock().unwrap().linked.push(id);
                     }
-                    ui.label_styled("hint", "Selection changes in the main window redraw this one. Close it from the title bar.", Style {
+                    ui.label(Label::new("Selection changes in the main window redraw this one. Close it from the title bar.").style(Style {
                         font_size: Some(13.0), foreground: Some(Color::rgb(162, 180, 198)), width: Length::Px(380.0), wrap: TextWrap::Word, ..Style::default()
-                    });
+                    }));
                 });
             },
         )

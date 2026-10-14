@@ -30,6 +30,8 @@ Features are additive: turning one on adds items and never changes what the othe
 
 Nothing is removed without a release that still has it, marked `#[deprecated]` with the replacement named in the message. A deprecated item keeps working until the next minor version at the earliest, and the release notes say what to write instead.
 
+That promise starts from `0.2`. [Milestone 34](milestone-34.md) removed `label_keyed`, `label_styled`, `button_keyed`, `button_styled`, `text_input_styled` and `combo_box_styled` outright, and took the key parameter off every widget but `Ui::dialog`, without a deprecating release first. The crates are unpublished, so nothing outside this workspace could be built against them; doing it in one step left one name per widget rather than four.
+
 ## What the compiler already checks
 
 Some mistakes never reach the API at all:

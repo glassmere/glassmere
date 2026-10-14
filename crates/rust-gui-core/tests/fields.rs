@@ -50,7 +50,9 @@ impl Numbers {
         let mut changed = false;
         let (value, options) = (&mut self.value, self.options.clone());
         self.context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            changed = ui.number_input("amount", "Amount", value, options).changed;
+            changed = ui
+                .keyed("amount", |ui| ui.number_input("Amount", value, options))
+                .changed;
             ui.button("elsewhere");
         });
         changed
@@ -230,7 +232,7 @@ impl Search {
         let (mut picked, mut submitted) = (None, false);
         self.context.run(ROOT, &mut MonospaceMeasurer, |ui| {
             let matches = suggest(text, &CITIES, 8);
-            let response = ui.autocomplete("city", "City", text, &matches);
+            let response = ui.keyed("city", |ui| ui.autocomplete("City", text, &matches));
             picked = response.picked;
             submitted = response.response.submitted;
             ui.button("elsewhere");

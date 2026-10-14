@@ -8,7 +8,7 @@ run(options, move |ui| {
     if ui.button("Add one").clicked() {
         count += 1;
     }
-    ui.label_keyed("count", format!("{count}"));
+    ui.label(format!("{count}"));
 })
 ```
 
@@ -16,7 +16,17 @@ There is no store to register with, no reducer and no context provider. A closur
 
 ## What the framework keeps
 
-Each node keeps what an application should not have to: whether it has focus, how far it is scrolled, what is selected in it, the undo history of a text field, where an animation is. That state belongs to the node's identity, which is its key, so it survives every declaration that keeps the key and dies with one that changes it. A key that changes every frame throws all of it away, and the framework says so as an `UnstableIds` diagnostic.
+Each node keeps what an application should not have to: whether it has focus, how far it is scrolled, what is selected in it, the undo history of a text field, where an animation is. That state belongs to the node's identity, which is normally where the node is declared among its siblings, so it survives every declaration of the same shape.
+
+Declare children conditionally or in an order that moves and position stops meaning the same thing from one frame to the next, so the state lands on the wrong row. `ui.keyed(item.id, |ui| ..)` names one from the data instead:
+
+```rust
+for row in &rows {
+    ui.keyed(row.id.to_string(), |ui| ui.text_input("Name", &mut row.name));
+}
+```
+
+A key that changes every frame throws all of it away. The framework says so as an `UnstableIds` diagnostic, and in debug builds prints it once on stderr as well.
 
 State an application does want to hold and pass in has an explicit type: `ListState`, `GridState`, `PropertyGridState`, `FindState`, `TextDocument`, `RichDocument`, `DockLayout`. Those are the ones worth saving to disk.
 
@@ -62,7 +72,7 @@ It is single threaded, like everything else a view touches. Work on another thre
 `Ui::memo` skips a subtree whose state has not changed:
 
 ```rust
-ui.memo("list", &(&rows, selected), style, |ui| { .. });
+ui.memo(&(&rows, selected), style, |ui| { .. });
 ```
 
 The retained subtree stays exactly as it was, so it still paints, scrolls and animates. The state must cover everything the content reads. A frame that carries input for something inside is never skipped, so a click in a memoized list is not lost. `Store::version` and `Signal::version` are hashable, so a store plugs straight in.

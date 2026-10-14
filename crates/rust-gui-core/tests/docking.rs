@@ -300,16 +300,17 @@ fn panels() -> Vec<DockPanel> {
 
 fn frame(context: &mut Context, app: &mut App) {
     context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        app.last = ui.dock(
-            "dock",
-            &mut app.layout,
-            &panels(),
-            DockOptions {
-                native_windows: app.native,
-                ..DockOptions::default()
-            },
-            |ui, id| ui.label(format!("content:{id}")),
-        );
+        app.last = ui.keyed("dock", |ui| {
+            ui.dock(
+                &mut app.layout,
+                &panels(),
+                DockOptions {
+                    native_windows: app.native,
+                    ..DockOptions::default()
+                },
+                |ui, id| ui.label(format!("content:{id}")),
+            )
+        });
     });
 }
 
@@ -633,17 +634,18 @@ fn the_panel_menu_docks_floats_detaches_and_returns_panels_from_the_keyboard() {
     let mut response = DockResponse::default();
     let mut window_frame = |window: &mut Context, layout: &mut DockLayout| {
         window.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            response = ui.dock_window(
-                "dock",
-                layout,
-                DockWindowId(1),
-                &panels(),
-                DockOptions {
-                    native_windows: true,
-                    ..DockOptions::default()
-                },
-                |ui, id| ui.label(format!("content:{id}")),
-            );
+            response = ui.keyed("dock", |ui| {
+                ui.dock_window(
+                    layout,
+                    DockWindowId(1),
+                    &panels(),
+                    DockOptions {
+                        native_windows: true,
+                        ..DockOptions::default()
+                    },
+                    |ui, id| ui.label(format!("content:{id}")),
+                )
+            });
         });
     };
     window_frame(&mut window, &mut app.layout);

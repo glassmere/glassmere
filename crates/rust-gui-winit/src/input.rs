@@ -425,7 +425,7 @@ mod tests {
     }
     fn frame(context: &mut Context, value: &mut String) {
         context.run(Size::new(400.0, 200.0), &mut MonospaceMeasurer, |ui| {
-            ui.text_input("input", "Name", value);
+            ui.keyed("input", |ui| ui.text_input("Name", value));
         });
     }
 

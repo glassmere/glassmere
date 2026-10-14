@@ -1,6 +1,7 @@
 use rust_gui_core::{
     Action, Context, Direction, Event, Key, Length, MonospaceMeasurer, NodeId, Style, TextWrap, Ui,
 };
+use rust_gui_core::{Button, Label};
 use rust_gui_scene::{Point, Primitive, Rect, Size};
 
 const ROOT: Size = Size::new(600.0, 400.0);
@@ -17,13 +18,21 @@ fn sized(width: f32, height: f32) -> Style {
 
 /// A 300 by 200 view over a row of three 300 px buttons, then a tall spacer.
 fn wide(ui: &mut Ui<'_>) {
-    ui.scroll("view", sized(300.0, 200.0), |ui| {
-        ui.row("strip", Style::default().gap(0.0), |ui| {
-            for key in ["first", "second", "third"] {
-                ui.button_styled(key, key, true, sized(300.0, 40.0));
-            }
-        });
-        ui.label_styled("tall", "", sized(10.0, 500.0));
+    ui.keyed("view", |ui| {
+        ui.scroll(sized(300.0, 200.0), |ui| {
+            ui.keyed("strip", |ui| {
+                ui.row(Style::default().gap(0.0), |ui| {
+                    for key in ["first", "second", "third"] {
+                        ui.keyed(key, |ui| {
+                            ui.button(Button::new(key).enabled(true).style(sized(300.0, 40.0)))
+                        });
+                    }
+                })
+            });
+            ui.keyed("tall", |ui| {
+                ui.label(Label::new("").style(sized(10.0, 500.0)))
+            });
+        })
     });
 }
 
@@ -118,20 +127,26 @@ fn both_scrollbars_show_only_where_there_is_somewhere_to_go() {
     // Wrapped text and full-width children do not overflow: no sideways bar.
     let mut context = Context::new();
     let narrow = |ui: &mut Ui<'_>| {
-        ui.scroll("view", sized(300.0, 200.0).padding(12.0), |ui| {
-            ui.label_styled(
-                "text",
-                "a long paragraph that has to wrap inside the view ".repeat(8),
-                Style::default()
-                    .width(Length::Percent(1.0))
-                    .wrap(TextWrap::Word),
-            );
-            ui.button_styled(
-                "wide",
-                "full width",
-                true,
-                Style::button().width(Length::Percent(1.0)),
-            );
+        ui.keyed("view", |ui| {
+            ui.scroll(sized(300.0, 200.0).padding(12.0), |ui| {
+                ui.keyed("text", |ui| {
+                    ui.label(
+                        Label::new("a long paragraph that has to wrap inside the view ".repeat(8))
+                            .style(
+                                Style::default()
+                                    .width(Length::Percent(1.0))
+                                    .wrap(TextWrap::Word),
+                            ),
+                    )
+                });
+                ui.keyed("wide", |ui| {
+                    ui.button(
+                        Button::new("full width")
+                            .enabled(true)
+                            .style(Style::button().width(Length::Percent(1.0))),
+                    )
+                });
+            })
         });
     };
     frame(&mut context, narrow);
@@ -170,13 +185,23 @@ fn arrow_keys_scroll_a_focused_view_and_focus_reveals_sideways() {
 fn the_innermost_view_that_can_still_move_takes_the_wheel() {
     let mut context = Context::new();
     let nested = |ui: &mut Ui<'_>| {
-        ui.scroll("outer", sized(400.0, 300.0), |ui| {
-            ui.row("content", Style::default().gap(0.0), |ui| {
-                ui.scroll("inner", sized(200.0, 100.0), |ui| {
-                    ui.label_styled("long", "", sized(260.0, 20.0));
+        ui.keyed("outer", |ui| {
+            ui.scroll(sized(400.0, 300.0), |ui| {
+                ui.keyed("content", |ui| {
+                    ui.row(Style::default().gap(0.0), |ui| {
+                        ui.keyed("inner", |ui| {
+                            ui.scroll(sized(200.0, 100.0), |ui| {
+                                ui.keyed("long", |ui| {
+                                    ui.label(Label::new("").style(sized(260.0, 20.0)))
+                                });
+                            })
+                        });
+                        ui.keyed("rest", |ui| {
+                            ui.label(Label::new("").style(sized(600.0, 20.0)))
+                        });
+                    })
                 });
-                ui.label_styled("rest", "", sized(600.0, 20.0));
-            });
+            })
         });
     };
     frame(&mut context, nested);

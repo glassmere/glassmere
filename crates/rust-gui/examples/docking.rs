@@ -1,7 +1,7 @@
 use rust_gui::{
     AppOptions, DesktopHandle, DockLayout, DockNode, DockOptions, DockPanel, DockTarget,
-    DockWindowId, DockWindowView, DockWindows, GraphicsOptions, Length, Size, Style, TextWrap, Ui,
-    WindowKey, run_windows,
+    DockWindowId, DockWindowView, DockWindows, GraphicsOptions, Label, Length, Size, Style,
+    TextWrap, Ui, WindowKey, run_windows,
 };
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -61,25 +61,25 @@ fn panel(ui: &mut Ui<'_>, state: &mut State, id: &str) {
     match id {
         "editor" => {
             ui.label("Notes");
-            ui.text_input("notes", "Notes", &mut state.notes);
+            ui.text_input("Notes", &mut state.notes);
             let (body, style) = text(
                 "Drag a tab onto a drop indicator, another tab strip or empty space. \
                  Right-click a tab, press Shift+F10 on it or use the ▾ button for the same moves.",
             );
-            ui.label_styled("hint", body, style);
+            ui.label(Label::new(body).style(style));
         }
         "files" => {
             for name in ["Cargo.toml", "README.md", "src/main.rs", "src/lib.rs"] {
-                ui.button_keyed(name, name);
+                ui.keyed(name, |ui| ui.button(name));
             }
         }
         "inspector" => {
-            ui.checkbox("wrap", "Wrap long lines", &mut state.wrap);
+            ui.checkbox("Wrap long lines", &mut state.wrap);
             ui.label(format!("Layout saved {} times", state.saves));
         }
         other => {
             let (body, style) = text(&format!("The {other} panel."));
-            ui.label_styled("body", body, style);
+            ui.label(Label::new(body).style(style));
         }
     }
 }
@@ -111,7 +111,6 @@ fn detached(
             let state = &mut *state;
             let mut layout = std::mem::take(&mut state.layout);
             let response = ui.dock_window(
-                "dock",
                 &mut layout,
                 id,
                 &panels(),
@@ -195,13 +194,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .gap(8.0);
                     let mut layout = std::mem::take(&mut state.layout);
                     let mut dirty = false;
-                    ui.column("page", page, |ui| {
-                        ui.row("toolbar", Style::default().gap(8.0), |ui| {
-                            if ui.button_keyed("reset", "Reset layout").clicked() {
+                    ui.column(page, |ui| {
+                        ui.row(Style::default().gap(8.0), |ui| {
+                            if ui.button("Reset layout").clicked() {
                                 layout = default_layout();
                                 dirty = true;
                             }
-                            if ui.button_keyed("show", "Show all panels").clicked() {
+                            if ui.button("Show all panels").clicked() {
                                 for panel in panels() {
                                     layout.show(&panel.id);
                                 }
@@ -209,7 +208,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         });
                         let response = ui.dock(
-                            "dock",
                             &mut layout,
                             &panels(),
                             DockOptions {

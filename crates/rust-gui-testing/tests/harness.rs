@@ -1,3 +1,4 @@
+use rust_gui_core::Button;
 use rust_gui_core::{Key, Length, Style, Ui};
 use rust_gui_scene::Size;
 use rust_gui_testing::{Harness, assert_snapshot};
@@ -5,27 +6,32 @@ use rust_gui_testing::{Harness, assert_snapshot};
 const SNAPSHOTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/snapshots");
 
 fn counter(count: &mut i32, ui: &mut Ui<'_>) {
-    ui.column(
-        "page",
-        Style {
-            padding: 8.0,
-            gap: 8.0,
-            width: Length::Percent(1.0),
-            ..Style::default()
-        },
-        |ui| {
-            ui.label_keyed("count", format!("Count: {count}"));
-            ui.row("actions", Style::default(), |ui| {
-                if ui.button_keyed("increment", "Increase").clicked() {
-                    *count += 1;
-                }
-                if ui.button_keyed("decrement", "Decrease").clicked() {
-                    *count -= 1;
-                }
-                ui.button_styled("reset", "Reset", false, Style::button());
-            });
-        },
-    );
+    ui.keyed("page", |ui| {
+        ui.column(
+            Style {
+                padding: 8.0,
+                gap: 8.0,
+                width: Length::Percent(1.0),
+                ..Style::default()
+            },
+            |ui| {
+                ui.keyed("count", |ui| ui.label(format!("Count: {count}")));
+                ui.keyed("actions", |ui| {
+                    ui.row(Style::default(), |ui| {
+                        if ui.keyed("increment", |ui| ui.button("Increase")).clicked() {
+                            *count += 1;
+                        }
+                        if ui.keyed("decrement", |ui| ui.button("Decrease")).clicked() {
+                            *count -= 1;
+                        }
+                        ui.keyed("reset", |ui| {
+                            ui.button(Button::new("Reset").enabled(false).style(Style::button()))
+                        });
+                    })
+                });
+            },
+        )
+    });
 }
 
 fn harness() -> Harness<i32> {
@@ -78,11 +84,15 @@ fn snapshots_are_stable_after_one_click() {
 #[should_panic(expected = "ambiguous")]
 fn ambiguous_labels_report_both_key_paths() {
     let harness = Harness::new(Size::new(200.0, 200.0), (), |_, ui| {
-        ui.row("a", Style::default(), |ui| {
-            ui.button_keyed("x", "Same");
+        ui.keyed("a", |ui| {
+            ui.row(Style::default(), |ui| {
+                ui.keyed("x", |ui| ui.button("Same"));
+            })
         });
-        ui.row("b", Style::default(), |ui| {
-            ui.button_keyed("y", "Same");
+        ui.keyed("b", |ui| {
+            ui.row(Style::default(), |ui| {
+                ui.keyed("y", |ui| ui.button("Same"));
+            })
         });
     });
     let result =

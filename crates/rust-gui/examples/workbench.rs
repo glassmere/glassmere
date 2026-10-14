@@ -1,6 +1,6 @@
 use rust_gui::{
-    AppOptions, Color, Component, CustomWidget, Length, Primitive, Rect, Role, Semantics, Size,
-    Style, Ui, run_with_wakeup,
+    AppOptions, Button, Color, Component, CustomWidget, Label, Length, Primitive, Rect, Role,
+    Semantics, Size, Style, Ui, run_with_wakeup,
 };
 use std::{
     sync::{
@@ -17,11 +17,8 @@ struct Counter {
 
 impl Component for Counter {
     fn ui(&mut self, ui: &mut Ui<'_>) {
-        ui.label_keyed("value", format!("{} count: {}", self.name, self.value));
-        if ui
-            .button_keyed("increment", format!("Increase {}", self.name))
-            .clicked()
-        {
+        ui.label(format!("{} count: {}", self.name, self.value));
+        if ui.button(format!("Increase {}", self.name)).clicked() {
             self.value += 1;
         }
     }
@@ -108,28 +105,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("WAKE_UPDATE {tick}");
                 }
                 last_update = tick;
-                ui.column("page", Style { padding: 28.0, gap: 16.0, width: Length::Percent(1.0), ..Style::default() }, |ui| {
-                ui.label_styled("title", "Architecture workbench", Style { font_size: Some(28.0), ..Style::default() });
-                ui.label_keyed("background", format!("Background updates: {tick}"));
-                ui.label_keyed("instructions", "Wheel to scroll. Tab reveals focused rows. Arrow keys, Page Up/Down, Home/End scroll.");
-                ui.row("components", Style { gap: 36.0, ..Style::default() }, |ui| {
-                    ui.component("left", Style::default(), &mut left);
-                    ui.component("right", Style::default(), &mut right);
+                ui.column(Style { padding: 28.0, gap: 16.0, width: Length::Percent(1.0), ..Style::default() }, |ui| {
+                ui.label(Label::new("Architecture workbench").style(Style { font_size: Some(28.0), ..Style::default() }));
+                ui.label(format!("Background updates: {tick}"));
+                ui.label("Wheel to scroll. Tab reveals focused rows. Arrow keys, Page Up/Down, Home/End scroll.");
+                ui.row(Style { gap: 36.0, ..Style::default() }, |ui| {
+                    ui.component(Style::default(), &mut left);
+                    ui.component(Style::default(), &mut right);
                 });
-                if ui.custom("custom", Style::default(), custom_action(custom_count)).clicked() { custom_count += 1; }
-                ui.button_styled("disabled", "Unavailable action", false, Style::button());
-                ui.label_keyed("selection", format!("Selected row: {selection}"));
-                ui.scroll("rows", Style {
+                if ui.custom(Style::default(), custom_action(custom_count)).clicked() { custom_count += 1; }
+                ui.button(Button::new("Unavailable action").enabled(false));
+                ui.label(format!("Selected row: {selection}"));
+                ui.scroll(Style {
                     width: Length::Percent(1.0), height: Length::Px(240.0),
                     padding: 8.0, gap: 4.0, background: Some(Color::rgb(24, 35, 49)), ..Style::default()
                 }, |ui| {
                     for index in 0..250 {
-                        if ui.button_styled(index.to_string(), format!("Row {index:03}"), true, Style {
+                        if ui.keyed(index.to_string(), |ui| ui.button(Button::new(format!("Row {index:03}")).style(Style {
                             width: Length::Percent(0.97), height: Length::Px(36.0), padding: 7.0, ..Style::button()
-                        }).clicked() { selection = format!("{index:03}"); }
+                        }))).clicked() { selection = format!("{index:03}"); }
                     }
                 });
-                ui.label_styled("footer", "Native accessibility shares the same IDs and actions as pointer and keyboard input.", Style { font_size: Some(13.0), ..Style::default() });
+                ui.label(Label::new("Native accessibility shares the same IDs and actions as pointer and keyboard input.").style(Style { font_size: Some(13.0), ..Style::default() }));
             });
                 ready.store(true, Ordering::Release);
                 if smoke && tick == 3 {

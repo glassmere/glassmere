@@ -5,8 +5,8 @@
 //! which also freezes columns. Name and City can be filtered. The grid is wider
 //! than its window: Id and Name stay while the rest scrolls sideways.
 use rust_gui::{
-    AppOptions, CellEditor, CellValue, GridColumn, GridModel, GridState, ItemId, Length, ListModel,
-    NumberOptions, Size, SortDirection, Style, VirtualListOptions, run, text_matches,
+    AppOptions, CellEditor, CellValue, GridColumn, GridModel, GridState, ItemId, Label, Length,
+    ListModel, NumberOptions, Size, SortDirection, Style, VirtualListOptions, run, text_matches,
 };
 
 const CITIES: [&str; 6] = ["Berlin", "Brno", "Lisbon", "Prague", "Vienna", "Zagreb"];
@@ -215,25 +215,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 height: Length::Percent(1.0),
                 ..Style::default()
             };
-            ui.column("page", page, |ui| {
-                ui.label_styled(
-                    "title",
-                    format!("People · {} of 2,000 rows", people.rows.len()),
-                    Style {
+            ui.column(page, |ui| {
+                ui.label(Label::new(format!("People · {} of 2,000 rows", people.rows.len())).style(Style {
                         font_size: Some(24.0),
                         ..Style::default()
-                    },
-                );
-                ui.label_keyed(
-                    "hint",
-                    "F2, Enter, a second click or typing edits · Enter stores, Tab moves on, Esc cancels · Shift+wheel scrolls sideways",
-                );
+                    }));
+                ui.label("F2, Enter, a second click or typing edits · Enter stores, Tab moves on, Esc cancels · Shift+wheel scrolls sideways");
                 let options = VirtualListOptions {
                     label: "People".into(),
                     height: 460.0,
                     ..VirtualListOptions::default()
                 };
-                let response = ui.data_grid("people", &mut people, &mut state, options);
+                let response = ui.data_grid(&mut people, &mut state, options);
                 if let Some((item, column)) = response.edited {
                     last = format!("stored {} of #{}", people.columns[column].label, item.0);
                 }
@@ -241,7 +234,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Some(error) => format!("Not stored: {error}"),
                     None => format!("Last change: {last}"),
                 };
-                ui.label_keyed("status", status);
+                ui.label(status);
             });
         },
     )

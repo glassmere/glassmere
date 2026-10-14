@@ -1,6 +1,6 @@
 use rust_gui::syntax::SyntectHighlighter;
 use rust_gui::{
-    AppOptions, Axis, CodeEditorOptions, Length, RichDocument, RichEditorOptions, Size,
+    AppOptions, Axis, CodeEditorOptions, Label, Length, RichDocument, RichEditorOptions, Size,
     SplitOptions, Style, TextDocument, run,
 };
 
@@ -66,11 +66,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .padding(12.0)
                     .radius(8.0)
             };
-            ui.column("page", page, |ui| {
+            ui.column(page, |ui| {
                 let mut changed = false;
                 let mut link = None;
                 ui.split(
-                    "panes",
                     &mut share,
                     Axis::Horizontal,
                     SplitOptions {
@@ -84,7 +83,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     },
                     |ui| {
                         let response = ui.rich_text_editor(
-                            "rich",
                             &mut document,
                             RichEditorOptions {
                                 label: "Release notes".into(),
@@ -97,7 +95,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     },
                     |ui| {
                         ui.code_editor(
-                            "markdown",
                             &mut markdown,
                             CodeEditorOptions {
                                 label: "Markdown output".into(),
@@ -116,16 +113,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     markdown.set_text(&document.to_markdown());
                     ui.request_redraw();
                 }
-                ui.label_styled(
-                    "status",
-                    format!(
+                ui.label(
+                    Label::new(format!(
                         "{} blocks  ·  link at cursor: {}",
                         document.blocks().len(),
                         link.as_deref().unwrap_or("none"),
+                    ))
+                    .style(
+                        Style::default()
+                            .font_size(13.0)
+                            .foreground(theme.text_muted),
                     ),
-                    Style::default()
-                        .font_size(13.0)
-                        .foreground(theme.text_muted),
                 );
             });
         },

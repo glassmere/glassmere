@@ -106,7 +106,7 @@ fn geometry_places_one_offset_on_both_sides_of_a_direction_boundary() {
 
 fn field_frame(context: &mut Context, value: &mut String) {
     context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        ui.text_input("field", "Field", value);
+        ui.keyed("field", |ui| ui.text_input("Field", value));
     });
 }
 
@@ -211,18 +211,19 @@ fn the_code_editor_steps_visually_on_mixed_lines_and_leaves_them_at_the_visual_e
     let mut context = Context::new();
     let frame = |context: &mut Context, document: &mut TextDocument| {
         context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            ui.code_editor(
-                "code",
-                document,
-                CodeEditorOptions {
-                    line_numbers: false,
-                    style: Style::default()
-                        .width(Length::Px(600.0))
-                        .height(Length::Px(200.0))
-                        .padding(8.0),
-                    ..CodeEditorOptions::default()
-                },
-            );
+            ui.keyed("code", |ui| {
+                ui.code_editor(
+                    document,
+                    CodeEditorOptions {
+                        line_numbers: false,
+                        style: Style::default()
+                            .width(Length::Px(600.0))
+                            .height(Length::Px(200.0))
+                            .padding(8.0),
+                        ..CodeEditorOptions::default()
+                    },
+                )
+            });
         });
     };
     frame(&mut context, &mut document);
@@ -255,18 +256,19 @@ fn the_rich_editor_follows_direction_in_blocks_and_flags_the_caret() {
     let mut context = Context::new();
     let frame = |context: &mut Context, document: &mut RichDocument| {
         context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            ui.rich_text_editor(
-                "rich",
-                document,
-                RichEditorOptions {
-                    toolbar: false,
-                    style: Style::default()
-                        .width(Length::Px(400.0))
-                        .height(Length::Px(200.0))
-                        .padding(12.0),
-                    ..RichEditorOptions::default()
-                },
-            );
+            ui.keyed("rich", |ui| {
+                ui.rich_text_editor(
+                    document,
+                    RichEditorOptions {
+                        toolbar: false,
+                        style: Style::default()
+                            .width(Length::Px(400.0))
+                            .height(Length::Px(200.0))
+                            .padding(12.0),
+                        ..RichEditorOptions::default()
+                    },
+                )
+            });
         });
     };
     frame(&mut context, &mut document);

@@ -5,31 +5,28 @@ use rust_gui_scene::Image;
 impl Ui<'_> {
     /// A decoded image. It takes its natural size unless the style gives one;
     /// `ImageOptions::fit` decides how it fills a box of another shape.
-    pub fn image(&mut self, key: impl Into<String>, image: &Image, options: ImageOptions) {
-        self.image_element(key.into(), Some(image.clone()), false, options);
+    pub fn image(&mut self, image: &Image, options: ImageOptions) {
+        let key = self.next_key();
+        self.image_element(key, Some(image.clone()), false, options);
     }
 
     /// An image file the host decodes in the background and reloads when it
     /// changes on disk. Until it arrives, and when it cannot be decoded, a
     /// placeholder fills the box, so give the style a size to keep the layout
     /// from jumping. See `Context::image_error` for failures.
-    pub fn image_file(
-        &mut self,
-        key: impl Into<String>,
-        path: impl AsRef<std::path::Path>,
-        options: ImageOptions,
-    ) {
+    pub fn image_file(&mut self, path: impl AsRef<std::path::Path>, options: ImageOptions) {
+        let key = self.next_key();
         let path = path.as_ref();
         if !self.host.images.iter().any(|known| known == path) {
             self.host.images.push(path.to_owned());
         }
         let (image, failed) = self.context.image_file(path);
-        self.image_element(key.into(), image, failed, options);
+        self.image_element(key, image, failed, options);
     }
 
     fn image_element(
         &mut self,
-        key: String,
+        key: WidgetKey,
         image: Option<Image>,
         failed: bool,
         options: ImageOptions,
@@ -47,7 +44,7 @@ impl Ui<'_> {
             }
         }
         self.push(Element {
-            key: WidgetKey::Named(key),
+            key,
             kind: Kind::Image,
             text: options.alt,
             style,

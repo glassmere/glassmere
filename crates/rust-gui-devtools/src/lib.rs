@@ -4,6 +4,7 @@
 //! [`InspectorModel`] from the inspected window's context before declaring the
 //! inspector, then applies the [`InspectorResponse`] and [`Inspector::overlay`]
 //! back to the inspected window.
+use rust_gui_core::{Button, Label};
 use rust_gui_core::{
     Context, FontFamily, FrameStats, GraphNode, ItemId, Length, ListModel, ListState, MemoryReport,
     NodeDetails, NodeId, NodeSnapshot, StateKind, Style, TextWrap, Ui, VirtualListOptions,
@@ -482,52 +483,38 @@ impl Inspector {
             width: Length::Percent(1.0),
             ..Style::default()
         };
-        ui.column(
-            "inspector",
-            Style {
+        ui.keyed("inspector", |ui| ui.column(Style {
                 width: Length::Percent(1.0),
                 height: Length::Percent(1.0),
                 padding: 12.0,
                 gap: 8.0,
                 ..Style::default()
-            },
-            |ui| {
-                ui.label_styled(
-                    "title",
-                    format!(
+            }, |ui| {
+                ui.keyed("title", |ui| ui.label(Label::new(format!(
                         "{}  ·  {:.0} × {:.0}  ·  {} nodes  ·  frame {}",
                         model.title,
                         model.size.width,
                         model.size.height,
                         model.nodes.len(),
                         model.frames.last().map_or(0, |frame| frame.stats.frame)
-                    ),
-                    Style {
+                    )).style(Style {
                         font_size: Some(14.0),
                         font_weight: Some(700),
                         ..Style::default()
-                    },
-                );
+                    })));
                 if !model.warnings.is_empty() {
-                    ui.label_styled(
-                        "warnings",
-                        format!("Style warnings: {}", model.warnings.join("; ")),
-                        Style {
+                    ui.keyed("warnings", |ui| ui.label(Label::new(format!("Style warnings: {}", model.warnings.join("; "))).style(Style {
                             font_size: Some(13.0),
                             foreground: Some(Color::rgb(255, 196, 96)),
                             width: Length::Percent(1.0),
                             wrap: TextWrap::Word,
                             ..Style::default()
-                        },
-                    );
+                        })));
                 }
-                ui.row(
-                    "tabs",
-                    Style {
+                ui.keyed("tabs", |ui| ui.row(Style {
                         gap: 6.0,
                         ..Style::default()
-                    },
-                    |ui| {
+                    }, |ui| {
                         for (tab, label) in [
                             (Tab::Tree, "Tree".to_owned()),
                             (Tab::Accessibility, "Accessibility".to_owned()),
@@ -545,47 +532,34 @@ impl Inspector {
                                 background: (self.tab == tab).then_some(ui.theme().selection),
                                 ..Style::button()
                             };
-                            if ui
-                                .button_styled(format!("{tab:?}"), label, true, style)
+                            if ui.keyed(format!("{tab:?}"), |ui| ui.button(Button::new(label).enabled(true).style(style)))
                                 .clicked()
                             {
                                 self.tab = tab;
                             }
                         }
-                    },
-                );
+                    }));
                 // Their own row: with seven tabs there is no width left for
                 // them beside the strip.
-                ui.row(
-                    "overlays",
-                    Style {
+                ui.keyed("overlays", |ui| ui.row(Style {
                         gap: 12.0,
                         ..Style::default()
-                    },
-                    |ui| {
-                        ui.checkbox("damage", "Damage", &mut self.show_damage);
-                        ui.checkbox("repaints", "Repaints", &mut self.show_repaints);
-                    },
-                );
+                    }, |ui| {
+                        ui.keyed("damage", |ui| ui.checkbox("Damage", &mut self.show_damage));
+                        ui.keyed("repaints", |ui| ui.checkbox("Repaints", &mut self.show_repaints));
+                    }));
                 match self.tab {
                     Tab::Tree | Tab::Accessibility => {
                         let accessibility = self.tab == Tab::Accessibility;
                         let selected = self.tree.selected().map(|id| NodeId(id.0));
                         let tree_width = (width * 0.56).floor();
-                        ui.row(
-                            "body",
-                            Style {
+                        ui.keyed("body", |ui| ui.row(Style {
                                 gap: 12.0,
                                 width: Length::Percent(1.0),
                                 ..Style::default()
-                            },
-                            |ui| {
+                            }, |ui| {
                                 let mut rows = Rows::new(model, &mut self.collapsed, accessibility);
-                                ui.tree_view_with(
-                                    "tree",
-                                    &mut rows,
-                                    &mut self.tree,
-                                    VirtualListOptions {
+                                ui.keyed("tree", |ui| ui.tree_view_with(&mut rows, &mut self.tree, VirtualListOptions {
                                         label: "Nodes".into(),
                                         height: list_height,
                                         row_height: 24.0,
@@ -594,48 +568,33 @@ impl Inspector {
                                             ..Style::default()
                                         },
                                         ..VirtualListOptions::default()
-                                    },
-                                    |ui, rows, index, _| {
+                                    }, |ui, rows, index, _| {
                                         let node = rows.node(index);
-                                        ui.label_styled(
-                                            "label",
-                                            rows.text(index),
-                                            Style {
+                                        ui.keyed("label", |ui| ui.label(Label::new(rows.text(index)).style(Style {
                                                 width: Length::Percent(1.0),
                                                 padding: 4.0,
                                                 font_size: Some(13.0),
                                                 foreground: (!node.details.changed.is_empty())
                                                     .then_some(Color::rgb(255, 196, 96)),
                                                 ..Style::default()
-                                            },
-                                        );
-                                    },
-                                );
+                                            })));
+                                    }));
                                 drop(rows);
-                                ui.column(
-                                    "details",
-                                    Style {
+                                ui.keyed("details", |ui| ui.column(Style {
                                         gap: 4.0,
                                         width: Length::Px(width - tree_width - 12.0),
                                         ..Style::default()
-                                    },
-                                    |ui| match selected.and_then(|id| model.node(id)) {
+                                    }, |ui| match selected.and_then(|id| model.node(id)) {
                                         Some(node) => details(ui, model, node, &mut response),
-                                        None => ui.label_styled(
-                                            "hint",
-                                            "Select a node. Arrows move, Right/Left expand and collapse. Orange rows changed in the last declaration; ▮ marks a repainted node.",
-                                            Style {
+                                        None => ui.keyed("hint", |ui| ui.label(Label::new("Select a node. Arrows move, Right/Left expand and collapse. Orange rows changed in the last declaration; ▮ marks a repainted node.").style(Style {
                                                 font_size: Some(13.0),
                                                 foreground: Some(MUTED),
                                                 width: Length::Percent(1.0),
                                                 wrap: TextWrap::Word,
                                                 ..Style::default()
-                                            },
-                                        ),
-                                    },
-                                );
-                            },
-                        );
+                                            }))),
+                                    }));
+                            }));
                     }
                     Tab::Events => {
                         if model.events.len() != self.seen_events {
@@ -645,54 +604,37 @@ impl Inspector {
                             }
                         }
                         let mut rows = EventRows(&model.events);
-                        ui.virtual_list_with(
-                            "events",
-                            &mut rows,
-                            &mut self.events,
-                            VirtualListOptions {
+                        ui.keyed("events", |ui| ui.virtual_list_with(&mut rows, &mut self.events, VirtualListOptions {
                                 label: "Events".into(),
                                 height: list_height,
                                 row_height: 22.0,
                                 ..VirtualListOptions::default()
-                            },
-                            |ui, rows, index, _| {
+                            }, |ui, rows, index, _| {
                                 let event = &rows.0[index];
-                                ui.label_styled(
-                                    "label",
-                                    format!(
+                                ui.keyed("label", |ui| ui.label(Label::new(format!(
                                         "f{:<6} {} {}",
                                         event.frame,
                                         if event.handled { "●" } else { "○" },
                                         event.description
-                                    ),
-                                    Style {
+                                    )).style(Style {
                                         foreground: Some(if event.handled { Color::WHITE } else { MUTED }),
                                         ..mono.clone()
-                                    },
-                                );
-                            },
-                        );
+                                    })));
+                            }));
                     }
                     Tab::Diagnostics => {
                         if model.diagnostics.is_empty() {
-                            ui.label_styled(
-                                "none",
-                                "No framework diagnostics. Checks run in debug builds.",
-                                Style {
+                            ui.keyed("none", |ui| ui.label(Label::new("No framework diagnostics. Checks run in debug builds.").style(Style {
                                     foreground: Some(MUTED),
                                     ..mono.clone()
-                                },
-                            );
+                                })));
                         }
-                        ui.scroll(
-                            "diagnostics",
-                            Style {
+                        ui.keyed("diagnostics", |ui| ui.scroll(Style {
                                 width: Length::Percent(1.0),
                                 height: Length::Px(list_height),
                                 gap: 6.0,
                                 ..Style::default()
-                            },
-                            |ui| {
+                            }, |ui| {
                                 for (index, entry) in model.diagnostics.iter().enumerate() {
                                     // Selecting an entry shows its node in the tree.
                                     let title = format!(
@@ -705,17 +647,11 @@ impl Inspector {
                                         },
                                         entry.count
                                     );
-                                    if ui
-                                        .button_styled(
-                                            format!("entry-{index}"),
-                                            title,
-                                            entry.node.is_some(),
-                                            Style {
+                                    if ui.keyed(format!("entry-{index}"), |ui| ui.button(Button::new(title).enabled(entry.node.is_some()).style(Style {
                                                 width: Length::Percent(1.0),
                                                 padding: 6.0,
                                                 ..Style::button()
-                                            },
-                                        )
+                                            })))
                                         .clicked()
                                         && let Some(node) = entry.node
                                     {
@@ -723,20 +659,15 @@ impl Inspector {
                                         self.tree.reveal(ItemId(node.0));
                                         self.tab = Tab::Tree;
                                     }
-                                    ui.label_styled(
-                                        format!("message-{index}"),
-                                        entry.message.clone(),
-                                        Style {
+                                    ui.keyed(format!("message-{index}"), |ui| ui.label(Label::new(entry.message.clone()).style(Style {
                                             font_size: Some(12.0),
                                             foreground: Some(MUTED),
                                             width: Length::Percent(1.0),
                                             wrap: TextWrap::Word,
                                             ..Style::default()
-                                        },
-                                    );
+                                        })));
                                 }
-                            },
-                        );
+                            }));
                     }
                     Tab::Gpu => gpu_tab(ui, model, &mono),
                     Tab::Scene => scene_tab(ui, model, &mono),
@@ -747,9 +678,7 @@ impl Inspector {
                             model.frames.iter().map(pick).sum::<Duration>().as_secs_f64() * 1000.0
                                 / count
                         };
-                        ui.label_keyed(
-                            "summary",
-                            format!(
+                        ui.keyed("summary", |ui| ui.label(format!(
                                 "{} frames recorded  ·  average declare {:.2} ms  ·  layout {:.2}  ·  paint {:.2}  ·  shaping {:.2}  ·  render {:.2}  ·  total {:.2}",
                                 model.frames.len(),
                                 average(|frame| frame.stats.declare),
@@ -758,60 +687,44 @@ impl Inspector {
                                 average(|frame| frame.stats.shaping),
                                 average(|frame| frame.render),
                                 average(|frame| frame.total)
-                            ),
-                        );
-                        ui.row(
-                            "actions",
-                            Style {
+                            )));
+                        ui.keyed("actions", |ui| ui.row(Style {
                                 gap: 8.0,
                                 ..Style::default()
-                            },
-                            |ui| {
-                                if ui.button_keyed("export", "Export CSV").clicked() {
+                            }, |ui| {
+                                if ui.keyed("export", |ui| ui.button("Export CSV")).clicked() {
                                     response.export_csv = true;
                                 }
                                 if let Some(path) = &model.export_path {
-                                    ui.label_styled(
-                                        "path",
-                                        format!("Written to {path}"),
-                                        Style {
+                                    ui.keyed("path", |ui| ui.label(Label::new(format!("Written to {path}")).style(Style {
                                             font_size: Some(13.0),
                                             foreground: Some(MUTED),
                                             ..Style::default()
-                                        },
-                                    );
+                                        })));
                                 }
-                            },
-                        );
+                            }));
                         if let Some(last) = model.frames.last()
                             && last.stats.frame != self.seen_frames
                         {
                             self.seen_frames = last.stats.frame;
                             self.frames.reveal(ItemId(last.stats.frame));
                         }
-                        ui.label_styled("columns", FrameRecord::SUMMARY_HEADER, Style {
+                        ui.keyed("columns", |ui| ui.label(Label::new(FrameRecord::SUMMARY_HEADER).style(Style {
                             foreground: Some(MUTED),
                             ..mono.clone()
-                        });
+                        })));
                         let mut rows = FrameRows(&model.frames);
-                        ui.virtual_list_with(
-                            "frames",
-                            &mut rows,
-                            &mut self.frames,
-                            VirtualListOptions {
+                        ui.keyed("frames", |ui| ui.virtual_list_with(&mut rows, &mut self.frames, VirtualListOptions {
                                 label: "Frames".into(),
                                 height: (list_height - 96.0).max(120.0),
                                 row_height: 22.0,
                                 ..VirtualListOptions::default()
-                            },
-                            |ui, rows, index, _| {
-                                ui.label_styled("label", rows.0[index].summary(), mono.clone());
-                            },
-                        );
+                            }, |ui, rows, index, _| {
+                                ui.keyed("label", |ui| ui.label(Label::new(rows.0[index].summary()).style(mono.clone())));
+                            }));
                     }
                 }
-            },
-        );
+            }));
         response
     }
 
@@ -895,16 +808,14 @@ fn details(
     let details = &node.details;
     let style = &details.style;
     let line = |ui: &mut Ui<'_>, key: &str, text: String| {
-        ui.label_styled(
-            key,
-            text,
-            Style {
+        ui.keyed(key, |ui| {
+            ui.label(Label::new(text).style(Style {
                 font_size: Some(13.0),
                 width: Length::Percent(1.0),
                 wrap: TextWrap::Word,
                 ..Style::default()
-            },
-        );
+            }))
+        });
     };
     line(ui, "path", format!("Path: {}", model.path(snapshot.id)));
     line(
@@ -1091,7 +1002,7 @@ fn details(
     }
     if snapshot.semantics.focusable
         && ui
-            .button_keyed("focus", "Focus in inspected window")
+            .keyed("focus", |ui| ui.button("Focus in inspected window"))
             .clicked()
     {
         response.focus = Some(snapshot.id);
@@ -1237,42 +1148,40 @@ fn scene_tab(ui: &mut Ui<'_>, model: &InspectorModel, mono: &Style) {
     .into_iter()
     .enumerate()
     {
-        ui.label_styled(
-            format!("memory-{index}"),
-            line,
-            Style {
+        ui.keyed(format!("memory-{index}"), |ui| ui.label(Label::new(line).style(Style {
                 foreground: Some(if index == 4 { MUTED } else { ACCENT }),
                 width: Length::Percent(1.0),
                 wrap: TextWrap::Word,
                 ..mono.clone()
-            },
-        );
+            })));
     }
     if model.layers.is_empty() {
-        ui.label_styled(
-            "no-layers",
-            "No layers in the last scene. One is made by an opacity or a transform.",
-            Style {
-                foreground: Some(MUTED),
-                ..mono.clone()
-            },
-        );
+        ui.keyed("no-layers", |ui| {
+            ui.label(
+                Label::new(
+                    "No layers in the last scene. One is made by an opacity or a transform.",
+                )
+                .style(Style {
+                    foreground: Some(MUTED),
+                    ..mono.clone()
+                }),
+            )
+        });
         return;
     }
-    ui.scroll(
-        "layers",
-        Style {
-            width: Length::Percent(1.0),
-            height: Length::Px((model.viewport.height - 260.0).max(120.0)),
-            gap: 2.0,
-            ..Style::default()
-        },
-        |ui| {
-            for (index, layer) in model.layers.iter().enumerate() {
-                let moved = layer.transform != Affine::IDENTITY;
-                ui.label_styled(
-                    format!("layer-{index}"),
-                    format!(
+    ui.keyed("layers", |ui| {
+        ui.scroll(
+            Style {
+                width: Length::Percent(1.0),
+                height: Length::Px((model.viewport.height - 260.0).max(120.0)),
+                gap: 2.0,
+                ..Style::default()
+            },
+            |ui| {
+                for (index, layer) in model.layers.iter().enumerate() {
+                    let moved = layer.transform != Affine::IDENTITY;
+                    ui.keyed(format!("layer-{index}"), |ui| {
+                        ui.label(Label::new(format!(
                         "{}{:.0}x{:.0} at {:.0},{:.0}  ·  {} primitives  ·  opacity {:.2}{}",
                         "  ".repeat(layer.depth),
                         layer.bounds.width,
@@ -1282,26 +1191,29 @@ fn scene_tab(ui: &mut Ui<'_>, model: &InspectorModel, mono: &Style) {
                         layer.primitives,
                         layer.opacity,
                         if moved { "  ·  transformed" } else { "" }
-                    ),
-                    mono.clone(),
-                );
-            }
-        },
-    );
+                    )).style(mono.clone()))
+                    });
+                }
+            },
+        )
+    });
 }
 
 /// The reactive store: what it holds, what each derived value read, and what
 /// moved last. Empty until the window calls `Ui::observe`.
 fn state_tab(ui: &mut Ui<'_>, model: &InspectorModel, mono: &Style) {
     if model.state.is_empty() {
-        ui.label_styled(
-            "none",
-            "No reactive store observed. Call Ui::observe(&store) in the window's view.",
-            Style {
-                foreground: Some(MUTED),
-                ..mono.clone()
-            },
-        );
+        ui.keyed("none", |ui| {
+            ui.label(
+                Label::new(
+                    "No reactive store observed. Call Ui::observe(&store) in the window's view.",
+                )
+                .style(Style {
+                    foreground: Some(MUTED),
+                    ..mono.clone()
+                }),
+            )
+        });
         return;
     }
     let newest = model
@@ -1316,52 +1228,51 @@ fn state_tab(ui: &mut Ui<'_>, model: &InspectorModel, mono: &Style) {
         .map(|node| node.name.len())
         .max()
         .unwrap_or(1);
-    ui.scroll(
-        "state",
-        Style {
-            width: Length::Percent(1.0),
-            height: Length::Px((model.viewport.height - 132.0).max(120.0)),
-            gap: 2.0,
-            ..Style::default()
-        },
-        |ui| {
-            for (index, node) in model.state.iter().enumerate() {
-                let inputs: Vec<&str> = node
-                    .inputs
-                    .iter()
-                    .filter_map(|input| model.state.get(*input))
-                    .map(|input| input.name.as_str())
-                    .collect();
-                let kind = match node.kind {
-                    StateKind::Signal => "signal",
-                    StateKind::Memo => "memo  ",
-                };
-                let mut row = format!(
-                    "{kind}  {:width$}  v{}",
-                    node.name,
-                    node.version,
-                    width = width
-                );
-                if node.dirty {
-                    row.push_str("  out of date");
+    ui.keyed("state", |ui| {
+        ui.scroll(
+            Style {
+                width: Length::Percent(1.0),
+                height: Length::Px((model.viewport.height - 132.0).max(120.0)),
+                gap: 2.0,
+                ..Style::default()
+            },
+            |ui| {
+                for (index, node) in model.state.iter().enumerate() {
+                    let inputs: Vec<&str> = node
+                        .inputs
+                        .iter()
+                        .filter_map(|input| model.state.get(*input))
+                        .map(|input| input.name.as_str())
+                        .collect();
+                    let kind = match node.kind {
+                        StateKind::Signal => "signal",
+                        StateKind::Memo => "memo  ",
+                    };
+                    let mut row = format!(
+                        "{kind}  {:width$}  v{}",
+                        node.name,
+                        node.version,
+                        width = width
+                    );
+                    if node.dirty {
+                        row.push_str("  out of date");
+                    }
+                    if !inputs.is_empty() {
+                        row.push_str(&format!("  <- {}", inputs.join(", ")));
+                    }
+                    // What moved on the last change stands out, which is the
+                    // question the graph is usually opened to answer.
+                    let changed = node.changed_at == newest && newest > 0;
+                    ui.keyed(format!("state-{index}"), |ui| {
+                        ui.label(Label::new(row).style(Style {
+                            foreground: Some(if changed { ACCENT } else { MUTED }),
+                            ..mono.clone()
+                        }))
+                    });
                 }
-                if !inputs.is_empty() {
-                    row.push_str(&format!("  <- {}", inputs.join(", ")));
-                }
-                // What moved on the last change stands out, which is the
-                // question the graph is usually opened to answer.
-                let changed = node.changed_at == newest && newest > 0;
-                ui.label_styled(
-                    format!("state-{index}"),
-                    row,
-                    Style {
-                        foreground: Some(if changed { ACCENT } else { MUTED }),
-                        ..mono.clone()
-                    },
-                );
-            }
-        },
-    );
+            },
+        )
+    });
 }
 
 impl ListModel for Rows<'_> {
@@ -1462,35 +1373,39 @@ fn mebibytes(bytes: u64) -> String {
 
 /// A label, a value and a bar whose length is `share` of the row.
 fn bar_row(ui: &mut Ui<'_>, key: &str, label: &str, value: String, share: f32, mono: &Style) {
-    ui.row(
-        key,
-        Style {
-            gap: 10.0,
-            width: Length::Percent(1.0),
-            align_items: rust_gui_core::Align::Center,
-            ..Style::default()
-        },
-        |ui| {
-            ui.label_styled("label", label, mono.clone().width(Length::Px(190.0)));
-            ui.label_styled("value", value, mono.clone().width(Length::Px(110.0)));
-            ui.container(
-                "track",
-                Style::default().grow(1.0).height(Length::Px(8.0)),
-                |ui| {
-                    let accent = ui.theme().accent;
-                    ui.container(
-                        "bar",
-                        Style::default()
-                            .width(Length::Percent(share.clamp(0.0, 1.0)))
-                            .height(Length::Px(8.0))
-                            .radius(3.0)
-                            .background(accent),
-                        |_| {},
-                    );
-                },
-            );
-        },
-    );
+    ui.keyed(key, |ui| {
+        ui.row(
+            Style {
+                gap: 10.0,
+                width: Length::Percent(1.0),
+                align_items: rust_gui_core::Align::Center,
+                ..Style::default()
+            },
+            |ui| {
+                ui.keyed("label", |ui| {
+                    ui.label(Label::new(label).style(mono.clone().width(Length::Px(190.0))))
+                });
+                ui.keyed("value", |ui| {
+                    ui.label(Label::new(value).style(mono.clone().width(Length::Px(110.0))))
+                });
+                ui.keyed("track", |ui| {
+                    ui.container(Style::default().grow(1.0).height(Length::Px(8.0)), |ui| {
+                        let accent = ui.theme().accent;
+                        ui.keyed("bar", |ui| {
+                            ui.container(
+                                Style::default()
+                                    .width(Length::Percent(share.clamp(0.0, 1.0)))
+                                    .height(Length::Px(8.0))
+                                    .radius(3.0)
+                                    .background(accent),
+                                |_| {},
+                            )
+                        });
+                    })
+                });
+            },
+        )
+    });
 }
 
 fn gpu_tab(ui: &mut Ui<'_>, model: &InspectorModel, mono: &Style) {
@@ -1500,120 +1415,118 @@ fn gpu_tab(ui: &mut Ui<'_>, model: &InspectorModel, mono: &Style) {
         ..Style::default()
     };
     let Some(gpu) = &model.gpu else {
-        ui.label_styled("none", "This host does not report GPU statistics.", muted);
+        ui.keyed("none", |ui| {
+            ui.label(Label::new("This host does not report GPU statistics.").style(muted))
+        });
         return;
     };
-    ui.label_keyed("adapter", gpu.adapter.clone());
+    ui.keyed("adapter", |ui| ui.label(gpu.adapter.clone()));
     if gpu.software {
-        ui.label_styled(
-            "software",
-            "This window is painted by the CPU renderer, so there is nothing on a GPU to \
+        ui.keyed("software", |ui| {
+            ui.label(
+                Label::new(
+                    "This window is painted by the CPU renderer, so there is nothing on a GPU to \
              measure. The render column of the Frames tab is the time that took.",
-            Style {
-                wrap: rust_gui_core::TextWrap::Word,
-                width: Length::Percent(1.0),
-                ..muted
-            },
-        );
+                )
+                .style(Style {
+                    wrap: rust_gui_core::TextWrap::Word,
+                    width: Length::Percent(1.0),
+                    ..muted
+                }),
+            )
+        });
         return;
     }
     let timed: Vec<Duration> = model.frames.iter().filter_map(|frame| frame.gpu).collect();
     if gpu.timestamps {
         let average =
             timed.iter().sum::<Duration>().as_secs_f64() * 1000.0 / timed.len().max(1) as f64;
-        ui.label_keyed(
-            "time",
-            format!(
+        ui.keyed("time", |ui| {
+            ui.label(format!(
                 "GPU frame time  ·  last {}  ·  average {average:.2} ms over {} frames",
                 timed
                     .last()
                     .map_or_else(|| "-".to_owned(), |last| format!("{:.2} ms", millis(*last))),
                 timed.len()
-            ),
-        );
+            ))
+        });
     } else {
-        ui.label_styled(
-            "time",
-            "This adapter has no timestamp queries, so GPU time is unknown. The render column \
-             of the Frames tab is CPU time: it measures the driver's queue, not the GPU.",
-            Style {
+        ui.keyed("time", |ui| ui.label(Label::new("This adapter has no timestamp queries, so GPU time is unknown. The render column \
+             of the Frames tab is CPU time: it measures the driver's queue, not the GPU.").style(Style {
                 wrap: rust_gui_core::TextWrap::Word,
                 width: Length::Percent(1.0),
                 ..muted.clone()
-            },
-        );
+            })));
     }
-    ui.label_keyed(
-        "counters",
-        format!(
+    ui.keyed("counters", |ui| {
+        ui.label(format!(
             "{} draw calls  ·  {} quads  ·  {} text batches  ·  {} render passes",
             gpu.draw_calls, gpu.quads, gpu.text_batches, gpu.render_passes
-        ),
-    );
+        ))
+    });
     if !gpu.passes.is_empty() {
-        ui.label_styled(
-            "passes-title",
-            "Passes of the last timed frame",
-            muted.clone(),
-        );
+        ui.keyed("passes-title", |ui| {
+            ui.label(Label::new("Passes of the last timed frame").style(muted.clone()))
+        });
         let longest = gpu
             .passes
             .iter()
             .map(|(_, time)| time.as_secs_f32())
             .fold(f32::MIN_POSITIVE, f32::max);
+        ui.keyed("passes", |ui| {
+            ui.column(
+                Style::default().gap(4.0).width(Length::Percent(1.0)),
+                |ui| {
+                    for (index, (label, time)) in gpu.passes.iter().enumerate() {
+                        bar_row(
+                            ui,
+                            &format!("pass-{index}"),
+                            label,
+                            format!("{:.3} ms", millis(*time)),
+                            time.as_secs_f32() / longest,
+                            mono,
+                        );
+                    }
+                },
+            )
+        });
+    }
+    let total = gpu.memory_total();
+    ui.keyed("memory-title", |ui| {
+        ui.label(
+            Label::new(format!(
+                "GPU memory allocated by the renderer  ·  {}  ·  peak {}",
+                mebibytes(total),
+                mebibytes(gpu.memory_peak)
+            ))
+            .style(muted.clone()),
+        )
+    });
+    ui.keyed("memory", |ui| {
         ui.column(
-            "passes",
             Style::default().gap(4.0).width(Length::Percent(1.0)),
             |ui| {
-                for (index, (label, time)) in gpu.passes.iter().enumerate() {
+                for (index, (category, bytes)) in gpu.memory.iter().enumerate() {
                     bar_row(
                         ui,
-                        &format!("pass-{index}"),
-                        label,
-                        format!("{:.3} ms", millis(*time)),
-                        time.as_secs_f32() / longest,
+                        &format!("memory-{index}"),
+                        category,
+                        mebibytes(*bytes),
+                        *bytes as f32 / total.max(1) as f32,
                         mono,
                     );
                 }
             },
-        );
-    }
-    let total = gpu.memory_total();
-    ui.label_styled(
-        "memory-title",
-        format!(
-            "GPU memory allocated by the renderer  ·  {}  ·  peak {}",
-            mebibytes(total),
-            mebibytes(gpu.memory_peak)
-        ),
-        muted.clone(),
-    );
-    ui.column(
-        "memory",
-        Style::default().gap(4.0).width(Length::Percent(1.0)),
-        |ui| {
-            for (index, (category, bytes)) in gpu.memory.iter().enumerate() {
-                bar_row(
-                    ui,
-                    &format!("memory-{index}"),
-                    category,
-                    mebibytes(*bytes),
-                    *bytes as f32 / total.max(1) as f32,
-                    mono,
-                );
-            }
-        },
-    );
-    ui.label_styled(
-        "driver",
-        match gpu.driver {
+        )
+    });
+    ui.keyed("driver", |ui| {
+        ui.label(Label::new(match gpu.driver {
             Some((allocated, reserved)) => format!(
                 "The driver's allocator reports {} allocated and {} reserved for the whole device.",
                 mebibytes(allocated),
                 mebibytes(reserved)
             ),
             None => "This backend does not report the driver's allocator.".to_owned(),
-        },
-        muted,
-    );
+        }).style(muted))
+    });
 }

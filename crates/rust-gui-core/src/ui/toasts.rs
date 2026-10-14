@@ -67,7 +67,7 @@ impl Ui<'_> {
             ..Style::default()
         };
         let mut closed = Vec::new();
-        self.group("$toasts".into(), Kind::Toasts, stack, |ui| {
+        self.group(WidgetKey::named("$toasts"), Kind::Toasts, stack, |ui| {
             for (id, toast) in &toasts {
                 let panel = Style {
                     width: Length::Px(360.0),
@@ -81,47 +81,49 @@ impl Ui<'_> {
                     layout_transition: Some(Transition::new(160)),
                     ..Style::default()
                 };
-                ui.group(format!("{}", id.0), Kind::Toast, panel, |ui| {
-                    ui.container(
-                        "$accent",
-                        Style {
-                            width: Length::Px(4.0),
-                            align_self: Some(Align::Stretch),
-                            radius: 2.0,
-                            background: Some(accent(toast.kind, theme.accent)),
-                            ..Style::default()
-                        },
-                        |_| {},
-                    );
-                    ui.label_styled(
-                        "$text",
-                        toast.text.clone(),
-                        Style {
-                            grow: 1.0,
-                            shrink: 1.0,
-                            wrap: TextWrap::Word,
-                            ..Style::default()
-                        },
-                    );
-                    let compact = Style {
-                        padding: 8.0,
-                        ..Style::button()
-                    };
-                    if let Some(action) = &toast.action
-                        && ui
-                            .button_styled("$action", action.clone(), true, compact.clone())
-                            .clicked()
-                    {
-                        closed.push((*id, true));
-                    }
-                    if ui
-                        .button_styled("$close", "\u{00d7}", true, compact)
-                        .clicked()
-                    {
-                        closed.push((*id, false));
-                    }
-                    ui.tooltip(ui.context.tr("rust-gui-toast-dismiss", &[]));
-                });
+                ui.group(
+                    WidgetKey::named(format!("{}", id.0)),
+                    Kind::Toast,
+                    panel,
+                    |ui| {
+                        ui.container_at(
+                            "$accent",
+                            Style {
+                                width: Length::Px(4.0),
+                                align_self: Some(Align::Stretch),
+                                radius: 2.0,
+                                background: Some(accent(toast.kind, theme.accent)),
+                                ..Style::default()
+                            },
+                            |_| {},
+                        );
+                        ui.label_at(
+                            "$text",
+                            toast.text.clone(),
+                            Style {
+                                grow: 1.0,
+                                shrink: 1.0,
+                                wrap: TextWrap::Word,
+                                ..Style::default()
+                            },
+                        );
+                        let compact = Style {
+                            padding: 8.0,
+                            ..Style::button()
+                        };
+                        if let Some(action) = &toast.action
+                            && ui
+                                .button_at("$action", action.clone(), true, compact.clone())
+                                .clicked()
+                        {
+                            closed.push((*id, true));
+                        }
+                        if ui.button_at("$close", "\u{00d7}", true, compact).clicked() {
+                            closed.push((*id, false));
+                        }
+                        ui.tooltip(ui.context.tr("rust-gui-toast-dismiss", &[]));
+                    },
+                );
                 ui.elements.last_mut().unwrap().control = Control::Toast {
                     label: toast.text.clone(),
                     assertive: toast.kind == ToastKind::Error,

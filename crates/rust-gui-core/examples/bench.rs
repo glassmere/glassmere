@@ -6,6 +6,7 @@
 //! ```sh
 //! cargo run -p rust-gui-core --example bench --release
 //! ```
+use rust_gui_core::Label;
 use rust_gui_core::{
     CodeEditorOptions, Context, Easing, FrameStats, GridColumn, GridModel, GridState, ItemId,
     Length, ListModel, ListState, MonospaceMeasurer, SortDirection, Style, TextDocument,
@@ -149,7 +150,7 @@ fn table() -> Vec<Timing> {
     let mut frame = |row: usize, model: &mut Rows, state: &mut GridState| {
         state.rows.reveal(ItemId(row as u64));
         context.run(WINDOW, &mut MonospaceMeasurer, |ui| {
-            ui.data_grid("grid", model, state, viewport());
+            ui.keyed("grid", |ui| ui.data_grid(model, state, viewport()));
         })
     };
     vec![
@@ -184,7 +185,7 @@ fn tree() -> Vec<Timing> {
     let mut frame = |row: usize, model: &mut TreeModel, state: &mut ListState| {
         state.reveal(ItemId(row as u64));
         context.run(WINDOW, &mut MonospaceMeasurer, |ui| {
-            ui.tree_view("tree", model, state, viewport());
+            ui.keyed("tree", |ui| ui.tree_view(model, state, viewport()));
         })
     };
     vec![
@@ -211,14 +212,15 @@ fn text() -> Vec<Timing> {
     let mut context = Context::new();
     let mut frame = |document: &mut TextDocument| {
         context.run(WINDOW, &mut MonospaceMeasurer, |ui| {
-            ui.code_editor(
-                "editor",
-                document,
-                CodeEditorOptions {
-                    line_numbers: true,
-                    ..CodeEditorOptions::default()
-                },
-            );
+            ui.keyed("editor", |ui| {
+                ui.code_editor(
+                    document,
+                    CodeEditorOptions {
+                        line_numbers: true,
+                        ..CodeEditorOptions::default()
+                    },
+                )
+            });
         })
     };
     let open = measure("text", "open", 1, |_| frame(&mut document));
@@ -240,22 +242,26 @@ fn animation() -> Vec<Timing> {
         context.set_now(*clock);
         let lit = (run / 20).is_multiple_of(2);
         context.run(WINDOW, &mut MonospaceMeasurer, |ui| {
-            ui.row("wall", Style::default(), |ui| {
-                for index in 0..ANIMATED {
-                    let shade = (index % 8) as u8 * 24;
-                    ui.label_styled(
-                        format!("cell{index}"),
-                        "*",
-                        Style::default()
-                            .width(Length::Px(20.0))
-                            .background(if lit {
-                                Color::rgb(220, 40 + shade, 60)
-                            } else {
-                                Color::rgb(40, 60 + shade, 220)
-                            })
-                            .transition(Transition::new(300).easing(Easing::EaseInOut)),
-                    );
-                }
+            ui.keyed("wall", |ui| {
+                ui.row(Style::default(), |ui| {
+                    for index in 0..ANIMATED {
+                        let shade = (index % 8) as u8 * 24;
+                        ui.keyed(format!("cell{index}"), |ui| {
+                            ui.label(
+                                Label::new("*").style(
+                                    Style::default()
+                                        .width(Length::Px(20.0))
+                                        .background(if lit {
+                                            Color::rgb(220, 40 + shade, 60)
+                                        } else {
+                                            Color::rgb(40, 60 + shade, 220)
+                                        })
+                                        .transition(Transition::new(300).easing(Easing::EaseInOut)),
+                                ),
+                            )
+                        });
+                    }
+                })
             });
         })
     };

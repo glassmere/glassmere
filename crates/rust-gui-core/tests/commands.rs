@@ -80,17 +80,22 @@ fn a_scoped_command_fires_only_where_it_belongs_and_the_inner_one_wins() {
     let mut fired = Vec::new();
     let declare = |context: &mut Context, fired: &mut Vec<&'static str>| {
         frame(context, |ui| {
-            if ui.command_button("window", &window).clicked() {
+            if ui
+                .keyed("window", |ui| ui.command_button(&window))
+                .clicked()
+            {
                 fired.push("window");
             }
-            ui.focus_scope("panel", FocusScope::default(), Style::default(), |ui| {
-                ui.button_keyed("inside", "Inside");
-                if ui.command_button("panel", &panel).clicked() {
-                    fired.push("panel");
-                }
-                if ui.command_button("only", &only).clicked() {
-                    fired.push("only");
-                }
+            ui.keyed("panel", |ui| {
+                ui.focus_scope(FocusScope::default(), Style::default(), |ui| {
+                    ui.keyed("inside", |ui| ui.button("Inside"));
+                    if ui.keyed("panel", |ui| ui.command_button(&panel)).clicked() {
+                        fired.push("panel");
+                    }
+                    if ui.keyed("only", |ui| ui.command_button(&only)).clicked() {
+                        fired.push("only");
+                    }
+                })
             });
         });
     };
@@ -125,7 +130,7 @@ fn the_user_can_rebind_and_unbind_a_command() {
     let declare = |context: &mut Context, fired: &mut usize, shown: &mut String| {
         frame(context, |ui| {
             *shown = MenuItem::command(&ui.command(&save)).hint;
-            if ui.command_button("save", &save).clicked() {
+            if ui.keyed("save", |ui| ui.command_button(&save)).clicked() {
                 *fired += 1;
             }
         });
@@ -169,7 +174,7 @@ fn the_palette_filters_commands_and_gives_back_the_one_that_was_chosen() {
                    query: &mut String,
                    chosen: &mut Option<String>| {
         frame(context, |ui| {
-            if let Some(id) = ui.command_palette("palette", open, query, &commands) {
+            if let Some(id) = ui.keyed("palette", |ui| ui.command_palette(open, query, &commands)) {
                 *chosen = Some(id);
             }
         });
@@ -222,14 +227,15 @@ fn a_menu_item_writes_its_shortcut_along_the_far_edge() {
     ];
     let declare = |context: &mut Context| {
         frame(context, |ui| {
-            ui.context_menu(
-                "area",
-                &items,
-                Style::default()
-                    .width(Length::Px(300.0))
-                    .height(Length::Px(120.0)),
-                |ui| ui.label_keyed("text", "Right-click me"),
-            );
+            ui.keyed("area", |ui| {
+                ui.context_menu(
+                    &items,
+                    Style::default()
+                        .width(Length::Px(300.0))
+                        .height(Length::Px(120.0)),
+                    |ui| ui.keyed("text", |ui| ui.label("Right-click me")),
+                )
+            });
         });
     };
     declare(&mut context);
@@ -273,11 +279,14 @@ fn a_dialog_and_the_window_may_bind_the_same_keys() {
     let (mut open, mut fired) = (true, Vec::new());
     let declare = |context: &mut Context, open: &mut bool, fired: &mut Vec<&'static str>| {
         frame(context, |ui| {
-            if ui.command_button("window", &window).clicked() {
+            if ui
+                .keyed("window", |ui| ui.command_button(&window))
+                .clicked()
+            {
                 fired.push("window");
             }
             ui.dialog("editor", open, DialogOptions::new("Editor"), |ui, _| {
-                if ui.command_button("inner", &inner).clicked() {
+                if ui.keyed("inner", |ui| ui.command_button(&inner)).clicked() {
                     fired.push("dialog");
                 }
             });

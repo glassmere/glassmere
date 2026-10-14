@@ -1,6 +1,6 @@
 use rust_gui::{
-    Animation, AppOptions, Color, DialogOptions, Easing, Effect, Keyframe, Length, Paint, Repeat,
-    Size, Style, TextWrap, Transform, Transition, run,
+    Animation, AppOptions, Button, Color, DialogOptions, Easing, Effect, Keyframe, Label, Length,
+    Paint, Repeat, Size, Style, TextWrap, Transform, Transition, run,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -32,96 +32,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .height(Length::Percent(1.0))
                 .padding(24.0)
                 .gap(14.0);
-            ui.column("page", page, |ui| {
-                ui.label_styled("h-states", "State transitions", heading.clone());
-                ui.label_styled(
-                    "p-states",
-                    "Hover and press: colours, opacity and transforms ease between states. \
-                     Transforms are visual only, so hit testing keeps the layout bounds.",
-                    muted.clone(),
-                );
+            ui.column(page, |ui| {
+                ui.label(Label::new("State transitions").style(heading.clone()));
+                ui.label(Label::new("Hover and press: colours, opacity and transforms ease between states. \
+                     Transforms are visual only, so hit testing keeps the layout bounds.").style(muted.clone()));
                 // Ancestors clip to their bounds, so rows leave room for transformed pixels.
-                ui.row("states", Style::default().gap(12.0).padding(8.0), |ui| {
+                ui.row(Style::default().gap(12.0).padding(8.0), |ui| {
                     let ease = Transition::new(160);
-                    ui.button_styled(
-                        "colour",
-                        "Colour",
-                        true,
-                        Style::button()
+                    ui.button(Button::new("Colour").style(Style::button()
                             .background(theme.accent)
                             .foreground(Color(255, 255, 255, 255))
                             .transition(ease)
-                            .on_hover(Paint::background(Color(232, 93, 117, 255))),
-                    );
-                    ui.button_styled(
-                        "lift",
-                        "Lift",
-                        true,
-                        Style::button()
+                            .on_hover(Paint::background(Color(232, 93, 117, 255)))));
+                    ui.button(Button::new("Lift").style(Style::button()
                             .transition(ease)
                             .on_hover(Paint::transform(Transform {
                                 translate: (0.0, -3.0),
                                 scale: (1.06, 1.06),
                                 rotate: 0.0,
                             }))
-                            .on_pressed(Paint::transform(Transform::scale(0.94))),
-                    );
-                    ui.button_styled(
-                        "fade",
-                        "Fade",
-                        true,
-                        Style::button()
+                            .on_pressed(Paint::transform(Transform::scale(0.94)))));
+                    ui.button(Button::new("Fade").style(Style::button()
                             .transition(Transition::new(300).easing(Easing::EaseInOut))
-                            .on_hover(Paint::opacity(0.35)),
-                    );
-                    ui.button_styled(
-                        "tilt",
-                        "Tilt",
-                        true,
-                        Style::button()
+                            .on_hover(Paint::opacity(0.35))));
+                    ui.button(Button::new("Tilt").style(Style::button()
                             .transition(
                                 Transition::new(260)
                                     .easing(Easing::CubicBezier(0.3, 1.8, 0.6, 1.0)),
                             )
-                            .on_hover(Paint::transform(Transform::rotate(-6.0))),
-                    );
+                            .on_hover(Paint::transform(Transform::rotate(-6.0)))));
                 });
 
-                ui.label_styled(
-                    "h-keyframes",
-                    "Keyframes and static layers",
-                    heading.clone(),
-                );
-                ui.row(
-                    "keyframes",
-                    Style::default()
+                ui.label(Label::new("Keyframes and static layers").style(heading.clone()));
+                ui.row(Style::default()
                         .gap(24.0)
                         .padding(16.0)
-                        .align_items(rust_gui::Align::Center),
-                    |ui| {
+                        .align_items(rust_gui::Align::Center), |ui| {
                         let tile = Style::default()
                             .width(Length::Px(44.0))
                             .height(Length::Px(44.0))
                             .radius(8.0);
-                        ui.label_styled(
-                            "spinner",
-                            "",
-                            tile.clone()
+                        ui.label(Label::new("").style(tile.clone()
                                 .background(theme.accent)
-                                .animation(Animation::spin(1600)),
-                        );
-                        ui.label_styled(
-                            "pulse",
-                            "",
-                            tile.clone()
+                                .animation(Animation::spin(1600))));
+                        ui.label(Label::new("").style(tile.clone()
                                 .radius(22.0)
                                 .background(Color(232, 93, 117, 255))
-                                .animation(Animation::pulse(0.25, 900)),
-                        );
-                        ui.label_styled(
-                            "bounce",
-                            "",
-                            tile.clone().background(Color(240, 180, 40, 255)).animation(
+                                .animation(Animation::pulse(0.25, 900))));
+                        ui.label(Label::new("").style(tile.clone().background(Color(240, 180, 40, 255)).animation(
                                 Animation::new(
                                     vec![
                                         Keyframe::at(0.0).transform(Transform::translate(0.0, 0.0)),
@@ -134,62 +92,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 )
                                 .easing(Easing::EaseInOut)
                                 .repeat(Repeat::Forever),
-                            ),
-                        );
+                            )));
                         // A resting layer: group opacity and rotation, text included.
-                        ui.container(
-                            "static",
-                            Style::default()
+                        ui.container(Style::default()
                                 .padding(12.0)
                                 .radius(8.0)
                                 .background(theme.surface)
                                 .opacity(0.8)
-                                .transform(Transform::rotate(-4.0)),
-                            |ui| {
+                                .transform(Transform::rotate(-4.0)), |ui| {
                                 ui.label("Rotated group at 80% opacity");
-                            },
-                        );
-                    },
-                );
+                            });
+                    });
 
-                ui.label_styled("h-lists", "Enter, exit and layout", heading.clone());
-                ui.row("list-actions", Style::default().gap(8.0), |ui| {
-                    if ui.button_keyed("add", "Add toast").clicked() {
+                ui.label(Label::new("Enter, exit and layout").style(heading.clone()));
+                ui.row(Style::default().gap(8.0), |ui| {
+                    if ui.button("Add toast").clicked() {
                         toasts.insert(0, next_toast);
                         next_toast += 1;
                     }
-                    if ui.button_keyed("remove", "Remove first").clicked() && !toasts.is_empty() {
+                    if ui.button("Remove first").clicked() && !toasts.is_empty() {
                         toasts.remove(0);
                     }
-                    if ui.button_keyed("rotate", "Rotate order").clicked() && toasts.len() > 1 {
+                    if ui.button("Rotate order").clicked() && toasts.len() > 1 {
                         toasts.rotate_left(1);
                     }
-                    if ui
-                        .button_keyed("expand", if expanded { "Collapse" } else { "Expand" })
+                    if ui.button(if expanded { "Collapse" } else { "Expand" })
                         .clicked()
                     {
                         expanded = !expanded;
                     }
-                    if ui.button_keyed("dialog", "Open dialog").clicked() {
+                    if ui.button("Open dialog").clicked() {
                         dialog = true;
                     }
                 });
                 if expanded {
-                    ui.label_styled(
-                        "details",
-                        "This block enters with a slide and pushes the toasts down; they follow \
-                         with a layout transition instead of jumping.",
-                        muted
+                    ui.label(Label::new("This block enters with a slide and pushes the toasts down; they follow \
+                         with a layout transition instead of jumping.").style(muted
                             .clone()
                             .enter(Effect::slide(0.0, -8.0, 180))
-                            .exit(Effect::fade(120)),
-                    );
+                            .exit(Effect::fade(120))));
                 }
                 let mut dismissed = None;
                 for toast in &toasts {
-                    ui.row(
-                        format!("toast-{toast}"),
-                        Style::default()
+                    ui.keyed(format!("toast-{toast}"), |ui| ui.row(Style::default()
                             .padding(10.0)
                             .gap(12.0)
                             .radius(8.0)
@@ -198,18 +143,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .align_items(rust_gui::Align::Center)
                             .layout_transition(Transition::new(220).easing(Easing::EaseInOut))
                             .enter(Effect::slide(-24.0, 0.0, 220))
-                            .exit(Effect::slide(40.0, 0.0, 200)),
-                        |ui| {
-                            ui.label_styled(
-                                "text",
-                                format!("Toast #{toast}"),
-                                Style::default().grow(1.0),
-                            );
-                            if ui.button_keyed("dismiss", "Dismiss").clicked() {
+                            .exit(Effect::slide(40.0, 0.0, 200)), |ui| {
+                            ui.label(Label::new(format!("Toast #{toast}")).style(Style::default().grow(1.0)));
+                            if ui.button("Dismiss").clicked() {
                                 dismissed = Some(*toast);
                             }
-                        },
-                    );
+                        }));
                 }
                 if let Some(toast) = dismissed {
                     toasts.retain(|other| *other != toast);
@@ -225,7 +164,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ),
                 |ui, open| {
                     ui.label("The panel zooms in, and fades out after it is removed.");
-                    if ui.button_keyed("close", "Close").clicked() {
+                    if ui.button("Close").clicked() {
                         *open = false;
                     }
                 },

@@ -1,3 +1,4 @@
+use rust_gui_core::Label;
 use rust_gui_core::{
     Action, Context, Event, FontFamily, Key, Length, MenuItem, MonospaceMeasurer, Style, TextEdit,
     TextMove, TextWrap, Ui,
@@ -17,7 +18,7 @@ fn key(context: &mut Context, key: Key) {
 fn input(context: &mut Context, value: &mut String, enabled: bool) {
     frame(context, |ui| {
         ui.enabled(enabled, |ui| {
-            ui.text_input("input", "Name", value);
+            ui.keyed("input", |ui| ui.text_input("Name", value));
         })
     });
 }
@@ -32,11 +33,17 @@ fn input_binding_selection_graphemes_undo_and_submit_are_delivered_once() {
     key(&mut context, Key::Backspace);
     key(&mut context, Key::Backspace);
     frame(&mut context, |ui| {
-        assert!(ui.text_input("input", "Name", &mut value).changed)
+        assert!(
+            ui.keyed("input", |ui| ui.text_input("Name", &mut value))
+                .changed
+        )
     });
     assert_eq!(value, "a");
     frame(&mut context, |ui| {
-        assert!(!ui.text_input("input", "Name", &mut value).changed)
+        assert!(
+            !ui.keyed("input", |ui| ui.text_input("Name", &mut value))
+                .changed
+        )
     });
     context.event(Event::Text(TextEdit::Undo));
     input(&mut context, &mut value, true);
@@ -46,15 +53,18 @@ fn input_binding_selection_graphemes_undo_and_submit_are_delivered_once() {
     context.event(Event::Text(TextEdit::Insert("日本語\nname".into())));
     key(&mut context, Key::Enter);
     frame(&mut context, |ui| {
-        let response = ui.text_input("input", "Name", &mut value);
+        let response = ui.keyed("input", |ui| ui.text_input("Name", &mut value));
         assert!(response.changed && response.submitted);
     });
     assert_eq!(value, "日本語 name");
     frame(&mut context, |ui| {
-        assert!(!ui.text_input("input", "Name", &mut value).submitted)
+        assert!(
+            !ui.keyed("input", |ui| ui.text_input("Name", &mut value))
+                .submitted
+        )
     });
     let stats = context.run(Size::new(500.0, 500.0), &mut MonospaceMeasurer, |ui| {
-        ui.text_input("input", "Name", &mut value);
+        ui.keyed("input", |ui| ui.text_input("Name", &mut value));
     });
     assert!(
         !stats.scene_rebuilt,
@@ -140,13 +150,15 @@ fn checkbox_radio_keyboard_and_disabled_scope_share_one_activation_path() {
     let mut checked = false;
     let mut selected = 0;
     let view = |ui: &mut Ui<'_>, checked: &mut bool, selected: &mut usize| {
-        ui.checkbox("check", "Enabled", checked);
-        ui.column("radios", Style::default(), |ui| {
-            ui.enabled(false, |ui| {
-                ui.radio("disabled", "Disabled", selected, 0);
-            });
-            ui.radio("one", "One", selected, 1);
-            ui.radio("two", "Two", selected, 2);
+        ui.keyed("check", |ui| ui.checkbox("Enabled", checked));
+        ui.keyed("radios", |ui| {
+            ui.column(Style::default(), |ui| {
+                ui.enabled(false, |ui| {
+                    ui.keyed("disabled", |ui| ui.radio("Disabled", selected, 0));
+                });
+                ui.keyed("one", |ui| ui.radio("One", selected, 1));
+                ui.keyed("two", |ui| ui.radio("Two", selected, 2));
+            })
         });
     };
     frame(&mut context, |ui| view(ui, &mut checked, &mut selected));
@@ -175,7 +187,7 @@ fn slider_drag_keys_and_accessibility_snap_and_clamp() {
     let mut context = Context::new();
     let mut value = 0.0;
     let view = |ui: &mut Ui<'_>, value: &mut f64| {
-        ui.slider("slider", "Volume", value, -5.0..=6.0, 2.0);
+        ui.keyed("slider", |ui| ui.slider("Volume", value, -5.0..=6.0, 2.0));
     };
     frame(&mut context, |ui| view(ui, &mut value));
     let id = context.find(&["slider"]).unwrap();
@@ -206,8 +218,8 @@ fn combo_popup_overlays_later_siblings_scrolls_highlight_and_restores_focus() {
     let entries: Vec<_> = (0..20).map(|index| format!("Choice {index}")).collect();
     let items: Vec<_> = entries.iter().map(String::as_str).collect();
     let view = |ui: &mut Ui<'_>, selected: &mut usize| {
-        ui.combo_box("combo", "Choice", selected, &items);
-        ui.button_keyed("behind", "Behind popup");
+        ui.keyed("combo", |ui| ui.combo_box("Choice", selected, &items));
+        ui.keyed("behind", |ui| ui.button("Behind popup"));
     };
     frame(&mut context, |ui| view(ui, &mut selected));
     let owner = context.find(&["combo"]).unwrap();
@@ -267,28 +279,32 @@ fn menus_skip_disabled_items_emit_once_and_close_on_outside_click() {
         MenuItem::new("Save"),
     ];
     frame(&mut context, |ui| {
-        ui.menu("menu", "File", &items);
+        ui.keyed("menu", |ui| ui.menu("File", &items));
     });
     let owner = context.find(&["menu"]).unwrap();
     context.action(owner, Action::Expand);
     frame(&mut context, |ui| {
-        ui.menu("menu", "File", &items);
+        ui.keyed("menu", |ui| ui.menu("File", &items));
     });
     let disabled = context.find(&["menu", "$popup", "0"]).unwrap();
     assert!(!context.action(disabled, Action::Activate));
     key(&mut context, Key::Enter);
-    frame(&mut context, |ui| result = ui.menu("menu", "File", &items));
+    frame(&mut context, |ui| {
+        result = ui.keyed("menu", |ui| ui.menu("File", &items))
+    });
     assert_eq!(result, Some(1));
-    frame(&mut context, |ui| result = ui.menu("menu", "File", &items));
+    frame(&mut context, |ui| {
+        result = ui.keyed("menu", |ui| ui.menu("File", &items))
+    });
     assert_eq!(result, None);
     context.action(owner, Action::Expand);
     frame(&mut context, |ui| {
-        ui.menu("menu", "File", &items);
+        ui.keyed("menu", |ui| ui.menu("File", &items));
     });
     context.event(Event::PointerMoved(Point { x: 450.0, y: 450.0 }));
     context.event(Event::PointerDown);
     frame(&mut context, |ui| {
-        ui.menu("menu", "File", &items);
+        ui.keyed("menu", |ui| ui.menu("File", &items));
     });
     assert_eq!(context.node(owner).unwrap().expanded, Some(false));
 }
@@ -300,20 +316,23 @@ fn popup_wheel_targets_overlay_and_short_viewports_keep_last_choice_reachable() 
     let items: Vec<_> = (0..20).map(|index| format!("{index}")).collect();
     let labels: Vec<_> = items.iter().map(String::as_str).collect();
     let mut view = |ui: &mut Ui<'_>| {
-        ui.combo_box("combo", "Choices", &mut selected, &labels);
-        ui.scroll(
-            "background",
-            Style {
-                width: Length::Px(400.0),
-                height: Length::Px(100.0),
-                ..Style::default()
-            },
-            |ui| {
-                for index in 0..20 {
-                    ui.button_keyed(index.to_string(), "Background row");
-                }
-            },
-        );
+        ui.keyed("combo", |ui| {
+            ui.combo_box("Choices", &mut selected, &labels)
+        });
+        ui.keyed("background", |ui| {
+            ui.scroll(
+                Style {
+                    width: Length::Px(400.0),
+                    height: Length::Px(100.0),
+                    ..Style::default()
+                },
+                |ui| {
+                    for index in 0..20 {
+                        ui.keyed(index.to_string(), |ui| ui.button("Background row"));
+                    }
+                },
+            )
+        });
     };
     context.run(Size::new(220.0, 180.0), &mut MonospaceMeasurer, &mut view);
     let owner = context.find(&["combo"]).unwrap();
@@ -346,19 +365,19 @@ fn popup_wheel_targets_overlay_and_short_viewports_keep_last_choice_reachable() 
 fn wrapped_text_reflows_with_parent_width_and_retains_font_style() {
     let mut context = Context::new();
     let view = |ui: &mut Ui<'_>| {
-        ui.label_styled(
-            "text",
-            "A paragraph of text wraps and resizes with its parent.",
-            Style {
-                width: Length::Percent(1.0),
-                wrap: TextWrap::Word,
-                font_family: Some(FontFamily::Serif),
-                font_weight: Some(700),
-                italic: Some(true),
-                padding: 10.0,
-                ..Style::default()
-            },
-        )
+        ui.keyed("text", |ui| {
+            ui.label(
+                Label::new("A paragraph of text wraps and resizes with its parent.").style(Style {
+                    width: Length::Percent(1.0),
+                    wrap: TextWrap::Word,
+                    font_family: Some(FontFamily::Serif),
+                    font_weight: Some(700),
+                    italic: Some(true),
+                    padding: 10.0,
+                    ..Style::default()
+                }),
+            )
+        })
     };
     context.run(Size::new(140.0, 600.0), &mut MonospaceMeasurer, view);
     let id = context.find(&["text"]).unwrap();

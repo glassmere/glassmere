@@ -353,7 +353,7 @@ pub(crate) fn action(context: &mut Context, request: ActionRequest, scale: f64) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_gui_core::{Length, MonospaceMeasurer, Style};
+    use rust_gui_core::{Button, Length, MonospaceMeasurer, Style};
     use rust_gui_scene::Size;
 
     #[test]
@@ -365,13 +365,19 @@ mod tests {
         let mut volume = 50.0;
         let mut selected = 0;
         let mut view = |ui: &mut rust_gui_core::Ui<'_>| {
-            ui.text_input("input", "Name", &mut text);
-            ui.checkbox("check", "Check", &mut checked);
-            ui.radio("radio", "Radio", &mut radio, 0);
-            ui.slider("slider", "Volume", &mut volume, 0.0..=100.0, 5.0);
-            ui.combo_box("combo", "Theme", &mut selected, &["Dark", "Light"]);
+            ui.keyed("input", |ui| ui.text_input("Name", &mut text));
+            ui.keyed("check", |ui| ui.checkbox("Check", &mut checked));
+            ui.keyed("radio", |ui| ui.radio("Radio", &mut radio, 0));
+            ui.keyed("slider", |ui| {
+                ui.slider("Volume", &mut volume, 0.0..=100.0, 5.0)
+            });
+            ui.keyed("combo", |ui| {
+                ui.combo_box("Theme", &mut selected, &["Dark", "Light"])
+            });
             ui.enabled(false, |ui| {
-                ui.text_input("disabled", "Disabled", &mut String::new());
+                ui.keyed("disabled", |ui| {
+                    ui.text_input("Disabled", &mut String::new())
+                });
             });
         };
         context.run(Size::new(600.0, 800.0), &mut MonospaceMeasurer, &mut view);
@@ -426,11 +432,17 @@ mod tests {
                 height: Length::Px(height),
                 ..Style::default()
             };
-            ui.scroll("strip", sized(100.0, 60.0), |ui| {
-                ui.button_styled("wide", "Wide", true, sized(400.0, 30.0));
+            ui.keyed("strip", |ui| {
+                ui.scroll(sized(100.0, 60.0), |ui| {
+                    ui.keyed("wide", |ui| {
+                        ui.button(Button::new("Wide").enabled(true).style(sized(400.0, 30.0)))
+                    });
+                })
             });
-            ui.scroll("plain", sized(100.0, 60.0), |ui| {
-                ui.button_keyed("fits", "Fits");
+            ui.keyed("plain", |ui| {
+                ui.scroll(sized(100.0, 60.0), |ui| {
+                    ui.keyed("fits", |ui| ui.button("Fits"));
+                })
             });
         });
         let strip = context.find(&["strip"]).unwrap();
@@ -475,17 +487,24 @@ mod tests {
     fn maps_stable_ids_disabled_state_scaled_bounds_and_scroll_actions() {
         let mut context = Context::new();
         context.run(Size::new(200.0, 200.0), &mut MonospaceMeasurer, |ui| {
-            ui.scroll(
-                "list",
-                Style {
-                    height: Length::Px(60.0),
-                    ..Style::default()
-                },
-                |ui| {
-                    ui.button_styled("disabled", "Disabled", false, Style::button());
-                    ui.button_keyed("active", "Active");
-                },
-            );
+            ui.keyed("list", |ui| {
+                ui.scroll(
+                    Style {
+                        height: Length::Px(60.0),
+                        ..Style::default()
+                    },
+                    |ui| {
+                        ui.keyed("disabled", |ui| {
+                            ui.button(
+                                Button::new("Disabled")
+                                    .enabled(false)
+                                    .style(Style::button()),
+                            )
+                        });
+                        ui.keyed("active", |ui| ui.button("Active"));
+                    },
+                )
+            });
         });
         let disabled = context.find(&["list", "disabled"]).unwrap();
         let active = context.find(&["list", "active"]).unwrap();

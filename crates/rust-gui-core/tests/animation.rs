@@ -2,6 +2,7 @@ use rust_gui_core::{
     Animation, Context, DialogOptions, Easing, Effect, Event, Keyframe, Length, MonospaceMeasurer,
     Paint, Repeat, Style, StyleSheet, Transform, Transition, Ui,
 };
+use rust_gui_core::{Button, Label};
 use rust_gui_scene::{Affine, Color, Point, Primitive, Rect, Size};
 use std::time::Duration;
 
@@ -87,13 +88,15 @@ fn transitions_interpolate_state_changes_retarget_from_the_current_value_and_set
     let mut context = Context::new();
     let view = |color: Color| {
         move |ui: &mut Ui<'_>| {
-            ui.label_styled(
-                "box",
-                "x",
-                Style::default()
-                    .background(color)
-                    .transition(Transition::new(100).easing(Easing::Linear)),
-            );
+            ui.keyed("box", |ui| {
+                ui.label(
+                    Label::new("x").style(
+                        Style::default()
+                            .background(color)
+                            .transition(Transition::new(100).easing(Easing::Linear)),
+                    ),
+                )
+            });
         }
     };
     frame_at(&mut context, 0, view(RED));
@@ -126,18 +129,19 @@ fn transitions_interpolate_state_changes_retarget_from_the_current_value_and_set
 fn hover_state_can_animate_opacity_and_transform_through_a_layer() {
     let mut context = Context::new();
     let view = |ui: &mut Ui<'_>| {
-        ui.button_styled(
-            "lift",
-            "Lift",
-            true,
-            Style::button()
-                .transition(Transition::new(100).easing(Easing::Linear))
-                .on_hover(Paint {
-                    opacity: Some(0.5),
-                    transform: Some(Transform::scale(1.2)),
-                    ..Paint::default()
-                }),
-        );
+        ui.keyed("lift", |ui| {
+            ui.button(
+                Button::new("Lift").enabled(true).style(
+                    Style::button()
+                        .transition(Transition::new(100).easing(Easing::Linear))
+                        .on_hover(Paint {
+                            opacity: Some(0.5),
+                            transform: Some(Transform::scale(1.2)),
+                            ..Paint::default()
+                        }),
+                ),
+            )
+        });
     };
     frame_at(&mut context, 0, view);
     let rect = bounds(&context, &["lift"]);
@@ -170,19 +174,21 @@ fn enter_effects_play_once_and_exit_effects_leave_a_fading_ghost() {
         move |ui: &mut Ui<'_>| {
             ui.label("always");
             if shown {
-                ui.label_styled(
-                    "toast",
-                    "Saved",
-                    Style::default()
-                        .enter(Effect {
-                            transition: Transition::new(100).easing(Easing::Linear),
-                            ..Effect::slide(0.0, 20.0, 100)
-                        })
-                        .exit(Effect {
-                            transition: Transition::new(200).easing(Easing::Linear),
-                            ..Effect::fade(200)
-                        }),
-                );
+                ui.keyed("toast", |ui| {
+                    ui.label(
+                        Label::new("Saved").style(
+                            Style::default()
+                                .enter(Effect {
+                                    transition: Transition::new(100).easing(Easing::Linear),
+                                    ..Effect::slide(0.0, 20.0, 100)
+                                })
+                                .exit(Effect {
+                                    transition: Transition::new(200).easing(Easing::Linear),
+                                    ..Effect::fade(200)
+                                }),
+                        ),
+                    )
+                });
             }
         }
     };
@@ -217,13 +223,15 @@ fn layout_transitions_draw_from_the_old_rectangle_toward_the_new_one() {
     let view = |spacer: bool| {
         move |ui: &mut Ui<'_>| {
             if spacer {
-                ui.label_styled("spacer", "", Style::default().height(Length::Px(100.0)));
+                ui.keyed("spacer", |ui| {
+                    ui.label(Label::new("").style(Style::default().height(Length::Px(100.0))))
+                });
             }
-            ui.label_styled(
-                "card",
-                "card",
-                Style::default().layout_transition(Transition::new(100).easing(Easing::Linear)),
-            );
+            ui.keyed("card", |ui| {
+                ui.label(Label::new("card").style(
+                    Style::default().layout_transition(Transition::new(100).easing(Easing::Linear)),
+                ))
+            });
         }
     };
     frame_at(&mut context, 0, view(false));
@@ -248,21 +256,23 @@ fn keyframes_loop_alternate_finish_and_freeze_under_reduced_motion() {
     let mut context = Context::new();
     let view = |repeat: Repeat| {
         move |ui: &mut Ui<'_>| {
-            ui.label_styled(
-                "pulse",
-                "x",
-                Style::default().animation(
-                    Animation::new(
-                        vec![
-                            Keyframe::at(0.0).opacity(1.0),
-                            Keyframe::at(1.0).opacity(0.0),
-                        ],
-                        100,
-                    )
-                    .repeat(repeat)
-                    .alternate(true),
-                ),
-            );
+            ui.keyed("pulse", |ui| {
+                ui.label(
+                    Label::new("x").style(
+                        Style::default().animation(
+                            Animation::new(
+                                vec![
+                                    Keyframe::at(0.0).opacity(1.0),
+                                    Keyframe::at(1.0).opacity(0.0),
+                                ],
+                                100,
+                            )
+                            .repeat(repeat)
+                            .alternate(true),
+                        ),
+                    ),
+                )
+            });
         }
     };
     let opacity = |context: &Context| {
@@ -300,15 +310,17 @@ fn reduced_motion_jumps_transitions_and_skips_enter_and_exit() {
     let view = |shown: bool, color: Color| {
         move |ui: &mut Ui<'_>| {
             if shown {
-                ui.label_styled(
-                    "box",
-                    "x",
-                    Style::default()
-                        .background(color)
-                        .transition(Transition::new(100))
-                        .enter(Effect::fade(100))
-                        .exit(Effect::fade(100)),
-                );
+                ui.keyed("box", |ui| {
+                    ui.label(
+                        Label::new("x").style(
+                            Style::default()
+                                .background(color)
+                                .transition(Transition::new(100))
+                                .enter(Effect::fade(100))
+                                .exit(Effect::fade(100)),
+                        ),
+                    )
+                });
             }
         }
     };

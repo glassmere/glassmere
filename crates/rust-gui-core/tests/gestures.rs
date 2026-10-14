@@ -1,3 +1,4 @@
+use rust_gui_core::{Button, Label};
 use rust_gui_core::{
     Context, Event, GestureResponse, Length, MenuItem, MonospaceMeasurer, Style, TouchPhase, Ui,
 };
@@ -39,25 +40,41 @@ struct Page {
 /// inside a scroll view that could pan.
 fn page(context: &mut Context, page: &mut Page) {
     context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
-        ui.scroll("view", sized(500.0, 400.0), |ui| {
-            ui.label_styled("strip", "", sized(10.0, 40.0));
-            let items = [MenuItem::new("Reset")];
-            let mut canvas = |ui: &mut Ui<'_>| {
-                page.gesture = ui.gesture_area("canvas", sized(400.0, 300.0), |ui| {
-                    if ui
-                        .button_styled("inside", "Inside", true, sized(100.0, 40.0))
-                        .clicked()
-                    {
-                        page.clicks += 1;
-                    }
+        ui.keyed("view", |ui| {
+            ui.scroll(sized(500.0, 400.0), |ui| {
+                ui.keyed("strip", |ui| {
+                    ui.label(Label::new("").style(sized(10.0, 40.0)))
                 });
-            };
-            if page.with_menu {
-                page.menu = ui.context_menu("menu", &items, Style::default(), canvas);
-            } else {
-                canvas(ui);
-            }
-            ui.label_styled("tall", "", sized(10.0, 900.0));
+                let items = [MenuItem::new("Reset")];
+                let mut canvas = |ui: &mut Ui<'_>| {
+                    page.gesture = ui.keyed("canvas", |ui| {
+                        ui.gesture_area(sized(400.0, 300.0), |ui| {
+                            if ui
+                                .keyed("inside", |ui| {
+                                    ui.button(
+                                        Button::new("Inside")
+                                            .enabled(true)
+                                            .style(sized(100.0, 40.0)),
+                                    )
+                                })
+                                .clicked()
+                            {
+                                page.clicks += 1;
+                            }
+                        })
+                    });
+                };
+                if page.with_menu {
+                    page.menu = ui.keyed("menu", |ui| {
+                        ui.context_menu(&items, Style::default(), canvas)
+                    });
+                } else {
+                    canvas(ui);
+                }
+                ui.keyed("tall", |ui| {
+                    ui.label(Label::new("").style(sized(10.0, 900.0)))
+                });
+            })
         });
     });
 }

@@ -71,7 +71,7 @@ impl App {
                 style: Style::default().width(Length::Px(450.0)),
                 ..VirtualListOptions::default()
             };
-            ui.data_grid("grid", model, state, options);
+            ui.keyed("grid", |ui| ui.data_grid(model, state, options));
         });
     }
 

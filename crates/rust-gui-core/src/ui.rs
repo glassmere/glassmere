@@ -5,6 +5,8 @@ use rust_gui_scene::Color;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
+mod builders;
+pub use builders::{Button, ComboBox, Label, TextInput};
 mod collections;
 mod controls;
 mod dock;
@@ -26,6 +28,12 @@ pub use dock::{DockOptions, DockPanel, DockResponse};
 pub(crate) enum WidgetKey {
     Named(String),
     Position(usize),
+}
+
+impl WidgetKey {
+    pub(crate) fn named(key: impl Into<String>) -> Self {
+        Self::Named(key.into())
+    }
 }
 
 /// What a declaration hands to the host besides the tree.
@@ -155,10 +163,17 @@ impl Response {
 }
 
 /// Declarations are rebuilt on input; matching nodes and layout caches persist.
-/// Explicit keys are scoped to the parent. Use them for conditional or reordered children.
+///
+/// A widget is identified by where it is declared: the first button in a row
+/// is the same button next frame. That is enough until children are declared
+/// conditionally or reordered, when [`Ui::keyed`] names one instead. Keys are
+/// scoped to the parent.
 pub struct Ui<'a> {
     pub(crate) context: &'a Context,
     pub(crate) parent: Option<NodeId>,
+    /// The name [`Ui::keyed`] gave the next element declared, taken by the
+    /// first one that asks for a key.
+    pub(crate) pending_key: Option<String>,
     pub(crate) clicks: &'a mut HashSet<NodeId>,
     pub(crate) elements: Vec<Element>,
     pub(crate) keys: HashSet<WidgetKey>,
@@ -265,33 +280,28 @@ impl Ui<'_> {
     /// because a press that lands on a control there is that control's.
     ///
     /// ```ignore
-    /// ui.title_bar("bar", Style::default().padding(6.0), |ui| {
+    /// ui.title_bar(Style::default().padding(6.0), |ui| {
     ///     ui.label("My application");
-    ///     ui.window_buttons("buttons");
+    ///     ui.window_buttons();
     /// });
     /// ```
-    pub fn title_bar(
-        &mut self,
-        key: impl Into<String>,
-        style: Style,
-        content: impl FnOnce(&mut Ui<'_>),
-    ) {
+    pub fn title_bar(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_>)) {
         // A row, so that a title, a menu and the buttons sit side by side
         // the way a title bar's do.
-        self.row(key.into(), style, content);
+        self.row(style, content);
         self.elements.last_mut().unwrap().control = Control::TitleBar;
     }
 
     /// Minimize, maximize or restore, and close, as three buttons. The
     /// middle one says which it is from `Ui::window`.
-    pub fn window_buttons(&mut self, key: impl Into<String>) {
+    pub fn window_buttons(&mut self) {
         let maximized = self.window().maximized;
         let foreground = self.theme().text;
         // A wash of the text colour, which is how a desktop marks a caption
         // button: light over a dark title bar, dark over a light one.
         let wash = |alpha: u8| Color(foreground.0, foreground.1, foreground.2, alpha);
         let (hover, pressed) = (wash(caption::WASH_HOVER), wash(caption::WASH_PRESSED));
-        self.row(key.into(), Style::default(), |ui| {
+        self.row(Style::default(), |ui| {
             for (key, glyph, name, command) in [
                 (
                     "minimize",
@@ -350,7 +360,7 @@ impl Ui<'_> {
                 } else {
                     pressed
                 }));
-                let clicked = ui.button_styled(key, glyph, true, style).clicked();
+                let clicked = ui.button_at(key, glyph, true, style).clicked();
                 // The glyph is what is drawn; the name is what is announced.
                 let label = ui.tr(name);
                 ui.tooltip(label);
@@ -374,7 +384,7 @@ impl Ui<'_> {
     /// The grips are placed from the size the window had last frame, so a
     /// resize moves them a frame later, which nothing can see while the
     /// platform is drawing the drag.
-    pub fn resize_frame(&mut self, key: impl Into<String>, thickness: f32) {
+    pub fn resize_frame(&mut self, thickness: f32) {
         let size = self.window_size();
         let side = thickness.max(1.0);
         if size.width <= side * 2.0 || size.height <= side * 2.0 {
@@ -388,7 +398,8 @@ impl Ui<'_> {
             height: crate::Length::Px(size.height),
             ..Style::default()
         };
-        self.group(key.into(), Kind::Container, frame, |ui| {
+        let key = self.next_key();
+        self.group(key, Kind::Container, frame, |ui| {
             for edge in crate::ResizeEdge::ALL {
                 use crate::ResizeEdge::{
                     East, North, NorthEast, NorthWest, South, SouthEast, SouthWest, West,
@@ -404,7 +415,7 @@ impl Ui<'_> {
                     SouthEast => (size.width - side, size.height - side, side, side),
                 };
                 ui.group(
-                    edge.name().to_owned(),
+                    WidgetKey::named(edge.name()),
                     Kind::Container,
                     Style {
                         offset: Some((x, y)),
@@ -427,13 +438,13 @@ impl Ui<'_> {
     /// Two levels are shown. A submenu inside a submenu is drawn as a
     /// heading with its items under it, because the framework's own menus
     /// do not nest.
-    pub fn menu_bar(&mut self, key: impl Into<String>, menu: &crate::Menu) {
+    pub fn menu_bar(&mut self, menu: &crate::Menu) {
         let style = Style {
             gap: 4.0,
             ..Style::default()
         };
         let mut chosen = None;
-        self.row(key.into(), style, |ui| {
+        self.row(style, |ui| {
             for (index, entry) in menu.entries.iter().enumerate() {
                 let crate::MenuEntry::Submenu { label, entries } = entry else {
                     continue;
@@ -460,7 +471,7 @@ impl Ui<'_> {
                     })
                     .collect();
                 if let Some(picked) = ui.menu_styled(
-                    format!("menu{index}"),
+                    WidgetKey::named(format!("menu{index}")),
                     label.clone(),
                     &items,
                     Style {
@@ -560,20 +571,15 @@ impl Ui<'_> {
     /// only today); how that ended is returned here, once.
     pub fn drag_source(
         &mut self,
-        key: impl Into<String>,
         label: impl Into<String>,
         payload: crate::DragPayload,
         style: Style,
         content: impl FnOnce(&mut Ui<'_>),
     ) -> Option<crate::DragOutcome> {
-        let key = key.into();
+        let key = self.next_key();
         let update = self
             .context
-            .child(
-                self.parent,
-                &WidgetKey::Named(key.clone()),
-                Kind::DragSource,
-            )
+            .child(self.parent, &key, Kind::DragSource)
             .and_then(|id| self.updates.remove(&id));
         self.group(key, Kind::DragSource, style, content);
         self.elements.last_mut().unwrap().control = Control::DragSource {
@@ -593,16 +599,11 @@ impl Ui<'_> {
     /// A pinch on a trackpad and Ctrl with the wheel arrive as `scale`.
     pub fn gesture_area(
         &mut self,
-        key: impl Into<String>,
         style: Style,
         content: impl FnOnce(&mut Ui<'_>),
     ) -> crate::GestureResponse {
-        let key = key.into();
-        let id = self.context.child(
-            self.parent,
-            &WidgetKey::Named(key.clone()),
-            Kind::GestureArea,
-        );
+        let key = self.next_key();
+        let id = self.context.child(self.parent, &key, Kind::GestureArea);
         let mut response = match id.and_then(|id| self.updates.remove(&id)) {
             Some(ControlUpdate::Gesture(gesture)) if self.enabled => gesture,
             _ => crate::GestureResponse::default(),
@@ -616,20 +617,15 @@ impl Ui<'_> {
 
     pub fn drop_target(
         &mut self,
-        key: impl Into<String>,
         label: impl Into<String>,
         accepts: crate::DropKind,
         style: Style,
         content: impl FnOnce(&mut Ui<'_>),
     ) -> Option<crate::DragPayload> {
-        let key = key.into();
+        let key = self.next_key();
         let update = self
             .context
-            .child(
-                self.parent,
-                &WidgetKey::Named(key.clone()),
-                Kind::DropTarget,
-            )
+            .child(self.parent, &key, Kind::DropTarget)
             .and_then(|id| self.updates.remove(&id));
         let payload = match update {
             Some(ControlUpdate::Drop(payload)) if self.enabled && payload.kind() == accepts => {
@@ -646,9 +642,13 @@ impl Ui<'_> {
     }
     /// One command declaration per window. Its shortcut and button share the
     /// same enabled check and one-shot clicked response.
-    pub fn command_button(&mut self, key: impl Into<String>, command: &crate::Command) -> Response {
+    pub fn command_button(&mut self, command: &crate::Command) -> Response {
         let command = self.command(command);
-        let response = self.button_styled(key, &command.label, command.enabled, Style::button());
+        let response = self.button(
+            Button::new(&command.label)
+                .enabled(command.enabled)
+                .style(Style::button()),
+        );
         self.elements.last_mut().unwrap().control = Control::Command {
             id: command.id,
             shortcut: command.shortcut,
@@ -734,66 +734,86 @@ impl Ui<'_> {
         })
     }
 
-    pub fn label(&mut self, text: impl Into<String>) {
-        self.leaf(
-            WidgetKey::Position(self.elements.len()),
-            Kind::Label,
-            text.into(),
-            Style::default(),
-            true,
-        );
+    /// What the next element is identified by: the name [`Ui::keyed`] gave
+    /// it, or failing that where it is being declared.
+    pub(crate) fn next_key(&mut self) -> WidgetKey {
+        match self.pending_key.take() {
+            Some(key) => WidgetKey::Named(key),
+            None => WidgetKey::Position(self.elements.len()),
+        }
     }
 
-    pub fn label_keyed(&mut self, key: impl Into<String>, text: impl Into<String>) {
-        self.label_styled(key, text, Style::default());
-    }
-
-    pub fn label_styled(&mut self, key: impl Into<String>, text: impl Into<String>, style: Style) {
-        self.leaf(
-            WidgetKey::Named(key.into()),
-            Kind::Label,
-            text.into(),
-            style,
-            true,
-        );
-    }
-
-    pub fn button(&mut self, text: impl Into<String>) -> Response {
-        self.leaf(
-            WidgetKey::Position(self.elements.len()),
-            Kind::Button,
-            text.into(),
-            Style::button(),
-            true,
-        )
-    }
-
-    pub fn button_keyed(&mut self, key: impl Into<String>, text: impl Into<String>) -> Response {
-        self.button_styled(key, text, true, Style::button())
-    }
-
-    pub fn button_styled(
+    /// Names the next widget declared inside, so the framework can follow it
+    /// when its siblings change.
+    ///
+    /// A widget is normally identified by where it is declared, which is what
+    /// a view with a fixed shape wants. Declare children conditionally or in
+    /// an order that moves, though, and position stops meaning the same thing
+    /// from one frame to the next: focus, scroll offset, selection and undo
+    /// history follow the identity, so they end up on the wrong row. A key
+    /// taken from the data fixes that.
+    ///
+    /// ```ignore
+    /// for pane in &panes {
+    ///     ui.keyed(pane.id.to_string(), |ui| {
+    ///         ui.column(Style::default(), |ui| ui.label(&pane.title));
+    ///     });
+    /// }
+    /// ```
+    ///
+    /// The name is scoped to the parent, and two siblings may not share one.
+    pub fn keyed<R>(
         &mut self,
         key: impl Into<String>,
-        text: impl Into<String>,
-        enabled: bool,
-        style: Style,
-    ) -> Response {
+        content: impl FnOnce(&mut Ui<'_>) -> R,
+    ) -> R {
+        let outer = self.pending_key.replace(key.into());
+        let result = content(self);
+        self.pending_key = outer;
+        result
+    }
+
+    /// A piece of text. `ui.label("Ready")` is the whole of it, and
+    /// [`Label::new`] carries a style when one is wanted.
+    pub fn label(&mut self, label: impl Into<Label>) {
+        let label = label.into();
+        let key = self.next_key();
         self.leaf(
-            WidgetKey::Named(key.into()),
+            key,
+            Kind::Label,
+            label.text,
+            label.style.unwrap_or_default(),
+            true,
+        );
+    }
+
+    /// A button, which reports what happened to it through [`Response`].
+    /// `ui.button("Save")` is the whole of it, and [`Button::new`] carries a
+    /// style or a disabled state.
+    pub fn button(&mut self, button: impl Into<Button>) -> Response {
+        let button = button.into();
+        let key = self.next_key();
+        self.leaf(
+            key,
             Kind::Button,
-            text.into(),
-            style,
-            enabled,
+            button.text,
+            button.style.unwrap_or_else(Style::button),
+            button.enabled,
         )
     }
 
-    fn group(&mut self, key: String, kind: Kind, style: Style, content: impl FnOnce(&mut Ui<'_>)) {
-        let key = WidgetKey::Named(key);
+    fn group(
+        &mut self,
+        key: WidgetKey,
+        kind: Kind,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_>),
+    ) {
         let parent = self.context.child(self.parent, &key, kind);
         let mut child = Ui {
             context: self.context,
             parent,
+            pending_key: None,
             clicks: self.clicks,
             elements: self.context.take_spare(),
             keys: HashSet::new(),
@@ -835,19 +855,16 @@ impl Ui<'_> {
     /// Returns whether the content ran.
     pub fn memo<S: std::hash::Hash>(
         &mut self,
-        key: impl Into<String>,
         state: &S,
         style: Style,
         content: impl FnOnce(&mut Ui<'_>),
     ) -> bool {
         use std::hash::Hasher;
-        let key = key.into();
+        let key = self.next_key();
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         state.hash(&mut hasher);
         let hash = hasher.finish();
-        let existing = self
-            .context
-            .child(self.parent, &WidgetKey::Named(key.clone()), Kind::Memo);
+        let existing = self.context.child(self.parent, &key, Kind::Memo);
         // Input waiting inside the subtree has to reach the widget that owns
         // it, so the frame that carries it is never skipped.
         let declare = existing.is_none_or(|id| {
@@ -871,16 +888,11 @@ impl Ui<'_> {
     /// the frame the container appears, because nothing has been laid out
     /// yet. A view that changes its structure at a threshold therefore
     /// settles on the second frame. The width is returned as well.
-    pub fn responsive(
-        &mut self,
-        key: impl Into<String>,
-        style: Style,
-        content: impl FnOnce(&mut Ui<'_>, f32),
-    ) -> f32 {
-        let key = key.into();
+    pub fn responsive(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_>, f32)) -> f32 {
+        let key = self.next_key();
         let inside = self
             .context
-            .child(self.parent, &WidgetKey::Named(key.clone()), Kind::Container)
+            .child(self.parent, &key, Kind::Container)
             .and_then(|id| self.context.node(id))
             .map_or(0.0, |node| {
                 (node.bounds.width - 2.0 * style.padding.max(0.0)).max(0.0)
@@ -899,15 +911,14 @@ impl Ui<'_> {
     /// coming up, and a consumed event stops there.
     pub fn event_area(
         &mut self,
-        key: impl Into<String>,
         area: crate::EventArea,
         style: Style,
         content: impl FnOnce(&mut Ui<'_>),
     ) -> Vec<crate::UiEvent> {
-        let key = key.into();
+        let key = self.next_key();
         let arrived = self
             .context
-            .child(self.parent, &WidgetKey::Named(key.clone()), Kind::EventArea)
+            .child(self.parent, &key, Kind::EventArea)
             .map(|id| self.context.take_area_events(id))
             .unwrap_or_default();
         self.group(key, Kind::EventArea, style, content);
@@ -930,30 +941,25 @@ impl Ui<'_> {
         }
     }
 
-    pub fn column(
-        &mut self,
-        key: impl Into<String>,
-        style: Style,
-        content: impl FnOnce(&mut Ui<'_>),
-    ) {
-        self.group(key.into(), Kind::Column, style, content);
+    /// Children one under the other.
+    pub fn column(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_>)) {
+        let key = self.next_key();
+        self.group(key, Kind::Column, style, content);
     }
 
-    pub fn row(&mut self, key: impl Into<String>, style: Style, content: impl FnOnce(&mut Ui<'_>)) {
-        self.group(key.into(), Kind::Row, style, content);
+    /// Children side by side.
+    pub fn row(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_>)) {
+        let key = self.next_key();
+        self.group(key, Kind::Row, style, content);
     }
 
     /// Children fill `style.columns` cells in row-major order, wrapping into
     /// implicit rows sized by `auto_rows`; a child's `area` places it explicitly.
     /// Items without a width stretch to their cell. Percentage widths resolve
     /// against the grid container, not the cell, so prefer `Length::Auto` to fill.
-    pub fn grid(
-        &mut self,
-        key: impl Into<String>,
-        style: Style,
-        content: impl FnOnce(&mut Ui<'_>),
-    ) {
-        self.group(key.into(), Kind::Grid, style, content);
+    pub fn grid(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_>)) {
+        let key = self.next_key();
+        self.group(key, Kind::Grid, style, content);
     }
 
     /// A vertical group whose children form a focus region: Tab cycles inside
@@ -962,12 +968,12 @@ impl Ui<'_> {
     /// the last focused child. `scope.arrows` adds geometric arrow-key navigation.
     pub fn focus_scope(
         &mut self,
-        key: impl Into<String>,
         scope: crate::FocusScope,
         style: Style,
         content: impl FnOnce(&mut Ui<'_>),
     ) {
-        self.group(key.into(), Kind::FocusScope, style, content);
+        let key = self.next_key();
+        self.group(key, Kind::FocusScope, style, content);
         self.elements.last_mut().unwrap().control = Control::FocusScope { scope };
     }
 
@@ -1013,6 +1019,7 @@ impl Ui<'_> {
         let mut child = Ui {
             context: self.context,
             parent: layer,
+            pending_key: None,
             clicks: self.clicks,
             elements: self.context.take_spare(),
             keys: HashSet::new(),
@@ -1029,9 +1036,9 @@ impl Ui<'_> {
             enabled: self.enabled,
         };
         let title = options.title.clone();
-        child.group("$panel".into(), Kind::Container, panel, |ui| {
+        child.group(WidgetKey::named("$panel"), Kind::Container, panel, |ui| {
             if !title.is_empty() {
-                ui.label_styled(
+                ui.label_at(
                     "$title",
                     title.clone(),
                     Style {
@@ -1072,33 +1079,21 @@ impl Ui<'_> {
     }
 
     /// A vertical group with its own background, padding, and rectangular clip.
-    pub fn container(
-        &mut self,
-        key: impl Into<String>,
-        style: Style,
-        content: impl FnOnce(&mut Ui<'_>),
-    ) {
-        self.group(key.into(), Kind::Container, style, content);
+    pub fn container(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_>)) {
+        let key = self.next_key();
+        self.group(key, Kind::Container, style, content);
     }
 
     /// A vertical scroll viewport. Give it a constrained height. Positive wheel
     /// deltas move toward the end; offsets survive keyed reconciliation.
-    pub fn scroll(
-        &mut self,
-        key: impl Into<String>,
-        style: Style,
-        content: impl FnOnce(&mut Ui<'_>),
-    ) {
-        self.group(key.into(), Kind::Scroll, style, content);
+    pub fn scroll(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_>)) {
+        let key = self.next_key();
+        self.group(key, Kind::Scroll, style, content);
     }
 
-    pub fn component(
-        &mut self,
-        key: impl Into<String>,
-        style: Style,
-        component: &mut impl Component,
-    ) {
-        self.group(key.into(), Kind::Container, style, |ui| component.ui(ui));
+    pub fn component(&mut self, style: Style, component: &mut impl Component) {
+        let key = self.next_key();
+        self.group(key, Kind::Container, style, |ui| component.ui(ui));
     }
 
     /// A widget of the application's own, with the input, state, style and
@@ -1113,11 +1108,10 @@ impl Ui<'_> {
     /// so padding, size and background work as they do on a container.
     pub fn widget(
         &mut self,
-        key: impl Into<String>,
         style: Style,
         build: impl FnOnce(&crate::WidgetInput) -> CustomWidget,
     ) -> Response {
-        let key = WidgetKey::Named(key.into());
+        let key = self.next_key();
         let mut input = crate::WidgetInput {
             enabled: self.enabled,
             ..crate::WidgetInput::default()
@@ -1153,15 +1147,11 @@ impl Ui<'_> {
         })
     }
 
-    pub fn custom(
-        &mut self,
-        key: impl Into<String>,
-        style: Style,
-        widget: CustomWidget,
-    ) -> Response {
+    pub fn custom(&mut self, style: Style, widget: CustomWidget) -> Response {
         widget.validate();
+        let key = self.next_key();
         self.push(Element {
-            key: WidgetKey::Named(key.into()),
+            key,
             kind: Kind::Custom,
             text: String::new(),
             style,
@@ -1173,7 +1163,123 @@ impl Ui<'_> {
         })
     }
 
-    /// Disables an entire declaration scope without changing widget identities.
+    // Disables an entire declaration scope without changing widget identities.
+    // The framework's own composite widgets name the parts they are made of:
+    // a number field's `$field` and its two steppers, a popup's `$popup`. That
+    // structure is fixed and internal, so it does not go through `Ui::keyed`.
+    // Each of these is the public method with a name given to it.
+
+    /// Names the next element declared, and hands the `Ui` back to declare it.
+    pub(crate) fn at(&mut self, key: impl Into<String>) -> &mut Self {
+        self.pending_key = Some(key.into());
+        self
+    }
+
+    pub(crate) fn label_keyed_at(&mut self, key: impl Into<String>, text: impl Into<String>) {
+        self.at(key).label(text.into());
+    }
+
+    pub(crate) fn label_at(
+        &mut self,
+        key: impl Into<String>,
+        text: impl Into<String>,
+        style: Style,
+    ) {
+        self.at(key).label(Label::new(text).style(style));
+    }
+
+    pub(crate) fn button_at(
+        &mut self,
+        key: impl Into<String>,
+        text: impl Into<String>,
+        enabled: bool,
+        style: Style,
+    ) -> Response {
+        self.at(key)
+            .button(Button::new(text).enabled(enabled).style(style))
+    }
+
+    pub(crate) fn text_input_at(
+        &mut self,
+        key: impl Into<String>,
+        label: impl Into<String>,
+        value: &mut String,
+        placeholder: &str,
+        style: Style,
+    ) -> Response {
+        self.at(key).text_input(
+            TextInput::new(label).placeholder(placeholder).style(style),
+            value,
+        )
+    }
+
+    pub(crate) fn combo_box_at(
+        &mut self,
+        key: impl Into<String>,
+        label: impl Into<String>,
+        selected: &mut usize,
+        items: &[&str],
+        style: Style,
+    ) -> Response {
+        self.at(key)
+            .combo_box(ComboBox::new(label).style(style), selected, items)
+    }
+
+    pub(crate) fn checkbox_at(
+        &mut self,
+        key: impl Into<String>,
+        label: impl Into<String>,
+        checked: &mut bool,
+    ) -> Response {
+        self.at(key).checkbox(label, checked)
+    }
+
+    pub(crate) fn column_at(
+        &mut self,
+        key: impl Into<String>,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_>),
+    ) {
+        self.at(key).column(style, content);
+    }
+
+    pub(crate) fn row_at(
+        &mut self,
+        key: impl Into<String>,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_>),
+    ) {
+        self.at(key).row(style, content);
+    }
+
+    pub(crate) fn container_at(
+        &mut self,
+        key: impl Into<String>,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_>),
+    ) {
+        self.at(key).container(style, content);
+    }
+
+    pub(crate) fn scroll_at(
+        &mut self,
+        key: impl Into<String>,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_>),
+    ) {
+        self.at(key).scroll(style, content);
+    }
+
+    pub(crate) fn focus_scope_at(
+        &mut self,
+        key: impl Into<String>,
+        scope: crate::FocusScope,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_>),
+    ) {
+        self.at(key).focus_scope(scope, style, content);
+    }
+
     pub fn enabled(&mut self, enabled: bool, content: impl FnOnce(&mut Ui<'_>)) {
         let previous = self.enabled;
         self.enabled &= enabled;

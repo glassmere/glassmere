@@ -1,3 +1,4 @@
+use rust_gui_core::Label;
 use rust_gui_core::{
     Align, Axis, Context, Direction, Event, Key, Length, MonospaceMeasurer, Role, SplitOptions,
     Style, StyleSheet, Tab, TextWrap, Track, Ui,
@@ -33,40 +34,48 @@ fn boxed(width: f32) -> Style {
 }
 
 fn layout(ui: &mut Ui<'_>) {
-    ui.row(
-        "row",
-        Style::default().width(Length::Percent(1.0)).gap(10.0),
-        |ui| {
-            ui.label_styled("a", "a", boxed(100.0));
-            ui.label_styled("b", "b", boxed(50.0));
-        },
-    );
-    ui.column(
-        "column",
-        Style::default()
-            .width(Length::Percent(1.0))
-            .align_items(Align::Start),
-        |ui| ui.label_styled("start", "s", boxed(80.0)),
-    );
-    ui.grid(
-        "grid",
-        Style::default()
-            .width(Length::Percent(1.0))
-            .columns(vec![Track::Px(100.0), Track::Px(200.0)])
-            .gap(0.0),
-        |ui| {
-            ui.label_styled("one", "1", Style::default().height(Length::Px(20.0)));
-            ui.label_styled("two", "2", Style::default().height(Length::Px(20.0)));
-        },
-    );
+    ui.keyed("row", |ui| {
+        ui.row(
+            Style::default().width(Length::Percent(1.0)).gap(10.0),
+            |ui| {
+                ui.keyed("a", |ui| ui.label(Label::new("a").style(boxed(100.0))));
+                ui.keyed("b", |ui| ui.label(Label::new("b").style(boxed(50.0))));
+            },
+        )
+    });
+    ui.keyed("column", |ui| {
+        ui.column(
+            Style::default()
+                .width(Length::Percent(1.0))
+                .align_items(Align::Start),
+            |ui| ui.keyed("start", |ui| ui.label(Label::new("s").style(boxed(80.0)))),
+        )
+    });
+    ui.keyed("grid", |ui| {
+        ui.grid(
+            Style::default()
+                .width(Length::Percent(1.0))
+                .columns(vec![Track::Px(100.0), Track::Px(200.0)])
+                .gap(0.0),
+            |ui| {
+                ui.keyed("one", |ui| {
+                    ui.label(Label::new("1").style(Style::default().height(Length::Px(20.0))))
+                });
+                ui.keyed("two", |ui| {
+                    ui.label(Label::new("2").style(Style::default().height(Length::Px(20.0))))
+                });
+            },
+        )
+    });
     // A subtree keeps its own direction.
-    ui.row(
-        "ltr",
-        Style::default()
-            .width(Length::Percent(1.0))
-            .direction(Direction::Ltr),
-        |ui| ui.label_styled("first", "f", boxed(60.0)),
-    );
+    ui.keyed("ltr", |ui| {
+        ui.row(
+            Style::default()
+                .width(Length::Percent(1.0))
+                .direction(Direction::Ltr),
+            |ui| ui.keyed("first", |ui| ui.label(Label::new("f").style(boxed(60.0)))),
+        )
+    });
 }
 
 #[test]
@@ -104,14 +113,18 @@ fn text_aligns_to_the_right_in_stretched_and_wrapped_leaves() {
     let mut context = Context::new();
     context.set_direction(Direction::Rtl);
     let view = |ui: &mut Ui<'_>| {
-        ui.label_styled("single", "abc", Style::default().width(Length::Px(300.0)));
-        ui.label_styled(
-            "wrapped",
-            "several words that wrap",
-            Style::default()
-                .width(Length::Px(100.0))
-                .wrap(TextWrap::Word),
-        );
+        ui.keyed("single", |ui| {
+            ui.label(Label::new("abc").style(Style::default().width(Length::Px(300.0))))
+        });
+        ui.keyed("wrapped", |ui| {
+            ui.label(
+                Label::new("several words that wrap").style(
+                    Style::default()
+                        .width(Length::Px(100.0))
+                        .wrap(TextWrap::Word),
+                ),
+            )
+        });
     };
     frame(&mut context, view);
     let advance = 16.0 * 0.6;
@@ -153,26 +166,31 @@ fn sliders_splits_tabs_and_popups_mirror_their_behaviour() {
                 selected: &mut usize,
                 choice: &mut usize| {
         frame(context, |ui| {
-            ui.slider("volume", "Volume", value, 0.0..=100.0, 1.0);
-            ui.split(
-                "split",
-                fraction,
-                Axis::Horizontal,
-                SplitOptions {
-                    style: Style::default()
-                        .width(Length::Px(400.0))
-                        .height(Length::Px(60.0)),
-                    min_first: 20.0,
-                    min_second: 20.0,
-                    ..SplitOptions::default()
-                },
-                |ui| ui.label("first"),
-                |ui| ui.label("second"),
-            );
-            ui.tabs("tabs", selected, &tabs, |ui, index| {
-                ui.label(format!("panel {index}"));
+            ui.keyed("volume", |ui| ui.slider("Volume", value, 0.0..=100.0, 1.0));
+            ui.keyed("split", |ui| {
+                ui.split(
+                    fraction,
+                    Axis::Horizontal,
+                    SplitOptions {
+                        style: Style::default()
+                            .width(Length::Px(400.0))
+                            .height(Length::Px(60.0)),
+                        min_first: 20.0,
+                        min_second: 20.0,
+                        ..SplitOptions::default()
+                    },
+                    |ui| ui.label("first"),
+                    |ui| ui.label("second"),
+                )
             });
-            ui.combo_box("combo", "Size", choice, &["Small", "Large"]);
+            ui.keyed("tabs", |ui| {
+                ui.tabs(selected, &tabs, |ui, index| {
+                    ui.label(format!("panel {index}"));
+                })
+            });
+            ui.keyed("combo", |ui| {
+                ui.combo_box("Size", choice, &["Small", "Large"])
+            });
         });
     };
     view(
@@ -314,19 +332,20 @@ fn text_fields_align_right_and_the_code_editor_stays_left_to_right() {
     let view =
         |context: &mut Context, name: &mut String, document: &mut rust_gui_core::TextDocument| {
             frame(context, |ui| {
-                ui.text_input("name", "Name", name);
-                ui.code_editor(
-                    "code",
-                    document,
-                    rust_gui_core::CodeEditorOptions {
-                        line_numbers: false,
-                        style: Style::default()
-                            .width(Length::Px(300.0))
-                            .height(Length::Px(100.0))
-                            .padding(8.0),
-                        ..rust_gui_core::CodeEditorOptions::default()
-                    },
-                );
+                ui.keyed("name", |ui| ui.text_input("Name", name));
+                ui.keyed("code", |ui| {
+                    ui.code_editor(
+                        document,
+                        rust_gui_core::CodeEditorOptions {
+                            line_numbers: false,
+                            style: Style::default()
+                                .width(Length::Px(300.0))
+                                .height(Length::Px(100.0))
+                                .padding(8.0),
+                            ..rust_gui_core::CodeEditorOptions::default()
+                        },
+                    )
+                });
             });
         };
     view(&mut context, &mut name, &mut document);

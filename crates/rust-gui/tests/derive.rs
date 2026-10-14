@@ -19,7 +19,7 @@ enum Anchor {
 
 fn edit_anchor(ui: &mut Ui<'_>, label: &str, anchor: &mut Anchor) -> bool {
     let clicked = ui
-        .button_keyed("$value", format!("{label}: {anchor:?}"))
+        .keyed("$value", |ui| ui.button(format!("{label}: {anchor:?}")))
         .clicked();
     if clicked {
         *anchor = match anchor {
@@ -72,10 +72,11 @@ impl App {
         let mut response = PropertyGridResponse::default();
         self.context
             .run(Size::new(640.0, 1000.0), &mut MonospaceMeasurer, |ui| {
-                response =
-                    ui.property_grid("grid", state, PropertyGridOptions::new("Card"), |grid| {
+                response = ui.keyed("grid", |ui| {
+                    ui.property_grid(state, PropertyGridOptions::new("Card"), |grid| {
                         card.properties(grid);
-                    });
+                    })
+                });
             });
         response
     }

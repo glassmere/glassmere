@@ -2,7 +2,7 @@
 //! framework beyond its published API. Drag one, turn the wheel over one, or
 //! tab to one and use the arrow keys.
 use dial_widget::Dial;
-use rust_gui::{AppOptions, Color, Length, Size, Style, TextWrap, run};
+use rust_gui::{AppOptions, Color, Label, Length, Size, Style, TextWrap, run};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
@@ -26,53 +26,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 width: Length::Percent(1.0),
                 ..Style::default()
             };
-            ui.column("page", page, |ui| {
-                ui.label_styled(
-                    "title",
-                    "A widget from another crate",
-                    Style {
+            ui.keyed("page", |ui| ui.column(page, |ui| {
+                ui.keyed("title", |ui| ui.label(Label::new("A widget from another crate").style(Style {
                         font_size: Some(26.0),
                         font_weight: Some(700),
                         ..Style::default()
-                    },
-                );
-                ui.label_styled(
-                    "intro",
-                    "Drag a dial, roll the wheel over it, or tab to it and use the arrow keys. \
-                     Shift makes the keys finer.",
-                    Style {
+                    })));
+                ui.keyed("intro", |ui| ui.label(Label::new("Drag a dial, roll the wheel over it, or tab to it and use the arrow keys. \
+                     Shift makes the keys finer.").style(Style {
                         width: Length::Percent(1.0),
                         wrap: TextWrap::Word,
                         ..Style::default()
-                    },
-                );
-                ui.checkbox("enabled", "Enabled", &mut enabled);
+                    })));
+                ui.keyed("enabled", |ui| ui.checkbox("Enabled", &mut enabled));
                 ui.enabled(enabled, |ui| {
-                    ui.row("dials", Style::default().gap(28.0), |ui| {
+                    ui.keyed("dials", |ui| ui.row(Style::default().gap(28.0), |ui| {
                         for (index, (dial, label)) in
                             dials.iter_mut().zip(["Gain", "Tone", "Mix"]).enumerate()
                         {
-                            ui.column(format!("column{index}"), Style::default().gap(8.0), |ui| {
+                            ui.keyed(format!("column{index}"), |ui| ui.column(Style::default().gap(8.0), |ui| {
                                 if dial.ui(ui, "dial", label, 120.0) {
                                     turns += 1;
                                 }
-                                ui.label_keyed(
-                                    "reading",
-                                    format!("{label}: {:.0}%", dial.value() * 100.0),
-                                );
-                            });
+                                ui.keyed("reading", |ui| ui.label(format!("{label}: {:.0}%", dial.value() * 100.0)));
+                            }));
                         }
-                    });
+                    }));
                 });
-                ui.label_styled(
-                    "turns",
-                    format!("{turns} turns"),
-                    Style {
+                ui.keyed("turns", |ui| ui.label(Label::new(format!("{turns} turns")).style(Style {
                         foreground: Some(Color::rgb(103, 232, 206)),
                         ..Style::default()
-                    },
-                );
-            });
+                    })));
+            }));
         },
     )
 }

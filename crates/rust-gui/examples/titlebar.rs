@@ -5,7 +5,8 @@
 //! Press the strip to move the window, press it twice to maximize it, and
 //! pull any edge or corner to resize.
 use rust_gui::{
-    AppOptions, Color, Command, Length, Menu, MenuEntry, Shortcut, Size, Style, TextWrap, run,
+    AppOptions, Color, Command, Label, Length, Menu, MenuEntry, Shortcut, Size, Style, TextWrap,
+    run,
 };
 
 fn menu() -> Menu {
@@ -43,7 +44,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let theme = ui.theme().clone();
             let maximized = ui.window().maximized;
             ui.title_bar(
-                "bar",
                 Style {
                     width: Length::Percent(1.0),
                     padding: 6.0,
@@ -52,19 +52,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ..Style::default()
                 },
                 |ui| {
-                    ui.label_styled(
-                        "name",
-                        "Title bar",
-                        Style {
-                            font_weight: Some(700),
-                            padding: 6.0,
-                            ..Style::default()
-                        },
-                    );
-                    ui.menu_bar("menu", &menu());
+                    ui.label(Label::new("Title bar").style(Style {
+                        font_weight: Some(700),
+                        padding: 6.0,
+                        ..Style::default()
+                    }));
+                    ui.menu_bar(&menu());
                     // Everything after this sits at the far end.
-                    ui.container("gap", Style::default().grow(1.0), |_| {});
-                    ui.window_buttons("buttons");
+                    ui.container(Style::default().grow(1.0), |_| {});
+                    ui.window_buttons();
                 },
             );
             let page = Style {
@@ -73,48 +69,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 width: Length::Percent(1.0),
                 ..Style::default()
             };
-            ui.column("page", page, |ui| {
-                ui.label_styled(
-                    "title",
-                    "A window of your own",
-                    Style {
-                        font_size: Some(26.0),
-                        font_weight: Some(700),
-                        ..Style::default()
-                    },
-                );
-                ui.label_styled(
-                    "intro",
-                    "The strip above moves this window, and moves it twice to maximize it. The \
+            ui.column(page, |ui| {
+                ui.label(Label::new("A window of your own").style(Style {
+                    font_size: Some(26.0),
+                    font_weight: Some(700),
+                    ..Style::default()
+                }));
+                ui.label(
+                    Label::new(
+                        "The strip above moves this window, and moves it twice to maximize it. The \
                      six pixels along each edge resize it. Nothing here is the system's.",
-                    Style {
+                    )
+                    .style(Style {
                         width: Length::Percent(1.0),
                         wrap: TextWrap::Word,
                         ..Style::default()
-                    },
+                    }),
                 );
                 if ui
-                    .command_button(
+                    .command_button(&Command::with_id(
                         "new",
-                        &Command::with_id("new", "New window", Some(Shortcut::primary('n'))),
-                    )
+                        "New window",
+                        Some(Shortcut::primary('n')),
+                    ))
                     .clicked()
                 {
                     news += 1;
                 }
-                ui.label_styled(
-                    "state",
-                    format!(
+                ui.label(
+                    Label::new(format!(
                         "{} · {news} asked for",
                         if maximized { "Maximized" } else { "Restored" }
-                    ),
-                    Style {
+                    ))
+                    .style(Style {
                         foreground: Some(Color::rgb(103, 232, 206)),
                         ..Style::default()
-                    },
+                    }),
                 );
                 if ui
-                    .command_button("quit", &Command::with_id("quit", "Quit", None))
+                    .command_button(&Command::with_id("quit", "Quit", None))
                     .clicked()
                     && !smoke
                 {
@@ -122,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             });
             // Last, so the edges lie over everything else.
-            ui.resize_frame("edges", 6.0);
+            ui.resize_frame(6.0);
         },
     )
 }

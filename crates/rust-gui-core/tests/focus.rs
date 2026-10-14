@@ -52,26 +52,31 @@ fn click(context: &mut Context, point: Point) {
 fn trapping_scopes_cycle_tab_and_remembered_scopes_reenter_on_their_last_child() {
     let mut context = Context::new();
     let view = |ui: &mut Ui<'_>| {
-        ui.column("page", Style::default(), |ui| {
-            ui.button_keyed("before", "Before");
-            ui.focus_scope("group", FocusScope::default(), Style::default(), |ui| {
-                ui.button_keyed("g1", "One");
-                ui.button_keyed("g2", "Two");
-                ui.button_keyed("g3", "Three");
-            });
-            ui.button_keyed("after", "After");
-            ui.focus_scope(
-                "trap",
-                FocusScope {
-                    trap: true,
-                    ..FocusScope::default()
-                },
-                Style::default(),
-                |ui| {
-                    ui.button_keyed("t1", "T1");
-                    ui.button_keyed("t2", "T2");
-                },
-            );
+        ui.keyed("page", |ui| {
+            ui.column(Style::default(), |ui| {
+                ui.keyed("before", |ui| ui.button("Before"));
+                ui.keyed("group", |ui| {
+                    ui.focus_scope(FocusScope::default(), Style::default(), |ui| {
+                        ui.keyed("g1", |ui| ui.button("One"));
+                        ui.keyed("g2", |ui| ui.button("Two"));
+                        ui.keyed("g3", |ui| ui.button("Three"));
+                    })
+                });
+                ui.keyed("after", |ui| ui.button("After"));
+                ui.keyed("trap", |ui| {
+                    ui.focus_scope(
+                        FocusScope {
+                            trap: true,
+                            ..FocusScope::default()
+                        },
+                        Style::default(),
+                        |ui| {
+                            ui.keyed("t1", |ui| ui.button("T1"));
+                            ui.keyed("t2", |ui| ui.button("T2"));
+                        },
+                    )
+                });
+            })
         });
     };
     frame(&mut context, view);
@@ -122,22 +127,25 @@ fn restoring_scopes_return_focus_when_they_disappear() {
     let mut context = Context::new();
     let view = |show: bool| {
         move |ui: &mut Ui<'_>| {
-            ui.column("page", Style::default(), |ui| {
-                ui.button_keyed("opener", "Open");
-                if show {
-                    ui.focus_scope(
-                        "panel",
-                        FocusScope {
-                            restore: true,
-                            ..FocusScope::default()
-                        },
-                        Style::default(),
-                        |ui| {
-                            ui.button_keyed("inside", "Inside");
-                        },
-                    );
-                }
-                ui.button_keyed("other", "Other");
+            ui.keyed("page", |ui| {
+                ui.column(Style::default(), |ui| {
+                    ui.keyed("opener", |ui| ui.button("Open"));
+                    if show {
+                        ui.keyed("panel", |ui| {
+                            ui.focus_scope(
+                                FocusScope {
+                                    restore: true,
+                                    ..FocusScope::default()
+                                },
+                                Style::default(),
+                                |ui| {
+                                    ui.keyed("inside", |ui| ui.button("Inside"));
+                                },
+                            )
+                        });
+                    }
+                    ui.keyed("other", |ui| ui.button("Other"));
+                })
             });
         }
     };
@@ -156,10 +164,12 @@ fn restoring_scopes_return_focus_when_they_disappear() {
     // Without `restore`, a vanished focus is simply cleared.
     let plain = |show: bool| {
         move |ui: &mut Ui<'_>| {
-            ui.button_keyed("opener", "Open");
+            ui.keyed("opener", |ui| ui.button("Open"));
             if show {
-                ui.focus_scope("panel", FocusScope::default(), Style::default(), |ui| {
-                    ui.button_keyed("inside", "Inside");
+                ui.keyed("panel", |ui| {
+                    ui.focus_scope(FocusScope::default(), Style::default(), |ui| {
+                        ui.keyed("inside", |ui| ui.button("Inside"));
+                    })
                 });
             }
         }
@@ -179,19 +189,24 @@ fn dialog_view<'a>(
     modal: bool,
 ) -> impl FnMut(&mut Ui<'_>) + 'a {
     move |ui: &mut Ui<'_>| {
-        ui.column("page", Style::default(), |ui| {
-            ui.button_keyed("behind", "Behind");
-            ui.scroll(
-                "list",
-                Style::default()
-                    .width(Length::Px(200.0))
-                    .height(Length::Px(60.0)),
-                |ui| {
-                    for index in 0..20 {
-                        ui.label_keyed(format!("row-{index}"), format!("Row {index}"));
-                    }
-                },
-            );
+        ui.keyed("page", |ui| {
+            ui.column(Style::default(), |ui| {
+                ui.keyed("behind", |ui| ui.button("Behind"));
+                ui.keyed("list", |ui| {
+                    ui.scroll(
+                        Style::default()
+                            .width(Length::Px(200.0))
+                            .height(Length::Px(60.0)),
+                        |ui| {
+                            for index in 0..20 {
+                                ui.keyed(format!("row-{index}"), |ui| {
+                                    ui.label(format!("Row {index}"))
+                                });
+                            }
+                        },
+                    )
+                });
+            })
         });
         let response = ui.dialog(
             "confirm",
@@ -200,12 +215,14 @@ fn dialog_view<'a>(
                 .dismissible(dismissible)
                 .modal(modal),
             |ui, open| {
-                ui.label_keyed("question", "This cannot be undone.");
-                ui.row("actions", Style::default(), |ui| {
-                    if ui.button_keyed("cancel", "Cancel").clicked() {
-                        *open = false;
-                    }
-                    ui.button_keyed("delete", "Delete");
+                ui.keyed("question", |ui| ui.label("This cannot be undone."));
+                ui.keyed("actions", |ui| {
+                    ui.row(Style::default(), |ui| {
+                        if ui.keyed("cancel", |ui| ui.button("Cancel")).clicked() {
+                            *open = false;
+                        }
+                        ui.keyed("delete", |ui| ui.button("Delete"));
+                    })
                 });
             },
         );
@@ -366,11 +383,11 @@ fn non_modal_dialogs_float_without_blocking_and_dialogs_stack_in_order() {
     let mut inner = true;
     let stacked = |context: &mut Context, outer: &mut bool, inner: &mut bool| {
         context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            ui.button_keyed("behind", "Behind");
+            ui.keyed("behind", |ui| ui.button("Behind"));
             ui.dialog("outer", outer, DialogOptions::new("Outer"), |ui, _| {
-                ui.button_keyed("outer-ok", "OK");
+                ui.keyed("outer-ok", |ui| ui.button("OK"));
                 ui.dialog("inner", inner, DialogOptions::new("Inner"), |ui, _| {
-                    ui.button_keyed("inner-ok", "OK");
+                    ui.keyed("inner-ok", |ui| ui.button("OK"));
                 });
             });
         });
@@ -408,26 +425,33 @@ fn arrow_navigation_moves_between_scope_children_by_geometry_but_leaves_arrow_co
     let mut context = Context::new();
     let mut volume = 50.0;
     let mut view = |ui: &mut Ui<'_>| {
-        ui.focus_scope(
-            "pad",
-            FocusScope {
-                arrows: true,
-                ..FocusScope::default()
-            },
-            Style::default().gap(10.0),
-            |ui| {
-                ui.row("top", Style::default().gap(10.0), |ui| {
-                    ui.button_keyed("nw", "NW");
-                    ui.button_keyed("ne", "NE");
-                });
-                ui.row("bottom", Style::default().gap(10.0), |ui| {
-                    ui.button_keyed("sw", "SW");
-                    ui.button_keyed("se", "SE");
-                });
-                ui.slider("volume", "Volume", &mut volume, 0.0..=100.0, 10.0);
-            },
-        );
-        ui.button_keyed("outside", "Outside");
+        ui.keyed("pad", |ui| {
+            ui.focus_scope(
+                FocusScope {
+                    arrows: true,
+                    ..FocusScope::default()
+                },
+                Style::default().gap(10.0),
+                |ui| {
+                    ui.keyed("top", |ui| {
+                        ui.row(Style::default().gap(10.0), |ui| {
+                            ui.keyed("nw", |ui| ui.button("NW"));
+                            ui.keyed("ne", |ui| ui.button("NE"));
+                        })
+                    });
+                    ui.keyed("bottom", |ui| {
+                        ui.row(Style::default().gap(10.0), |ui| {
+                            ui.keyed("sw", |ui| ui.button("SW"));
+                            ui.keyed("se", |ui| ui.button("SE"));
+                        })
+                    });
+                    ui.keyed("volume", |ui| {
+                        ui.slider("Volume", &mut volume, 0.0..=100.0, 10.0)
+                    });
+                },
+            )
+        });
+        ui.keyed("outside", |ui| ui.button("Outside"));
     };
     frame(&mut context, &mut view);
     context.action(context.find(&["pad", "top", "nw"]).unwrap(), Action::Focus);
@@ -485,8 +509,10 @@ fn a_focus_ring_never_floods_a_node_that_has_no_opaque_background() {
             padding: 40.0,
             ..Style::default()
         };
-        ui.scroll("page", page, |ui| {
-            ui.button_keyed("save", "Save");
+        ui.keyed("page", |ui| {
+            ui.scroll(page, |ui| {
+                ui.keyed("save", |ui| ui.button("Save"));
+            })
         });
     };
     frame(&mut context, view);

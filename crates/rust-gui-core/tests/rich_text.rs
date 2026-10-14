@@ -24,13 +24,14 @@ fn sample() -> RichText {
 fn frame(context: &mut Context, text: &RichText, width: f32) -> Option<String> {
     let mut followed = None;
     context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        followed = ui.rich_text(
-            "text",
-            text,
-            Style::default()
-                .width(Length::Px(width))
-                .wrap(TextWrap::Word),
-        );
+        followed = ui.keyed("text", |ui| {
+            ui.rich_text(
+                text,
+                Style::default()
+                    .width(Length::Px(width))
+                    .wrap(TextWrap::Word),
+            )
+        });
         ui.button("after");
     });
     followed

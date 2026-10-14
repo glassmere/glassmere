@@ -63,15 +63,17 @@ impl Dial {
         );
         let before = self.value;
         let label = label.to_owned();
-        ui.widget(key, Style::default(), |input| {
-            if input.enabled {
-                for event in &input.events {
-                    self.apply(event);
+        ui.keyed(key, |ui| {
+            ui.widget(Style::default(), |input| {
+                if input.enabled {
+                    for event in &input.events {
+                        self.apply(event);
+                    }
+                } else {
+                    self.drag = None;
                 }
-            } else {
-                self.drag = None;
-            }
-            self.paint(input, size, face, ring, mark, dim, focus, label)
+                self.paint(input, size, face, ring, mark, dim, focus, label)
+            })
         });
         self.value != before
     }

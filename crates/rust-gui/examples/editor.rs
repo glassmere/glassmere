@@ -1,7 +1,7 @@
 use rust_gui::syntax::SyntectHighlighter;
 use rust_gui::{
-    AppOptions, CodeEditorOptions, Diagnostic, FindState, Length, RichRun, RichText, Severity,
-    Size, Style, TextDocument, TextWrap, run,
+    AppOptions, CodeEditorOptions, Diagnostic, FindState, Label, Length, RichRun, RichText,
+    Severity, Size, Style, TextDocument, TextInput, TextWrap, run,
 };
 
 const SAMPLE: &str = r#"use std::collections::HashMap;
@@ -81,7 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .height(Length::Percent(1.0))
                 .padding(20.0)
                 .gap(12.0);
-            ui.column("page", page, |ui| {
+            ui.column(page, |ui| {
                 let intro = RichText::new()
                     .text("A ")
                     .bold("rich text")
@@ -99,31 +99,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         ". In the editor: Ctrl+F and Ctrl+H search and replace, F3 steps, Ctrl+D \
                          selects the next occurrence, Alt+click and Ctrl+Alt+Up/Down add cursors.",
                     );
-                if let Some(target) = ui.rich_text(
-                    "intro",
-                    &intro,
-                    Style::default()
+                if let Some(target) = ui.rich_text(&intro, Style::default()
                         .width(Length::Percent(1.0))
-                        .wrap(TextWrap::Word),
-                ) {
+                        .wrap(TextWrap::Word)) {
                     followed = target;
                 }
-                ui.text_input_styled(
-                    "mixed",
-                    "Bidirectional text",
-                    &mut mixed,
-                    "",
-                    Style {
+                ui.text_input(TextInput::new("Bidirectional text").placeholder("").style(Style {
                         width: Length::Px(420.0),
                         height: Length::Px(40.0),
                         padding: 10.0,
                         ..Style::button()
-                    },
-                );
-                let response = ui.code_editor(
-                    "code",
-                    &mut document,
-                    CodeEditorOptions {
+                    }), &mut mixed);
+                let response = ui.code_editor(&mut document, CodeEditorOptions {
                         label: "Rust source".into(),
                         style: Style::default()
                             .width(Length::Percent(1.0))
@@ -137,15 +124,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         find: Some(&mut find),
                         diagnostics: &diagnostics,
                         ..CodeEditorOptions::default()
-                    },
-                );
+                    });
                 if response.changed {
                     diagnostics = lint(&document);
                 }
                 let (line, byte) = document.position(document.primary().cursor);
-                ui.label_styled(
-                    "status",
-                    format!(
+                ui.label(Label::new(format!(
                         "Ln {}, byte {}  ·  {} cursors  ·  {} problems  ·  {}  ·  last link: {followed}",
                         line + 1,
                         byte,
@@ -156,11 +140,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         } else {
                             "saved"
                         },
-                    ),
-                    Style::default()
+                    )).style(Style::default()
                         .font_size(13.0)
-                        .foreground(theme.text_muted),
-                );
+                        .foreground(theme.text_muted)));
             });
         },
     )

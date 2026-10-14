@@ -2,6 +2,7 @@ use rust_gui_core::{
     Action, Context, Event, FontFamily, Length, MonospaceMeasurer, Paint, Style, StyleSheet,
     StyleSheetError, Theme, Ui,
 };
+use rust_gui_core::{Button, Label};
 use rust_gui_scene::{Color, Point, Primitive, Size};
 
 fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) -> rust_gui_core::FrameStats {
@@ -33,30 +34,31 @@ fn text_colors(context: &Context) -> Vec<Color> {
 }
 
 fn page(ui: &mut Ui<'_>, size: Option<f32>, family: Option<FontFamily>) {
-    ui.column(
-        "page",
-        Style {
-            font_size: size,
-            font_family: family,
-            foreground: Some(Color::rgb(200, 10, 10)),
-            ..Style::default()
-        },
-        |ui| {
-            ui.label_keyed("inherits", "inherits");
-            ui.label_styled(
-                "overrides",
-                "overrides",
-                Style {
-                    font_size: Some(30.0),
-                    foreground: Some(Color::rgb(10, 200, 10)),
-                    ..Style::default()
-                },
-            );
-            ui.row("nested", Style::default(), |ui| {
-                ui.label_keyed("deep", "deep");
-            });
-        },
-    );
+    ui.keyed("page", |ui| {
+        ui.column(
+            Style {
+                font_size: size,
+                font_family: family,
+                foreground: Some(Color::rgb(200, 10, 10)),
+                ..Style::default()
+            },
+            |ui| {
+                ui.keyed("inherits", |ui| ui.label("inherits"));
+                ui.keyed("overrides", |ui| {
+                    ui.label(Label::new("overrides").style(Style {
+                        font_size: Some(30.0),
+                        foreground: Some(Color::rgb(10, 200, 10)),
+                        ..Style::default()
+                    }))
+                });
+                ui.keyed("nested", |ui| {
+                    ui.row(Style::default(), |ui| {
+                        ui.keyed("deep", |ui| ui.label("deep"));
+                    })
+                });
+            },
+        )
+    });
 }
 
 #[test]
@@ -110,12 +112,14 @@ fn text_properties_inherit_from_ancestors_then_the_theme() {
 fn theme_switch_repaints_without_layout_and_controls_follow_tokens() {
     let mut context = Context::new();
     let view = |ui: &mut Ui<'_>| {
-        ui.column("page", Style::default(), |ui| {
-            ui.button_keyed("save", "Save");
-            ui.label_keyed("note", "note");
-            ui.enabled(false, |ui| {
-                ui.button_keyed("off", "Off");
-            });
+        ui.keyed("page", |ui| {
+            ui.column(Style::default(), |ui| {
+                ui.keyed("save", |ui| ui.button("Save"));
+                ui.keyed("note", |ui| ui.label("note"));
+                ui.enabled(false, |ui| {
+                    ui.keyed("off", |ui| ui.button("Off"));
+                });
+            })
         });
     };
     frame(&mut context, view);
@@ -180,9 +184,15 @@ fn state_overrides_apply_per_interaction_state_and_stay_repaint_only() {
                 ..Paint::default()
             })
             .on_disabled(Paint::background(disabled));
-        ui.row("bar", Style::default(), |ui| {
-            ui.button_styled("go", "Go", true, style.clone());
-            ui.button_styled("stop", "Stop", false, style);
+        ui.keyed("bar", |ui| {
+            ui.row(Style::default(), |ui| {
+                ui.keyed("go", |ui| {
+                    ui.button(Button::new("Go").enabled(true).style(style.clone()))
+                });
+                ui.keyed("stop", |ui| {
+                    ui.button(Button::new("Stop").enabled(false).style(style))
+                });
+            })
         });
     };
     frame(&mut context, view);
@@ -324,12 +334,20 @@ fn installed_classes_style_widgets_and_unknown_classes_warn_once() {
     context.set_stylesheet(sheet);
     assert_eq!(context.theme().control, Color::rgb(0x12, 0x34, 0x56));
     let view = |ui: &mut Ui<'_>| {
-        ui.row("bar", Style::default(), |ui| {
-            let primary = ui.class("primary");
-            ui.button_styled("go", "Go", true, primary);
-            let missing = ui.class("missing");
-            ui.button_styled("plain", "Plain", true, missing.clone());
-            ui.button_styled("plain2", "Plain", true, missing);
+        ui.keyed("bar", |ui| {
+            ui.row(Style::default(), |ui| {
+                let primary = ui.class("primary");
+                ui.keyed("go", |ui| {
+                    ui.button(Button::new("Go").enabled(true).style(primary))
+                });
+                let missing = ui.class("missing");
+                ui.keyed("plain", |ui| {
+                    ui.button(Button::new("Plain").enabled(true).style(missing.clone()))
+                });
+                ui.keyed("plain2", |ui| {
+                    ui.button(Button::new("Plain").enabled(true).style(missing))
+                });
+            })
         });
     };
     frame(&mut context, view);
@@ -375,7 +393,7 @@ fn views_switch_themes_and_sheet_tokens_survive_the_switch() {
         if let Some(theme) = wanted.take() {
             ui.set_theme(theme);
         }
-        ui.label_keyed("name", ui.theme().name.clone());
+        ui.keyed("name", |ui| ui.label(ui.theme().name.clone()));
     };
     let stats = frame(&mut context, &mut view);
     assert_eq!(

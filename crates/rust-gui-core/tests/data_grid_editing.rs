@@ -124,7 +124,9 @@ impl App {
         let (model, state) = (&mut self.model, &mut self.state);
         let mut response = Default::default();
         self.context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            response = ui.data_grid("grid", model, state, VirtualListOptions::default());
+            response = ui.keyed("grid", |ui| {
+                ui.data_grid(model, state, VirtualListOptions::default())
+            });
             ui.button("after");
         });
         self.edited.extend(response.edited);
@@ -459,7 +461,9 @@ mod filtering {
     fn frame(context: &mut Context, model: &mut Fruit, state: &mut GridState, at: u64) {
         context.set_now(Duration::from_millis(at));
         context.run(Size::new(700.0, 400.0), &mut MonospaceMeasurer, |ui| {
-            ui.data_grid("grid", model, state, VirtualListOptions::default());
+            ui.keyed("grid", |ui| {
+                ui.data_grid(model, state, VirtualListOptions::default())
+            });
         });
     }
 

@@ -2,7 +2,7 @@
 //! application here; a store earns its place when a value is derived from
 //! several others and read in several places. Press F12 and open the State
 //! tab to see what each derived value read and which one moved last.
-use rust_gui::{AppOptions, Color, Length, Size, Store, Style, TextWrap, run};
+use rust_gui::{AppOptions, Color, Label, Length, Size, Store, Style, TextWrap, run};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
@@ -50,42 +50,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 width: Length::Percent(1.0),
                 ..Style::default()
             };
-            ui.column("page", page, |ui| {
-                ui.label_styled(
-                    "title",
-                    "Reactive state",
-                    Style {
+            ui.column(page, |ui| {
+                ui.label(Label::new("Reactive state").style(Style {
                         font_size: Some(28.0),
                         font_weight: Some(700),
                         ..Style::default()
-                    },
-                );
-                ui.label_styled(
-                    "intro",
-                    "A subtotal, its tax and the total are derived from the three values below. \
-                     Press F12 and open the State tab to see the graph.",
-                    Style {
+                    }));
+                ui.label(Label::new("A subtotal, its tax and the total are derived from the three values below. \
+                     Press F12 and open the State tab to see the graph.").style(Style {
                         width: Length::Percent(1.0),
                         wrap: TextWrap::Word,
                         ..Style::default()
-                    },
-                );
+                    }));
                 let mut count = quantity.get();
-                if ui
-                    .slider("quantity", "Quantity", &mut count, 1.0..=20.0, 1.0)
+                if ui.slider("Quantity", &mut count, 1.0..=20.0, 1.0)
                     .changed
                 {
                     quantity.set(count);
                 }
                 let mut each = price.get();
-                if ui
-                    .slider("price", "Price each", &mut each, 1.0..=50.0, 0.5)
+                if ui.slider("Price each", &mut each, 1.0..=50.0, 0.5)
                     .changed
                 {
                     price.set(each);
                 }
                 let mut cut = discount.get();
-                if ui.checkbox("discount", "Ten percent off", &mut cut).changed {
+                if ui.checkbox("Ten percent off", &mut cut).changed {
                     discount.set(cut);
                 }
                 for (key, label, value) in [
@@ -93,15 +83,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ("tax", "Tax", tax.get()),
                     ("total", "Total", total.get()),
                 ] {
-                    ui.label_styled(
-                        key,
-                        format!("{label}: {value:.2}"),
-                        Style {
+                    ui.keyed(key, |ui| ui.label(Label::new(format!("{label}: {value:.2}")).style(Style {
                             foreground: Some(Color::rgb(103, 232, 206)),
                             font_size: Some(if key == "total" { 20.0 } else { 15.0 }),
                             ..Style::default()
-                        },
-                    );
+                        })));
                 }
             });
         },

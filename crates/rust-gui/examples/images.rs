@@ -6,7 +6,7 @@
 //! another application.
 use rust_gui::{
     AppOptions, BackgroundImage, Color, DragOutcome, DragPayload, Image, ImageFit, ImageOptions,
-    ImageTint, Length, Style, Ui, run,
+    ImageTint, Label, Length, Style, Ui, run,
 };
 
 const ASSETS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/assets");
@@ -63,7 +63,7 @@ fn caption(ui: &mut Ui<'_>, key: &str, text: &str) {
         foreground: Some(Color::rgb(153, 171, 193)),
         ..Style::default()
     };
-    ui.label_styled(key, text, style);
+    ui.keyed(key, |ui| ui.label(Label::new(text).style(style)));
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -91,28 +91,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 width: Length::Percent(1.0),
                 ..Style::default()
             };
-            ui.column("page", page, |ui| {
-                ui.label_styled(
-                    "title",
-                    "Images and assets",
-                    Style {
+            ui.column(page, |ui| {
+                ui.label(Label::new("Images and assets").style(Style {
                         font_size: Some(26.0),
                         ..Style::default()
-                    },
-                );
+                    }));
 
                 caption(
                     ui,
                     "fits-caption",
                     "One 320 by 200 file in four 120 by 120 boxes: contain, cover, fill, none",
                 );
-                ui.row(
-                    "fits",
-                    Style {
+                ui.row(Style {
                         gap: 14.0,
                         ..Style::default()
-                    },
-                    |ui| {
+                    }, |ui| {
                         for (key, fit) in [
                             ("contain", ImageFit::Contain),
                             ("cover", ImageFit::Cover),
@@ -126,50 +119,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 background: Some(Color::rgb(24, 35, 49)),
                                 ..Style::default()
                             };
-                            ui.image_file(
-                                key,
-                                format!("{ASSETS}/dusk.png"),
-                                ImageOptions::new(format!("Hills at dusk, {key}"))
+                            ui.keyed(key, |ui| ui.image_file(format!("{ASSETS}/dusk.png"), ImageOptions::new(format!("Hills at dusk, {key}"))
                                     .fit(fit)
-                                    .style(frame),
-                            );
+                                    .style(frame)));
                         }
-                    },
-                );
+                    });
 
                 caption(
                     ui,
                     "icons-caption",
                     "SVG icons take the text colour; the badge is one SVG at three sizes",
                 );
-                ui.row(
-                    "icons",
-                    Style {
+                ui.row(Style {
                         gap: 16.0,
                         align_items: rust_gui::Align::Center,
                         ..Style::default()
-                    },
-                    |ui| {
+                    }, |ui| {
                         for name in ["search", "sliders"] {
-                            ui.image_file(
-                                name,
-                                format!("{ASSETS}/{name}.svg"),
-                                ImageOptions::default().tint(ImageTint::Foreground),
-                            );
+                            ui.keyed(name, |ui| ui.image_file(format!("{ASSETS}/{name}.svg"), ImageOptions::default().tint(ImageTint::Foreground)));
                         }
                         let heart = if liked {
                             ImageTint::Color(Color::rgb(240, 82, 110))
                         } else {
                             ImageTint::Foreground
                         };
-                        ui.image_file(
-                            "heart",
-                            format!("{ASSETS}/heart.svg"),
-                            ImageOptions::new(if liked { "Liked" } else { "Not liked" })
-                                .tint(heart),
-                        );
-                        if ui
-                            .button_keyed("like", if liked { "Unlike" } else { "Like" })
+                        ui.image_file(format!("{ASSETS}/heart.svg"), ImageOptions::new(if liked { "Liked" } else { "Not liked" })
+                                .tint(heart));
+                        if ui.button(if liked { "Unlike" } else { "Like" })
                             .clicked()
                         {
                             liked = !liked;
@@ -179,79 +155,55 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ("badge", 64.0),
                             ("badge-large", 96.0),
                         ] {
-                            ui.image_file(
-                                key,
-                                format!("{ASSETS}/badge.svg"),
-                                ImageOptions::default().style(Style {
+                            ui.keyed(key, |ui| ui.image_file(format!("{ASSETS}/badge.svg"), ImageOptions::default().style(Style {
                                     width: Length::Px(side),
                                     ..Style::default()
-                                }),
-                            );
+                                })));
                         }
-                    },
-                );
+                    });
 
                 caption(
                     ui,
                     "made-caption",
                     "Pixels made in code, translucent over a panel; a file that does not exist",
                 );
-                ui.row(
-                    "made",
-                    Style {
+                ui.row(Style {
                         gap: 16.0,
                         ..Style::default()
-                    },
-                    |ui| {
-                        ui.container(
-                            "panel",
-                            Style {
+                    }, |ui| {
+                        ui.container(Style {
                                 padding: 12.0,
                                 radius: 10.0,
                                 background: Some(Color::rgb(22, 105, 99)),
                                 ..Style::default()
-                            },
-                            |ui| {
-                                ui.image(
-                                    "checker",
-                                    &made,
-                                    ImageOptions::new("Checkerboard").style(Style {
+                            }, |ui| {
+                                ui.image(&made, ImageOptions::new("Checkerboard").style(Style {
                                         width: Length::Px(96.0),
                                         radius: 8.0,
                                         ..Style::default()
-                                    }),
-                                );
-                            },
-                        );
-                        ui.image_file(
-                            "missing",
-                            format!("{ASSETS}/not-there.png"),
-                            ImageOptions::new("not-there.png is missing").style(Style {
+                                    }));
+                            });
+                        ui.image_file(format!("{ASSETS}/not-there.png"), ImageOptions::new("not-there.png is missing").style(Style {
                                 width: Length::Px(220.0),
                                 height: Length::Px(120.0),
                                 padding: 12.0,
                                 radius: 10.0,
                                 ..Style::default()
-                            }),
-                        );
-                    },
-                );
+                            }));
+                    });
 
                 caption(
                     ui,
                     "backgrounds-caption",
                     "Backgrounds: a stylesheet photo, one SVG frame nine-sliced over three boxes, a 24 px skin made in code",
                 );
-                ui.row(
-                    "backgrounds",
-                    Style {
+                ui.row(Style {
                         gap: 16.0,
                         align_items: rust_gui::Align::Start,
                         ..Style::default()
-                    },
-                    |ui| {
+                    }, |ui| {
                         let hero = ui.class("hero");
-                        ui.column("hero", hero, |ui| ui.label("Hills at dusk"));
+                        ui.column(hero, |ui| ui.label("Hills at dusk"));
                         for (key, width, height) in [
                             ("small", 90.0, 56.0),
                             ("wide", 170.0, 56.0),
@@ -262,7 +214,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 height: Length::Px(height),
                                 ..ui.class("frame")
                             };
-                            ui.column(key, frame, |ui| ui.label(key));
+                            ui.keyed(key, |ui| ui.column(frame, |ui| ui.label(key)));
                         }
                         let skinned = Style {
                             width: Length::Px(170.0),
@@ -272,9 +224,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ..Style::default()
                         }
                         .background_image(BackgroundImage::new(&skin).slice(8.0, 8.0, 8.0, 8.0));
-                        ui.column("skinned", skinned, |ui| ui.label("Raster skin"));
-                    },
-                );
+                        ui.column(skinned, |ui| ui.label("Raster skin"));
+                    });
 
                 caption(ui, "export-caption", exported);
                 let card = Style {
@@ -284,13 +235,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ..Style::default()
                 };
                 let file = std::path::PathBuf::from(format!("{ASSETS}/dusk.png"));
-                match ui.drag_source(
-                    "export",
-                    "dusk.png, draggable file",
-                    DragPayload::Files(vec![file]),
-                    card,
-                    |ui| ui.label("dusk.png"),
-                ) {
+                match ui.drag_source("dusk.png, draggable file", DragPayload::Files(vec![file]), card, |ui| ui.label("dusk.png")) {
                     Some(DragOutcome::Dropped) => exported = "Dropped outside the window.",
                     Some(DragOutcome::Cancelled) => exported = "The drag was cancelled.",
                     None => {}

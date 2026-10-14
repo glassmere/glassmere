@@ -74,7 +74,14 @@ fn read(path: &Path, found: &mut Vec<String>) {
             && declared.content.is_none()
         {
             let name = declared.ident.to_string();
-            let directory = path.parent().unwrap_or(Path::new("."));
+            // `lib.rs` and `mod.rs` keep their modules beside them; any other
+            // `x.rs` keeps them in the directory `x/`.
+            let parent = path.parent().unwrap_or(Path::new("."));
+            let owner = path.file_stem().and_then(|stem| stem.to_str());
+            let directory = match owner {
+                Some("lib" | "mod" | "main") | None => parent.to_path_buf(),
+                Some(stem) => parent.join(stem),
+            };
             let beside = directory.join(format!("{name}.rs"));
             let below = directory.join(&name).join("mod.rs");
             let nested = if beside.exists() { beside } else { below };

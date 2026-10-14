@@ -7,7 +7,9 @@ const TARGET: Size = Size::new(400.0, 300.0);
 
 fn declare(context: &mut Context, recorder: &mut Recorder) {
     let stats = context.run(TARGET, &mut MonospaceMeasurer, |ui| {
-        ui.column("page", Style::default(), |ui| ui.label("content"));
+        ui.keyed("page", |ui| {
+            ui.column(Style::default(), |ui| ui.label("content"))
+        });
     });
     recorder.frame(
         stats,

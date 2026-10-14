@@ -2,6 +2,7 @@ use rust_gui_core::{
     Action, Component, Context, CustomWidget, Event, Key, Length, MonospaceMeasurer, Role,
     Semantics, Style, Ui,
 };
+use rust_gui_core::{Button, Label};
 use rust_gui_scene::{Color, Point, Primitive, Rect, Size};
 
 fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) -> rust_gui_core::FrameStats {
@@ -9,30 +10,32 @@ fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) -> rust_gui_core
 }
 
 fn scroll_list(ui: &mut Ui<'_>, count: usize) {
-    ui.scroll(
-        "list",
-        Style {
-            width: Length::Px(160.0),
-            height: Length::Px(100.0),
-            gap: 0.0,
-            ..Style::default()
-        },
-        |ui| {
-            for index in 0..count {
-                ui.button_styled(
-                    index.to_string(),
-                    format!("Item {index}"),
-                    true,
-                    Style {
-                        width: Length::Px(120.0),
-                        height: Length::Px(40.0),
-                        padding: 0.0,
-                        ..Style::button()
-                    },
-                );
-            }
-        },
-    );
+    ui.keyed("list", |ui| {
+        ui.scroll(
+            Style {
+                width: Length::Px(160.0),
+                height: Length::Px(100.0),
+                gap: 0.0,
+                ..Style::default()
+            },
+            |ui| {
+                for index in 0..count {
+                    ui.keyed(index.to_string(), |ui| {
+                        ui.button(
+                            Button::new(format!("Item {index}"))
+                                .enabled(true)
+                                .style(Style {
+                                    width: Length::Px(120.0),
+                                    height: Length::Px(40.0),
+                                    padding: 0.0,
+                                    ..Style::button()
+                                }),
+                        )
+                    });
+                }
+            },
+        )
+    });
 }
 
 #[test]
@@ -67,46 +70,44 @@ fn scrolling_moves_paint_and_hit_testing_without_layout_and_clamps_after_removal
 fn wheel_bubbles_from_an_inner_viewport_at_its_limit() {
     let mut context = Context::new();
     frame(&mut context, |ui| {
-        ui.scroll(
-            "outer",
-            Style {
-                width: Length::Px(200.0),
-                height: Length::Px(100.0),
-                gap: 0.0,
-                ..Style::default()
-            },
-            |ui| {
-                ui.scroll(
-                    "inner",
-                    Style {
-                        width: Length::Px(160.0),
-                        height: Length::Px(80.0),
-                        gap: 0.0,
-                        ..Style::default()
-                    },
-                    |ui| {
-                        for index in 0..5 {
-                            ui.label_styled(
-                                index.to_string(),
-                                "line",
-                                Style {
-                                    height: Length::Px(40.0),
-                                    ..Style::default()
-                                },
-                            );
-                        }
-                    },
-                );
-                ui.label_styled(
-                    "tail",
-                    "tail",
-                    Style {
-                        height: Length::Px(200.0),
-                        ..Style::default()
-                    },
-                );
-            },
-        );
+        ui.keyed("outer", |ui| {
+            ui.scroll(
+                Style {
+                    width: Length::Px(200.0),
+                    height: Length::Px(100.0),
+                    gap: 0.0,
+                    ..Style::default()
+                },
+                |ui| {
+                    ui.keyed("inner", |ui| {
+                        ui.scroll(
+                            Style {
+                                width: Length::Px(160.0),
+                                height: Length::Px(80.0),
+                                gap: 0.0,
+                                ..Style::default()
+                            },
+                            |ui| {
+                                for index in 0..5 {
+                                    ui.keyed(index.to_string(), |ui| {
+                                        ui.label(Label::new("line").style(Style {
+                                            height: Length::Px(40.0),
+                                            ..Style::default()
+                                        }))
+                                    });
+                                }
+                            },
+                        )
+                    });
+                    ui.keyed("tail", |ui| {
+                        ui.label(Label::new("tail").style(Style {
+                            height: Length::Px(200.0),
+                            ..Style::default()
+                        }))
+                    });
+                },
+            )
+        });
     });
     let inner = context.find(&["outer", "inner"]).unwrap();
     let outer = context.find(&["outer"]).unwrap();
@@ -148,8 +149,14 @@ fn focus_reveals_offscreen_buttons_and_keyboard_scroll_uses_the_ancestor() {
 fn accessibility_activation_is_once_and_ignores_disabled_and_removed_ids() {
     let mut context = Context::new();
     frame(&mut context, |ui| {
-        ui.button_keyed("active", "Active");
-        ui.button_styled("disabled", "Disabled", false, Style::button());
+        ui.keyed("active", |ui| ui.button("Active"));
+        ui.keyed("disabled", |ui| {
+            ui.button(
+                Button::new("Disabled")
+                    .enabled(false)
+                    .style(Style::button()),
+            )
+        });
     });
     let active = context.find(&["active"]).unwrap();
     let disabled = context.find(&["disabled"]).unwrap();
@@ -159,7 +166,7 @@ fn accessibility_activation_is_once_and_ignores_disabled_and_removed_ids() {
     let mut clicks = 0;
     for _ in 0..2 {
         frame(&mut context, |ui| {
-            if ui.button_keyed("active", "Active").clicked() {
+            if ui.keyed("active", |ui| ui.button("Active")).clicked() {
                 clicks += 1;
             }
         });
@@ -174,20 +181,22 @@ fn accessibility_activation_is_once_and_ignores_disabled_and_removed_ids() {
 fn a_local_paint_change_reuses_the_other_subtree_and_reports_local_damage() {
     let mut context = Context::new();
     let view = |ui: &mut Ui<'_>, color| {
-        ui.column("left", Style::default(), |ui| {
-            ui.label_styled(
-                "changing",
-                "same size",
-                Style {
-                    foreground: Some(color),
-                    ..Style::default()
-                },
-            );
+        ui.keyed("left", |ui| {
+            ui.column(Style::default(), |ui| {
+                ui.keyed("changing", |ui| {
+                    ui.label(Label::new("same size").style(Style {
+                        foreground: Some(color),
+                        ..Style::default()
+                    }))
+                });
+            })
         });
-        ui.column("right", Style::default(), |ui| {
-            for index in 0..20 {
-                ui.label_keyed(index.to_string(), "unchanged");
-            }
+        ui.keyed("right", |ui| {
+            ui.column(Style::default(), |ui| {
+                for index in 0..20 {
+                    ui.keyed(index.to_string(), |ui| ui.label("unchanged"));
+                }
+            })
         });
     };
     frame(&mut context, |ui| view(ui, Color::WHITE));
@@ -238,7 +247,7 @@ struct CounterComponent {
 impl Component for CounterComponent {
     fn ui(&mut self, ui: &mut Ui<'_>) {
         if ui
-            .button_keyed("increment", format!("Count {}", self.count))
+            .keyed("increment", |ui| ui.button(format!("Count {}", self.count)))
             .clicked()
         {
             self.count += 1;
@@ -252,14 +261,14 @@ fn component_scopes_keep_application_state_and_child_identity_separate() {
     let mut b = CounterComponent { count: 10 };
     let mut context = Context::new();
     frame(&mut context, |ui| {
-        ui.component("a", Style::default(), &mut a);
-        ui.component("b", Style::default(), &mut b);
+        ui.keyed("a", |ui| ui.component(Style::default(), &mut a));
+        ui.keyed("b", |ui| ui.component(Style::default(), &mut b));
     });
     let target = context.find(&["a", "increment"]).unwrap();
     context.action(target, Action::Activate);
     frame(&mut context, |ui| {
-        ui.component("b", Style::default(), &mut b);
-        ui.component("a", Style::default(), &mut a);
+        ui.keyed("b", |ui| ui.component(Style::default(), &mut b));
+        ui.keyed("a", |ui| ui.component(Style::default(), &mut a));
     });
     assert_eq!((a.count, b.count), (1, 10));
     assert_eq!(context.find(&["a", "increment"]), Some(target));
@@ -292,7 +301,9 @@ fn custom_button(color: Color) -> CustomWidget {
 fn custom_leaf_shares_activation_and_updates_paint_without_layout() {
     let mut context = Context::new();
     frame(&mut context, |ui| {
-        ui.custom("custom", Style::default(), custom_button(Color::WHITE));
+        ui.keyed("custom", |ui| {
+            ui.custom(Style::default(), custom_button(Color::WHITE))
+        });
     });
     let target = context.find(&["custom"]).unwrap();
     context.action(target, Action::Focus);
@@ -305,11 +316,9 @@ fn custom_leaf_shares_activation_and_updates_paint_without_layout() {
     let mut clicked = false;
     let stats = frame(&mut context, |ui| {
         clicked = ui
-            .custom(
-                "custom",
-                Style::default(),
-                custom_button(Color::rgb(0, 255, 0)),
-            )
+            .keyed("custom", |ui| {
+                ui.custom(Style::default(), custom_button(Color::rgb(0, 255, 0)))
+            })
             .clicked();
     });
     assert!(clicked);
@@ -333,7 +342,7 @@ fn custom_widgets_cannot_pop_the_host_clip() {
     let mut widget = custom_button(Color::WHITE);
     widget.primitives.insert(0, Primitive::PopClip);
     frame(&mut Context::new(), |ui| {
-        ui.custom("invalid", Style::default(), widget);
+        ui.keyed("invalid", |ui| ui.custom(Style::default(), widget));
     });
 }
 
@@ -343,7 +352,7 @@ fn a_nonfocusable_custom_button_remains_pointer_activatable() {
     let view = |ui: &mut Ui<'_>| {
         let mut widget = custom_button(Color::WHITE);
         widget.semantics.focusable = false;
-        ui.custom("custom", Style::default(), widget)
+        ui.keyed("custom", |ui| ui.custom(Style::default(), widget))
     };
     frame(&mut context, |ui| {
         view(ui);

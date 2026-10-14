@@ -1,32 +1,32 @@
 //! Reproducible headless declaration/layout/paint benchmark, without GPU/font costs.
+use rust_gui_core::Label;
 use rust_gui_core::{Context, FrameStats, Length, MonospaceMeasurer, Style, Ui};
 use rust_gui_scene::{Color, Size};
 use std::time::Instant;
 
 fn declare(ui: &mut Ui<'_>, count: usize, color: Color, extra: bool) {
     for group in 0..count.div_ceil(100) {
-        ui.column(
-            format!("group-{group}"),
-            Style {
-                width: Length::Px(400.0),
-                ..Style::default()
-            },
-            |ui| {
-                for item in group * 100..((group + 1) * 100).min(count) {
-                    ui.label_styled(
-                        item.to_string(),
-                        format!("Item {item:05}"),
-                        Style {
-                            foreground: Some(if item == 0 { color } else { Color::WHITE }),
-                            ..Style::default()
-                        },
-                    );
-                }
-                if extra && group == 0 {
-                    ui.label_keyed("extra", "Temporary row");
-                }
-            },
-        );
+        ui.keyed(format!("group-{group}"), |ui| {
+            ui.column(
+                Style {
+                    width: Length::Px(400.0),
+                    ..Style::default()
+                },
+                |ui| {
+                    for item in group * 100..((group + 1) * 100).min(count) {
+                        ui.keyed(item.to_string(), |ui| {
+                            ui.label(Label::new(format!("Item {item:05}")).style(Style {
+                                foreground: Some(if item == 0 { color } else { Color::WHITE }),
+                                ..Style::default()
+                            }))
+                        });
+                    }
+                    if extra && group == 0 {
+                        ui.keyed("extra", |ui| ui.label("Temporary row"));
+                    }
+                },
+            )
+        });
     }
 }
 

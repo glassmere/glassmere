@@ -26,26 +26,33 @@ struct App {
 }
 
 fn view(ui: &mut Ui<'_>, app: &mut App) {
-    ui.column("page", Style::default().padding(8.0).gap(6.0), |ui| {
-        ui.label_keyed("title", "Damage");
-        ui.text_input("field", "Name", &mut app.typed);
-        ui.checkbox("check", "Ready", &mut app.checked);
-        ui.slider("volume", "Volume", &mut app.volume, 0.0..=100.0, 1.0);
-        ui.combo_box("combo", "Theme", &mut app.picked, &["Dark", "Light"]);
-        if ui.button_keyed("add", "Add").clicked() {
-            app.rows.push(format!("row {}", app.rows.len()));
-        }
-        ui.scroll(
-            "list",
-            Style::default()
-                .width(Length::Percent(1.0))
-                .height(Length::Px(80.0)),
-            |ui| {
-                for (index, row) in app.rows.iter().enumerate() {
-                    ui.label_keyed(format!("row{index}"), row.clone());
-                }
-            },
-        );
+    ui.keyed("page", |ui| {
+        ui.column(Style::default().padding(8.0).gap(6.0), |ui| {
+            ui.keyed("title", |ui| ui.label("Damage"));
+            ui.keyed("field", |ui| ui.text_input("Name", &mut app.typed));
+            ui.keyed("check", |ui| ui.checkbox("Ready", &mut app.checked));
+            ui.keyed("volume", |ui| {
+                ui.slider("Volume", &mut app.volume, 0.0..=100.0, 1.0)
+            });
+            ui.keyed("combo", |ui| {
+                ui.combo_box("Theme", &mut app.picked, &["Dark", "Light"])
+            });
+            if ui.keyed("add", |ui| ui.button("Add")).clicked() {
+                app.rows.push(format!("row {}", app.rows.len()));
+            }
+            ui.keyed("list", |ui| {
+                ui.scroll(
+                    Style::default()
+                        .width(Length::Percent(1.0))
+                        .height(Length::Px(80.0)),
+                    |ui| {
+                        for (index, row) in app.rows.iter().enumerate() {
+                            ui.keyed(format!("row{index}"), |ui| ui.label(row.clone()));
+                        }
+                    },
+                )
+            });
+        })
     });
 }
 
@@ -208,14 +215,20 @@ fn closing_a_menu_by_its_own_button_leaves_nothing_of_it_behind() {
     let mut frame = |context: &mut Context, step: &str| {
         let declare = |context: &mut Context| {
             context.run(SIZE, &mut MonospaceMeasurer, |ui| {
-                ui.title_bar("bar", Style::default().padding(6.0).gap(8.0), |ui| {
-                    ui.label_keyed("name", "Title bar");
-                    ui.menu_bar("menu", &menu);
+                ui.keyed("bar", |ui| {
+                    ui.title_bar(Style::default().padding(6.0).gap(8.0), |ui| {
+                        ui.keyed("name", |ui| ui.label("Title bar"));
+                        ui.keyed("menu", |ui| ui.menu_bar(&menu));
+                    })
                 });
-                ui.column("page", Style::default().padding(8.0).gap(6.0), |ui| {
-                    for row in 0..6 {
-                        ui.label_keyed(format!("row{row}"), format!("A line of text {row}"));
-                    }
+                ui.keyed("page", |ui| {
+                    ui.column(Style::default().padding(8.0).gap(6.0), |ui| {
+                        for row in 0..6 {
+                            ui.keyed(format!("row{row}"), |ui| {
+                                ui.label(format!("A line of text {row}"))
+                            });
+                        }
+                    })
                 });
             })
         };
@@ -304,39 +317,41 @@ fn every_overlay_leaves_the_window_as_it_found_it() {
         context.set_now(clock);
         let declare = |context: &mut Context, app: &mut Over| {
             context.run(SIZE, &mut MonospaceMeasurer, |ui| {
-                ui.column("page", Style::default().padding(8.0).gap(6.0), |ui| {
-                    ui.label_keyed("title", "Overlays");
-                    ui.button_keyed("hover", "Hover me");
-                    ui.tooltip("What this button does");
-                    ui.context_menu(
-                        "area",
-                        &[MenuItem::new("Cut"), MenuItem::new("Copy")],
-                        Style::default()
-                            .width(Length::Percent(1.0))
-                            .height(Length::Px(60.0)),
-                        |ui| ui.label_keyed("inside", "Right click here"),
-                    );
-                    ui.popover(
-                        "popover",
-                        &mut app.popover,
-                        PopoverOptions::default(),
-                        |ui| {
-                            ui.label_keyed("note", "A popover over the page");
-                        },
-                    );
-                    for row in 0..4 {
-                        ui.label_keyed(format!("row{row}"), format!("A line of text {row}"));
-                    }
-                    ui.dialog(
-                        "dialog",
-                        &mut app.dialog,
-                        DialogOptions::new("A dialog"),
-                        |ui, _| ui.label_keyed("body", "Over everything"),
-                    );
-                    if !app.toasted {
-                        app.toasted = true;
-                        ui.toast(Toast::new("Saved").duration(Duration::from_millis(600)));
-                    }
+                ui.keyed("page", |ui| {
+                    ui.column(Style::default().padding(8.0).gap(6.0), |ui| {
+                        ui.keyed("title", |ui| ui.label("Overlays"));
+                        ui.keyed("hover", |ui| ui.button("Hover me"));
+                        ui.tooltip("What this button does");
+                        ui.keyed("area", |ui| {
+                            ui.context_menu(
+                                &[MenuItem::new("Cut"), MenuItem::new("Copy")],
+                                Style::default()
+                                    .width(Length::Percent(1.0))
+                                    .height(Length::Px(60.0)),
+                                |ui| ui.keyed("inside", |ui| ui.label("Right click here")),
+                            )
+                        });
+                        ui.keyed("popover", |ui| {
+                            ui.popover(&mut app.popover, PopoverOptions::default(), |ui| {
+                                ui.keyed("note", |ui| ui.label("A popover over the page"));
+                            })
+                        });
+                        for row in 0..4 {
+                            ui.keyed(format!("row{row}"), |ui| {
+                                ui.label(format!("A line of text {row}"))
+                            });
+                        }
+                        ui.dialog(
+                            "dialog",
+                            &mut app.dialog,
+                            DialogOptions::new("A dialog"),
+                            |ui, _| ui.keyed("body", |ui| ui.label("Over everything")),
+                        );
+                        if !app.toasted {
+                            app.toasted = true;
+                            ui.toast(Toast::new("Saved").duration(Duration::from_millis(600)));
+                        }
+                    })
                 });
             })
         };

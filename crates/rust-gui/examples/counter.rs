@@ -1,4 +1,4 @@
-use rust_gui::{AppOptions, Color, Length, Style, run};
+use rust_gui::{AppOptions, Button, Color, Label, Length, Style, run};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
@@ -74,7 +74,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if hook {
                 // A leaf that says "the application draws this part".
                 ui.custom(
-                    "canvas",
                     rust_gui::Style::default(),
                     rust_gui::CustomWidget {
                         size: rust_gui::Size::new(120.0, 60.0),
@@ -97,32 +96,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             ui.hot_state(|| format!("{count} {show_details} {reversed}"));
             let message = ui.watched_text(motd);
-            ui.column("page", Style { padding: 36.0, gap: 24.0, width: Length::Percent(1.0), ..Style::default() }, |ui| {
-            ui.label_styled("eyebrow", "RUST GUI  /  FIRST MILESTONE", Style { font_size: Some(12.0), foreground: Some(Color::rgb(103, 232, 206)), ..Style::default() });
-            ui.label_styled("title", "A small API. A retained engine.", Style { font_size: Some(30.0), ..Style::default() });
-            ui.label_keyed("intro", "Native window, stable identity, flex layout and GPU rendering.");
-            ui.label_styled("motd", message.as_deref().unwrap_or("").trim_end(), Style { font_size: Some(13.0), foreground: Some(Color::rgb(153, 171, 193)), ..Style::default() });
-            ui.container("counter", Style { padding: 24.0, gap: 18.0, radius: 14.0, background: Some(Color::rgb(24, 35, 49)), width: Length::Percent(1.0), ..Style::default() }, |ui| {
-                ui.label_styled("count", format!("Counter   {count}"), Style { font_size: Some(36.0), ..Style::default() });
-                ui.row("actions", Style::default(), |ui| {
-                    if ui.button_keyed("decrement", "- Decrease").clicked() { count = count.saturating_sub(1); }
-                    if ui.button_styled("increment", "+ Increase", true, Style { background: Some(Color::rgb(22, 105, 99)), ..Style::button() }).clicked() { count = count.saturating_add(1); }
-                    if ui.button_styled("reset", "Reset", count != 0, Style::button()).clicked() { count = 0; }
+            ui.column(Style { padding: 36.0, gap: 24.0, width: Length::Percent(1.0), ..Style::default() }, |ui| {
+            ui.label(Label::new("RUST GUI  /  FIRST MILESTONE").style(Style { font_size: Some(12.0), foreground: Some(Color::rgb(103, 232, 206)), ..Style::default() }));
+            ui.label(Label::new("A small API. A retained engine.").style(Style { font_size: Some(30.0), ..Style::default() }));
+            ui.label("Native window, stable identity, flex layout and GPU rendering.");
+            ui.label(Label::new(message.as_deref().unwrap_or("").trim_end()).style(Style { font_size: Some(13.0), foreground: Some(Color::rgb(153, 171, 193)), ..Style::default() }));
+            ui.container(Style { padding: 24.0, gap: 18.0, radius: 14.0, background: Some(Color::rgb(24, 35, 49)), width: Length::Percent(1.0), ..Style::default() }, |ui| {
+                ui.label(Label::new(format!("Counter   {count}")).style(Style { font_size: Some(36.0), ..Style::default() }));
+                ui.row(Style::default(), |ui| {
+                    if ui.button("- Decrease").clicked() { count = count.saturating_sub(1); }
+                    if ui.button(Button::new("+ Increase").style(Style { background: Some(Color::rgb(22, 105, 99)), ..Style::button() })).clicked() { count = count.saturating_add(1); }
+                    if ui.button(Button::new("Reset").enabled(count != 0)).clicked() { count = 0; }
                 });
-                ui.label_styled("keyboard", "Tab / Shift+Tab to focus. Enter or Space to activate.", Style { font_size: Some(13.0), foreground: Some(Color::rgb(153, 171, 193)), ..Style::default() });
+                ui.label(Label::new("Tab / Shift+Tab to focus. Enter or Space to activate.").style(Style { font_size: Some(13.0), foreground: Some(Color::rgb(153, 171, 193)), ..Style::default() }));
             });
-            ui.row("toggles", Style::default(), |ui| {
-                if ui.button_keyed("details", if show_details { "Hide details" } else { "Show details" }).clicked() { show_details = !show_details; }
-                if ui.button_keyed("reorder", "Reorder keyed items").clicked() { reversed = !reversed; }
+            ui.row(Style::default(), |ui| {
+                if ui.button(if show_details { "Hide details" } else { "Show details" }).clicked() { show_details = !show_details; }
+                if ui.button("Reorder keyed items").clicked() { reversed = !reversed; }
             });
             if show_details {
-                ui.column("details", Style { gap: 8.0, ..Style::default() }, |ui| {
+                ui.column(Style { gap: 8.0, ..Style::default() }, |ui| {
                     let items = if reversed { [("paint", "03  Scene commands are independent of widgets."), ("layout", "02  Unchanged declarations skip layout and paint."), ("identity", "01  Keys preserve identity when siblings move.")] }
                         else { [("identity", "01  Keys preserve identity when siblings move."), ("layout", "02  Unchanged declarations skip layout and paint."), ("paint", "03  Scene commands are independent of widgets.")] };
-                    for (key, text) in items { ui.label_keyed(key, text); }
+                    for (key, text) in items { ui.keyed(key, |ui| ui.label(text)); }
                 });
             }
-            ui.label_styled("footer", "Kernel prototype / text editing, scrolling and native accessibility are next.", Style { font_size: Some(12.0), foreground: Some(Color::rgb(127, 145, 166)), ..Style::default() });
+            ui.label(Label::new("Kernel prototype / text editing, scrolling and native accessibility are next.").style(Style { font_size: Some(12.0), foreground: Some(Color::rgb(127, 145, 166)), ..Style::default() }));
         });
         },
     )

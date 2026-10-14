@@ -3,7 +3,9 @@
 //! older query can never overtake the current one, and the worker stops at
 //! its next look rather than running to the end. Results and progress arrive
 //! as a stream, a few frames' worth at a time.
-use rust_gui::{AppOptions, Color, FontFamily, Length, Size, Style, TextWrap, run_with_wakeup};
+use rust_gui::{
+    AppOptions, Button, Color, FontFamily, Label, Length, Size, Style, TextWrap, run_with_wakeup,
+};
 use std::time::Duration;
 
 const RECORDS: u32 = 200_000;
@@ -95,30 +97,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     width: Length::Percent(1.0),
                     ..Style::default()
                 };
-                ui.column("page", page, |ui| {
-                    ui.label_styled(
-                        "title",
-                        "Background work",
-                        Style {
+                ui.column(page, |ui| {
+                    ui.label(Label::new("Background work").style(Style {
                             font_size: Some(28.0),
                             font_weight: Some(700),
                             ..Style::default()
-                        },
-                    );
-                    ui.label_styled(
-                        "intro",
-                        "Type to search two hundred thousand records. Each keystroke starts a new \
-                         search and stops the one before it.",
-                        Style {
+                        }));
+                    ui.label(Label::new("Type to search two hundred thousand records. Each keystroke starts a new \
+                         search and stops the one before it.").style(Style {
                             width: Length::Percent(1.0),
                             wrap: TextWrap::Word,
                             ..Style::default()
-                        },
-                    );
-                    ui.row("controls", Style::default().gap(12.0), |ui| {
-                        ui.text_input("query", "Search", &mut query);
-                        if ui
-                            .button_styled("stop", "Stop", running, Style::button())
+                        }));
+                    ui.row(Style::default().gap(12.0), |ui| {
+                        ui.text_input("Search", &mut query);
+                        if ui.button(Button::new("Stop").enabled(running))
                             .clicked()
                         {
                             tasks.cancel(&"search");
@@ -141,14 +134,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         reported = progress.clone();
                         println!("SEARCH {reported}");
                     }
-                    ui.label_styled(
-                        "progress",
-                        progress,
-                        Style {
+                    ui.label(Label::new(progress).style(Style {
                             foreground: Some(Color::rgb(103, 232, 206)),
                             ..Style::default()
-                        },
-                    );
+                        }));
                     let list = Style {
                         height: Length::Px(360.0),
                         width: Length::Percent(1.0),
@@ -158,17 +147,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         radius: 8.0,
                         ..Style::default()
                     };
-                    ui.scroll("hits", list, |ui| {
+                    ui.scroll(list, |ui| {
                         for (index, hit) in hits.iter().enumerate() {
-                            ui.label_styled(
-                                format!("hit-{index}"),
-                                hit,
-                                Style {
+                            ui.keyed(format!("hit-{index}"), |ui| ui.label(Label::new(hit).style(Style {
                                     font_family: Some(FontFamily::Monospace),
                                     font_size: Some(13.0),
                                     ..Style::default()
-                                },
-                            );
+                                })));
                         }
                     });
                 });

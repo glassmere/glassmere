@@ -1,3 +1,4 @@
+use rust_gui_core::Label;
 use rust_gui_core::{
     Context, DiagnosticKind, HUGE_CHILDREN, Length, MonospaceMeasurer, RELAYOUT_FRAMES,
     REPAINT_FRAMES, Style, Tab, TextWrap, UNSTABLE_ID_FRAMES, Ui,
@@ -24,16 +25,22 @@ fn keys_that_change_every_frame_are_reported_once_with_their_container() {
     assert!(context.diagnostics_enabled());
     for round in 0..u32::from(UNSTABLE_ID_FRAMES) + 5 {
         frame(&mut context, |ui| {
-            ui.column("stable", Style::default(), |ui| {
-                for item in 0..4 {
-                    ui.label_keyed(format!("row-{item}"), format!("stable {item} at {round}"));
-                }
+            ui.keyed("stable", |ui| {
+                ui.column(Style::default(), |ui| {
+                    for item in 0..4 {
+                        ui.keyed(format!("row-{item}"), |ui| {
+                            ui.label(format!("stable {item} at {round}"))
+                        });
+                    }
+                })
             });
-            ui.column("churning", Style::default(), |ui| {
-                for item in 0..4 {
-                    // The frame number in the key makes every row a new widget.
-                    ui.label_keyed(format!("row-{item}-{round}"), "unstable");
-                }
+            ui.keyed("churning", |ui| {
+                ui.column(Style::default(), |ui| {
+                    for item in 0..4 {
+                        // The frame number in the key makes every row a new widget.
+                        ui.keyed(format!("row-{item}-{round}"), |ui| ui.label("unstable"));
+                    }
+                })
             });
         });
     }
@@ -48,7 +55,7 @@ fn keys_that_change_every_frame_are_reported_once_with_their_container() {
     for round in 0..30 {
         frame(&mut context, |ui| {
             for item in 0..=round {
-                ui.label_keyed(format!("row-{item}"), "grows");
+                ui.keyed(format!("row-{item}"), |ui| ui.label("grows"));
             }
         });
     }
@@ -62,13 +69,15 @@ fn layout_that_never_moves_anything_and_wholesale_repaints_are_reported() {
         frame(&mut context, |ui| {
             // A wrapped label re-measures whenever its text changes, even
             // though these two strings always measure the same.
-            ui.label_styled(
-                "ticker",
-                if round % 2 == 0 { "tick" } else { "tock" },
-                Style::default()
-                    .width(Length::Px(200.0))
-                    .wrap(TextWrap::Word),
-            );
+            ui.keyed("ticker", |ui| {
+                ui.label(
+                    Label::new(if round % 2 == 0 { "tick" } else { "tock" }).style(
+                        Style::default()
+                            .width(Length::Px(200.0))
+                            .wrap(TextWrap::Word),
+                    ),
+                )
+            });
         });
     }
     let entries = context.diagnostics();
@@ -79,11 +88,14 @@ fn layout_that_never_moves_anything_and_wholesale_repaints_are_reported() {
     for round in 0..REPAINT_FRAMES + 5 {
         frame(&mut context, |ui| {
             for item in 0..30 {
-                ui.label_styled(
-                    format!("cell-{item}"),
-                    "cell",
-                    Style::default().foreground(Color(200, (round % 200) as u8, 0, 255)),
-                );
+                ui.keyed(format!("cell-{item}"), |ui| {
+                    ui.label(Label::new("cell").style(Style::default().foreground(Color(
+                        200,
+                        (round % 200) as u8,
+                        0,
+                        255,
+                    ))))
+                });
             }
         });
     }
@@ -95,7 +107,7 @@ fn layout_that_never_moves_anything_and_wholesale_repaints_are_reported() {
     for _ in 0..REPAINT_FRAMES + 5 {
         frame(&mut context, |ui| {
             for item in 0..30 {
-                ui.label_keyed(format!("cell-{item}"), "cell");
+                ui.keyed(format!("cell-{item}"), |ui| ui.label("cell"));
             }
         });
     }
@@ -108,21 +120,18 @@ fn controls_without_a_name_are_reported_and_tooltips_or_labels_fix_them() {
     let mut value = String::new();
     let mut selected = 0;
     frame(&mut context, |ui| {
-        ui.button_keyed("empty", "");
-        ui.button_keyed("symbol", "→");
-        ui.button_keyed("described", "→");
+        ui.keyed("empty", |ui| ui.button(""));
+        ui.keyed("symbol", |ui| ui.button("→"));
+        ui.keyed("described", |ui| ui.button("→"));
         ui.tooltip("Next page");
-        ui.button_keyed("named", "Next");
-        ui.text_input("field", "", &mut value);
+        ui.keyed("named", |ui| ui.button("Next"));
+        ui.keyed("field", |ui| ui.text_input("", &mut value));
         // Built-in widgets name their own symbol buttons.
-        ui.tabs(
-            "tabs",
-            &mut selected,
-            &[Tab::closable("notes.md")],
-            |ui, _| {
+        ui.keyed("tabs", |ui| {
+            ui.tabs(&mut selected, &[Tab::closable("notes.md")], |ui, _| {
                 ui.label("panel");
-            },
-        );
+            })
+        });
     });
     let mut reported: Vec<(String, bool)> = context
         .diagnostics()
@@ -144,7 +153,7 @@ fn controls_without_a_name_are_reported_and_tooltips_or_labels_fix_them() {
     // Unchanged controls are not reported again on later frames.
     let count = context.diagnostics()[0].count;
     frame(&mut context, |ui| {
-        ui.button_keyed("empty", "");
+        ui.keyed("empty", |ui| ui.button(""));
     });
     assert!(
         context
@@ -157,26 +166,30 @@ fn controls_without_a_name_are_reported_and_tooltips_or_labels_fix_them() {
 #[test]
 fn oversized_layers_and_huge_containers_are_reported_and_checks_can_be_turned_off() {
     let view = |ui: &mut Ui<'_>| {
-        ui.container(
-            "faded",
-            Style::default()
-                .width(Length::Px(3000.0))
-                .height(Length::Px(2000.0))
-                .opacity(0.5),
-            |ui| ui.label("content"),
-        );
-        ui.container(
-            "small",
-            Style::default()
-                .width(Length::Px(300.0))
-                .height(Length::Px(200.0))
-                .opacity(0.5),
-            |ui| ui.label("content"),
-        );
-        ui.column("everything", Style::default(), |ui| {
-            for item in 0..=HUGE_CHILDREN {
-                ui.label_keyed(format!("row-{item}"), "row");
-            }
+        ui.keyed("faded", |ui| {
+            ui.container(
+                Style::default()
+                    .width(Length::Px(3000.0))
+                    .height(Length::Px(2000.0))
+                    .opacity(0.5),
+                |ui| ui.label("content"),
+            )
+        });
+        ui.keyed("small", |ui| {
+            ui.container(
+                Style::default()
+                    .width(Length::Px(300.0))
+                    .height(Length::Px(200.0))
+                    .opacity(0.5),
+                |ui| ui.label("content"),
+            )
+        });
+        ui.keyed("everything", |ui| {
+            ui.column(Style::default(), |ui| {
+                for item in 0..=HUGE_CHILDREN {
+                    ui.keyed(format!("row-{item}"), |ui| ui.label("row"));
+                }
+            })
         });
     };
     let mut context = Context::new();
@@ -214,15 +227,15 @@ fn resources_that_fail_and_fonts_that_are_missing_are_reported() {
     context.set_diagnostics(true);
     let path = std::path::Path::new("logo.png");
     context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        ui.image_file("logo", path, rust_gui_core::ImageOptions::default());
-        ui.label_styled(
-            "title",
-            "Title",
-            Style {
+        ui.keyed("logo", |ui| {
+            ui.image_file(path, rust_gui_core::ImageOptions::default())
+        });
+        ui.keyed("title", |ui| {
+            ui.label(Label::new("Title").style(Style {
                 font_family: Some(rust_gui_core::FontFamily::Named("Nonesuch".into())),
                 ..Style::default()
-            },
-        );
+            }))
+        });
     });
     // The host tells the framework what it could not decode.
     context.set_image_file(path, Err("not a PNG".into()));

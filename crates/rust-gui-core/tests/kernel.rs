@@ -1,3 +1,4 @@
+use rust_gui_core::{Button, Label};
 use rust_gui_core::{Context, Dirty, Event, Key, Length, MonospaceMeasurer, Style, Ui};
 use rust_gui_scene::{Color, Point, Primitive, Size};
 
@@ -6,10 +7,18 @@ fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) -> rust_gui_core
 }
 
 fn buttons(ui: &mut Ui<'_>) {
-    ui.row("actions", Style::default(), |ui| {
-        ui.button_keyed("first", "First");
-        ui.button_styled("disabled", "Disabled", false, Style::button());
-        ui.button_keyed("last", "Last");
+    ui.keyed("actions", |ui| {
+        ui.row(Style::default(), |ui| {
+            ui.keyed("first", |ui| ui.button("First"));
+            ui.keyed("disabled", |ui| {
+                ui.button(
+                    Button::new("Disabled")
+                        .enabled(false)
+                        .style(Style::button()),
+                )
+            });
+            ui.keyed("last", |ui| ui.button("Last"));
+        })
     });
 }
 
@@ -43,7 +52,7 @@ fn explicit_keys_survive_reorder_and_removal_does_not_reuse_ids() {
     let mut context = Context::new();
     let declare = |keys: &[&str], ui: &mut Ui<'_>| {
         for key in keys {
-            ui.button_keyed(*key, *key);
+            ui.keyed(*key, |ui| ui.button(*key));
         }
     };
     frame(&mut context, |ui| declare(&["a", "b", "c"], ui));
@@ -61,17 +70,21 @@ fn explicit_keys_survive_reorder_and_removal_does_not_reuse_ids() {
 fn keys_are_scoped_to_parent_and_type_changes_replace_nodes() {
     let mut context = Context::new();
     frame(&mut context, |ui| {
-        ui.column("a", Style::default(), |ui| {
-            ui.label_keyed("child", "a");
+        ui.keyed("a", |ui| {
+            ui.column(Style::default(), |ui| {
+                ui.keyed("child", |ui| ui.label("a"));
+            })
         });
-        ui.column("b", Style::default(), |ui| {
-            ui.label_keyed("child", "b");
+        ui.keyed("b", |ui| {
+            ui.column(Style::default(), |ui| {
+                ui.keyed("child", |ui| ui.label("b"));
+            })
         });
     });
     assert_ne!(context.find(&["a", "child"]), context.find(&["b", "child"]));
     let old = context.find(&["a"]).unwrap();
     frame(&mut context, |ui| {
-        ui.button_keyed("a", "a");
+        ui.keyed("a", |ui| ui.button("a"));
     });
     assert_ne!(context.find(&["a"]), Some(old));
     assert_eq!(context.node_count(), 2);
@@ -81,8 +94,8 @@ fn keys_are_scoped_to_parent_and_type_changes_replace_nodes() {
 #[should_panic(expected = "duplicate widget key")]
 fn duplicate_sibling_keys_are_rejected() {
     frame(&mut Context::new(), |ui| {
-        ui.label_keyed("x", "one");
-        ui.label_keyed("x", "two");
+        ui.keyed("x", |ui| ui.label("one"));
+        ui.keyed("x", |ui| ui.label("two"));
     });
 }
 
@@ -90,14 +103,12 @@ fn duplicate_sibling_keys_are_rejected() {
 fn paint_changes_skip_layout_and_text_changes_update_geometry() {
     let mut context = Context::new();
     let declare = |ui: &mut Ui<'_>, text: &str, color| {
-        ui.label_styled(
-            "text",
-            text,
-            Style {
+        ui.keyed("text", |ui| {
+            ui.label(Label::new(text).style(Style {
                 foreground: Some(color),
                 ..Style::default()
-            },
-        );
+            }))
+        });
     };
     frame(&mut context, |ui| declare(ui, "Hello", Color::WHITE));
     let id = context.find(&["text"]).unwrap();
@@ -118,12 +129,12 @@ fn paint_changes_skip_layout_and_text_changes_update_geometry() {
 fn equal_intrinsic_text_size_updates_paint_and_semantics_without_layout() {
     let mut context = Context::new();
     frame(&mut context, |ui| {
-        ui.label_keyed("text", "one");
+        ui.keyed("text", |ui| ui.label("one"));
     });
     let id = context.find(&["text"]).unwrap();
     let bounds = context.node(id).unwrap().bounds;
     let stats = frame(&mut context, |ui| {
-        ui.label_keyed("text", "two");
+        ui.keyed("text", |ui| ui.label("two"));
     });
     assert_eq!(stats.text_measures, 1);
     assert_eq!(stats.layout_passes, 0);
@@ -149,7 +160,7 @@ fn click_is_delivered_once_and_release_outside_cancels_activation() {
     let mut context = Context::new();
     let mut count = 0;
     frame(&mut context, |ui| {
-        ui.button_keyed("click", "Click");
+        ui.keyed("click", |ui| ui.button("Click"));
     });
     let position = center(&context, &["click"]);
     context.event(Event::PointerMoved(position));
@@ -158,7 +169,7 @@ fn click_is_delivered_once_and_release_outside_cancels_activation() {
     context.event(Event::PointerLeft);
     context.event(Event::PointerUp);
     frame(&mut context, |ui| {
-        if ui.button_keyed("click", "Click").clicked() {
+        if ui.keyed("click", |ui| ui.button("Click")).clicked() {
             count += 1;
         }
     });
@@ -168,7 +179,7 @@ fn click_is_delivered_once_and_release_outside_cancels_activation() {
     context.event(Event::PointerUp);
     for _ in 0..2 {
         frame(&mut context, |ui| {
-            if ui.button_keyed("click", "Click").clicked() {
+            if ui.keyed("click", |ui| ui.button("Click")).clicked() {
                 count += 1;
             }
         });
@@ -206,10 +217,12 @@ fn tab_skips_disabled_buttons_and_keyboard_repeat_does_not_double_activate() {
     let mut clicks = 0;
     for _ in 0..2 {
         frame(&mut context, |ui| {
-            ui.row("actions", Style::default(), |ui| {
-                if ui.button_keyed("first", "First").clicked() {
-                    clicks += 1;
-                }
+            ui.keyed("actions", |ui| {
+                ui.row(Style::default(), |ui| {
+                    if ui.keyed("first", |ui| ui.button("First")).clicked() {
+                        clicks += 1;
+                    }
+                })
             });
         });
     }
@@ -224,8 +237,12 @@ fn removing_or_disabling_pressed_nodes_clears_focus_and_capture() {
     context.event(Event::PointerMoved(center(&context, &["actions", "first"])));
     context.event(Event::PointerDown);
     frame(&mut context, |ui| {
-        ui.row("actions", Style::default(), |ui| {
-            ui.button_styled("first", "First", false, Style::button());
+        ui.keyed("actions", |ui| {
+            ui.row(Style::default(), |ui| {
+                ui.keyed("first", |ui| {
+                    ui.button(Button::new("First").enabled(false).style(Style::button()))
+                });
+            })
         });
     });
     assert!(context.focused().is_none());
@@ -239,17 +256,18 @@ fn removing_or_disabling_pressed_nodes_clears_focus_and_capture() {
 fn clipping_applies_to_hit_testing_and_resize_updates_layout() {
     let mut context = Context::new();
     let view = |ui: &mut Ui<'_>| {
-        ui.container(
-            "clip",
-            Style {
-                width: Length::Px(40.0),
-                height: Length::Px(40.0),
-                ..Style::default()
-            },
-            |ui| {
-                ui.button_keyed("wide", "A very wide button");
-            },
-        );
+        ui.keyed("clip", |ui| {
+            ui.container(
+                Style {
+                    width: Length::Px(40.0),
+                    height: Length::Px(40.0),
+                    ..Style::default()
+                },
+                |ui| {
+                    ui.keyed("wide", |ui| ui.button("A very wide button"));
+                },
+            )
+        });
     };
     frame(&mut context, view);
     assert!(context.hit_test(Point { x: 20.0, y: 20.0 }).is_some());

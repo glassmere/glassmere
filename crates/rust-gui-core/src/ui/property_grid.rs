@@ -76,7 +76,7 @@ impl Ui<'_> {
     /// property, declared through the builder. Values are bound directly:
     ///
     /// ```ignore
-    /// let response = ui.property_grid("inspector", &mut state, options, |grid| {
+    /// let response = ui.property_grid(&mut state, options, |grid| {
     ///     grid.group("Layout", |grid| {
     ///         grid.default(120.0).number("Width", &mut width, NumberOptions::default());
     ///         grid.bool("Visible", &mut visible);
@@ -85,7 +85,6 @@ impl Ui<'_> {
     /// ```
     pub fn property_grid(
         &mut self,
-        key: impl Into<String>,
         state: &mut PropertyGridState,
         options: PropertyGridOptions,
         content: impl FnOnce(&mut PropertyGrid<'_, '_>),
@@ -101,9 +100,9 @@ impl Ui<'_> {
         } else {
             1.0
         });
-        self.column(key, style, |ui| {
+        self.column(style, |ui| {
             if options.filter {
-                ui.text_input_styled(
+                ui.text_input_at(
                     "$filter",
                     ui.context.tr(
                         "rust-gui-grid-filter",
@@ -117,7 +116,7 @@ impl Ui<'_> {
             let header = |key: &'static str| {
                 move |ui: &mut Ui<'_>| {
                     let text = ui.context.tr(key, &[]);
-                    ui.label_styled(
+                    ui.label_at(
                         "$title",
                         text,
                         Style {
@@ -128,8 +127,7 @@ impl Ui<'_> {
                     );
                 }
             };
-            ui.split(
-                "$columns",
+            ui.at("$columns").split(
                 &mut state.name_share,
                 Axis::Horizontal,
                 SplitOptions {
@@ -162,14 +160,14 @@ impl Ui<'_> {
                 ..Style::default()
             };
             match options.height {
-                Some(height) => ui.scroll(
+                Some(height) => ui.scroll_at(
                     "$scroll",
                     Style::default()
                         .width(Length::Percent(1.0))
                         .height(Length::Px(height)),
-                    |ui| ui.column("$rows", body.width(content_width), rows),
+                    |ui| ui.column_at("$rows", body.width(content_width), rows),
                 ),
-                None => ui.column("$rows", body, rows),
+                None => ui.column_at("$rows", body, rows),
             }
         });
         PropertyGridResponse { changed }
@@ -225,7 +223,7 @@ impl PropertyGrid<'_, '_> {
             gap: 4.0,
             ..Style::default()
         };
-        self.ui.column(format!("group:{name}"), style, |ui| {
+        self.ui.column_at(format!("group:{name}"), style, |ui| {
             let header = Style {
                 width: Length::Percent(1.0),
                 padding: 8.0,
@@ -237,7 +235,7 @@ impl PropertyGrid<'_, '_> {
             let arrow = if collapsed { "\u{25b8}" } else { "\u{25be}" };
             let indent = "    ".repeat(depth);
             let toggled = ui
-                .button_styled("$header", format!("{indent}{arrow}  {name}"), true, header)
+                .button_at("$header", format!("{indent}{arrow}  {name}"), true, header)
                 .clicked();
             ui.tooltip(if collapsed {
                 ui.context
@@ -295,13 +293,13 @@ impl PropertyGrid<'_, '_> {
             align_items: Align::Center,
             ..Style::default()
         };
-        self.ui.row(format!("row:{name}"), style, |ui| {
-            ui.label_styled(
+        self.ui.row_at(format!("row:{name}"), style, |ui| {
+            ui.label_at(
                 "$name",
                 shown,
                 Style::default().width(Length::Percent(share)),
             );
-            ui.container(
+            ui.container_at(
                 "$editor",
                 Style {
                     grow: 1.0,
@@ -316,7 +314,7 @@ impl PropertyGrid<'_, '_> {
                     ..Style::button()
                 };
                 reset = ui
-                    .button_styled("$reset", "\u{21ba}", differs, compact)
+                    .button_at("$reset", "\u{21ba}", differs, compact)
                     .clicked();
                 ui.tooltip(
                     ui.context
@@ -351,28 +349,27 @@ impl PropertyGrid<'_, '_> {
     pub fn number(&mut self, name: &str, value: &mut f64, options: NumberOptions) -> bool {
         let options = options.style(Style::default().width(Length::Percent(1.0)));
         self.typed(name, value, |ui, label, value| {
-            ui.number_input("$value", label, value, options).changed
+            ui.at("$value").number_input(label, value, options).changed
         })
     }
 
     pub fn bool(&mut self, name: &str, value: &mut bool) -> bool {
         self.typed(name, value, |ui, label, value| {
             // The name is already in the first column; the box alone shows.
-            ui.checkbox_shown("$value", label, "", value).changed
+            ui.at("$value").checkbox_shown(label, "", value).changed
         })
     }
 
     pub fn text(&mut self, name: &str, value: &mut String) -> bool {
         self.typed(name, value, |ui, label, value| {
-            ui.text_input_styled("$value", label, value, "", fill())
-                .changed
+            ui.text_input_at("$value", label, value, "", fill()).changed
         })
     }
 
     /// One of `choices`, as an index.
     pub fn choice(&mut self, name: &str, value: &mut usize, choices: &[&str]) -> bool {
         self.typed(name, value, |ui, label, value| {
-            ui.combo_box_styled("$value", label, value, choices, fill())
+            ui.combo_box_at("$value", label, value, choices, fill())
                 .changed
         })
     }
@@ -393,8 +390,8 @@ impl PropertyGrid<'_, '_> {
                 align_items: Align::Center,
                 ..Style::default()
             };
-            ui.row("$value", row, |ui| {
-                ui.container(
+            ui.row_at("$value", row, |ui| {
+                ui.container_at(
                     "$swatch",
                     Style {
                         width: Length::Px(28.0),
@@ -412,7 +409,7 @@ impl PropertyGrid<'_, '_> {
                     width: Length::Auto,
                     ..Ui::field_style()
                 };
-                let response = ui.text_input_styled("$hex", label, &mut text, "#rrggbb", field);
+                let response = ui.text_input_at("$hex", label, &mut text, "#rrggbb", field);
                 if response.changed {
                     if let Some(color) = parse_hex(&text) {
                         changed = color != *value;
@@ -435,7 +432,7 @@ impl PropertyGrid<'_, '_> {
         self.finish();
         self.row(name, None, |ui, _| {
             let muted = ui.context.theme().text_muted;
-            ui.label_styled(
+            ui.label_at(
                 "$value",
                 text,
                 Style {

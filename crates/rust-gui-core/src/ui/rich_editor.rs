@@ -10,7 +10,6 @@ impl Ui<'_> {
     /// optional toolbar offers marks and block kinds.
     pub fn rich_text_editor(
         &mut self,
-        key: impl Into<String>,
         document: &mut RichDocument,
         options: RichEditorOptions,
     ) -> RichEditorResponse {
@@ -20,7 +19,8 @@ impl Ui<'_> {
         outer.background = None;
         outer.gap = 6.0;
         let mut response = RichEditorResponse::default();
-        self.group(key.into(), Kind::CodeEditor, outer, |ui| {
+        let key = self.next_key();
+        self.group(key, Kind::CodeEditor, outer, |ui| {
             response = ui.rich_editor_body(document, options);
         });
         response
@@ -35,7 +35,9 @@ impl Ui<'_> {
         let revision = document.revision();
         let before = (document.anchor(), document.cursor());
         let mut clipboard = None;
-        if let Some(ControlUpdate::RichOps(ops)) = self.take_update(key, Kind::RichEditor) {
+        if let Some(ControlUpdate::RichOps(ops)) =
+            self.take_update(&WidgetKey::named(key), Kind::RichEditor)
+        {
             for op in ops {
                 op.apply(document, options.read_only, &mut clipboard);
             }
@@ -105,7 +107,7 @@ impl Ui<'_> {
             }
             style
         };
-        self.row(
+        self.row_at(
             "$toolbar",
             Style::default().gap(4.0).align_items(Align::Center),
             |ui| {
@@ -117,7 +119,7 @@ impl Ui<'_> {
                     ("<>", "Inline code (Ctrl+E)", Mark::Code),
                 ] {
                     if ui
-                        .button_styled(
+                        .button_at(
                             format!("$mark-{label}"),
                             label,
                             true,
@@ -130,7 +132,7 @@ impl Ui<'_> {
                     }
                     ui.tooltip(tip);
                 }
-                ui.label_styled("$gap", "", Style::default().width(Length::Px(8.0)));
+                ui.label_at("$gap", "", Style::default().width(Length::Px(8.0)));
                 for (label, tip, block) in [
                     ("H1", "Heading 1", BlockKind::Heading(1)),
                     ("H2", "Heading 2", BlockKind::Heading(2)),
@@ -141,7 +143,7 @@ impl Ui<'_> {
                     ("{ }", "Code block", BlockKind::Code),
                 ] {
                     if ui
-                        .button_styled(format!("$block-{tip}"), label, true, button(kind == block))
+                        .button_at(format!("$block-{tip}"), label, true, button(kind == block))
                         .clicked()
                     {
                         document.set_block_kind(block);

@@ -78,7 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 height: Length::Percent(1.0),
                 ..Style::default()
             };
-            ui.row("page", page, |ui| {
+            ui.row(page, |ui| {
                 let stage = Style {
                     grow: 1.0,
                     height: Length::Percent(1.0),
@@ -89,7 +89,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     gap: 16.0,
                     ..Style::default()
                 };
-                ui.column("stage", stage, |ui| {
+                ui.column(stage, |ui| {
                     if card.visible {
                         let look = Style {
                             width: Length::Px(card.width as f32),
@@ -104,24 +104,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             align_items: [Align::Start, Align::Center, Align::End][card.align],
                             ..Style::default()
                         };
-                        ui.column("card", look, |ui| ui.label(card.title.clone()));
+                        ui.column(look, |ui| ui.label(card.title.clone()));
                     }
-                    ui.label_keyed("last", format!("Last change: {last}"));
+                    ui.label(format!("Last change: {last}"));
                 });
 
                 let options = PropertyGridOptions::new("Card properties")
                     .height(600.0)
                     .style(Style::default().width(Length::Px(380.0)));
-                let response = ui.property_grid("inspector", &mut state, options, |grid| {
+                let response = ui.property_grid(&mut state, options, |grid| {
                     card.properties(grid);
                     // Rows the derive cannot know about: a computed value and an
                     // action that touches several fields.
                     grid.group("Extras", |grid| {
                         grid.readonly("Characters", card.title.chars().count().to_string());
                         grid.custom("Preset", |ui, label| {
-                            let clicked = ui
-                                .button_keyed("$value", format!("{label}: sunset"))
-                                .clicked();
+                            let clicked = ui.button(format!("{label}: sunset")).clicked();
                             if clicked {
                                 card.fill = Color::rgb(232, 120, 72);
                                 card.text = Color::rgb(40, 20, 50);

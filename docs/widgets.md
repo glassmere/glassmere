@@ -7,15 +7,15 @@ There are three ways to add something to the framework, and the first one that f
 Most "widgets" are a function that declares built-in ones. It needs no trait, no state of its own and no registration:
 
 ```rust
-fn labelled_slider(ui: &mut Ui<'_>, key: &str, label: &str, value: &mut f64) -> bool {
-    ui.row(key, Style::default().gap(8.0), |ui| {
+fn labelled_slider(ui: &mut Ui<'_>, label: &str, value: &mut f64) -> bool {
+    ui.row(Style::default().gap(8.0), |ui| {
         ui.label(label);
-        ui.slider("value", label, value, 0.0..=1.0, 0.05).changed
+        ui.slider(label, value, 0.0..=1.0, 0.05).changed
     })
 }
 ```
 
-The row's key scopes everything inside it, so the same function used twice keeps two separate identities.
+The row scopes everything inside it, so the same function used twice in the same place keeps two separate identities: the two rows are in different positions. Called in a loop over data that reorders, wrap the call in `ui.keyed(item.id, |ui| ..)` so each row keeps its own.
 
 ## A component
 
@@ -26,16 +26,16 @@ struct Search { query: String, results: Vec<String> }
 
 impl Component for Search {
     fn ui(&mut self, ui: &mut Ui<'_>) {
-        if ui.text_input("query", "Search", &mut self.query).changed {
+        if ui.text_input("Search", &mut self.query).changed {
             self.results = look_up(&self.query);
         }
-        for (index, result) in self.results.iter().enumerate() {
-            ui.label_keyed(format!("hit{index}"), result.clone());
+        for result in &self.results {
+            ui.label(result.clone());
         }
     }
 }
 
-ui.component("search", Style::default(), &mut search);
+ui.component(Style::default(), &mut search);
 ```
 
 The framework keeps nothing for it. The struct is the state, the application holds it, and `Ui::component` only gives it a stable scope.

@@ -25,7 +25,7 @@ fn a_file_dialog_is_asked_for_once_and_answered_later() {
                 );
             }
             *chosen = ui.chosen_files().map(<[PathBuf]>::to_vec);
-            ui.label_keyed("state", "ready");
+            ui.keyed("state", |ui| ui.label("ready"));
         });
     };
 
@@ -56,7 +56,7 @@ fn notifications_queue_in_order_and_are_taken_once() {
     context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
         ui.notify(Notification::new("Saved", "The report was saved."));
         ui.notify(Notification::new("Sent", "And sent.").urgent());
-        ui.label_keyed("state", "ready");
+        ui.keyed("state", |ui| ui.label("ready"));
     });
     let posted = context.take_notifications();
     assert_eq!(posted.len(), 2);
@@ -92,7 +92,7 @@ fn a_menu_is_handed_over_only_when_it_changes() {
         context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
             ui.set_menu(menu(extra));
             ui.set_tray(Some(Tray::new("Reports").with_menu(menu(extra))));
-            ui.label_keyed("state", "ready");
+            ui.keyed("state", |ui| ui.label("ready"));
         });
     };
 
@@ -127,10 +127,10 @@ fn a_command_chosen_outside_the_window_activates_the_command_inside_it() {
                 enabled,
                 ..Command::with_id("open", "Open", None)
             };
-            if ui.command_button("open", &open).clicked() {
+            if ui.keyed("open", |ui| ui.command_button(&open)).clicked() {
                 *opened += 1;
             }
-            ui.label_keyed("state", "ready");
+            ui.keyed("state", |ui| ui.label("ready"));
         });
     };
     declare(&mut context, &mut opened, enabled);
@@ -156,7 +156,7 @@ fn files_the_system_opened_with_are_there_from_the_first_frame() {
     let mut seen = Vec::new();
     context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
         seen = ui.opened_files().to_vec();
-        ui.column("page", Style::default(), |_| {});
+        ui.keyed("page", |ui| ui.column(Style::default(), |_| {}));
     });
     assert_eq!(seen, [PathBuf::from("notes.md")]);
 }
@@ -180,16 +180,20 @@ fn the_menu_bar_activates_the_command_its_item_names() {
                     MenuEntry::Command(Command::with_id("save", "Save as...", None)),
                 ],
             )]);
-            ui.menu_bar("bar", &menu);
+            ui.keyed("bar", |ui| ui.menu_bar(&menu));
             // The commands themselves, declared as any view would.
             if ui
-                .command_button("open", &Command::with_id("open", "Open", None))
+                .keyed("open", |ui| {
+                    ui.command_button(&Command::with_id("open", "Open", None))
+                })
                 .clicked()
             {
                 *opened += 1;
             }
             if ui
-                .command_button("save", &Command::with_id("save", "Save", None))
+                .keyed("save", |ui| {
+                    ui.command_button(&Command::with_id("save", "Save", None))
+                })
                 .clicked()
             {
                 *saved += 1;

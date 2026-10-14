@@ -1,3 +1,4 @@
+use rust_gui_core::Label;
 use rust_gui_core::{
     Align, Context, GridArea, Justify, Length, MonospaceMeasurer, NodeId, Style, StyleSheet, Track,
     TrackSize, Ui,
@@ -41,27 +42,30 @@ fn assert_rect(actual: Rect, x: f32, y: f32, width: f32, height: f32) {
 fn grid_auto_places_children_and_honors_explicit_areas_and_implicit_rows() {
     let mut context = Context::new();
     let view = |ui: &mut Ui<'_>| {
-        ui.grid(
-            "grid",
-            Style::default()
-                .width(Length::Percent(1.0))
-                .columns(vec![Track::Fr(1.0), Track::Px(100.0), Track::Auto])
-                .auto_rows(vec![Track::Px(30.0)])
-                .gap(10.0),
-            |ui| {
-                for key in ["a", "b", "c", "d", "e"] {
-                    ui.label_styled(key, key, fixed(50.0, 20.0));
-                }
-                ui.label_styled(
-                    "wide",
-                    "wide",
-                    Style::default()
-                        .width(Length::Percent(1.0))
-                        .height(Length::Px(20.0))
-                        .area(GridArea::span(1, 3, 3, 1)),
-                );
-            },
-        );
+        ui.keyed("grid", |ui| {
+            ui.grid(
+                Style::default()
+                    .width(Length::Percent(1.0))
+                    .columns(vec![Track::Fr(1.0), Track::Px(100.0), Track::Auto])
+                    .auto_rows(vec![Track::Px(30.0)])
+                    .gap(10.0),
+                |ui| {
+                    for key in ["a", "b", "c", "d", "e"] {
+                        ui.keyed(key, |ui| ui.label(Label::new(key).style(fixed(50.0, 20.0))));
+                    }
+                    ui.keyed("wide", |ui| {
+                        ui.label(
+                            Label::new("wide").style(
+                                Style::default()
+                                    .width(Length::Percent(1.0))
+                                    .height(Length::Px(20.0))
+                                    .area(GridArea::span(1, 3, 3, 1)),
+                            ),
+                        )
+                    });
+                },
+            )
+        });
     };
     frame(&mut context, view);
     // Column widths: auto = 50 (content), fixed 100, fr = 500 - 150 - 2 gaps.
@@ -83,22 +87,27 @@ fn grid_auto_places_children_and_honors_explicit_areas_and_implicit_rows() {
 fn repeat_minmax_and_percent_tracks_size_as_specified() {
     let mut context = Context::new();
     frame(&mut context, |ui| {
-        ui.grid(
-            "grid",
-            Style::default()
-                .width(Length::Px(400.0))
-                .gap(0.0)
-                .columns(vec![
-                    Track::repeat(2, vec![Track::Fr(1.0)]),
-                    Track::MinMax(TrackSize::Px(50.0), TrackSize::Px(80.0)),
-                    Track::Percent(0.25),
-                ]),
-            |ui| {
-                for key in ["a", "b", "c", "d"] {
-                    ui.label_styled(key, key, Style::default().height(Length::Px(10.0)));
-                }
-            },
-        );
+        ui.keyed("grid", |ui| {
+            ui.grid(
+                Style::default()
+                    .width(Length::Px(400.0))
+                    .gap(0.0)
+                    .columns(vec![
+                        Track::repeat(2, vec![Track::Fr(1.0)]),
+                        Track::MinMax(TrackSize::Px(50.0), TrackSize::Px(80.0)),
+                        Track::Percent(0.25),
+                    ]),
+                |ui| {
+                    for key in ["a", "b", "c", "d"] {
+                        ui.keyed(key, |ui| {
+                            ui.label(
+                                Label::new(key).style(Style::default().height(Length::Px(10.0))),
+                            )
+                        });
+                    }
+                },
+            )
+        });
     });
     // CSS track sizing: 25% = 100, minmax(50, 80) grows to its 80 maximum while
     // free space remains, and the two fr tracks split the remaining 220. Items
@@ -113,36 +122,42 @@ fn repeat_minmax_and_percent_tracks_size_as_specified() {
 fn min_max_and_aspect_ratio_constrain_sizes() {
     let mut context = Context::new();
     frame(&mut context, |ui| {
-        ui.column("page", Style::default().width(Length::Percent(1.0)), |ui| {
-            ui.container(
-                "min",
-                Style::default()
-                    .width(Length::Percent(0.5))
-                    .min_width(Length::Px(300.0))
-                    .height(Length::Px(10.0)),
-                |_| {},
-            );
-            ui.container(
-                "max",
-                Style::default()
-                    .width(Length::Percent(1.0))
-                    .max_width(Length::Px(100.0))
-                    .height(Length::Px(10.0)),
-                |_| {},
-            );
-            ui.container(
-                "aspect",
-                Style::default().width(Length::Px(200.0)).aspect_ratio(2.0),
-                |_| {},
-            );
-            ui.container(
-                "tall",
-                Style::default()
-                    .height(Length::Px(50.0))
-                    .aspect_ratio(0.5)
-                    .max_height(Length::Px(40.0)),
-                |_| {},
-            );
+        ui.keyed("page", |ui| {
+            ui.column(Style::default().width(Length::Percent(1.0)), |ui| {
+                ui.keyed("min", |ui| {
+                    ui.container(
+                        Style::default()
+                            .width(Length::Percent(0.5))
+                            .min_width(Length::Px(300.0))
+                            .height(Length::Px(10.0)),
+                        |_| {},
+                    )
+                });
+                ui.keyed("max", |ui| {
+                    ui.container(
+                        Style::default()
+                            .width(Length::Percent(1.0))
+                            .max_width(Length::Px(100.0))
+                            .height(Length::Px(10.0)),
+                        |_| {},
+                    )
+                });
+                ui.keyed("aspect", |ui| {
+                    ui.container(
+                        Style::default().width(Length::Px(200.0)).aspect_ratio(2.0),
+                        |_| {},
+                    )
+                });
+                ui.keyed("tall", |ui| {
+                    ui.container(
+                        Style::default()
+                            .height(Length::Px(50.0))
+                            .aspect_ratio(0.5)
+                            .max_height(Length::Px(40.0)),
+                        |_| {},
+                    )
+                });
+            })
         });
     });
     assert_rect(bounds(&context, &["page", "min"]), 0.0, 0.0, 300.0, 10.0);
@@ -164,50 +179,70 @@ fn min_max_and_aspect_ratio_constrain_sizes() {
 fn alignment_and_distribution_apply_to_rows_columns_and_children() {
     let mut context = Context::new();
     frame(&mut context, |ui| {
-        ui.column(
-            "page",
-            Style::default().width(Length::Percent(1.0)).gap(0.0),
-            |ui| {
-                ui.row(
-                    "centered",
-                    Style::default()
-                        .width(Length::Percent(1.0))
-                        .height(Length::Px(100.0))
-                        .align_items(Align::Center)
-                        .justify_content(Justify::SpaceBetween)
-                        .gap(0.0),
-                    |ui| {
-                        ui.label_styled("short", "s", fixed(50.0, 20.0));
-                        ui.label_styled("tall", "t", fixed(50.0, 40.0));
-                        ui.label_styled("end", "e", fixed(50.0, 20.0).align_self(Align::End));
-                    },
-                );
-                ui.row(
-                    "stretched",
-                    Style::default()
-                        .width(Length::Percent(1.0))
-                        .height(Length::Px(60.0))
-                        .align_items(Align::Stretch)
-                        .justify_content(Justify::Center)
-                        .gap(0.0),
-                    |ui| {
-                        ui.label_styled("fill", "f", Style::default().width(Length::Px(100.0)));
-                    },
-                );
-                ui.column(
-                    "vertical",
-                    Style::default()
-                        .width(Length::Px(100.0))
-                        .height(Length::Px(90.0))
-                        .justify_content(Justify::End)
-                        .align_items(Align::Center)
-                        .gap(0.0),
-                    |ui| {
-                        ui.label_styled("bottom", "b", fixed(20.0, 30.0));
-                    },
-                );
-            },
-        );
+        ui.keyed("page", |ui| {
+            ui.column(
+                Style::default().width(Length::Percent(1.0)).gap(0.0),
+                |ui| {
+                    ui.keyed("centered", |ui| {
+                        ui.row(
+                            Style::default()
+                                .width(Length::Percent(1.0))
+                                .height(Length::Px(100.0))
+                                .align_items(Align::Center)
+                                .justify_content(Justify::SpaceBetween)
+                                .gap(0.0),
+                            |ui| {
+                                ui.keyed("short", |ui| {
+                                    ui.label(Label::new("s").style(fixed(50.0, 20.0)))
+                                });
+                                ui.keyed("tall", |ui| {
+                                    ui.label(Label::new("t").style(fixed(50.0, 40.0)))
+                                });
+                                ui.keyed("end", |ui| {
+                                    ui.label(
+                                        Label::new("e")
+                                            .style(fixed(50.0, 20.0).align_self(Align::End)),
+                                    )
+                                });
+                            },
+                        )
+                    });
+                    ui.keyed("stretched", |ui| {
+                        ui.row(
+                            Style::default()
+                                .width(Length::Percent(1.0))
+                                .height(Length::Px(60.0))
+                                .align_items(Align::Stretch)
+                                .justify_content(Justify::Center)
+                                .gap(0.0),
+                            |ui| {
+                                ui.keyed("fill", |ui| {
+                                    ui.label(
+                                        Label::new("f")
+                                            .style(Style::default().width(Length::Px(100.0))),
+                                    )
+                                });
+                            },
+                        )
+                    });
+                    ui.keyed("vertical", |ui| {
+                        ui.column(
+                            Style::default()
+                                .width(Length::Px(100.0))
+                                .height(Length::Px(90.0))
+                                .justify_content(Justify::End)
+                                .align_items(Align::Center)
+                                .gap(0.0),
+                            |ui| {
+                                ui.keyed("bottom", |ui| {
+                                    ui.label(Label::new("b").style(fixed(20.0, 30.0)))
+                                });
+                            },
+                        )
+                    });
+                },
+            )
+        });
     });
     assert_rect(
         bounds(&context, &["page", "centered", "short"]),
@@ -251,18 +286,22 @@ fn children_shrink_only_when_asked_and_respect_minimums() {
     let mut context = Context::new();
     let row = |shrink: f32, minimum: Length| {
         move |ui: &mut Ui<'_>| {
-            ui.row(
-                "row",
-                Style::default().width(Length::Percent(1.0)).gap(0.0),
-                |ui| {
-                    ui.label_styled(
-                        "first",
-                        "1",
-                        fixed(400.0, 10.0).shrink(shrink).min_width(minimum),
-                    );
-                    ui.label_styled("second", "2", fixed(400.0, 10.0).shrink(shrink));
-                },
-            );
+            ui.keyed("row", |ui| {
+                ui.row(
+                    Style::default().width(Length::Percent(1.0)).gap(0.0),
+                    |ui| {
+                        ui.keyed("first", |ui| {
+                            ui.label(
+                                Label::new("1")
+                                    .style(fixed(400.0, 10.0).shrink(shrink).min_width(minimum)),
+                            )
+                        });
+                        ui.keyed("second", |ui| {
+                            ui.label(Label::new("2").style(fixed(400.0, 10.0).shrink(shrink)))
+                        });
+                    },
+                )
+            });
         }
     };
     frame(&mut context, row(0.0, Length::Auto));
@@ -298,19 +337,24 @@ fn children_shrink_only_when_asked_and_respect_minimums() {
 fn baseline_alignment_lines_up_the_text_of_different_sizes() {
     let mut context = Context::new();
     frame(&mut context, |ui| {
-        ui.row(
-            "row",
-            Style::default().align_items(Align::Baseline).gap(4.0),
-            |ui| {
-                ui.label_styled("small", "small", Style::default().font_size(12.0));
-                ui.label_styled("large", "large", Style::default().font_size(32.0));
-                ui.label_styled(
-                    "padded",
-                    "pad",
-                    Style::default().font_size(16.0).padding(10.0),
-                );
-            },
-        );
+        ui.keyed("row", |ui| {
+            ui.row(
+                Style::default().align_items(Align::Baseline).gap(4.0),
+                |ui| {
+                    ui.keyed("small", |ui| {
+                        ui.label(Label::new("small").style(Style::default().font_size(12.0)))
+                    });
+                    ui.keyed("large", |ui| {
+                        ui.label(Label::new("large").style(Style::default().font_size(32.0)))
+                    });
+                    ui.keyed("padded", |ui| {
+                        ui.label(
+                            Label::new("pad").style(Style::default().font_size(16.0).padding(10.0)),
+                        )
+                    });
+                },
+            )
+        });
     });
     let small = bounds(&context, &["row", "small"]);
     let large = bounds(&context, &["row", "large"]);
@@ -405,24 +449,29 @@ fn a_container_tells_its_content_how_much_room_it_had() {
             rust_gui_scene::Size::new(width, 200.0),
             &mut MonospaceMeasurer,
             |ui| {
-                ui.responsive(
-                    "page",
-                    Style::default().width(Length::Percent(1.0)).padding(10.0),
-                    |ui, room| {
-                        seen.push(room);
-                        // A narrow page stacks what a wide one puts in a row.
-                        if room >= 300.0 {
-                            ui.row("wide", Style::default(), |ui| {
-                                ui.label_keyed("a", "a");
-                                ui.label_keyed("b", "b");
-                            });
-                        } else {
-                            ui.column("narrow", Style::default(), |ui| {
-                                ui.label_keyed("a", "a");
-                            });
-                        }
-                    },
-                );
+                ui.keyed("page", |ui| {
+                    ui.responsive(
+                        Style::default().width(Length::Percent(1.0)).padding(10.0),
+                        |ui, room| {
+                            seen.push(room);
+                            // A narrow page stacks what a wide one puts in a row.
+                            if room >= 300.0 {
+                                ui.keyed("wide", |ui| {
+                                    ui.row(Style::default(), |ui| {
+                                        ui.keyed("a", |ui| ui.label("a"));
+                                        ui.keyed("b", |ui| ui.label("b"));
+                                    })
+                                });
+                            } else {
+                                ui.keyed("narrow", |ui| {
+                                    ui.column(Style::default(), |ui| {
+                                        ui.keyed("a", |ui| ui.label("a"));
+                                    })
+                                });
+                            }
+                        },
+                    )
+                });
             },
         );
     };
@@ -473,20 +522,26 @@ fn a_text_leaf_is_placed_in_its_box_by_the_same_properties_a_container_uses() {
     };
 
     frame(&mut context, |ui| {
-        ui.label_styled("one", "x", boxed(Justify::Start, Align::Start));
+        ui.keyed("one", |ui| {
+            ui.label(Label::new("x").style(boxed(Justify::Start, Align::Start)))
+        });
     });
     let start = text(&context);
     assert_eq!((start.x, start.y), (0.0, 0.0));
 
     frame(&mut context, |ui| {
-        ui.label_styled("one", "x", boxed(Justify::Center, Align::Center));
+        ui.keyed("one", |ui| {
+            ui.label(Label::new("x").style(boxed(Justify::Center, Align::Center)))
+        });
     });
     let centre = text(&context);
     assert!(centre.x > 0.0 && centre.x < 100.0, "{centre:?}");
     assert!(centre.y > 0.0 && centre.y < 50.0, "{centre:?}");
 
     frame(&mut context, |ui| {
-        ui.label_styled("one", "x", boxed(Justify::End, Align::End));
+        ui.keyed("one", |ui| {
+            ui.label(Label::new("x").style(boxed(Justify::End, Align::End)))
+        });
     });
     // At the end the text is moved by all the room the box has spare, which
     // is twice what centring moves it by.
@@ -496,14 +551,12 @@ fn a_text_leaf_is_placed_in_its_box_by_the_same_properties_a_container_uses() {
 
     // Padding still comes first: the box the text is placed in is inside it.
     frame(&mut context, |ui| {
-        ui.label_styled(
-            "one",
-            "x",
-            Style {
+        ui.keyed("one", |ui| {
+            ui.label(Label::new("x").style(Style {
                 padding: 10.0,
                 ..boxed(Justify::Center, Align::Center)
-            },
-        );
+            }))
+        });
     });
     let padded = text(&context);
     assert!((padded.x - centre.x).abs() < 0.01, "{padded:?}");

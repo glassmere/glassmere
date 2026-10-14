@@ -20,7 +20,7 @@ fn a_copy_reaches_the_host_and_what_it_reads_reaches_the_view() {
                 ui.copy(clip);
             }
             *seen = ui.pasted().cloned();
-            ui.label_keyed("state", "ready");
+            ui.keyed("state", |ui| ui.label("ready"));
         });
     };
 
@@ -48,7 +48,7 @@ fn a_copy_reaches_the_host_and_what_it_reads_reaches_the_view() {
     context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
         ui.request_paste();
         asked = true;
-        ui.label_keyed("state", "ready");
+        ui.keyed("state", |ui| ui.label("ready"));
     });
     assert!(asked && context.take_paste_request());
     assert!(!context.take_paste_request(), "asked once");
@@ -83,9 +83,11 @@ fn a_clip_carries_every_form_at_once() {
 fn copying_does_not_disturb_the_declaration() {
     let mut context = Context::new();
     let stats = context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
-        ui.column("page", Style::default(), |ui| {
-            ui.copy(Clip::text("from inside a container"));
-            ui.label_keyed("label", "Copied");
+        ui.keyed("page", |ui| {
+            ui.column(Style::default(), |ui| {
+                ui.copy(Clip::text("from inside a container"));
+                ui.keyed("label", |ui| ui.label("Copied"));
+            })
         });
     });
     assert_eq!(stats.activations, 0);

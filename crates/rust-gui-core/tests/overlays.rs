@@ -60,10 +60,12 @@ fn scene_text(context: &Context, needle: &str) -> bool {
 fn tooltips_appear_after_a_dwell_request_a_wake_and_hide_on_movement_or_input() {
     let mut context = Context::new();
     let view = |ui: &mut Ui<'_>| {
-        ui.column("page", Style::default(), |ui| {
-            ui.button_keyed("save", "Save");
-            ui.tooltip("Saves the document");
-            ui.button_keyed("plain", "Plain");
+        ui.keyed("page", |ui| {
+            ui.column(Style::default(), |ui| {
+                ui.keyed("save", |ui| ui.button("Save"));
+                ui.tooltip("Saves the document");
+                ui.keyed("plain", |ui| ui.button("Plain"));
+            })
         });
     };
     context.set_now(Duration::ZERO);
@@ -104,12 +106,14 @@ fn tabs_frame(context: &mut Context, selected: &mut usize) -> TabsResponse {
     let tabs = [Tab::new("One"), Tab::closable("Two"), Tab::new("Three")];
     let mut response = TabsResponse::default();
     frame(context, |ui| {
-        ui.button_keyed("before", "Before");
-        response = ui.tabs("tabs", selected, &tabs, |ui, index| {
-            ui.label_keyed("body", format!("panel {index}"));
-            ui.button_keyed("inner", "Inner");
+        ui.keyed("before", |ui| ui.button("Before"));
+        response = ui.keyed("tabs", |ui| {
+            ui.tabs(selected, &tabs, |ui, index| {
+                ui.keyed("body", |ui| ui.label(format!("panel {index}")));
+                ui.keyed("inner", |ui| ui.button("Inner"));
+            })
         });
-        ui.button_keyed("after", "After");
+        ui.keyed("after", |ui| ui.button("After"));
     });
     response
 }
@@ -178,21 +182,22 @@ fn tabs_select_by_click_and_arrows_expose_roles_and_report_closes() {
 
 fn split_frame(context: &mut Context, fraction: &mut f32) {
     frame(context, |ui| {
-        ui.split(
-            "split",
-            fraction,
-            Axis::Horizontal,
-            SplitOptions {
-                min_first: 100.0,
-                min_second: 100.0,
-                divider: 10.0,
-                style: Style::default()
-                    .width(Length::Px(500.0))
-                    .height(Length::Px(200.0)),
-            },
-            |ui| ui.label_keyed("a", "A"),
-            |ui| ui.label_keyed("b", "B"),
-        );
+        ui.keyed("split", |ui| {
+            ui.split(
+                fraction,
+                Axis::Horizontal,
+                SplitOptions {
+                    min_first: 100.0,
+                    min_second: 100.0,
+                    divider: 10.0,
+                    style: Style::default()
+                        .width(Length::Px(500.0))
+                        .height(Length::Px(200.0)),
+                },
+                |ui| ui.keyed("a", |ui| ui.label("A")),
+                |ui| ui.keyed("b", |ui| ui.label("B")),
+            )
+        });
     });
 }
 
@@ -250,18 +255,19 @@ fn menu_frame(context: &mut Context) -> Option<usize> {
     ];
     let mut chosen = None;
     frame(context, |ui| {
-        ui.button_keyed("outside", "Outside");
-        chosen = ui.context_menu(
-            "area",
-            &items,
-            Style::default()
-                .width(Length::Px(400.0))
-                .height(Length::Px(200.0)),
-            |ui| {
-                ui.label_keyed("text", "Right-click me");
-                ui.button_keyed("inner", "Inner");
-            },
-        );
+        ui.keyed("outside", |ui| ui.button("Outside"));
+        chosen = ui.keyed("area", |ui| {
+            ui.context_menu(
+                &items,
+                Style::default()
+                    .width(Length::Px(400.0))
+                    .height(Length::Px(200.0)),
+                |ui| {
+                    ui.keyed("text", |ui| ui.label("Right-click me"));
+                    ui.keyed("inner", |ui| ui.button("Inner"));
+                },
+            )
+        });
     });
     chosen
 }
@@ -317,19 +323,25 @@ fn context_menus_open_at_the_pointer_or_focus_navigate_and_choose_once() {
 fn popover_frame(context: &mut Context, open: &mut bool, second: &mut bool) -> bool {
     let mut dismissed = false;
     frame(context, |ui| {
-        ui.row("bar", Style::default(), |ui| {
-            ui.button_keyed("share", "Share");
-            dismissed = ui
-                .popover("pop", open, PopoverOptions::default(), |ui| {
-                    ui.label_keyed("hint", "Share this");
-                    ui.button_keyed("copy", "Copy link");
-                })
-                .dismissed;
-            ui.button_keyed("more", "More");
-            ui.popover("pop2", second, PopoverOptions::default(), |ui| {
-                ui.button_keyed("extra", "Extra");
-            });
-            ui.button_keyed("other", "Other");
+        ui.keyed("bar", |ui| {
+            ui.row(Style::default(), |ui| {
+                ui.keyed("share", |ui| ui.button("Share"));
+                dismissed = ui
+                    .keyed("pop", |ui| {
+                        ui.popover(open, PopoverOptions::default(), |ui| {
+                            ui.keyed("hint", |ui| ui.label("Share this"));
+                            ui.keyed("copy", |ui| ui.button("Copy link"));
+                        })
+                    })
+                    .dismissed;
+                ui.keyed("more", |ui| ui.button("More"));
+                ui.keyed("pop2", |ui| {
+                    ui.popover(second, PopoverOptions::default(), |ui| {
+                        ui.keyed("extra", |ui| ui.button("Extra"));
+                    })
+                });
+                ui.keyed("other", |ui| ui.button("Other"));
+            })
         });
     });
     dismissed

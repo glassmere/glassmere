@@ -7,7 +7,7 @@ const ROOT: Size = Size::new(200.0, 200.0);
 fn scene(style: Style) -> Vec<Primitive> {
     let mut context = Context::new();
     context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        ui.container("card", style.clone(), |_| {});
+        ui.keyed("card", |ui| ui.container(style.clone(), |_| {}));
     });
     context.scene().primitives.clone()
 }

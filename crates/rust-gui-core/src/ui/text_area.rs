@@ -157,7 +157,7 @@ fn find_bar(ui: &mut Ui<'_>, find: &mut FindState, document: &mut TextDocument, 
         ..compact()
     };
     let row = Style::default().gap(6.0).align_items(Align::Center);
-    ui.focus_scope(
+    ui.focus_scope_at(
         "$find",
         FocusScope {
             restore: true,
@@ -166,26 +166,26 @@ fn find_bar(ui: &mut Ui<'_>, find: &mut FindState, document: &mut TextDocument, 
         },
         Style::default().gap(6.0),
         |ui| {
-            ui.row("$search", row.clone(), |ui| {
+            ui.row_at("$search", row.clone(), |ui| {
                 let query =
-                    ui.text_input_styled("$query", "Find", &mut find.query, "Find", input(220.0));
+                    ui.text_input_at("$query", "Find", &mut find.query, "Find", input(220.0));
                 if query.submitted {
                     find.step(document, true);
                 }
                 if ui
-                    .button_styled("$previous", "Previous", true, compact())
+                    .button_at("$previous", "Previous", true, compact())
                     .clicked()
                 {
                     find.step(document, false);
                 }
-                if ui.button_styled("$next", "Next", true, compact()).clicked() {
+                if ui.button_at("$next", "Next", true, compact()).clicked() {
                     find.step(document, true);
                 }
-                ui.checkbox("$case", "Match case", &mut find.case_sensitive);
+                ui.checkbox_at("$case", "Match case", &mut find.case_sensitive);
                 ui.enabled(!find.regex, |ui| {
-                    ui.checkbox("$word", "Whole word", &mut find.whole_word);
+                    ui.checkbox_at("$word", "Whole word", &mut find.whole_word);
                 });
-                ui.checkbox("$regex", "Regular expression", &mut find.regex);
+                ui.checkbox_at("$regex", "Regular expression", &mut find.regex);
                 find.refresh(document);
                 let current = document.primary().range();
                 let position = find.matches().iter().position(|range| *range == current);
@@ -202,19 +202,19 @@ fn find_bar(ui: &mut Ui<'_>, find: &mut FindState, document: &mut TextDocument, 
                     Some(error) => (error.to_owned(), ui.theme().accent),
                     None => (count, muted),
                 };
-                ui.label_styled(
+                ui.label_at(
                     "$count",
                     text,
                     Style::default().font_size(13.0).foreground(colour),
                 );
-                if ui.button_styled("$close", "×", true, compact()).clicked() {
+                if ui.button_at("$close", "×", true, compact()).clicked() {
                     find.open = false;
                 }
                 ui.tooltip(ui.context.tr("rust-gui-find-close", &[]));
             });
             if find.replace {
-                ui.row("$replace", row.clone(), |ui| {
-                    ui.text_input_styled(
+                ui.row_at("$replace", row.clone(), |ui| {
+                    ui.text_input_at(
                         "$replacement",
                         "Replace with",
                         &mut find.replacement,
@@ -222,13 +222,13 @@ fn find_bar(ui: &mut Ui<'_>, find: &mut FindState, document: &mut TextDocument, 
                         input(220.0),
                     );
                     if ui
-                        .button_styled("$one", "Replace", !read_only, compact())
+                        .button_at("$one", "Replace", !read_only, compact())
                         .clicked()
                     {
                         find.replace_one(document);
                     }
                     if ui
-                        .button_styled("$all", "Replace all", !read_only, compact())
+                        .button_at("$all", "Replace all", !read_only, compact())
                         .clicked()
                     {
                         find.replace_all(document);
@@ -247,7 +247,6 @@ impl Ui<'_> {
     /// With `options.find`, Ctrl+F and Ctrl+H open a find bar above the text.
     pub fn code_editor(
         &mut self,
-        key: impl Into<String>,
         document: &mut TextDocument,
         options: CodeEditorOptions<'_>,
     ) -> CodeEditorResponse {
@@ -257,7 +256,8 @@ impl Ui<'_> {
         outer.background = None;
         outer.gap = 6.0;
         let mut response = CodeEditorResponse::default();
-        self.group(key.into(), Kind::CodeEditor, outer, |ui| {
+        let key = self.next_key();
+        self.group(key, Kind::CodeEditor, outer, |ui| {
             response = ui.editor_body(document, options);
         });
         response
@@ -277,7 +277,9 @@ impl Ui<'_> {
         let before = document.primary();
         let mut applied = false;
         let mut clipboard = None;
-        if let Some(ControlUpdate::TextOps(ops)) = self.take_update(key, Kind::TextArea) {
+        if let Some(ControlUpdate::TextOps(ops)) =
+            self.take_update(&WidgetKey::named(key), Kind::TextArea)
+        {
             let mut target = Applied {
                 document: &mut *document,
                 find: options.find.as_deref_mut(),

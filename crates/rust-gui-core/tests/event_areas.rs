@@ -1,3 +1,4 @@
+use rust_gui_core::Button;
 use rust_gui_core::{
     Context, Event, EventArea, Key, Length, MonospaceMeasurer, Style, TextEdit, UiEvent,
 };
@@ -16,23 +17,28 @@ struct Seen {
 /// An outer area around an inner one, with a button and a field inside.
 fn page(context: &mut Context, seen: &mut Seen, outer: EventArea, inner: EventArea) {
     context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        seen.outer = ui.event_area("outer", outer, Style::default().padding(4.0), |ui| {
-            seen.inner = ui.event_area("inner", inner, Style::default().padding(4.0), |ui| {
-                if ui
-                    .button_styled(
-                        "press",
-                        "Press",
-                        true,
-                        Style::button()
-                            .width(Length::Px(120.0))
-                            .height(Length::Px(40.0)),
-                    )
-                    .clicked()
-                {
-                    seen.clicks += 1;
-                }
-                ui.text_input("field", "Field", &mut seen.typed);
-            });
+        seen.outer = ui.keyed("outer", |ui| {
+            ui.event_area(outer, Style::default().padding(4.0), |ui| {
+                seen.inner = ui.keyed("inner", |ui| {
+                    ui.event_area(inner, Style::default().padding(4.0), |ui| {
+                        if ui
+                            .keyed("press", |ui| {
+                                ui.button(
+                                    Button::new("Press").enabled(true).style(
+                                        Style::button()
+                                            .width(Length::Px(120.0))
+                                            .height(Length::Px(40.0)),
+                                    ),
+                                )
+                            })
+                            .clicked()
+                        {
+                            seen.clicks += 1;
+                        }
+                        ui.keyed("field", |ui| ui.text_input("Field", &mut seen.typed));
+                    })
+                });
+            })
         });
     });
 }
@@ -149,10 +155,14 @@ fn a_widget_tells_the_area_above_it_something_of_its_own() {
         *tick += 1;
         let sending = *tick;
         context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            *heard = ui.event_area("watch", EventArea::custom(), Style::default(), |ui| {
-                ui.column("inside", Style::default(), |ui| {
-                    ui.emit("chose", format!("tick {sending}"));
-                });
+            *heard = ui.keyed("watch", |ui| {
+                ui.event_area(EventArea::custom(), Style::default(), |ui| {
+                    ui.keyed("inside", |ui| {
+                        ui.column(Style::default(), |ui| {
+                            ui.emit("chose", format!("tick {sending}"));
+                        })
+                    });
+                })
             });
         });
         // A declaration that carries an emitted event asks for another.
@@ -179,7 +189,7 @@ fn a_view_without_areas_dispatches_exactly_as_before() {
     let (mut context, mut clicks) = (Context::new(), 0);
     let declare = |context: &mut Context, clicks: &mut usize| {
         context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            if ui.button_keyed("press", "Press").clicked() {
+            if ui.keyed("press", |ui| ui.button("Press")).clicked() {
                 *clicks += 1;
             }
         });

@@ -14,24 +14,22 @@ pub(super) struct FieldExtra {
 }
 
 impl Ui<'_> {
-    pub(super) fn take_update(&mut self, key: &str, kind: Kind) -> Option<ControlUpdate> {
-        let id = self
-            .context
-            .child(self.parent, &WidgetKey::Named(key.into()), kind)?;
+    pub(super) fn take_update(&mut self, key: &WidgetKey, kind: Kind) -> Option<ControlUpdate> {
+        let id = self.context.child(self.parent, key, kind)?;
         let update = self.updates.remove(&id);
         self.enabled.then_some(update).flatten()
     }
 
     fn control(
         &mut self,
-        key: String,
+        key: WidgetKey,
         kind: Kind,
         text: String,
         style: Style,
         control: Control,
     ) -> Response {
         self.push(Element {
-            key: WidgetKey::Named(key),
+            key,
             kind,
             text,
             style,
@@ -43,13 +41,21 @@ impl Ui<'_> {
         })
     }
 
-    pub fn text_input(
-        &mut self,
-        key: impl Into<String>,
-        label: impl Into<String>,
-        value: &mut String,
-    ) -> Response {
-        self.text_input_styled(key, label, value, "", Self::field_style())
+    /// A single-line text field. `ui.text_input("Name", &mut name)` is the
+    /// whole of it, and [`TextInput::new`] carries a placeholder or a style.
+    /// The label is what a screen reader announces, not what is drawn.
+    pub fn text_input(&mut self, input: impl Into<TextInput>, value: &mut String) -> Response {
+        let input = input.into();
+        let key = self.next_key();
+        let style = input.style.unwrap_or_else(Self::field_style);
+        self.text_field(
+            key,
+            input.label,
+            value,
+            &input.placeholder,
+            style,
+            FieldExtra::default(),
+        )
     }
 
     /// The look of a default text field.
@@ -62,28 +68,10 @@ impl Ui<'_> {
         }
     }
 
-    pub fn text_input_styled(
-        &mut self,
-        key: impl Into<String>,
-        label: impl Into<String>,
-        value: &mut String,
-        placeholder: &str,
-        style: Style,
-    ) -> Response {
-        self.text_field(
-            key.into(),
-            label.into(),
-            value,
-            placeholder,
-            style,
-            FieldExtra::default(),
-        )
-    }
-
     /// Every single-line field: plain, number and autocomplete.
     pub(super) fn text_field(
         &mut self,
-        key: String,
+        key: WidgetKey,
         label: String,
         value: &mut String,
         placeholder: &str,
@@ -102,7 +90,7 @@ impl Ui<'_> {
         }
         style.wrap = rust_gui_scene::TextWrap::None;
         let mut response = self.push(Element {
-            key: WidgetKey::Named(key),
+            key,
             kind: Kind::TextInput,
             text: String::new(),
             style,
@@ -123,31 +111,25 @@ impl Ui<'_> {
         response
     }
 
-    pub fn checkbox(
-        &mut self,
-        key: impl Into<String>,
-        label: impl Into<String>,
-        checked: &mut bool,
-    ) -> Response {
+    /// A checkbox. The label is both what is drawn and what a screen reader
+    /// announces.
+    pub fn checkbox(&mut self, label: impl Into<String>, checked: &mut bool) -> Response {
         let label = label.into();
         let shown = label.clone();
-        self.checkbox_shown(key, label, &shown, checked)
+        self.checkbox_shown(label, &shown, checked)
     }
 
     /// A checkbox whose visible text differs from its accessible label, for
     /// layouts that show the name elsewhere.
     pub(super) fn checkbox_shown(
         &mut self,
-        key: impl Into<String>,
         label: impl Into<String>,
         shown: &str,
         checked: &mut bool,
     ) -> Response {
-        let key = key.into();
+        let key = self.next_key();
         let label = label.into();
-        let id = self
-            .context
-            .child(self.parent, &WidgetKey::Named(key.clone()), Kind::Checkbox);
+        let id = self.context.child(self.parent, &key, Kind::Checkbox);
         let changed = self.enabled && id.is_some_and(|id| self.clicks.remove(&id));
         if changed {
             *checked = !*checked;
@@ -169,18 +151,16 @@ impl Ui<'_> {
         response
     }
 
+    /// One of a set of choices, selected while `*selected == option`.
     pub fn radio(
         &mut self,
-        key: impl Into<String>,
         label: impl Into<String>,
         selected: &mut usize,
         option: usize,
     ) -> Response {
-        let key = key.into();
+        let key = self.next_key();
         let label = label.into();
-        let id = self
-            .context
-            .child(self.parent, &WidgetKey::Named(key.clone()), Kind::Radio);
+        let id = self.context.child(self.parent, &key, Kind::Radio);
         let clicked = self.enabled && id.is_some_and(|id| self.clicks.remove(&id));
         let changed = clicked && *selected != option;
         if clicked {
@@ -201,9 +181,9 @@ impl Ui<'_> {
         response
     }
 
+    /// A slider over `range`, snapping to `step`.
     pub fn slider(
         &mut self,
-        key: impl Into<String>,
         label: impl Into<String>,
         value: &mut f64,
         range: RangeInclusive<f64>,
@@ -214,7 +194,7 @@ impl Ui<'_> {
             min.is_finite() && max.is_finite() && min < max && step.is_finite() && step > 0.0,
             "slider requires finite ordered bounds and a positive step"
         );
-        let key = key.into();
+        let key = self.next_key();
         let label = label.into();
         let old = *value;
         if let Some(ControlUpdate::Number(number)) = self.take_update(&key, Kind::Slider) {
@@ -243,32 +223,19 @@ impl Ui<'_> {
         response
     }
 
+    /// A drop-down over `items`, `*selected` being the one shown.
+    /// `ui.combo_box("Theme", &mut choice, &items)` is the whole of it, and
+    /// [`ComboBox::new`] carries a style.
     pub fn combo_box(
         &mut self,
-        key: impl Into<String>,
-        label: impl Into<String>,
+        combo: impl Into<ComboBox>,
         selected: &mut usize,
         items: &[&str],
     ) -> Response {
-        let style = Style {
-            width: Length::Px(280.0),
-            height: Length::Px(44.0),
-            padding: 10.0,
-            ..Style::button()
-        };
-        self.combo_box_styled(key, label, selected, items, style)
-    }
-
-    pub fn combo_box_styled(
-        &mut self,
-        key: impl Into<String>,
-        label: impl Into<String>,
-        selected: &mut usize,
-        items: &[&str],
-        style: Style,
-    ) -> Response {
-        let key = key.into();
-        let label = label.into();
+        let combo = combo.into();
+        let style = combo.style.unwrap_or_else(Self::field_style);
+        let key = self.next_key();
+        let label = combo.label;
         let old = *selected;
         if let Some(ControlUpdate::Choice(index)) = self.take_update(&key, Kind::ComboBox) {
             *selected = index;
@@ -287,7 +254,7 @@ impl Ui<'_> {
             Length::Percent(1.0),
         );
         let mut response = self.push(Element {
-            key: WidgetKey::Named(key),
+            key,
             kind: Kind::ComboBox,
             text: format!("{}  ▾", items.get(*selected).copied().unwrap_or("—")),
             style,
@@ -306,12 +273,8 @@ impl Ui<'_> {
     }
 
     /// A popup menu. The returned item index is emitted once on activation.
-    pub fn menu(
-        &mut self,
-        key: impl Into<String>,
-        label: impl Into<String>,
-        items: &[MenuItem],
-    ) -> Option<usize> {
+    pub fn menu(&mut self, label: impl Into<String>, items: &[MenuItem]) -> Option<usize> {
+        let key = self.next_key();
         self.menu_styled(
             key,
             format!("{}  ▾", label.into()),
@@ -329,13 +292,12 @@ impl Ui<'_> {
     /// `menu` with a caller-chosen button look and popup width.
     pub(super) fn menu_styled(
         &mut self,
-        key: impl Into<String>,
+        key: WidgetKey,
         text: impl Into<String>,
         items: &[MenuItem],
         style: Style,
         popup_width: Length,
     ) -> Option<usize> {
-        let key = key.into();
         let choice = match self.take_update(&key, Kind::MenuButton) {
             Some(ControlUpdate::Choice(index))
                 if items.get(index).is_some_and(|item| item.enabled) =>
@@ -347,7 +309,7 @@ impl Ui<'_> {
         let children =
             self.popup_children(&key, Kind::MenuButton, items, usize::MAX, true, popup_width);
         self.push(Element {
-            key: WidgetKey::Named(key),
+            key,
             kind: Kind::MenuButton,
             text: text.into(),
             style,
@@ -364,16 +326,14 @@ impl Ui<'_> {
 
     pub(super) fn popup_children(
         &mut self,
-        key: &str,
+        key: &WidgetKey,
         kind: Kind,
         items: &[MenuItem],
         selected: usize,
         menu: bool,
         width: Length,
     ) -> Vec<Element> {
-        let owner = self
-            .context
-            .child(self.parent, &WidgetKey::Named(key.into()), kind);
+        let owner = self.context.child(self.parent, key, kind);
         let Some(popup) = self
             .context
             .popup
@@ -384,6 +344,7 @@ impl Ui<'_> {
         let mut child = Ui {
             context: self.context,
             parent: owner,
+            pending_key: None,
             clicks: self.clicks,
             elements: self.context.take_spare(),
             keys: HashSet::new(),
@@ -401,7 +362,7 @@ impl Ui<'_> {
         };
         let selection = self.context.theme().selection;
         child.group(
-            "$popup".into(),
+            WidgetKey::named("$popup"),
             Kind::Popup,
             Style {
                 // Percent widths match the owner; compact owners pass pixels.

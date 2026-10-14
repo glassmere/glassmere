@@ -35,25 +35,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 width: Length::Percent(1.0),
                 ..Style::default()
             };
-            ui.column("page", page, |ui| {
-                ui.row("top", Style::default().gap(16.0), |ui| {
-                    ui.column("corners", Style::default().width(Length::Px(220.0)), |ui| {
-                        ui.slider("slider", "Corners", &mut corners, 0.0..=100.0, 1.0);
+            ui.column(page, |ui| {
+                ui.row(Style::default().gap(16.0), |ui| {
+                    ui.column(Style::default().width(Length::Px(220.0)), |ui| {
+                        ui.slider("Corners", &mut corners, 0.0..=100.0, 1.0);
                     });
-                    ui.column("opacity", Style::default().width(Length::Px(220.0)), |ui| {
-                        ui.slider("slider", "Opacity", &mut opacity, 0.0..=100.0, 1.0);
+                    ui.column(Style::default().width(Length::Px(220.0)), |ui| {
+                        ui.slider("Opacity", &mut opacity, 0.0..=100.0, 1.0);
                     });
-                    if ui.button_keyed("reset", "Reset view").clicked() {
+                    if ui.button("Reset view").clicked() {
                         (x, y, zoom, turn) = (0.0, 0.0, 1.0, 0.0);
                     }
                 });
-                ui.label_keyed(
-                    "state",
-                    format!(
+                ui.label(format!(
                         "Zoom {zoom:.2}  ·  turned {:.0}°  ·  moved {x:.0}, {y:.0}  ·  taps {taps}  ·  sliders {corners:.0} / {opacity:.0}",
                         turn.to_degrees()
-                    ),
-                );
+                    ));
 
                 let canvas = Style {
                     width: Length::Px(CANVAS.width),
@@ -64,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     justify_content: rust_gui::Justify::Center,
                     ..Style::default()
                 };
-                let gesture = ui.gesture_area("canvas", canvas, |ui| {
+                let gesture = ui.gesture_area(canvas, |ui| {
                     let photo = Style {
                         width: Length::Px(320.0),
                         height: Length::Px(200.0),
@@ -78,13 +75,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         },
                         ..Style::default()
                     };
-                    ui.image_file(
-                        "photo",
-                        PHOTO,
-                        ImageOptions::new("Hills at dusk")
+                    ui.image_file(PHOTO, ImageOptions::new("Hills at dusk")
                             .fit(ImageFit::Cover)
-                            .style(photo),
-                    );
+                            .style(photo));
                 });
                 if gesture.changed() {
                     // What was under the fingers stays under them: the photo's

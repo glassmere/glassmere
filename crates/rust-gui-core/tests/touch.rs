@@ -1,3 +1,4 @@
+use rust_gui_core::Button;
 use rust_gui_core::{
     Context, DiagnosticKind, DragPayload, DropKind, Event, Length, MenuItem, MonospaceMeasurer,
     Style, TouchPhase, Ui,
@@ -50,43 +51,65 @@ fn page(context: &mut Context, page: &mut Page) {
     page.menu = None;
     page.dropped = None;
     context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
-        ui.row("top", Style::default().gap(20.0), |ui| {
-            if ui
-                .button_styled("tap", "Tap", true, sized(100.0, 40.0))
-                .clicked()
-            {
-                page.clicks += 1;
-            }
-            ui.column("left", sized(200.0, 40.0), |ui| {
-                ui.slider("slider", "Left", &mut page.left, 0.0..=100.0, 1.0);
-            });
-            ui.column("right", sized(200.0, 40.0), |ui| {
-                ui.slider("slider", "Right", &mut page.right, 0.0..=100.0, 1.0);
-            });
-        });
-        let items = [MenuItem::new("Copy"), MenuItem::new("Paste")];
-        page.menu = ui.context_menu("area", &items, sized(400.0, 80.0), |ui| {
-            ui.row("cards", Style::default().gap(20.0), |ui| {
-                ui.drag_source(
-                    "card",
-                    "Card",
-                    DragPayload::Text("hello".into()),
-                    sized(100.0, 60.0),
-                    |ui| ui.label("Card"),
-                );
-                page.dropped =
-                    ui.drop_target("bin", "Bin", DropKind::Text, sized(100.0, 60.0), |_| {});
-            });
-        });
-        ui.scroll("list", sized(300.0, 200.0), |ui| {
-            for index in 0..40 {
+        ui.keyed("top", |ui| {
+            ui.row(Style::default().gap(20.0), |ui| {
                 if ui
-                    .button_styled(format!("row{index}"), "Row", true, sized(280.0, 40.0))
+                    .keyed("tap", |ui| {
+                        ui.button(Button::new("Tap").enabled(true).style(sized(100.0, 40.0)))
+                    })
                     .clicked()
                 {
-                    page.clicks += 100;
+                    page.clicks += 1;
                 }
-            }
+                ui.keyed("left", |ui| {
+                    ui.column(sized(200.0, 40.0), |ui| {
+                        ui.keyed("slider", |ui| {
+                            ui.slider("Left", &mut page.left, 0.0..=100.0, 1.0)
+                        });
+                    })
+                });
+                ui.keyed("right", |ui| {
+                    ui.column(sized(200.0, 40.0), |ui| {
+                        ui.keyed("slider", |ui| {
+                            ui.slider("Right", &mut page.right, 0.0..=100.0, 1.0)
+                        });
+                    })
+                });
+            })
+        });
+        let items = [MenuItem::new("Copy"), MenuItem::new("Paste")];
+        page.menu = ui.keyed("area", |ui| {
+            ui.context_menu(&items, sized(400.0, 80.0), |ui| {
+                ui.keyed("cards", |ui| {
+                    ui.row(Style::default().gap(20.0), |ui| {
+                        ui.keyed("card", |ui| {
+                            ui.drag_source(
+                                "Card",
+                                DragPayload::Text("hello".into()),
+                                sized(100.0, 60.0),
+                                |ui| ui.label("Card"),
+                            )
+                        });
+                        page.dropped = ui.keyed("bin", |ui| {
+                            ui.drop_target("Bin", DropKind::Text, sized(100.0, 60.0), |_| {})
+                        });
+                    })
+                });
+            })
+        });
+        ui.keyed("list", |ui| {
+            ui.scroll(sized(300.0, 200.0), |ui| {
+                for index in 0..40 {
+                    if ui
+                        .keyed(format!("row{index}"), |ui| {
+                            ui.button(Button::new("Row").enabled(true).style(sized(280.0, 40.0)))
+                        })
+                        .clicked()
+                    {
+                        page.clicks += 100;
+                    }
+                }
+            })
         });
     });
 }
@@ -358,7 +381,7 @@ fn a_rest_or_a_second_tap_in_text_selects_a_word_and_the_drag_extends_it() {
     let mut typed = String::from("alpha beta gamma");
     let declare = |context: &mut Context, typed: &mut String| {
         context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
-            ui.text_input("field", "Field", typed);
+            ui.keyed("field", |ui| ui.text_input("Field", typed));
         });
     };
     fn selected(context: &Context, text: &str) -> Option<String> {

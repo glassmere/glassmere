@@ -1881,6 +1881,7 @@ impl Context {
         let mut ui = Ui {
             context: self,
             parent: Some(self.root),
+            pending_key: None,
             clicks: &mut clicks,
             elements: self.take_spare(),
             keys: HashSet::new(),

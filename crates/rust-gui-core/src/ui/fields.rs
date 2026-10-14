@@ -12,15 +12,12 @@ impl Ui<'_> {
     /// highlighted suggestion submits what was typed.
     pub fn autocomplete<S: AsRef<str>>(
         &mut self,
-        key: impl Into<String>,
         label: impl Into<String>,
         value: &mut String,
         suggestions: &[S],
     ) -> AutocompleteResponse {
-        let key = key.into();
-        let id = self
-            .context
-            .child(self.parent, &WidgetKey::Named(key.clone()), Kind::TextInput);
+        let key = self.next_key();
+        let id = self.context.child(self.parent, &key, Kind::TextInput);
         let mut picked = None;
         let mut changed = false;
         // The field already holds the chosen text; the list may have moved on.
@@ -78,7 +75,6 @@ impl Ui<'_> {
     /// keyboard and the pointer.
     pub fn number_input(
         &mut self,
-        key: impl Into<String>,
         label: impl Into<String>,
         value: &mut f64,
         options: NumberOptions,
@@ -92,16 +88,16 @@ impl Ui<'_> {
         }
         row.gap = 4.0;
         let mut result = Response::default();
-        self.group(key.into(), Kind::Row, row, |ui| {
+        let key = self.next_key();
+        self.group(key, Kind::Row, row, |ui| {
             let child = |ui: &Ui<'_>, key: &str, kind| {
-                ui.context
-                    .child(ui.parent, &WidgetKey::Named(key.into()), kind)
+                ui.context.child(ui.parent, &WidgetKey::named(key), kind)
             };
             let field = child(ui, "$field", Kind::TextInput);
             let clicked = |ui: &Ui<'_>, key: &str| {
                 child(ui, key, Kind::Button).is_some_and(|id| ui.clicks.contains(&id))
             };
-            let mut steps = match ui.take_update("$field", Kind::TextInput) {
+            let mut steps = match ui.take_update(&WidgetKey::named("$field"), Kind::TextInput) {
                 Some(ControlUpdate::Number(steps)) => steps,
                 _ => 0.0,
             };
@@ -145,7 +141,7 @@ impl Ui<'_> {
             style.width = Length::Auto;
             style.grow = 1.0;
             result = ui.text_field(
-                "$field".into(),
+                WidgetKey::named("$field"),
                 label,
                 &mut text,
                 "",

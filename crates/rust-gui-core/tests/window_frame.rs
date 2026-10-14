@@ -27,26 +27,27 @@ fn press(context: &mut Context, at: Point) {
 /// the window buttons, and the resize edges over everything.
 fn frame(context: &mut Context, clicks: &mut usize) {
     context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
-        ui.title_bar(
-            "bar",
-            Style {
-                padding: 6.0,
-                gap: 8.0,
-                width: Length::Percent(1.0),
-                ..Style::default()
-            },
-            |ui| {
-                ui.label_keyed("title", "My application");
-                if ui.button_keyed("menu", "File").clicked() {
-                    *clicks += 1;
-                }
-                // Empty space, which is where a title bar is grabbed.
-                ui.container("gap", Style::default().grow(1.0), |_| {});
-                ui.window_buttons("buttons");
-            },
-        );
-        ui.label_keyed("body", "Content");
-        ui.resize_frame("edges", 6.0);
+        ui.keyed("bar", |ui| {
+            ui.title_bar(
+                Style {
+                    padding: 6.0,
+                    gap: 8.0,
+                    width: Length::Percent(1.0),
+                    ..Style::default()
+                },
+                |ui| {
+                    ui.keyed("title", |ui| ui.label("My application"));
+                    if ui.keyed("menu", |ui| ui.button("File")).clicked() {
+                        *clicks += 1;
+                    }
+                    // Empty space, which is where a title bar is grabbed.
+                    ui.keyed("gap", |ui| ui.container(Style::default().grow(1.0), |_| {}));
+                    ui.keyed("buttons", |ui| ui.window_buttons());
+                },
+            )
+        });
+        ui.keyed("body", |ui| ui.label("Content"));
+        ui.keyed("edges", |ui| ui.resize_frame(6.0));
     });
 }
 
@@ -170,10 +171,10 @@ fn the_edges_lie_along_the_window_and_each_one_pulls_its_own_way() {
 fn a_window_too_small_for_its_own_edges_has_none() {
     let mut context = Context::new();
     context.run(Size::new(8.0, 8.0), &mut MonospaceMeasurer, |ui| {
-        ui.resize_frame("edges", 6.0);
+        ui.keyed("edges", |ui| ui.resize_frame(6.0));
     });
     context.run(Size::new(8.0, 8.0), &mut MonospaceMeasurer, |ui| {
-        ui.resize_frame("edges", 6.0);
+        ui.keyed("edges", |ui| ui.resize_frame(6.0));
     });
     assert!(context.find(&["edges", "north"]).is_none());
 }

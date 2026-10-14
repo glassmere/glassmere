@@ -1,6 +1,6 @@
 use rust_gui::{
-    AppOptions, DesktopHandle, DialogOptions, FocusScope, GraphicsOptions, Length, Size, Style,
-    TextWrap, Ui, WindowKey, run_windows,
+    AppOptions, Button, DesktopHandle, DialogOptions, FocusScope, GraphicsOptions, Label, Length,
+    Size, Style, TextWrap, Ui, WindowKey, run_windows,
 };
 use std::sync::{Arc, Mutex};
 
@@ -74,45 +74,45 @@ fn main_window(
         .wrap(TextWrap::Word)
         .width(Length::Percent(1.0));
     let heading = Style::default().font_weight(700);
-    ui.column("page", Style::default().width(Length::Percent(1.0)).padding(28.0).gap(16.0), |ui| {
-        ui.label_styled("title", "Dialogs and focus", Style::default().font_size(28.0).font_weight(700));
-        ui.label_styled("intro", "Modal dialogs trap Tab, block the content behind them and return focus when they close. Focus scopes remember their last child and can move focus with arrow keys. Escape or the scrim dismisses.", muted.clone());
-        ui.row("actions", Style::default().gap(8.0), |ui| {
-            if ui.button_keyed("delete", "Delete file…").clicked() {
+    ui.column(Style::default().width(Length::Percent(1.0)).padding(28.0).gap(16.0), |ui| {
+        ui.label(Label::new("Dialogs and focus").style(Style::default().font_size(28.0).font_weight(700)));
+        ui.label(Label::new("Modal dialogs trap Tab, block the content behind them and return focus when they close. Focus scopes remember their last child and can move focus with arrow keys. Escape or the scrim dismisses.").style(muted.clone()));
+        ui.row(Style::default().gap(8.0), |ui| {
+            if ui.button("Delete file…").clicked() {
                 state.confirm = true;
             }
-            if ui.button_keyed("prefs", "Preferences (non-modal)").clicked() {
+            if ui.button("Preferences (non-modal)").clicked() {
                 state.preferences = true;
             }
-            if ui.button_keyed("native", "Native modal window…").clicked() {
+            if ui.button("Native modal window…").clicked() {
                 open_native(desktop, shared, state, smoke);
             }
         });
-        ui.label_keyed("status", format!("Deleted {}  ·  dismissed {}  ·  native results {}  ·  name \"{}\"", state.deleted, state.dismissed, state.native_results, state.name));
+        ui.label(format!("Deleted {}  ·  dismissed {}  ·  native results {}  ·  name \"{}\"", state.deleted, state.dismissed, state.native_results, state.name));
 
-        ui.label_styled("toolbar-heading", "Arrow-key toolbar  ·  focus_scope(arrows: true)", heading.clone());
-        ui.focus_scope("toolbar", FocusScope { arrows: true, ..FocusScope::default() }, Style::default(), |ui| {
-            ui.row("tools", Style::default().gap(8.0), |ui| {
+        ui.label(Label::new("Arrow-key toolbar  ·  focus_scope(arrows: true)").style(heading.clone()));
+        ui.focus_scope(FocusScope { arrows: true, ..FocusScope::default() }, Style::default(), |ui| {
+            ui.row(Style::default().gap(8.0), |ui| {
                 for tool in ["Cut", "Copy", "Paste", "Find"] {
-                    ui.button_keyed(tool.to_lowercase(), tool);
+                    ui.keyed(tool.to_lowercase(), |ui| ui.button(tool));
                 }
             });
-            ui.row("tools-2", Style::default().gap(8.0), |ui| {
+            ui.row(Style::default().gap(8.0), |ui| {
                 for tool in ["Undo", "Redo", "Format"] {
-                    ui.button_keyed(tool.to_lowercase(), tool);
+                    ui.keyed(tool.to_lowercase(), |ui| ui.button(tool));
                 }
             });
         });
-        ui.label_styled("memory-heading", "Remembered scope  ·  Tab away and back lands on the last used button", heading.clone());
-        ui.focus_scope("memory", FocusScope::default(), Style::default(), |ui| {
-            ui.row("choices", Style::default().gap(8.0), |ui| {
+        ui.label(Label::new("Remembered scope  ·  Tab away and back lands on the last used button").style(heading.clone()));
+        ui.focus_scope(FocusScope::default(), Style::default(), |ui| {
+            ui.row(Style::default().gap(8.0), |ui| {
                 for choice in ["Alpha", "Beta", "Gamma"] {
-                    ui.button_keyed(choice.to_lowercase(), choice);
+                    ui.keyed(choice.to_lowercase(), |ui| ui.button(choice));
                 }
             });
         });
-        ui.button_keyed("after", "A button after the scopes");
-        ui.label_styled("footer", "Native modal windows block their owner until closed and, on Windows, stay above it as owned windows.", muted);
+        ui.button("A button after the scopes");
+        ui.label(Label::new("Native modal windows block their owner until closed and, on Windows, stay above it as owned windows.").style(muted));
     });
 
     ui.dialog(
@@ -120,32 +120,31 @@ fn main_window(
         &mut state.confirm,
         DialogOptions::new("Delete file?"),
         |ui, open| {
-            ui.label_styled(
-                "question",
-                "The file will be removed permanently. This cannot be undone.",
-                Style::default()
-                    .wrap(TextWrap::Word)
-                    .width(Length::Percent(1.0)),
+            ui.label(
+                Label::new("The file will be removed permanently. This cannot be undone.").style(
+                    Style::default()
+                        .wrap(TextWrap::Word)
+                        .width(Length::Percent(1.0)),
+                ),
             );
-            ui.row("buttons", Style::default().gap(8.0), |ui| {
-                if ui.button_keyed("cancel", "Cancel").clicked() {
+            ui.row(Style::default().gap(8.0), |ui| {
+                if ui.button("Cancel").clicked() {
                     *open = false;
                 }
                 if ui
-                    .button_styled(
-                        "delete",
-                        "Delete",
-                        true,
-                        Style::button()
-                            .background(theme.accent)
-                            .foreground(theme.window),
+                    .button(
+                        Button::new("Delete").style(
+                            Style::button()
+                                .background(theme.accent)
+                                .foreground(theme.window),
+                        ),
                     )
                     .clicked()
                 {
                     state.deleted += 1;
                     *open = false;
                 }
-                if ui.button_keyed("more", "More options…").clicked() {
+                if ui.button("More options…").clicked() {
                     state.nested = true;
                 }
             });
@@ -154,8 +153,8 @@ fn main_window(
                 &mut state.nested,
                 DialogOptions::new("More options").width(Length::Px(320.0)),
                 |ui, open| {
-                    ui.checkbox("autosave", "Keep a backup copy", &mut state.autosave);
-                    if ui.button_keyed("done", "Done").clicked() {
+                    ui.checkbox("Keep a backup copy", &mut state.autosave);
+                    if ui.button("Done").clicked() {
                         *open = false;
                     }
                 },
@@ -170,9 +169,9 @@ fn main_window(
             .width(Length::Px(360.0)),
         |ui, open| {
             ui.label("Document name");
-            ui.text_input("name", "Document name", &mut state.name);
-            ui.checkbox("autosave", "Autosave", &mut state.autosave);
-            if ui.button_keyed("close", "Close").clicked() {
+            ui.text_input("Document name", &mut state.name);
+            ui.checkbox("Autosave", &mut state.autosave);
+            if ui.button("Close").clicked() {
                 *open = false;
             }
         },
@@ -204,22 +203,21 @@ fn open_native(
             },
             move |ui| {
                 let mut state = shared.lock().unwrap();
-                ui.column("page", Style::default().padding(24.0).gap(12.0), |ui| {
-                    ui.label_styled(
-                        "title",
-                        "Native modal window",
-                        Style::default().font_size(20.0).font_weight(700),
+                ui.column(Style::default().padding(24.0).gap(12.0), |ui| {
+                    ui.label(
+                        Label::new("Native modal window")
+                            .style(Style::default().font_size(20.0).font_weight(700)),
                     );
-                    ui.label_styled(
-                        "text",
-                        "The owner window ignores input while this is open.",
-                        Style::default()
-                            .wrap(TextWrap::Word)
-                            .width(Length::Px(370.0)),
+                    ui.label(
+                        Label::new("The owner window ignores input while this is open.").style(
+                            Style::default()
+                                .wrap(TextWrap::Word)
+                                .width(Length::Px(370.0)),
+                        ),
                     );
-                    ui.row("buttons", Style::default().gap(8.0), |ui| {
+                    ui.row(Style::default().gap(8.0), |ui| {
                         for (key, label) in [("ok", "OK"), ("cancel", "Cancel")] {
-                            if ui.button_keyed(key, label).clicked() {
+                            if ui.keyed(key, |ui| ui.button(label)).clicked() {
                                 if key == "ok" {
                                     state.native_results += 1;
                                 }

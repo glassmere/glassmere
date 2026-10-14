@@ -45,29 +45,33 @@ impl App {
         let (state, shape) = (&mut self.state, &mut self.shape);
         let mut response = PropertyGridResponse::default();
         self.context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            response = ui.property_grid("grid", state, PropertyGridOptions::new("Shape"), |grid| {
-                grid.group("Layout", |grid| {
-                    grid.default(100.0).number(
-                        "Width",
-                        &mut shape.width,
-                        NumberOptions::default().range(0.0, 500.0).suffix(" px"),
-                    );
-                    grid.choice("Align", &mut shape.align, &["Start", "Center", "End"]);
-                    grid.group("Margins", |grid| {
-                        grid.number("Top", &mut shape.top, NumberOptions::default());
+            response = ui.keyed("grid", |ui| {
+                ui.property_grid(state, PropertyGridOptions::new("Shape"), |grid| {
+                    grid.group("Layout", |grid| {
+                        grid.default(100.0).number(
+                            "Width",
+                            &mut shape.width,
+                            NumberOptions::default().range(0.0, 500.0).suffix(" px"),
+                        );
+                        grid.choice("Align", &mut shape.align, &["Start", "Center", "End"]);
+                        grid.group("Margins", |grid| {
+                            grid.number("Top", &mut shape.top, NumberOptions::default());
+                        });
                     });
-                });
-                grid.group("Appearance", |grid| {
-                    grid.default(true).bool("Visible", &mut shape.visible);
-                    grid.text("Name", &mut shape.name);
-                    grid.color("Fill", &mut shape.fill);
-                    grid.readonly("Kind", "Rectangle");
-                    grid.custom("Clicks", |ui, label| {
-                        let clicked = ui.button_keyed("$value", format!("{label}: add")).clicked();
-                        shape.clicks += u32::from(clicked);
-                        clicked
+                    grid.group("Appearance", |grid| {
+                        grid.default(true).bool("Visible", &mut shape.visible);
+                        grid.text("Name", &mut shape.name);
+                        grid.color("Fill", &mut shape.fill);
+                        grid.readonly("Kind", "Rectangle");
+                        grid.custom("Clicks", |ui, label| {
+                            let clicked = ui
+                                .keyed("$value", |ui| ui.button(format!("{label}: add")))
+                                .clicked();
+                            shape.clicks += u32::from(clicked);
+                            clicked
+                        });
                     });
-                });
+                })
             });
         });
         response
@@ -300,9 +304,11 @@ fn a_default_of_the_wrong_type_is_a_programming_error_with_a_clear_message() {
     let mut state = PropertyGridState::default();
     let mut width = 1.0;
     context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        ui.property_grid("grid", &mut state, PropertyGridOptions::default(), |grid| {
-            grid.default(100)
-                .number("Width", &mut width, NumberOptions::default());
+        ui.keyed("grid", |ui| {
+            ui.property_grid(&mut state, PropertyGridOptions::default(), |grid| {
+                grid.default(100)
+                    .number("Width", &mut width, NumberOptions::default());
+            })
         });
     });
 }
@@ -315,10 +321,12 @@ fn a_scrolling_grid_keeps_its_rows_clear_of_the_scrollbar_and_under_the_header()
     for _ in 0..2 {
         context.run(ROOT, &mut MonospaceMeasurer, |ui| {
             let options = PropertyGridOptions::new("Many").height(200.0);
-            ui.property_grid("grid", &mut state, options, |grid| {
-                for (index, value) in values.iter_mut().enumerate() {
-                    grid.number(&format!("Value {index}"), value, NumberOptions::default());
-                }
+            ui.keyed("grid", |ui| {
+                ui.property_grid(&mut state, options, |grid| {
+                    for (index, value) in values.iter_mut().enumerate() {
+                        grid.number(&format!("Value {index}"), value, NumberOptions::default());
+                    }
+                })
             });
         });
     }

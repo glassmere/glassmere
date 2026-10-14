@@ -36,24 +36,25 @@ fn app(text: &str) -> App {
 
 fn frame(context: &mut Context, app: &mut App) {
     context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        app.last = ui.code_editor(
-            "editor",
-            &mut app.document,
-            CodeEditorOptions {
-                label: "Source".into(),
-                style: Style::default()
-                    .width(Length::Px(600.0))
-                    .height(Length::Px(216.0))
-                    .padding(PADDING),
-                font_size: SIZE,
-                line_numbers: app.line_numbers,
-                read_only: app.read_only,
-                find: Some(&mut app.find),
-                diagnostics: &app.diagnostics,
-                auto_close: app.auto_close,
-                ..CodeEditorOptions::default()
-            },
-        );
+        app.last = ui.keyed("editor", |ui| {
+            ui.code_editor(
+                &mut app.document,
+                CodeEditorOptions {
+                    label: "Source".into(),
+                    style: Style::default()
+                        .width(Length::Px(600.0))
+                        .height(Length::Px(216.0))
+                        .padding(PADDING),
+                    font_size: SIZE,
+                    line_numbers: app.line_numbers,
+                    read_only: app.read_only,
+                    find: Some(&mut app.find),
+                    diagnostics: &app.diagnostics,
+                    auto_close: app.auto_close,
+                    ..CodeEditorOptions::default()
+                },
+            )
+        });
     });
 }
 
@@ -292,14 +293,15 @@ fn highlighters_colour_visible_lines_only() {
     for _ in 0..2 {
         highlighter.calls.clear();
         context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            ui.code_editor(
-                "editor",
-                &mut document,
-                CodeEditorOptions {
-                    highlighter: Some(&mut highlighter),
-                    ..CodeEditorOptions::default()
-                },
-            );
+            ui.keyed("editor", |ui| {
+                ui.code_editor(
+                    &mut document,
+                    CodeEditorOptions {
+                        highlighter: Some(&mut highlighter),
+                        ..CodeEditorOptions::default()
+                    },
+                )
+            });
         });
     }
     assert!(highlighter.calls.len() < 50, "{}", highlighter.calls.len());

@@ -1,3 +1,4 @@
+use rust_gui_core::Button;
 use rust_gui_core::{Context, Event, Length, MonospaceMeasurer, Style, Ui};
 use rust_gui_scene::{Point, Size};
 
@@ -18,24 +19,27 @@ struct App {
 
 fn frame(context: &mut Context, app: &mut App) -> rust_gui_core::FrameStats {
     context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
-        ui.label_keyed("heading", app.heading.clone());
-        app.ran = ui.memo(
-            "list",
-            &(&app.items, app.clicks),
-            Style::default().width(Length::Percent(1.0)),
-            |ui| {
-                app.declared += 1;
-                for (index, item) in app.items.iter().enumerate() {
-                    ui.label_keyed(format!("item{index}"), item.clone());
-                }
-                if ui
-                    .button_styled("bump", "Bump", true, Style::button())
-                    .clicked()
-                {
-                    app.clicks += 1;
-                }
-            },
-        );
+        ui.keyed("heading", |ui| ui.label(app.heading.clone()));
+        app.ran = ui.keyed("list", |ui| {
+            ui.memo(
+                &(&app.items, app.clicks),
+                Style::default().width(Length::Percent(1.0)),
+                |ui| {
+                    app.declared += 1;
+                    for (index, item) in app.items.iter().enumerate() {
+                        ui.keyed(format!("item{index}"), |ui| ui.label(item.clone()));
+                    }
+                    if ui
+                        .keyed("bump", |ui| {
+                            ui.button(Button::new("Bump").enabled(true).style(Style::button()))
+                        })
+                        .clicked()
+                    {
+                        app.clicks += 1;
+                    }
+                },
+            )
+        });
     })
 }
 
@@ -148,13 +152,17 @@ fn memos_nest_and_hold_the_state_of_the_widgets_inside() {
                    typed: &mut String,
                    runs: &mut (usize, usize)| {
         context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
-            ui.memo("outer", &outer, Style::default(), |ui| {
-                runs.0 += 1;
-                ui.text_input("field", "Field", typed);
-                ui.memo("inner", &inner, Style::default(), |ui| {
-                    runs.1 += 1;
-                    ui.label_keyed("deep", "deep");
-                });
+            ui.keyed("outer", |ui| {
+                ui.memo(&outer, Style::default(), |ui| {
+                    runs.0 += 1;
+                    ui.keyed("field", |ui| ui.text_input("Field", typed));
+                    ui.keyed("inner", |ui| {
+                        ui.memo(&inner, Style::default(), |ui| {
+                            runs.1 += 1;
+                            ui.keyed("deep", |ui| ui.label("deep"));
+                        })
+                    });
+                })
             });
         })
     };

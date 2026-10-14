@@ -5,8 +5,8 @@
 //! cargo run -p rust-gui --example platform --features platform
 //! ```
 use rust_gui::{
-    AppOptions, Color, Command, FileRequest, Length, Menu, MenuEntry, Notification, Shortcut, Size,
-    Style, TextWrap, Tray, run,
+    AppOptions, Color, Command, FileRequest, Label, Length, Menu, MenuEntry, Notification,
+    Shortcut, Size, Style, TextWrap, Tray, run,
 };
 
 fn menu(saved: bool) -> Menu {
@@ -70,36 +70,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 width: Length::Percent(1.0),
                 ..Style::default()
             };
-            ui.column("page", page, |ui| {
+            ui.column(page, |ui| {
                 // On Windows and Linux a menu bar belongs to the window, and
                 // this draws it. Choosing an item activates the same command
                 // the platform's menu does.
-                ui.menu_bar("bar", &menu(saved));
-                ui.label_styled(
-                    "title",
-                    "Desktop integration",
-                    Style {
+                ui.menu_bar(&menu(saved));
+                ui.label(Label::new("Desktop integration").style(Style {
                         font_size: Some(26.0),
                         font_weight: Some(700),
                         ..Style::default()
-                    },
-                );
-                ui.label_styled(
-                    "intro",
-                    "The menu above, the tray icon and the buttons below all go through the same \
-                     commands. Start the example with a file name to see it arrive.",
-                    Style {
+                    }));
+                ui.label(Label::new("The menu above, the tray icon and the buttons below all go through the same \
+                     commands. Start the example with a file name to see it arrive.").style(Style {
                         width: Length::Percent(1.0),
                         wrap: TextWrap::Word,
                         ..Style::default()
-                    },
-                );
-                ui.row("buttons", Style::default().gap(10.0), |ui| {
-                    if ui
-                        .command_button(
-                            "open",
-                            &Command::with_id("open", "Open...", Some(Shortcut::primary('o'))),
-                        )
+                    }));
+                ui.row(Style::default().gap(10.0), |ui| {
+                    if ui.command_button(&Command::with_id("open", "Open...", Some(Shortcut::primary('o'))))
                         .clicked()
                         && !smoke
                     {
@@ -109,11 +97,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .with_filter("Every file", ["*"]),
                         );
                     }
-                    if ui
-                        .command_button(
-                            "save",
-                            &Command::with_id("save", "Save as...", Some(Shortcut::primary('s'))),
-                        )
+                    if ui.command_button(&Command::with_id("save", "Save as...", Some(Shortcut::primary('s'))))
                         .clicked()
                     {
                         saved = true;
@@ -125,7 +109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         enabled: saved,
                         ..Command::with_id("notify", "Say it was saved", None)
                     };
-                    if ui.command_button("notify", &say).clicked() {
+                    if ui.command_button(&say).clicked() {
                         said += 1;
                         if !smoke {
                             ui.notify(Notification::new(
@@ -134,8 +118,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ));
                         }
                     }
-                    if ui
-                        .command_button("quit", &Command::with_id("quit", "Close the window", None))
+                    if ui.command_button(&Command::with_id("quit", "Close the window", None))
                         .clicked()
                         && !smoke
                     {
@@ -157,25 +140,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ("opened", "Started with", &opened),
                     ("chosen", "Chosen in a dialog", &chosen),
                 ] {
-                    ui.label_styled(
-                        key,
-                        format!(
+                    ui.keyed(key, |ui| ui.label(Label::new(format!(
                             "{label}: {}",
                             if paths.is_empty() {
                                 "nothing".to_owned()
                             } else {
                                 paths.join(", ")
                             }
-                        ),
-                        Style {
+                        )).style(Style {
                             foreground: Some(Color::rgb(103, 232, 206)),
                             width: Length::Percent(1.0),
                             wrap: TextWrap::Word,
                             ..Style::default()
-                        },
-                    );
+                        })));
                 }
-                ui.label_keyed("said", format!("Notifications posted: {said}"));
+                ui.label(format!("Notifications posted: {said}"));
             });
             if smoke && said > 0 {
                 println!("PLATFORM saved={saved} said={said}");

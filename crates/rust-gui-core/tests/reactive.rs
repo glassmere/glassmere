@@ -18,7 +18,7 @@ fn a_view_declared_from_a_store_shows_its_graph_to_the_inspector() {
     let declare = |context: &mut Context| {
         context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
             ui.observe(&store);
-            ui.label_keyed("caption", caption.get());
+            ui.keyed("caption", |ui| ui.label(caption.get()));
         });
     };
 
@@ -56,19 +56,20 @@ fn a_memoized_subtree_follows_the_store_version() {
     let frame = |context: &mut Context, declared: &mut usize| {
         context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
             ui.observe(&store);
-            ui.memo(
-                "list",
-                &store.version(),
-                Style::default().width(Length::Percent(1.0)),
-                |ui| {
-                    *declared += 1;
-                    items.with(|items| {
-                        for (index, item) in items.iter().enumerate() {
-                            ui.label_keyed(format!("item{index}"), item.clone());
-                        }
-                    });
-                },
-            );
+            ui.keyed("list", |ui| {
+                ui.memo(
+                    &store.version(),
+                    Style::default().width(Length::Percent(1.0)),
+                    |ui| {
+                        *declared += 1;
+                        items.with(|items| {
+                            for (index, item) in items.iter().enumerate() {
+                                ui.keyed(format!("item{index}"), |ui| ui.label(item.clone()));
+                            }
+                        });
+                    },
+                )
+            });
         });
     };
 

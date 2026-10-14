@@ -225,17 +225,14 @@ fn the_frameworks_own_controls_speak_the_installed_language() {
     context.push_toast(Toast::new("Uloženo"));
     for _ in 0..2 {
         context.run(Size::new(600.0, 600.0), &mut MonospaceMeasurer, |ui| {
-            ui.property_grid(
-                "grid",
-                &mut state,
-                PropertyGridOptions::new("Karta"),
-                |grid| {
+            ui.keyed("grid", |ui| {
+                ui.property_grid(&mut state, PropertyGridOptions::new("Karta"), |grid| {
                     grid.group("Rozměry", |grid| {
                         grid.default(2.0)
                             .number("Šířka", &mut width, Default::default());
                     });
-                },
-            );
+                })
+            });
         });
     }
     let label = |path: &[&str]| {

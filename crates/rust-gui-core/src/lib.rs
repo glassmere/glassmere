@@ -90,7 +90,8 @@ pub use tree::{
     Semantics, Swipe, SwipeDirection, TouchPhase,
 };
 pub use ui::{
-    DockOptions, DockPanel, DockResponse, Properties, PropertyGrid, Response, Ui, suggest,
+    Button, ComboBox, DockOptions, DockPanel, DockResponse, Label, Properties, PropertyGrid,
+    Response, TextInput, Ui, suggest,
 };
 pub use widget::{Component, CustomWidget, WidgetInput};
 pub use window::{ResizeEdge, WindowCommand, WindowInfo};

@@ -88,7 +88,9 @@ impl App {
     fn frame(&mut self) {
         let (model, state) = (&mut self.model, &mut self.state);
         self.context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            ui.data_grid("grid", model, state, VirtualListOptions::default());
+            ui.keyed("grid", |ui| {
+                ui.data_grid(model, state, VirtualListOptions::default())
+            });
             ui.button("after");
         });
     }

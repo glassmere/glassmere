@@ -89,7 +89,7 @@ fn the_number_input_shows_and_reads_numbers_in_the_installed_locale() {
     let frame = |context: &mut Context, price: &mut f64| {
         context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
             let options = NumberOptions::default().step(0.25).suffix(" Kč");
-            ui.number_input("price", "Cena", price, options);
+            ui.keyed("price", |ui| ui.number_input("Cena", price, options));
         });
     };
     frame(&mut context, &mut price);

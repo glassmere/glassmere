@@ -36,17 +36,19 @@ struct Drops {
 fn board(context: &mut Context, target_enabled: bool) -> Drops {
     let mut drops = Drops::default();
     frame(context, |ui| {
-        ui.drag_source(
-            "source",
-            "Card",
-            DragPayload::Text("hello".into()),
-            boxed(),
-            |ui| ui.label("Card"),
-        );
-        ui.enabled(target_enabled, |ui| {
-            drops.text = ui.drop_target("text", "Text bin", DropKind::Text, boxed(), |_| {});
+        ui.keyed("source", |ui| {
+            ui.drag_source("Card", DragPayload::Text("hello".into()), boxed(), |ui| {
+                ui.label("Card")
+            })
         });
-        drops.item = ui.drop_target("item", "Item bin", DropKind::Item, boxed(), |_| {});
+        ui.enabled(target_enabled, |ui| {
+            drops.text = ui.keyed("text", |ui| {
+                ui.drop_target("Text bin", DropKind::Text, boxed(), |_| {})
+            });
+        });
+        drops.item = ui.keyed("item", |ui| {
+            ui.drop_target("Item bin", DropKind::Item, boxed(), |_| {})
+        });
     });
     drops
 }
@@ -176,8 +178,8 @@ fn a_host_exports_an_active_drag_and_the_source_hears_how_it_ended_once() {
     let declare = |context: &mut Context| {
         let mut outcome = None;
         frame(context, |ui| {
-            outcome = ui.drag_source("source", "Report", files.clone(), boxed(), |ui| {
-                ui.label("Report")
+            outcome = ui.keyed("source", |ui| {
+                ui.drag_source("Report", files.clone(), boxed(), |ui| ui.label("Report"))
             });
         });
         outcome
@@ -211,7 +213,9 @@ fn external_file_drops_merge_per_target_and_miss_empty_space() {
     let files = |context: &mut Context| {
         let mut dropped = None;
         frame(context, |ui| {
-            dropped = ui.drop_target("files", "Files", DropKind::Files, boxed(), |_| {});
+            dropped = ui.keyed("files", |ui| {
+                ui.drop_target("Files", DropKind::Files, boxed(), |_| {})
+            });
         });
         dropped
     };
@@ -257,10 +261,10 @@ fn shortcuts_fire_enabled_commands_once_and_respect_text_editing() {
     let mut declare = |context: &mut Context| {
         let mut clicked = Clicked::default();
         frame(context, |ui| {
-            clicked.save = ui.command_button("save", &save).clicked();
-            clicked.new = ui.command_button("new", &new).clicked();
-            clicked.find = ui.command_button("find", &find).clicked();
-            ui.text_input("input", "Name", &mut value);
+            clicked.save = ui.keyed("save", |ui| ui.command_button(&save)).clicked();
+            clicked.new = ui.keyed("new", |ui| ui.command_button(&new)).clicked();
+            clicked.find = ui.keyed("find", |ui| ui.command_button(&find)).clicked();
+            ui.keyed("input", |ui| ui.text_input("Name", &mut value));
         });
         clicked
     };
@@ -287,8 +291,8 @@ fn duplicate_enabled_shortcuts_are_rejected_at_declaration() {
     let mut context = Context::new();
     let command = Command::new("Save", Some(Shortcut::primary('s')));
     frame(&mut context, |ui| {
-        ui.command_button("a", &command);
-        ui.command_button("b", &command);
+        ui.keyed("a", |ui| ui.command_button(&command));
+        ui.keyed("b", |ui| ui.command_button(&command));
     });
 }
 
@@ -306,15 +310,17 @@ fn a_drag_crosses_to_another_window_and_the_source_hears_how_it_ended() {
     let mut source_outcome = None;
     let declare_first = |context: &mut Context, outcome: &mut Option<DragOutcome>| {
         frame(context, |ui| {
-            *outcome = ui.drag_source("source", "Card", payload.clone(), boxed(), |ui| {
-                ui.label("Card")
+            *outcome = ui.keyed("source", |ui| {
+                ui.drag_source("Card", payload.clone(), boxed(), |ui| ui.label("Card"))
             });
         });
     };
     let mut dropped = None;
     let declare_second = |context: &mut Context, dropped: &mut Option<DragPayload>| {
         frame(context, |ui| {
-            let landed = ui.drop_target("bin", "Item bin", DropKind::Item, boxed(), |_| {});
+            let landed = ui.keyed("bin", |ui| {
+                ui.drop_target("Item bin", DropKind::Item, boxed(), |_| {})
+            });
             if landed.is_some() {
                 *dropped = landed;
             }
@@ -359,7 +365,9 @@ fn an_adopted_drag_can_be_taken_back_without_ending_it() {
     let mut dropped = None;
     let declare = |context: &mut Context, dropped: &mut Option<DragPayload>| {
         frame(context, |ui| {
-            let landed = ui.drop_target("bin", "Text bin", DropKind::Text, boxed(), |_| {});
+            let landed = ui.keyed("bin", |ui| {
+                ui.drop_target("Text bin", DropKind::Text, boxed(), |_| {})
+            });
             if landed.is_some() {
                 *dropped = landed;
             }

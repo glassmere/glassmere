@@ -18,26 +18,24 @@ impl Ui<'_> {
     /// moves on into the panel. Closable tabs report their close button.
     pub fn tabs(
         &mut self,
-        key: impl Into<String>,
         selected: &mut usize,
         tabs: &[Tab],
         content: impl FnOnce(&mut Ui<'_>, usize),
     ) -> TabsResponse {
-        self.tabs_with(key, selected, tabs, false, |_, _| {}, content)
+        self.tabs_with(selected, tabs, false, |_, _| {}, content)
     }
 
     /// `tabs` with extra strip content after the tabs. `fill` stretches the
     /// panel over the parent's remaining height, as dock groups need.
     pub(super) fn tabs_with(
         &mut self,
-        key: impl Into<String>,
         selected: &mut usize,
         tabs: &[Tab],
         fill: bool,
         strip_extra: impl FnOnce(&mut Ui<'_>, usize),
         content: impl FnOnce(&mut Ui<'_>, usize),
     ) -> TabsResponse {
-        let key = key.into();
+        let key = self.next_key();
         let old = *selected;
         if let Some(ControlUpdate::Choice(index)) = self.take_update(&key, Kind::Tabs) {
             *selected = index;
@@ -64,7 +62,7 @@ impl Ui<'_> {
             |ui| {
                 let strip = Style::default().gap(2.0).align_items(Align::End);
                 ui.group(
-                    "$strip".into(),
+                    WidgetKey::named("$strip"),
                     Kind::TabList,
                     if fill {
                         strip.width(Length::Percent(1.0))
@@ -102,7 +100,7 @@ impl Ui<'_> {
                             });
                             if tab.closable
                                 && ui
-                                    .button_styled(
+                                    .button_at(
                                         format!("$close-{index}"),
                                         "×",
                                         true,
@@ -130,7 +128,7 @@ impl Ui<'_> {
                 );
                 ui.elements.last_mut().unwrap().control = Control::TabList;
                 ui.group(
-                    "$panel".into(),
+                    WidgetKey::named("$panel"),
                     Kind::TabPanel,
                     stretch(
                         Style::default()
@@ -159,14 +157,13 @@ impl Ui<'_> {
     /// The divider is focusable and moves with the arrow keys, Home and End.
     pub fn split(
         &mut self,
-        key: impl Into<String>,
         fraction: &mut f32,
         axis: Axis,
         options: SplitOptions,
         first: impl FnOnce(&mut Ui<'_>),
         second: impl FnOnce(&mut Ui<'_>),
     ) {
-        let key = key.into();
+        let key = self.next_key();
         let kind = match axis {
             Axis::Horizontal => Kind::SplitRow,
             Axis::Vertical => Kind::Split,
@@ -212,7 +209,12 @@ impl Ui<'_> {
         .shrink(1.0)
         .gap(0.0);
         self.group(key, kind, style, |ui| {
-            ui.group("$first".into(), Kind::Container, first_style, first);
+            ui.group(
+                WidgetKey::named("$first"),
+                Kind::Container,
+                first_style,
+                first,
+            );
             ui.push(Element {
                 key: WidgetKey::Named("$divider".into()),
                 kind: Kind::Divider,
@@ -229,7 +231,12 @@ impl Ui<'_> {
                     min_second: options.min_second,
                 },
             });
-            ui.group("$second".into(), Kind::Container, second_style, second);
+            ui.group(
+                WidgetKey::named("$second"),
+                Kind::Container,
+                second_style,
+                second,
+            );
         });
         self.elements.last_mut().unwrap().control = Control::Split { axis };
     }
@@ -245,19 +252,22 @@ impl Ui<'_> {
     /// own, so it never takes a shortcut from the window.
     pub fn command_palette(
         &mut self,
-        key: impl Into<String>,
         open: &mut bool,
         query: &mut String,
         commands: &[crate::Command],
     ) -> Option<String> {
-        let key = key.into();
+        // Dialogs need a plain name; a positional key has none of its own.
+        let name = match self.next_key() {
+            WidgetKey::Named(name) => name,
+            WidgetKey::Position(_) => "$palette".to_owned(),
+        };
         let mut chosen = None;
         // Nothing is there on the frame the palette appears on.
         let opened = self
             .context
             .child(
                 Some(self.context.root()),
-                &WidgetKey::Named(format!("$dialog:{key}")),
+                &WidgetKey::Named(format!("$dialog:{name}")),
                 Kind::Dialog,
             )
             .is_none();
@@ -266,13 +276,15 @@ impl Ui<'_> {
             width: Length::Px(560.0),
             ..crate::DialogOptions::new(title)
         };
-        self.dialog(key, open, options, |ui, open| {
+        self.dialog(name, open, options, |ui, open| {
             if opened {
                 // The palette is typed into the moment it appears.
                 ui.request_focus("query");
             }
             let placeholder = ui.context.tr("rust-gui-palette-query", &[]);
-            let field = ui.text_input("query", &placeholder, query);
+            let field = ui
+                .at("query")
+                .text_input(TextInput::new(placeholder), query);
             let matches: Vec<crate::Command> = commands
                 .iter()
                 .filter(|command| crate::text_matches(&command.label, query))
@@ -293,13 +305,13 @@ impl Ui<'_> {
                 background: None,
                 ..Style::button()
             };
-            ui.column(
+            ui.column_at(
                 "matches",
                 Style::default().gap(2.0).width(Length::Percent(1.0)),
                 |ui| {
                     for (index, command) in matches.iter().enumerate() {
                         if ui
-                            .button_styled(
+                            .button_at(
                                 format!("match{index}"),
                                 &command.label,
                                 command.enabled,
@@ -316,7 +328,7 @@ impl Ui<'_> {
                     }
                     if matches.is_empty() {
                         let nothing = ui.context.tr("rust-gui-palette-empty", &[]);
-                        ui.label_keyed("empty", nothing);
+                        ui.label_keyed_at("empty", nothing);
                     }
                 },
             );
@@ -332,12 +344,11 @@ impl Ui<'_> {
 
     pub fn context_menu(
         &mut self,
-        key: impl Into<String>,
         items: &[MenuItem],
         style: Style,
         content: impl FnOnce(&mut Ui<'_>),
     ) -> Option<usize> {
-        let key = key.into();
+        let key = self.next_key();
         let choice = match self.take_update(&key, Kind::ContextArea) {
             Some(ControlUpdate::Choice(index))
                 if items.get(index).is_some_and(|item| item.enabled) =>
@@ -373,12 +384,11 @@ impl Ui<'_> {
     /// Escape or a press outside the panel and its anchor clears `*open`.
     pub fn popover(
         &mut self,
-        key: impl Into<String>,
         open: &mut bool,
         options: PopoverOptions,
         content: impl FnOnce(&mut Ui<'_>),
     ) -> PopoverResponse {
-        let key = WidgetKey::Named(key.into());
+        let key = self.next_key();
         let Some(anchor) = self.elements.last() else {
             panic!("popover needs a preceding anchor widget in the same parent");
         };
@@ -408,6 +418,7 @@ impl Ui<'_> {
         let mut child = Ui {
             context: self.context,
             parent: popover_id,
+            pending_key: None,
             clicks: self.clicks,
             elements: self.context.take_spare(),
             keys: HashSet::new(),

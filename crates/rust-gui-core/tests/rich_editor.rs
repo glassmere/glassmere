@@ -30,20 +30,21 @@ fn app(document: RichDocument) -> App {
 
 fn frame(context: &mut Context, app: &mut App) {
     context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        app.last = ui.rich_text_editor(
-            "editor",
-            &mut app.document,
-            RichEditorOptions {
-                label: "Notes".into(),
-                style: Style::default()
-                    .width(Length::Px(400.0))
-                    .height(Length::Px(300.0))
-                    .padding(PADDING),
-                toolbar: app.toolbar,
-                read_only: app.read_only,
-                ..RichEditorOptions::default()
-            },
-        );
+        app.last = ui.keyed("editor", |ui| {
+            ui.rich_text_editor(
+                &mut app.document,
+                RichEditorOptions {
+                    label: "Notes".into(),
+                    style: Style::default()
+                        .width(Length::Px(400.0))
+                        .height(Length::Px(300.0))
+                        .padding(PADDING),
+                    toolbar: app.toolbar,
+                    read_only: app.read_only,
+                    ..RichEditorOptions::default()
+                },
+            )
+        });
     });
 }
 

@@ -8,9 +8,11 @@ const VIEWPORT: Size = Size::new(800.0, 700.0);
 
 fn declare(context: &mut Context, recorder: &mut Recorder, title: &str) {
     let stats = context.run(TARGET, &mut MonospaceMeasurer, |ui| {
-        ui.column("page", Style::default(), |ui| {
-            ui.label_keyed("title", title);
-            ui.button_keyed("save", "Save");
+        ui.keyed("page", |ui| {
+            ui.column(Style::default(), |ui| {
+                ui.keyed("title", |ui| ui.label(title));
+                ui.keyed("save", |ui| ui.button("Save"));
+            })
         });
     });
     recorder.frame(
@@ -108,8 +110,10 @@ fn the_diagnostics_tab_lists_entries_and_selecting_one_shows_its_node_in_the_tre
     let mut context = Context::new();
     let recorder = Recorder::new(8);
     context.run(TARGET, &mut MonospaceMeasurer, |ui| {
-        ui.column("page", Style::default(), |ui| {
-            ui.button_keyed("nameless", "");
+        ui.keyed("page", |ui| {
+            ui.column(Style::default(), |ui| {
+                ui.keyed("nameless", |ui| ui.button(""));
+            })
         });
     });
     let mut model = InspectorModel::capture(&context, "Target", TARGET, &recorder);
@@ -147,7 +151,7 @@ fn the_state_tab_lists_a_stores_values_their_edges_and_what_moved_last() {
     let declare = |context: &mut Context| {
         context.run(TARGET, &mut MonospaceMeasurer, |ui| {
             ui.observe(&store);
-            ui.label_keyed("reading", format!("{}", fahrenheit.get()));
+            ui.keyed("reading", |ui| ui.label(format!("{}", fahrenheit.get())));
         });
     };
     declare(&mut context);
@@ -183,19 +187,22 @@ fn recorderless() -> Recorder {
 fn the_scene_tab_counts_what_is_held_and_lists_the_layers() {
     let mut context = Context::new();
     context.run(TARGET, &mut MonospaceMeasurer, |ui| {
-        ui.column("page", Style::default(), |ui| {
-            ui.label_keyed("title", "Hello");
-            // An opacity makes a layer, which is what the tab is for.
-            ui.container(
-                "faded",
-                Style::default()
-                    .width(Length::Px(120.0))
-                    .height(Length::Px(40.0))
-                    .opacity(0.5),
-                |ui| {
-                    ui.label_keyed("inside", "Faded");
-                },
-            );
+        ui.keyed("page", |ui| {
+            ui.column(Style::default(), |ui| {
+                ui.keyed("title", |ui| ui.label("Hello"));
+                // An opacity makes a layer, which is what the tab is for.
+                ui.keyed("faded", |ui| {
+                    ui.container(
+                        Style::default()
+                            .width(Length::Px(120.0))
+                            .height(Length::Px(40.0))
+                            .opacity(0.5),
+                        |ui| {
+                            ui.keyed("inside", |ui| ui.label("Faded"));
+                        },
+                    )
+                });
+            })
         });
     });
     let mut model = InspectorModel::capture(&context, "Target", TARGET, &Recorder::new(1));

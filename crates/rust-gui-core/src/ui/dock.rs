@@ -97,51 +97,42 @@ impl Ui<'_> {
     /// the same moves from the keyboard. `content` declares one visible panel.
     pub fn dock(
         &mut self,
-        key: impl Into<String>,
         layout: &mut DockLayout,
         panels: &[DockPanel],
         options: DockOptions,
         content: impl FnMut(&mut Ui<'_>, &str),
     ) -> DockResponse {
-        self.dock_area(key.into(), layout, DockArea::Main, panels, options, content)
+        self.dock_area(layout, DockArea::Main, panels, options, content)
     }
 
     /// The dock of one detached window. Declares nothing once the window has
     /// left the layout, which is the app's cue to close the OS window.
     pub fn dock_window(
         &mut self,
-        key: impl Into<String>,
         layout: &mut DockLayout,
         window: DockWindowId,
         panels: &[DockPanel],
         options: DockOptions,
         content: impl FnMut(&mut Ui<'_>, &str),
     ) -> DockResponse {
-        self.dock_area(
-            key.into(),
-            layout,
-            DockArea::Window(window),
-            panels,
-            options,
-            content,
-        )
+        self.dock_area(layout, DockArea::Window(window), panels, options, content)
     }
 
     fn dock_area(
         &mut self,
-        key: String,
         layout: &mut DockLayout,
         area: DockArea,
         panels: &[DockPanel],
         options: DockOptions,
         mut content: impl FnMut(&mut Ui<'_>, &str),
     ) -> DockResponse {
+        let key = self.next_key();
         layout.normalize();
         let windows: Vec<_> = layout.windows.iter().map(|window| window.id).collect();
         let mut changed = false;
         let dock_bounds = self
             .context
-            .child(self.parent, &WidgetKey::Named(key.clone()), Kind::Dock)
+            .child(self.parent, &key, Kind::Dock)
             .and_then(|id| self.context.node(id))
             .map(|node| node.bounds);
         match self.take_update(&key, Kind::Dock) {
@@ -235,7 +226,7 @@ impl Ui<'_> {
                     height,
                 };
                 ui.group(
-                    format!("$float:{first}"),
+                    WidgetKey::named(format!("$float:{first}")),
                     Kind::DockFloat,
                     Style::default()
                         .offset(x, y)
@@ -367,8 +358,7 @@ fn node(ui: &mut Ui<'_>, target: &mut DockNode, pass: &RefCell<Pass<'_>>, min_pa
             second,
         } => {
             let old = *fraction;
-            ui.split(
-                "$split",
+            ui.at("$split").split(
                 fraction,
                 *axis,
                 SplitOptions {
@@ -407,7 +397,7 @@ fn group(ui: &mut Ui<'_>, tabs: &mut DockTabs, pass: &RefCell<Pass<'_>>, float: 
             .collect()
     };
     if visible.is_empty() {
-        ui.group("$group".into(), Kind::Container, fill(), |_| {});
+        ui.group(WidgetKey::named("$group"), Kind::Container, fill(), |_| {});
         return;
     }
     let labels: Vec<Tab> = visible.iter().map(|(_, tab, _)| tab.clone()).collect();
@@ -418,9 +408,8 @@ fn group(ui: &mut Ui<'_>, tabs: &mut DockTabs, pass: &RefCell<Pass<'_>>, float: 
         .unwrap_or(0);
     let count = tabs.panels.len();
     let mut response = TabsResponse::default();
-    ui.group("$group".into(), Kind::DockGroup, fill(), |ui| {
-        response = ui.tabs_with(
-            "$tabs",
+    ui.group(WidgetKey::named("$group"), Kind::DockGroup, fill(), |ui| {
+        response = ui.at("$tabs").tabs_with(
             &mut selected,
             &labels,
             true,
@@ -489,14 +478,20 @@ fn menu(
         item("Move to next group", groups > 1),
         item("Close", closable),
     ];
-    ui.label_styled("$gap", "", Style::default().grow(1.0));
+    ui.label_at("$gap", "", Style::default().grow(1.0));
     let style = Style {
         padding: 6.0,
         radius: 6.0,
         background: Some(Color::TRANSPARENT),
         ..Style::default()
     };
-    if let Some(choice) = ui.menu_styled("$menu", "▾", &items, style, Length::Px(220.0)) {
+    if let Some(choice) = ui.menu_styled(
+        WidgetKey::named("$menu"),
+        "▾",
+        &items,
+        style,
+        Length::Px(220.0),
+    ) {
         pass.borrow_mut().menu.push((panel.to_owned(), choice));
     }
     ui.tooltip("Panel options");

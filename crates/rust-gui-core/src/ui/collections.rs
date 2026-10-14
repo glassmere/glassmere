@@ -10,19 +10,19 @@ impl Ui<'_> {
     /// transient row NodeIds are deliberately not stored in the model.
     pub fn virtual_list(
         &mut self,
-        key: impl Into<String>,
         model: &mut impl ListModel,
         state: &mut ListState,
         options: VirtualListOptions,
     ) -> ListResponse {
+        let key = self.next_key();
         self.collection(
-            key.into(),
+            key,
             model,
             state,
             options,
             CollectionKind::List,
             |ui, model, index, _| {
-                ui.label_styled(
+                ui.label_at(
                     "label",
                     model.label(index),
                     Style {
@@ -39,42 +39,41 @@ impl Ui<'_> {
     /// since nodes leaving the realized range are removed.
     pub fn virtual_list_with<M: ListModel>(
         &mut self,
-        key: impl Into<String>,
         model: &mut M,
         state: &mut ListState,
         options: VirtualListOptions,
         row: impl FnMut(&mut Ui<'_>, &M, usize, bool),
     ) -> ListResponse {
-        self.collection(key.into(), model, state, options, CollectionKind::List, row)
+        let key = self.next_key();
+        self.collection(key, model, state, options, CollectionKind::List, row)
     }
 
     /// Tree rows with custom content. The model supplies depth, expansion and
     /// parents; Right/Left and disclosure clicks call `set_expanded`.
     pub fn tree_view_with<M: ListModel>(
         &mut self,
-        key: impl Into<String>,
         model: &mut M,
         state: &mut ListState,
         options: VirtualListOptions,
         row: impl FnMut(&mut Ui<'_>, &M, usize, bool),
     ) -> ListResponse {
-        self.collection(key.into(), model, state, options, CollectionKind::Tree, row)
+        let key = self.next_key();
+        self.collection(key, model, state, options, CollectionKind::Tree, row)
     }
 
     pub fn tree_view(
         &mut self,
-        key: impl Into<String>,
         model: &mut impl ListModel,
         state: &mut ListState,
         options: VirtualListOptions,
     ) -> ListResponse {
-        self.tree_view_with(key, model, state, options, |ui, model, index, _| {
+        self.tree_view_with(model, state, options, |ui, model, index, _| {
             let prefix = match model.expanded(index) {
                 Some(true) => "▾",
                 Some(false) => "▸",
                 None => " ",
             };
-            ui.label_styled(
+            ui.label_at(
                 "label",
                 format!("{prefix}  {}", model.label(index)),
                 Style {
@@ -93,7 +92,6 @@ impl Ui<'_> {
     /// resizes, hides and restores columns from the keyboard.
     pub fn data_grid(
         &mut self,
-        key: impl Into<String>,
         model: &mut impl GridModel,
         state: &mut GridState,
         options: VirtualListOptions,
@@ -109,7 +107,7 @@ impl Ui<'_> {
             Drop(usize, usize),
             Menu(usize, usize),
         }
-        let key = key.into();
+        let key = self.next_key();
         let columns = model.columns().to_vec();
         assert!(
             !columns.is_empty()
@@ -137,7 +135,10 @@ impl Ui<'_> {
             self.context.tr(toward_end, &[]),
         );
         let invalid_number = self.context.tr("rust-gui-number-invalid", &[]);
-        let domain = format!("grid-column:{key}");
+        let domain = match &key {
+            WidgetKey::Named(name) => format!("grid-column:{name}"),
+            WidgetKey::Position(index) => format!("grid-column:{index}"),
+        };
         let mut response = ListResponse::default();
         let mut actions = Vec::new();
 
@@ -162,7 +163,7 @@ impl Ui<'_> {
         // what only a grid understands; take that out before the rows see the rest.
         let rows = self
             .context
-            .child(self.parent, &WidgetKey::Named(key.clone()), Kind::Column)
+            .child(self.parent, &key, Kind::Column)
             .and_then(|grid| {
                 self.context.child(
                     Some(grid),
@@ -369,80 +370,101 @@ impl Ui<'_> {
                             let actions = &mut actions;
                             let domain = &domain;
                             let chosen =
-                                ui.context_menu(column.to_string(), &menu, cell.clone(), |ui| {
-                                    ui.row("$cell", cell.clone(), |ui| {
-                                        // Unnamed, so pointer-only: the menu is the keyboard path.
-                                        let payload = crate::DragPayload::Item {
-                                            domain: domain.clone(),
-                                            id: crate::ItemId(column as u64),
-                                        };
-                                        let grip = cell.clone().width(Length::Px(width - SIZER));
-                                        let dropped = ui.drop_target(
-                                            "$drop",
-                                            "",
-                                            crate::DropKind::Item,
-                                            grip.clone(),
-                                            |ui| {
-                                                ui.drag_source("$drag", "", payload, grip, |ui| {
-                                                    let sort = Style {
-                                                        padding: 6.0,
-                                                        radius: 0.0,
-                                                        ..Style::button()
-                                                    }
-                                                    .width(Length::Px(width - SIZER))
-                                                    .height(Length::Px(options.row_height));
-                                                    if ui
-                                                        .button_styled(
-                                                            "$sort",
-                                                            label,
-                                                            descriptor.sortable,
-                                                            sort,
-                                                        )
-                                                        .clicked()
-                                                    {
-                                                        actions.push(HeaderAction::Sort(column));
-                                                    }
-                                                    ui.elements.last_mut().unwrap().control =
-                                                        Control::GridCell {
-                                                            row: 0,
-                                                            column: position,
-                                                            header: true,
-                                                            sort: direction,
-                                                        };
-                                                });
-                                            },
-                                        );
-                                        if let Some(crate::DragPayload::Item { domain: from, id }) =
-                                            dropped
-                                            && from == *domain
-                                        {
-                                            actions.push(HeaderAction::Drop(id.0 as usize, column));
-                                        }
-                                        if let Some(ControlUpdate::Number(size)) =
-                                            ui.take_update("$size", Kind::Divider)
-                                        {
-                                            actions.push(HeaderAction::Resize(column, size as f32));
-                                        }
-                                        ui.push(Element {
-                                            key: WidgetKey::Named("$size".into()),
-                                            kind: Kind::Divider,
-                                            text: String::new(),
-                                            style: Style::default()
-                                                .width(Length::Px(SIZER))
-                                                .height(Length::Px(options.row_height)),
-                                            enabled: ui.enabled,
-                                            children: Vec::new(),
-                                            custom: None,
-                                            tooltip: None,
-                                            control: Control::Sizer {
-                                                label: resize_label.clone(),
-                                                size: width,
-                                                min: crate::GridColumns::MIN_WIDTH,
-                                                max: crate::GridColumns::MAX_WIDTH,
-                                            },
+                                ui.at(column.to_string())
+                                    .context_menu(&menu, cell.clone(), |ui| {
+                                        ui.row_at("$cell", cell.clone(), |ui| {
+                                            // Unnamed, so pointer-only: the menu is the keyboard path.
+                                            let payload = crate::DragPayload::Item {
+                                                domain: domain.clone(),
+                                                id: crate::ItemId(column as u64),
+                                            };
+                                            let grip =
+                                                cell.clone().width(Length::Px(width - SIZER));
+                                            let dropped = ui.at("$drop").drop_target(
+                                                "",
+                                                crate::DropKind::Item,
+                                                grip.clone(),
+                                                |ui| {
+                                                    ui.at("$drag").drag_source(
+                                                        "",
+                                                        payload,
+                                                        grip,
+                                                        |ui| {
+                                                            let sort = Style {
+                                                                padding: 6.0,
+                                                                radius: 0.0,
+                                                                ..Style::button()
+                                                            }
+                                                            .width(Length::Px(width - SIZER))
+                                                            .height(Length::Px(options.row_height));
+                                                            if ui
+                                                                .button_at(
+                                                                    "$sort",
+                                                                    label,
+                                                                    descriptor.sortable,
+                                                                    sort,
+                                                                )
+                                                                .clicked()
+                                                            {
+                                                                actions.push(HeaderAction::Sort(
+                                                                    column,
+                                                                ));
+                                                            }
+                                                            ui.elements
+                                                                .last_mut()
+                                                                .unwrap()
+                                                                .control = Control::GridCell {
+                                                                row: 0,
+                                                                column: position,
+                                                                header: true,
+                                                                sort: direction,
+                                                            };
+                                                        },
+                                                    );
+                                                },
+                                            );
+                                            if let Some(crate::DragPayload::Item {
+                                                domain: from,
+                                                id,
+                                            }) = dropped
+                                                && from == *domain
+                                            {
+                                                actions.push(HeaderAction::Drop(
+                                                    id.0 as usize,
+                                                    column,
+                                                ));
+                                            }
+                                            if let Some(ControlUpdate::Number(size)) = ui
+                                                .take_update(
+                                                    &WidgetKey::named("$size"),
+                                                    Kind::Divider,
+                                                )
+                                            {
+                                                actions.push(HeaderAction::Resize(
+                                                    column,
+                                                    size as f32,
+                                                ));
+                                            }
+                                            ui.push(Element {
+                                                key: WidgetKey::Named("$size".into()),
+                                                kind: Kind::Divider,
+                                                text: String::new(),
+                                                style: Style::default()
+                                                    .width(Length::Px(SIZER))
+                                                    .height(Length::Px(options.row_height)),
+                                                enabled: ui.enabled,
+                                                children: Vec::new(),
+                                                custom: None,
+                                                tooltip: None,
+                                                control: Control::Sizer {
+                                                    label: resize_label.clone(),
+                                                    size: width,
+                                                    min: crate::GridColumns::MIN_WIDTH,
+                                                    max: crate::GridColumns::MAX_WIDTH,
+                                                },
+                                            });
                                         });
                                     });
-                                });
                             if let Some(chosen) = chosen {
                                 actions.push(HeaderAction::Menu(column, chosen));
                             }
@@ -467,7 +489,7 @@ impl Ui<'_> {
                             if descriptor.filterable {
                                 let text = state.filters.entry(column).or_default();
                                 typed_filter |= ui
-                                    .text_input_styled(
+                                    .text_input_at(
                                         column.to_string(),
                                         ui.context.tr(
                                             "rust-gui-grid-filter",
@@ -479,7 +501,7 @@ impl Ui<'_> {
                                     )
                                     .changed;
                             } else {
-                                ui.label_styled(
+                                ui.label_at(
                                     column.to_string(),
                                     "",
                                     field.background(rust_gui_scene::Color::TRANSPARENT),
@@ -490,7 +512,7 @@ impl Ui<'_> {
                 }
                 let header_rows = if filterable { 2.0 } else { 1.0 };
                 response = ui.collection(
-                    "$rows".into(),
+                    WidgetKey::named("$rows"),
                     model,
                     &mut state.rows,
                     VirtualListOptions {
@@ -537,7 +559,7 @@ impl Ui<'_> {
                                             Some(crate::CellEditor::Choice(choices)) => {
                                                 let choices: Vec<&str> =
                                                     choices.iter().map(String::as_str).collect();
-                                                let response = ui.combo_box_styled(
+                                                let response = ui.combo_box_at(
                                                     "$edit",
                                                     descriptor.label.clone(),
                                                     &mut edit.choice,
@@ -548,7 +570,7 @@ impl Ui<'_> {
                                                 picked |= response.changed;
                                                 response
                                             }
-                                            _ => ui.text_input_styled(
+                                            _ => ui.text_input_at(
                                                 "$edit",
                                                 descriptor.label.clone(),
                                                 &mut edit.text,
@@ -569,7 +591,7 @@ impl Ui<'_> {
                                     }
                                     let current =
                                         is_selected && column == state.cursor && rows_focused;
-                                    ui.label_styled(
+                                    ui.label_at(
                                         column.to_string(),
                                         model.cell(index, column),
                                         Style {
@@ -690,18 +712,14 @@ impl Ui<'_> {
 
     fn collection<M: ListModel>(
         &mut self,
-        key: String,
+        key: WidgetKey,
         model: &mut M,
         state: &mut ListState,
         options: VirtualListOptions,
         kind: CollectionKind,
         mut row: impl FnMut(&mut Ui<'_>, &M, usize, bool),
     ) -> ListResponse {
-        let owner = self.context.child(
-            self.parent,
-            &WidgetKey::Named(key.clone()),
-            Kind::Collection,
-        );
+        let owner = self.context.child(self.parent, &key, Kind::Collection);
         let node = owner.and_then(|id| self.context.node(id));
         let input = owner.and_then(|id| self.updates.remove(&id));
         let input = match input {
@@ -725,7 +743,7 @@ impl Ui<'_> {
             ..options.style.clone()
         };
         self.group(key, Kind::Collection, style, |ui| {
-            ui.label_styled(
+            ui.label_at(
                 "$before",
                 "",
                 Style {
@@ -738,7 +756,7 @@ impl Ui<'_> {
                 let item = model.item_id(index);
                 let is_selected = selected == Some(item);
                 ui.group(
-                    format!("item-{}", item.0),
+                    WidgetKey::named(format!("item-{}", item.0)),
                     Kind::CollectionRow,
                     Style {
                         width: Length::Percent(1.0),
@@ -755,14 +773,14 @@ impl Ui<'_> {
                     },
                     |ui| {
                         if kind == CollectionKind::Tree {
-                            ui.row(
+                            ui.row_at(
                                 "$indent",
                                 Style {
                                     gap: 0.0,
                                     ..Style::default()
                                 },
                                 |ui| {
-                                    ui.label_styled(
+                                    ui.label_at(
                                         "$space",
                                         "",
                                         Style {
@@ -791,7 +809,7 @@ impl Ui<'_> {
                     expanded: model.expanded(index),
                 };
             }
-            ui.label_styled(
+            ui.label_at(
                 "$after",
                 "",
                 Style {
@@ -909,16 +927,16 @@ impl ColumnPlan {
         let line = Style::default()
             .height(Length::Px(self.bar_height()))
             .gap(0.0);
-        ui.row("$hbar", line.clone(), |ui| {
-            ui.label_styled("$frozen", "", line.clone().width(Length::Px(frozen)));
-            ui.container("$track", line.clone().width(Length::Px(self.view)), |ui| {
+        ui.row_at("$hbar", line.clone(), |ui| {
+            ui.label_at("$frozen", "", line.clone().width(Length::Px(frozen)));
+            ui.container_at("$track", line.clone().width(Length::Px(self.view)), |ui| {
                 let thumb = Style::default()
                     .offset(x, 1.0)
                     .width(Length::Px(thumb))
                     .height(Length::Px(4.0))
                     .radius(2.0)
                     .background(color);
-                ui.container("$thumb", thumb, |_| {});
+                ui.container_at("$thumb", thumb, |_| {});
             });
         });
     }
@@ -934,15 +952,15 @@ fn spread(
     cell: &mut dyn FnMut(&mut Ui<'_>, usize, usize, f32),
 ) {
     let line = Style::default().height(Length::Px(height)).gap(0.0);
-    ui.row(key, line.clone(), |ui| {
+    ui.row_at(key, line.clone(), |ui| {
         for &(position, column, width) in &plan.frozen {
             cell(ui, position, column, width);
         }
-        ui.container(
+        ui.container_at(
             "$scrolling",
             line.clone().width(Length::Px(plan.view)),
             |ui| {
-                ui.row("$strip", line.clone().offset(plan.strip_x, 0.0), |ui| {
+                ui.row_at("$strip", line.clone().offset(plan.strip_x, 0.0), |ui| {
                     for &(position, column, width) in &plan.realized {
                         cell(ui, position, column, width);
                     }

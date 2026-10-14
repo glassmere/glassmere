@@ -168,8 +168,8 @@ use rust_gui::{run, AppOptions};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut count = 0;
     run(AppOptions::default(), move |ui| {
-        ui.label_keyed("count", format!("Count: {count}"));
-        if ui.button_keyed("increment", "Increase").clicked() {
+        ui.label(format!("Count: {count}"));
+        if ui.button("Increase").clicked() {
             count += 1;
         }
     })
@@ -250,7 +250,9 @@ The view may run more than once per input event. Put application actions behind 
 
 ## Identity and performance
 
-Use `button("Save")` and `label("Hello")` for fixed child sequences. Their identity follows the position among siblings. Use `button_keyed`, `label_keyed`, and keyed groups for conditional or reordered content. Keys are unique **within a parent**; a duplicate panics with a diagnostic. Changing a widget's kind or moving it to a different parent creates a new identity. Removed IDs are not recycled within a context.
+A widget is identified by where it is declared among its siblings, which is what a view with a fixed shape wants. Wrap it in `ui.keyed(id, |ui| ..)` for conditional or reordered content, where position stops meaning the same thing from one frame to the next. Keys are unique **within a parent**; a duplicate panics with a diagnostic. Changing a widget's kind or moving it to a different parent creates a new identity. Removed IDs are not recycled within a context.
+
+Keys that change every frame throw away focus, scroll offset, selection and undo history for everything under them. The `UnstableIds` diagnostic catches that, and in debug builds says so once on stderr as well as in the inspector.
 
 An unchanged declaration reuses matching nodes and skips measurement, layout and scene generation. Text changes request layout only when their measured intrinsic size changes. Paint changes invalidate the affected nodes and ancestor caches; clean subtrees reuse their paint chunks. The renderer retains GPU buffers, batches adjacent text and skips preparation/uploads on unchanged exposure redraws. Reconciliation still visits the whole declaration, and a changed scene still flattens all cached paint chunks and repaints the full surface. Damage bounds are exposed for future partial presentation. See [milestone 2 results](docs/milestone-2.md) for contracts and measured large-tree costs.
 

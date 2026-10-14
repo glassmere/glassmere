@@ -57,7 +57,7 @@ fn frame(
 ) -> rust_gui_core::ListResponse {
     let mut response = Default::default();
     context.run(Size::new(500.0, 500.0), &mut MonospaceMeasurer, |ui| {
-        response = ui.virtual_list("list", model, state, options())
+        response = ui.keyed("list", |ui| ui.virtual_list(model, state, options()))
     });
     response
 }
@@ -184,7 +184,9 @@ fn empty_lists_and_disabled_collections_reject_selection() {
     model.count = 100;
     context.run(Size::new(500.0, 500.0), &mut MonospaceMeasurer, |ui| {
         ui.enabled(false, |ui| {
-            ui.virtual_list("list", &mut model, &mut state, options());
+            ui.keyed("list", |ui| {
+                ui.virtual_list(&mut model, &mut state, options())
+            });
         })
     });
     assert!(!context.action(owner, Action::Focus));
@@ -221,7 +223,7 @@ fn tree_validation_and_expansion_preserve_logical_identity() {
     let mut state = ListState::default();
     let frame = |context: &mut Context, tree: &mut TreeModel, state: &mut ListState| {
         context.run(Size::new(500.0, 500.0), &mut MonospaceMeasurer, |ui| {
-            ui.tree_view("tree", tree, state, options());
+            ui.keyed("tree", |ui| ui.tree_view(tree, state, options()));
         });
     };
     frame(&mut context, &mut tree, &mut state);
@@ -304,7 +306,7 @@ fn grid_realizes_bounded_cells_and_sorting_preserves_selected_identity() {
     state.rows.select(Some(ItemId(7)));
     let frame = |context: &mut Context, grid: &mut Grid, state: &mut GridState| {
         context.run(Size::new(500.0, 500.0), &mut MonospaceMeasurer, |ui| {
-            ui.data_grid("grid", grid, state, options());
+            ui.keyed("grid", |ui| ui.data_grid(grid, state, options()));
         });
     };
     frame(&mut context, &mut grid, &mut state);

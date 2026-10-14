@@ -39,26 +39,32 @@ fn images_take_their_natural_size_follow_one_given_side_and_fit_a_given_box() {
     let mut context = Context::new();
     let image = picture(200, 100);
     context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        ui.row("row", Style::default(), |ui| {
-            ui.image("natural", &image, ImageOptions::new("A landscape"));
-            ui.image(
-                "wide",
-                &image,
-                ImageOptions::new("").style(Style::default().width(Length::Px(100.0))),
-            );
-            ui.image(
-                "cover",
-                &image,
-                ImageOptions::new("")
-                    .fit(ImageFit::Cover)
-                    .tint(ImageTint::Color(Color(1, 2, 3, 255)))
-                    .style(
-                        Style::default()
-                            .width(Length::Px(50.0))
-                            .height(Length::Px(50.0))
-                            .radius(8.0),
-                    ),
-            );
+        ui.keyed("row", |ui| {
+            ui.row(Style::default(), |ui| {
+                ui.keyed("natural", |ui| {
+                    ui.image(&image, ImageOptions::new("A landscape"))
+                });
+                ui.keyed("wide", |ui| {
+                    ui.image(
+                        &image,
+                        ImageOptions::new("").style(Style::default().width(Length::Px(100.0))),
+                    )
+                });
+                ui.keyed("cover", |ui| {
+                    ui.image(
+                        &image,
+                        ImageOptions::new("")
+                            .fit(ImageFit::Cover)
+                            .tint(ImageTint::Color(Color(1, 2, 3, 255)))
+                            .style(
+                                Style::default()
+                                    .width(Length::Px(50.0))
+                                    .height(Length::Px(50.0))
+                                    .radius(8.0),
+                            ),
+                    )
+                });
+            })
         });
     });
     let natural = bounds(&context, "row/natural");
@@ -110,12 +116,12 @@ fn a_foreground_tint_follows_the_inherited_text_colour() {
     let icon = picture(16, 16);
     let red = Color(200, 0, 0, 255);
     context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        ui.column("tinted", Style::default().foreground(red), |ui| {
-            ui.image(
-                "icon",
-                &icon,
-                ImageOptions::new("").tint(ImageTint::Foreground),
-            );
+        ui.keyed("tinted", |ui| {
+            ui.column(Style::default().foreground(red), |ui| {
+                ui.keyed("icon", |ui| {
+                    ui.image(&icon, ImageOptions::new("").tint(ImageTint::Foreground))
+                });
+            })
         });
     });
     assert_eq!(drawn(&context)[0].2, Some(red));
@@ -127,15 +133,16 @@ fn image_files_show_a_placeholder_until_the_host_delivers_and_keep_the_last_good
     let path = Path::new("assets/photo.png");
     let frame = |context: &mut Context| {
         context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            ui.image_file(
-                "photo",
-                path,
-                ImageOptions::new("Photo").style(
-                    Style::default()
-                        .width(Length::Px(120.0))
-                        .height(Length::Px(80.0)),
-                ),
-            );
+            ui.keyed("photo", |ui| {
+                ui.image_file(
+                    path,
+                    ImageOptions::new("Photo").style(
+                        Style::default()
+                            .width(Length::Px(120.0))
+                            .height(Length::Px(80.0)),
+                    ),
+                )
+            });
         })
     };
     frame(&mut context);
@@ -177,9 +184,11 @@ fn a_file_image_sizes_itself_once_loaded_and_unused_images_are_dropped_past_a_bu
     let frame = |context: &mut Context| {
         context.run(ROOT, &mut MonospaceMeasurer, |ui| {
             if shown.get() {
-                ui.image_file("big", big, ImageOptions::default());
+                ui.keyed("big", |ui| ui.image_file(big, ImageOptions::default()));
             }
-            ui.image_file("small", "small.png", ImageOptions::default());
+            ui.keyed("small", |ui| {
+                ui.image_file("small.png", ImageOptions::default())
+            });
         })
     };
     frame(&mut context);
@@ -206,24 +215,26 @@ fn background_images_paint_between_the_colour_and_the_content_and_nine_slice_int
         let sized = Style::default()
             .width(Length::Px(100.0))
             .height(Length::Px(100.0));
-        ui.column(
-            "card",
-            sized
-                .clone()
-                .radius(9.0)
-                .background(navy)
-                .background_image(BackgroundImage::new(&photo)),
-            |ui| ui.label("Title"),
-        );
-        ui.column(
-            "framed",
-            sized.foreground(navy).background_image(
-                BackgroundImage::new(&frame)
-                    .slice(10.0, 10.0, 10.0, 10.0)
-                    .tint(ImageTint::Foreground),
-            ),
-            |_| {},
-        );
+        ui.keyed("card", |ui| {
+            ui.column(
+                sized
+                    .clone()
+                    .radius(9.0)
+                    .background(navy)
+                    .background_image(BackgroundImage::new(&photo)),
+                |ui| ui.label("Title"),
+            )
+        });
+        ui.keyed("framed", |ui| {
+            ui.column(
+                sized.foreground(navy).background_image(
+                    BackgroundImage::new(&frame)
+                        .slice(10.0, 10.0, 10.0, 10.0)
+                        .tint(ImageTint::Foreground),
+                ),
+                |_| {},
+            )
+        });
     });
     let card = bounds(&context, "card");
     let primitives = &context.scene().primitives;
@@ -263,7 +274,7 @@ fn background_files_load_through_the_host_and_repaint_when_they_arrive() {
                 .width(Length::Px(80.0))
                 .height(Length::Px(40.0))
                 .background_image(BackgroundImage::file(path).fit(ImageFit::Fill));
-            ui.column("panel", style, |_| {});
+            ui.keyed("panel", |ui| ui.column(style, |_| {}));
         })
     };
     frame(&mut context);

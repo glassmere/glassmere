@@ -21,12 +21,14 @@ fn app(value: f64) -> Harness<App> {
             changes: 0,
         },
         |app: &mut App, ui: &mut Ui<'_>| {
-            ui.column("page", Style::default(), |ui| {
-                if app.dial.ui(ui, "dial", "Gain", DIAMETER) {
-                    app.changes += 1;
-                }
-                // Somewhere for the focus to go.
-                ui.button_keyed("after", "After");
+            ui.keyed("page", |ui| {
+                ui.column(Style::default(), |ui| {
+                    if app.dial.ui(ui, "dial", "Gain", DIAMETER) {
+                        app.changes += 1;
+                    }
+                    // Somewhere for the focus to go.
+                    ui.keyed("after", |ui| ui.button("After"));
+                })
             });
         },
     )
@@ -119,21 +121,22 @@ fn an_arrow_key_turns_the_dial_without_scrolling_the_page_under_it() {
         Size::new(320.0, 200.0),
         App::default(),
         |app: &mut App, ui: &mut Ui<'_>| {
-            ui.scroll(
-                "page",
-                Style {
-                    height: Length::Px(160.0),
-                    width: Length::Percent(1.0),
-                    ..Style::default()
-                },
-                |ui| {
-                    app.dial.ui(ui, "dial", "Gain", DIAMETER);
-                    ui.button_keyed("below", "Below");
-                    for line in 0..20 {
-                        ui.label_keyed(format!("filler{line}"), "Filler");
-                    }
-                },
-            );
+            ui.keyed("page", |ui| {
+                ui.scroll(
+                    Style {
+                        height: Length::Px(160.0),
+                        width: Length::Percent(1.0),
+                        ..Style::default()
+                    },
+                    |ui| {
+                        app.dial.ui(ui, "dial", "Gain", DIAMETER);
+                        ui.keyed("below", |ui| ui.button("Below"));
+                        for line in 0..20 {
+                            ui.keyed(format!("filler{line}"), |ui| ui.label("Filler"));
+                        }
+                    },
+                )
+            });
         },
     );
     harness.run();
