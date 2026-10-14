@@ -1538,6 +1538,7 @@ rust-gui-core use toast :: { Toast, ToastAction, ToastId, ToastKind, ToastSender
 rust-gui-core use touch_input :: { GestureResponse, Pen, Swipe, SwipeDirection, TouchPhase }
 rust-gui-core use tree :: diagnostics :: { DiagnosticKind, FrameDiagnostic, HUGE_CHILDREN, LAYER_AREA, RELAYOUT_FRAMES, REPAINT_FRAMES, REPAINT_MIN_NODES, UNSTABLE_ID_FRAMES, }
 rust-gui-core use tree :: { Action, CollectionInfo, Context, Dirty, Event, FrameStats, GestureResponse, Key, Live, MemoryReport, NodeDetails, NodeId, NodeSnapshot, NumericValue, Pen, Role, ScrollState, Semantics, Swipe, SwipeDirection, TouchPhase, }
+rust-gui-core use types :: *
 rust-gui-core use ui :: { Button, ComboBox, DockOptions, DockPanel, DockResponse, Label, Properties, PropertyGrid, Response, TextInput, Ui, suggest, }
 rust-gui-core use widget :: { Component, CustomWidget, WidgetInput }
 rust-gui-core use window :: { ResizeEdge, WindowCommand, WindowInfo }
