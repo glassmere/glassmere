@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     GridModel, GridMsg, GridState, Length, ListModel, ListResponse, ListState, SortDirection,
     VirtualListOptions,
-    collection::{CollectionInput, CollectionKind},
+    collection::{After, CollectionInput, CollectionKind, GridNode, NodeEdit},
 };
 use std::rc::Rc;
 
@@ -725,7 +725,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
     ) {
         let key = self.next_key();
         let on: Rc<dyn Fn(GridMsg) -> Msg> = Rc::new(on);
-        self.rows_msg(
+        let nav = self.rows_msg(
             key,
             model,
             state,
@@ -743,11 +743,11 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                 );
             },
         );
-        self.set_handler(rows_handler(on));
+        self.set_handler(rows_handler(on, nav));
     }
 
-    /// A tree whose selection and disclosure are sent as [`GridMsg::Select`]
-    /// and [`GridMsg::Expand`]. Keyboard expansion is not sent yet.
+    /// A tree whose selection and disclosure, by pointer or keyboard, are sent
+    /// as [`GridMsg::Select`] and [`GridMsg::Expand`].
     #[track_caller]
     pub fn tree_view_msg(
         &mut self,
@@ -758,7 +758,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
     ) {
         let key = self.next_key();
         let on: Rc<dyn Fn(GridMsg) -> Msg> = Rc::new(on);
-        self.rows_msg(
+        let nav = self.rows_msg(
             key,
             model,
             state,
@@ -781,16 +781,24 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                 );
             },
         );
-        self.set_handler(rows_handler(on));
+        self.set_handler(rows_handler(on, nav));
     }
 
     /// A virtual grid whose changes are sent as [`GridMsg`]s, shown from
     /// `state`, which the view does not change. Dragging a header's end edge
     /// sends `ResizeColumn`, a header clicked sends `Sort`, a header dropped
-    /// on another sends `MoveColumn`, and typing in a filter field sends
-    /// `Filter`, which the grid turns into `FiltersApplied` once typing
-    /// pauses. The cell cursor, cell editing, the header menu and sideways
-    /// scrolling are not sent yet, so they do nothing in this form.
+    /// on another sends `MoveColumn`, the header menu sends `Columns`, a
+    /// row chosen by pointer or keyboard sends `Select`, and typing in a
+    /// filter field sends `Filter`, which the grid turns into
+    /// `FiltersApplied` once typing pauses; filter text the application set
+    /// itself applies at once. Committing a cell edit sends `Edit`.
+    ///
+    /// The cell cursor, the sideways scroll and the cell being edited belong
+    /// to the grid's node, not to `state`. An edit stays open, showing its
+    /// draft, until the model's value for the cell differs from what it was
+    /// when the edit began, so a `set_cell` that refuses the value leaves the
+    /// editor open; Escape cancels it. Messages that follow a commit (the
+    /// edit itself, the move to the next row) are sent one batch later.
     #[track_caller]
     pub fn data_grid_msg(
         &mut self,
@@ -801,6 +809,8 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
     ) {
         /// Width of the resize handle at the end of each header.
         const SIZER: f32 = 5.0;
+        /// What one "Wider" or "Narrower" changes.
+        const WIDTH_STEP: f32 = 20.0;
         let on: Rc<dyn Fn(GridMsg) -> Msg> = Rc::new(on);
         let key = self.next_key();
         let columns = model.columns().to_vec();
@@ -819,6 +829,18 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
             .map(|column| state.columns.width(*column, columns[*column].width))
             .collect();
         let rtl = self.context.direction() == crate::Direction::Rtl;
+        // Menu entries name physical directions; the start is on the right in
+        // a right-to-left grid.
+        let (toward_start, toward_end) = if rtl {
+            ("rust-gui-grid-move-right", "rust-gui-grid-move-left")
+        } else {
+            ("rust-gui-grid-move-left", "rust-gui-grid-move-right")
+        };
+        let (toward_start, toward_end) = (
+            self.context.tr(toward_start, &[]),
+            self.context.tr(toward_end, &[]),
+        );
+        let invalid_number = self.context.tr("rust-gui-number-invalid", &[]);
         let domain = format!("grid-column:{}", key.describe());
         let filterable = columns.iter().any(|column| column.filterable);
         let rows = self
@@ -831,42 +853,139 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                     Kind::Collection,
                 )
             });
-        // The cursor is not moved by this form, so an unknown one shows the first column.
-        let cursor = if visible.contains(&state.cursor) {
-            state.cursor
-        } else {
-            visible[0]
-        };
-        // Filters: the kernel waits out the delay, so the view only reports what
-        // is pending, and asks for frames until the delay has passed.
+
+        // The cursor, the sideways scroll and the open editor are the grid
+        // node's. What only a grid understands arrives in its inbox.
+        let mut grid = rows
+            .map(|rows| self.context.take_grid(rows))
+            .unwrap_or_default();
+        let selected = state.rows.selected();
+        // What the next batch is to send: the edits, and the row to go to.
+        let mut sends = Vec::new();
+        let mut inputs = std::mem::take(&mut grid.inbox);
+        if !self.enabled {
+            inputs.clear();
+        }
+        if !visible.contains(&grid.cursor) {
+            grid.cursor = visible[0];
+        }
+        let editable = columns
+            .get(grid.cursor)
+            .is_some_and(|column| column.editor.is_some());
+        let cursor_before = grid.cursor;
+        // Where the keyboard goes once this declaration is reconciled.
+        let (mut focus_editor, mut focus_rows) = (false, false);
+        for input in inputs {
+            let mut start = None;
+            match input {
+                // Enter opens an editable cell; elsewhere it does nothing here.
+                CollectionInput::Activate if editable => start = Some(None),
+                CollectionInput::Cell { item, position } => {
+                    let Some(&column) = visible.get(position) else {
+                        continue;
+                    };
+                    // A second press on the current cell opens it.
+                    let again =
+                        grid.edit.is_none() && grid.cursor == column && grid.shown == Some(item);
+                    grid.cursor = column;
+                    start = again.then_some(None);
+                }
+                CollectionInput::Column(by) if grid.edit.is_none() => {
+                    let at = visible
+                        .iter()
+                        .position(|column| *column == grid.cursor)
+                        .unwrap_or(0);
+                    grid.cursor = visible[at.saturating_add_signed(by).min(visible.len() - 1)];
+                }
+                CollectionInput::ScrollX(delta) => {
+                    grid.scroll_x += if rtl { -delta } else { delta };
+                }
+                CollectionInput::Edit => start = Some(None),
+                CollectionInput::Type(text) => start = Some(Some(text)),
+                CollectionInput::EditKey { key, shift } => {
+                    let step = if shift { -1 } else { 1 };
+                    if key == crate::Key::Escape {
+                        grid.edit = None;
+                        focus_rows = true;
+                    } else {
+                        // Enter and Tab send the value first; a refused value
+                        // keeps the editor open and the cursor where it is.
+                        let after = if key == crate::Key::Enter {
+                            After::Row(step)
+                        } else {
+                            After::Column(step)
+                        };
+                        if commit_edit_msg(
+                            model,
+                            &mut grid,
+                            &columns,
+                            &invalid_number,
+                            after,
+                            &mut sends,
+                            self.context,
+                        ) {
+                            finish_edit(after, &mut grid, &visible, &mut sends, &mut focus_rows);
+                        }
+                    }
+                }
+                _ => {}
+            }
+            if let Some(typed) = start
+                && grid.edit.is_none()
+            {
+                focus_editor |= begin_edit_msg(
+                    self.context,
+                    model,
+                    &mut grid,
+                    &columns,
+                    selected,
+                    typed,
+                    &mut sends,
+                );
+            }
+        }
+        // An edit the model has taken is over.
+        if let Some(edit) = &grid.edit
+            && let Some(after) = edit.waiting
+            && model
+                .index_of(edit.item)
+                .is_none_or(|row| model.value(row, edit.column) != edit.original)
+        {
+            grid.edit = None;
+            finish_edit(after, &mut grid, &visible, &mut sends, &mut focus_rows);
+        }
+
+        // Filters: typing waits for a pause, which the kernel times; text the
+        // application set applies at once. The view reports what is pending.
         let wanted = state.wanted_filters();
         let pending = wanted.as_slice() != state.applied_filters();
-        if let Some(rows) = rows {
-            self.context
-                .note_grid_filters(rows, pending.then_some(wanted));
-        }
-        if pending {
-            self.request_redraw();
-        }
+        let mut typed_filter = false;
+        // Which columns exist this frame. The first declaration does not know
+        // its width yet and shows everything; the next one knows.
         let viewport = rows
             .and_then(|rows| self.context.node(rows))
             .map(|node| node.bounds.width);
         if viewport.is_none() {
             self.request_redraw();
         }
-        let mut scroll_x = state.scroll_x;
         let plan = ColumnPlan::new(
             &visible,
             &widths,
             state.columns.frozen,
             viewport.unwrap_or(f32::INFINITY),
-            &mut scroll_x,
-            None,
+            &mut grid.scroll_x,
+            (grid.cursor != cursor_before).then_some(grid.cursor),
             rtl,
         );
         let rows_focused = rows.is_some_and(|rows| self.context.focused() == Some(rows));
         let theme = self.context.theme();
-        let cursor_fill = theme.control_hover;
+        let (cursor_fill, error_fill) =
+            (theme.control_hover, rust_gui_scene::Color::rgb(120, 40, 48));
+        let layout = Rc::new(state.columns.clone());
+        let visible_shared = Rc::new(visible.clone());
+        // Set by the editor in its cell, applied after the rows are declared:
+        // a choice was picked, or the keyboard left the cell.
+        let (mut picked, mut left) = (false, false);
         let sorted = state.sort;
         self.group(
             key,
@@ -882,7 +1001,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                     "$header",
                     options.row_height,
                     &plan,
-                    &mut |ui, _, column, width| {
+                    &mut |ui, position, column, width| {
                         let descriptor = &columns[column];
                         let direction = sorted
                             .filter(|(selected, _)| *selected == column)
@@ -902,93 +1021,167 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                             gap: 0.0,
                             ..Style::default()
                         };
-                        let resize_label = ui.context.tr(
-                            "rust-gui-grid-resize",
-                            &[("name", descriptor.label.as_str().into())],
-                        );
-                        ui.row_at(column.to_string(), cell.clone(), |ui| {
-                            let grip = cell.clone().width(Length::Px(width - SIZER));
-                            let payload = crate::DragPayload::Item {
-                                domain: domain.clone(),
-                                id: crate::ItemId(column as u64),
-                            };
-                            ui.at("$drop").drop_target(
-                                "",
-                                crate::DropKind::Item,
-                                grip.clone(),
-                                |ui| {
-                                    ui.at("$drag").drag_source("", payload, grip, |ui| {
-                                        let sort = Style {
-                                            padding: 6.0,
-                                            radius: 0.0,
-                                            ..Style::button()
-                                        }
-                                        .width(Length::Px(width - SIZER))
-                                        .height(Length::Px(options.row_height));
-                                        ui.button_at("$sort", label, descriptor.sortable, sort);
-                                        if descriptor.sortable {
-                                            let next =
-                                                if direction == Some(SortDirection::Ascending) {
-                                                    SortDirection::Descending
-                                                } else {
-                                                    SortDirection::Ascending
-                                                };
-                                            ui.set_handler(crate::app::Handler::Message(on(
-                                                GridMsg::Sort(column, next),
-                                            )));
-                                        }
+                        let text = |key: &str| ui.context.tr(key, &[]);
+                        let named = |key: &str| {
+                            ui.context
+                                .tr(key, &[("name", descriptor.label.as_str().into())])
+                        };
+                        let resize_label = named("rust-gui-grid-resize");
+                        let item = |label: &str, enabled| crate::MenuItem {
+                            enabled,
+                            ..crate::MenuItem::new(label)
+                        };
+                        let flags = [
+                            position > 0,
+                            position + 1 < visible.len(),
+                            width < crate::GridColumns::MAX_WIDTH,
+                            width > crate::GridColumns::MIN_WIDTH,
+                            visible.len() > 1,
+                            visible.len() < count,
+                            true,
+                            state.columns.frozen != position + 1,
+                            state.columns.frozen > 0,
+                        ];
+                        let menu = [
+                            item(&toward_start, flags[0]),
+                            item(&toward_end, flags[1]),
+                            item(&text("rust-gui-grid-wider"), flags[2]),
+                            item(&text("rust-gui-grid-narrower"), flags[3]),
+                            item(&named("rust-gui-grid-hide"), flags[4]),
+                            item(&text("rust-gui-grid-show-all"), flags[5]),
+                            item(&text("rust-gui-grid-reset"), flags[6]),
+                            item(&named("rust-gui-grid-freeze"), flags[7]),
+                            item(&text("rust-gui-grid-unfreeze"), flags[8]),
+                        ];
+                        let domain = &domain;
+                        ui.at(column.to_string())
+                            .context_menu(&menu, cell.clone(), |ui| {
+                                ui.row_at("$cell", cell.clone(), |ui| {
+                                    // Unnamed, so pointer-only: the menu is the keyboard path.
+                                    let payload = crate::DragPayload::Item {
+                                        domain: domain.clone(),
+                                        id: crate::ItemId(column as u64),
+                                    };
+                                    let grip = cell.clone().width(Length::Px(width - SIZER));
+                                    ui.at("$drop").drop_target(
+                                        "",
+                                        crate::DropKind::Item,
+                                        grip.clone(),
+                                        |ui| {
+                                            ui.at("$drag").drag_source("", payload, grip, |ui| {
+                                                let sort = Style {
+                                                    padding: 6.0,
+                                                    radius: 0.0,
+                                                    ..Style::button()
+                                                }
+                                                .width(Length::Px(width - SIZER))
+                                                .height(Length::Px(options.row_height));
+                                                ui.button_at(
+                                                    "$sort",
+                                                    label,
+                                                    descriptor.sortable,
+                                                    sort,
+                                                );
+                                                if descriptor.sortable {
+                                                    let next = if direction
+                                                        == Some(SortDirection::Ascending)
+                                                    {
+                                                        SortDirection::Descending
+                                                    } else {
+                                                        SortDirection::Ascending
+                                                    };
+                                                    ui.set_handler(crate::app::Handler::Message(
+                                                        on(GridMsg::Sort(column, next)),
+                                                    ));
+                                                }
+                                                ui.set_control(Control::GridCell {
+                                                    row: 0,
+                                                    column: position,
+                                                    header: true,
+                                                    sort: direction,
+                                                });
+                                            });
+                                        },
+                                    );
+                                    let arranged = state.columns.arranged(count);
+                                    let (drop_domain, visible_now, on_drop) =
+                                        (domain.clone(), visible.clone(), on.clone());
+                                    ui.set_handler(crate::app::Handler::Map(Box::new(
+                                        move |update| match update {
+                                            ControlUpdate::Drop(crate::DragPayload::Item {
+                                                domain: from,
+                                                id,
+                                            }) if from == drop_domain => {
+                                                Some(on_drop(GridMsg::MoveColumn(moved_order(
+                                                    &arranged,
+                                                    &visible_now,
+                                                    id.0 as usize,
+                                                    column,
+                                                ))))
+                                            }
+                                            _ => None,
+                                        },
+                                    )));
+                                    ui.push(Element {
+                                        handler: None,
+                                        seq: 0,
+                                        key: WidgetKey::Named("$size".into()),
+                                        kind: Kind::Divider,
+                                        text: String::new(),
+                                        style: Style::default()
+                                            .width(Length::Px(SIZER))
+                                            .height(Length::Px(options.row_height)),
+                                        enabled: ui.enabled,
+                                        children: Vec::new(),
+                                        custom: None,
+                                        tooltip: None,
+                                        control: Control::Sizer {
+                                            label: resize_label.clone(),
+                                            size: width,
+                                            min: crate::GridColumns::MIN_WIDTH,
+                                            max: crate::GridColumns::MAX_WIDTH,
+                                        },
                                     });
-                                },
-                            );
-                            let arranged = state.columns.arranged(count);
-                            let (drop_domain, visible_now, on_drop) =
-                                (domain.clone(), visible.clone(), on.clone());
-                            ui.set_handler(crate::app::Handler::Map(Box::new(move |update| {
-                                match update {
-                                    ControlUpdate::Drop(crate::DragPayload::Item {
-                                        domain: from,
-                                        id,
-                                    }) if from == drop_domain => {
-                                        Some(on_drop(GridMsg::MoveColumn(moved_order(
-                                            &arranged,
-                                            &visible_now,
-                                            id.0 as usize,
-                                            column,
-                                        ))))
-                                    }
-                                    _ => None,
-                                }
-                            })));
-                            ui.push(Element {
-                                handler: None,
-                                seq: 0,
-                                key: WidgetKey::Named("$size".into()),
-                                kind: Kind::Divider,
-                                text: String::new(),
-                                style: Style::default()
-                                    .width(Length::Px(SIZER))
-                                    .height(Length::Px(options.row_height)),
-                                enabled: ui.enabled,
-                                children: Vec::new(),
-                                custom: None,
-                                tooltip: None,
-                                control: Control::Sizer {
-                                    label: resize_label,
-                                    size: width,
-                                    min: crate::GridColumns::MIN_WIDTH,
-                                    max: crate::GridColumns::MAX_WIDTH,
-                                },
+                                    let on_resize = on.clone();
+                                    ui.set_handler(crate::app::Handler::Map(Box::new(
+                                        move |update| match update {
+                                            ControlUpdate::Number(size) => Some(on_resize(
+                                                GridMsg::ResizeColumn(column, size as f32),
+                                            )),
+                                            _ => None,
+                                        },
+                                    )));
+                                });
                             });
-                            let on_resize = on.clone();
-                            ui.set_handler(crate::app::Handler::Map(Box::new(move |update| {
-                                match update {
-                                    ControlUpdate::Number(size) => {
-                                        Some(on_resize(GridMsg::ResizeColumn(column, size as f32)))
-                                    }
-                                    _ => None,
+                        // A pick sends the layout it leads to.
+                        let (on_pick, layout, visible_now) =
+                            (on.clone(), layout.clone(), visible_shared.clone());
+                        let default_width = descriptor.width;
+                        ui.set_handler(crate::app::Handler::Map(Box::new(move |update| {
+                            let ControlUpdate::Choice(index) = update else {
+                                return None;
+                            };
+                            if !flags.get(index).copied().unwrap_or(false) {
+                                return None;
+                            }
+                            let mut next = (*layout).clone();
+                            let width = next.width(column, default_width);
+                            match index {
+                                0 => drop(next.shift(count, column, -1)),
+                                1 => drop(next.shift(count, column, 1)),
+                                2 => next.set_width(column, width + WIDTH_STEP),
+                                3 => next.set_width(column, width - WIDTH_STEP),
+                                4 => drop(next.hide(count, column)),
+                                5 => next.show_all(),
+                                6 => next.reset(),
+                                7 => {
+                                    let at = visible_now.iter().position(|other| *other == column);
+                                    next.frozen = at.map_or(0, |at| at + 1);
                                 }
-                            })));
-                        });
+                                _ => next.frozen = 0,
+                            }
+                            Some(on_pick(GridMsg::Columns(next)))
+                        })));
                     },
                 );
                 if filterable {
@@ -1007,6 +1200,14 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                             .width(Length::Px(width))
                             .height(Length::Px(options.row_height));
                             if descriptor.filterable {
+                                typed_filter |= ui
+                                    .context
+                                    .child(
+                                        ui.parent,
+                                        &WidgetKey::Named(column.to_string()),
+                                        Kind::TextInput,
+                                    )
+                                    .is_some_and(|id| ui.context.text_typed(id));
                                 let mut shown =
                                     state.filters.get(&column).cloned().unwrap_or_default();
                                 ui.text_input_at(
@@ -1040,7 +1241,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                     );
                 }
                 let header_rows = if filterable { 2.0 } else { 1.0 };
-                ui.rows_msg(
+                let nav = ui.rows_msg(
                     WidgetKey::named("$rows"),
                     model,
                     &state.rows,
@@ -1053,6 +1254,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                     },
                     CollectionKind::Grid,
                     |ui, model, index, is_selected| {
+                        let item = model.item_id(index);
                         spread(
                             ui,
                             "$cells",
@@ -1065,6 +1267,58 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                                     padding: 6.0,
                                     ..Style::default()
                                 };
+                                let cursor = grid.cursor;
+                                if let Some(edit) = grid
+                                    .edit
+                                    .as_mut()
+                                    .filter(|edit| edit.item == item && edit.column == column)
+                                {
+                                    // The editor takes the cell's place.
+                                    let descriptor = &columns[column];
+                                    let mut style = Style {
+                                        padding: 4.0,
+                                        radius: 0.0,
+                                        ..Style::button()
+                                    }
+                                    .width(Length::Px(width))
+                                    .height(Length::Px(options.row_height));
+                                    if edit.error.is_some() {
+                                        style.background = Some(error_fill);
+                                    }
+                                    let response = match &descriptor.editor {
+                                        Some(crate::CellEditor::Choice(choices)) => {
+                                            let choices: Vec<&str> =
+                                                choices.iter().map(String::as_str).collect();
+                                            let response = ui.combo_box_at(
+                                                "$edit",
+                                                descriptor.label.clone(),
+                                                &mut edit.choice,
+                                                &choices,
+                                                style,
+                                            );
+                                            // Picking a choice is the whole edit.
+                                            picked |= response.changed;
+                                            response
+                                        }
+                                        _ => ui.text_input_at(
+                                            "$edit",
+                                            descriptor.label.clone(),
+                                            &mut edit.text,
+                                            "",
+                                            style,
+                                        ),
+                                    };
+                                    if let Some(error) = &edit.error {
+                                        ui.tooltip(error.clone());
+                                    }
+                                    if focus_editor {
+                                        ui.request_focus("$edit");
+                                    }
+                                    // Leaving the cell any other way sends the value too.
+                                    left |= edit.focused && !response.focused;
+                                    edit.focused |= response.focused;
+                                    return;
+                                }
                                 let current = is_selected && column == cursor && rows_focused;
                                 ui.label_at(
                                     column.to_string(),
@@ -1084,10 +1338,61 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                         );
                     },
                 );
-                ui.set_handler(rows_handler(on.clone()));
+                ui.set_handler(rows_handler(on.clone(), nav));
                 plan.scrollbar(ui, rtl);
+                if focus_rows || std::mem::take(&mut grid.refocus) {
+                    ui.request_focus("$rows");
+                }
             },
         );
+        if picked || left {
+            let after = if picked {
+                After::Refocus
+            } else {
+                After::Nothing
+            };
+            if commit_edit_msg(
+                model,
+                &mut grid,
+                &columns,
+                &invalid_number,
+                after,
+                &mut sends,
+                self.context,
+            ) {
+                // The combo box that had the keyboard is gone with the editor:
+                // the next declaration hands the keyboard back to the rows.
+                finish_edit(after, &mut grid, &visible, &mut sends, &mut focus_rows);
+                if picked {
+                    self.request_redraw();
+                }
+            }
+        }
+        let queued = !sends.is_empty();
+        if let Some(rows) = rows {
+            if pending {
+                if typed_filter || self.context.grid_filters_waiting(rows) {
+                    self.context.note_grid_filters(rows, Some(wanted));
+                } else {
+                    // Set from code: the model hears about it at once.
+                    self.context
+                        .queue_grid_input(rows, CollectionInput::FiltersDue);
+                    self.context.note_grid_filters(rows, None);
+                }
+            } else {
+                self.context.note_grid_filters(rows, None);
+            }
+            for input in sends.drain(..) {
+                self.context.queue_grid_input(rows, input);
+            }
+            grid.shown = selected;
+            self.context.put_grid(rows, grid);
+        }
+        // Frames until what was queued has been sent, and until the delay of
+        // typed filters is over.
+        if pending || queued {
+            self.request_redraw();
+        }
         self.set_control(Control::Grid {
             label: options.label,
             rows: model.len(),
@@ -1106,10 +1411,10 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
         options: VirtualListOptions,
         kind: CollectionKind,
         row: impl FnMut(&mut Ui<'_, Msg>, &M, usize, bool),
-    ) {
+    ) -> Nav {
         if let Err(message) = options.check(model.len()) {
             self.misuse(message.to_owned());
-            return;
+            return Nav::default();
         }
         let owner = self.context.child(self.parent, &key, Kind::Collection);
         let native = owner
@@ -1118,13 +1423,30 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
             .unwrap_or(state.scroll_offset());
         let top = (model.len() as f64 * f64::from(options.row_height) - f64::from(options.height))
             .max(0.0) as f32;
-        let offset = native.clamp(0.0, top);
+        let mut offset = native.clamp(0.0, top);
+        // A selection the user or the application just moved is scrolled into view once.
+        if let Some(owner) = owner
+            && self.context.reveal_selection(owner, state.selected())
+            && let Some(index) = state.selected().and_then(|id| model.index_of(id))
+        {
+            let first = index as f32 * options.row_height;
+            let last = first + options.row_height;
+            if first < offset {
+                offset = first;
+            }
+            if last > offset + options.height {
+                offset = last - options.height;
+            }
+            offset = offset.clamp(0.0, top);
+        }
+        let nav = Nav::new(model, state.selected(), &options);
         let window = Window {
             selected: state.selected(),
             offset,
             realized: realized_rows(model.len(), offset, &options),
         };
         self.rows_body(key, model, window, options, kind, row);
+        nav
     }
 
     #[track_caller]
@@ -1293,23 +1615,311 @@ pub(crate) fn realized_rows(
     start..end
 }
 
-/// The handler of a collection's rows: the selection, the disclosure of a
-/// tree row and the filter delay, sent as a message.
-fn rows_handler<M: 'static>(on: Rc<dyn Fn(GridMsg) -> M>) -> crate::app::Handler<M> {
-    crate::app::Handler::Map(Box::new(move |update| {
+/// What a collection's rows need to turn keys into messages without the
+/// model: the rows around the selection, and the first and the last.
+#[derive(Default)]
+struct Nav {
+    len: usize,
+    current: Option<usize>,
+    /// Index of `entries[0]`.
+    base: usize,
+    entries: Vec<NavEntry>,
+    first: Option<crate::ItemId>,
+    last: Option<crate::ItemId>,
+}
+
+struct NavEntry {
+    id: crate::ItemId,
+    expanded: Option<bool>,
+    parent: Option<crate::ItemId>,
+}
+
+impl Nav {
+    /// A page either side of the selection is enough for any key.
+    fn new(
+        model: &impl ListModel,
+        selected: Option<crate::ItemId>,
+        options: &VirtualListOptions,
+    ) -> Self {
+        let len = model.len();
+        let current = selected.and_then(|id| model.index_of(id));
+        let page = (options.height / options.row_height).ceil() as usize + 1;
+        let centre = current.unwrap_or(0);
+        let base = centre.saturating_sub(page).min(len);
+        let end = centre.saturating_add(page + 1).min(len);
+        Self {
+            len,
+            current,
+            base,
+            entries: (base..end)
+                .map(|index| {
+                    let id = model.item_id(index);
+                    NavEntry {
+                        id,
+                        expanded: model.expanded(index),
+                        parent: model.parent(id),
+                    }
+                })
+                .collect(),
+            first: (len > 0).then(|| model.item_id(0)),
+            last: len.checked_sub(1).map(|index| model.item_id(index)),
+        }
+    }
+
+    fn entry(&self, index: usize) -> Option<&NavEntry> {
+        self.entries.get(index.checked_sub(self.base)?)
+    }
+
+    /// The row at `index`, or the nearest one known.
+    fn id_at(&self, index: usize) -> Option<crate::ItemId> {
+        if index == 0 {
+            return self.first;
+        }
+        if index + 1 == self.len {
+            return self.last;
+        }
+        let known = self.base..self.base + self.entries.len();
+        self.entry(index.clamp(known.start, known.end.checked_sub(1)?))
+            .map(|entry| entry.id)
+    }
+
+    fn position(&self, id: crate::ItemId) -> Option<usize> {
+        let at = self.entries.iter().position(|entry| entry.id == id)?;
+        Some(self.base + at)
+    }
+}
+
+/// The handler of a collection's rows: selection, disclosure, the keys that
+/// move them, the filter delay and a committed edit, each input sent as its
+/// own message in the order it arrived.
+fn rows_handler<M: 'static>(on: Rc<dyn Fn(GridMsg) -> M>, nav: Nav) -> crate::app::Handler<M> {
+    crate::app::Handler::Each(Box::new(move |update, out| {
         let ControlUpdate::Collection(inputs) = update else {
-            return None;
+            return;
         };
-        // A batch sends one message per collection: the last one it asked for.
-        inputs.into_iter().rev().find_map(|input| match input {
-            CollectionInput::Select(row) => Some(on(GridMsg::Select(row))),
-            CollectionInput::SetExpanded { item, open } => {
-                Some(on(GridMsg::Expand { row: item, open }))
+        let mut current = nav.current;
+        let select = |index: usize, current: &mut Option<usize>, out: &mut Vec<M>| {
+            if let Some(id) = nav.id_at(index) {
+                *current = Some(index);
+                out.push(on(GridMsg::Select(id)));
             }
-            CollectionInput::FiltersDue => Some(on(GridMsg::FiltersApplied)),
-            _ => None,
-        })
+        };
+        for input in inputs {
+            match input {
+                CollectionInput::Select(row) => {
+                    current = nav.position(row).or(current);
+                    out.push(on(GridMsg::Select(row)));
+                }
+                CollectionInput::Move(delta) if nav.len > 0 => {
+                    let last = nav.len - 1;
+                    let target = current.map_or(if delta < 0 { last } else { 0 }, |index| {
+                        index.saturating_add_signed(delta).min(last)
+                    });
+                    select(target, &mut current, out);
+                }
+                CollectionInput::First if nav.len > 0 => select(0, &mut current, out),
+                CollectionInput::Last if nav.len > 0 => select(nav.len - 1, &mut current, out),
+                CollectionInput::Toggle(row) => {
+                    if let Some(index) = nav.position(row)
+                        && let Some(open) = nav.entry(index).and_then(|entry| entry.expanded)
+                    {
+                        current = Some(index);
+                        out.push(on(GridMsg::Select(row)));
+                        out.push(on(GridMsg::Expand { row, open: !open }));
+                    }
+                }
+                CollectionInput::SetExpanded { item, open } => {
+                    current = nav.position(item).or(current);
+                    out.push(on(GridMsg::Select(item)));
+                    out.push(on(GridMsg::Expand { row: item, open }));
+                }
+                CollectionInput::Expand(expand) => {
+                    let Some(index) = current else { continue };
+                    let Some(entry) = nav.entry(index) else {
+                        continue;
+                    };
+                    match (expand, entry.expanded) {
+                        (true, Some(false)) => out.push(on(GridMsg::Expand {
+                            row: entry.id,
+                            open: true,
+                        })),
+                        (true, Some(true)) if index + 1 < nav.len => {
+                            select(index + 1, &mut current, out)
+                        }
+                        (false, Some(true)) => out.push(on(GridMsg::Expand {
+                            row: entry.id,
+                            open: false,
+                        })),
+                        (false, _) => {
+                            if let Some(parent) = entry.parent {
+                                current = nav.position(parent);
+                                out.push(on(GridMsg::Select(parent)));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                CollectionInput::FiltersDue => out.push(on(GridMsg::FiltersApplied)),
+                CollectionInput::EditValue {
+                    item,
+                    column,
+                    value,
+                } => out.push(on(GridMsg::Edit {
+                    row: item,
+                    column,
+                    value,
+                })),
+                _ => {}
+            }
+        }
     }))
+}
+
+/// Opens the editor of the current cell, or sends the toggled value of a
+/// bool cell. `typed` replaces the content of a text or number cell. Returns
+/// whether an editor opened and wants the keyboard.
+fn begin_edit_msg(
+    context: &crate::Context,
+    model: &impl GridModel,
+    grid: &mut GridNode,
+    columns: &[crate::GridColumn],
+    selected: Option<crate::ItemId>,
+    typed: Option<String>,
+    sends: &mut Vec<CollectionInput>,
+) -> bool {
+    let column = grid.cursor;
+    let Some(item) = selected else {
+        return false;
+    };
+    let (Some(row), Some(editor)) = (
+        model.index_of(item),
+        columns
+            .get(column)
+            .and_then(|column| column.editor.as_ref()),
+    ) else {
+        return false;
+    };
+    let value = model.value(row, column);
+    let original = value.clone();
+    let (text, choice) = match (editor, value) {
+        (crate::CellEditor::Bool, value) => {
+            let next = !matches!(value, crate::CellValue::Bool(true));
+            sends.push(CollectionInput::EditValue {
+                item,
+                column,
+                value: crate::CellValue::Bool(next),
+            });
+            return false;
+        }
+        (crate::CellEditor::Choice(choices), value) => {
+            let choice = match value {
+                crate::CellValue::Choice(choice) => choice,
+                _ => 0,
+            };
+            (String::new(), choice.min(choices.len().saturating_sub(1)))
+        }
+        // The draft is the bare number: the unit is shown, not typed.
+        (crate::CellEditor::Number(options), crate::CellValue::Number(number)) => {
+            (options.bare_in(context, number), 0)
+        }
+        (_, crate::CellValue::Text(text)) => (text, 0),
+        _ => (model.cell(row, column), 0),
+    };
+    grid.edit = Some(NodeEdit {
+        item,
+        column,
+        text: typed.unwrap_or_else(|| text.clone()),
+        choice,
+        error: None,
+        focused: false,
+        start_text: text,
+        start_choice: choice,
+        original,
+        waiting: None,
+    });
+    true
+}
+
+/// Sends the open editor's value. Returns whether the edit is over: there was
+/// nothing to store, or the value is what the cell already held. Otherwise it
+/// stays open until the model's value for the cell changes (`finish_edit`
+/// then runs), or the user cancels; a number that does not parse keeps it
+/// open with the reason.
+fn commit_edit_msg(
+    model: &impl GridModel,
+    grid: &mut GridNode,
+    columns: &[crate::GridColumn],
+    // What to say about text that is not a number, in the user's language.
+    invalid: &str,
+    after: After,
+    sends: &mut Vec<CollectionInput>,
+    context: &crate::Context,
+) -> bool {
+    let Some(edit) = &mut grid.edit else {
+        return true;
+    };
+    if edit.waiting.is_some() {
+        return false;
+    }
+    let (Some(_), Some(editor)) = (
+        model.index_of(edit.item),
+        columns
+            .get(edit.column)
+            .and_then(|column| column.editor.as_ref()),
+    ) else {
+        // The row or the column went away while it was being edited.
+        grid.edit = None;
+        return true;
+    };
+    if edit.text == edit.start_text && edit.choice == edit.start_choice {
+        grid.edit = None;
+        return true;
+    }
+    let value = match editor {
+        crate::CellEditor::Number(options) => match options.parse_in(context, &edit.text) {
+            Some(number) => crate::CellValue::Number(number),
+            None => {
+                edit.error = Some(invalid.to_owned());
+                return false;
+            }
+        },
+        crate::CellEditor::Choice(_) => crate::CellValue::Choice(edit.choice),
+        _ => crate::CellValue::Text(edit.text.clone()),
+    };
+    sends.push(CollectionInput::EditValue {
+        item: edit.item,
+        column: edit.column,
+        value,
+    });
+    edit.error = None;
+    edit.waiting = Some(after);
+    false
+}
+
+/// What follows an edit that ended.
+fn finish_edit(
+    after: After,
+    grid: &mut GridNode,
+    visible: &[usize],
+    sends: &mut Vec<CollectionInput>,
+    focus_rows: &mut bool,
+) {
+    match after {
+        After::Nothing => {}
+        After::Row(step) => {
+            sends.push(CollectionInput::Move(step));
+            *focus_rows = true;
+        }
+        After::Column(step) => {
+            let at = visible
+                .iter()
+                .position(|column| *column == grid.cursor)
+                .unwrap_or(0);
+            grid.cursor = visible[at.saturating_add_signed(step).min(visible.len() - 1)];
+            *focus_rows = true;
+        }
+        After::Refocus => grid.refocus = true,
+    }
 }
 
 /// Where a moved column goes in the display order `arranged`: toward the end

@@ -33,6 +33,9 @@ pub enum GridMsg {
     },
     /// A tree row was opened or closed; `set_expanded` stores it.
     Expand { row: ItemId, open: bool },
+    /// The column layout after a header menu action: move, wider, narrower,
+    /// hide, show all, reset, freeze or unfreeze.
+    Columns(GridColumns),
 }
 
 /// Application identity. Independent of a realized widget's short-lived NodeId.
@@ -201,6 +204,12 @@ pub(crate) enum CollectionInput {
     },
     /// Grids: the filter delay has passed; the filters are to be applied.
     FiltersDue,
+    /// Grids: an edit ended with this value, to be stored by the model.
+    EditValue {
+        item: ItemId,
+        column: usize,
+        value: CellValue,
+    },
 }
 
 impl CollectionInput {
@@ -295,7 +304,7 @@ impl ListState {
                 | CollectionInput::Type(_)
                 | CollectionInput::EditKey { .. }
                 | CollectionInput::ScrollX(_) => None,
-                CollectionInput::FiltersDue => None,
+                CollectionInput::FiltersDue | CollectionInput::EditValue { .. } => None,
                 CollectionInput::SetExpanded { item, open } => {
                     if let Some(index) = model.index_of(item)
                         && model.expanded(index).is_some()
@@ -673,6 +682,56 @@ pub(crate) struct GridEdit {
     pub focused: bool,
 }
 
+/// What the kernel keeps for a grid declared with `data_grid_msg`: the state
+/// its view would otherwise change in the application's `GridState`.
+#[derive(Default)]
+pub(crate) struct GridNode {
+    /// Model column of the current cell; its row is the selected row.
+    pub cursor: usize,
+    /// How far the unfrozen columns are scrolled, from the start side.
+    pub scroll_x: f32,
+    /// What only a grid understands, waiting for the next declaration.
+    pub inbox: Vec<CollectionInput>,
+    pub edit: Option<NodeEdit>,
+    /// The next declaration gives the keyboard back to the rows.
+    pub refocus: bool,
+    /// The selected row as the last declaration showed it.
+    pub shown: Option<ItemId>,
+}
+
+/// A cell being edited in place, in a [`GridNode`].
+pub(crate) struct NodeEdit {
+    pub item: ItemId,
+    pub column: usize,
+    /// Draft of a text or number editor.
+    pub text: String,
+    /// Draft of a choice editor.
+    pub choice: usize,
+    pub error: Option<String>,
+    /// The editor has had keyboard focus, so losing it means leaving the cell.
+    pub focused: bool,
+    /// What the drafts started from: committing them unchanged sends nothing.
+    pub start_text: String,
+    pub start_choice: usize,
+    /// The cell's value when the edit began. A committed edit stays open
+    /// until the model's value differs from it.
+    pub original: CellValue,
+    /// Set once the value was sent: what to do when the model has taken it.
+    pub waiting: Option<After>,
+}
+
+/// What follows an edit that ended.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum After {
+    Nothing,
+    /// Enter: the selection moves by this many rows.
+    Row(isize),
+    /// Tab: the cursor moves by this many columns.
+    Column(isize),
+    /// A choice was picked: the keyboard goes back to the rows.
+    Refocus,
+}
+
 impl GridState {
     /// Applies a message the grid sent. The application calls the model's
     /// method for it as well (see [`GridMsg`]).
@@ -686,6 +745,7 @@ impl GridState {
             }
             GridMsg::FiltersApplied => self.applied_filters = self.wanted_filters(),
             GridMsg::Select(id) => self.rows.select(Some(*id)),
+            GridMsg::Columns(layout) => self.columns = layout.clone(),
             // The application's model call is all these change.
             GridMsg::Edit { .. } | GridMsg::Expand { .. } => {}
         }

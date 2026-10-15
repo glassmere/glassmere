@@ -94,6 +94,8 @@ impl Context {
     /// the order it arrived, through each node's handler. What reached a
     /// node without one stays where the declaration reads it.
     pub(crate) fn resolve<M: Clone + 'static>(&mut self, out: &mut Vec<M>) {
+        self.text_typed.clear();
+        self.flush_grid_pending();
         // Grid filter delays that have passed: queued before anything else, so
         // the declaration that follows the batch does not drop them.
         for rows in self.due_grid_filters() {
@@ -173,6 +175,9 @@ impl Context {
                     if let Some(mut update) = self.updates.remove(&id)
                         && enabled
                     {
+                        if matches!(update, ControlUpdate::Text(_)) {
+                            self.text_typed.insert(id);
+                        }
                         // Fingers down and pressure are read when the message is
                         // made, as a declaration would read them.
                         if let ControlUpdate::Gesture(gesture) = &mut update {

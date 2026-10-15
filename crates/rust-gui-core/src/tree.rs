@@ -444,6 +444,15 @@ pub struct Context {
     grid_filters: std::cell::RefCell<Vec<(NodeId, Option<crate::collection::Filters>)>>,
     /// The filter delays of grids, by the node of their rows.
     grid_timers: HashMap<NodeId, crate::collection::FilterTimer>,
+    /// What grids declared with `data_grid_msg` keep: cursor, sideways scroll
+    /// and the cell being edited, by the node of their rows.
+    grid_nodes: std::cell::RefCell<HashMap<NodeId, crate::collection::GridNode>>,
+    /// Collection input a declaration queued for the next batch.
+    grid_pending: std::cell::RefCell<Vec<(NodeId, crate::collection::CollectionInput)>>,
+    /// Nodes whose text the user edited in the batch being resolved.
+    text_typed: HashSet<NodeId>,
+    /// The selection a message-form collection last scrolled into view.
+    revealed: std::cell::RefCell<HashMap<NodeId, Option<crate::ItemId>>>,
     /// Activations, edits and submissions in the order they arrived, beside
     /// the maps the old `Response` path reads.
     queued: Vec<(NodeId, Queued)>,
@@ -605,6 +614,10 @@ impl Default for Context {
             freed_handlers: Vec::new(),
             grid_filters: Default::default(),
             grid_timers: HashMap::new(),
+            grid_nodes: Default::default(),
+            grid_pending: Default::default(),
+            text_typed: HashSet::new(),
+            revealed: Default::default(),
             queued: Vec::new(),
             observed_new: std::cell::RefCell::new(Vec::new()),
             view_stale: true,

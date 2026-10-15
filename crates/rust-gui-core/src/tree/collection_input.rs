@@ -1,5 +1,5 @@
 use super::*;
-use crate::collection::{CollectionInput, CollectionKind, FILTER_DELAY, FilterTimer};
+use crate::collection::{CollectionInput, CollectionKind, FILTER_DELAY, FilterTimer, GridNode};
 
 impl Context {
     /// Records what a grid's view wants of its filters: `Some` while the
@@ -44,6 +44,57 @@ impl Context {
         }
         let nodes = &self.nodes;
         self.grid_timers.retain(|id, _| nodes.contains_key(id));
+        self.grid_nodes
+            .get_mut()
+            .retain(|id, _| nodes.contains_key(id));
+        self.revealed
+            .get_mut()
+            .retain(|id, _| nodes.contains_key(id));
+    }
+
+    /// The kernel state of a message-form grid, for the declaration to change.
+    /// `put_grid` gives it back.
+    pub(crate) fn take_grid(&self, rows: NodeId) -> GridNode {
+        self.grid_nodes
+            .borrow_mut()
+            .remove(&rows)
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn put_grid(&self, rows: NodeId, grid: GridNode) {
+        self.grid_nodes.borrow_mut().insert(rows, grid);
+    }
+
+    /// Input for a collection that the next batch resolves, as if it came
+    /// from the user: what a declaration cannot send itself.
+    pub(crate) fn queue_grid_input(&self, rows: NodeId, input: CollectionInput) {
+        self.grid_pending.borrow_mut().push((rows, input));
+    }
+
+    /// Moves what declarations queued into the collections' input.
+    pub(super) fn flush_grid_pending(&mut self) {
+        let pending = std::mem::take(self.grid_pending.get_mut());
+        for (rows, input) in pending {
+            self.collection_queue(rows, input);
+        }
+    }
+
+    /// Whether the user edited this node's text in the batch just resolved.
+    pub(crate) fn text_typed(&self, id: NodeId) -> bool {
+        self.text_typed.contains(&id)
+    }
+
+    /// Whether typed filters of this grid are still waiting out their delay.
+    pub(crate) fn grid_filters_waiting(&self, rows: NodeId) -> bool {
+        self.grid_timers
+            .get(&rows)
+            .is_some_and(|timer| !timer.fired)
+    }
+
+    /// Whether `selected` is not what this collection last scrolled to; it
+    /// is remembered, so a selection is revealed once.
+    pub(crate) fn reveal_selection(&self, rows: NodeId, selected: Option<crate::ItemId>) -> bool {
+        self.revealed.borrow_mut().insert(rows, selected) != Some(selected)
     }
 
     /// The grids whose filter delay has passed since it was started, each once.
@@ -76,6 +127,17 @@ impl Context {
             .is_some_and(|node| node.enabled && node.kind == Kind::Collection)
         {
             return false;
+        }
+        // What only a grid understands goes to its kernel state, which its
+        // next declaration reads, when it keeps one.
+        if (input.for_grid() || matches!(input, CollectionInput::Activate))
+            && let Some(grid) = self.grid_nodes.get_mut().get_mut(&owner)
+        {
+            grid.inbox.push(input);
+            self.view_stale = true;
+            self.invalidate_paint(owner);
+            self.pending |= Dirty::ACCESSIBILITY;
+            return true;
         }
         self.note_update(owner);
         let update = self
