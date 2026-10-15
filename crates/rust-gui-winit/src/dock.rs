@@ -5,7 +5,10 @@ use std::collections::HashMap;
 /// What to open for one detached dock window.
 pub struct DockWindowView {
     pub options: AppOptions,
-    /// Usually locks the shared app state and calls `Ui::dock_window`.
+    /// Usually locks the shared app state and calls `Ui::dock_window`, or
+    /// `Ui::dock_window_msg` with an `on` that queues each `DockAction` for
+    /// `DockLayout::apply` before the next declaration. A closure view has no
+    /// message type of its own, so the queue is what makes the view read-only.
     pub view: Box<dyn FnMut(&mut Ui<'_>) + Send>,
     /// Runs once when the OS window is gone, whether the user closed it, the
     /// layout dropped it or the desktop shut down. Typically

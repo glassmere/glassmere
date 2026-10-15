@@ -16,6 +16,7 @@
 //! window 1 640 480 { tabs 0 "console" }
 //! ```
 use crate::Axis;
+use crate::controls::DockAction;
 use std::fmt::Write as _;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -281,6 +282,98 @@ impl DockLayout {
         Self {
             root: Some(root),
             ..Self::default()
+        }
+    }
+
+    /// Does what a dock change asks of the layout: the change a message from
+    /// `Ui::dock_msg` carries. The view only declares; `update` calls this.
+    /// Returns whether the layout changed.
+    pub fn apply(&mut self, action: DockAction) -> bool {
+        let changed = match action {
+            DockAction::Move { panel, target } => self.move_panel(&panel, target),
+            DockAction::FloatRect {
+                float,
+                x,
+                y,
+                width,
+                height,
+            } => {
+                // A float being moved or resized is also the frontmost one.
+                match self.floating_index(&float) {
+                    Some(index) => {
+                        let mut target = self.floating.remove(index);
+                        (target.x, target.y, target.width, target.height) = (x, y, width, height);
+                        self.floating.push(target);
+                        true
+                    }
+                    None => false,
+                }
+            }
+            DockAction::Raise(float) => match self.floating_index(&float) {
+                Some(index) => {
+                    let raised = self.floating.remove(index);
+                    self.floating.push(raised);
+                    true
+                }
+                None => false,
+            },
+            DockAction::Select(panel) => {
+                let mut changed = false;
+                for tabs in self.all_groups_mut() {
+                    if let Some(index) = tabs.panels.iter().position(|id| *id == panel) {
+                        changed = tabs.active != index;
+                        tabs.active = index;
+                        break;
+                    }
+                }
+                changed
+            }
+            DockAction::Close(panel) => self.close(&panel),
+            DockAction::Ratio {
+                area,
+                path,
+                fraction,
+            } => match self.split_fraction_mut(area, &path) {
+                Some(share) if fraction.is_finite() => {
+                    let fraction = fraction.clamp(0.0, 1.0);
+                    let changed = *share != fraction;
+                    *share = fraction;
+                    changed
+                }
+                _ => false,
+            },
+        };
+        self.normalize();
+        changed
+    }
+
+    fn floating_index(&self, float: &str) -> Option<usize> {
+        self.floating
+            .iter()
+            .position(|candidate| candidate.tabs.panels.first().map(String::as_str) == Some(float))
+    }
+
+    /// The share of the split at `path` from the area's root, if there is one.
+    fn split_fraction_mut(&mut self, area: DockArea, path: &[usize]) -> Option<&mut f32> {
+        let mut node = match area {
+            DockArea::Main => self.root.as_mut()?,
+            DockArea::Window(id) => {
+                &mut self.windows.iter_mut().find(|window| window.id == id)?.root
+            }
+        };
+        for &step in path {
+            let DockNode::Split { first, second, .. } = node else {
+                return None;
+            };
+            node = if step == 0 {
+                &mut **first
+            } else {
+                &mut **second
+            };
+        }
+        match node {
+            DockNode::Split { fraction, .. } => Some(fraction),
+            DockNode::Tabs(_) => None,
         }
     }
 

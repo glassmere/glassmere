@@ -406,7 +406,8 @@ pub(crate) enum ControlUpdate {
     RichOps(Vec<crate::rich_editor::RichOp>),
 }
 
-/// What a drag in a dock did to its panels.
+/// What a drag, click or menu pick in a dock asks of its layout. Applied by
+/// [`crate::DockLayout::apply`].
 #[derive(Clone, Debug)]
 pub enum DockAction {
     Move {
@@ -421,6 +422,17 @@ pub enum DockAction {
         height: f32,
     },
     Raise(String),
+    /// A tab was selected in its group.
+    Select(String),
+    /// A panel was closed by its tab button, the Delete key or the panel menu.
+    Close(String),
+    /// A divider moved. `path` leads from the area's root to the split (0 is
+    /// its first side, 1 its second); `fraction` is the first side's share.
+    Ratio {
+        area: crate::DockArea,
+        path: Vec<usize>,
+        fraction: f32,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
