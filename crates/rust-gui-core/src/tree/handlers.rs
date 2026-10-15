@@ -264,7 +264,7 @@ impl Context {
         self.notifications.append(&mut requests.notifications);
         self.window_commands.append(&mut requests.window_commands);
         for toast in requests.toasts.drain(..) {
-            self.push_toast(toast);
+            requests.toast_ids.push(self.push_toast(toast));
             changed = true;
         }
         // ponytail: multiple windows are not wired yet; the requests are

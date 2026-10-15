@@ -102,6 +102,28 @@ impl Context {
         self.toast.actions.get(index).cloned()
     }
 
+    /// Takes the actions of the toasts `mine` names, leaving the rest for
+    /// `Ui::toast_action`.
+    pub(crate) fn take_toast_actions(
+        &mut self,
+        mut mine: impl FnMut(ToastId) -> bool,
+    ) -> Vec<ToastAction> {
+        let mut taken = Vec::new();
+        self.toast.actions.retain(|action| {
+            if mine(action.id) {
+                taken.push(action.clone());
+                false
+            } else {
+                true
+            }
+        });
+        taken
+    }
+
+    pub(crate) fn has_toast(&self, id: ToastId) -> bool {
+        self.toast.queue.iter().any(|queued| queued.id == id)
+    }
+
     fn within_toast(&self, id: Option<NodeId>) -> bool {
         let mut next = id;
         while let Some(node) = next.and_then(|id| self.nodes.get(&id)) {
@@ -184,6 +206,9 @@ impl Context {
                     id,
                     tag: queued.toast.tag.clone(),
                 });
+                // Hosts redraw while this is true, so the action is delivered
+                // as a message in the next batch even with no input.
+                self.redraw_requested = true;
             }
             self.dismiss_toast(id);
         }

@@ -8,8 +8,8 @@
 use crate::controls::ControlUpdate;
 use crate::{
     Cancel, Clip, Context, FileRequest, FrameStats, LocaleFormat, MessageSender, Messages,
-    Notification, Shortcut, TaskSender, Tasks, TextMeasurer, Theme, Toast, Ui, UiEvent,
-    WindowCommand, WindowId, WindowRequest,
+    Notification, Shortcut, TaskSender, Tasks, TextMeasurer, Theme, Toast, ToastAction, ToastId,
+    Ui, UiEvent, WindowCommand, WindowId, WindowRequest,
 };
 use rust_gui_scene::Size;
 use std::any::{Any, TypeId};
@@ -123,6 +123,9 @@ impl<M> Default for HandlerSlab<M> {
 /// knowing it.
 type Lift<M> = Box<dyn Fn(&mut dyn Any) -> Option<M>>;
 
+/// What a toast's action button sends, built from the action taken.
+type OnToastAction<M> = Box<dyn Fn(ToastAction) -> M>;
+
 /// Delivered values waiting in one task table or channel.
 trait Delivery {
     /// Up to `limit` values, each as `&mut Option<T>` with its task key.
@@ -184,6 +187,8 @@ pub(crate) struct Requests {
     pub notifications: Vec<Notification>,
     pub window_commands: Vec<WindowCommand>,
     pub toasts: Vec<Toast>,
+    /// The id each of `toasts` got when it was raised, in the same order.
+    pub toast_ids: Vec<ToastId>,
     /// Windows asked for and closed; multiple windows are not wired yet.
     pub open_windows: Vec<(WindowId, WindowRequest)>,
     pub close_windows: Vec<WindowId>,
@@ -200,6 +205,7 @@ trait Sink<M> {
     fn files(&mut self, message: Box<dyn Fn(Vec<PathBuf>) -> M>);
     fn task(&mut self, kind: TypeId, key: String, lift: Lift<M>);
     fn channel(&mut self, mailbox: Box<dyn Delivery>, lift: Lift<M>);
+    fn toast(&mut self, toast: Toast, action: Option<OnToastAction<M>>);
 }
 
 /// Everything the driver keeps for `Effects`, typed by the app's message.
@@ -209,6 +215,10 @@ struct EffectState<M> {
     files: Option<Box<dyn Fn(Vec<PathBuf>) -> M>>,
     task_messages: HashMap<TypeId, HashMap<String, Lift<M>>>,
     channels: Vec<(Box<dyn Delivery>, Lift<M>)>,
+    /// One per entry of `requests.toasts`: what its action sends, if anything.
+    toast_actions: Vec<Option<OnToastAction<M>>>,
+    /// The actions of raised toasts, by id, until the toast leaves.
+    toast_messages: HashMap<ToastId, OnToastAction<M>>,
 }
 
 impl<M> Sink<M> for EffectState<M> {
@@ -233,6 +243,11 @@ impl<M> Sink<M> for EffectState<M> {
 
     fn channel(&mut self, mailbox: Box<dyn Delivery>, lift: Lift<M>) {
         self.channels.push((mailbox, lift));
+    }
+
+    fn toast(&mut self, toast: Toast, action: Option<OnToastAction<M>>) {
+        self.requests.toasts.push(toast);
+        self.toast_actions.push(action);
     }
 }
 
@@ -268,6 +283,13 @@ impl<N: 'static, M: 'static> Sink<N> for Mapped<'_, N, M> {
         let f = self.f.clone();
         self.inner
             .channel(mailbox, Box::new(move |value| lift(value).map(|n| f(n))));
+    }
+
+    fn toast(&mut self, toast: Toast, action: Option<OnToastAction<N>>) {
+        let f = self.f.clone();
+        let action =
+            action.map(|message| Box::new(move |found| f(message(found))) as OnToastAction<M>);
+        self.inner.toast(toast, action);
     }
 }
 
@@ -354,7 +376,12 @@ impl<M: 'static> Effects<'_, M> {
 
     /// Shows a toast, as `Ui::toast` does.
     pub fn toast(&mut self, toast: Toast) {
-        self.requests().toasts.push(toast);
+        self.sink().toast(toast, None);
+    }
+
+    /// Shows a toast whose action button sends `message(action)` when clicked.
+    pub fn toast_msg(&mut self, toast: Toast, message: impl Fn(ToastAction) -> M + 'static) {
+        self.sink().toast(toast, Some(Box::new(message)));
     }
 
     /// Opens another window, which `App::view_window` declares.
@@ -481,6 +508,7 @@ impl<M: Clone + 'static> AppDriver<M> {
                     notifications: Vec::new(),
                     window_commands: Vec::new(),
                     toasts: Vec::new(),
+                    toast_ids: Vec::new(),
                     open_windows: Vec::new(),
                     close_windows: Vec::new(),
                     next_window: 0,
@@ -491,6 +519,8 @@ impl<M: Clone + 'static> AppDriver<M> {
                 files: None,
                 task_messages: HashMap::new(),
                 channels: Vec::new(),
+                toast_actions: Vec::new(),
+                toast_messages: HashMap::new(),
             },
             sent: Vec::new(),
             batch: Vec::new(),
@@ -548,6 +578,7 @@ impl<M: Clone + 'static> AppDriver<M> {
         }
         self.batch = batch;
         let changed = context.apply_requests(&mut self.effects.requests);
+        self.adopt_toast_actions();
         context.prepare_batch();
         let declare = first
             || std::mem::take(&mut self.force)
@@ -567,10 +598,28 @@ impl<M: Clone + 'static> AppDriver<M> {
         context.note_batch(declare, messages)
     }
 
+    /// Keeps the actions of the toasts just raised, under the ids they got.
+    fn adopt_toast_actions(&mut self) {
+        let effects = &mut self.effects;
+        let raised = effects.requests.toast_ids.drain(..);
+        for (id, action) in raised.zip(effects.toast_actions.drain(..)) {
+            if let Some(action) = action {
+                effects.toast_messages.insert(id, action);
+            }
+        }
+    }
+
     /// What arrived for the messages `Effects` registered: the clipboard,
     /// a file dialog's answer, workers and channels.
     fn deliver(&mut self, context: &mut Context, out: &mut Vec<M>) {
         let effects = &mut self.effects;
+        let messages = &mut effects.toast_messages;
+        for action in context.take_toast_actions(|id| messages.contains_key(&id)) {
+            if let Some(message) = messages.remove(&action.id) {
+                out.push(message(action));
+            }
+        }
+        messages.retain(|id, _| context.has_toast(*id));
         if effects.paste.is_some()
             && let Some(clip) = context.take_pasted()
         {

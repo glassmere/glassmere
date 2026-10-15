@@ -15,7 +15,43 @@ impl<'a, M: 'static> Ui<'a, M> {
         options: crate::DialogOptions,
         content: impl FnOnce(&mut Ui<'_, M>, &mut bool),
     ) -> crate::DialogResponse {
-        let key = WidgetKey::Named(format!("$dialog:{}", key.into()));
+        let dismissed = self.dialog_declared(key.into(), open, options, content, None);
+        crate::DialogResponse { dismissed }
+    }
+
+    /// `dialog` with its open state as a value: Escape or a scrim click sends
+    /// `on_open(false)`, and the dialog is shown while `open`.
+    #[track_caller]
+    pub fn dialog_msg(
+        &mut self,
+        key: impl Into<String>,
+        open: bool,
+        on_open: impl Fn(bool) -> M + 'static,
+        options: crate::DialogOptions,
+        content: impl FnOnce(&mut Ui<'_, M>),
+    ) {
+        let mut shown = open;
+        self.dialog_declared(
+            key.into(),
+            &mut shown,
+            options,
+            |ui, _| content(ui),
+            Some(super::overlays::closing(on_open)),
+        );
+    }
+
+    /// The declaration behind both dialog forms. Returns whether it was
+    /// dismissed since the last declaration, which only the old form reads.
+    #[track_caller]
+    pub(super) fn dialog_declared(
+        &mut self,
+        key: String,
+        open: &mut bool,
+        options: crate::DialogOptions,
+        content: impl FnOnce(&mut Ui<'_, M>, &mut bool),
+        dismiss: Option<crate::app::Handler<M>>,
+    ) -> bool {
+        let key = WidgetKey::Named(format!("$dialog:{key}"));
         let layer = self
             .context
             .child(Some(self.context.root()), &key, Kind::Dialog);
@@ -26,7 +62,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             *open = false;
         }
         if !*open {
-            return crate::DialogResponse { dismissed };
+            return dismissed;
         }
         let popup = self.context.theme().popup;
         let mut panel = options.style;
@@ -58,7 +94,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             }
             content(ui, open);
         });
-        let element = Element {
+        let mut element = Element {
             handler: None,
             seq: 0,
             key,
@@ -84,7 +120,10 @@ impl<'a, M: 'static> Ui<'a, M> {
         };
         // Nested dialogs declared inside `content` were pushed meanwhile; keep
         // this one below them so children stack on top of their parents.
+        if let Some(handler) = dismiss {
+            element.handler = Some(self.handler_index(handler));
+        }
         self.layers.insert(index, element);
-        crate::DialogResponse { dismissed }
+        dismissed
     }
 }

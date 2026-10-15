@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
-    Align, Axis, Length, MenuItem, PopoverOptions, PopoverResponse, SplitOptions, Tab, TabsResponse,
+    Align, Axis, Length, MenuItem, PopoverOptions, PopoverResponse, SplitOptions, Tab,
+    TabsResponse, TextInput,
 };
 use rust_gui_scene::Color;
 
@@ -25,6 +26,27 @@ impl<'a, M: 'static> Ui<'a, M> {
         content: impl FnOnce(&mut Ui<'_, M>, usize),
     ) -> TabsResponse {
         self.tabs_with(selected, tabs, false, |_, _| {}, content)
+    }
+
+    /// `tabs` with the selection as a value: a click or arrow key on a tab
+    /// sends `on_select(index)`. Closing a closable tab is not reported here.
+    #[track_caller]
+    pub fn tabs_msg(
+        &mut self,
+        selected: usize,
+        tabs: &[Tab],
+        on_select: impl Fn(usize) -> M + 'static,
+        content: impl FnOnce(&mut Ui<'_, M>, usize),
+    ) {
+        let mut shown = selected;
+        self.tabs(&mut shown, tabs, content);
+        // The strip's choices reach the tabs group, which `tabs` declared last.
+        self.set_handler(crate::app::Handler::Map(Box::new(
+            move |update| match update {
+                ControlUpdate::Choice(index) => Some(on_select(index)),
+                _ => None,
+            },
+        )));
     }
 
     /// `tabs` with extra strip content after the tabs. `fill` stretches the
@@ -350,12 +372,133 @@ impl<'a, M: 'static> Ui<'a, M> {
         chosen
     }
 
+    /// `command_palette` with its state as values. Escape or a scrim click
+    /// sends `on_open(false)`; typing sends `on_query(text)`; Enter or a click
+    /// on a row sends `on_pick(index)`, where `index` is into `commands`. The
+    /// application closes the palette and clears the query in `update`.
+    #[track_caller]
+    pub fn command_palette_msg(
+        &mut self,
+        open: bool,
+        query: &str,
+        on_open: impl Fn(bool) -> M + 'static,
+        on_query: impl Fn(String) -> M + 'static,
+        on_pick: impl Fn(usize) -> M + 'static,
+        commands: &[crate::Command],
+    ) {
+        // Dialogs need a plain name; a call-site key has none of its own.
+        let name = match self.next_key() {
+            WidgetKey::Named(name) => name,
+            WidgetKey::Site(..) => "$palette".to_owned(),
+        };
+        // Nothing is there on the frame the palette appears on.
+        let opened = self
+            .context
+            .child(
+                Some(self.context.root()),
+                &WidgetKey::Named(format!("$dialog:{name}")),
+                Kind::Dialog,
+            )
+            .is_none();
+        let title = self.context.tr("rust-gui-palette", &[]);
+        let options = crate::DialogOptions {
+            width: Length::Px(560.0),
+            ..crate::DialogOptions::new(title)
+        };
+        let mut shown = open;
+        self.dialog_declared(
+            name,
+            &mut shown,
+            options,
+            |ui, _| {
+                if opened {
+                    // The palette is typed into the moment it appears.
+                    ui.request_focus("query");
+                }
+                let matches: Vec<(usize, crate::Command)> = commands
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, command)| crate::text_matches(&command.label, query))
+                    .map(|(index, command)| (index, ui.command(command)))
+                    .take(12)
+                    .collect();
+                // Enter in the field picks the first command that can run.
+                let first = matches
+                    .iter()
+                    .find(|(_, command)| command.enabled)
+                    .map(|(index, _)| *index);
+                let mut input = TextInput::new(ui.context.tr("rust-gui-palette-query", &[]));
+                if let Some(index) = first {
+                    input = input.on_submit(on_pick(index));
+                }
+                ui.at("query").text_input_msg(input, query, on_query);
+                let row = Style {
+                    width: Length::Percent(1.0),
+                    padding: 8.0,
+                    radius: 6.0,
+                    background: None,
+                    ..Style::button()
+                };
+                ui.column_at(
+                    "matches",
+                    Style::default().gap(2.0).width(Length::Percent(1.0)),
+                    |ui| {
+                        for (index, command) in &matches {
+                            ui.button_at(
+                                format!("match{index}"),
+                                &command.label,
+                                command.enabled,
+                                row.clone(),
+                            );
+                            ui.set_handler(crate::app::Handler::Message(on_pick(*index)));
+                            if let Some(shortcut) = &command.shortcut {
+                                ui.set_control(Control::Hint(shortcut.describe()));
+                            }
+                        }
+                        if matches.is_empty() {
+                            let nothing = ui.context.tr("rust-gui-palette-empty", &[]);
+                            ui.label_keyed_at("empty", nothing);
+                        }
+                    },
+                );
+            },
+            Some(closing(on_open)),
+        );
+    }
+
     #[track_caller]
     pub fn context_menu(
         &mut self,
         items: &[MenuItem],
         style: Style,
         content: impl FnOnce(&mut Ui<'_, M>),
+    ) -> Option<usize> {
+        self.context_menu_declared(items, style, content, None)
+    }
+
+    /// `context_menu` that sends `on_pick(index)` when an enabled item is chosen.
+    #[track_caller]
+    pub fn context_menu_msg(
+        &mut self,
+        items: &[MenuItem],
+        style: Style,
+        on_pick: impl Fn(usize) -> M + 'static,
+        content: impl FnOnce(&mut Ui<'_, M>),
+    ) {
+        let pick = crate::app::Handler::Map(Box::new(move |update| match update {
+            ControlUpdate::Choice(index) => Some(on_pick(index)),
+            _ => None,
+        }));
+        self.context_menu_declared(items, style, content, Some(pick));
+    }
+
+    #[track_caller]
+    fn context_menu_declared(
+        &mut self,
+        items: &[MenuItem],
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_, M>),
+        pick: Option<crate::app::Handler<M>>,
     ) -> Option<usize> {
         let key = self.next_key();
         let choice = match self.take_update(&key, Kind::ContextArea) {
@@ -382,6 +525,9 @@ impl<'a, M: 'static> Ui<'a, M> {
             }
             content(ui);
         });
+        if let Some(pick) = pick {
+            self.set_handler(pick);
+        }
         self.set_control(Control::ContextMenu {
             items: items.to_vec(),
         });
@@ -399,9 +545,39 @@ impl<'a, M: 'static> Ui<'a, M> {
         content: impl FnOnce(&mut Ui<'_, M>),
     ) -> PopoverResponse {
         let key = self.next_key();
+        let dismissed = self.popover_declared(key, open, options, content, None);
+        PopoverResponse { dismissed }
+    }
+
+    /// `popover` with its open state as a value: Escape or an outside press
+    /// sends `on_open(false)`, and the popover is shown while `open`.
+    #[track_caller]
+    pub fn popover_msg(
+        &mut self,
+        open: bool,
+        on_open: impl Fn(bool) -> M + 'static,
+        options: PopoverOptions,
+        content: impl FnOnce(&mut Ui<'_, M>),
+    ) {
+        let key = self.next_key();
+        let mut shown = open;
+        self.popover_declared(key, &mut shown, options, content, Some(closing(on_open)));
+    }
+
+    /// The declaration behind both popover forms. Returns whether it was
+    /// dismissed since the last declaration, which only the old form reads.
+    #[track_caller]
+    fn popover_declared(
+        &mut self,
+        key: WidgetKey,
+        open: &mut bool,
+        options: PopoverOptions,
+        content: impl FnOnce(&mut Ui<'_, M>),
+        dismiss: Option<crate::app::Handler<M>>,
+    ) -> bool {
         let Some(anchor) = self.declared.and_then(|index| self.elements.get(index)) else {
             self.misuse("popover needs a preceding anchor widget in the same parent".to_owned());
-            return PopoverResponse { dismissed: false };
+            return false;
         };
         let anchor_id = self.context.child(self.parent, &anchor.key, anchor.kind);
         let popover_id = anchor_id.and_then(|id| self.context.child(Some(id), &key, Kind::Popover));
@@ -412,7 +588,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             *open = false;
         }
         if !*open {
-            return PopoverResponse { dismissed };
+            return dismissed;
         }
         let popup = self.context.theme().popup;
         let mut panel = options.style;
@@ -427,10 +603,11 @@ impl<'a, M: 'static> Ui<'a, M> {
             panel.padding = 12.0;
         }
         let enabled = self.enabled;
+        let handler = dismiss.map(|handler| self.handler_index(handler));
         let mut child = self.scope(popover_id);
         content(&mut child);
         let element = Element {
-            handler: None,
+            handler,
             seq: 0,
             key,
             kind: Kind::Popover,
@@ -445,6 +622,22 @@ impl<'a, M: 'static> Ui<'a, M> {
         if let Some(anchor) = self.declared() {
             anchor.children.push(element);
         }
-        PopoverResponse { dismissed }
+        dismissed
     }
+
+    /// Stores a handler for an element declared by hand, which `set_handler`
+    /// cannot reach because it is not the last one pushed.
+    pub(super) fn handler_index(&mut self, handler: crate::app::Handler<M>) -> u32 {
+        let index = self.handler_base + self.handlers.len() as u32;
+        self.handlers.push(handler);
+        index
+    }
+}
+
+/// The handler of a dismissible layer: its dismissal sends `on_open(false)`.
+pub(super) fn closing<M: 'static>(on_open: impl Fn(bool) -> M + 'static) -> crate::app::Handler<M> {
+    crate::app::Handler::Map(Box::new(move |update| match update {
+        ControlUpdate::Dismiss => Some(on_open(false)),
+        _ => None,
+    }))
 }

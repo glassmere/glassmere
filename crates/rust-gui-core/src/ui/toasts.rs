@@ -38,7 +38,8 @@ impl<'a, M: 'static> Ui<'a, M> {
         id
     }
 
-    /// The next click on a toast's action button, once.
+    /// The next click on a toast's action button, once. `Effects::toast_msg`
+    /// sends the same actions as messages instead.
     #[track_caller]
     pub fn toast_action(&mut self) -> Option<ToastAction> {
         let action = self.context.toast_action_at(self.host.toasts.taken)?;
