@@ -93,6 +93,11 @@ impl<S> Harness<S> {
     pub fn context(&self) -> &Context {
         &self.context
     }
+    /// Moves the host clock the context reads for timed behaviour, such as a
+    /// grid's filter delay. The harness never moves it by itself.
+    pub fn set_now(&mut self, now: std::time::Duration) {
+        self.context.set_now(now);
+    }
     pub fn resize(&mut self, size: Size) -> FrameStats {
         self.size = size;
         self.run()

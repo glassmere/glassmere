@@ -4,10 +4,36 @@ use std::{
     ops::Range,
 };
 
-/// What a grid sends when the user changes it. A stub until the grids send
-/// messages.
+/// What a grid, list or tree view sends when the user changes it. The
+/// application applies it to its [`GridState`] with [`GridState::apply`] in
+/// `update`, then calls the model for what changes the data: `sort` on
+/// `Sort`, `filter` on `FiltersApplied`, `set_cell` on `Edit` and
+/// `set_expanded` on `Expand`.
 #[derive(Clone, Debug, PartialEq)]
-pub enum GridMsg {}
+pub enum GridMsg {
+    /// Sort the model by a column. Apply it only where `sort` returned true.
+    Sort(usize, SortDirection),
+    /// A column's width, in logical pixels.
+    ResizeColumn(usize, f32),
+    /// The display order of every model column after a move.
+    MoveColumn(Vec<usize>),
+    /// The filter text of a column changed. The model is not filtered until
+    /// `FiltersApplied`, which comes once typing pauses.
+    Filter { column: usize, text: String },
+    /// The filter text has settled: the model filters by
+    /// [`GridState::applied_filters`].
+    FiltersApplied,
+    /// A row was chosen.
+    Select(ItemId),
+    /// A cell was edited to `value`; `set_cell` stores it.
+    Edit {
+        row: ItemId,
+        column: usize,
+        value: CellValue,
+    },
+    /// A tree row was opened or closed; `set_expanded` stores it.
+    Expand { row: ItemId, open: bool },
+}
 
 /// Application identity. Independent of a realized widget's short-lived NodeId.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -168,6 +194,13 @@ pub(crate) enum CollectionInput {
     },
     /// Grids: scroll the unfrozen columns by physical pixels, right positive.
     ScrollX(f32),
+    /// Trees: the disclosure of this row was pressed, to `open`.
+    SetExpanded {
+        item: ItemId,
+        open: bool,
+    },
+    /// Grids: the filter delay has passed; the filters are to be applied.
+    FiltersDue,
 }
 
 impl CollectionInput {
@@ -262,6 +295,17 @@ impl ListState {
                 | CollectionInput::Type(_)
                 | CollectionInput::EditKey { .. }
                 | CollectionInput::ScrollX(_) => None,
+                CollectionInput::FiltersDue => None,
+                CollectionInput::SetExpanded { item, open } => {
+                    if let Some(index) = model.index_of(item)
+                        && model.expanded(index).is_some()
+                    {
+                        model.set_expanded(item, open);
+                        self.selected = Some(item);
+                        self.reveal = Some(item);
+                    }
+                    None
+                }
                 CollectionInput::Expand(expand) => {
                     if let Some(index) = current {
                         let id = model.item_id(index);
@@ -539,18 +583,21 @@ impl GridColumn {
     }
 }
 
+/// The data a grid shows. Its mutating methods are called by the application
+/// from `update`, as it applies a [`GridMsg`]; a grid's `view` never calls them.
 pub trait GridModel: ListModel {
     fn columns(&self) -> &[GridColumn];
     fn cell(&self, row: usize, column: usize) -> String;
-    /// Return true after actually changing the application-owned order.
+    /// Called from `update` on [`GridMsg::Sort`]. Return true after actually
+    /// changing the application-owned order.
     fn sort(&mut self, column: usize, direction: SortDirection) -> bool;
     /// What an editor starts from. Editable number, bool and choice columns
     /// override this; text columns edit their displayed text.
     fn value(&self, row: usize, column: usize) -> CellValue {
         CellValue::Text(self.cell(row, column))
     }
-    /// Stores an edited value. An error keeps the editor open and is shown
-    /// to the user, so say what is wrong with the value.
+    /// Called from `update` on [`GridMsg::Edit`]. An error keeps the editor
+    /// open and is shown to the user, so say what is wrong with the value.
     fn set_cell(&mut self, row: usize, column: usize, value: CellValue) -> Result<(), String> {
         let _ = (row, column, value);
         Err("This grid is read-only.".into())
@@ -560,6 +607,8 @@ pub trait GridModel: ListModel {
     /// it sorts it, so this works for indexes and remote sources, and item
     /// identities stay stable. Texts arrive trimmed and never empty. Return
     /// true after actually changing the rows. `text_matches` is the usual test.
+    /// Called from `update` on [`GridMsg::FiltersApplied`], with
+    /// [`GridState::applied_filters`].
     fn filter(&mut self, filters: &[(usize, &str)]) -> bool {
         let _ = filters;
         false
@@ -575,6 +624,18 @@ pub fn text_matches(cell: &str, filter: &str) -> bool {
 /// How long the filter fields wait after the last keystroke before the model
 /// filters, so that typing a word filters once.
 pub const FILTER_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
+
+/// The filters of a grid: `(model column, text)` pairs, trimmed and non-empty.
+pub(crate) type Filters = Vec<(usize, String)>;
+
+/// A grid's filter delay, kept by the kernel: the filters it waits on, when
+/// they are due, and whether `FiltersApplied` has been queued for them.
+#[derive(Clone, Debug)]
+pub(crate) struct FilterTimer {
+    pub due: std::time::Duration,
+    pub filters: Filters,
+    pub fired: bool,
+}
 #[derive(Clone, Debug, Default)]
 pub struct GridState {
     pub rows: ListState,
@@ -613,6 +674,38 @@ pub(crate) struct GridEdit {
 }
 
 impl GridState {
+    /// Applies a message the grid sent. The application calls the model's
+    /// method for it as well (see [`GridMsg`]).
+    pub fn apply(&mut self, message: &GridMsg) {
+        match message {
+            GridMsg::Sort(column, direction) => self.sort = Some((*column, *direction)),
+            GridMsg::ResizeColumn(column, width) => self.columns.set_width(*column, *width),
+            GridMsg::MoveColumn(order) => self.columns.order = order.clone(),
+            GridMsg::Filter { column, text } => {
+                self.filters.insert(*column, text.clone());
+            }
+            GridMsg::FiltersApplied => self.applied_filters = self.wanted_filters(),
+            GridMsg::Select(id) => self.rows.select(Some(*id)),
+            // The application's model call is all these change.
+            GridMsg::Edit { .. } | GridMsg::Expand { .. } => {}
+        }
+    }
+
+    /// The filters the model should have: trimmed, and without empty texts.
+    pub(crate) fn wanted_filters(&self) -> Vec<(usize, String)> {
+        self.filters
+            .iter()
+            .map(|(column, text)| (*column, text.trim().to_owned()))
+            .filter(|(_, text)| !text.is_empty())
+            .collect()
+    }
+
+    /// The filters last applied by `FiltersApplied`, as the `(column, text)`
+    /// pairs `GridModel::filter` takes.
+    pub fn applied_filters(&self) -> &[(usize, String)] {
+        &self.applied_filters
+    }
+
     /// The row and model column being edited.
     pub fn editing(&self) -> Option<(ItemId, usize)> {
         self.edit.as_ref().map(|edit| (edit.item, edit.column))

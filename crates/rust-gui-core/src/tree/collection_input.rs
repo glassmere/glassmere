@@ -1,8 +1,75 @@
 use super::*;
-use crate::collection::{CollectionInput, CollectionKind};
+use crate::collection::{CollectionInput, CollectionKind, FILTER_DELAY, FilterTimer};
 
 impl Context {
-    fn collection_queue(&mut self, owner: NodeId, input: CollectionInput) -> bool {
+    /// Records what a grid's view wants of its filters: `Some` while the
+    /// model is behind them. The next batch starts or fires their delay.
+    pub(crate) fn note_grid_filters(
+        &self,
+        rows: NodeId,
+        pending: Option<crate::collection::Filters>,
+    ) {
+        self.grid_filters.borrow_mut().push((rows, pending));
+    }
+
+    /// Starts or restarts the filter delays of the grids that declared
+    /// filters since the last batch. Firing is in `due_grid_filters`.
+    pub(crate) fn start_grid_timers(&mut self) {
+        let now = self.now;
+        for (rows, pending) in std::mem::take(&mut *self.grid_filters.borrow_mut()) {
+            match pending {
+                None => {
+                    self.grid_timers.remove(&rows);
+                }
+                // A declaration may still report filters that have just fired;
+                // only different filters start a new delay.
+                Some(filters) => {
+                    if self
+                        .grid_timers
+                        .get(&rows)
+                        .is_none_or(|timer| timer.filters != filters)
+                    {
+                        let due = now + FILTER_DELAY;
+                        self.grid_timers.insert(
+                            rows,
+                            FilterTimer {
+                                due,
+                                filters,
+                                fired: false,
+                            },
+                        );
+                    }
+                }
+            }
+        }
+        let nodes = &self.nodes;
+        self.grid_timers.retain(|id, _| nodes.contains_key(id));
+    }
+
+    /// The grids whose filter delay has passed since it was started, each once.
+    /// Called first in a batch, so `FiltersDue` is resolved in that batch.
+    pub(crate) fn due_grid_filters(&mut self) -> Vec<NodeId> {
+        let now = self.now;
+        let mut due = Vec::new();
+        for (id, timer) in self.grid_timers.iter_mut() {
+            if !timer.fired && timer.due <= now {
+                timer.fired = true;
+                due.push(*id);
+            }
+        }
+        due
+    }
+
+    /// When the earliest filter delay that has not fired is due.
+    pub(crate) fn grid_wake(&self) -> Option<Duration> {
+        self.grid_timers
+            .values()
+            .filter(|timer| !timer.fired)
+            .map(|timer| timer.due)
+            .min()
+    }
+
+    pub(crate) fn collection_queue(&mut self, owner: NodeId, input: CollectionInput) -> bool {
         if !self
             .nodes
             .get(&owner)
@@ -120,7 +187,7 @@ impl Context {
                     item,
                     kind: CollectionKind::Tree,
                     depth,
-                    expanded: Some(_),
+                    expanded: Some(expanded),
                     ..
                 } = node.control
                     && self.hovered == Some(id)
@@ -136,7 +203,13 @@ impl Context {
                 {
                     let owner = node.parent.unwrap();
                     self.captured = None;
-                    return Some(self.collection_queue(owner, CollectionInput::Toggle(item)));
+                    return Some(self.collection_queue(
+                        owner,
+                        CollectionInput::SetExpanded {
+                            item,
+                            open: !expanded,
+                        },
+                    ));
                 }
             }
             Event::KeyDown { key, shift, .. }

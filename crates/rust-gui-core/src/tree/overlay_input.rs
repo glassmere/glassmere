@@ -19,10 +19,15 @@ impl Context {
             (self.tooltip.is_none() && self.tooltip_text(id).is_some())
                 .then_some(since + TOOLTIP_DELAY)
         });
-        [tooltip, self.toast_wake(), self.touch_wake()]
-            .into_iter()
-            .flatten()
-            .min()
+        [
+            tooltip,
+            self.toast_wake(),
+            self.touch_wake(),
+            self.grid_wake(),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
     }
 
     /// The node's tooltip, or for an editor the diagnostic under the pointer.

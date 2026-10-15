@@ -440,6 +440,10 @@ pub struct Context {
     /// declared handler each node now has, and the slots of removed nodes.
     handler_moves: Vec<(NodeId, Option<u32>)>,
     freed_handlers: Vec<u32>,
+    /// Pending filters each grid declared, read by the next batch.
+    grid_filters: std::cell::RefCell<Vec<(NodeId, Option<crate::collection::Filters>)>>,
+    /// The filter delays of grids, by the node of their rows.
+    grid_timers: HashMap<NodeId, crate::collection::FilterTimer>,
     /// Activations, edits and submissions in the order they arrived, beside
     /// the maps the old `Response` path reads.
     queued: Vec<(NodeId, Queued)>,
@@ -599,6 +603,8 @@ impl Default for Context {
             handlers: None,
             handler_moves: Vec::new(),
             freed_handlers: Vec::new(),
+            grid_filters: Default::default(),
+            grid_timers: HashMap::new(),
             queued: Vec::new(),
             observed_new: std::cell::RefCell::new(Vec::new()),
             view_stale: true,

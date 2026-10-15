@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::app::{Handler, HandlerSlab, Requests};
+use crate::collection::CollectionInput;
 
 impl Context {
     pub(super) fn queue_click(&mut self, id: NodeId) {
@@ -49,6 +50,11 @@ impl Context {
     /// the order it arrived, through each node's handler. What reached a
     /// node without one stays where the declaration reads it.
     pub(crate) fn resolve<M: Clone + 'static>(&mut self, out: &mut Vec<M>) {
+        // Grid filter delays that have passed: queued before anything else, so
+        // the declaration that follows the batch does not drop them.
+        for rows in self.due_grid_filters() {
+            self.collection_queue(rows, CollectionInput::FiltersDue);
+        }
         if self.queued.is_empty() {
             return;
         }
@@ -206,6 +212,7 @@ impl Context {
     /// Before a batch decides whether to declare: what time changed.
     pub(crate) fn prepare_batch(&mut self) {
         self.update_toasts();
+        self.start_grid_timers();
     }
 
     /// Whether something the view reads changed since it last declared,
