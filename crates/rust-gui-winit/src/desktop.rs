@@ -1,4 +1,7 @@
 use super::*;
+// A window of an application with `run_app`, as `Effects::open_window` names it.
+use rust_gui_core::WindowId as AppWindow;
+use rust_gui_core::{AppDriver, Pacing, TextMeasurer};
 use rust_gui_devtools::{Inspector, InspectorModel, InspectorResponse};
 use std::{
     collections::HashMap,
@@ -7,6 +10,13 @@ use std::{
 
 pub(crate) type View = Box<dyn Declare>;
 type SendView = Box<dyn FnMut(&mut Ui<'_>) + Send>;
+/// What `update` asked for and the host has not carried out yet.
+type AppRequests = (
+    Vec<(AppWindow, rust_gui_core::WindowRequest)>,
+    Vec<AppWindow>,
+);
+/// The window `run_app` opens first. Its view is `App::view`.
+const MAIN: AppWindow = AppWindow(0);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct WindowKey(pub u64);
@@ -130,19 +140,24 @@ pub fn run_windows(graphics: GraphicsOptions, setup: impl FnOnce(DesktopHandle))
     run(event_loop, Desktop::new(proxy, wake, next, graphics))
 }
 
-/// One window whose view need not be `Send`. Backs `run` and `run_with_wakeup`.
+/// One window whose view need not be `Send`. Backs `run`, `run_with_wakeup`
+/// and `run_app`, whose setup also returns the host of the windows it opens.
 pub(crate) fn run_single(
     options: AppOptions,
-    setup: impl FnOnce(WakeHandle) -> View,
+    setup: impl FnOnce(WakeHandle) -> (View, Option<Box<dyn Hosting>>),
 ) -> Result<()> {
     diagnostics::checkpoint("process", None);
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     let proxy = event_loop.create_proxy();
     let wake = WakeHandle::new(proxy.clone());
-    let view = setup(wake.clone());
+    let (view, hosting) = setup(wake.clone());
     diagnostics::checkpoint("event_loop", None);
     let graphics = options.graphics.clone();
     let mut desktop = Desktop::new(proxy, wake, Arc::new(AtomicU64::new(2)), graphics);
+    if hosting.is_some() {
+        desktop.app_windows.insert(MAIN, WindowKey(1));
+    }
+    desktop.hosting = hosting;
     desktop.pending.push(Pending {
         key: WindowKey(1),
         options,
@@ -168,6 +183,154 @@ struct Pending {
     options: AppOptions,
     view: View,
     owner: Option<WindowKey>,
+}
+
+/// What the desktop asks of an application run with `run_app`, whatever its
+/// state is. The windows it opens and closes come from `update`.
+pub(crate) trait Hosting {
+    /// The view of a window `update` opened.
+    fn open_view(&self, window: AppWindow) -> View;
+    /// What `update` asked to open and to close since the last call.
+    fn take_requests(&mut self) -> AppRequests;
+    /// The windows whose view a batch made due, which need a frame.
+    fn due(&self) -> Vec<AppWindow>;
+    /// A window is gone; its pacing goes with it.
+    fn closed(&mut self, window: AppWindow);
+}
+
+/// The state every window of an application with `run_app` declares from:
+/// the `App`, its driver with the one message queue, and each window's pacing.
+struct Shared<A: App> {
+    app: A,
+    driver: AppDriver<A::Message>,
+    windows: HashMap<AppWindow, Pacing>,
+    opened: Vec<(AppWindow, rust_gui_core::WindowRequest)>,
+    closed: Vec<AppWindow>,
+}
+
+impl<A: App> Shared<A> {
+    /// One window's frame. Its batch runs on its own context; when the batch
+    /// changed what views read, every window's view is due.
+    fn frame(
+        &mut self,
+        window: AppWindow,
+        context: &mut Context,
+        size: Size,
+        text: &mut impl TextMeasurer,
+    ) -> FrameStats {
+        let (messages, dirty) = self.driver.batch(&mut self.app, context);
+        let (opened, closed) = self.driver.take_windows();
+        self.opened.extend(opened);
+        self.closed.extend(closed);
+        if dirty {
+            for pacing in self.windows.values_mut() {
+                pacing.invalidate();
+            }
+        }
+        let mut pacing = self.windows.remove(&window).unwrap_or_default();
+        let stats = self.driver.declare(
+            &self.app,
+            context,
+            size,
+            text,
+            (window != MAIN).then_some(window),
+            &mut pacing,
+            messages,
+        );
+        self.windows.insert(window, pacing);
+        stats
+    }
+}
+
+/// The host of an application run with `run_app`, shared with its windows.
+struct AppHost<A: App> {
+    shared: Rc<RefCell<Shared<A>>>,
+}
+
+impl<A: App> Hosting for AppHost<A> {
+    fn open_view(&self, window: AppWindow) -> View {
+        self.shared.borrow_mut().windows.entry(window).or_default();
+        Box::new(WindowView {
+            shared: self.shared.clone(),
+            window,
+        })
+    }
+
+    fn take_requests(&mut self) -> AppRequests {
+        let mut shared = self.shared.borrow_mut();
+        (
+            std::mem::take(&mut shared.opened),
+            std::mem::take(&mut shared.closed),
+        )
+    }
+
+    fn due(&self) -> Vec<AppWindow> {
+        self.shared
+            .borrow()
+            .windows
+            .iter()
+            .filter(|(_, pacing)| pacing.invalidated())
+            .map(|(window, _)| *window)
+            .collect()
+    }
+
+    fn closed(&mut self, window: AppWindow) {
+        self.shared.borrow_mut().windows.remove(&window);
+    }
+}
+
+/// One window of an application run with `run_app`. It declares through the
+/// shared state, with `App::view` for the main window and `App::view_window`
+/// for the others.
+struct WindowView<A: App> {
+    shared: Rc<RefCell<Shared<A>>>,
+    window: AppWindow,
+}
+
+impl<A: App> Declare for WindowView<A> {
+    fn frame(&mut self, context: &mut Context, size: Size, text: &mut TextSystem) -> FrameStats {
+        self.shared
+            .borrow_mut()
+            .frame(self.window, context, size, text)
+    }
+
+    fn hot_state(&mut self, _: &mut Context, _: Size, _: &mut TextSystem) -> String {
+        self.shared.borrow().app.save_state().unwrap_or_default()
+    }
+
+    fn invalidate(&mut self) {
+        self.shared
+            .borrow_mut()
+            .windows
+            .entry(self.window)
+            .or_default()
+            .invalidate();
+    }
+
+    /// The application's state is one, so only the main window saves it.
+    fn saves_state(&self) -> bool {
+        self.window == MAIN
+    }
+}
+
+/// Runs an application: its first window declares with `App::view`, and the
+/// windows `Effects::open_window` opens declare with `App::view_window`.
+pub(crate) fn run_app<A: App>(options: AppOptions, app: A) -> Result<()> {
+    run_single(options, |wake| {
+        let shared = Rc::new(RefCell::new(Shared {
+            app,
+            driver: AppDriver::new(move || wake.request_redraw()),
+            windows: HashMap::new(),
+            opened: Vec::new(),
+            closed: Vec::new(),
+        }));
+        let view: View = Box::new(WindowView {
+            shared: shared.clone(),
+            window: MAIN,
+        });
+        let host: Box<dyn Hosting> = Box::new(AppHost { shared });
+        (view, Some(host))
+    })
 }
 
 struct InspectorShared {
@@ -221,6 +384,10 @@ struct Desktop {
     focused: Option<WindowKey>,
     clipboard: Rc<RefCell<input::HostClipboard>>,
     error: Option<Box<dyn Error>>,
+    /// The application's windows, when `run_app` runs one.
+    hosting: Option<Box<dyn Hosting>>,
+    /// Application window → the window it is shown in.
+    app_windows: HashMap<AppWindow, WindowKey>,
 }
 
 impl WindowState {
@@ -421,6 +588,8 @@ impl Desktop {
             focused: None,
             clipboard: Rc::new(RefCell::new(input::HostClipboard::default())),
             error: None,
+            hosting: None,
+            app_windows: HashMap::new(),
         }
     }
 
@@ -591,6 +760,7 @@ impl Desktop {
     }
 
     fn finish(&mut self, event_loop: &ActiveEventLoop) {
+        self.apply_app_requests(event_loop);
         for app in self.windows.values_mut() {
             if let Some(error) = app.error.take() {
                 self.error = Some(error);
@@ -611,11 +781,83 @@ impl Desktop {
         }
         self.modals
             .retain(|dialog, _| self.windows.contains_key(dialog));
+        self.sync_app_windows();
         self.sync_inspectors(event_loop);
-        if self.opened && self.windows.is_empty() {
+        // An application stops when its first window closes.
+        let main_closed = self.hosting.is_some() && !self.app_windows.contains_key(&MAIN);
+        if self.opened && (self.windows.is_empty() || main_closed) {
             event_loop.exit();
         }
+        self.wake_due_windows();
         self.schedule(event_loop);
+    }
+
+    /// Carries out what `update` asked for: the windows it closes, then the
+    /// windows it opens.
+    fn apply_app_requests(&mut self, event_loop: &ActiveEventLoop) {
+        let Some(hosting) = self.hosting.as_mut() else {
+            return;
+        };
+        let (opened, closed) = hosting.take_requests();
+        for window in closed {
+            if let Some(key) = self.app_windows.get(&window) {
+                self.windows.remove(key);
+            }
+        }
+        for (window, request) in opened {
+            let key = self.allocate_key();
+            let owner = request
+                .modal_owner
+                .and_then(|owner| self.app_windows.get(&owner).copied());
+            let options = AppOptions {
+                title: request.title,
+                size: request.size.unwrap_or(AppOptions::default().size),
+                ..AppOptions::default()
+            };
+            let Some(view) = self
+                .hosting
+                .as_ref()
+                .map(|hosting| hosting.open_view(window))
+            else {
+                return;
+            };
+            if self.open(event_loop, key, options, view, owner) {
+                self.app_windows.insert(window, key);
+            }
+        }
+    }
+
+    /// Tells the application about the windows that are gone, however they
+    /// went: closed by the user, by `update`, or with their owner.
+    fn sync_app_windows(&mut self) {
+        let gone: Vec<AppWindow> = self
+            .app_windows
+            .iter()
+            .filter(|(_, key)| !self.windows.contains_key(key))
+            .map(|(window, _)| *window)
+            .collect();
+        for window in gone {
+            self.app_windows.remove(&window);
+            if let Some(hosting) = self.hosting.as_mut() {
+                hosting.closed(window);
+            }
+        }
+    }
+
+    /// Asks each window whose view a batch made due for a frame of its own.
+    fn wake_due_windows(&self) {
+        let Some(hosting) = &self.hosting else {
+            return;
+        };
+        for window in hosting.due() {
+            if let Some(app) = self
+                .app_windows
+                .get(&window)
+                .and_then(|key| self.windows.get(key))
+            {
+                app.request_redraw();
+            }
+        }
     }
 
     /// Sleeps until the earliest window deadline (tooltips, stylesheet polling,
@@ -954,5 +1196,169 @@ impl ApplicationHandler<UserEvent> for Desktop {
 
     fn exiting(&mut self, _: &ActiveEventLoop) {
         self.wake.close();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rust_gui_core::MonospaceMeasurer;
+
+    const SIZE: Size = Size::new(400.0, 300.0);
+
+    #[derive(Clone)]
+    enum Msg {
+        Open,
+        Bump,
+        Close,
+    }
+
+    /// What each window's view saw: the window (`None` for the main one) and the count.
+    type Seen = Rc<RefCell<Vec<(Option<AppWindow>, i32)>>>;
+
+    #[derive(Default)]
+    struct Probe {
+        count: i32,
+        second: Option<AppWindow>,
+        seen: Seen,
+    }
+
+    impl App for Probe {
+        type Message = Msg;
+
+        fn update(&mut self, message: Msg, effects: &mut Effects<'_, Msg>) {
+            match message {
+                Msg::Open => {
+                    self.second = Some(effects.open_window(rust_gui_core::WindowRequest {
+                        title: "Second".into(),
+                        ..Default::default()
+                    }));
+                }
+                Msg::Bump => self.count += 1,
+                Msg::Close => {
+                    if let Some(window) = self.second {
+                        effects.close_window(window);
+                    }
+                }
+            }
+        }
+
+        fn view(&self, ui: &mut Ui<'_, Msg>) {
+            self.seen.borrow_mut().push((None, self.count));
+            ui.label(format!("count {}", self.count));
+        }
+
+        fn view_window(&self, window: AppWindow, ui: &mut Ui<'_, Msg>) {
+            self.seen.borrow_mut().push((Some(window), self.count));
+            ui.label(format!("count {}", self.count));
+        }
+
+        fn save_state(&self) -> Option<String> {
+            Some(format!("count {}", self.count))
+        }
+    }
+
+    fn shared(app: Probe) -> Rc<RefCell<Shared<Probe>>> {
+        Rc::new(RefCell::new(Shared {
+            app,
+            driver: AppDriver::new(|| true),
+            windows: HashMap::new(),
+            opened: Vec::new(),
+            closed: Vec::new(),
+        }))
+    }
+
+    #[test]
+    fn open_and_close_requests_reach_the_host() {
+        let shared = shared(Probe::default());
+        let mut host = AppHost {
+            shared: shared.clone(),
+        };
+        let mut main = Context::new();
+        shared.borrow_mut().driver.send(Msg::Open);
+        shared
+            .borrow_mut()
+            .frame(MAIN, &mut main, SIZE, &mut MonospaceMeasurer);
+        let (opened, closed) = host.take_requests();
+        assert!(closed.is_empty());
+        assert_eq!(opened.len(), 1);
+        assert_eq!(
+            (opened[0].0, opened[0].1.title.as_str()),
+            (AppWindow(1), "Second")
+        );
+
+        shared.borrow_mut().driver.send(Msg::Close);
+        shared
+            .borrow_mut()
+            .frame(MAIN, &mut main, SIZE, &mut MonospaceMeasurer);
+        assert_eq!(host.take_requests().1, vec![AppWindow(1)]);
+        assert!(host.take_requests().0.is_empty());
+    }
+
+    #[test]
+    fn a_message_from_a_second_window_is_seen_by_the_first_windows_next_view() {
+        let shared = shared(Probe::default());
+        let seen = shared.borrow().app.seen.clone();
+        let second = AppWindow(1);
+        let (mut main, mut other) = (Context::new(), Context::new());
+        shared
+            .borrow_mut()
+            .frame(MAIN, &mut main, SIZE, &mut MonospaceMeasurer);
+        shared
+            .borrow_mut()
+            .frame(second, &mut other, SIZE, &mut MonospaceMeasurer);
+        assert_eq!(*seen.borrow(), vec![(None, 0), (Some(second), 0)]);
+
+        // The message arrives in the second window's batch and changes the state.
+        shared.borrow_mut().driver.send(Msg::Bump);
+        let stats = shared
+            .borrow_mut()
+            .frame(second, &mut other, SIZE, &mut MonospaceMeasurer);
+        assert_eq!((stats.declared, stats.messages), (true, 1));
+        assert!(shared.borrow().windows[&MAIN].invalidated());
+
+        // The first window's frame declares, and its view sees the count.
+        let stats = shared
+            .borrow_mut()
+            .frame(MAIN, &mut main, SIZE, &mut MonospaceMeasurer);
+        assert_eq!((stats.declared, stats.messages), (true, 0));
+        assert_eq!(seen.borrow().last(), Some(&(None, 1)));
+        assert!(!shared.borrow().windows[&MAIN].invalidated());
+    }
+
+    #[test]
+    fn a_window_without_a_batch_declares_only_when_due() {
+        let shared = shared(Probe::default());
+        let mut main = Context::new();
+        shared
+            .borrow_mut()
+            .frame(MAIN, &mut main, SIZE, &mut MonospaceMeasurer);
+        let stats = shared
+            .borrow_mut()
+            .frame(MAIN, &mut main, SIZE, &mut MonospaceMeasurer);
+        assert!(!stats.declared, "nothing changed, so no declaration");
+    }
+
+    #[test]
+    fn only_the_main_window_saves_the_application_state() {
+        let shared = shared(Probe {
+            count: 4,
+            ..Probe::default()
+        });
+        assert!(
+            WindowView {
+                shared: shared.clone(),
+                window: MAIN,
+            }
+            .saves_state()
+        );
+        assert!(
+            !WindowView {
+                shared: shared.clone(),
+                window: AppWindow(1),
+            }
+            .saves_state()
+        );
+        assert_eq!(shared.borrow().app.save_state().as_deref(), Some("count 4"));
     }
 }

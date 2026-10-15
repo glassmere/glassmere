@@ -203,7 +203,7 @@ pub(crate) struct Requests {
     pub toasts: Vec<Toast>,
     /// The id each of `toasts` got when it was raised, in the same order.
     pub toast_ids: Vec<ToastId>,
-    /// Windows asked for and closed; multiple windows are not wired yet.
+    /// Windows `update` asked to open and to close, taken by the host.
     pub open_windows: Vec<(WindowId, WindowRequest)>,
     pub close_windows: Vec<WindowId>,
     next_window: u64,
@@ -398,10 +398,8 @@ impl<M: 'static> Effects<'_, M> {
         self.sink().toast(toast, Some(Box::new(message)));
     }
 
-    /// Opens another window, which `App::view_window` declares.
-    ///
-    /// Not wired to a host yet: the identity is handed out and the request
-    /// kept, but no window opens.
+    /// Opens another window, which `App::view_window` declares. The identity
+    /// is handed out now; the host opens the window after the batch.
     pub fn open_window(&mut self, request: WindowRequest) -> WindowId {
         let requests = self.requests();
         requests.next_window += 1;
@@ -410,7 +408,7 @@ impl<M: 'static> Effects<'_, M> {
         id
     }
 
-    /// Closes a window `open_window` opened. Not wired to a host yet.
+    /// Closes a window `open_window` opened. The host closes it after the batch.
     pub fn close_window(&mut self, window: WindowId) {
         self.requests().close_windows.push(window);
     }
@@ -487,10 +485,32 @@ impl<M: 'static> Effects<'_, M> {
     }
 }
 
+/// What a host keeps for one window of an app: whether it has declared, and
+/// whether its next declaration is due whatever else happened, plus what the
+/// pointer, focus and keyboard were on when it last declared.
+#[derive(Default)]
+pub struct Pacing {
+    declared: bool,
+    force: bool,
+    interaction: crate::tree::Interaction,
+}
+
+impl Pacing {
+    /// The window declares on its next frame whatever else happened.
+    pub fn invalidate(&mut self) {
+        self.force = true;
+    }
+
+    /// Whether the window's next frame declares for that reason alone.
+    pub fn invalidated(&self) -> bool {
+        self.force
+    }
+}
+
 /// Runs an [`App`] on a context: turns each batch of input into messages,
 /// updates, applies what the updates asked for, and declares the view only
 /// when something it reads may have changed. Hosts and the test harness
-/// keep one of these beside the app, per window; applications use `run_app`.
+/// keep one of these beside the app; applications use `run_app`.
 pub struct AppDriver<M: 'static> {
     effects: EffectState<M>,
     /// Messages sent from outside, and the batch's messages; the capacity
@@ -498,10 +518,8 @@ pub struct AppDriver<M: 'static> {
     sent: Vec<M>,
     batch: Vec<M>,
     started: bool,
-    /// Declare on the next frame whatever else happened.
-    force: bool,
-    /// What was hovered, focused and pressed when the last frame ended.
-    interaction: crate::tree::Interaction,
+    /// The pacing of the window `frame` drives.
+    own: Pacing,
 }
 
 impl<M: Clone + 'static> AppDriver<M> {
@@ -539,8 +557,7 @@ impl<M: Clone + 'static> AppDriver<M> {
             sent: Vec::new(),
             batch: Vec::new(),
             started: false,
-            force: false,
-            interaction: crate::tree::Interaction::default(),
+            own: Pacing::default(),
         }
     }
 
@@ -557,21 +574,31 @@ impl<M: Clone + 'static> AppDriver<M> {
     /// Makes the next frame declare: after a scale factor change, a hot
     /// reload, or a change to the app made outside `update`.
     pub fn invalidate(&mut self) {
-        self.force = true;
+        self.own.invalidate();
     }
 
-    /// One batch: the input the context has collected since the last frame
-    /// becomes messages, `update` runs on each in order, what it asked for
-    /// is applied, and the view declares at most once.
-    pub fn frame<A: App<Message = M>>(
+    /// The windows `update` asked to open and to close since the last call,
+    /// for the host to carry out.
+    pub fn take_windows(&mut self) -> (Vec<(WindowId, WindowRequest)>, Vec<WindowId>) {
+        let requests = &mut self.effects.requests;
+        (
+            std::mem::take(&mut requests.open_windows),
+            std::mem::take(&mut requests.close_windows),
+        )
+    }
+
+    /// The first half of a batch, on the context of one window: the input
+    /// the context has collected since its last frame becomes messages, and
+    /// `update` runs on each in order. Returns how many messages there were,
+    /// and whether they or a request `update` made may change what a view
+    /// reads. When that is so, every window's view is due, so a host with
+    /// several windows invalidates each one's [`Pacing`].
+    pub fn batch<A: App<Message = M>>(
         &mut self,
         app: &mut A,
         context: &mut Context,
-        size: Size,
-        measurer: &mut impl TextMeasurer,
-    ) -> FrameStats {
-        let first = !self.started;
-        if first {
+    ) -> (usize, bool) {
+        if !self.started {
             self.started = true;
             app.init(&mut Effects {
                 sink: SinkRef::Borrowed(&mut self.effects),
@@ -594,21 +621,39 @@ impl<M: Clone + 'static> AppDriver<M> {
         let changed = context.apply_requests(&mut self.effects.requests);
         self.adopt_toast_actions();
         context.prepare_batch();
-        let declare = first
-            || std::mem::take(&mut self.force)
-            || messages > 0
-            || changed
-            || context.view_wanted(size, self.interaction);
+        (messages, messages > 0 || changed)
+    }
+
+    /// The second half of a batch, on the same context: declares the view
+    /// if it is due, and lays out and paints either way. `window` is `None`
+    /// for the main window, which declares with `App::view`; any other
+    /// declares with `App::view_window`. `messages` is what `batch` returned.
+    #[allow(clippy::too_many_arguments)]
+    pub fn declare<A: App<Message = M>>(
+        &mut self,
+        app: &A,
+        context: &mut Context,
+        size: Size,
+        measurer: &mut impl TextMeasurer,
+        window: Option<WindowId>,
+        pacing: &mut Pacing,
+        messages: usize,
+    ) -> FrameStats {
+        let forced = std::mem::take(&mut pacing.force);
+        let declare = !pacing.declared || forced || context.view_wanted(size, pacing.interaction);
         if declare {
-            let app = &*app;
-            context.run_app(size, measurer, |ui| app.view(ui));
+            pacing.declared = true;
+            match window {
+                None => context.run_app(size, measurer, |ui| app.view(ui)),
+                Some(id) => context.run_app(size, measurer, |ui| app.view_window(id, ui)),
+            };
         } else {
             context.refresh(size, measurer);
         }
         if let Some(key) = self.effects.requests.focus.take() {
             context.focus_named(&key);
         }
-        self.interaction = context.interaction();
+        pacing.interaction = context.interaction();
         context.note_batch(declare, messages)
     }
 
@@ -621,6 +666,25 @@ impl<M: Clone + 'static> AppDriver<M> {
                 effects.toast_messages.insert(id, action);
             }
         }
+    }
+
+    /// One batch of a single-window host: [`batch`](Self::batch), then
+    /// [`declare`](Self::declare) with this driver's own pacing.
+    pub fn frame<A: App<Message = M>>(
+        &mut self,
+        app: &mut A,
+        context: &mut Context,
+        size: Size,
+        measurer: &mut impl TextMeasurer,
+    ) -> FrameStats {
+        let (messages, dirty) = self.batch(app, context);
+        if dirty {
+            self.own.invalidate();
+        }
+        let mut pacing = std::mem::take(&mut self.own);
+        let stats = self.declare(&*app, context, size, measurer, None, &mut pacing, messages);
+        self.own = pacing;
+        stats
     }
 
     /// What arrived for the messages `Effects` registered: the clipboard,

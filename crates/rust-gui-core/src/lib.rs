@@ -43,7 +43,7 @@ pub use collection::{
 pub use command::{Command, Shortcut, ShortcutKey};
 pub use rust_gui_scene::GradientStop;
 mod events;
-pub use app::{App, AppDriver, Component, Effects};
+pub use app::{App, AppDriver, Component, Effects, Pacing};
 pub use controls::{AutocompleteResponse, DockAction, MenuItem, NumberOptions};
 pub use dock::{
     DockArea, DockFloat, DockLayout, DockLayoutError, DockNode, DockPlace, DockTabs, DockTarget,

@@ -64,8 +64,8 @@ pub enum Placement {
     Named(String),
 }
 use rust_gui_core::{
-    App, AppDriver, Context, DragPayload, Effects, Event, FrameStats, StyleSheet, TextEdit, Theme,
-    Ui, app::Action,
+    App, Context, DragPayload, Effects, Event, FrameStats, StyleSheet, TextEdit, Theme, Ui,
+    app::Action,
 };
 pub use rust_gui_core::{Mailbox, MessageSender};
 use rust_gui_devtools::Recorder;
@@ -314,20 +314,20 @@ pub fn run_with_wakeup<F: FnMut(&mut Ui<'_>) + 'static>(
     setup: impl FnOnce(WakeHandle) -> F,
 ) -> Result<()> {
     let _ = STARTED.set(Instant::now());
-    desktop::run_single(options, |wake| Box::new(Closure(setup(wake))))
+    desktop::run_single(options, |wake| {
+        let view: desktop::View = Box::new(Closure(setup(wake)));
+        (view, None)
+    })
 }
 
-/// Runs an [`App`] in one window: each batch of input becomes messages,
-/// `update` runs on them, and the view declares at most once, only when
-/// something it reads may have changed.
+/// Runs an [`App`]: each batch of input becomes messages, `update` runs on
+/// them, and a window's view declares at most once, only when something it
+/// reads may have changed. The first window declares with `App::view`; the
+/// windows `Effects::open_window` opens declare with `App::view_window`. The
+/// app stops when its first window closes.
 pub fn run_app<A: App>(options: AppOptions, app: A) -> Result<()> {
     let _ = STARTED.set(Instant::now());
-    desktop::run_single(options, |wake| {
-        Box::new(AppView {
-            app,
-            driver: AppDriver::new(move || wake.request_redraw()),
-        })
-    })
+    desktop::run_app(options, app)
 }
 
 /// Runs a state and a view whose widgets send [`Action`]s, changes to apply
@@ -368,6 +368,10 @@ pub(crate) trait Declare {
     fn hot_state(&mut self, context: &mut Context, size: Size, text: &mut TextSystem) -> String;
     /// The next frame declares: the scale factor changed.
     fn invalidate(&mut self) {}
+    /// Whether this window's state is saved for a development restart.
+    fn saves_state(&self) -> bool {
+        true
+    }
 }
 
 /// A closure view, which reports input through `Response` while declaring.
@@ -397,26 +401,6 @@ impl<F: FnMut(&mut Ui<'_>)> Declare for Closure<F> {
         context.request_hot_save();
         context.run(size, text, &mut self.0);
         context.take_hot_state().unwrap_or_default()
-    }
-}
-
-/// An [`App`] and what drives it.
-struct AppView<A: App> {
-    app: A,
-    driver: AppDriver<A::Message>,
-}
-
-impl<A: App> Declare for AppView<A> {
-    fn frame(&mut self, context: &mut Context, size: Size, text: &mut TextSystem) -> FrameStats {
-        self.driver.frame(&mut self.app, context, size, text)
-    }
-
-    fn hot_state(&mut self, _: &mut Context, _: Size, _: &mut TextSystem) -> String {
-        self.app.save_state().unwrap_or_default()
-    }
-
-    fn invalidate(&mut self) {
-        self.driver.invalidate();
     }
 }
 
@@ -1009,6 +993,9 @@ impl Application {
         let Some(state) = &self.state else {
             return;
         };
+        if !self.view.saves_state() {
+            return;
+        }
         self.context.set_now(self.started.elapsed());
         let text = {
             let shared = state.renderer.clone();

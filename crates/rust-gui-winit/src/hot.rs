@@ -83,8 +83,10 @@ fn load() -> Option<(Option<SavedWindow>, String)> {
     parse(&std::fs::read_to_string(env_path(STATE_ENV)?).ok()?)
 }
 
-/// The text the previous run saved through `Ui::hot_state`, when this process
-/// was started by the development runner after a restart.
+/// The text the previous run saved through `Ui::hot_state` or
+/// `App::save_state`, when this process was started by the development runner
+/// after a restart. An `App` reads it itself, before `run_app`, as `counter.rs`
+/// does; the runner only passes the file on.
 pub fn saved_state() -> Option<String> {
     load().map(|(_, state)| state)
 }

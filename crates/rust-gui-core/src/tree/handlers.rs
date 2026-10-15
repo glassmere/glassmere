@@ -283,10 +283,6 @@ impl Context {
             requests.toast_ids.push(self.push_toast(toast));
             changed = true;
         }
-        // ponytail: multiple windows are not wired yet; the requests are
-        // dropped until the desktop host takes them.
-        requests.open_windows.clear();
-        requests.close_windows.clear();
         changed
     }
 
