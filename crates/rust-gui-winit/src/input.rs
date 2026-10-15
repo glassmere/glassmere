@@ -1,7 +1,5 @@
 use crate::Application;
-use rust_gui_core::{
-    Action, Clip, Context, EditorCommand, Event, Key, NodeId, TextEdit, TextMove, Ui,
-};
+use rust_gui_core::{Action, Clip, Context, EditorCommand, Event, Key, NodeId, TextEdit, TextMove};
 #[cfg(feature = "images")]
 use rust_gui_scene::Image;
 use winit::{
@@ -315,7 +313,7 @@ fn execute(context: &mut Context, clipboard: &mut impl ClipboardAccess, command:
     }
 }
 
-impl<F: FnMut(&mut Ui<'_>)> Application<F> {
+impl Application {
     pub(super) fn keyboard(&mut self, event: KeyEvent) {
         self.sync_clock();
         if event.state == ElementState::Pressed

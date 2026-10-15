@@ -198,7 +198,7 @@ impl Context {
         ) {
             return false;
         }
-        self.updates.insert(dialog, ControlUpdate::Dismiss);
+        self.queue_update(dialog, ControlUpdate::Dismiss);
         self.invalidate_paint(dialog);
         self.pending |= Dirty::ACCESSIBILITY;
         true

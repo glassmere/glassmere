@@ -1,11 +1,5 @@
-use crate::{EventArea, Semantics, Ui, UiEvent};
+use crate::{EventArea, Semantics, UiEvent};
 use rust_gui_scene::{Point, Primitive, Rect, Size};
-
-/// Application-owned state, declared inside a stable parent/key scope.
-/// Actions belong behind responses such as `clicked()`; declaration may repeat.
-pub trait Component {
-    fn ui(&mut self, ui: &mut Ui<'_>);
-}
 
 /// A leaf with explicit intrinsic size, local paint commands and semantics.
 /// Focusable semantics put it in the tab order and give it the keyboard,

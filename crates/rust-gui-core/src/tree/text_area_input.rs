@@ -178,7 +178,7 @@ impl Context {
         match self.updates.get_mut(&id) {
             Some(ControlUpdate::TextOps(ops)) => ops.push(op),
             _ => {
-                self.updates.insert(id, ControlUpdate::TextOps(vec![op]));
+                self.queue_update(id, ControlUpdate::TextOps(vec![op]));
             }
         }
         self.invalidate_paint(id);

@@ -18,8 +18,8 @@ pub trait Properties {
 }
 
 /// Declares the rows of a property grid; see `Ui::property_grid`.
-pub struct PropertyGrid<'a, 'u> {
-    ui: &'a mut Ui<'u>,
+pub struct PropertyGrid<'a, 'u, M: 'static = ()> {
+    ui: &'a mut Ui<'u, M>,
     state: &'a mut PropertyGridState,
     changed: &'a mut Vec<String>,
     /// Names of the enclosing groups.
@@ -66,11 +66,11 @@ const BESIDE_SCROLLBAR: f32 = 0.97;
 fn fill() -> Style {
     Style {
         width: Length::Percent(1.0),
-        ..Ui::field_style()
+        ..Ui::<()>::field_style()
     }
 }
 
-impl Ui<'_> {
+impl<'a, M: 'static> Ui<'a, M> {
     /// A two-column editor for named values: a filter box, a header whose
     /// divider sizes the name column, collapsible groups and one row per
     /// property, declared through the builder. Values are bound directly:
@@ -88,7 +88,7 @@ impl Ui<'_> {
         &mut self,
         state: &mut PropertyGridState,
         options: PropertyGridOptions,
-        content: impl FnOnce(&mut PropertyGrid<'_, '_>),
+        content: impl FnOnce(&mut PropertyGrid<'_, '_, M>),
     ) -> PropertyGridResponse {
         let mut changed = Vec::new();
         let mut style = options.style.clone();
@@ -115,7 +115,7 @@ impl Ui<'_> {
                 );
             }
             let header = |key: &'static str| {
-                move |ui: &mut Ui<'_>| {
+                move |ui: &mut Ui<'_, M>| {
                     let text = ui.context.tr(key, &[]);
                     ui.label_at(
                         "$title",
@@ -142,7 +142,7 @@ impl Ui<'_> {
                 header("rust-gui-property-column"),
                 header("rust-gui-value-column"),
             );
-            let rows = |ui: &mut Ui<'_>| {
+            let rows = |ui: &mut Ui<'_, M>| {
                 let mut grid = PropertyGrid {
                     ui,
                     state,
@@ -175,7 +175,7 @@ impl Ui<'_> {
     }
 }
 
-impl PropertyGrid<'_, '_> {
+impl<M: 'static> PropertyGrid<'_, '_, M> {
     fn filter(&self) -> String {
         self.state.filter.trim().to_lowercase()
     }
@@ -211,7 +211,7 @@ impl PropertyGrid<'_, '_> {
     /// A collapsible group of rows; groups nest. While a filter is typed,
     /// collapsed groups open, groups without a matching row hide, and a group
     /// whose own name matches shows all its rows.
-    pub fn group(&mut self, name: &str, content: impl FnOnce(&mut PropertyGrid<'_, '_>)) {
+    pub fn group(&mut self, name: &str, content: impl FnOnce(&mut PropertyGrid<'_, '_, M>)) {
         self.finish();
         let mut path = self.path.clone();
         path.push(name.to_owned());
@@ -280,7 +280,7 @@ impl PropertyGrid<'_, '_> {
         &mut self,
         name: &str,
         differs: Option<bool>,
-        editor: impl FnOnce(&mut Ui<'_>, &str) -> bool,
+        editor: impl FnOnce(&mut Ui<'_, M>, &str) -> bool,
     ) -> (bool, bool) {
         let filter = self.filter();
         if !(filter.is_empty() || self.shown_by_group || contains(name, &filter)) {
@@ -339,7 +339,7 @@ impl PropertyGrid<'_, '_> {
         &mut self,
         name: &str,
         value: &mut T,
-        editor: impl FnOnce(&mut Ui<'_>, &str, &mut T) -> bool,
+        editor: impl FnOnce(&mut Ui<'_, M>, &str, &mut T) -> bool,
     ) -> bool {
         let default = self.take_default::<T>(name);
         let differs = default.as_ref().map(|default| default != value);
@@ -411,7 +411,7 @@ impl PropertyGrid<'_, '_> {
                     grow: 1.0,
                     shrink: 1.0,
                     width: Length::Auto,
-                    ..Ui::field_style()
+                    ..Ui::<()>::field_style()
                 };
                 let response = ui.text_input_at("$hex", label, &mut text, "#rrggbb", field);
                 if response.changed {
@@ -450,7 +450,11 @@ impl PropertyGrid<'_, '_> {
 
     /// Any editor. Give its controls `name` as their accessible label and
     /// return whether the value changed.
-    pub fn custom(&mut self, name: &str, editor: impl FnOnce(&mut Ui<'_>, &str) -> bool) -> bool {
+    pub fn custom(
+        &mut self,
+        name: &str,
+        editor: impl FnOnce(&mut Ui<'_, M>, &str) -> bool,
+    ) -> bool {
         self.finish();
         self.row(name, None, editor).0
     }

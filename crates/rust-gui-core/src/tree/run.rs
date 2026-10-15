@@ -12,6 +12,24 @@ impl Context {
         measurer: &mut impl TextMeasurer,
         view: impl FnOnce(&mut Ui<'_>),
     ) -> FrameStats {
+        // A closure view sends nothing: what it declares is read back
+        // through `Response`, so no handler is kept.
+        let mut handlers = Vec::new();
+        self.declare(size, measurer, &mut handlers, view);
+        self.handler_moves.clear();
+        self.freed_handlers.clear();
+        self.note_batch(true, 0)
+    }
+
+    /// Runs the view once and brings the tree, layout and scene up to date
+    /// with it. The handlers it declares are left in `handlers`.
+    pub(super) fn declare<M: 'static>(
+        &mut self,
+        size: Size,
+        measurer: &mut impl TextMeasurer,
+        handlers: &mut Vec<crate::app::Handler<M>>,
+        view: impl FnOnce(&mut Ui<'_, M>),
+    ) {
         let measurer = &mut Timed {
             inner: measurer,
             spent: Duration::ZERO,
@@ -30,6 +48,11 @@ impl Context {
         let mut focus = None;
         let mut host = crate::ui::HostOutbox::default();
         let mut layers = Vec::new();
+        // What reached the nodes is in the maps the declaration reads, or
+        // was resolved into messages already.
+        self.queued.clear();
+        self.observed_new.borrow_mut().clear();
+        self.view_stale = false;
         self.stats.activations = clicks.len() + updates.len() + submitted.len();
         self.mark_awaiting(
             clicks
@@ -64,6 +87,8 @@ impl Context {
             host: &mut host,
             layers: &mut layers,
             enabled: true,
+            handlers,
+            handler_base: 0,
         };
         view(&mut ui);
         ui.declare_toasts();
@@ -98,6 +123,7 @@ impl Context {
         let size = Size::new(size.width.max(0.0), size.height.max(0.0));
         self.resize_root(size);
         self.reconcile(self.root, elements, measurer);
+        self.observed_new.borrow_mut().clear();
         self.stats.skipped = self.skipped.get();
         self.after_reconcile(focus);
         drop(declare_span);
@@ -105,21 +131,29 @@ impl Context {
         self.layout_pass(size, measurer);
         self.prepare_controls(measurer);
         self.update_hover();
+        self.stats.elements = self.declared.get();
+        self.stats.element_bytes = self.declared_bytes.get();
+        self.paint_and_finish(size, measurer);
+    }
+
+    /// Paints what is dirty and closes the frame's statistics.
+    pub(super) fn paint_and_finish(
+        &mut self,
+        size: Size,
+        measurer: &mut Timed<'_, impl TextMeasurer>,
+    ) {
         if self.pending.contains(Dirty::PAINT) {
             self.paint_pass(size, measurer);
         }
         self.diagnose_paint();
         self.stats.dirty = self.pending;
         self.stats.shaping = measurer.spent;
-        self.stats.elements = self.declared.get();
-        self.stats.element_bytes = self.declared_bytes.get();
         self.pending = Dirty::empty();
-        self.stats
     }
 
     /// Resets the per-frame record and advances the clocks that run before
     /// anything is declared.
-    fn begin_frame(&mut self, size: Size) {
+    pub(super) fn begin_frame(&mut self, size: Size) {
         self.stats = FrameStats::default();
         self.size = size;
         self.frame += 1;
@@ -194,7 +228,7 @@ impl Context {
     }
 
     /// Gives the root the window's size, when that changed.
-    fn resize_root(&mut self, size: Size) {
+    pub(super) fn resize_root(&mut self, size: Size) {
         if self.scene.size == size {
             return;
         }
@@ -278,7 +312,7 @@ impl Context {
 
     /// Computes layout when something asked for it, then the bounds that
     /// follow from it.
-    fn layout_pass(&mut self, size: Size, measurer: &mut Timed<'_, impl TextMeasurer>) {
+    pub(super) fn layout_pass(&mut self, size: Size, measurer: &mut Timed<'_, impl TextMeasurer>) {
         let layout_started = Instant::now();
         let layout_span = tracing::trace_span!("rust_gui.layout").entered();
         let layout_ran = self.pending.contains(Dirty::LAYOUT);
@@ -332,7 +366,7 @@ impl Context {
     }
 
     /// Follows the pointer to whatever is under it after layout moved things.
-    fn update_hover(&mut self) {
+    pub(super) fn update_hover(&mut self) {
         let hover = self.pointer.and_then(|p| self.hit_test(p));
         if hover != self.hovered {
             for id in [self.hovered, hover].into_iter().flatten() {
@@ -414,6 +448,7 @@ impl Context {
                     && matches!(element.control, Control::Memo(hash)
                         if self.memo_hash(id) == Some(hash))
             });
+            let handler = element.handler;
             let (id, grandchildren) = match existing {
                 Some(id) => {
                     self.stats.reused += 1;
@@ -424,6 +459,9 @@ impl Context {
                     self.create_node(parent, element, resolved, measurer)
                 }
             };
+            if handler.is_some() || self.nodes[&id].handler.is_some() {
+                self.handler_moves.push((id, handler));
+            }
             if !kept {
                 self.reconcile(id, grandchildren, measurer);
             }
@@ -451,6 +489,8 @@ impl Context {
     ) -> Vec<Element> {
         let frame = self.frame;
         let node = self.nodes.get_mut(&id).unwrap();
+        // Declared again: observed now is what this declaration read.
+        node.observed.set(node.observing.take());
         let paint_changed = node.text != element.text
             || node.style != element.style
             || node.resolved != resolved
@@ -602,6 +642,11 @@ impl Context {
                 hint_width: 0.0,
                 churn: 0,
                 layout_rect: Rect::default(),
+                handler: None,
+                observed: std::cell::Cell::new(
+                    element.seq != 0 && self.observed_new.borrow().contains(&element.seq),
+                ),
+                observing: std::cell::Cell::new(false),
                 key: element.key,
                 kind: element.kind,
                 parent: Some(parent),
@@ -701,6 +746,9 @@ impl Context {
             self.remove(child);
         }
         self.layout.remove(node.layout_id).unwrap();
+        if let Some(slot) = node.handler {
+            self.freed_handlers.push(slot);
+        }
         self.clicks.remove(&id);
         self.updates.remove(&id);
         self.submitted.remove(&id);

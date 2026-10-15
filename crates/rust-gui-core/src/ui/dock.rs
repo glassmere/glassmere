@@ -69,9 +69,9 @@ pub struct DockResponse {
 const FLOAT_SIZE: (f32, f32) = (360.0, 260.0);
 const WINDOW_SIZE: (f32, f32) = (640.0, 480.0);
 
-struct Pass<'a> {
+struct Pass<'a, M: 'static> {
     panels: &'a [DockPanel],
-    content: &'a mut dyn FnMut(&mut Ui<'_>, &str),
+    content: &'a mut dyn FnMut(&mut Ui<'_, M>, &str),
     /// Panel menu choices, applied once the tree is no longer borrowed.
     menu: Vec<(String, usize)>,
     closed: Vec<String>,
@@ -90,7 +90,7 @@ fn fill() -> Style {
         .gap(0.0)
 }
 
-impl Ui<'_> {
+impl<'a, M: 'static> Ui<'a, M> {
     /// The main dock: the layout's split tree with tab groups, plus its
     /// floating groups. Tabs drag onto drop indicators, other tab strips or
     /// empty space (floating), and every group has a panel menu that offers
@@ -101,7 +101,7 @@ impl Ui<'_> {
         layout: &mut DockLayout,
         panels: &[DockPanel],
         options: DockOptions,
-        content: impl FnMut(&mut Ui<'_>, &str),
+        content: impl FnMut(&mut Ui<'_, M>, &str),
     ) -> DockResponse {
         self.dock_area(layout, DockArea::Main, panels, options, content)
     }
@@ -115,7 +115,7 @@ impl Ui<'_> {
         window: DockWindowId,
         panels: &[DockPanel],
         options: DockOptions,
-        content: impl FnMut(&mut Ui<'_>, &str),
+        content: impl FnMut(&mut Ui<'_, M>, &str),
     ) -> DockResponse {
         self.dock_area(layout, DockArea::Window(window), panels, options, content)
     }
@@ -127,7 +127,7 @@ impl Ui<'_> {
         area: DockArea,
         panels: &[DockPanel],
         options: DockOptions,
-        mut content: impl FnMut(&mut Ui<'_>, &str),
+        mut content: impl FnMut(&mut Ui<'_, M>, &str),
     ) -> DockResponse {
         let key = self.next_key();
         layout.normalize();
@@ -241,6 +241,8 @@ impl Ui<'_> {
                         .background(popup),
                     |ui| {
                         ui.push(Element {
+                            handler: None,
+                            seq: 0,
                             key: WidgetKey::Named("$grip".into()),
                             kind: Kind::DockHandle,
                             text: String::new(),
@@ -256,6 +258,8 @@ impl Ui<'_> {
                         });
                         group(ui, &mut float.tabs, &pass, true);
                         ui.push(Element {
+                            handler: None,
+                            seq: 0,
                             key: WidgetKey::Named("$resize".into()),
                             kind: Kind::DockHandle,
                             text: String::new(),
@@ -351,7 +355,12 @@ impl Ui<'_> {
     }
 }
 
-fn node(ui: &mut Ui<'_>, target: &mut DockNode, pass: &RefCell<Pass<'_>>, min_pane: f32) {
+fn node<M: 'static>(
+    ui: &mut Ui<'_, M>,
+    target: &mut DockNode,
+    pass: &RefCell<Pass<'_, M>>,
+    min_pane: f32,
+) {
     match target {
         DockNode::Tabs(tabs) => group(ui, tabs, pass, false),
         DockNode::Split {
@@ -380,7 +389,12 @@ fn node(ui: &mut Ui<'_>, target: &mut DockNode, pass: &RefCell<Pass<'_>>, min_pa
     }
 }
 
-fn group(ui: &mut Ui<'_>, tabs: &mut DockTabs, pass: &RefCell<Pass<'_>>, float: bool) {
+fn group<M: 'static>(
+    ui: &mut Ui<'_, M>,
+    tabs: &mut DockTabs,
+    pass: &RefCell<Pass<'_, M>>,
+    float: bool,
+) {
     // ponytail: ids the app does not declare are skipped here, so tab indexes
     // reported by drags are positions among the visible tabs.
     let visible: Vec<(usize, Tab, String)> = {
@@ -448,11 +462,11 @@ fn group(ui: &mut Ui<'_>, tabs: &mut DockTabs, pass: &RefCell<Pass<'_>>, float: 
 
 /// The group's panel menu, right-aligned in the tab strip. It acts on the
 /// active panel and also opens from a right-click or Shift+F10 on the strip.
-fn menu(
-    ui: &mut Ui<'_>,
+fn menu<M: 'static>(
+    ui: &mut Ui<'_, M>,
     panel: &str,
     closable: bool,
-    pass: &RefCell<Pass<'_>>,
+    pass: &RefCell<Pass<'_, M>>,
     float: bool,
     count: usize,
 ) {

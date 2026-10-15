@@ -190,7 +190,7 @@ impl Context {
         let height = rect
             .height
             .clamp(MIN_FLOAT.1, bounds.height.max(MIN_FLOAT.1));
-        self.updates.insert(
+        self.queue_update(
             dock,
             ControlUpdate::Dock(DockAction::FloatRect {
                 float,
@@ -344,7 +344,7 @@ impl Context {
                 self.captured = None;
                 self.overlay_damage();
                 if let Some((target, _)) = drag.target {
-                    self.updates.insert(
+                    self.queue_update(
                         drag.dock,
                         ControlUpdate::Dock(DockAction::Move {
                             panel: drag.panel,
@@ -383,7 +383,7 @@ impl Context {
         if let WidgetKey::Named(key) = &self.nodes[&float].key
             && let Some(first) = key.strip_prefix("$float:")
         {
-            self.updates.insert(
+            self.queue_update(
                 dock,
                 ControlUpdate::Dock(DockAction::Raise(first.to_owned())),
             );

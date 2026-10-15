@@ -1,26 +1,116 @@
 use rust_gui::{
-    AppOptions, Button, Color, Component, CustomWidget, Label, Length, Primitive, Rect, Role,
-    Semantics, Size, Style, Ui, run_with_wakeup,
+    App, AppOptions, Button, Color, Component, CustomWidget, Effects, Label, Length, MessageSender,
+    Primitive, Rect, Role, Semantics, Size, Style, Ui, WindowCommand, run_app,
 };
-use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicU32, Ordering},
-    },
-    time::Duration,
-};
+use std::{cell::Cell, sync::mpsc::Sender, time::Duration};
 
 struct Counter {
     name: &'static str,
     value: u32,
 }
 
+#[derive(Clone)]
+struct Increase;
+
 impl Component for Counter {
-    fn ui(&mut self, ui: &mut Ui<'_>) {
+    type Message = Increase;
+
+    fn update(&mut self, _: Increase, _: &mut Effects<'_, Increase>) {
+        self.value += 1;
+    }
+
+    fn view(&self, ui: &mut Ui<'_, Increase>) {
         ui.label(format!("{} count: {}", self.name, self.value));
-        if ui.button(format!("Increase {}", self.name)).clicked() {
-            self.value += 1;
+        ui.button(Button::new(format!("Increase {}", self.name)).on_click(Increase));
+    }
+}
+
+#[derive(Clone)]
+enum Message {
+    Left(Increase),
+    Right(Increase),
+    Select(usize),
+    Tick(u32),
+}
+
+struct Workbench {
+    smoke: bool,
+    /// Hands the worker's channel to `main`, which checks that it is turned
+    /// away once the event loop has closed.
+    closed_probe: Sender<MessageSender<u32>>,
+    left: Counter,
+    right: Counter,
+    /// ponytail: custom widgets report clicks through `Response` until they
+    /// send messages of their own.
+    custom_count: Cell<u32>,
+    selection: String,
+    tick: u32,
+}
+
+impl App for Workbench {
+    type Message = Message;
+
+    fn init(&mut self, effects: &mut Effects<'_, Message>) {
+        if self.smoke {
+            println!("WAKE_UPDATE {}", self.tick);
         }
+        let sender = effects.channel(16, Message::Tick);
+        self.closed_probe.send(sender.clone()).unwrap();
+        let smoke = self.smoke;
+        std::thread::spawn(move || {
+            for value in 1..=if smoke { 3 } else { 3600 } {
+                std::thread::sleep(Duration::from_millis(if smoke { 150 } else { 1000 }));
+                if sender.send_blocking(value).is_err() {
+                    break;
+                }
+            }
+        });
+    }
+
+    fn update(&mut self, message: Message, effects: &mut Effects<'_, Message>) {
+        match message {
+            Message::Left(message) => self.left.update(message, &mut effects.map(Message::Left)),
+            Message::Right(message) => self.right.update(message, &mut effects.map(Message::Right)),
+            Message::Select(index) => self.selection = format!("{index:03}"),
+            Message::Tick(tick) => {
+                self.tick = tick;
+                if self.smoke {
+                    println!("WAKE_UPDATE {tick}");
+                    if tick == 3 {
+                        println!("WAKE_SMOKE_OK");
+                        effects.window_command(WindowCommand::Close);
+                    }
+                }
+            }
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, Message>) {
+        let tick = self.tick;
+        ui.column(Style { padding: 28.0, gap: 16.0, width: Length::Percent(1.0), ..Style::default() }, |ui| {
+            ui.label(Label::new("Architecture workbench").style(Style { font_size: Some(28.0), ..Style::default() }));
+            ui.label(format!("Background updates: {tick}"));
+            ui.label("Wheel to scroll. Tab reveals focused rows. Arrow keys, Page Up/Down, Home/End scroll.");
+            ui.row(Style { gap: 36.0, ..Style::default() }, |ui| {
+                ui.component(Style::default(), &self.left, Message::Left);
+                ui.component(Style::default(), &self.right, Message::Right);
+            });
+            let custom_count = self.custom_count.get();
+            if ui.custom(Style::default(), custom_action(custom_count)).clicked() { self.custom_count.set(custom_count + 1); }
+            ui.button(Button::new("Unavailable action").enabled(false));
+            ui.label(format!("Selected row: {}", self.selection));
+            ui.scroll(Style {
+                width: Length::Percent(1.0), height: Length::Px(240.0),
+                padding: 8.0, gap: 4.0, background: Some(Color::rgb(24, 35, 49)), ..Style::default()
+            }, |ui| {
+                for index in 0..250 {
+                    ui.keyed(index.to_string(), |ui| ui.button(Button::new(format!("Row {index:03}")).style(Style {
+                        width: Length::Percent(0.97), height: Length::Px(36.0), padding: 7.0, ..Style::button()
+                    }).on_click(Message::Select(index))));
+                }
+            });
+            ui.label(Label::new("Native accessibility shares the same IDs and actions as pointer and keyboard input.").style(Style { font_size: Some(13.0), ..Style::default() }));
+        });
     }
 }
 
@@ -62,90 +152,32 @@ fn custom_action(count: u32) -> CustomWidget {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
-    let (handle_sender, handle_receiver) = std::sync::mpsc::channel();
-    run_with_wakeup(
+    let (closed_probe, probe) = std::sync::mpsc::channel();
+    run_app(
         AppOptions {
             title: "Rust GUI / Architecture workbench".into(),
             size: Size::new(920.0, 820.0),
             ..AppOptions::default()
         },
-        move |wake| {
-            handle_sender.send(wake.clone()).unwrap();
-            let updates = Arc::new(AtomicU32::new(0));
-            let ready = Arc::new(AtomicBool::new(false));
-            let worker_updates = updates.clone();
-            let worker_ready = ready.clone();
-            let worker_wake = wake.clone();
-            std::thread::spawn(move || {
-                while !worker_ready.load(Ordering::Acquire) {
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-                for value in 1..=if smoke { 3 } else { 3600 } {
-                    std::thread::sleep(Duration::from_millis(if smoke { 150 } else { 1000 }));
-                    worker_updates.store(value, Ordering::Release);
-                    if !worker_wake.request_redraw() {
-                        break;
-                    }
-                }
-            });
-            let mut left = Counter {
+        Workbench {
+            smoke,
+            closed_probe,
+            left: Counter {
                 name: "left",
                 value: 0,
-            };
-            let mut right = Counter {
+            },
+            right: Counter {
                 name: "right",
                 value: 10,
-            };
-            let mut custom_count = 0;
-            let mut selection = String::from("none");
-            let mut last_update = u32::MAX;
-            move |ui: &mut Ui<'_>| {
-                let tick = updates.load(Ordering::Acquire);
-                if smoke && tick != last_update {
-                    println!("WAKE_UPDATE {tick}");
-                }
-                last_update = tick;
-                ui.column(Style { padding: 28.0, gap: 16.0, width: Length::Percent(1.0), ..Style::default() }, |ui| {
-                ui.label(Label::new("Architecture workbench").style(Style { font_size: Some(28.0), ..Style::default() }));
-                ui.label(format!("Background updates: {tick}"));
-                ui.label("Wheel to scroll. Tab reveals focused rows. Arrow keys, Page Up/Down, Home/End scroll.");
-                ui.row(Style { gap: 36.0, ..Style::default() }, |ui| {
-                    ui.component(Style::default(), &mut left);
-                    ui.component(Style::default(), &mut right);
-                });
-                if ui.custom(Style::default(), custom_action(custom_count)).clicked() { custom_count += 1; }
-                ui.button(Button::new("Unavailable action").enabled(false));
-                ui.label(format!("Selected row: {selection}"));
-                ui.scroll(Style {
-                    width: Length::Percent(1.0), height: Length::Px(240.0),
-                    padding: 8.0, gap: 4.0, background: Some(Color::rgb(24, 35, 49)), ..Style::default()
-                }, |ui| {
-                    for index in 0..250 {
-                        if ui.keyed(index.to_string(), |ui| ui.button(Button::new(format!("Row {index:03}")).style(Style {
-                            width: Length::Percent(0.97), height: Length::Px(36.0), padding: 7.0, ..Style::button()
-                        }))).clicked() { selection = format!("{index:03}"); }
-                    }
-                });
-                ui.label(Label::new("Native accessibility shares the same IDs and actions as pointer and keyboard input.").style(Style { font_size: Some(13.0), ..Style::default() }));
-            });
-                ready.store(true, Ordering::Release);
-                if smoke && tick == 3 {
-                    println!("WAKE_SMOKE_OK");
-                    wake.request_exit();
-                }
-            }
+            },
+            custom_count: Cell::new(0),
+            selection: String::from("none"),
+            tick: 0,
         },
     )?;
     if smoke {
-        let handle = handle_receiver.recv()?;
-        assert!(
-            !handle.request_redraw(),
-            "closed event loop must reject wakeups"
-        );
-        assert!(
-            !handle.request_exit(),
-            "closed event loop must reject exit requests"
-        );
+        let sender = probe.recv()?;
+        assert!(!sender.wake(), "closed event loop must reject wakeups");
         println!("WAKE_CLOSED_OK");
     }
     Ok(())

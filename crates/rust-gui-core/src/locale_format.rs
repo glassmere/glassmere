@@ -101,7 +101,7 @@ impl crate::Context {
     }
 }
 
-impl crate::Ui<'_> {
+impl<'a, M: 'static> crate::Ui<'a, M> {
     /// Installs or replaces locale-aware formatting after this declaration,
     /// like `set_messages`; the two usually change together.
     pub fn set_format(&mut self, format: Option<Box<dyn LocaleFormat>>) {

@@ -63,11 +63,15 @@ pub enum Placement {
     /// platform's own, as the display settings show them.
     Named(String),
 }
-use rust_gui_core::{Action, Context, DragPayload, Event, StyleSheet, TextEdit, Theme, Ui};
+use rust_gui_core::{
+    App, AppDriver, Context, DragPayload, Effects, Event, FrameStats, StyleSheet, TextEdit, Theme,
+    Ui, app::Action,
+};
 pub use rust_gui_core::{Mailbox, MessageSender};
 use rust_gui_devtools::Recorder;
 use rust_gui_render_cpu::CpuRenderer;
 use rust_gui_render_wgpu::Renderer;
+use rust_gui_render_wgpu::TextSystem;
 use rust_gui_scene::{Color, Point, Primitive, Scene, Size};
 use std::{
     cell::RefCell,
@@ -310,7 +314,110 @@ pub fn run_with_wakeup<F: FnMut(&mut Ui<'_>) + 'static>(
     setup: impl FnOnce(WakeHandle) -> F,
 ) -> Result<()> {
     let _ = STARTED.set(Instant::now());
-    desktop::run_single(options, setup)
+    desktop::run_single(options, |wake| Box::new(Closure(setup(wake))))
+}
+
+/// Runs an [`App`] in one window: each batch of input becomes messages,
+/// `update` runs on them, and the view declares at most once, only when
+/// something it reads may have changed.
+pub fn run_app<A: App>(options: AppOptions, app: A) -> Result<()> {
+    let _ = STARTED.set(Instant::now());
+    desktop::run_single(options, |wake| {
+        Box::new(AppView {
+            app,
+            driver: AppDriver::new(move || wake.request_redraw()),
+        })
+    })
+}
+
+/// Runs a state and a view whose widgets send [`Action`]s, changes to apply
+/// to the state: the closure form of [`run_app`], for small programs. Each
+/// handler costs one `Rc` per declaration, so applications of any size use an
+/// enum message with `run_app`.
+pub fn run_with<S: 'static>(
+    options: AppOptions,
+    state: S,
+    view: impl Fn(&S, &mut Ui<'_, Action<S>>) + 'static,
+) -> Result<()> {
+    run_app(options, Closures { state, view })
+}
+
+/// A state and a view, as an [`App`] whose messages are actions on it.
+struct Closures<S, V> {
+    state: S,
+    view: V,
+}
+
+impl<S: 'static, V: Fn(&S, &mut Ui<'_, Action<S>>) + 'static> App for Closures<S, V> {
+    type Message = Action<S>;
+
+    fn update(&mut self, action: Action<S>, _effects: &mut Effects<'_, Action<S>>) {
+        action(&mut self.state);
+    }
+
+    fn view(&self, ui: &mut Ui<'_, Action<S>>) {
+        (self.view)(&self.state, ui);
+    }
+}
+
+/// What a window declares: once per frame, as its view decides.
+pub(crate) trait Declare {
+    /// Declares if the view needs to, then lays out and paints.
+    fn frame(&mut self, context: &mut Context, size: Size, text: &mut TextSystem) -> FrameStats;
+    /// What the view keeps across a development restart.
+    fn hot_state(&mut self, context: &mut Context, size: Size, text: &mut TextSystem) -> String;
+    /// The next frame declares: the scale factor changed.
+    fn invalidate(&mut self) {}
+}
+
+/// A closure view, which reports input through `Response` while declaring.
+pub(crate) struct Closure<F>(pub F);
+
+impl<F: FnMut(&mut Ui<'_>)> Declare for Closure<F> {
+    fn frame(&mut self, context: &mut Context, size: Size, text: &mut TextSystem) -> FrameStats {
+        let mut stats = context.run(size, text, &mut self.0);
+        // A consumed click may make the view ask for something that itself
+        // needs another declaration: a button that switches the language or
+        // the theme. Declare until it settles, within reason, so the frame
+        // that is presented is never a stale one.
+        let mut pending = stats.activations;
+        for _ in 0..3 {
+            if pending == 0 {
+                break;
+            }
+            let again = context.run(size, text, &mut self.0);
+            pending = again.activations;
+            stats = merge(stats, again);
+        }
+        stats
+    }
+
+    fn hot_state(&mut self, context: &mut Context, size: Size, text: &mut TextSystem) -> String {
+        // Declares once more so the view can hand over its state.
+        context.request_hot_save();
+        context.run(size, text, &mut self.0);
+        context.take_hot_state().unwrap_or_default()
+    }
+}
+
+/// An [`App`] and what drives it.
+struct AppView<A: App> {
+    app: A,
+    driver: AppDriver<A::Message>,
+}
+
+impl<A: App> Declare for AppView<A> {
+    fn frame(&mut self, context: &mut Context, size: Size, text: &mut TextSystem) -> FrameStats {
+        self.driver.frame(&mut self.app, context, size, text)
+    }
+
+    fn hot_state(&mut self, _: &mut Context, _: Size, _: &mut TextSystem) -> String {
+        self.app.save_state().unwrap_or_default()
+    }
+
+    fn invalidate(&mut self) {
+        self.driver.invalidate();
+    }
 }
 
 struct WindowState {
@@ -708,9 +815,9 @@ impl WindowState {
     }
 }
 
-struct Application<F> {
+struct Application {
     options: AppOptions,
-    view: F,
+    view: desktop::View,
     context: Context,
     state: Option<WindowState>,
     modifiers: ModifiersState,
@@ -757,10 +864,10 @@ struct Application<F> {
     started: Instant,
 }
 
-impl<F: FnMut(&mut Ui<'_>)> Application<F> {
+impl Application {
     fn new(
         options: AppOptions,
-        view: F,
+        view: desktop::View,
         state: WindowState,
         clipboard: Rc<RefCell<input::HostClipboard>>,
         wake: WakeHandle,
@@ -903,16 +1010,15 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
             return;
         };
         self.context.set_now(self.started.elapsed());
-        self.context.request_hot_save();
-        {
+        let text = {
             let shared = state.renderer.clone();
             let mut shared = shared.borrow_mut();
-            self.context.run(
+            self.view.hot_state(
+                &mut self.context,
                 self.logical_size,
                 shared.renderer.text_system(),
-                &mut self.view,
-            );
-        }
+            )
+        };
         let scale = state.window.scale_factor() as f32;
         let size = state.window.inner_size();
         let window = state
@@ -926,7 +1032,6 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
                 width: size.width as f32 / scale,
                 height: size.height as f32 / scale,
             });
-        let text = self.context.take_hot_state().unwrap_or_default();
         if let Err(error) = hot::save(window, &text) {
             eprintln!("hot state not saved: {error}");
         }
@@ -1099,24 +1204,11 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         });
         // Images decoded in the background since the last frame.
         self.images.deliver(&mut self.context);
-        let mut stats =
-            self.context
-                .run(logical_size, shared.renderer.text_system(), &mut self.view);
-        // A consumed click may make the view ask for something that itself
-        // needs another declaration: a button that switches the language or
-        // the theme. Declare until it settles, within reason, so the frame
-        // that is presented is never a stale one.
-        let mut pending = stats.activations;
-        for _ in 0..3 {
-            if pending == 0 {
-                break;
-            }
-            let again =
-                self.context
-                    .run(logical_size, shared.renderer.text_system(), &mut self.view);
-            pending = again.activations;
-            stats = merge(stats, again);
-        }
+        let stats = self.view.frame(
+            &mut self.context,
+            logical_size,
+            shared.renderer.text_system(),
+        );
         Self::check_families(
             &mut self.context,
             &mut self.families_seen,
@@ -1533,6 +1625,9 @@ impl<F: FnMut(&mut Ui<'_>)> Application<F> {
         match event {
             WindowEvent::CloseRequested => self.close_requested = true,
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+                if matches!(event, WindowEvent::ScaleFactorChanged { .. }) {
+                    self.view.invalidate();
+                }
                 self.accessibility_requested = true;
                 state.resize();
                 state.window.request_redraw();
@@ -1727,5 +1822,7 @@ fn merge(
         shaping: first.shaping + second.shaping,
         elements: first.elements + second.elements,
         element_bytes: first.element_bytes + second.element_bytes,
+        declared: first.declared || second.declared,
+        messages: first.messages + second.messages,
     }
 }

@@ -5,7 +5,7 @@ use crate::{
     collection::{CollectionInput, CollectionKind},
 };
 
-impl Ui<'_> {
+impl<'a, Msg: 'static> Ui<'a, Msg> {
     /// Fixed-height rows with bounded realization. State belongs to the app;
     /// transient row NodeIds are deliberately not stored in the model.
     #[track_caller]
@@ -44,7 +44,7 @@ impl Ui<'_> {
         model: &mut M,
         state: &mut ListState,
         options: VirtualListOptions,
-        row: impl FnMut(&mut Ui<'_>, &M, usize, bool),
+        row: impl FnMut(&mut Ui<'_, Msg>, &M, usize, bool),
     ) -> ListResponse {
         let key = self.next_key();
         self.collection(key, model, state, options, CollectionKind::List, row)
@@ -58,7 +58,7 @@ impl Ui<'_> {
         model: &mut M,
         state: &mut ListState,
         options: VirtualListOptions,
-        row: impl FnMut(&mut Ui<'_>, &M, usize, bool),
+        row: impl FnMut(&mut Ui<'_, Msg>, &M, usize, bool),
     ) -> ListResponse {
         let key = self.next_key();
         self.collection(key, model, state, options, CollectionKind::Tree, row)
@@ -446,6 +446,8 @@ impl Ui<'_> {
                                                 ));
                                             }
                                             ui.push(Element {
+                                                handler: None,
+                                                seq: 0,
                                                 key: WidgetKey::Named("$size".into()),
                                                 kind: Kind::Divider,
                                                 text: String::new(),
@@ -718,7 +720,7 @@ impl Ui<'_> {
         state: &mut ListState,
         options: VirtualListOptions,
         kind: CollectionKind,
-        mut row: impl FnMut(&mut Ui<'_>, &M, usize, bool),
+        mut row: impl FnMut(&mut Ui<'_, Msg>, &M, usize, bool),
     ) -> ListResponse {
         if let Err(message) = options.check(model.len()) {
             self.misuse(message.to_owned());
@@ -914,7 +916,7 @@ impl ColumnPlan {
     }
 
     /// The sideways scrollbar under the rows, beside the frozen columns.
-    fn scrollbar(&self, ui: &mut Ui<'_>, rtl: bool) {
+    fn scrollbar<Msg: 'static>(&self, ui: &mut Ui<'_, Msg>, rtl: bool) {
         if self.bar_height() == 0.0 {
             return;
         }
@@ -947,14 +949,17 @@ impl ColumnPlan {
     }
 }
 
+/// Declares one cell of a line: at a position, of a column, at a width.
+type SpreadCell<'c, Msg> = dyn FnMut(&mut Ui<'_, Msg>, usize, usize, f32) + 'c;
+
 /// One line of a grid: the frozen cells, then the window onto the scrolling
 /// ones. The header, the filter row and every body row use it, so they line up.
-fn spread(
-    ui: &mut Ui<'_>,
+fn spread<Msg: 'static>(
+    ui: &mut Ui<'_, Msg>,
     key: &str,
     height: f32,
     plan: &ColumnPlan,
-    cell: &mut dyn FnMut(&mut Ui<'_>, usize, usize, f32),
+    cell: &mut SpreadCell<'_, Msg>,
 ) {
     let line = Style::default().height(Length::Px(height)).gap(0.0);
     ui.row_at(key, line.clone(), |ui| {

@@ -1,5 +1,7 @@
 //! Stable identity, reconciliation, layout, input, and semantic metadata.
+#![forbid(unsafe_code)]
 mod animation;
+pub mod app;
 mod clipboard;
 mod collection;
 mod command;
@@ -34,14 +36,15 @@ mod window;
 pub use animation::{Animation, Easing, Effect, Keyframe, Repeat, Transform, Transition};
 pub use clipboard::Clip;
 pub use collection::{
-    CellEditor, CellValue, FILTER_DELAY, GridColumn, GridColumns, GridModel, GridState, ItemId,
-    ItemOrder, ListModel, ListResponse, ListState, ModelError, SortDirection, TreeItem, TreeModel,
-    VirtualListOptions, text_matches,
+    CellEditor, CellValue, FILTER_DELAY, GridColumn, GridColumns, GridModel, GridMsg, GridState,
+    ItemId, ItemOrder, ListModel, ListResponse, ListState, ModelError, SortDirection, TreeItem,
+    TreeModel, VirtualListOptions, text_matches,
 };
 pub use command::{Command, Shortcut, ShortcutKey};
 pub use rust_gui_scene::GradientStop;
 mod events;
-pub use controls::{AutocompleteResponse, MenuItem, NumberOptions};
+pub use app::{App, AppDriver, Component, Effects};
+pub use controls::{AutocompleteResponse, DockAction, MenuItem, NumberOptions};
 pub use dock::{
     DockArea, DockFloat, DockLayout, DockLayoutError, DockNode, DockPlace, DockTabs, DockTarget,
     DockWindow, DockWindowId, DockZone,
@@ -59,12 +62,14 @@ pub use panes::{
     Axis, PopoverOptions, PopoverResponse, SplitOptions, TOOLTIP_DELAY, Tab, TabsResponse,
 };
 pub use platform::{FileKind, FileRequest, Menu, MenuEntry, Notification, Tray};
-pub use property_grid::{PropertyGridOptions, PropertyGridResponse, PropertyGridState};
+pub use property_grid::{
+    PropertyGridOptions, PropertyGridResponse, PropertyGridState, PropertyMsg,
+};
 pub use reactive::{GraphNode, Memo, Signal, StateKind, Store};
 pub use rich_document::{
     Block, BlockKind, InlineRun, Mark, Marks, RichDocument, RichMotion, RichPosition,
 };
-pub use rich_editor::{RichEditorOptions, RichEditorResponse};
+pub use rich_editor::{RichEditorOptions, RichEditorResponse, RichOp};
 pub use rich_text::{RichRun, RichText};
 pub use rust_gui_scene::{FontFamily, TextSpan, TextStyle, TextWrap};
 pub use rust_gui_scene::{MonospaceMeasurer, TextMeasurer};
@@ -75,8 +80,8 @@ pub use style::{
 pub use stylesheet::{StyleSheet, StyleSheetError};
 pub use task::{Cancel, TaskSender, Tasks};
 pub use text_area::{
-    CodeEditorOptions, CodeEditorResponse, Diagnostic, EditorCommand, FindState, HighlightSpan,
-    Highlighter, Severity,
+    AreaOp as TextOp, CodeEditorOptions, CodeEditorResponse, Diagnostic, EditorCommand, FindState,
+    HighlightSpan, Highlighter, Severity,
 };
 pub use theme::{TOKENS, Theme};
 pub use toast::{Toast, ToastAction, ToastId, ToastKind, ToastSender};
@@ -93,5 +98,5 @@ pub use ui::{
     Button, ComboBox, DockOptions, DockPanel, DockResponse, Label, Properties, PropertyGrid,
     Response, TextInput, Ui, suggest,
 };
-pub use widget::{Component, CustomWidget, WidgetInput};
-pub use window::{ResizeEdge, WindowCommand, WindowInfo};
+pub use widget::{CustomWidget, WidgetInput};
+pub use window::{ResizeEdge, WindowCommand, WindowId, WindowInfo, WindowRequest};

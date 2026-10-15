@@ -5,7 +5,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-pub(crate) type View = Box<dyn FnMut(&mut Ui<'_>)>;
+pub(crate) type View = Box<dyn Declare>;
 type SendView = Box<dyn FnMut(&mut Ui<'_>) + Send>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -131,9 +131,9 @@ pub fn run_windows(graphics: GraphicsOptions, setup: impl FnOnce(DesktopHandle))
 }
 
 /// One window whose view need not be `Send`. Backs `run` and `run_with_wakeup`.
-pub(crate) fn run_single<F: FnMut(&mut Ui<'_>) + 'static>(
+pub(crate) fn run_single(
     options: AppOptions,
-    setup: impl FnOnce(WakeHandle) -> F,
+    setup: impl FnOnce(WakeHandle) -> View,
 ) -> Result<()> {
     diagnostics::checkpoint("process", None);
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
@@ -146,7 +146,7 @@ pub(crate) fn run_single<F: FnMut(&mut Ui<'_>) + 'static>(
     desktop.pending.push(Pending {
         key: WindowKey(1),
         options,
-        view: Box::new(view),
+        view,
         owner: None,
     });
     run(event_loop, desktop)
@@ -201,7 +201,7 @@ enum PointerNews {
 }
 
 struct Desktop {
-    windows: HashMap<WindowKey, Application<View>>,
+    windows: HashMap<WindowKey, Application>,
     pending: Vec<Pending>,
     /// Inspector window → inspected window.
     inspectors: HashMap<WindowKey, InspectorLink>,
@@ -557,7 +557,7 @@ impl Desktop {
                 view,
                 owner,
             } => {
-                self.open(event_loop, key, *options, view, owner);
+                self.open(event_loop, key, *options, Box::new(Closure(view)), owner);
             }
             WindowRequest::Close(key) => {
                 self.windows.remove(&key);
@@ -582,7 +582,7 @@ impl Desktop {
             } => self.pending.push(Pending {
                 key,
                 options: *options,
-                view,
+                view: Box::new(Closure(view)),
                 owner,
             }),
             WindowRequest::Close(key) => self.pending.retain(|pending| pending.key != key),
@@ -705,10 +705,10 @@ impl Desktop {
             response: InspectorResponse::default(),
         }));
         let view_shared = shared.clone();
-        let view: View = Box::new(move |ui| {
+        let view: View = Box::new(Closure(move |ui: &mut Ui<'_>| {
             let shared = &mut *view_shared.borrow_mut();
             shared.response = shared.inspector.ui(ui, &shared.model);
-        });
+        }));
         let key = self.allocate_key();
         if self.open(event_loop, key, options, view, None) {
             self.inspectors
@@ -759,7 +759,7 @@ impl Desktop {
         };
         target.set_overlay(overlay);
         if let Some(id) = response.focus
-            && target.context.action(id, Action::Focus)
+            && target.context.action(id, rust_gui_core::Action::Focus)
         {
             target.request_redraw();
         }

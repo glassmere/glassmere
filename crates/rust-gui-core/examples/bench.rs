@@ -1,6 +1,6 @@
 //! The four benchmarks the feature list names: a million-row table, a
 //! hundred-thousand-node tree, a multi-megabyte text file and hundreds of
-//! animated elements. Headless, so the numbers are the framework's own work
+//! animated elements; and an `App`'s batches that declare nothing. Headless, so the numbers are the framework's own work
 //! without a GPU, a font stack or a compositor in them.
 //!
 //! ```sh
@@ -8,11 +8,11 @@
 //! ```
 use rust_gui_core::Label;
 use rust_gui_core::{
-    CodeEditorOptions, Context, Easing, FrameStats, GridColumn, GridModel, GridState, ItemId,
-    Length, ListModel, ListState, MonospaceMeasurer, SortDirection, Style, TextDocument,
-    Transition, TreeItem, TreeModel, VirtualListOptions,
+    App, AppDriver, Button, CodeEditorOptions, Context, Easing, Effects, Event, FrameStats,
+    GridColumn, GridModel, GridState, ItemId, Length, ListModel, ListState, MonospaceMeasurer,
+    SortDirection, Style, TextDocument, Transition, TreeItem, TreeModel, Ui, VirtualListOptions,
 };
-use rust_gui_scene::{Color, Size};
+use rust_gui_scene::{Color, Point, Size};
 use std::time::{Duration, Instant};
 
 const WINDOW: Size = Size::new(1200.0, 800.0);
@@ -270,11 +270,60 @@ fn animation() -> Vec<Timing> {
     })]
 }
 
+/// A screenful of buttons whose hover and focus the view does not read.
+struct Buttons;
+
+impl App for Buttons {
+    type Message = usize;
+
+    fn update(&mut self, _: usize, _: &mut Effects<'_, usize>) {}
+
+    fn view(&self, ui: &mut Ui<'_, usize>) {
+        ui.keyed("buttons", |ui| {
+            ui.column(Style::default(), |ui| {
+                for index in 0..ANIMATED {
+                    ui.keyed(format!("button{index}"), |ui| {
+                        ui.button(Button::new(format!("Button {index}")).on_click(index));
+                    });
+                }
+            })
+        });
+    }
+}
+
+/// Batches with no input, and with the pointer moving over buttons nobody
+/// observes: neither declares.
+fn app() -> Vec<Timing> {
+    let mut app = Buttons;
+    let mut driver = AppDriver::new(|| true);
+    let mut context = Context::new();
+    let mut first = true;
+    let mut frame = |app: &mut Buttons, context: &mut Context| {
+        let stats = driver.frame(app, context, WINDOW, &mut MonospaceMeasurer);
+        assert_eq!(stats.declared, first, "only the first batch declares");
+        first = false;
+        stats
+    };
+    vec![
+        measure("app", "idle", RUNS, |_| frame(&mut app, &mut context)),
+        measure("app", "hover", RUNS, |run| {
+            context.event(Event::PointerMoved(Point {
+                x: 40.0,
+                y: (run % 20) as f32 * 30.0 + 10.0,
+            }));
+            frame(&mut app, &mut context)
+        }),
+    ]
+}
+
 fn main() {
     println!(
         "scenario,phase,mean_us,p95_us,shaping_us,elements,element_bytes,measures,paint_nodes,cache_hits"
     );
-    for timing in [table(), tree(), text(), animation()].into_iter().flatten() {
+    for timing in [table(), tree(), text(), animation(), app()]
+        .into_iter()
+        .flatten()
+    {
         println!("{}", timing.row());
     }
 }

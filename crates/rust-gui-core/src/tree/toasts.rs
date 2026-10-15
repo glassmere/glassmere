@@ -79,6 +79,7 @@ impl Context {
     pub fn dismiss_toast(&mut self, id: ToastId) {
         self.toast.queue.retain(|queued| queued.id != id);
         self.pending |= Dirty::PAINT;
+        self.view_stale = true;
     }
 
     /// How `ToastSender::send` wakes this context's window; hosts install it.
@@ -142,9 +143,12 @@ impl Context {
             }
         }
         if !paused {
+            let before = self.toast.queue.len();
             self.toast
                 .queue
                 .retain(|queued| queued.expires.is_none_or(|expires| expires > now));
+            // The toasts are declared, so one leaving declares again.
+            self.view_stale |= self.toast.queue.len() != before;
         }
         // After the leavers are gone, so that toasts moving up from the wait
         // start their time now and the next wake already knows about them.

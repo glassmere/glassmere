@@ -24,6 +24,7 @@ mod dock_input;
 mod drag_input;
 mod events;
 mod focus_input;
+mod handlers;
 mod image;
 mod measure;
 mod overlay_input;
@@ -116,6 +117,14 @@ struct Node {
     churn: u8,
     /// Parent-relative layout rectangle; layout animations start from the old one.
     layout_rect: Rect,
+    /// The slot of what this node sends, in the handler slab of the `App`
+    /// driving the context.
+    handler: Option<u32>,
+    /// Whether the view read this node's hover or focus when it last
+    /// declared it, and whether the declaration running now has. A change in
+    /// an observed state declares again; in any other it only repaints.
+    observed: std::cell::Cell<bool>,
+    observing: std::cell::Cell<bool>,
 }
 
 impl Node {
@@ -424,6 +433,39 @@ pub struct Context {
     resizing: bool,
     animating_nodes: Vec<NodeId>,
     ghosts: Vec<animation_state::Ghost>,
+    /// The handler slab of the `App` driving this context, typed by its
+    /// message; `None` for a closure view.
+    handlers: Option<Box<dyn std::any::Any>>,
+    /// What reconcile did to handlers, for the typed code to apply: the
+    /// declared handler each node now has, and the slots of removed nodes.
+    handler_moves: Vec<(NodeId, Option<u32>)>,
+    freed_handlers: Vec<u32>,
+    /// Activations, edits and submissions in the order they arrived, beside
+    /// the maps the old `Response` path reads.
+    queued: Vec<(NodeId, Queued)>,
+    /// Elements whose hover or focus the view read before their node existed.
+    observed_new: std::cell::RefCell<Vec<u32>>,
+    /// Something the view reads may have changed since it last declared.
+    view_stale: bool,
+}
+
+/// What reached a node, in the order of `Context::queued`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Queued {
+    Click,
+    Update,
+    Submit,
+    Area,
+}
+
+/// Who is hovered, focused and pressed, compared from frame to frame for the
+/// nodes the view observed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Interaction {
+    hovered: Option<NodeId>,
+    focused: Option<NodeId>,
+    pressed: Option<NodeId>,
+    keyboard: Option<NodeId>,
 }
 
 impl Default for Context {
@@ -459,6 +501,9 @@ impl Default for Context {
             hint_width: 0.0,
             churn: 0,
             layout_rect: Rect::default(),
+            handler: None,
+            observed: std::cell::Cell::new(false),
+            observing: std::cell::Cell::new(false),
             control: Control::None,
             editor: None,
             changed: Dirty::all(),
@@ -551,6 +596,12 @@ impl Default for Context {
             resizing: false,
             animating_nodes: Vec::new(),
             ghosts: Vec::new(),
+            handlers: None,
+            handler_moves: Vec::new(),
+            freed_handlers: Vec::new(),
+            queued: Vec::new(),
+            observed_new: std::cell::RefCell::new(Vec::new()),
+            view_stale: true,
         }
     }
 }
@@ -580,6 +631,7 @@ impl Context {
             node.paint_cache = None;
         }
         self.pending |= Dirty::STYLE | Dirty::PAINT | Dirty::ACCESSIBILITY;
+        self.view_stale = true;
     }
     pub fn stylesheet(&self) -> &StyleSheet {
         &self.stylesheet
@@ -645,6 +697,7 @@ impl Context {
         };
         if changed {
             self.pending |= Dirty::PAINT;
+            self.view_stale = true;
         }
         changed
     }
@@ -697,6 +750,7 @@ impl Context {
             node.paint_cache = None;
         }
         self.pending |= Dirty::all();
+        self.view_stale = true;
     }
 
     pub fn direction(&self) -> crate::Direction {
@@ -717,6 +771,7 @@ impl Context {
         self.set_theme(theme);
         self.style_warnings.clear();
         self.pending |= Dirty::PAINT;
+        self.view_stale = true;
     }
     /// Unknown class names requested since the stylesheet was installed.
     /// What this window's tree, scene and caches occupy. Walks every node,
@@ -786,6 +841,7 @@ impl Context {
         if self.window_info != info {
             self.window_info = info;
             self.pending |= Dirty::PAINT;
+            self.view_stale = true;
         }
     }
 
@@ -951,11 +1007,13 @@ impl Context {
         self.bindings.insert(id.into(), shortcut);
         self.pending |= Dirty::PAINT;
         self.stats.activations += 1;
+        self.view_stale = true;
     }
 
     pub fn clear_bindings(&mut self) {
         self.bindings.clear();
         self.stats.activations += 1;
+        self.view_stale = true;
     }
 
     /// What the user bound a command to, when anything.
@@ -1005,9 +1063,25 @@ impl Context {
     }
 
     /// One more element, with the bytes its key and text carry.
-    pub(crate) fn count_element(&self, bytes: usize) {
-        self.declared.set(self.declared.get() + 1);
+    /// Returns which element of the declaration it is, from 1.
+    pub(crate) fn count_element(&self, bytes: usize) -> u32 {
+        let count = self.declared.get() + 1;
+        self.declared.set(count);
         self.declared_bytes.set(self.declared_bytes.get() + bytes);
+        count as u32
+    }
+
+    /// The view read this node's hover or focus.
+    pub(crate) fn observe_node(&self, id: NodeId) {
+        if let Some(node) = self.nodes.get(&id) {
+            node.observing.set(true);
+        }
+    }
+
+    /// The view read the hover or focus of an element whose node does not
+    /// exist yet; it is observed from the moment it is created.
+    pub(crate) fn observe_element(&self, seq: u32) {
+        self.observed_new.borrow_mut().push(seq);
     }
 
     pub(crate) fn count_skipped(&self) {

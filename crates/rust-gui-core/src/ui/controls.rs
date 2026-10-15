@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Length, MenuItem, controls::slider_value, editor::single_line};
+use crate::{Length, MenuItem, app::Handler, controls::slider_value, editor::single_line};
 use std::ops::RangeInclusive;
 
 /// What makes a text field a number or autocomplete field.
@@ -13,7 +13,7 @@ pub(super) struct FieldExtra {
     pub draft: bool,
 }
 
-impl Ui<'_> {
+impl<'a, M: 'static> Ui<'a, M> {
     #[track_caller]
     pub(super) fn take_update(&mut self, key: &WidgetKey, kind: Kind) -> Option<ControlUpdate> {
         let id = self.context.child(self.parent, key, kind)?;
@@ -29,8 +29,10 @@ impl Ui<'_> {
         text: String,
         style: Style,
         control: Control,
-    ) -> Response {
+    ) -> Response<'a> {
         self.push(Element {
+            handler: None,
+            seq: 0,
             key,
             kind,
             text,
@@ -47,18 +49,60 @@ impl Ui<'_> {
     /// whole of it, and [`TextInput::new`] carries a placeholder or a style.
     /// The label is what a screen reader announces, not what is drawn.
     #[track_caller]
-    pub fn text_input(&mut self, input: impl Into<TextInput>, value: &mut String) -> Response {
+    pub fn text_input(
+        &mut self,
+        input: impl Into<TextInput<M>>,
+        value: &mut String,
+    ) -> Response<'a> {
         let input = input.into();
         let key = self.next_key();
         let style = input.style.unwrap_or_else(Self::field_style);
-        self.text_field(
+        let response = self.text_field(
             key,
             input.label,
             value,
             &input.placeholder,
             style,
             FieldExtra::default(),
-        )
+        );
+        if let Some(submit) = input.on_submit {
+            self.set_handler(Handler::Field {
+                change: None,
+                submit: Some(submit),
+            });
+        }
+        response
+    }
+
+    /// A single-line text field showing `value`: an edit sends
+    /// `on_change(text)`, and Enter what [`TextInput::on_submit`] names.
+    #[track_caller]
+    pub fn text_input_msg(
+        &mut self,
+        input: impl Into<TextInput<M>>,
+        value: &str,
+        on_change: impl Fn(String) -> M + 'static,
+    ) -> Response<'a> {
+        let input = input.into();
+        let key = self.next_key();
+        let style = input.style.unwrap_or_else(Self::field_style);
+        let mut shown = value.to_owned();
+        let response = self.text_field(
+            key,
+            input.label,
+            &mut shown,
+            &input.placeholder,
+            style,
+            FieldExtra::default(),
+        );
+        self.set_handler(Handler::Field {
+            change: Some(Box::new(move |update| match update {
+                ControlUpdate::Text(text) => Some(on_change(single_line(&text))),
+                _ => None,
+            })),
+            submit: input.on_submit,
+        });
+        response
     }
 
     /// The look of a default text field.
@@ -82,7 +126,7 @@ impl Ui<'_> {
         placeholder: &str,
         mut style: Style,
         extra: FieldExtra,
-    ) -> Response {
+    ) -> Response<'a> {
         let mut changed = false;
         if let Some(ControlUpdate::Text(text)) = self.take_update(&key, Kind::TextInput) {
             changed = *value != text;
@@ -95,6 +139,8 @@ impl Ui<'_> {
         }
         style.wrap = rust_gui_scene::TextWrap::None;
         let mut response = self.push(Element {
+            handler: None,
+            seq: 0,
             key,
             kind: Kind::TextInput,
             text: String::new(),
@@ -119,10 +165,26 @@ impl Ui<'_> {
     /// A checkbox. The label is both what is drawn and what a screen reader
     /// announces.
     #[track_caller]
-    pub fn checkbox(&mut self, label: impl Into<String>, checked: &mut bool) -> Response {
+    pub fn checkbox(&mut self, label: impl Into<String>, checked: &mut bool) -> Response<'a> {
         let label = label.into();
         let shown = label.clone();
         self.checkbox_shown(label, &shown, checked)
+    }
+
+    /// A checkbox showing `checked`; a click sends `on_toggle(!checked)`.
+    #[track_caller]
+    pub fn checkbox_msg(
+        &mut self,
+        label: impl Into<String>,
+        checked: bool,
+        on_toggle: impl Fn(bool) -> M,
+    ) -> Response<'a> {
+        let label = label.into();
+        let shown = label.clone();
+        let mut shown_checked = checked;
+        let response = self.checkbox_shown(label, &shown, &mut shown_checked);
+        self.set_handler(Handler::Message(on_toggle(!checked)));
+        response
     }
 
     /// A checkbox whose visible text differs from its accessible label, for
@@ -133,7 +195,7 @@ impl Ui<'_> {
         label: impl Into<String>,
         shown: &str,
         checked: &mut bool,
-    ) -> Response {
+    ) -> Response<'a> {
         let key = self.next_key();
         let label = label.into();
         let id = self.context.child(self.parent, &key, Kind::Checkbox);
@@ -165,7 +227,7 @@ impl Ui<'_> {
         label: impl Into<String>,
         selected: &mut usize,
         option: usize,
-    ) -> Response {
+    ) -> Response<'a> {
         let key = self.next_key();
         let label = label.into();
         let id = self.context.child(self.parent, &key, Kind::Radio);
@@ -197,7 +259,7 @@ impl Ui<'_> {
         value: &mut f64,
         range: RangeInclusive<f64>,
         step: f64,
-    ) -> Response {
+    ) -> Response<'a> {
         let (min, max) = (*range.start(), *range.end());
         if !(min.is_finite() && max.is_finite() && min < max && step.is_finite() && step > 0.0) {
             self.misuse("slider requires finite ordered bounds and a positive step".to_owned());
@@ -232,6 +294,32 @@ impl Ui<'_> {
         response
     }
 
+    /// A slider showing `value` over `range`: a drag sends `on_change` of
+    /// the value it reaches, snapped to `step`.
+    #[track_caller]
+    pub fn slider_msg(
+        &mut self,
+        label: impl Into<String>,
+        value: f64,
+        range: RangeInclusive<f64>,
+        step: f64,
+        on_change: impl Fn(f64) -> M + 'static,
+    ) -> Response<'a> {
+        let (min, max) = (*range.start(), *range.end());
+        let mut shown = value;
+        let response = self.slider(label, &mut shown, range, step);
+        // A misused slider declared nothing to send from.
+        if min.is_finite() && max.is_finite() && min < max && step.is_finite() && step > 0.0 {
+            self.set_handler(Handler::Map(Box::new(move |update| match update {
+                ControlUpdate::Number(number) => {
+                    Some(on_change(slider_value(number, min, max, step)))
+                }
+                _ => None,
+            })));
+        }
+        response
+    }
+
     /// A drop-down over `items`, `*selected` being the one shown.
     /// `ui.combo_box("Theme", &mut choice, &items)` is the whole of it, and
     /// [`ComboBox::new`] carries a style.
@@ -241,7 +329,7 @@ impl Ui<'_> {
         combo: impl Into<ComboBox>,
         selected: &mut usize,
         items: &[&str],
-    ) -> Response {
+    ) -> Response<'a> {
         let combo = combo.into();
         let style = combo.style.unwrap_or_else(Self::field_style);
         let key = self.next_key();
@@ -264,6 +352,8 @@ impl Ui<'_> {
             Length::Percent(1.0),
         );
         let mut response = self.push(Element {
+            handler: None,
+            seq: 0,
             key,
             kind: Kind::ComboBox,
             text: format!("{}  ▾", items.get(*selected).copied().unwrap_or("—")),
@@ -321,6 +411,8 @@ impl Ui<'_> {
         let children =
             self.popup_children(&key, Kind::MenuButton, items, usize::MAX, true, popup_width);
         self.push(Element {
+            handler: None,
+            seq: 0,
             key,
             kind: Kind::MenuButton,
             text: text.into(),
@@ -354,28 +446,8 @@ impl Ui<'_> {
         else {
             return Vec::new();
         };
-        let mut child = Ui {
-            context: self.context,
-            parent: owner,
-            pending_key: None,
-            clicks: self.clicks,
-            elements: self.context.take_spare(),
-            keys: HashSet::new(),
-            declared: None,
-            sites: HashMap::new(),
-            updates: self.updates,
-            submitted: self.submitted,
-            warnings: self.warnings,
-            observed: self.observed,
-            theme_request: self.theme_request,
-            clipboard: self.clipboard,
-            redraw: self.redraw,
-            focus: self.focus,
-            host: self.host,
-            layers: self.layers,
-            enabled: self.enabled,
-        };
         let selection = self.context.theme().selection;
+        let mut child = self.scope(owner);
         child.group(
             WidgetKey::named("$popup"),
             Kind::Popup,
@@ -390,6 +462,8 @@ impl Ui<'_> {
             |ui| {
                 for (index, item) in items.iter().enumerate() {
                     ui.push(Element {
+                        handler: None,
+                        seq: 0,
                         key: WidgetKey::Named(index.to_string()),
                         kind: Kind::Choice,
                         text: item.label.clone(),
@@ -416,5 +490,40 @@ impl Ui<'_> {
         );
         child.elements[0].control = Control::Popup { menu };
         child.elements
+    }
+}
+
+impl<'a, M: 'static> Ui<'a, M> {
+    /// One command declaration per window. Its shortcut and button share the
+    /// same enabled check and one-shot clicked response.
+    #[track_caller]
+    pub fn command_button(&mut self, command: &crate::Command) -> Response<'a> {
+        let command = self.command(command);
+        let response = self.button(
+            Button::new(&command.label)
+                .enabled(command.enabled)
+                .style(Style::button()),
+        );
+        self.set_control(Control::Command {
+            id: command.id,
+            shortcut: command.shortcut,
+            while_editing: command.while_editing,
+            scoped: command.scoped,
+        });
+        response
+    }
+
+    /// The command as the user's bindings leave it. `command_button` applies
+    /// this itself; menus and palettes go through it to show the shortcut the
+    /// user will actually press.
+    #[track_caller]
+    pub fn command(&self, command: &crate::Command) -> crate::Command {
+        match self.context.binding(&command.id) {
+            Some(shortcut) => crate::Command {
+                shortcut: shortcut.clone(),
+                ..command.clone()
+            },
+            None => command.clone(),
+        }
     }
 }

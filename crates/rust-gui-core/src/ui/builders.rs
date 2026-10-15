@@ -35,21 +35,43 @@ impl Label {
     }
 }
 
-/// A button. `ui.button("Save")` is the short form of `Button::new("Save")`.
-#[derive(Clone, Debug, Default)]
-pub struct Button {
+/// A button. `ui.button("Save")` is the short form of `Button::new("Save")`,
+/// and `Button::new("Save").on_click(Msg::Save)` sends a message when it is
+/// clicked.
+#[derive(Clone, Debug)]
+pub struct Button<M = ()> {
     pub(crate) text: String,
     pub(crate) style: Option<Style>,
     pub(crate) enabled: bool,
+    pub(crate) on_click: Option<M>,
 }
 
-impl Button {
+impl<M> Default for Button<M> {
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            style: None,
+            enabled: false,
+            on_click: None,
+        }
+    }
+}
+
+impl<M> Button<M> {
     pub fn new(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
             style: None,
             enabled: true,
+            on_click: None,
         }
+    }
+
+    /// The message a click sends: by pointer, keyboard, touch or assistive
+    /// technology alike.
+    pub fn on_click(mut self, message: M) -> Self {
+        self.on_click = Some(message);
+        self
     }
 
     /// Replaces the default style, which is `Style::button()`.
@@ -69,21 +91,35 @@ impl Button {
 /// A single-line text field. `ui.text_input("Name", &mut name)` is the short
 /// form of `TextInput::new("Name")`; the string it edits stays a separate
 /// argument, so the builder can be reused and the borrow ends with the call.
-#[derive(Clone, Debug, Default)]
-pub struct TextInput {
+#[derive(Clone, Debug)]
+pub struct TextInput<M = ()> {
     pub(crate) label: String,
     pub(crate) placeholder: String,
     pub(crate) style: Option<Style>,
+    pub(crate) on_submit: Option<M>,
 }
 
-impl TextInput {
+impl<M> Default for TextInput<M> {
+    fn default() -> Self {
+        Self::new("")
+    }
+}
+
+impl<M> TextInput<M> {
     /// The label is what a screen reader announces, not what is drawn.
     pub fn new(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
             placeholder: String::new(),
             style: None,
+            on_submit: None,
         }
+    }
+
+    /// The message Enter sends.
+    pub fn on_submit(mut self, message: M) -> Self {
+        self.on_submit = Some(message);
+        self
     }
 
     /// Greyed text shown while the field is empty.
@@ -126,26 +162,26 @@ impl ComboBox {
 /// is its text, so `ui.button("Save")` and `ui.button(Button::new("Save"))`
 /// are the same call.
 macro_rules! from_text {
-    ($type:ty) => {
-        impl From<&str> for $type {
+    ($type:ident $(<$message:ident>)?) => {
+        impl$(<$message>)? From<&str> for $type$(<$message>)? {
             fn from(text: &str) -> Self {
                 Self::new(text)
             }
         }
 
-        impl From<String> for $type {
+        impl$(<$message>)? From<String> for $type$(<$message>)? {
             fn from(text: String) -> Self {
                 Self::new(text)
             }
         }
 
-        impl From<&String> for $type {
+        impl$(<$message>)? From<&String> for $type$(<$message>)? {
             fn from(text: &String) -> Self {
                 Self::new(text.as_str())
             }
         }
 
-        impl From<std::borrow::Cow<'_, str>> for $type {
+        impl$(<$message>)? From<std::borrow::Cow<'_, str>> for $type$(<$message>)? {
             fn from(text: std::borrow::Cow<'_, str>) -> Self {
                 Self::new(text.into_owned())
             }
@@ -154,6 +190,6 @@ macro_rules! from_text {
 }
 
 from_text!(Label);
-from_text!(Button);
-from_text!(TextInput);
+from_text!(Button<M>);
+from_text!(TextInput<M>);
 from_text!(ComboBox);

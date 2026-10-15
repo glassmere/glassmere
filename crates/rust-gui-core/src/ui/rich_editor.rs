@@ -2,7 +2,7 @@ use super::*;
 use crate::rich_editor::views;
 use crate::{Align, BlockKind, Length, Mark, RichDocument, RichEditorOptions, RichEditorResponse};
 
-impl Ui<'_> {
+impl<'a, M: 'static> Ui<'a, M> {
     /// A WYSIWYG editor over an app-owned `RichDocument`: wrapped paragraphs,
     /// headings, lists, quotes and code blocks with bold, italic, underline,
     /// strikethrough, inline code and links. Input is queued and applied
@@ -65,6 +65,8 @@ impl Ui<'_> {
             .radius(options.style.radius);
         style.background = options.style.background;
         self.push(Element {
+            handler: None,
+            seq: 0,
             key: WidgetKey::Named(key.into()),
             kind: Kind::RichEditor,
             text: String::new(),

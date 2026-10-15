@@ -82,8 +82,7 @@ impl Context {
         if let Some(source) = self.exported_drag.take()
             && self.nodes.contains_key(&source)
         {
-            self.updates
-                .insert(source, ControlUpdate::DragEnded(outcome));
+            self.queue_update(source, ControlUpdate::DragEnded(outcome));
             self.invalidate_paint(source);
         }
     }
@@ -112,7 +111,7 @@ impl Context {
                 DragPayload::Files(paths),
             ) => existing.extend(paths),
             (_, payload) => {
-                self.updates.insert(target, ControlUpdate::Drop(payload));
+                self.queue_update(target, ControlUpdate::Drop(payload));
             }
         }
         self.invalidate_paint(target);

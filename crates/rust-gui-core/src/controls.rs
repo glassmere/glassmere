@@ -171,8 +171,8 @@ impl NumberOptions {
 
 /// What `Ui::autocomplete` reports besides the field's response.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct AutocompleteResponse {
-    pub response: crate::Response,
+pub struct AutocompleteResponse<'a> {
+    pub response: crate::Response<'a>,
     /// Index of the suggestion taken this frame, in the list that was offered
     /// when it was taken. `value` already holds its text.
     pub picked: Option<usize>,
@@ -406,8 +406,9 @@ pub(crate) enum ControlUpdate {
     RichOps(Vec<crate::rich_editor::RichOp>),
 }
 
+/// What a drag in a dock did to its panels.
 #[derive(Clone, Debug)]
-pub(crate) enum DockAction {
+pub enum DockAction {
     Move {
         panel: String,
         target: crate::DockTarget,

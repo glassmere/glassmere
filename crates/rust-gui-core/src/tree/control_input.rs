@@ -39,17 +39,18 @@ impl Context {
             return false;
         }
         if old_text != editor.text {
-            self.updates
-                .insert(id, ControlUpdate::Text(editor.text.clone()));
+            let text = editor.text.clone();
             // Typing offers suggestions; nothing is highlighted, so Enter
             // still submits what was typed.
-            if matches!(
+            let suggests = matches!(
                 node.control,
                 Control::TextInput {
                     suggestions: Some(_),
                     ..
                 }
-            ) {
+            );
+            self.queue_update(id, ControlUpdate::Text(text));
+            if suggests {
                 self.popup = Some(PopupState {
                     owner: id,
                     highlighted: usize::MAX,
@@ -86,7 +87,7 @@ impl Context {
             return false;
         }
         *value = next;
-        self.updates.insert(id, ControlUpdate::Number(next));
+        self.queue_update(id, ControlUpdate::Number(next));
         self.pending |= Dirty::ACCESSIBILITY;
         self.invalidate_paint(id);
         true
@@ -232,7 +233,7 @@ impl Context {
             self.edit(owner, TextEdit::SelectAll);
             self.edit(owner, TextEdit::Insert(label));
         }
-        self.updates.insert(owner, ControlUpdate::Choice(index));
+        self.queue_update(owner, ControlUpdate::Choice(index));
         self.close_popup();
         true
     }
@@ -317,8 +318,7 @@ impl Context {
             Some(ControlUpdate::Number(queued)) => *queued,
             _ => 0.0,
         };
-        self.updates
-            .insert(id, ControlUpdate::Number(queued + steps));
+        self.queue_update(id, ControlUpdate::Number(queued + steps));
         true
     }
 
@@ -351,12 +351,12 @@ impl Context {
                         self.clicks.remove(&sibling);
                     }
                 }
-                self.clicks.insert(id);
+                self.queue_click(id);
                 self.invalidate_paint(id);
                 true
             }
             _ => {
-                self.clicks.insert(id);
+                self.queue_click(id);
                 self.invalidate_paint(id);
                 true
             }
@@ -571,7 +571,7 @@ impl Context {
                         Key::Delete => TextEdit::Delete { word: false },
                         Key::Escape => TextEdit::CancelComposition,
                         Key::Enter => {
-                            self.submitted.insert(id);
+                            self.queue_submit(id);
                             return Some(true);
                         }
                         _ => return None,
@@ -666,7 +666,7 @@ impl Context {
             {
                 self.edit(target, TextEdit::SelectAll);
                 self.edit(target, TextEdit::Insert(value.to_string()));
-                self.submitted.insert(target);
+                self.queue_submit(target);
                 Some(true)
             }
             Action::SetNumber(value) => Some(self.set_number(target, *value)),

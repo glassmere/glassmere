@@ -62,6 +62,19 @@ pub enum WindowCommand {
     Close,
 }
 
+/// A window `Effects::open_window` opened, for `App::view_window`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct WindowId(pub u64);
+
+/// A window to open: its title, its logical size, and the window it is modal
+/// over, if it is.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct WindowRequest {
+    pub title: String,
+    pub size: Option<rust_gui_scene::Size>,
+    pub modal_owner: Option<WindowId>,
+}
+
 /// What the host says about the window, for a view that draws its own frame.
 /// Everything here is of the last frame.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

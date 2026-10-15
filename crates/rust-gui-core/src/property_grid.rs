@@ -1,6 +1,11 @@
 use crate::Style;
 use std::collections::{HashMap, HashSet};
 
+/// What a property grid sends when the user changes it. A stub until the
+/// property grid sends messages.
+#[derive(Clone, Debug, PartialEq)]
+pub enum PropertyMsg {}
+
 /// What a property grid remembers between frames. The app owns it, so it can
 /// be saved with the rest of a workspace.
 #[derive(Clone, Debug, PartialEq)]

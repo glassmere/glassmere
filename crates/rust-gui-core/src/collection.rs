@@ -4,6 +4,11 @@ use std::{
     ops::Range,
 };
 
+/// What a grid sends when the user changes it. A stub until the grids send
+/// messages.
+#[derive(Clone, Debug, PartialEq)]
+pub enum GridMsg {}
+
 /// Application identity. Independent of a realized widget's short-lived NodeId.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ItemId(pub u64);

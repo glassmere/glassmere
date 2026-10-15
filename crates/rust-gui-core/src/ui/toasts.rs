@@ -24,7 +24,7 @@ fn accent(kind: ToastKind, info: Color) -> Color {
     }
 }
 
-impl Ui<'_> {
+impl<'a, M: 'static> Ui<'a, M> {
     /// Shows a short message in the bottom corner at the end of the reading
     /// direction. It leaves after its duration, which pauses while the
     /// pointer or the keyboard is on any toast. Four show at once and later

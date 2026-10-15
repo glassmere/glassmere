@@ -121,7 +121,7 @@ impl Context {
         match self.updates.get_mut(&id) {
             Some(ControlUpdate::RichOps(ops)) => ops.push(op),
             _ => {
-                self.updates.insert(id, ControlUpdate::RichOps(vec![op]));
+                self.queue_update(id, ControlUpdate::RichOps(vec![op]));
             }
         }
         if !vertical

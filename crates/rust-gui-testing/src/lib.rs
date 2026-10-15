@@ -1,52 +1,87 @@
 //! Headless harness, semantic finders and text snapshots for UI tests.
 use rust_gui_core::{
-    Action, Context, Event, FrameStats, Key, MonospaceMeasurer, NodeId, NodeSnapshot, TextEdit, Ui,
+    Action, App, AppDriver, Context, Event, FrameStats, Key, MonospaceMeasurer, NodeId,
+    NodeSnapshot, TextEdit, Ui,
 };
 use rust_gui_scene::{Color, Point, Primitive, Rect, Size};
-use std::path::Path;
+use std::{any::Any, path::Path};
 
 type View<S> = Box<dyn FnMut(&mut S, &mut Ui<'_>)>;
+
+/// What declares: a closure view, or an [`App`] and its driver.
+enum Runner<S> {
+    View(View<S>),
+    App {
+        /// The `AppDriver` of the app's message.
+        driver: Box<dyn Any>,
+        frame: fn(&mut S, &mut dyn Any, &mut Context, Size) -> FrameStats,
+    },
+}
 
 /// Owns application state and a view, declares through a real `Context` with
 /// synthetic text metrics, and drives it through the same input paths as a host.
 pub struct Harness<S> {
     state: S,
-    view: View<S>,
+    runner: Runner<S>,
     context: Context,
     measurer: MonospaceMeasurer,
     size: Size,
+    stats: FrameStats,
 }
 
 impl<S> Harness<S> {
     pub fn new(size: Size, state: S, view: impl FnMut(&mut S, &mut Ui<'_>) + 'static) -> Self {
+        Self::start(size, state, Runner::View(Box::new(view)))
+    }
+    fn start(size: Size, state: S, runner: Runner<S>) -> Self {
         let mut harness = Self {
             state,
-            view: Box::new(view),
+            runner,
             context: Context::new(),
             measurer: MonospaceMeasurer,
             size,
+            stats: FrameStats::default(),
         };
         harness.run();
         harness
     }
 
-    /// Declares once and, like the desktop host, again while activations were
-    /// consumed (at most three more times), so earlier labels reflect the new
-    /// state even when a click leads to a language or theme switch.
+    /// One batch. A closure view declares once and, like the desktop host,
+    /// again while activations were consumed (at most three more times), so
+    /// earlier labels reflect the new state even when a click leads to a
+    /// language or theme switch. An app updates on the batch's messages and
+    /// declares at most once.
     pub fn run(&mut self) -> FrameStats {
-        let mut stats = self.declare();
-        for _ in 0..3 {
-            if stats.activations == 0 {
-                break;
+        let stats = match &mut self.runner {
+            Runner::View(_) => {
+                let mut stats = self.declare();
+                for _ in 0..3 {
+                    if stats.activations == 0 {
+                        break;
+                    }
+                    stats = self.declare();
+                }
+                stats
             }
-            stats = self.declare();
-        }
+            Runner::App { driver, frame } => {
+                frame(&mut self.state, &mut **driver, &mut self.context, self.size)
+            }
+        };
+        self.stats = stats;
         stats
     }
     fn declare(&mut self) -> FrameStats {
-        let (state, view) = (&mut self.state, &mut self.view);
+        let Runner::View(view) = &mut self.runner else {
+            unreachable!("only a closure view declares directly")
+        };
+        let state = &mut self.state;
         self.context
             .run(self.size, &mut self.measurer, |ui| view(state, ui))
+    }
+
+    /// What the last batch did.
+    pub fn stats(&self) -> FrameStats {
+        self.stats
     }
 
     pub fn state(&self) -> &S {
@@ -415,6 +450,57 @@ fn hex(c: Color) -> String {
 
 /// Compares `actual` with `<dir>/<name>.snap`. `UPDATE_SNAPSHOTS` rewrites the
 /// file; a missing file is written and reported so it can be reviewed.
+impl<A: App> Harness<A> {
+    /// Runs `app` on a real `Context` with synthetic text metrics: each input
+    /// helper is one batch, which updates on its messages and declares the
+    /// view at most once.
+    pub fn app(size: Size, app: A) -> Self {
+        Self::start(
+            size,
+            app,
+            Runner::App {
+                driver: Box::new(AppDriver::<A::Message>::new(|| true)),
+                frame: app_frame::<A>,
+            },
+        )
+    }
+
+    /// Runs `update` with `message`, applies what it asked for, and declares
+    /// if the view needs to: one batch.
+    pub fn send(&mut self, message: A::Message) -> FrameStats {
+        if let Some(driver) = self.driver() {
+            driver.send(message);
+        }
+        self.run()
+    }
+    /// The app, to change outside `update`; `state()` reads it (`app` is
+    /// the constructor). The next batch declares the view.
+    pub fn app_mut(&mut self) -> &mut A {
+        if let Some(driver) = self.driver() {
+            driver.invalidate();
+        }
+        &mut self.state
+    }
+    fn driver(&mut self) -> Option<&mut AppDriver<A::Message>> {
+        match &mut self.runner {
+            Runner::App { driver, .. } => driver.downcast_mut(),
+            Runner::View(_) => None,
+        }
+    }
+}
+
+fn app_frame<A: App>(
+    app: &mut A,
+    driver: &mut dyn Any,
+    context: &mut Context,
+    size: Size,
+) -> FrameStats {
+    let driver = driver
+        .downcast_mut::<AppDriver<A::Message>>()
+        .expect("the driver of the app's message");
+    driver.frame(app, context, size, &mut MonospaceMeasurer)
+}
+
 pub fn assert_snapshot(dir: impl AsRef<Path>, name: &str, actual: &str) {
     let path = dir.as_ref().join(format!("{name}.snap"));
     let write = || {

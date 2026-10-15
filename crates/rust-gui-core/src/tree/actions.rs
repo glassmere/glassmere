@@ -4,8 +4,11 @@ use super::*;
 
 impl Context {
     pub fn action(&mut self, target: NodeId, action: Action) -> bool {
+        let focus = matches!(action, Action::Focus);
         let handled = self.handle_action(target, action);
         self.note_focus();
+        // Focus only repaints unless the view observed it.
+        self.view_stale |= handled && !focus;
         handled
     }
 

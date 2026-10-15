@@ -620,6 +620,7 @@ impl Context {
             x: center.x - node.bounds.x,
             y: center.y - node.bounds.y,
         };
+        self.note_update(area);
         let update = self
             .updates
             .entry(area)

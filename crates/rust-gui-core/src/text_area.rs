@@ -238,14 +238,15 @@ pub struct CodeEditorResponse {
 
 /// How far a click selects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Granularity {
+pub enum Granularity {
     Char,
     Word,
     Line,
 }
 
+/// One edit to a text area's document, as a message carries it.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum AreaOp {
+pub enum AreaOp {
     Insert(String),
     Backspace {
         word: bool,

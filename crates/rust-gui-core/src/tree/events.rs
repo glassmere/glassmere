@@ -91,6 +91,12 @@ impl Context {
         drop(pending);
         // Something is waiting for a declaration that will report it.
         self.stats.activations += 1;
+        self.view_stale = true;
+        for (id, _) in &arrived {
+            if !self.queued.contains(&(*id, Queued::Area)) {
+                self.queued.push((*id, Queued::Area));
+            }
+        }
         consumed
     }
 
@@ -224,6 +230,7 @@ impl Context {
         // from them.
         if self.travelled(&event) {
             self.note_focus();
+            self.view_stale = true;
             return true;
         }
         match event {
@@ -236,10 +243,19 @@ impl Context {
             } => {
                 let handled = self.touch_event(id, phase, position, force, pen);
                 self.note_focus();
+                self.view_stale |= handled;
                 return handled;
             }
-            Event::Zoom(factor) => return self.pointer_gesture(factor, 0.0),
-            Event::Rotate(radians) => return self.pointer_gesture(1.0, radians),
+            Event::Zoom(factor) => {
+                let handled = self.pointer_gesture(factor, 0.0);
+                self.view_stale |= handled;
+                return handled;
+            }
+            Event::Rotate(radians) => {
+                let handled = self.pointer_gesture(1.0, radians);
+                self.view_stale |= handled;
+                return handled;
+            }
             Event::FocusLost => self.stop_touches(),
             // Any other way of scrolling or pressing ends a fling.
             Event::PointerDown | Event::PointerDownWithShift | Event::Scroll { .. } => {
@@ -247,9 +263,19 @@ impl Context {
             }
             _ => {}
         }
+        let queued = self.queued.len();
         let handled = self.handle_event(event.clone());
         self.track_hover(&event);
         self.note_focus();
+        // Moving the pointer changes what is hovered, which only repaints
+        // unless the view observed it; holding something while moving it
+        // (a scrollbar, a drag) changes what the view reads.
+        let moved = matches!(event, Event::PointerMoved(_) | Event::PointerLeft)
+            && self.queued.len() == queued
+            && self.captured.is_none()
+            && self.drag.is_none()
+            && self.dock_drag.is_none();
+        self.view_stale |= handled && !moved;
         handled
     }
 

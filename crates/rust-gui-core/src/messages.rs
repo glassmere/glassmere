@@ -173,7 +173,7 @@ impl crate::Context {
     }
 }
 
-impl crate::Ui<'_> {
+impl<'a, M: 'static> crate::Ui<'a, M> {
     /// Installs or replaces the source of localized text after this
     /// declaration, or removes it with `None`. The host declares once more
     /// before presenting, so texts looked up earlier in the view change too.

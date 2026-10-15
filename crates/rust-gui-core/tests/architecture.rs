@@ -1,6 +1,6 @@
 use rust_gui_core::{
-    Action, Component, Context, CustomWidget, Event, Key, Length, MonospaceMeasurer, Role,
-    Semantics, Style, Ui,
+    Action, App, AppDriver, Component, Context, CustomWidget, Effects, Event, Key, Length,
+    MonospaceMeasurer, Role, Semantics, Style, Ui,
 };
 use rust_gui_core::{Button, Label};
 use rust_gui_scene::{Color, Point, Primitive, Rect, Size};
@@ -241,37 +241,99 @@ fn cached_interaction_and_scroll_paint_match_fresh_paint() {
     );
 }
 
+#[derive(Clone)]
+enum CounterMessage {
+    Increment,
+}
+
 struct CounterComponent {
     count: usize,
 }
+
 impl Component for CounterComponent {
-    fn ui(&mut self, ui: &mut Ui<'_>) {
-        if ui
-            .keyed("increment", |ui| ui.button(format!("Count {}", self.count)))
-            .clicked()
-        {
-            self.count += 1;
+    type Message = CounterMessage;
+
+    fn update(&mut self, message: CounterMessage, _effects: &mut Effects<'_, CounterMessage>) {
+        match message {
+            CounterMessage::Increment => self.count += 1,
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, CounterMessage>) {
+        ui.keyed("increment", |ui| {
+            ui.button(
+                Button::new(format!("Count {}", self.count)).on_click(CounterMessage::Increment),
+            )
+        });
+    }
+}
+
+#[derive(Clone)]
+enum PairMessage {
+    A(CounterMessage),
+    B(CounterMessage),
+}
+
+struct Pair {
+    a: CounterComponent,
+    b: CounterComponent,
+    swapped: bool,
+}
+
+impl App for Pair {
+    type Message = PairMessage;
+
+    fn update(&mut self, message: PairMessage, effects: &mut Effects<'_, PairMessage>) {
+        match message {
+            PairMessage::A(message) => self.a.update(message, &mut effects.map(PairMessage::A)),
+            PairMessage::B(message) => self.b.update(message, &mut effects.map(PairMessage::B)),
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, PairMessage>) {
+        let a = |ui: &mut Ui<'_, PairMessage>| {
+            ui.keyed("a", |ui| {
+                ui.component(Style::default(), &self.a, PairMessage::A)
+            });
+        };
+        let b = |ui: &mut Ui<'_, PairMessage>| {
+            ui.keyed("b", |ui| {
+                ui.component(Style::default(), &self.b, PairMessage::B)
+            });
+        };
+        if self.swapped {
+            b(ui);
+            a(ui);
+        } else {
+            a(ui);
+            b(ui);
         }
     }
 }
 
 #[test]
 fn component_scopes_keep_application_state_and_child_identity_separate() {
-    let mut a = CounterComponent { count: 0 };
-    let mut b = CounterComponent { count: 10 };
+    let mut app = Pair {
+        a: CounterComponent { count: 0 },
+        b: CounterComponent { count: 10 },
+        swapped: false,
+    };
+    let mut driver = AppDriver::new(|| true);
     let mut context = Context::new();
-    frame(&mut context, |ui| {
-        ui.keyed("a", |ui| ui.component(Style::default(), &mut a));
-        ui.keyed("b", |ui| ui.component(Style::default(), &mut b));
-    });
+    let size = Size::new(400.0, 400.0);
+    driver.frame(&mut app, &mut context, size, &mut MonospaceMeasurer);
     let target = context.find(&["a", "increment"]).unwrap();
     context.action(target, Action::Activate);
-    frame(&mut context, |ui| {
-        ui.keyed("b", |ui| ui.component(Style::default(), &mut b));
-        ui.keyed("a", |ui| ui.component(Style::default(), &mut a));
-    });
-    assert_eq!((a.count, b.count), (1, 10));
+    app.swapped = true;
+    let stats = driver.frame(&mut app, &mut context, size, &mut MonospaceMeasurer);
+    assert_eq!((stats.messages, stats.declared), (1, true));
+    assert_eq!((app.a.count, app.b.count), (1, 10));
     assert_eq!(context.find(&["a", "increment"]), Some(target));
+    assert_eq!(
+        context.node(target).unwrap().semantics.label,
+        "Count 1",
+        "the one declaration after the click already shows its result"
+    );
 }
 
 fn custom_button(color: Color) -> CustomWidget {
@@ -349,11 +411,11 @@ fn custom_widgets_cannot_pop_the_host_clip() {
 #[test]
 fn a_nonfocusable_custom_button_remains_pointer_activatable() {
     let mut context = Context::new();
-    let view = |ui: &mut Ui<'_>| {
+    fn view<'a>(ui: &mut Ui<'a>) -> rust_gui_core::Response<'a> {
         let mut widget = custom_button(Color::WHITE);
         widget.semantics.focusable = false;
         ui.keyed("custom", |ui| ui.custom(Style::default(), widget))
-    };
+    }
     frame(&mut context, |ui| {
         view(ui);
     });

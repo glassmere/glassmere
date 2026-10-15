@@ -4,7 +4,7 @@ use crate::{
 };
 use rust_gui_scene::Color;
 
-impl Ui<'_> {
+impl<'a, M: 'static> Ui<'a, M> {
     /// Attaches hover help to the previously declared widget. It appears after a
     /// short dwell and doubles as the widget's accessible description.
     #[track_caller]
@@ -22,7 +22,7 @@ impl Ui<'_> {
         &mut self,
         selected: &mut usize,
         tabs: &[Tab],
-        content: impl FnOnce(&mut Ui<'_>, usize),
+        content: impl FnOnce(&mut Ui<'_, M>, usize),
     ) -> TabsResponse {
         self.tabs_with(selected, tabs, false, |_, _| {}, content)
     }
@@ -35,8 +35,8 @@ impl Ui<'_> {
         selected: &mut usize,
         tabs: &[Tab],
         fill: bool,
-        strip_extra: impl FnOnce(&mut Ui<'_>, usize),
-        content: impl FnOnce(&mut Ui<'_>, usize),
+        strip_extra: impl FnOnce(&mut Ui<'_, M>, usize),
+        content: impl FnOnce(&mut Ui<'_, M>, usize),
     ) -> TabsResponse {
         let key = self.next_key();
         let old = *selected;
@@ -76,6 +76,8 @@ impl Ui<'_> {
                         for (index, tab) in tabs.iter().enumerate() {
                             let active = index == current;
                             ui.push(Element {
+                                handler: None,
+                                seq: 0,
                                 key: WidgetKey::Named(index.to_string()),
                                 kind: Kind::Tab,
                                 text: tab.label.clone(),
@@ -164,8 +166,8 @@ impl Ui<'_> {
         fraction: &mut f32,
         axis: Axis,
         options: SplitOptions,
-        first: impl FnOnce(&mut Ui<'_>),
-        second: impl FnOnce(&mut Ui<'_>),
+        first: impl FnOnce(&mut Ui<'_, M>),
+        second: impl FnOnce(&mut Ui<'_, M>),
     ) {
         let key = self.next_key();
         let kind = match axis {
@@ -220,6 +222,8 @@ impl Ui<'_> {
                 first,
             );
             ui.push(Element {
+                handler: None,
+                seq: 0,
                 key: WidgetKey::Named("$divider".into()),
                 kind: Kind::Divider,
                 text: String::new(),
@@ -351,7 +355,7 @@ impl Ui<'_> {
         &mut self,
         items: &[MenuItem],
         style: Style,
-        content: impl FnOnce(&mut Ui<'_>),
+        content: impl FnOnce(&mut Ui<'_, M>),
     ) -> Option<usize> {
         let key = self.next_key();
         let choice = match self.take_update(&key, Kind::ContextArea) {
@@ -392,7 +396,7 @@ impl Ui<'_> {
         &mut self,
         open: &mut bool,
         options: PopoverOptions,
-        content: impl FnOnce(&mut Ui<'_>),
+        content: impl FnOnce(&mut Ui<'_, M>),
     ) -> PopoverResponse {
         let key = self.next_key();
         let Some(anchor) = self.declared.and_then(|index| self.elements.get(index)) else {
@@ -422,34 +426,17 @@ impl Ui<'_> {
         if panel.padding == 0.0 {
             panel.padding = 12.0;
         }
-        let mut child = Ui {
-            context: self.context,
-            parent: popover_id,
-            pending_key: None,
-            clicks: self.clicks,
-            elements: self.context.take_spare(),
-            keys: HashSet::new(),
-            declared: None,
-            sites: HashMap::new(),
-            updates: self.updates,
-            submitted: self.submitted,
-            warnings: self.warnings,
-            observed: self.observed,
-            theme_request: self.theme_request,
-            clipboard: self.clipboard,
-            redraw: self.redraw,
-            focus: self.focus,
-            host: self.host,
-            layers: self.layers,
-            enabled: self.enabled,
-        };
+        let enabled = self.enabled;
+        let mut child = self.scope(popover_id);
         content(&mut child);
         let element = Element {
+            handler: None,
+            seq: 0,
             key,
             kind: Kind::Popover,
             text: String::new(),
             style: panel,
-            enabled: self.enabled,
+            enabled,
             children: child.elements,
             custom: None,
             tooltip: None,

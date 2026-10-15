@@ -10,6 +10,7 @@ impl Context {
         {
             return false;
         }
+        self.note_update(owner);
         let update = self
             .updates
             .entry(owner)

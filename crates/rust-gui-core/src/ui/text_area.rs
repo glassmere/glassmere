@@ -150,7 +150,12 @@ fn compact() -> Style {
 }
 
 /// The find bar: query, options, match count and, optionally, replacement.
-fn find_bar(ui: &mut Ui<'_>, find: &mut FindState, document: &mut TextDocument, read_only: bool) {
+fn find_bar<M: 'static>(
+    ui: &mut Ui<'_, M>,
+    find: &mut FindState,
+    document: &mut TextDocument,
+    read_only: bool,
+) {
     let input = |width| Style {
         width: Length::Px(width),
         height: Length::Px(32.0),
@@ -239,7 +244,7 @@ fn find_bar(ui: &mut Ui<'_>, find: &mut FindState, document: &mut TextDocument, 
     );
 }
 
-impl Ui<'_> {
+impl<'a, M: 'static> Ui<'a, M> {
     /// A monospace, non-wrapping editor over an app-owned document. Only the
     /// visible lines are declared, shaped and painted. Input is queued as
     /// operations and applied here, so the document is never touched between
@@ -437,6 +442,8 @@ impl Ui<'_> {
         // Source code reads left to right whatever the UI direction is.
         style.direction = Some(crate::Direction::Ltr);
         self.push(Element {
+            handler: None,
+            seq: 0,
             key: WidgetKey::Named(key.into()),
             kind: Kind::TextArea,
             text: String::new(),

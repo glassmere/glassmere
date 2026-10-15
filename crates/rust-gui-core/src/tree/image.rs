@@ -58,6 +58,8 @@ impl Context {
             }
         }
         self.pending |= Dirty::PAINT;
+        // A background image is resolved while declaring.
+        self.view_stale = true;
         true
     }
 

@@ -2,7 +2,7 @@ use super::controls::FieldExtra;
 use super::*;
 use crate::{AutocompleteResponse, Length, MenuItem, NumberOptions, NumericValue};
 
-impl Ui<'_> {
+impl<'a, M: 'static> Ui<'a, M> {
     /// A text input that offers `suggestions` in a list below it while the
     /// user types. The app decides what matches: pass the entries for the
     /// current `value` each frame (see `suggest` for the simple case), from
@@ -16,7 +16,7 @@ impl Ui<'_> {
         label: impl Into<String>,
         value: &mut String,
         suggestions: &[S],
-    ) -> AutocompleteResponse {
+    ) -> AutocompleteResponse<'a> {
         let key = self.next_key();
         let id = self.context.child(self.parent, &key, Kind::TextInput);
         let mut picked = None;
@@ -80,7 +80,7 @@ impl Ui<'_> {
         label: impl Into<String>,
         value: &mut f64,
         options: NumberOptions,
-    ) -> Response {
+    ) -> Response<'a> {
         let label = label.into();
         let old = *value;
         *value = options.constrain(*value);
@@ -91,12 +91,13 @@ impl Ui<'_> {
         row.gap = 4.0;
         let mut result = Response::default();
         let key = self.next_key();
+        let context = self.context;
         self.group(key, Kind::Row, row, |ui| {
-            let child = |ui: &Ui<'_>, key: &str, kind| {
+            let child = |ui: &Ui<'_, M>, key: &str, kind| {
                 ui.context.child(ui.parent, &WidgetKey::named(key), kind)
             };
             let field = child(ui, "$field", Kind::TextInput);
-            let clicked = |ui: &Ui<'_>, key: &str| {
+            let clicked = |ui: &Ui<'_, M>, key: &str| {
                 child(ui, key, Kind::Button).is_some_and(|id| ui.clicks.contains(&id))
             };
             let mut steps = match ui.take_update(&WidgetKey::named("$field"), Kind::TextInput) {
@@ -142,18 +143,20 @@ impl Ui<'_> {
             let mut style = Self::field_style();
             style.width = Length::Auto;
             style.grow = 1.0;
-            result = ui.text_field(
-                WidgetKey::named("$field"),
-                label,
-                &mut text,
-                "",
-                style,
-                FieldExtra {
-                    number: Some(number),
-                    draft: drafting,
-                    ..FieldExtra::default()
-                },
-            );
+            result = ui
+                .text_field(
+                    WidgetKey::named("$field"),
+                    label,
+                    &mut text,
+                    "",
+                    style,
+                    FieldExtra {
+                        number: Some(number),
+                        draft: drafting,
+                        ..FieldExtra::default()
+                    },
+                )
+                .rebind(context);
             for (key, symbol, name, enabled) in [
                 (
                     "$less",
@@ -169,6 +172,8 @@ impl Ui<'_> {
                 ),
             ] {
                 ui.push(Element {
+                    handler: None,
+                    seq: 0,
                     key: WidgetKey::Named(key.into()),
                     kind: Kind::Button,
                     text: symbol.into(),
@@ -205,4 +210,134 @@ pub fn suggest<'a>(typed: &str, candidates: &[&'a str], limit: usize) -> Vec<&'a
         .take(limit)
         .copied()
         .collect()
+}
+
+impl<'a, M: 'static> Ui<'a, M> {
+    // The framework's own composite widgets name the parts they are made of:
+    // a number field's `$field` and its two steppers, a popup's `$popup`. That
+    // structure is fixed and internal, so it does not go through `Ui::keyed`.
+    // Each of these is the public method with a name given to it.
+
+    /// Names the next element declared, and hands the `Ui` back to declare it.
+    #[track_caller]
+    pub(crate) fn at(&mut self, key: impl Into<String>) -> &mut Self {
+        self.pending_key = Some(key.into());
+        self
+    }
+
+    #[track_caller]
+    pub(crate) fn label_keyed_at(&mut self, key: impl Into<String>, text: impl Into<String>) {
+        self.at(key).label(text.into());
+    }
+
+    #[track_caller]
+    pub(crate) fn label_at(
+        &mut self,
+        key: impl Into<String>,
+        text: impl Into<String>,
+        style: Style,
+    ) {
+        self.at(key).label(Label::new(text).style(style));
+    }
+
+    #[track_caller]
+    pub(crate) fn button_at(
+        &mut self,
+        key: impl Into<String>,
+        text: impl Into<String>,
+        enabled: bool,
+        style: Style,
+    ) -> Response<'a> {
+        self.at(key)
+            .button(Button::new(text).enabled(enabled).style(style))
+    }
+
+    #[track_caller]
+    pub(crate) fn text_input_at(
+        &mut self,
+        key: impl Into<String>,
+        label: impl Into<String>,
+        value: &mut String,
+        placeholder: &str,
+        style: Style,
+    ) -> Response<'a> {
+        self.at(key).text_input(
+            TextInput::new(label).placeholder(placeholder).style(style),
+            value,
+        )
+    }
+
+    #[track_caller]
+    pub(crate) fn combo_box_at(
+        &mut self,
+        key: impl Into<String>,
+        label: impl Into<String>,
+        selected: &mut usize,
+        items: &[&str],
+        style: Style,
+    ) -> Response<'a> {
+        self.at(key)
+            .combo_box(ComboBox::new(label).style(style), selected, items)
+    }
+
+    #[track_caller]
+    pub(crate) fn checkbox_at(
+        &mut self,
+        key: impl Into<String>,
+        label: impl Into<String>,
+        checked: &mut bool,
+    ) -> Response<'a> {
+        self.at(key).checkbox(label, checked)
+    }
+
+    #[track_caller]
+    pub(crate) fn column_at(
+        &mut self,
+        key: impl Into<String>,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_, M>),
+    ) {
+        self.at(key).column(style, content);
+    }
+
+    #[track_caller]
+    pub(crate) fn row_at(
+        &mut self,
+        key: impl Into<String>,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_, M>),
+    ) {
+        self.at(key).row(style, content);
+    }
+
+    #[track_caller]
+    pub(crate) fn container_at(
+        &mut self,
+        key: impl Into<String>,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_, M>),
+    ) {
+        self.at(key).container(style, content);
+    }
+
+    #[track_caller]
+    pub(crate) fn scroll_at(
+        &mut self,
+        key: impl Into<String>,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_, M>),
+    ) {
+        self.at(key).scroll(style, content);
+    }
+
+    #[track_caller]
+    pub(crate) fn focus_scope_at(
+        &mut self,
+        key: impl Into<String>,
+        scope: crate::FocusScope,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_, M>),
+    ) {
+        self.at(key).focus_scope(scope, style, content);
+    }
 }

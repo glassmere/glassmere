@@ -273,6 +273,11 @@ pub struct FrameStats {
     pub elements: usize,
     /// Bytes of keys and text those elements carried.
     pub element_bytes: usize,
+    /// Whether the view ran this frame. An `App` declares only when
+    /// something it reads may have changed; a closure view always does.
+    pub declared: bool,
+    /// Messages the batch delivered to `App::update`.
+    pub messages: usize,
 }
 
 /// What the framework is holding on the CPU. Counted by walking the tree, so

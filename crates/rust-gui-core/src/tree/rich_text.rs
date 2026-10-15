@@ -194,7 +194,7 @@ impl Context {
         if let Some(state) = self.nodes.get_mut(&id).and_then(|node| node.rich.as_mut()) {
             state.active = link;
         }
-        self.updates.insert(id, ControlUpdate::Choice(link));
+        self.queue_update(id, ControlUpdate::Choice(link));
         self.invalidate_paint(id);
     }
 

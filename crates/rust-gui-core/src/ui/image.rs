@@ -2,7 +2,7 @@ use super::*;
 use crate::{ImageOptions, Length};
 use rust_gui_scene::Image;
 
-impl Ui<'_> {
+impl<'a, M: 'static> Ui<'a, M> {
     /// A decoded image. It takes its natural size unless the style gives one;
     /// `ImageOptions::fit` decides how it fills a box of another shape.
     #[track_caller]
@@ -47,6 +47,8 @@ impl Ui<'_> {
             }
         }
         self.push(Element {
+            handler: None,
+            seq: 0,
             key,
             kind: Kind::Image,
             text: options.alt,

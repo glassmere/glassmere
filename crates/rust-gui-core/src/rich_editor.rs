@@ -40,15 +40,17 @@ pub struct RichEditorResponse {
     pub link_at_cursor: Option<String>,
 }
 
+/// How far a click in a rich editor selects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RichGranularity {
+pub enum RichGranularity {
     Char,
     Word,
     Block,
 }
 
+/// One edit to a rich editor's document, as a message carries it.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum RichOp {
+pub enum RichOp {
     Insert(String),
     Backspace {
         word: bool,

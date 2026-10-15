@@ -183,7 +183,7 @@ impl Context {
         let Some(owner) = node.parent.and_then(|strip| self.nodes[&strip].parent) else {
             return false;
         };
-        self.updates.insert(owner, ControlUpdate::Choice(index));
+        self.queue_update(owner, ControlUpdate::Choice(index));
         self.focus_control(tab);
         self.pending |= Dirty::ACCESSIBILITY;
         true
@@ -219,7 +219,7 @@ impl Context {
                     .children_by_key
                     .get(&WidgetKey::Named(format!("$close-{index}")))
                     .copied()?;
-                self.clicks.insert(close);
+                self.queue_click(close);
                 self.invalidate_paint(close);
                 return Some(true);
             }
@@ -279,8 +279,7 @@ impl Context {
         {
             *fraction = next;
         }
-        self.updates
-            .insert(owner, ControlUpdate::Number(f64::from(next)));
+        self.queue_update(owner, ControlUpdate::Number(f64::from(next)));
         self.pending |= Dirty::ACCESSIBILITY;
         self.invalidate_paint(divider);
         true
@@ -304,8 +303,7 @@ impl Context {
         if (next - current).abs() < 0.5 {
             return false;
         }
-        self.updates
-            .insert(sizer, ControlUpdate::Number(f64::from(next)));
+        self.queue_update(sizer, ControlUpdate::Number(f64::from(next)));
         true
     }
 
@@ -449,7 +447,7 @@ impl Context {
             let anchor = self.nodes[&popover].parent;
             let inside = hit.is_some_and(|hit| self.within(hit, popover) || Some(hit) == anchor);
             if !inside {
-                self.updates.insert(popover, ControlUpdate::Dismiss);
+                self.queue_update(popover, ControlUpdate::Dismiss);
                 self.invalidate_paint(popover);
                 self.pending |= Dirty::ACCESSIBILITY;
             }
@@ -477,7 +475,7 @@ impl Context {
         {
             return false;
         }
-        self.updates.insert(popover, ControlUpdate::Dismiss);
+        self.queue_update(popover, ControlUpdate::Dismiss);
         self.invalidate_paint(popover);
         self.pending |= Dirty::ACCESSIBILITY;
         true

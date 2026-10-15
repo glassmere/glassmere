@@ -1,7 +1,7 @@
 use super::*;
 use crate::RichText;
 
-impl Ui<'_> {
+impl<'a, M: 'static> Ui<'a, M> {
     /// A read-only block of styled runs that wraps as one paragraph. Returns
     /// the target of a link once when it is clicked or activated with Enter;
     /// arrow keys move between the links of a focused block.
@@ -17,6 +17,8 @@ impl Ui<'_> {
             _ => None,
         };
         self.push(Element {
+            handler: None,
+            seq: 0,
             key,
             kind: Kind::RichText,
             text: text.plain(),
