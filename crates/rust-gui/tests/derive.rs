@@ -1,8 +1,10 @@
 #![cfg(feature = "derive")]
 use rust_gui::{
-    Action, Color, Context, Event, Key, MonospaceMeasurer, NodeId, Point, Properties,
-    PropertyGridOptions, PropertyGridResponse, PropertyGridState, Role, Size, TextEdit, Ui,
+    Action, Color, Context, Effects, Event, Key, MonospaceMeasurer, NodeId, Point, Properties,
+    PropertyGridOptions, PropertyGridResponse, PropertyGridState, PropertyMsg, Role, Size,
+    TextEdit, Ui,
 };
+use rust_gui_testing::Harness;
 
 #[derive(Properties)]
 struct Shadow {
@@ -208,4 +210,123 @@ fn a_derived_struct_declares_grouped_typed_rows_bound_to_its_fields() {
     let anchor = app.find(&["row:Anchor", "$editor", "$value"]).unwrap();
     assert_eq!(app.click(anchor).changed, ["Anchor"]);
     assert_eq!(app.card.anchor, Anchor::Bottom);
+}
+
+#[derive(Properties)]
+#[allow(dead_code)]
+struct Lamp {
+    #[property(group = "Light", min = 0.0, max = 10.0, step = 0.5)]
+    brightness: f32,
+    color: Color,
+    #[property(choices("Warm", "Cool"))]
+    tone: usize,
+    #[property(name = "Label")]
+    text: String,
+    visible: bool,
+    #[property(readonly)]
+    id: u32,
+    #[property(skip)]
+    cache: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum Msg {
+    Grid(PropertyMsg),
+    Lamp(LampMsg),
+}
+
+struct LampApp {
+    state: PropertyGridState,
+    lamp: Lamp,
+    messages: Vec<Msg>,
+}
+
+impl rust_gui::App for LampApp {
+    type Message = Msg;
+
+    fn update(&mut self, message: Msg, _effects: &mut Effects<'_, Msg>) {
+        match &message {
+            Msg::Grid(grid) => self.state.apply(grid),
+            Msg::Lamp(lamp) => self.lamp.apply(lamp.clone()),
+        }
+        self.messages.push(message);
+    }
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        ui.property_grid_msg(
+            &self.state,
+            PropertyGridOptions::new("Lamp"),
+            Msg::Grid,
+            |grid| self.lamp.properties_msg(grid, Msg::Lamp),
+        );
+    }
+}
+
+fn lamp_app() -> Harness<LampApp> {
+    Harness::app(
+        Size::new(640.0, 1000.0),
+        LampApp {
+            state: PropertyGridState::default(),
+            lamp: Lamp {
+                brightness: 2.0,
+                color: Color::rgb(255, 255, 255),
+                tone: 0,
+                text: "Desk".into(),
+                visible: true,
+                id: 9,
+                cache: Vec::new(),
+            },
+            messages: Vec::new(),
+        },
+    )
+}
+
+/// The first node with this key whose path contains `within`.
+fn find_keyed_node(harness: &Harness<LampApp>, key: &str, within: &str) -> NodeId {
+    let context = harness.context();
+    let mut pending = vec![context.root()];
+    while let Some(id) = pending.pop() {
+        if context
+            .details(id)
+            .is_some_and(|details| details.key == key)
+            && harness.path(id).contains(within)
+        {
+            return id;
+        }
+        if let Some(node) = context.node(id) {
+            pending.extend(node.children);
+        }
+    }
+    panic!("no node keyed {key:?}");
+}
+
+#[test]
+fn a_derived_number_edit_sends_its_message_and_apply_stores_it() {
+    let mut harness = lamp_app();
+    let field = find_keyed_node(&harness, "$field", "row:Brightness");
+    harness.focus(field);
+    // The field shows "2.0" with the caret at the end; select it so the draft is "4".
+    harness.event(Event::Text(TextEdit::SelectAll));
+    harness.type_text("4");
+    let stats = harness.press(Key::Enter);
+    assert_eq!(stats.messages, 1);
+    assert_eq!(
+        harness.state().messages.last(),
+        Some(&Msg::Lamp(LampMsg::Brightness(4.0)))
+    );
+    assert_eq!(harness.state().lamp.brightness, 4.0);
+}
+
+#[test]
+fn a_derived_checkbox_click_sends_the_opposite_value() {
+    let mut harness = lamp_app();
+    let visible = harness.state().lamp.visible;
+    let checkbox = find_keyed_node(&harness, "$value", "row:Visible");
+    let stats = harness.click(checkbox);
+    assert_eq!(stats.messages, 1);
+    assert_eq!(
+        harness.state().messages.last(),
+        Some(&Msg::Lamp(LampMsg::Visible(!visible)))
+    );
+    assert_eq!(harness.state().lamp.visible, !visible);
 }

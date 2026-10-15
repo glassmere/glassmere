@@ -149,6 +149,9 @@ impl Context {
         }
         let previous = self.noted_focus;
         self.noted_focus = focused;
+        if let Some(old) = previous.filter(|old| Some(*old) != focused) {
+            self.queue_blur(old);
+        }
         let Some(new) = focused else {
             return;
         };

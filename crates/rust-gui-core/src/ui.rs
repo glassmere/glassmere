@@ -16,7 +16,7 @@ pub use fields::suggest;
 mod image;
 mod overlays;
 mod property_grid;
-pub use property_grid::{Properties, PropertyGrid};
+pub use property_grid::{Properties, PropertyGrid, PropertyGridMsg};
 mod areas;
 pub use areas::{AreaBuilder, DragSourceBuilder, DropTargetBuilder, GestureBuilder};
 mod dialog;

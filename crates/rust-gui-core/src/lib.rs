@@ -96,8 +96,8 @@ pub use tree::{
 };
 pub use ui::{
     AreaBuilder, Button, ComboBox, DockOptions, DockPanel, DockResponse, DragSourceBuilder,
-    DropTargetBuilder, GestureBuilder, Label, Properties, PropertyGrid, Response, TextInput, Ui,
-    suggest,
+    DropTargetBuilder, GestureBuilder, Label, Properties, PropertyGrid, PropertyGridMsg, Response,
+    TextInput, Ui, suggest,
 };
 pub use widget::{CustomWidget, WidgetBuilder, WidgetInput};
 pub use window::{ResizeEdge, WindowCommand, WindowId, WindowInfo, WindowRequest};

@@ -227,32 +227,7 @@ fn row(field: &syn::Field, options: &Options) -> syn::Result<Tokens> {
     }
     if numeric {
         let ty = &field.ty;
-        let integer = kind != "f64" && kind != "f32";
-        // Integers keep their own range unless a narrower one is given; all
-        // numbers travel through the grid as `f64`.
-        let min = match (&options.min, integer) {
-            (Some(min), _) => quote! { (#min) as f64 },
-            (None, true) => quote! { <#ty>::MIN as f64 },
-            (None, false) => quote! { f64::NEG_INFINITY },
-        };
-        let max = match (&options.max, integer) {
-            (Some(max), _) => quote! { (#max) as f64 },
-            (None, true) => quote! { <#ty>::MAX as f64 },
-            (None, false) => quote! { f64::INFINITY },
-        };
-        let step = match &options.step {
-            Some(step) => quote! { (#step) as f64 },
-            None => quote! { 1.0 },
-        };
-        let decimals = match (&options.decimals, integer) {
-            (Some(decimals), _) => quote! { .decimals((#decimals) as usize) },
-            (None, true) => quote! { .decimals(0) },
-            (None, false) => quote! {},
-        };
-        let suffix = options
-            .suffix
-            .as_ref()
-            .map(|suffix| quote! { .suffix(#suffix) });
+        let number = number_options(options, &kind);
         let default = options
             .default
             .as_ref()
@@ -261,11 +236,7 @@ fn row(field: &syn::Field, options: &Options) -> syn::Result<Tokens> {
         return Ok(quote! {
             let mut #value = self.#ident as f64;
             #default
-            if grid.number(
-                #name,
-                &mut #value,
-                ::rust_gui::NumberOptions::default().range(#min, #max).step(#step) #decimals #suffix,
-            ) {
+            if grid.number(#name, &mut #value, #number) {
                 self.#ident = #value as #ty;
             }
         });
@@ -324,8 +295,20 @@ fn expand(input: &DeriveInput) -> syn::Result<Tokens> {
             "Properties can be derived for structs with named fields",
         ));
     };
+    // The message form is generated only where every row can send its
+    // value: no flattened or custom editors, and no generics.
+    let message_form = input.generics.params.is_empty()
+        && fields.named.iter().all(|field| {
+            options(field)
+                .is_ok_and(|options| options.skip || (!options.flatten && options.with.is_none()))
+        });
+    let name = &input.ident;
+    let message = format_ident!("{}Msg", name);
     // Consecutive fields of one group share one `grid.group` call.
     let mut groups: Vec<(String, Vec<Tokens>)> = Vec::new();
+    let mut message_groups: Vec<(String, Vec<Tokens>)> = Vec::new();
+    let mut variants = Vec::new();
+    let mut arms = Vec::new();
     let mut current = String::new();
     for field in &fields.named {
         let options = options(field)?;
@@ -335,26 +318,228 @@ fn expand(input: &DeriveInput) -> syn::Result<Tokens> {
         if options.skip {
             continue;
         }
-        let row = row(field, &options)?;
-        match groups.last_mut() {
-            Some((group, rows)) if *group == current => rows.push(row),
-            _ => groups.push((current.clone(), vec![row])),
+        push_row(&mut groups, &current, row(field, &options)?);
+        if message_form {
+            let (carried, row) = message_row(field, &options, &message)?;
+            if let Some((variant, ident, ty)) = carried {
+                variants.push(quote! { #variant(#ty) });
+                arms.push(quote! { #message::#variant(__value) => self.#ident = __value, });
+            }
+            push_row(&mut message_groups, &current, row);
         }
     }
-    let body = groups.iter().map(|(group, rows)| {
-        if group.is_empty() {
-            quote! { #(#rows)* }
-        } else {
-            quote! { grid.group(#group, |grid| { #(#rows)* }); }
-        }
-    });
-    let name = &input.ident;
+    let body = bodies(&groups);
     let (implementation, types, predicates) = input.generics.split_for_impl();
-    Ok(quote! {
+    let mut output = quote! {
         impl #implementation ::rust_gui::Properties for #name #types #predicates {
             fn properties(&mut self, grid: &mut ::rust_gui::PropertyGrid<'_, '_>) {
                 #(#body)*
             }
         }
-    })
+    };
+    if message_form {
+        let message_body = bodies(&message_groups);
+        let doc = format!(
+            "What the property grid of `{name}` sends: one variant per editable property, with its new value."
+        );
+        let declares = format!(
+            "Declares the rows of `{name}` with messages: each edit sends the `{message}` of its property through `on`. Pass the result to `Ui::property_grid_msg`'s grid; `apply` stores what it sends."
+        );
+        output.extend(quote! {
+            #[doc = #doc]
+            #[derive(Clone, Debug, PartialEq)]
+            pub enum #message {
+                #(#variants,)*
+            }
+
+            impl #name {
+                /// Stores a change the property grid sent.
+                pub fn apply(&mut self, message: #message) {
+                    match message {
+                        #(#arms)*
+                    }
+                }
+
+                #[doc = #declares]
+                #[allow(unused_variables)]
+                pub fn properties_msg<M: 'static>(
+                    &self,
+                    grid: &mut ::rust_gui::PropertyGridMsg<'_, '_, M>,
+                    on: impl Fn(#message) -> M + 'static,
+                ) {
+                    let __on = ::std::rc::Rc::new(on);
+                    #(#message_body)*
+                }
+            }
+        });
+    }
+    Ok(output)
+}
+
+fn push_row(groups: &mut Vec<(String, Vec<Tokens>)>, current: &str, row: Tokens) {
+    match groups.last_mut() {
+        Some((group, rows)) if group.as_str() == current => rows.push(row),
+        _ => groups.push((current.to_owned(), vec![row])),
+    }
+}
+
+fn bodies(groups: &[(String, Vec<Tokens>)]) -> Vec<Tokens> {
+    groups
+        .iter()
+        .map(|(group, rows)| {
+            if group.is_empty() {
+                quote! { #(#rows)* }
+            } else {
+                quote! { grid.group(#group, |grid| { #(#rows)* }); }
+            }
+        })
+        .collect()
+}
+
+/// The `NumberOptions` a number field declares. Integers keep their own
+/// range unless a narrower one is given; all numbers travel through the grid
+/// as `f64`.
+fn number_options(options: &Options, kind: &str) -> Tokens {
+    let integer = kind != "f64" && kind != "f32";
+    let ty = format_ident!("{}", kind);
+    let min = match (&options.min, integer) {
+        (Some(min), _) => quote! { (#min) as f64 },
+        (None, true) => quote! { <#ty>::MIN as f64 },
+        (None, false) => quote! { f64::NEG_INFINITY },
+    };
+    let max = match (&options.max, integer) {
+        (Some(max), _) => quote! { (#max) as f64 },
+        (None, true) => quote! { <#ty>::MAX as f64 },
+        (None, false) => quote! { f64::INFINITY },
+    };
+    let step = match &options.step {
+        Some(step) => quote! { (#step) as f64 },
+        None => quote! { 1.0 },
+    };
+    let decimals = match (&options.decimals, integer) {
+        (Some(decimals), _) => quote! { .decimals((#decimals) as usize) },
+        (None, true) => quote! { .decimals(0) },
+        (None, false) => quote! {},
+    };
+    let suffix = options
+        .suffix
+        .as_ref()
+        .map(|suffix| quote! { .suffix(#suffix) });
+    quote! { ::rust_gui::NumberOptions::default().range(#min, #max).step(#step) #decimals #suffix }
+}
+
+/// A field's variant name: `corner_radius` becomes `CornerRadius`.
+fn variant_name(ident: &syn::Ident) -> syn::Ident {
+    let text = ident.to_string();
+    let camel: String = text
+        .trim_start_matches("r#")
+        .split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut characters = part.chars();
+            match characters.next() {
+                Some(first) => first.to_uppercase().chain(characters).collect::<String>(),
+                None => String::new(),
+            }
+        })
+        .collect();
+    format_ident!("{}", camel)
+}
+
+/// A message variant, the field it carries and the field's type.
+type Carried = (syn::Ident, syn::Ident, Type);
+
+/// The message form of one row. It declares the editor with a closure that
+/// sends the field's message variant, and returns that variant with the field
+/// and its type; a read-only row carries nothing.
+fn message_row(
+    field: &syn::Field,
+    options: &Options,
+    message: &syn::Ident,
+) -> syn::Result<(Option<Carried>, Tokens)> {
+    let ident = field.ident.as_ref().unwrap();
+    let ty = &field.ty;
+    let name = options
+        .name
+        .clone()
+        .unwrap_or_else(|| title(&ident.to_string()));
+    if options.readonly {
+        return Ok((
+            None,
+            quote! { grid.readonly(#name, ::std::format!("{}", self.#ident)); },
+        ));
+    }
+    let kind = match ty {
+        Type::Path(path) => path
+            .path
+            .segments
+            .last()
+            .map(|segment| segment.ident.to_string())
+            .unwrap_or_default(),
+        _ => String::new(),
+    };
+    let numeric = kind == "f64" || kind == "f32" || INTEGERS.contains(&kind.as_str());
+    let variant = variant_name(ident);
+    let send =
+        quote! { { let __on = __on.clone(); move |__value| (*__on)(#message::#variant(__value)) } };
+    let carried = Some((variant.clone(), ident.clone(), ty.clone()));
+    if !options.choices.is_empty() {
+        let choices = &options.choices;
+        let default = options
+            .default
+            .as_ref()
+            .map(|default| quote! { grid.default::<usize>(#default); });
+        return Ok((
+            carried,
+            quote! {
+                #default
+                grid.choice_with(#name, self.#ident, &[#(#choices),*], #send);
+            },
+        ));
+    }
+    if numeric {
+        let number = number_options(options, &kind);
+        let default = options
+            .default
+            .as_ref()
+            .map(|default| quote! { grid.default::<f64>((#default) as f64); });
+        let send = quote! { { let __on = __on.clone(); move |__value: f64| (*__on)(#message::#variant(__value as #ty)) } };
+        return Ok((
+            carried,
+            quote! {
+                #default
+                grid.number_with(#name, self.#ident as f64, #number, #send);
+            },
+        ));
+    }
+    let (row, default) = match kind.as_str() {
+        "bool" => (
+            quote! { grid.bool_with(#name, self.#ident, #send); },
+            options
+                .default
+                .as_ref()
+                .map(|default| quote! { grid.default::<bool>(#default); }),
+        ),
+        "String" => (
+            quote! { grid.text_with(#name, &self.#ident, #send); },
+            options.default.as_ref().map(
+                |default| quote! { grid.default::<::std::string::String>(::std::string::String::from(#default)); },
+            ),
+        ),
+        "Color" => (
+            quote! { grid.color_with(#name, self.#ident, #send); },
+            options
+                .default
+                .as_ref()
+                .map(|default| quote! { grid.default::<::rust_gui::Color>(#default); }),
+        ),
+        _ => {
+            return Err(Error::new_spanned(
+                &field.ty,
+                "no property editor for this type; add #[property(skip)], #[property(flatten)] for \
+                 a nested Properties struct, #[property(readonly)], or #[property(with = function)]",
+            ));
+        }
+    };
+    Ok((carried, quote! { #default #row }))
 }

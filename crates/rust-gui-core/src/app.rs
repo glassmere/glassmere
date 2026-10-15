@@ -8,8 +8,8 @@
 use crate::controls::ControlUpdate;
 use crate::{
     Cancel, Clip, Context, FileRequest, FrameStats, LocaleFormat, MessageSender, Messages,
-    Notification, Shortcut, TaskSender, Tasks, TextMeasurer, Theme, Toast, ToastAction, ToastId,
-    Ui, UiEvent, WindowCommand, WindowId, WindowRequest,
+    Notification, NumberOptions, Shortcut, TaskSender, Tasks, TextMeasurer, Theme, Toast,
+    ToastAction, ToastId, Ui, UiEvent, WindowCommand, WindowId, WindowRequest,
 };
 use rust_gui_scene::Size;
 use std::any::{Any, TypeId};
@@ -72,6 +72,14 @@ pub(crate) enum Handler<M> {
         change: Option<Box<dyn Fn(ControlUpdate) -> Option<M>>>,
         submit: Option<M>,
     },
+    /// A number field: a commit parses its draft in the context's locale and
+    /// sends `on` of the number when that differs from the declared one.
+    Number {
+        on: Box<dyn Fn(f64) -> M>,
+        options: Box<NumberOptions>,
+    },
+    /// A stepper button: steps the number field of its row by this many steps.
+    Step(f64),
 }
 
 impl<M: 'static> Handler<M> {
@@ -104,6 +112,14 @@ impl<M: 'static> Handler<M> {
                     out.extend(sent.into_iter().map(|message| f(message)));
                 }))
             }
+            Self::Number { on, options } => {
+                let f = f.clone();
+                Handler::Number {
+                    on: Box::new(move |number| f(on(number))),
+                    options,
+                }
+            }
+            Self::Step(steps) => Handler::Step(steps),
         }
     }
 }

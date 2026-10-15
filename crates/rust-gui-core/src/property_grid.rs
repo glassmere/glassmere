@@ -1,10 +1,39 @@
 use crate::Style;
 use std::collections::{HashMap, HashSet};
 
-/// What a property grid sends when the user changes it. A stub until the
-/// property grid sends messages.
+/// What a property grid sends when the user does something to it. A value
+/// names its row by path, such as `Layout/Width`; the grid's own state (the
+/// filter, a collapsed group) is applied with [`PropertyGridState::apply`].
 #[derive(Clone, Debug, PartialEq)]
-pub enum PropertyMsg {}
+pub enum PropertyMsg {
+    /// The filter box changed to this text.
+    Filter(String),
+    /// A group was opened or collapsed.
+    Group {
+        path: String,
+        collapsed: bool,
+    },
+    Number {
+        path: String,
+        value: f64,
+    },
+    Bool {
+        path: String,
+        value: bool,
+    },
+    Text {
+        path: String,
+        value: String,
+    },
+    Choice {
+        path: String,
+        value: usize,
+    },
+    Color {
+        path: String,
+        value: rust_gui_scene::Color,
+    },
+}
 
 /// What a property grid remembers between frames. The app owns it, so it can
 /// be saved with the rest of a workspace.
@@ -27,6 +56,24 @@ impl Default for PropertyGridState {
             collapsed: HashSet::new(),
             name_share: 0.4,
             drafts: HashMap::new(),
+        }
+    }
+}
+
+impl PropertyGridState {
+    /// Applies the grid's own changes. Value changes are the application's to
+    /// store, so they change nothing here.
+    pub fn apply(&mut self, message: &PropertyMsg) {
+        match message {
+            PropertyMsg::Filter(text) => self.filter.clone_from(text),
+            PropertyMsg::Group { path, collapsed } => {
+                if *collapsed {
+                    self.collapsed.insert(path.clone());
+                } else {
+                    self.collapsed.remove(path);
+                }
+            }
+            _ => {}
         }
     }
 }

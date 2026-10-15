@@ -2,6 +2,7 @@
 //! of the `App` driving the context, and the frame without a declaration.
 
 use super::*;
+use crate::NumberOptions;
 use crate::app::{Handler, HandlerSlab, Requests};
 use crate::collection::CollectionInput;
 
@@ -19,8 +20,51 @@ impl Context {
     }
 
     pub(super) fn queue_update(&mut self, id: NodeId, update: ControlUpdate) {
+        // Typed text in a number field that sends messages waits for Enter or
+        // for leaving the field; it is not a change the view reads.
+        let typing = matches!(update, ControlUpdate::Text(_)) && self.sends_numbers(id);
         self.updates.insert(id, update);
-        self.note_update(id);
+        if typing {
+            if !self.queued.contains(&(id, Queued::Update)) {
+                self.queued.push((id, Queued::Update));
+            }
+        } else {
+            self.note_update(id);
+        }
+    }
+
+    /// Whether `id` is a number field that sends messages, whose typed text
+    /// is a draft until it is committed.
+    pub(super) fn sends_numbers(&self, id: NodeId) -> bool {
+        self.nodes.get(&id).is_some_and(|node| {
+            node.handler.is_some()
+                && matches!(
+                    node.control,
+                    Control::TextInput {
+                        number: Some(_),
+                        ..
+                    }
+                )
+        })
+    }
+
+    /// Leaving a number field commits its draft, as Enter does. It does not
+    /// make the view stale: a draft that does not parse reverts silently, and
+    /// one that does sends its message, which runs the view anyway.
+    pub(crate) fn queue_blur(&mut self, id: NodeId) {
+        let drafting = self.nodes.get(&id).is_some_and(|node| {
+            matches!(
+                node.control,
+                Control::TextInput {
+                    number: Some(_),
+                    ..
+                }
+            )
+        });
+        if drafting {
+            self.queued.push((id, Queued::Submit));
+            self.submitted.insert(id);
+        }
     }
 
     /// An update for `id` is waiting. Updates to one node merge into one
@@ -76,6 +120,36 @@ impl Context {
                 (Queued::Click, Handler::Message(message)) => {
                     if enabled && self.clicks.contains(&id) {
                         out.push(message.clone());
+                    }
+                }
+                (Queued::Click, Handler::Step(steps)) => {
+                    let row = node.parent.and_then(|row| self.nodes.get(&row));
+                    let field = row.and_then(|row| {
+                        row.children_by_key
+                            .get(&WidgetKey::named("$field"))
+                            .copied()
+                    });
+                    if let (true, Some(field)) = (enabled && self.clicks.contains(&id), field)
+                        && let Some(Handler::Number { on, options }) = self
+                            .nodes
+                            .get(&field)
+                            .and_then(|node| node.handler)
+                            .and_then(|slot| slab.slots[slot as usize].as_ref())
+                    {
+                        self.commit_number(field, *steps, on.as_ref(), options, out);
+                    }
+                }
+                (Queued::Update, Handler::Number { on, options }) => {
+                    // Only steps commit; typed text waits for Enter or leaving.
+                    if let Some(ControlUpdate::Number(steps)) = self.updates.remove(&id)
+                        && enabled
+                    {
+                        self.commit_number(id, steps, on.as_ref(), options, out);
+                    }
+                }
+                (Queued::Submit, Handler::Number { on, options }) => {
+                    if enabled && self.submitted.contains(&id) {
+                        self.commit_number(id, 0.0, on.as_ref(), options, out);
                     }
                 }
                 (
@@ -135,6 +209,72 @@ impl Context {
         self.clicks.retain(handled);
         self.submitted.retain(handled);
         self.handlers = Some(boxed);
+    }
+
+    /// Commits the number field `id`: `steps` steps from its draft, or from
+    /// its declared number when it has none. `on` of the result is sent when
+    /// it differs from the declared number. Either way the field then shows
+    /// the committed number and forgets the draft, so text that does not
+    /// parse reverts without a message.
+    fn commit_number<M>(
+        &mut self,
+        id: NodeId,
+        steps: f64,
+        on: &dyn Fn(f64) -> M,
+        options: &NumberOptions,
+        out: &mut Vec<M>,
+    ) {
+        let Some(node) = self.nodes.get(&id).filter(|node| node.enabled) else {
+            return;
+        };
+        let Control::TextInput {
+            value,
+            number: Some(declared),
+            draft,
+            ..
+        } = &node.control
+        else {
+            return;
+        };
+        let declared = declared.value;
+        let text = node
+            .editor
+            .as_ref()
+            .map_or_else(String::new, |editor| editor.text.clone());
+        let drafting = *draft || text != *value;
+        let base = if drafting {
+            options.parse_in(self, &text).unwrap_or(declared)
+        } else {
+            declared
+        };
+        let next = if steps != 0.0 {
+            options.constrain(base + steps * options.step)
+        } else {
+            base
+        };
+        if next != declared {
+            out.push(on(next));
+        }
+        let shown = options.format_in(self, next);
+        let Some(node) = self.nodes.get_mut(&id) else {
+            return;
+        };
+        if let Control::TextInput {
+            value,
+            number: Some(number),
+            draft,
+            ..
+        } = &mut node.control
+        {
+            *value = shown.clone();
+            number.value = next;
+            *draft = false;
+        }
+        if let Some(editor) = &mut node.editor {
+            editor.synchronize(&shown);
+        }
+        self.invalidate_paint(id);
+        self.pending |= Dirty::ACCESSIBILITY;
     }
 
     /// Declares with the handlers kept in this context's slab: what the

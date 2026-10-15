@@ -258,6 +258,112 @@ impl<'a, M: 'static> Ui<'a, M> {
         result.changed = *value != old;
         result
     }
+
+    /// A number field showing `value`. Enter, leaving the field, a stepper,
+    /// Up and Down, PageUp and PageDown and the wheel commit what was typed:
+    /// it parses in the context's locale, clamps and snaps, and `on` of the
+    /// number is sent when that differs from `value`. Text that is not a
+    /// number reverts without a message.
+    #[track_caller]
+    pub fn number_input_msg(
+        &mut self,
+        label: impl Into<String>,
+        value: f64,
+        options: NumberOptions,
+        on: impl Fn(f64) -> M + 'static,
+    ) -> Response<'a> {
+        let label = label.into();
+        let shown = options.constrain(value);
+        let mut row = options.style.clone();
+        if row.width == Length::Auto {
+            row.width = Length::Px(160.0);
+        }
+        row.gap = 4.0;
+        let mut result = Response::default();
+        let key = self.next_key();
+        let context = self.context;
+        self.group(key, Kind::Row, row, |ui| {
+            let field = ui
+                .context
+                .child(ui.parent, &WidgetKey::named("$field"), Kind::TextInput);
+            // The app answering with the same number keeps a draft; any other
+            // number replaces it.
+            let mut text = options.format_in(ui.context, shown);
+            let mut drafting = false;
+            if let Some(state) = field.and_then(|id| ui.context.field_state(id))
+                && state.draft
+                && state.number.is_some_and(|last| last.value == shown)
+            {
+                text = state.text;
+                drafting = true;
+            }
+            let number = NumericValue {
+                value: shown,
+                min: options.min,
+                max: options.max,
+                step: options.step,
+            };
+            let mut style = Self::field_style();
+            style.width = Length::Auto;
+            style.grow = 1.0;
+            result = ui
+                .text_field(
+                    WidgetKey::named("$field"),
+                    label,
+                    &mut text,
+                    "",
+                    style,
+                    FieldExtra {
+                        number: Some(number),
+                        draft: drafting,
+                        ..FieldExtra::default()
+                    },
+                )
+                .rebind(context);
+            let (min, max) = (options.min, options.max);
+            ui.set_handler(Handler::Number {
+                on: Box::new(on),
+                options: Box::new(options.clone()),
+            });
+            for (key, symbol, name, enabled, steps) in [
+                (
+                    "$less",
+                    "\u{2212}",
+                    ui.context.tr("rust-gui-number-decrease", &[]),
+                    shown > min,
+                    -1.0,
+                ),
+                (
+                    "$more",
+                    "+",
+                    ui.context.tr("rust-gui-number-increase", &[]),
+                    shown < max,
+                    1.0,
+                ),
+            ] {
+                ui.push(Element {
+                    handler: None,
+                    seq: 0,
+                    key: WidgetKey::Named(key.into()),
+                    kind: Kind::Button,
+                    text: symbol.into(),
+                    style: Style {
+                        width: Length::Px(32.0),
+                        height: Length::Px(44.0),
+                        padding: 10.0,
+                        ..Style::button()
+                    },
+                    enabled: ui.enabled && enabled,
+                    children: Vec::new(),
+                    custom: None,
+                    tooltip: Some(name),
+                    control: Control::Stepper,
+                });
+                ui.set_handler(Handler::Step(steps));
+            }
+        });
+        result
+    }
 }
 
 /// The entries of `candidates` that contain `typed`, ignoring case, at most
