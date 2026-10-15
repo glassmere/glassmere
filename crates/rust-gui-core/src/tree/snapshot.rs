@@ -35,7 +35,13 @@ impl Context {
             clip: node.clip,
             scroll: matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection).then_some(node.scroll),
             value: match &node.control {
-                Control::TextInput { value, .. } => Some(value.clone()),
+                // What the field shows, so a draft typed since the last
+                // declaration is read as it is typed.
+                Control::TextInput { value, .. } => Some(
+                    node.editor
+                        .as_ref()
+                        .map_or_else(|| value.clone(), |editor| editor.text.clone()),
+                ),
                 // Assistive technology reads the caret's line.
                 Control::TextArea {
                     lines,

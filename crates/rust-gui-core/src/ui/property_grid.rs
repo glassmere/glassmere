@@ -791,13 +791,29 @@ impl<M: 'static> PropertyGridMsg<'_, '_, M> {
                 };
                 let hex_field = ui.at("$hex");
                 let key = hex_field.next_key();
+                // What was typed stays while the field has focus, whether or
+                // not it is a colour yet; leaving the field drops it.
+                let id = hex_field
+                    .context
+                    .child(hex_field.parent, &key, Kind::TextInput);
+                let mut drafting = false;
+                if let Some(state) = id.and_then(|id| hex_field.context.field_state(id))
+                    && state.draft
+                    && state.focused
+                {
+                    shown = state.text;
+                    drafting = true;
+                }
                 hex_field.text_field(
                     key,
                     label.to_owned(),
                     &mut shown,
                     "#rrggbb",
                     field,
-                    FieldExtra::default(),
+                    FieldExtra {
+                        draft: drafting,
+                        ..FieldExtra::default()
+                    },
                 );
                 hex_field.set_handler(Handler::Field {
                     change: Some(Box::new(move |update| match update {
@@ -819,6 +835,13 @@ impl<M: 'static> PropertyGridMsg<'_, '_, M> {
                 value,
             })
         });
+    }
+
+    /// Any editor, declared with the application's own messages. Give its
+    /// controls `name` as their accessible label.
+    pub fn custom(&mut self, name: &str, editor: impl FnOnce(&mut Ui<'_, M>, &str)) {
+        self.finish();
+        self.row_msg(name, None, editor);
     }
 
     /// A value that is shown, not edited.
@@ -845,8 +868,8 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// collapsed group, or a value by its path. The application applies the
     /// first two with [`PropertyGridState::apply`] and stores the values.
     ///
-    /// The name column's divider sends no message yet, so the column keeps
-    /// the share in `state` until the split has a message form.
+    /// The name column's divider sends [`PropertyMsg::NameShare`], which
+    /// [`PropertyGridState::apply`] stores.
     #[track_caller]
     pub fn property_grid_msg(
         &mut self,
@@ -896,9 +919,10 @@ impl<'a, M: 'static> Ui<'a, M> {
                     );
                 }
             };
-            let mut share = state.name_share;
-            ui.at("$columns").split(
-                &mut share,
+            let share = send.clone();
+            ui.at("$columns").split_msg(
+                state.name_share,
+                move |share_now| share(PropertyMsg::NameShare(share_now)),
                 Axis::Horizontal,
                 SplitOptions {
                     min_first: 60.0,

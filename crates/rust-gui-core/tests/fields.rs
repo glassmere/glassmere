@@ -2,11 +2,10 @@ mod support;
 
 use rust_gui_core::app::Action as Msg;
 use rust_gui_core::{
-    Action, Context, Event, Key, MonospaceMeasurer, NodeId, NumberOptions, Role, TextEdit, Ui,
-    suggest,
+    Action, Autocomplete, Context, Event, Key, NodeId, NumberOptions, Role, TextEdit, Ui, suggest,
 };
 use rust_gui_scene::{Point, Primitive, Size};
-use support::{Driven, on};
+use support::{Driven, act, on};
 
 const ROOT: Size = Size::new(600.0, 400.0);
 
@@ -31,48 +30,6 @@ fn click(context: &mut Context, id: NodeId) {
     }));
     context.event(Event::PointerDown);
     context.event(Event::PointerUp);
-}
-
-// M35: the draft of a number field is kernel state that the node's semantic
-// value does not show until the next declaration (`Numbers::text` reads that
-// value), and this test reads the draft there. Stays on `Context::run` for now.
-struct Numbers {
-    context: Context,
-    value: f64,
-    options: NumberOptions,
-}
-
-impl Numbers {
-    fn new(value: f64, options: NumberOptions) -> Self {
-        let mut numbers = Self {
-            context: Context::new(),
-            value,
-            options,
-        };
-        numbers.frame();
-        numbers
-    }
-
-    /// One declaration; whether the field reported a change.
-    fn frame(&mut self) -> bool {
-        let mut changed = false;
-        let (value, options) = (&mut self.value, self.options.clone());
-        self.context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            changed = ui
-                .keyed("amount", |ui| ui.number_input("Amount", value, options))
-                .changed;
-            ui.button("elsewhere");
-        });
-        changed
-    }
-
-    fn field(&self) -> NodeId {
-        self.context.find(&["amount", "$field"]).unwrap()
-    }
-
-    fn text(&self) -> String {
-        self.context.node(self.field()).unwrap().value.unwrap()
-    }
 }
 
 struct Amount {
@@ -108,49 +65,52 @@ fn text(app: &Driven<Amount>) -> String {
 
 #[test]
 fn typing_commits_on_enter_and_on_blur_and_text_that_is_no_number_reverts() {
-    let mut numbers = Numbers::new(10.0, NumberOptions::default().range(0.0, 100.0).step(5.0));
-    assert_eq!(numbers.text(), "10");
-    let field = numbers.field();
-    numbers.context.action(field, Action::Focus);
+    let mut app = numbers(10.0, NumberOptions::default().range(0.0, 100.0).step(5.0));
+    assert_eq!(text(&app), "10");
+    let field = field(&app);
+    app.context.action(field, Action::Focus);
 
-    // A draft is not a value: the app still sees 10 while "4" is on screen.
-    retype(&mut numbers.context, "4");
-    assert!(!numbers.frame());
-    assert_eq!((numbers.value, numbers.text().as_str()), (10.0, "4"));
-    retype(&mut numbers.context, "42");
-    assert!(!numbers.frame());
+    // A draft is not a value: the app still sees 10 while "4" is on screen,
+    // and the node shows it as soon as it is typed, before any declaration.
+    retype(&mut app.context, "4");
+    assert_eq!(text(&app), "4");
+    assert_eq!(app.frame().messages, 0);
+    assert_eq!((app.state().value, text(&app).as_str()), (10.0, "4"));
+    retype(&mut app.context, "42");
+    assert_eq!(text(&app), "42");
+    assert_eq!(app.frame().messages, 0);
 
     // Enter commits: clamped to the range, snapped to the step, reformatted.
-    key(&mut numbers.context, Key::Enter);
-    assert!(numbers.frame());
-    assert_eq!((numbers.value, numbers.text().as_str()), (40.0, "40"));
-    retype(&mut numbers.context, "1e9");
-    key(&mut numbers.context, Key::Enter);
-    numbers.frame();
-    assert_eq!((numbers.value, numbers.text().as_str()), (100.0, "100"));
+    key(&mut app.context, Key::Enter);
+    assert!(app.frame().messages > 0);
+    assert_eq!((app.state().value, text(&app).as_str()), (40.0, "40"));
+    retype(&mut app.context, "1e9");
+    key(&mut app.context, Key::Enter);
+    app.frame();
+    assert_eq!((app.state().value, text(&app).as_str()), (100.0, "100"));
 
     // Leaving the field commits too.
-    retype(&mut numbers.context, "17");
-    numbers.frame();
-    key(&mut numbers.context, Key::Tab);
-    assert!(numbers.frame());
-    assert_eq!((numbers.value, numbers.text().as_str()), (15.0, "15"));
+    retype(&mut app.context, "17");
+    app.frame();
+    key(&mut app.context, Key::Tab);
+    assert!(app.frame().messages > 0);
+    assert_eq!((app.state().value, text(&app).as_str()), (15.0, "15"));
 
-    // Not a number: the old value comes back and nothing is reported.
-    numbers.context.action(field, Action::Focus);
-    retype(&mut numbers.context, "abc");
-    numbers.frame();
-    assert_eq!(numbers.text(), "abc");
-    key(&mut numbers.context, Key::Enter);
-    assert!(!numbers.frame());
-    assert_eq!((numbers.value, numbers.text().as_str()), (15.0, "15"));
+    // Not a number: the old value comes back and nothing is sent.
+    app.context.action(field, Action::Focus);
+    retype(&mut app.context, "abc");
+    app.frame();
+    assert_eq!(text(&app), "abc");
+    key(&mut app.context, Key::Enter);
+    assert_eq!(app.frame().messages, 0);
+    assert_eq!((app.state().value, text(&app).as_str()), (15.0, "15"));
 
     // The app changing the number replaces a draft.
-    retype(&mut numbers.context, "99");
-    numbers.frame();
-    numbers.value = 30.0;
-    numbers.frame();
-    assert_eq!((numbers.value, numbers.text().as_str()), (30.0, "30"));
+    retype(&mut app.context, "99");
+    app.frame();
+    app.state_mut().value = 30.0;
+    app.frame();
+    assert_eq!((app.state().value, text(&app).as_str()), (30.0, "30"));
 }
 
 #[test]
@@ -259,58 +219,57 @@ fn number_options_format_parse_and_constrain() {
 
 const CITIES: [&str; 5] = ["Berlin", "Bern", "Bergen", "Brno", "İzmir"];
 
-// M35: `autocomplete_msg` reports neither the picked index nor a submit (Enter
-// with no highlight), and this test asserts both, so it stays on `Context::run`.
+#[derive(Default)]
 struct Search {
-    context: Context,
     text: String,
     picked: Option<usize>,
     submitted: bool,
 }
 
-impl Search {
-    fn frame(&mut self) {
-        let text = &mut self.text;
-        let (mut picked, mut submitted) = (None, false);
-        self.context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            let matches = suggest(text, &CITIES, 8);
-            let response = ui.keyed("city", |ui| ui.autocomplete("City", text, &matches));
-            picked = response.picked;
-            submitted = response.response.submitted;
+fn search() -> Driven<Search> {
+    Driven::new(
+        ROOT,
+        Search::default(),
+        |state: &Search, ui: &mut Ui<'_, Msg<Search>>| {
+            let matches = suggest(&state.text, &CITIES, 8);
+            ui.keyed("city", |ui| {
+                ui.autocomplete_with(
+                    "City",
+                    &state.text,
+                    &matches,
+                    on(|s: &mut Search, text: String| s.text = text),
+                    Autocomplete::new()
+                        .on_pick(on(|s: &mut Search, index: usize| s.picked = Some(index)))
+                        .on_submit(act(|s: &mut Search| s.submitted = true)),
+                );
+            });
             ui.button("elsewhere");
-        });
-        (self.picked, self.submitted) = (picked, submitted);
-    }
+        },
+    )
+}
 
-    fn rows(&self) -> Vec<String> {
-        let Some(popup) = self.context.find(&["city", "$popup"]) else {
-            return Vec::new();
-        };
-        let popup = self.context.node(popup).unwrap();
-        popup
-            .children
-            .iter()
-            .map(|row| self.context.node(*row).unwrap().semantics.label.clone())
-            .collect()
-    }
+fn rows(search: &Driven<Search>) -> Vec<String> {
+    let Some(popup) = search.context.find(&["city", "$popup"]) else {
+        return Vec::new();
+    };
+    let popup = search.context.node(popup).unwrap();
+    popup
+        .children
+        .iter()
+        .map(|row| search.context.node(*row).unwrap().semantics.label.clone())
+        .collect()
 }
 
 #[test]
 fn typing_offers_the_apps_matches_and_keys_or_a_click_take_one() {
-    let mut search = Search {
-        context: Context::new(),
-        text: String::new(),
-        picked: None,
-        submitted: false,
-    };
-    search.frame();
+    let mut search = search();
     let field = search.context.find(&["city"]).unwrap();
     search.context.action(field, Action::Focus);
     retype(&mut search.context, "ber");
     search.frame();
     // The event opened the list; the next declaration knows the matches.
     search.frame();
-    assert_eq!(search.rows(), ["Berlin", "Bern", "Bergen"]);
+    assert_eq!(rows(&search), ["Berlin", "Bern", "Bergen"]);
     let node = search.context.node(field).unwrap();
     assert_eq!(node.expanded, Some(true));
     assert_eq!(node.active_descendant, None, "nothing is highlighted yet");
@@ -321,7 +280,7 @@ fn typing_offers_the_apps_matches_and_keys_or_a_click_take_one() {
         .event(Event::Text(TextEdit::Insert("g".into())));
     search.frame();
     search.frame();
-    assert_eq!(search.rows(), ["Bergen"]);
+    assert_eq!(rows(&search), ["Bergen"]);
 
     // Down highlights, Enter takes it: the text, the caret and the report.
     key(&mut search.context, Key::ArrowDown);
@@ -336,50 +295,58 @@ fn typing_offers_the_apps_matches_and_keys_or_a_click_take_one() {
     );
     key(&mut search.context, Key::Enter);
     search.frame();
-    assert_eq!((search.text.as_str(), search.picked), ("Bergen", Some(0)));
-    assert!(!search.submitted);
-    assert!(search.rows().is_empty());
+    assert_eq!(
+        (search.state().text.as_str(), search.state().picked),
+        ("Bergen", Some(0))
+    );
+    assert!(!search.state().submitted);
+    assert!(rows(&search).is_empty());
     let selection = search.context.node(field).unwrap().text_selection.unwrap();
     assert_eq!(selection.range(), 6..6);
 
     // Enter without a highlight submits the free text.
+    search.state_mut().picked = None;
     retype(&mut search.context, "Ber");
     search.frame();
     search.frame();
-    assert_eq!(search.rows().len(), 3);
+    assert_eq!(rows(&search).len(), 3);
     key(&mut search.context, Key::Enter);
     search.frame();
-    assert!(search.submitted && search.picked.is_none());
-    assert_eq!(search.text, "Ber");
-    assert!(search.rows().is_empty());
+    assert!(search.state().submitted && search.state().picked.is_none());
+    assert_eq!(search.state().text, "Ber");
+    assert!(rows(&search).is_empty());
 
     // Down reopens a closed list, Up enters from the bottom, Escape closes.
     key(&mut search.context, Key::ArrowDown);
     search.frame();
-    assert_eq!(search.rows().len(), 3);
+    assert_eq!(rows(&search).len(), 3);
     key(&mut search.context, Key::Escape);
     search.frame();
-    assert!(search.rows().is_empty());
-    assert_eq!(search.text, "Ber");
+    assert!(rows(&search).is_empty());
+    assert_eq!(search.state().text, "Ber");
 
     // A click takes a row and focus stays in the field.
+    search.state_mut().picked = None;
     retype(&mut search.context, "br");
     search.frame();
     search.frame();
     let row = search.context.find(&["city", "$popup", "0"]).unwrap();
     click(&mut search.context, row);
     search.frame();
-    assert_eq!((search.text.as_str(), search.picked), ("Brno", Some(0)));
+    assert_eq!(
+        (search.state().text.as_str(), search.state().picked),
+        ("Brno", Some(0))
+    );
     assert_eq!(search.context.focused(), Some(field));
 
     // Leaving the field closes the list.
     retype(&mut search.context, "be");
     search.frame();
     search.frame();
-    assert_eq!(search.rows().len(), 3);
+    assert_eq!(rows(&search).len(), 3);
     key(&mut search.context, Key::Tab);
     search.frame();
-    assert!(search.rows().is_empty());
+    assert!(rows(&search).is_empty());
 }
 
 struct City {

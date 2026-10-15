@@ -13,6 +13,9 @@ pub enum PropertyMsg {
         path: String,
         collapsed: bool,
     },
+    /// The divider between the name and value columns moved: the name
+    /// column's new share of the width, between 0.0 and 1.0.
+    NameShare(f32),
     Number {
         path: String,
         value: f64,
@@ -72,6 +75,9 @@ impl PropertyGridState {
                 } else {
                     self.collapsed.remove(path);
                 }
+            }
+            PropertyMsg::NameShare(share) if share.is_finite() => {
+                self.name_share = share.clamp(0.0, 1.0);
             }
             _ => {}
         }

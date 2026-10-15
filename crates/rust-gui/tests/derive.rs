@@ -1,8 +1,7 @@
 #![cfg(feature = "derive")]
 use rust_gui::{
-    Action, Color, Context, Effects, Event, Key, MonospaceMeasurer, NodeId, Point, Properties,
-    PropertyGridOptions, PropertyGridResponse, PropertyGridState, PropertyMsg, Role, Size,
-    TextEdit, Ui,
+    Button, Color, Effects, Event, Key, NodeId, Properties, PropertyGridOptions, PropertyGridState,
+    PropertyMsg, Role, Size, TextEdit, Ui,
 };
 use rust_gui_testing::Harness;
 
@@ -14,25 +13,26 @@ struct Shadow {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Anchor {
+pub enum Anchor {
     Top,
     Bottom,
 }
 
-// M35: `#[property(with = ..)]` has no message form: `#[derive(Properties)]`
-// leaves these fields out of `properties_msg`, so this editor and the test
-// that uses it stay on the closure form of `property_grid`.
-fn edit_anchor(ui: &mut Ui<'_>, label: &str, anchor: &mut Anchor) -> bool {
-    let clicked = ui
-        .keyed("$value", |ui| ui.button(format!("{label}: {anchor:?}")))
-        .clicked();
-    if clicked {
-        *anchor = match anchor {
-            Anchor::Top => Anchor::Bottom,
-            Anchor::Bottom => Anchor::Top,
-        };
-    }
-    clicked
+/// An editor of its own for `#[property(with = ..)]`: a button that flips the
+/// anchor, sending the new one.
+fn edit_anchor<M: 'static>(
+    ui: &mut Ui<'_, M>,
+    label: &str,
+    anchor: &Anchor,
+    on: impl Fn(Anchor) -> M + 'static,
+) {
+    let next = match anchor {
+        Anchor::Top => Anchor::Bottom,
+        Anchor::Bottom => Anchor::Top,
+    };
+    ui.keyed("$value", |ui| {
+        ui.button(Button::new(format!("{label}: {anchor:?}")).on_click(on(next)));
+    });
 }
 
 #[derive(Properties)]
@@ -65,79 +65,92 @@ struct Card {
     cache: Vec<u8>,
 }
 
-struct App {
-    context: Context,
-    state: PropertyGridState,
-    card: Card,
+#[derive(Clone, Debug, PartialEq)]
+enum CardEvent {
+    Grid(PropertyMsg),
+    Card(CardMsg),
 }
 
-impl App {
-    fn frame(&mut self) -> PropertyGridResponse {
-        let (state, card) = (&mut self.state, &mut self.card);
-        let mut response = PropertyGridResponse::default();
-        self.context
-            .run(Size::new(640.0, 1000.0), &mut MonospaceMeasurer, |ui| {
-                response = ui.keyed("grid", |ui| {
-                    ui.property_grid(state, PropertyGridOptions::new("Card"), |grid| {
-                        card.properties(grid);
-                    })
-                });
-            });
-        response
+struct CardApp {
+    state: PropertyGridState,
+    card: Card,
+    sent: Vec<CardMsg>,
+}
+
+impl rust_gui::App for CardApp {
+    type Message = CardEvent;
+
+    fn update(&mut self, message: CardEvent, _effects: &mut Effects<'_, CardEvent>) {
+        match message {
+            CardEvent::Grid(grid) => self.state.apply(&grid),
+            CardEvent::Card(card) => {
+                self.sent.push(card.clone());
+                self.card.apply(card);
+            }
+        }
     }
 
-    fn find(&self, path: &[&str]) -> Option<NodeId> {
-        let mut full = vec!["grid", "$rows"];
-        full.extend(path);
-        self.context.find(&full)
-    }
-
-    fn commit(&mut self, id: NodeId, text: &str) -> PropertyGridResponse {
-        self.context.action(id, Action::Focus);
-        self.context.event(Event::Text(TextEdit::SelectAll));
-        self.context
-            .event(Event::Text(TextEdit::Insert(text.into())));
-        self.context.event(Event::KeyDown {
-            key: Key::Enter,
-            shift: false,
-            repeat: false,
+    fn view(&self, ui: &mut Ui<'_, CardEvent>) {
+        ui.keyed("grid", |ui| {
+            ui.property_grid_msg(
+                &self.state,
+                PropertyGridOptions::new("Card"),
+                CardEvent::Grid,
+                |grid| self.card.properties_msg(grid, CardEvent::Card),
+            )
         });
-        self.frame()
     }
+}
 
-    fn click(&mut self, id: NodeId) -> PropertyGridResponse {
-        let bounds = self.context.node(id).unwrap().bounds;
-        self.context.event(Event::PointerMoved(Point {
-            x: bounds.x + bounds.width / 2.0,
-            y: bounds.y + bounds.height / 2.0,
-        }));
-        self.context.event(Event::PointerDown);
-        self.context.event(Event::PointerUp);
-        self.frame()
-    }
+fn card_app() -> Harness<CardApp> {
+    Harness::app(
+        Size::new(640.0, 1000.0),
+        CardApp {
+            state: PropertyGridState::default(),
+            card: Card {
+                title: "Hello".into(),
+                align: 0,
+                width: 300.0,
+                corner_radius: 16,
+                shadow: Shadow {
+                    blur: 8.0,
+                    color: Color::rgb(0, 0, 0),
+                },
+                visible: true,
+                revision: 7,
+                anchor: Anchor::Top,
+                cache: Vec::new(),
+            },
+            sent: Vec::new(),
+        },
+    )
+}
+
+fn find(app: &Harness<CardApp>, path: &[&str]) -> Option<NodeId> {
+    let mut full = vec!["grid", "$rows"];
+    full.extend(path);
+    app.context().find(&full)
+}
+
+/// Retypes and commits a number field; the messages that sent.
+fn commit(app: &mut Harness<CardApp>, id: NodeId, text: &str) -> Vec<CardMsg> {
+    let before = app.state().sent.len();
+    app.focus(id);
+    app.event(Event::Text(TextEdit::SelectAll));
+    app.type_text(text);
+    app.press(Key::Enter);
+    app.state().sent[before..].to_vec()
+}
+
+fn click(app: &mut Harness<CardApp>, id: NodeId) -> Vec<CardMsg> {
+    let before = app.state().sent.len();
+    app.click(id);
+    app.state().sent[before..].to_vec()
 }
 
 #[test]
 fn a_derived_struct_declares_grouped_typed_rows_bound_to_its_fields() {
-    let mut app = App {
-        context: Context::new(),
-        state: PropertyGridState::default(),
-        card: Card {
-            title: "Hello".into(),
-            align: 0,
-            width: 300.0,
-            corner_radius: 16,
-            shadow: Shadow {
-                blur: 8.0,
-                color: Color::rgb(0, 0, 0),
-            },
-            visible: true,
-            revision: 7,
-            anchor: Anchor::Top,
-            cache: Vec::new(),
-        },
-    };
-    app.frame();
+    let mut app = card_app();
 
     // `group` stays in force for the following fields; names come from the fields.
     for path in [
@@ -151,15 +164,17 @@ fn a_derived_struct_declares_grouped_typed_rows_bound_to_its_fields() {
         vec!["row:Revision"],
         vec!["row:Anchor"],
     ] {
-        assert!(app.find(&path).is_some(), "{path:?}");
+        assert!(find(&app, &path).is_some(), "{path:?}");
     }
-    assert!(app.find(&["row:Cache"]).is_none());
+    assert!(find(&app, &["row:Cache"]).is_none());
 
     // A float with its range, step, unit and default.
-    let width = app
-        .find(&["group:Layout", "row:Width", "$editor", "$value", "$field"])
-        .unwrap();
-    let node = app.context.node(width).unwrap();
+    let width = find(
+        &app,
+        &["group:Layout", "row:Width", "$editor", "$value", "$field"],
+    )
+    .unwrap();
+    let node = app.context().node(width).unwrap();
     assert_eq!(node.semantics.role, Role::SpinButton);
     assert_eq!(node.value.as_deref(), Some("300 px"));
     let numeric = node.numeric.unwrap();
@@ -167,52 +182,59 @@ fn a_derived_struct_declares_grouped_typed_rows_bound_to_its_fields() {
         (numeric.min, numeric.max, numeric.step),
         (80.0, 420.0, 10.0)
     );
-    assert_eq!(app.commit(width, "1000").changed, ["Layout/Width"]);
-    assert_eq!(app.card.width, 420.0);
-    let reset = app.find(&["group:Layout", "row:Width", "$reset"]).unwrap();
-    app.click(reset);
-    assert_eq!(app.card.width, 260.0);
+    assert_eq!(commit(&mut app, width, "1000"), [CardMsg::Width(420.0)]);
+    assert_eq!(app.state().card.width, 420.0);
+    let reset = find(&app, &["group:Layout", "row:Width", "$reset"]).unwrap();
+    assert_eq!(click(&mut app, reset), [CardMsg::Width(260.0)]);
+    assert_eq!(app.state().card.width, 260.0);
 
     // An integer keeps its type: whole steps, its own minimum, the given maximum.
-    let radius = app
-        .find(&[
+    let radius = find(
+        &app,
+        &[
             "group:Layout",
             "row:Corner radius",
             "$editor",
             "$value",
             "$field",
-        ])
-        .unwrap();
-    let numeric = app.context.node(radius).unwrap().numeric.unwrap();
+        ],
+    )
+    .unwrap();
+    let numeric = app.context().node(radius).unwrap().numeric.unwrap();
     assert_eq!((numeric.min, numeric.max, numeric.step), (0.0, 60.0, 1.0));
-    app.commit(radius, "12.7");
-    assert_eq!(app.card.corner_radius, 13);
-    app.commit(radius, "-5");
-    assert_eq!(app.card.corner_radius, 0);
+    commit(&mut app, radius, "12.7");
+    assert_eq!(app.state().card.corner_radius, 13);
+    commit(&mut app, radius, "-5");
+    assert_eq!(app.state().card.corner_radius, 0);
 
-    // A nested struct is a nested group and reports nested paths.
-    let blur = app
-        .find(&[
+    // A nested struct is a nested group whose message wraps its own.
+    let blur = find(
+        &app,
+        &[
             "group:Layout",
             "group:Shadow",
             "row:Blur",
             "$editor",
             "$value",
             "$field",
-        ])
-        .unwrap();
-    assert_eq!(app.commit(blur, "12").changed, ["Layout/Shadow/Blur"]);
-    assert_eq!(app.card.shadow.blur, 12.0);
+        ],
+    )
+    .unwrap();
+    assert_eq!(
+        commit(&mut app, blur, "12"),
+        [CardMsg::Shadow(ShadowMsg::Blur(12.0))]
+    );
+    assert_eq!(app.state().card.shadow.blur, 12.0);
 
     // Choices with a default, a read-only value and a custom editor.
-    let reset = app.find(&["group:Content", "row:Align", "$reset"]).unwrap();
-    assert_eq!(app.click(reset).changed, ["Content/Align"]);
-    assert_eq!(app.card.align, 1);
-    let revision = app.find(&["row:Revision", "$editor", "$value"]).unwrap();
-    assert_eq!(app.context.node(revision).unwrap().semantics.label, "7");
-    let anchor = app.find(&["row:Anchor", "$editor", "$value"]).unwrap();
-    assert_eq!(app.click(anchor).changed, ["Anchor"]);
-    assert_eq!(app.card.anchor, Anchor::Bottom);
+    let reset = find(&app, &["group:Content", "row:Align", "$reset"]).unwrap();
+    assert_eq!(click(&mut app, reset), [CardMsg::Align(1)]);
+    assert_eq!(app.state().card.align, 1);
+    let revision = find(&app, &["row:Revision", "$editor", "$value"]).unwrap();
+    assert_eq!(app.context().node(revision).unwrap().semantics.label, "7");
+    let anchor = find(&app, &["row:Anchor", "$editor", "$value"]).unwrap();
+    assert_eq!(click(&mut app, anchor), [CardMsg::Anchor(Anchor::Bottom)]);
+    assert_eq!(app.state().card.anchor, Anchor::Bottom);
 }
 
 #[derive(Properties)]

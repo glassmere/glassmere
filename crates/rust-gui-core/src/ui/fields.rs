@@ -4,6 +4,41 @@ use crate::app::Handler;
 use crate::editor::single_line;
 use crate::{AutocompleteResponse, Length, MenuItem, NumberOptions, NumericValue};
 
+/// What an autocomplete field sends besides its edits; see
+/// [`Ui::autocomplete_with`].
+pub struct Autocomplete<M = ()> {
+    on_pick: Option<Box<dyn Fn(usize) -> M>>,
+    on_submit: Option<M>,
+}
+
+impl<M> Default for Autocomplete<M> {
+    fn default() -> Self {
+        Self {
+            on_pick: None,
+            on_submit: None,
+        }
+    }
+}
+
+impl<M> Autocomplete<M> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sent after the text change of a pick, with the index of the suggestion
+    /// taken in the list that was offered.
+    pub fn on_pick(mut self, message: impl Fn(usize) -> M + 'static) -> Self {
+        self.on_pick = Some(Box::new(message));
+        self
+    }
+
+    /// The message Enter sends when no suggestion is highlighted.
+    pub fn on_submit(mut self, message: M) -> Self {
+        self.on_submit = Some(message);
+        self
+    }
+}
+
 impl<'a, M: 'static> Ui<'a, M> {
     /// A text input that offers `suggestions` in a list below it while the
     /// user types. The app decides what matches: pass the entries for the
@@ -80,6 +115,20 @@ impl<'a, M: 'static> Ui<'a, M> {
         suggestions: &[S],
         on_change: impl Fn(String) -> M + 'static,
     ) -> Response<'a> {
+        self.autocomplete_with(label, value, suggestions, on_change, Autocomplete::new())
+    }
+
+    /// `autocomplete_msg` that also sends what `extra` names: the index of a
+    /// pick (after its `on_change`) and Enter without a highlighted suggestion.
+    #[track_caller]
+    pub fn autocomplete_with<S: AsRef<str>>(
+        &mut self,
+        label: impl Into<String>,
+        value: &str,
+        suggestions: &[S],
+        on_change: impl Fn(String) -> M + 'static,
+        extra: Autocomplete<M>,
+    ) -> Response<'a> {
         let key = self.next_key();
         let labels: Vec<String> = suggestions
             .iter()
@@ -119,15 +168,19 @@ impl<'a, M: 'static> Ui<'a, M> {
         );
         // Picking a suggestion edits the field to it, and the kernel reports
         // that pick as the index, which names the text in `labels`.
-        self.set_handler(Handler::Field {
-            change: Some(Box::new(move |update| match update {
-                ControlUpdate::Text(text) => Some(on_change(single_line(&text))),
+        let Autocomplete { on_pick, on_submit } = extra;
+        self.set_handler(Handler::Autocomplete {
+            change: Box::new(move |update, out| match update {
+                ControlUpdate::Text(text) => out.push(on_change(single_line(&text))),
                 ControlUpdate::Choice(index) => {
-                    labels.get(index).map(|label| on_change(label.clone()))
+                    if let Some(label) = labels.get(index) {
+                        out.push(on_change(label.clone()));
+                        out.extend(on_pick.as_ref().map(|pick| pick(index)));
+                    }
                 }
-                _ => None,
-            })),
-            submit: None,
+                _ => {}
+            }),
+            submit: on_submit,
         });
         response
     }

@@ -2,8 +2,8 @@ mod support;
 
 use rust_gui_core::app::Action as Message;
 use rust_gui_core::{
-    Action, Event, Key, NodeId, NumberOptions, PropertyGridOptions, PropertyGridState, PropertyMsg,
-    Role, TextEdit, Ui,
+    Action, Button, Event, Key, NodeId, NumberOptions, PropertyGridOptions, PropertyGridState,
+    PropertyMsg, Role, TextEdit, Ui,
 };
 use rust_gui_scene::{Color, Point, Size};
 use support::{Driven, act};
@@ -26,6 +26,7 @@ struct Settings {
     grid: PropertyGridState,
     changed: Vec<String>,
     values: [f64; 12],
+    clicks: u32,
 }
 
 fn property_msg(message: PropertyMsg) -> Message<Settings> {
@@ -56,7 +57,7 @@ fn property_msg(message: PropertyMsg) -> Message<Settings> {
                 s.shape.fill = *value;
                 s.changed.push(path.clone());
             }
-            PropertyMsg::Filter(_) | PropertyMsg::Group { .. } => {}
+            PropertyMsg::Filter(_) | PropertyMsg::Group { .. } | PropertyMsg::NameShare(_) => {}
         }
     })
 }
@@ -83,6 +84,13 @@ fn settings_view(state: &Settings, ui: &mut Ui<'_, Message<Settings>>) {
                     grid.default(true).bool("Visible", state.shape.visible);
                     grid.text("Name", &state.shape.name);
                     grid.color("Fill", state.shape.fill);
+                    grid.custom("Clicks", |ui, label| {
+                        ui.keyed("button", |ui| {
+                            ui.button(
+                                Button::new(label).on_click(act(|s: &mut Settings| s.clicks += 1)),
+                            )
+                        });
+                    });
                     grid.readonly("Kind", "Rectangle");
                 });
             },
@@ -103,6 +111,7 @@ fn settings() -> Settings {
         grid: PropertyGridState::default(),
         changed: Vec::new(),
         values: [0.0; 12],
+        clicks: 0,
     }
 }
 
@@ -231,9 +240,19 @@ fn rows_bind_values_line_up_with_the_header_and_report_changes_by_path() {
     app.frame();
     assert_eq!(app.changed(), ["Appearance/Name"]);
     assert_eq!(app.driven.state().shape.name, "Badge");
-    // M35: a `custom` row (the "Clicks" button) has no message form in
-    // `PropertyGridMsg`, so that row is not declared here and its click is
-    // not asserted.
+
+    // A custom row declares the application's own widgets with its messages.
+    let clicks = app
+        .find(&["group:Appearance", "row:Clicks", "$editor", "button"])
+        .unwrap();
+    assert_eq!(
+        app.driven.context.node(clicks).unwrap().semantics.label,
+        "Clicks"
+    );
+    app.click(clicks);
+    app.frame();
+    assert_eq!(app.driven.state().clicks, 1);
+    assert!(app.changed().is_empty(), "a custom row reports no path");
 }
 
 #[test]
@@ -291,8 +310,13 @@ fn groups_collapse_and_the_filter_opens_matches_and_hides_the_rest() {
     app.driven.state_mut().grid.filter = " APPEAR ".into();
     app.frame();
     assert!(app.find(&["group:Layout"]).is_none());
-    // M35: the "row:Clicks" custom row has no message form, so it is not checked.
-    for row in ["row:Visible", "row:Name", "row:Fill", "row:Kind"] {
+    for row in [
+        "row:Visible",
+        "row:Name",
+        "row:Fill",
+        "row:Clicks",
+        "row:Kind",
+    ] {
         assert!(app.find(&["group:Appearance", row]).is_some(), "{row}");
     }
     // Clearing the filter brings the collapsed state back.
@@ -358,149 +382,69 @@ fn a_scrolling_grid_keeps_its_rows_clear_of_the_scrollbar_and_under_the_header()
     assert_eq!(bounds(&["grid", "$filter"]).width, row.width);
 }
 
-/// The tests whose behaviour the message model does not carry yet: the name
-/// column's divider, and a colour draft that outlives a declaration. They stay
-/// on the closure form. See the notes in each.
-mod legacy {
-    use rust_gui_core::{
-        Action, Context, Event, Key, MonospaceMeasurer, NodeId, NumberOptions, PropertyGridOptions,
-        PropertyGridResponse, PropertyGridState, TextEdit,
+#[test]
+fn the_header_divider_sizes_the_name_column() {
+    let mut app = App::new();
+    let editor = |app: &App| {
+        let id = app.find(&["group:Layout", "row:Width", "$editor"]).unwrap();
+        app.driven.context.node(id).unwrap().bounds.x
     };
-    use rust_gui_scene::{Color, Size};
-
-    #[test]
-    fn the_header_divider_sizes_the_name_column() {
-        // M35: the name column's divider sends no message yet
-        // (`property_grid_msg` keeps the share in the application's state
-        // only through the closure form), so a drag cannot move it here.
-        let mut context = Context::new();
-        let mut state = PropertyGridState::default();
-        let mut width = 120.0;
-        let root = Size::new(640.0, 900.0);
-        let mut frame = |context: &mut Context, state: &mut PropertyGridState| {
-            context.run(root, &mut MonospaceMeasurer, |ui| {
-                ui.keyed("grid", |ui| {
-                    ui.property_grid(state, PropertyGridOptions::new("Shape"), |grid| {
-                        grid.group("Layout", |grid| {
-                            grid.number("Width", &mut width, NumberOptions::default());
-                        });
-                    })
-                });
-            });
-        };
-        frame(&mut context, &mut state);
-        let editor = |context: &Context| {
-            let id = context
-                .find(&["grid", "$rows", "group:Layout", "row:Width", "$editor"])
-                .unwrap();
-            context.node(id).unwrap().bounds.x
-        };
-        let divider = context.find(&["grid", "$columns", "$divider"]).unwrap();
-        let before = editor(&context);
-        context.action(divider, Action::Focus);
-        for _ in 0..5 {
-            context.event(Event::KeyDown {
-                key: Key::ArrowRight,
-                shift: false,
-                repeat: false,
-            });
-        }
-        frame(&mut context, &mut state);
-        frame(&mut context, &mut state);
-        assert!(state.name_share > 0.4);
-        assert!(editor(&context) > before + 5.0);
-    }
-
-    /// A colour row on the closure form: a draft typed into the hex field
-    /// stays open across declarations until the field is left.
-    struct Colours {
-        context: Context,
-        state: PropertyGridState,
-        fill: Color,
-    }
-
-    impl Colours {
-        fn new() -> Self {
-            let mut app = Self {
-                context: Context::new(),
-                state: PropertyGridState::default(),
-                fill: Color::rgb(0x1a, 0x9c, 0x8f),
-            };
-            app.frame();
-            app
-        }
-
-        fn frame(&mut self) -> PropertyGridResponse {
-            let (state, fill) = (&mut self.state, &mut self.fill);
-            let mut response = PropertyGridResponse::default();
-            self.context
-                .run(Size::new(640.0, 900.0), &mut MonospaceMeasurer, |ui| {
-                    response = ui.keyed("grid", |ui| {
-                        ui.property_grid(state, PropertyGridOptions::new("Shape"), |grid| {
-                            grid.group("Appearance", |grid| {
-                                grid.color("Fill", fill);
-                            });
-                        })
-                    });
-                });
-            response
-        }
-
-        fn find(&self, path: &[&str]) -> Option<NodeId> {
-            let mut full = vec!["grid", "$rows"];
-            full.extend(path);
-            self.context.find(&full)
-        }
-
-        fn retype(&mut self, id: NodeId, text: &str) {
-            self.context.action(id, Action::Focus);
-            self.context.event(Event::Text(TextEdit::SelectAll));
-            self.context
-                .event(Event::Text(TextEdit::Insert(text.into())));
-        }
-    }
-
-    #[test]
-    fn colours_follow_whole_hex_values_and_drop_drafts_when_the_field_is_left() {
-        // M35: a declaration made while the hex field has an open draft
-        // (focus moved there, and it is observed) resets the draft to the
-        // declared value in the message model, so the draft cannot be carried
-        // across the frames a message-model app runs. Stays here.
-        let mut app = Colours::new();
-        let hex = app
-            .find(&["group:Appearance", "row:Fill", "$editor", "$value", "$hex"])
-            .unwrap();
-        assert_eq!(
-            app.context.node(hex).unwrap().value.as_deref(),
-            Some("#1a9c8f")
-        );
-        app.retype(hex, "#ff80");
-        assert!(!app.frame().any());
-        assert_eq!(app.fill, Color::rgb(0x1a, 0x9c, 0x8f));
-        assert_eq!(
-            app.context.node(hex).unwrap().value.as_deref(),
-            Some("#ff80")
-        );
-        app.context
-            .event(Event::Text(TextEdit::Insert("00".into())));
-        assert_eq!(app.frame().changed, ["Appearance/Fill"]);
-        assert_eq!(app.fill, Color::rgb(0xff, 0x80, 0x00));
-        // Alpha is the fourth pair; a draft that is no colour goes when focus does.
-        app.retype(hex, "FF800080");
-        app.frame();
-        assert_eq!(app.fill, Color(0xff, 0x80, 0x00, 0x80));
-        app.retype(hex, "orange");
-        app.frame();
-        app.context.event(Event::KeyDown {
-            key: Key::Tab,
+    let divider = app
+        .driven
+        .context
+        .find(&["grid", "$columns", "$divider"])
+        .unwrap();
+    let before = editor(&app);
+    app.driven.context.action(divider, Action::Focus);
+    for _ in 0..5 {
+        app.driven.context.event(Event::KeyDown {
+            key: Key::ArrowRight,
             shift: false,
             repeat: false,
         });
-        app.frame();
-        app.frame();
-        assert_eq!(
-            app.context.node(hex).unwrap().value.as_deref(),
-            Some("#ff800080")
-        );
     }
+    app.frame();
+    app.frame();
+    assert!(app.driven.state().grid.name_share > 0.4);
+    assert!(editor(&app) > before + 5.0);
+}
+
+#[test]
+fn colours_follow_whole_hex_values_and_drop_drafts_when_the_field_is_left() {
+    let mut app = App::new();
+    let hex = app
+        .find(&["group:Appearance", "row:Fill", "$editor", "$value", "$hex"])
+        .unwrap();
+    let shown = |app: &App| app.driven.context.node(hex).unwrap().value;
+    assert_eq!(shown(&app).as_deref(), Some("#1a9c8f"));
+    // The node shows the draft as it is typed, before any declaration.
+    app.retype(hex, "#ff80");
+    assert_eq!(shown(&app).as_deref(), Some("#ff80"));
+    app.frame();
+    assert!(app.changed().is_empty());
+    assert_eq!(app.driven.state().shape.fill, Color::rgb(0x1a, 0x9c, 0x8f));
+    // The draft outlives the declarations a message-model app runs.
+    app.driven.state_mut();
+    app.frame();
+    assert_eq!(shown(&app).as_deref(), Some("#ff80"));
+    app.driven
+        .context
+        .event(Event::Text(TextEdit::Insert("00".into())));
+    app.frame();
+    assert_eq!(app.changed(), ["Appearance/Fill"]);
+    assert_eq!(app.driven.state().shape.fill, Color::rgb(0xff, 0x80, 0x00));
+    // Alpha is the fourth pair; a draft that is no colour goes when focus does.
+    app.retype(hex, "FF800080");
+    app.frame();
+    assert_eq!(app.driven.state().shape.fill, Color(0xff, 0x80, 0x00, 0x80));
+    app.retype(hex, "orange");
+    app.frame();
+    app.driven.context.event(Event::KeyDown {
+        key: Key::Tab,
+        shift: false,
+        repeat: false,
+    });
+    app.frame();
+    app.frame();
+    assert_eq!(shown(&app).as_deref(), Some("#ff800080"));
 }

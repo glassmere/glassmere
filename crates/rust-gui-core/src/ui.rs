@@ -12,7 +12,7 @@ mod collections;
 mod controls;
 mod dock;
 mod fields;
-pub use fields::suggest;
+pub use fields::{Autocomplete, suggest};
 mod image;
 mod overlays;
 mod property_grid;

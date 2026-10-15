@@ -165,6 +165,27 @@ impl Context {
                         out.push(message.clone());
                     }
                 }
+                (
+                    Queued::Submit,
+                    Handler::Autocomplete {
+                        submit: Some(message),
+                        ..
+                    },
+                ) => {
+                    if enabled && self.submitted.contains(&id) {
+                        out.push(message.clone());
+                    }
+                }
+                (Queued::Update, Handler::Autocomplete { change, .. }) => {
+                    if let Some(update) = self.updates.remove(&id)
+                        && enabled
+                    {
+                        if matches!(update, ControlUpdate::Text(_)) {
+                            self.text_typed.insert(id);
+                        }
+                        change(update, out);
+                    }
+                }
                 (Queued::Update, Handler::Map(map))
                 | (
                     Queued::Update,

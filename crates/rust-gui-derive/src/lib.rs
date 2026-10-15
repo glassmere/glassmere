@@ -17,7 +17,7 @@
 //!     shadow: Shadow,          // another `Properties` struct, as a nested group
 //!     #[property(readonly)]
 //!     revision: u32,
-//!     #[property(with = edit_anchor)]   // fn(&mut Ui<'_>, &str, &mut Anchor) -> bool
+//!     #[property(with = edit_anchor)]   // see below
 //!     anchor: Anchor,
 //!     #[property(skip)]
 //!     cache: Vec<u8>,
@@ -29,6 +29,25 @@
 //! `choices(...)`. `group` stays in force for the fields that follow until
 //! another one is given; `group = ""` returns to the top level. Names default
 //! to the field name with spaces and a capital.
+//!
+//! The message form (`CardMsg`, `Card::apply`, `Card::properties_msg`) has a
+//! variant per editable field. A `flatten` field is a nested group whose
+//! variant wraps the inner struct's own message (`ShadowMsg`, which must be
+//! derived beside it in the same module path). A `with` field is declared
+//! through `PropertyGridMsg::custom` by a function of your own that sends the
+//! new value as a message:
+//!
+//! ```ignore
+//! fn edit_anchor<M: 'static>(
+//!     ui: &mut Ui<'_, M>,
+//!     label: &str,
+//!     anchor: &Anchor,
+//!     on: impl Fn(Anchor) -> M + 'static,
+//! ) { /* declare widgets, `on(next)` as their messages */ }
+//! ```
+//!
+//! Only the message form declares `with` rows; the closure-form `properties`
+//! of the old API leaves them out. A struct with generics has no message form.
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as Tokens;
 use quote::{format_ident, quote};
@@ -203,10 +222,8 @@ fn row(field: &syn::Field, options: &Options) -> syn::Result<Tokens> {
     if options.readonly {
         return Ok(quote! { grid.readonly(#name, ::std::format!("{}", self.#ident)); });
     }
-    if let Some(with) = &options.with {
-        return Ok(quote! {
-            grid.custom(#name, |ui, label| #with(ui, label, &mut self.#ident));
-        });
+    if options.with.is_some() {
+        return Ok(quote! {});
     }
     if !options.choices.is_empty() {
         if kind != "usize" {
@@ -295,13 +312,8 @@ fn expand(input: &DeriveInput) -> syn::Result<Tokens> {
             "Properties can be derived for structs with named fields",
         ));
     };
-    // The message form is generated only where every row can send its
-    // value: no flattened or custom editors, and no generics.
-    let message_form = input.generics.params.is_empty()
-        && fields.named.iter().all(|field| {
-            options(field)
-                .is_ok_and(|options| options.skip || (!options.flatten && options.with.is_none()))
-        });
+    // The message form is generated for structs without generics.
+    let message_form = input.generics.params.is_empty();
     let name = &input.ident;
     let message = format_ident!("{}Msg", name);
     // Consecutive fields of one group share one `grid.group` call.
@@ -321,9 +333,9 @@ fn expand(input: &DeriveInput) -> syn::Result<Tokens> {
         push_row(&mut groups, &current, row(field, &options)?);
         if message_form {
             let (carried, row) = message_row(field, &options, &message)?;
-            if let Some((variant, ident, ty)) = carried {
+            if let Some((variant, ty, arm)) = carried {
                 variants.push(quote! { #variant(#ty) });
-                arms.push(quote! { #message::#variant(__value) => self.#ident = __value, });
+                arms.push(arm);
             }
             push_row(&mut message_groups, &current, row);
         }
@@ -446,8 +458,8 @@ fn variant_name(ident: &syn::Ident) -> syn::Ident {
     format_ident!("{}", camel)
 }
 
-/// A message variant, the field it carries and the field's type.
-type Carried = (syn::Ident, syn::Ident, Type);
+/// A message variant, the type it carries and the `apply` arm that stores it.
+type Carried = (syn::Ident, Tokens, Tokens);
 
 /// The message form of one row. It declares the editor with a closure that
 /// sends the field's message variant, and returns that variant with the field
@@ -463,10 +475,44 @@ fn message_row(
         .name
         .clone()
         .unwrap_or_else(|| title(&ident.to_string()));
+    let variant = variant_name(ident);
+    let send =
+        quote! { { let __on = __on.clone(); move |__value| (*__on)(#message::#variant(__value)) } };
+    if options.flatten {
+        let Type::Path(path) = ty else {
+            return Err(Error::new_spanned(
+                ty,
+                "`flatten` needs a path to a struct that derives Properties",
+            ));
+        };
+        // `Shadow` or `shapes::Shadow` names `ShadowMsg` beside it.
+        let inner: Tokens = format!("{}Msg", quote! { #path }.to_string().replace(' ', ""))
+            .parse()
+            .map_err(|_| Error::new_spanned(ty, "`flatten` needs a plain path to the struct"))?;
+        return Ok((
+            Some((
+                variant.clone(),
+                inner,
+                quote! { #message::#variant(__value) => self.#ident.apply(__value), },
+            )),
+            quote! { grid.group(#name, |grid| self.#ident.properties_msg(grid, #send)); },
+        ));
+    }
+    let carried = Some((
+        variant.clone(),
+        quote! { #ty },
+        quote! { #message::#variant(__value) => self.#ident = __value, },
+    ));
     if options.readonly {
         return Ok((
             None,
             quote! { grid.readonly(#name, ::std::format!("{}", self.#ident)); },
+        ));
+    }
+    if let Some(with) = &options.with {
+        return Ok((
+            carried,
+            quote! { grid.custom(#name, |ui, label| #with(ui, label, &self.#ident, #send)); },
         ));
     }
     let kind = match ty {
@@ -479,10 +525,6 @@ fn message_row(
         _ => String::new(),
     };
     let numeric = kind == "f64" || kind == "f32" || INTEGERS.contains(&kind.as_str());
-    let variant = variant_name(ident);
-    let send =
-        quote! { { let __on = __on.clone(); move |__value| (*__on)(#message::#variant(__value)) } };
-    let carried = Some((variant.clone(), ident.clone(), ty.clone()));
     if !options.choices.is_empty() {
         let choices = &options.choices;
         let default = options

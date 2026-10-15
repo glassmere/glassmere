@@ -72,6 +72,9 @@ pub(crate) enum Handler<M> {
         change: Option<Box<dyn Fn(ControlUpdate) -> Option<M>>>,
         submit: Option<M>,
     },
+    /// An autocomplete field: edits and picks send messages, Enter without a
+    /// highlighted suggestion sends `submit`.
+    Autocomplete { change: Batch<M>, submit: Option<M> },
     /// A number field: a commit parses its draft in the context's locale and
     /// sends `on` of the number when that differs from the declared one.
     Number {
@@ -111,6 +114,17 @@ impl<M: 'static> Handler<M> {
                     inner(update, &mut sent);
                     out.extend(sent.into_iter().map(|message| f(message)));
                 }))
+            }
+            Self::Autocomplete { change, submit } => {
+                let g = f.clone();
+                Handler::Autocomplete {
+                    change: Box::new(move |update, out| {
+                        let mut sent = Vec::new();
+                        change(update, &mut sent);
+                        out.extend(sent.into_iter().map(|message| g(message)));
+                    }),
+                    submit: submit.map(|message| f(message)),
+                }
             }
             Self::Number { on, options } => {
                 let f = f.clone();
