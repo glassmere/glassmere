@@ -162,6 +162,8 @@ Every `&mut` binding in a declaring method becomes a value plus a message constr
 | `ui.command_button(&cmd) -> Response` | `ui.command_button(&cmd, Msg::Save)` |
 | `ui.rich_text(..) -> Option<String>` | `ui.rich_text(.., Msg::Link)` with `fn(String) -> M` |
 
+`number_input_msg(label, value: f64, options, on: impl Fn(f64) -> M + 'static)` commits in the kernel, at resolve time in `tree/handlers.rs`, because the parse needs the context's locale. On Enter, leaving the field, a stepper click, Up/Down, PageUp/PageDown or the wheel, the kernel computes `constrain(parse_in(draft).unwrap_or(value) + steps * step)` from the node's stored `NumericValue` and the context's format, and sends a message only when that differs from the declared value. A draft that does not parse reverts without a message. The draft text stays kernel field state, as today.
+
 The rule for anything not listed: a return value that reports user input becomes a constructor parameter of the same type; a `&mut T` becomes `T` (or `&T`) plus `fn(T) -> M`; a declaration that returns nothing user-driven keeps its signature.
 
 `ui.button("Save")` without `on_click` stays valid and sends nothing. `Button::on_click` is a builder method, which fits milestone 34's one method and one builder per widget and keeps the `#[track_caller]` site on `button()`.
