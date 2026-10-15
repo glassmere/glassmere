@@ -40,8 +40,10 @@ struct Workbench {
     closed_probe: Sender<MessageSender<u32>>,
     left: Counter,
     right: Counter,
-    /// ponytail: custom widgets report clicks through `Response` until they
-    /// send messages of their own.
+    // M35: the custom action stays on `Ui::custom(..).clicked()` with this
+    // Cell. A widget with `WidgetBuilder::on_event` gets no activation (the
+    // `Action::Activate` that assistive technology sends, which
+    // test-desktop.ps1 uses), so its count cannot move to messages yet.
     custom_count: Cell<u32>,
     selection: String,
     tick: u32,

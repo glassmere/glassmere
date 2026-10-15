@@ -142,6 +142,11 @@ fn detached(
     }
 }
 
+// M35: stays on the closure API. Detached dock windows are `DockWindows` over
+// `DesktopHandle::open_window`, and each one's `on_close` returns its panels to
+// the layout. `App` has no message for a window closing, so under `run_app` a
+// closed detached panel could never go back. The main window's dock would
+// convert with `Ui::dock_msg` once that exists.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     let reset = std::env::args().any(|arg| arg == "--reset");

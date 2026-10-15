@@ -5,8 +5,9 @@
 //! which also freezes columns. Name and City can be filtered. The grid is wider
 //! than its window: Id and Name stay while the rest scrolls sideways.
 use rust_gui::{
-    AppOptions, CellEditor, CellValue, GridColumn, GridModel, GridState, ItemId, Label, Length,
-    ListModel, NumberOptions, Size, SortDirection, Style, VirtualListOptions, run, text_matches,
+    App, AppOptions, CellEditor, CellValue, Effects, GridColumn, GridModel, GridMsg, GridState,
+    ItemId, Label, Length, ListModel, NumberOptions, Size, SortDirection, Style, Ui,
+    VirtualListOptions, run_app, text_matches,
 };
 
 const CITIES: [&str; 6] = ["Berlin", "Brno", "Lisbon", "Prague", "Vienna", "Zagreb"];
@@ -193,49 +194,99 @@ impl GridModel for People {
     }
 }
 
+/// The application: the people, the grid's state, and what the status line
+/// shows. The grid sends `GridMsg`s; `update` applies them to its state and
+/// calls the model for the changes that are the model's to make.
+struct Directory {
+    people: People,
+    grid: GridState,
+    last: String,
+    /// Why the model refused the last edit, until one is stored.
+    error: Option<String>,
+}
+
+impl App for Directory {
+    type Message = GridMsg;
+
+    fn update(&mut self, message: GridMsg, _: &mut Effects<'_, GridMsg>) {
+        self.grid.apply(&message);
+        match message {
+            GridMsg::Sort(column, direction) => {
+                self.people.sort(column, direction);
+            }
+            GridMsg::FiltersApplied => {
+                let filters: Vec<(usize, &str)> = self
+                    .grid
+                    .applied_filters()
+                    .iter()
+                    .map(|(column, text)| (*column, text.as_str()))
+                    .collect();
+                self.people.filter(&filters);
+            }
+            GridMsg::Edit { row, column, value } => {
+                if let Some(index) = self.people.index_of(row) {
+                    match self.people.set_cell(index, column, value) {
+                        Ok(()) => {
+                            self.error = None;
+                            self.last = format!(
+                                "stored {} of #{}",
+                                self.people.columns[column].label, row.0
+                            );
+                        }
+                        Err(error) => self.error = Some(error),
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, GridMsg>) {
+        let page = Style {
+            padding: 24.0,
+            gap: 12.0,
+            width: Length::Percent(1.0),
+            height: Length::Percent(1.0),
+            ..Style::default()
+        };
+        ui.column(page, |ui| {
+            ui.label(Label::new(format!("People · {} of 2,000 rows", self.people.rows.len())).style(Style {
+                    font_size: Some(24.0),
+                    ..Style::default()
+                }));
+            ui.label("F2, Enter, a second click or typing edits · Enter stores, Tab moves on, Esc cancels · Shift+wheel scrolls sideways");
+            let options = VirtualListOptions {
+                label: "People".into(),
+                height: 460.0,
+                ..VirtualListOptions::default()
+            };
+            ui.data_grid_msg(&self.people, &self.grid, options, |message| message);
+            let status = match &self.error {
+                Some(error) => format!("Not stored: {error}"),
+                None => format!("Last change: {}", self.last),
+            };
+            ui.label(status);
+        });
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
-    let mut people = People::new(2000);
-    let mut state = GridState::default();
+    let mut grid = GridState::default();
     // Id and Name stay in place while the other columns scroll sideways.
-    state.columns.frozen = 2;
-    let mut last = String::from("nothing yet");
-    run(
+    grid.columns.frozen = 2;
+    run_app(
         AppOptions {
             title: "Rust GUI / Data grid".into(),
             size: Size::new(860.0, 640.0),
             frame_limit: smoke.then_some(3),
             ..AppOptions::default()
         },
-        move |ui| {
-            let page = Style {
-                padding: 24.0,
-                gap: 12.0,
-                width: Length::Percent(1.0),
-                height: Length::Percent(1.0),
-                ..Style::default()
-            };
-            ui.column(page, |ui| {
-                ui.label(Label::new(format!("People · {} of 2,000 rows", people.rows.len())).style(Style {
-                        font_size: Some(24.0),
-                        ..Style::default()
-                    }));
-                ui.label("F2, Enter, a second click or typing edits · Enter stores, Tab moves on, Esc cancels · Shift+wheel scrolls sideways");
-                let options = VirtualListOptions {
-                    label: "People".into(),
-                    height: 460.0,
-                    ..VirtualListOptions::default()
-                };
-                let response = ui.data_grid(&mut people, &mut state, options);
-                if let Some((item, column)) = response.edited {
-                    last = format!("stored {} of #{}", people.columns[column].label, item.0);
-                }
-                let status = match state.edit_error() {
-                    Some(error) => format!("Not stored: {error}"),
-                    None => format!("Last change: {last}"),
-                };
-                ui.label(status);
-            });
+        Directory {
+            people: People::new(2000),
+            grid,
+            last: String::from("nothing yet"),
+            error: None,
         },
     )
 }
