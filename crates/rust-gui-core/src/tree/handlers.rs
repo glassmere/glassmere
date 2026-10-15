@@ -101,6 +101,13 @@ impl Context {
                         out.extend(map(update));
                     }
                 }
+                (Queued::Update, Handler::Each(each)) => {
+                    if let Some(update) = self.updates.remove(&id)
+                        && enabled
+                    {
+                        each(update, out);
+                    }
+                }
                 (Queued::Area, Handler::Event(map)) => {
                     let bounds = node.bounds;
                     // Taken even when disabled, so that nothing waits for a

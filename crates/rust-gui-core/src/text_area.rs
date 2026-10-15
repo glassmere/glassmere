@@ -248,9 +248,13 @@ pub enum Granularity {
 #[derive(Clone, Debug, PartialEq)]
 pub enum AreaOp {
     Insert(String),
+    /// Typing an opening bracket or quote, with its partner (auto-close).
+    InsertPaired(String),
     Backspace {
         word: bool,
     },
+    /// Backspace that also removes an empty pair (auto-close).
+    BackspacePaired,
     Delete {
         word: bool,
     },
@@ -277,6 +281,114 @@ pub enum AreaOp {
         cut: bool,
     },
     Command(EditorCommand),
+}
+
+impl AreaOp {
+    /// Whether the op changes the text. A read-only editor drops these and
+    /// keeps the ones that move, select, copy or search.
+    pub(crate) fn is_edit(&self) -> bool {
+        matches!(
+            self,
+            Self::Insert(_)
+                | Self::InsertPaired(_)
+                | Self::Backspace { .. }
+                | Self::BackspacePaired
+                | Self::Delete { .. }
+                | Self::Newline
+                | Self::Indent
+                | Self::Outdent
+                | Self::Undo
+                | Self::Redo
+        )
+    }
+}
+
+impl TextDocument {
+    /// Applies one operation the way a code editor does, without auto-close
+    /// and without a find bar, which need state of the editor. A cut removes
+    /// the selection; the text a copy or cut puts on the clipboard is
+    /// `copy_text()`, read before applying.
+    pub fn apply(&mut self, op: AreaOp) {
+        match op {
+            AreaOp::Move { motion, select } => self.move_cursors(motion, select),
+            AreaOp::Pointer {
+                line,
+                byte,
+                select,
+                granularity,
+                add,
+            } => {
+                let offset = self.offset(line, byte);
+                let (anchor, cursor) = match granularity {
+                    Granularity::Char if select => (self.primary().anchor, offset),
+                    Granularity::Char => (offset, offset),
+                    Granularity::Word => {
+                        let word = self.word_at(offset);
+                        (word.start, word.end)
+                    }
+                    Granularity::Line => {
+                        let range = self.line_range(line);
+                        (range.start, range.end)
+                    }
+                };
+                if add {
+                    self.add_selection(anchor, cursor);
+                } else {
+                    self.set_selection(anchor, cursor);
+                }
+            }
+            AreaOp::SelectAll => self.select_all(),
+            AreaOp::CollapseSelections => self.collapse_selections(),
+            AreaOp::Clipboard { cut } => {
+                if cut {
+                    self.cut();
+                }
+            }
+            AreaOp::Command(command) => match command {
+                EditorCommand::SelectNextOccurrence => {
+                    self.select_next_occurrence();
+                }
+                EditorCommand::AddCursorAbove => {
+                    self.add_cursor_vertically(false);
+                }
+                EditorCommand::AddCursorBelow => {
+                    self.add_cursor_vertically(true);
+                }
+                // Search needs a find bar, and the rest is pointer or rich text.
+                _ => {}
+            },
+            AreaOp::Insert(text) => {
+                self.insert(&text);
+            }
+            AreaOp::InsertPaired(text) => {
+                self.insert_paired(&text);
+            }
+            AreaOp::Backspace { word } => {
+                self.backspace(word);
+            }
+            AreaOp::BackspacePaired => {
+                self.backspace_paired();
+            }
+            AreaOp::Delete { word } => {
+                self.delete(word);
+            }
+            AreaOp::Newline => {
+                self.newline();
+            }
+            AreaOp::Indent => {
+                self.indent();
+            }
+            AreaOp::Outdent => {
+                self.outdent();
+            }
+            AreaOp::Undo => {
+                self.undo();
+            }
+            AreaOp::Redo => {
+                self.redo();
+            }
+        }
+    }
 }
 
 /// One declared line: its text and the styled runs that paint it.

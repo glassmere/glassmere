@@ -76,9 +76,26 @@ pub enum RichOp {
         cut: bool,
     },
     Toggle(Mark),
+    /// The block kind of the paragraph at the cursor, from the toolbar.
+    SetBlock(BlockKind),
 }
 
 impl RichOp {
+    /// Whether the op changes the document. A read-only editor drops these.
+    pub(crate) fn is_edit(&self) -> bool {
+        matches!(
+            self,
+            Self::Insert(_)
+                | Self::Backspace { .. }
+                | Self::Delete { .. }
+                | Self::Newline
+                | Self::Undo
+                | Self::Redo
+                | Self::Toggle(_)
+                | Self::SetBlock(_)
+        )
+    }
+
     pub(crate) fn apply(
         self,
         document: &mut RichDocument,
@@ -86,17 +103,6 @@ impl RichOp {
         clipboard: &mut Option<String>,
     ) {
         match self {
-            Self::Move { motion, select } => document.move_cursor(motion, select),
-            Self::SetCursor {
-                position,
-                select,
-                granularity,
-            } => match granularity {
-                RichGranularity::Char => document.set_cursor(position, select),
-                RichGranularity::Word => document.select_word(position),
-                RichGranularity::Block => document.select_block(position.block),
-            },
-            Self::SelectAll => document.select_all(),
             Self::Clipboard { cut } => {
                 *clipboard = Some(if cut && !read_only {
                     document.cut()
@@ -104,18 +110,46 @@ impl RichOp {
                     document.selected_text()
                 });
             }
-            _ if read_only => {}
-            Self::Insert(text) => document.insert_text(&text),
-            Self::Backspace { word } => document.backspace(word),
-            Self::Delete { word } => document.delete(word),
-            Self::Newline => document.newline(),
-            Self::Undo => {
-                document.undo();
+            op if read_only && op.is_edit() => {}
+            op => document.apply(op),
+        }
+    }
+}
+
+impl RichDocument {
+    /// Applies one operation to the document. A cut removes the selection;
+    /// the text a copy or cut puts on the clipboard is `selected_text()`,
+    /// read before applying.
+    pub fn apply(&mut self, op: RichOp) {
+        match op {
+            RichOp::Move { motion, select } => self.move_cursor(motion, select),
+            RichOp::SetCursor {
+                position,
+                select,
+                granularity,
+            } => match granularity {
+                RichGranularity::Char => self.set_cursor(position, select),
+                RichGranularity::Word => self.select_word(position),
+                RichGranularity::Block => self.select_block(position.block),
+            },
+            RichOp::SelectAll => self.select_all(),
+            RichOp::Clipboard { cut } => {
+                if cut {
+                    self.cut();
+                }
             }
-            Self::Redo => {
-                document.redo();
+            RichOp::Insert(text) => self.insert_text(&text),
+            RichOp::Backspace { word } => self.backspace(word),
+            RichOp::Delete { word } => self.delete(word),
+            RichOp::Newline => self.newline(),
+            RichOp::Undo => {
+                self.undo();
             }
-            Self::Toggle(mark) => document.toggle_mark(mark),
+            RichOp::Redo => {
+                self.redo();
+            }
+            RichOp::Toggle(mark) => self.toggle_mark(mark),
+            RichOp::SetBlock(kind) => self.set_block_kind(kind),
         }
     }
 }

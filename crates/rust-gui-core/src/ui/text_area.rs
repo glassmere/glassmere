@@ -1,6 +1,7 @@
 use super::*;
+use crate::app::Handler;
 use crate::text_area::{
-    AreaLine, AreaMark, AreaOp, AreaSelection, Granularity, MarkKind, line_spans, marks_for,
+    AreaLine, AreaMark, AreaOp, AreaSelection, MarkKind, line_spans, marks_for,
 };
 use crate::{
     Align, CodeEditorOptions, CodeEditorResponse, EditorCommand, FindState, FocusScope, Length,
@@ -22,14 +23,10 @@ struct Applied<'a, 'b> {
 impl Applied<'_, '_> {
     fn command(&mut self, command: EditorCommand) {
         match command {
-            EditorCommand::SelectNextOccurrence => {
-                self.document.select_next_occurrence();
-            }
-            EditorCommand::AddCursorAbove => {
-                self.document.add_cursor_vertically(false);
-            }
-            EditorCommand::AddCursorBelow => {
-                self.document.add_cursor_vertically(true);
+            EditorCommand::SelectNextOccurrence
+            | EditorCommand::AddCursorAbove
+            | EditorCommand::AddCursorBelow => {
+                self.document.apply(AreaOp::Command(command));
             }
             // Resolved into a pointer operation when the event arrives, or meant
             // for rich text editors.
@@ -66,77 +63,23 @@ impl Applied<'_, '_> {
     }
 
     fn op(&mut self, op: AreaOp) {
-        let document = &mut *self.document;
         match op {
-            AreaOp::Move { motion, select } => document.move_cursors(motion, select),
-            AreaOp::Pointer {
-                line,
-                byte,
-                select,
-                granularity,
-                add,
-            } => {
-                let offset = document.offset(line, byte);
-                let (anchor, cursor) = match granularity {
-                    Granularity::Char if select => (document.primary().anchor, offset),
-                    Granularity::Char => (offset, offset),
-                    Granularity::Word => {
-                        let word = document.word_at(offset);
-                        (word.start, word.end)
-                    }
-                    Granularity::Line => {
-                        let range = document.line_range(line);
-                        (range.start, range.end)
-                    }
-                };
-                if add {
-                    document.add_selection(anchor, cursor);
-                } else {
-                    document.set_selection(anchor, cursor);
-                }
-            }
-            AreaOp::SelectAll => document.select_all(),
-            AreaOp::CollapseSelections => document.collapse_selections(),
             AreaOp::Clipboard { cut } => {
                 *self.clipboard = Some(if cut && !self.read_only {
-                    document.cut()
+                    self.document.cut()
                 } else {
-                    document.copy_text()
+                    self.document.copy_text()
                 });
             }
             AreaOp::Command(command) => self.command(command),
-            _ if self.read_only => {}
-            AreaOp::Insert(text) => {
-                if self.auto_close {
-                    document.insert_paired(&text);
-                } else {
-                    document.insert(&text);
-                }
+            op if self.read_only && op.is_edit() => {}
+            AreaOp::Insert(text) if self.auto_close => {
+                self.document.insert_paired(&text);
             }
             AreaOp::Backspace { word: false } if self.auto_close => {
-                document.backspace_paired();
+                self.document.backspace_paired();
             }
-            AreaOp::Backspace { word } => {
-                document.backspace(word);
-            }
-            AreaOp::Delete { word } => {
-                document.delete(word);
-            }
-            AreaOp::Newline => {
-                document.newline();
-            }
-            AreaOp::Indent => {
-                document.indent();
-            }
-            AreaOp::Outdent => {
-                document.outdent();
-            }
-            AreaOp::Undo => {
-                document.undo();
-            }
-            AreaOp::Redo => {
-                document.redo();
-            }
+            op => self.document.apply(op),
         }
     }
 }
@@ -276,10 +219,6 @@ impl<'a, M: 'static> Ui<'a, M> {
         mut options: CodeEditorOptions<'_>,
     ) -> CodeEditorResponse {
         let key = "$area";
-        let id = self
-            .context
-            .child(self.parent, &WidgetKey::Named(key.into()), Kind::TextArea);
-        let view = id.and_then(|id| self.context.area_view(id));
         let revision = document.revision();
         let before = document.primary();
         let mut applied = false;
@@ -308,6 +247,33 @@ impl<'a, M: 'static> Ui<'a, M> {
             find_bar(self, find, document, options.read_only);
         }
         applied |= document.primary() != before;
+        self.editor_view(
+            WidgetKey::Named(key.into()),
+            document,
+            options,
+            applied,
+            None,
+        );
+        CodeEditorResponse {
+            changed: document.revision() != revision,
+            selection_changed: document.primary() != before,
+        }
+    }
+
+    /// Declares the editor's node with what the document shows now. `applied`
+    /// says the caret moved this batch, so it is scrolled into view. `handler`
+    /// is what the node sends when the user edits it.
+    #[track_caller]
+    fn editor_view(
+        &mut self,
+        key: WidgetKey,
+        document: &TextDocument,
+        mut options: CodeEditorOptions<'_>,
+        applied: bool,
+        handler: Option<Handler<M>>,
+    ) {
+        let id = self.context.child(self.parent, &key, Kind::TextArea);
+        let view = id.and_then(|id| self.context.area_view(id));
 
         let font_size = if options.font_size.is_finite() {
             options.font_size.clamp(6.0, 96.0)
@@ -444,7 +410,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         self.push(Element {
             handler: None,
             seq: 0,
-            key: WidgetKey::Named(key.into()),
+            key,
             kind: Kind::TextArea,
             text: String::new(),
             style,
@@ -468,9 +434,103 @@ impl<'a, M: 'static> Ui<'a, M> {
                 gutter_marks,
             },
         });
-        CodeEditorResponse {
-            changed: document.revision() != revision,
-            selection_changed: document.primary() != before,
+        if let Some(handler) = handler {
+            self.set_handler(handler);
         }
     }
+}
+
+impl<'a, M: 'static> Ui<'a, M> {
+    /// A multi-line editor over an app-owned document, without the frame of
+    /// [`Ui::code_editor_msg`]. Each edit arrives as one `TextOp` through
+    /// `on`, in order; `update` applies it with `TextDocument::apply`, and the
+    /// view declares the document as it is then. The response reports
+    /// nothing: changes come through `update`.
+    #[track_caller]
+    pub fn text_area_msg(
+        &mut self,
+        document: &TextDocument,
+        options: CodeEditorOptions<'_>,
+        on: impl Fn(AreaOp) -> M + 'static,
+    ) -> CodeEditorResponse {
+        if let Some(message) = message_misuse(&options) {
+            self.misuse(message.into());
+            return CodeEditorResponse::default();
+        }
+        let handler = text_handler(on, options.read_only, options.auto_close);
+        let key = self.next_key();
+        self.editor_view(key, document, options, false, Some(handler));
+        CodeEditorResponse::default()
+    }
+
+    /// [`Ui::code_editor`] over a document the view only reads: each edit
+    /// arrives as one `TextOp` through `on`, in order, and `update` applies it
+    /// with `TextDocument::apply`. Undo, the caret, the selection and IME
+    /// composition stay in the document and the editor, so they survive the
+    /// declaration that follows. The find bar and auto-close keep state that
+    /// only the view can change, so they are misuses here.
+    #[track_caller]
+    pub fn code_editor_msg(
+        &mut self,
+        document: &TextDocument,
+        options: CodeEditorOptions<'_>,
+        on: impl Fn(AreaOp) -> M + 'static,
+    ) -> CodeEditorResponse {
+        if let Some(message) = message_misuse(&options) {
+            self.misuse(message.into());
+            return CodeEditorResponse::default();
+        }
+        let mut outer = options.style.clone();
+        outer.padding = 0.0;
+        outer.radius = 0.0;
+        outer.background = None;
+        outer.gap = 6.0;
+        let mut handler = Some(text_handler(on, options.read_only, options.auto_close));
+        let key = self.next_key();
+        self.group(key, Kind::CodeEditor, outer, |ui| {
+            ui.editor_view(
+                WidgetKey::Named("$area".into()),
+                document,
+                options,
+                false,
+                handler.take(),
+            );
+        });
+        CodeEditorResponse::default()
+    }
+}
+
+/// What the message forms cannot declare, as a misuse message.
+fn message_misuse(options: &CodeEditorOptions<'_>) -> Option<&'static str> {
+    options
+        .find
+        .is_some()
+        .then_some("the find bar keeps its state in the view; use code_editor for it")
+}
+
+/// The handler of an editor that sends its edits. A read-only editor drops
+/// the edits and turns a cut into a copy, as the kernel does; auto-close
+/// turns a typed bracket or quote, and a backspace, into their paired ops.
+fn text_handler<M: 'static>(
+    on: impl Fn(AreaOp) -> M + 'static,
+    read_only: bool,
+    auto_close: bool,
+) -> Handler<M> {
+    Handler::Each(Box::new(move |update, out| {
+        let ControlUpdate::TextOps(ops) = update else {
+            return;
+        };
+        for op in ops {
+            let op = match op {
+                AreaOp::Clipboard { cut } => AreaOp::Clipboard {
+                    cut: cut && !read_only,
+                },
+                op if read_only && op.is_edit() => continue,
+                AreaOp::Insert(text) if auto_close => AreaOp::InsertPaired(text),
+                AreaOp::Backspace { word: false } if auto_close => AreaOp::BackspacePaired,
+                op => op,
+            };
+            out.push(on(op));
+        }
+    }))
 }

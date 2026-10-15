@@ -34,4 +34,44 @@ impl<'a, M: 'static> Ui<'a, M> {
         });
         followed
     }
+
+    /// [`Ui::rich_text`] that sends the target of a followed link as
+    /// `on_link(url)`, in the batch the link was followed in.
+    #[track_caller]
+    pub fn rich_text_msg(
+        &mut self,
+        text: &RichText,
+        style: Style,
+        on_link: impl Fn(String) -> M + 'static,
+    ) -> Response<'a> {
+        let links: Vec<String> = text
+            .runs
+            .iter()
+            .filter_map(|run| run.link.clone())
+            .collect();
+        let key = self.next_key();
+        let response = self.push(Element {
+            handler: None,
+            seq: 0,
+            key,
+            kind: Kind::RichText,
+            text: text.plain(),
+            style,
+            enabled: self.enabled,
+            children: Vec::new(),
+            custom: None,
+            tooltip: None,
+            control: Control::RichText {
+                runs: text.runs.clone(),
+                links: text.runs.iter().filter(|run| run.link.is_some()).count(),
+            },
+        });
+        self.set_handler(crate::app::Handler::Map(Box::new(
+            move |update| match update {
+                ControlUpdate::Choice(index) => links.get(index).cloned().map(&on_link),
+                _ => None,
+            },
+        )));
+        response
+    }
 }

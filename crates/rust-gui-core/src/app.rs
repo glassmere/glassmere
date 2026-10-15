@@ -51,6 +51,9 @@ pub trait Component {
 /// applications of any size use an enum.
 pub type Action<S> = Rc<dyn Fn(&mut S)>;
 
+/// One message per operation a widget reports in one update, into `out`.
+type Batch<M> = Box<dyn Fn(ControlUpdate, &mut Vec<M>)>;
+
 /// What a widget sends when the user does something to it. Kept in a slot of
 /// the node that declared it, never in the element, which is compared every
 /// frame.
@@ -61,6 +64,9 @@ pub(crate) enum Handler<M> {
     Map(Box<dyn Fn(ControlUpdate) -> Option<M>>),
     /// Built from an event that reached the node.
     Event(Box<dyn Fn(UiEvent) -> Option<M>>),
+    /// One message per operation the widget reports in one update: a batch
+    /// of text edits, each sent in order.
+    Each(Batch<M>),
     /// A text field, which reports both edits and Enter.
     Field {
         change: Option<Box<dyn Fn(ControlUpdate) -> Option<M>>>,
@@ -90,6 +96,14 @@ impl<M: 'static> Handler<M> {
                 change: change.map(wrap),
                 submit: submit.map(|message| f(message)),
             },
+            Self::Each(inner) => {
+                let f = f.clone();
+                Handler::Each(Box::new(move |update, out| {
+                    let mut sent = Vec::new();
+                    inner(update, &mut sent);
+                    out.extend(sent.into_iter().map(|message| f(message)));
+                }))
+            }
         }
     }
 }
