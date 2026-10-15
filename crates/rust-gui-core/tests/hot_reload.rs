@@ -61,6 +61,9 @@ fn watched_files_are_requested_delivered_reloaded_and_survive_errors() {
     assert!(context.watched_paths().is_empty());
 }
 
+// M35: `App::save_state` exists, but `AppDriver` does not route
+// `request_hot_save` to it yet, and the state here is collected by `ui.hot_state`
+// from a view closure, so this test keeps the old closure view.
 #[test]
 fn hot_state_is_collected_only_when_the_host_asks_for_it() {
     let mut context = Context::new();

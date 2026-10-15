@@ -1,10 +1,12 @@
-use rust_gui_core::{Button, Label};
-use rust_gui_core::{
-    Context, Event, GestureResponse, Length, MenuItem, MonospaceMeasurer, Style, TouchPhase, Ui,
-};
+mod support;
+
+use rust_gui_core::app::Action;
+use rust_gui_core::{Button, GestureBuilder, Label};
+use rust_gui_core::{Context, Event, GestureResponse, Length, MenuItem, Style, TouchPhase, Ui};
 use rust_gui_scene::{Point, Size};
 use std::f32::consts::FRAC_PI_2;
 use std::time::Duration;
+use support::{Driven, act, on};
 
 const ROOT: Size = Size::new(600.0, 500.0);
 
@@ -29,8 +31,10 @@ fn touch(context: &mut Context, id: u64, phase: TouchPhase, position: Point) -> 
 }
 
 #[derive(Default)]
-struct Page {
+struct Canvas {
     gesture: GestureResponse,
+    /// How many gesture messages arrived, so that a frame's report is known.
+    reports: usize,
     clicks: usize,
     menu: Option<usize>,
     with_menu: bool,
@@ -38,45 +42,64 @@ struct Page {
 
 /// A 40 px strip, then a 400 by 300 canvas with a button in its corner,
 /// inside a scroll view that could pan.
-fn page(context: &mut Context, page: &mut Page) {
-    context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
-        ui.keyed("view", |ui| {
-            ui.scroll(sized(500.0, 400.0), |ui| {
-                ui.keyed("strip", |ui| {
-                    ui.label(Label::new("").style(sized(10.0, 40.0)))
+fn view(state: &Canvas, ui: &mut Ui<'_, Action<Canvas>>) {
+    ui.keyed("view", |ui| {
+        ui.scroll(sized(500.0, 400.0), |ui| {
+            ui.keyed("strip", |ui| {
+                ui.label(Label::new("").style(sized(10.0, 40.0)));
+            });
+            let items = [MenuItem::new("Reset")];
+            let canvas = |ui: &mut Ui<'_, Action<Canvas>>| {
+                ui.keyed("canvas", |ui| {
+                    ui.gesture_area_msg(
+                        GestureBuilder::new().on_gesture(on(
+                            |s: &mut Canvas, gesture: GestureResponse| {
+                                s.gesture = gesture;
+                                s.reports += 1;
+                            },
+                        )),
+                        sized(400.0, 300.0),
+                        |ui| {
+                            ui.keyed("inside", |ui| {
+                                ui.button(
+                                    Button::new("Inside")
+                                        .enabled(true)
+                                        .style(sized(100.0, 40.0))
+                                        .on_click(act(|s: &mut Canvas| s.clicks += 1)),
+                                );
+                            });
+                        },
+                    );
                 });
-                let items = [MenuItem::new("Reset")];
-                let mut canvas = |ui: &mut Ui<'_>| {
-                    page.gesture = ui.keyed("canvas", |ui| {
-                        ui.gesture_area(sized(400.0, 300.0), |ui| {
-                            if ui
-                                .keyed("inside", |ui| {
-                                    ui.button(
-                                        Button::new("Inside")
-                                            .enabled(true)
-                                            .style(sized(100.0, 40.0)),
-                                    )
-                                })
-                                .clicked()
-                            {
-                                page.clicks += 1;
-                            }
-                        })
-                    });
-                };
-                if page.with_menu {
-                    page.menu = ui.keyed("menu", |ui| {
-                        ui.context_menu(&items, Style::default(), canvas)
-                    });
-                } else {
-                    canvas(ui);
-                }
-                ui.keyed("tall", |ui| {
-                    ui.label(Label::new("").style(sized(10.0, 900.0)))
+            };
+            if state.with_menu {
+                ui.keyed("menu", |ui| {
+                    ui.context_menu_msg(
+                        &items,
+                        Style::default(),
+                        on(|s: &mut Canvas, index: usize| s.menu = Some(index)),
+                        canvas,
+                    );
                 });
-            })
+            } else {
+                canvas(ui);
+            }
+            ui.keyed("tall", |ui| {
+                ui.label(Label::new("").style(sized(10.0, 900.0)));
+            });
         });
     });
+}
+
+/// One frame, and the gesture report it carried: the default when none came.
+fn frame(driven: &mut Driven<Canvas>) -> GestureResponse {
+    let before = driven.state().reports;
+    driven.frame();
+    if driven.state().reports > before {
+        driven.state().gesture
+    } else {
+        GestureResponse::default()
+    }
 }
 
 fn offset(context: &Context) -> f32 {
@@ -95,22 +118,92 @@ fn close(left: f32, right: f32) -> bool {
     (left - right).abs() < 1e-3
 }
 
+mod old {
+    use rust_gui_core::Context;
+    use rust_gui_core::{
+        Button, GestureResponse, Label, Length, MenuItem, MonospaceMeasurer, Style, Ui,
+    };
+    use rust_gui_scene::Size;
+
+    fn sized(width: f32, height: f32) -> Style {
+        Style::default()
+            .width(Length::Px(width))
+            .height(Length::Px(height))
+    }
+
+    #[derive(Default)]
+    pub struct Page {
+        pub gesture: GestureResponse,
+        pub clicks: usize,
+        pub menu: Option<usize>,
+        pub with_menu: bool,
+    }
+
+    pub fn page(context: &mut Context, page: &mut Page) {
+        context.run(
+            Size::new(600.0, 500.0),
+            &mut MonospaceMeasurer,
+            |ui: &mut Ui<'_>| {
+                ui.keyed("view", |ui| {
+                    ui.scroll(sized(500.0, 400.0), |ui| {
+                        ui.keyed("strip", |ui| {
+                            ui.label(Label::new("").style(sized(10.0, 40.0)));
+                        });
+                        let items = [MenuItem::new("Reset")];
+                        let mut canvas = |ui: &mut Ui<'_>| {
+                            page.gesture = ui.keyed("canvas", |ui| {
+                                ui.gesture_area(sized(400.0, 300.0), |ui| {
+                                    if ui
+                                        .keyed("inside", |ui| {
+                                            ui.button(
+                                                Button::new("Inside")
+                                                    .enabled(true)
+                                                    .style(sized(100.0, 40.0)),
+                                            )
+                                        })
+                                        .clicked()
+                                    {
+                                        page.clicks += 1;
+                                    }
+                                })
+                            });
+                        };
+                        if page.with_menu {
+                            page.menu = ui.keyed("menu", |ui| {
+                                ui.context_menu(&items, Style::default(), canvas)
+                            });
+                        } else {
+                            canvas(ui);
+                        }
+                        ui.keyed("tall", |ui| {
+                            ui.label(Label::new("").style(sized(10.0, 900.0)));
+                        });
+                    })
+                });
+            },
+        );
+    }
+}
+
+// M35: `GestureResponse::active` is only reported by a gesture message, which
+// a finger inside the slop does not send; this test asserts `active` on frames
+// with no message. It stays on the old closure view until `active` is observed.
 #[test]
 fn one_finger_pans_after_the_slop_and_a_still_one_taps() {
-    let (mut context, mut state) = (Context::new(), Page::default());
-    page(&mut context, &mut state);
+    let (mut context, mut state) = (Context::new(), old::Page::default());
+    old::page(&mut context, &mut state);
     assert_eq!(state.gesture, GestureResponse::default());
     assert!(!state.gesture.changed());
 
     touch(&mut context, 1, TouchPhase::Started, at(200.0, 200.0));
     touch(&mut context, 1, TouchPhase::Moved, at(204.0, 203.0));
-    page(&mut context, &mut state);
+    old::page(&mut context, &mut state);
     assert!(state.gesture.active && !state.gesture.changed());
     assert_eq!(state.gesture.pressure, Some(0.25));
     // Past the slop the picture catches up with the finger.
     touch(&mut context, 1, TouchPhase::Moved, at(230.0, 240.0));
     touch(&mut context, 1, TouchPhase::Moved, at(250.0, 220.0));
-    page(&mut context, &mut state);
+    old::page(&mut context, &mut state);
     assert_eq!((state.gesture.pan_x, state.gesture.pan_y), (50.0, 20.0));
     assert_eq!(
         state.gesture.center,
@@ -119,219 +212,249 @@ fn one_finger_pans_after_the_slop_and_a_still_one_taps() {
     );
     assert_eq!((state.gesture.scale, state.gesture.rotation), (1.0, 0.0));
     // Reported once, and the scroll view under the canvas stayed put.
-    page(&mut context, &mut state);
+    old::page(&mut context, &mut state);
     assert!(!state.gesture.changed() && state.gesture.active);
     assert_eq!(offset(&context), 0.0);
     touch(&mut context, 1, TouchPhase::Ended, at(250.0, 220.0));
-    page(&mut context, &mut state);
+    old::page(&mut context, &mut state);
     assert!(!state.gesture.active);
     assert_eq!(state.gesture.tapped, None, "a pan is not a tap");
     assert!(!context.animating(), "and it does not fling anything");
 
     touch(&mut context, 1, TouchPhase::Started, at(300.0, 100.0));
     touch(&mut context, 1, TouchPhase::Ended, at(301.0, 100.0));
-    page(&mut context, &mut state);
+    old::page(&mut context, &mut state);
     assert_eq!(state.gesture.tapped, local(&context, at(301.0, 100.0)));
-    page(&mut context, &mut state);
+    old::page(&mut context, &mut state);
     assert_eq!(state.gesture.tapped, None);
 }
 
 #[test]
 fn two_fingers_scale_turn_and_move_about_the_point_between_them() {
-    let (mut context, mut state) = (Context::new(), Page::default());
-    page(&mut context, &mut state);
-    touch(&mut context, 1, TouchPhase::Started, at(150.0, 200.0));
-    touch(&mut context, 2, TouchPhase::Started, at(250.0, 200.0));
+    let mut driven = Driven::new(ROOT, Canvas::default(), view);
+    touch(
+        &mut driven.context,
+        1,
+        TouchPhase::Started,
+        at(150.0, 200.0),
+    );
+    touch(
+        &mut driven.context,
+        2,
+        TouchPhase::Started,
+        at(250.0, 200.0),
+    );
     // Apart: from 100 px to 200 px, the middle stays.
-    touch(&mut context, 1, TouchPhase::Moved, at(125.0, 200.0));
-    touch(&mut context, 2, TouchPhase::Moved, at(275.0, 200.0));
-    touch(&mut context, 1, TouchPhase::Moved, at(100.0, 200.0));
-    touch(&mut context, 2, TouchPhase::Moved, at(300.0, 200.0));
-    page(&mut context, &mut state);
-    assert!(close(state.gesture.scale, 2.0), "{:?}", state.gesture);
-    assert!(close(state.gesture.pan_x, 0.0) && close(state.gesture.pan_y, 0.0));
-    assert!(close(state.gesture.rotation, 0.0));
-    assert_eq!(state.gesture.center, local(&context, at(200.0, 200.0)));
-    assert_eq!(state.gesture.pressure, Some(0.5), "the firmer of the two");
+    touch(&mut driven.context, 1, TouchPhase::Moved, at(125.0, 200.0));
+    touch(&mut driven.context, 2, TouchPhase::Moved, at(275.0, 200.0));
+    touch(&mut driven.context, 1, TouchPhase::Moved, at(100.0, 200.0));
+    touch(&mut driven.context, 2, TouchPhase::Moved, at(300.0, 200.0));
+    let gesture = frame(&mut driven);
+    assert!(close(gesture.scale, 2.0), "{gesture:?}");
+    assert!(close(gesture.pan_x, 0.0) && close(gesture.pan_y, 0.0));
+    assert!(close(gesture.rotation, 0.0));
+    assert_eq!(gesture.center, local(&driven.context, at(200.0, 200.0)));
+    assert_eq!(gesture.pressure, Some(0.5), "the firmer of the two");
 
     // A quarter turn clockwise: the right finger goes below the left one.
-    touch(&mut context, 2, TouchPhase::Moved, at(100.0, 400.0));
-    page(&mut context, &mut state);
-    assert!(
-        close(state.gesture.rotation, FRAC_PI_2),
-        "{:?}",
-        state.gesture
-    );
-    assert!(close(state.gesture.scale, 1.0));
-    assert_eq!((state.gesture.pan_x, state.gesture.pan_y), (-100.0, 100.0));
+    touch(&mut driven.context, 2, TouchPhase::Moved, at(100.0, 400.0));
+    let gesture = frame(&mut driven);
+    assert!(close(gesture.rotation, FRAC_PI_2), "{gesture:?}");
+    assert!(close(gesture.scale, 1.0));
+    assert_eq!((gesture.pan_x, gesture.pan_y), (-100.0, 100.0));
 
     // Both fingers the same way: a pan and nothing else.
-    touch(&mut context, 1, TouchPhase::Moved, at(130.0, 200.0));
-    touch(&mut context, 2, TouchPhase::Moved, at(130.0, 400.0));
-    page(&mut context, &mut state);
-    assert!(close(state.gesture.pan_x, 30.0) && close(state.gesture.pan_y, 0.0));
-    assert!(close(state.gesture.scale, 1.0), "{:?}", state.gesture);
-    assert!(state.gesture.rotation.abs() < 1e-3);
+    touch(&mut driven.context, 1, TouchPhase::Moved, at(130.0, 200.0));
+    touch(&mut driven.context, 2, TouchPhase::Moved, at(130.0, 400.0));
+    let gesture = frame(&mut driven);
+    assert!(close(gesture.pan_x, 30.0) && close(gesture.pan_y, 0.0));
+    assert!(close(gesture.scale, 1.0), "{gesture:?}");
+    assert!(gesture.rotation.abs() < 1e-3);
 
     // One finger lifts without a jump, and nothing counts as a tap.
-    touch(&mut context, 2, TouchPhase::Ended, at(130.0, 400.0));
-    touch(&mut context, 1, TouchPhase::Moved, at(140.0, 200.0));
-    touch(&mut context, 1, TouchPhase::Ended, at(140.0, 200.0));
-    page(&mut context, &mut state);
-    assert_eq!((state.gesture.pan_x, state.gesture.pan_y), (10.0, 0.0));
-    assert_eq!(state.gesture.tapped, None);
-    assert!(!state.gesture.active);
+    touch(&mut driven.context, 2, TouchPhase::Ended, at(130.0, 400.0));
+    touch(&mut driven.context, 1, TouchPhase::Moved, at(140.0, 200.0));
+    touch(&mut driven.context, 1, TouchPhase::Ended, at(140.0, 200.0));
+    let gesture = frame(&mut driven);
+    assert_eq!((gesture.pan_x, gesture.pan_y), (10.0, 0.0));
+    assert_eq!(gesture.tapped, None);
+    assert!(!gesture.active);
 }
 
 #[test]
 fn controls_inside_are_pressed_and_touches_outside_pan_the_page() {
-    let (mut context, mut state) = (Context::new(), Page::default());
-    page(&mut context, &mut state);
-    let inside = context.find(&["view", "canvas", "inside"]).unwrap();
-    let bounds = context.node(inside).unwrap().bounds;
+    let mut driven = Driven::new(ROOT, Canvas::default(), view);
+    let inside = driven.context.find(&["view", "canvas", "inside"]).unwrap();
+    let bounds = driven.context.node(inside).unwrap().bounds;
     let button = at(bounds.x + 20.0, bounds.y + 20.0);
-    touch(&mut context, 1, TouchPhase::Started, button);
-    touch(&mut context, 1, TouchPhase::Ended, button);
-    page(&mut context, &mut state);
-    assert_eq!(state.clicks, 1);
-    assert!(!state.gesture.changed() && state.gesture.tapped.is_none());
+    touch(&mut driven.context, 1, TouchPhase::Started, button);
+    touch(&mut driven.context, 1, TouchPhase::Ended, button);
+    let gesture = frame(&mut driven);
+    assert_eq!(driven.state().clicks, 1);
+    assert!(!gesture.changed() && gesture.tapped.is_none());
 
     // The strip above the canvas belongs to the scroll view.
-    touch(&mut context, 1, TouchPhase::Started, at(450.0, 380.0));
-    touch(&mut context, 1, TouchPhase::Moved, at(450.0, 340.0));
-    touch(&mut context, 1, TouchPhase::Cancelled, at(450.0, 340.0));
-    page(&mut context, &mut state);
-    assert_eq!(offset(&context), 40.0);
-    assert!(!state.gesture.changed());
+    touch(
+        &mut driven.context,
+        1,
+        TouchPhase::Started,
+        at(450.0, 380.0),
+    );
+    touch(&mut driven.context, 1, TouchPhase::Moved, at(450.0, 340.0));
+    touch(
+        &mut driven.context,
+        1,
+        TouchPhase::Cancelled,
+        at(450.0, 340.0),
+    );
+    let gesture = frame(&mut driven);
+    assert_eq!(offset(&driven.context), 40.0);
+    assert!(!gesture.changed());
 }
 
 #[test]
 fn a_trackpad_pinch_or_ctrl_wheel_scales_about_the_pointer_and_falls_through_elsewhere() {
-    let (mut context, mut state) = (Context::new(), Page::default());
-    page(&mut context, &mut state);
-    assert!(!context.event(Event::Zoom(1.1)), "no pointer yet");
-    context.event(Event::PointerMoved(at(120.0, 140.0)));
-    assert!(context.event(Event::Zoom(1.1)));
-    assert!(context.event(Event::Zoom(1.1)));
-    assert!(context.event(Event::Rotate(0.5)));
-    page(&mut context, &mut state);
-    assert!(close(state.gesture.scale, 1.21));
-    assert!(close(state.gesture.rotation, 0.5));
-    assert_eq!(state.gesture.center, local(&context, at(120.0, 140.0)));
-    assert!(!state.gesture.active, "no finger is down");
+    let mut driven = Driven::new(ROOT, Canvas::default(), view);
+    assert!(!driven.context.event(Event::Zoom(1.1)), "no pointer yet");
+    driven.context.event(Event::PointerMoved(at(120.0, 140.0)));
+    assert!(driven.context.event(Event::Zoom(1.1)));
+    assert!(driven.context.event(Event::Zoom(1.1)));
+    assert!(driven.context.event(Event::Rotate(0.5)));
+    let gesture = frame(&mut driven);
+    assert!(close(gesture.scale, 1.21));
+    assert!(close(gesture.rotation, 0.5));
+    assert_eq!(gesture.center, local(&driven.context, at(120.0, 140.0)));
+    assert!(!gesture.active, "no finger is down");
     // Nonsense from a driver is refused.
-    assert!(!context.event(Event::Zoom(0.0)));
-    assert!(!context.event(Event::Zoom(f32::NAN)));
+    assert!(!driven.context.event(Event::Zoom(0.0)));
+    assert!(!driven.context.event(Event::Zoom(f32::NAN)));
     // Outside the canvas the host keeps the wheel for scrolling.
-    context.event(Event::PointerMoved(at(450.0, 20.0)));
-    assert!(!context.event(Event::Zoom(1.1)));
-    page(&mut context, &mut state);
-    assert!(!state.gesture.changed());
+    driven.context.event(Event::PointerMoved(at(450.0, 20.0)));
+    assert!(!driven.context.event(Event::Zoom(1.1)));
+    let gesture = frame(&mut driven);
+    assert!(!gesture.changed());
 }
 
 #[test]
 fn resting_on_a_canvas_opens_its_menu_or_else_keeps_the_finger_for_a_pan() {
-    let (mut context, mut state) = (Context::new(), Page::default());
-    page(&mut context, &mut state);
-    context.set_now(Duration::ZERO);
-    touch(&mut context, 1, TouchPhase::Started, at(200.0, 200.0));
-    assert_eq!(context.next_wake(), Some(Duration::from_millis(500)));
-    context.set_now(Duration::from_millis(600));
-    page(&mut context, &mut state);
-    assert_eq!(context.next_wake(), None, "asked once");
+    let mut driven = Driven::new(ROOT, Canvas::default(), view);
+    driven.context.set_now(Duration::ZERO);
+    touch(
+        &mut driven.context,
+        1,
+        TouchPhase::Started,
+        at(200.0, 200.0),
+    );
+    assert_eq!(driven.context.next_wake(), Some(Duration::from_millis(500)));
+    driven.context.set_now(Duration::from_millis(600));
+    frame(&mut driven);
+    assert_eq!(driven.context.next_wake(), None, "asked once");
     // No menu here, so the rested finger still pans.
-    touch(&mut context, 1, TouchPhase::Moved, at(200.0, 260.0));
-    touch(&mut context, 1, TouchPhase::Ended, at(200.0, 260.0));
-    page(&mut context, &mut state);
-    assert_eq!(state.gesture.pan_y, 60.0);
+    touch(&mut driven.context, 1, TouchPhase::Moved, at(200.0, 260.0));
+    touch(&mut driven.context, 1, TouchPhase::Ended, at(200.0, 260.0));
+    let gesture = frame(&mut driven);
+    assert_eq!(gesture.pan_y, 60.0);
 
-    let (mut context, mut state) = (Context::new(), Page::default());
-    state.with_menu = true;
-    page(&mut context, &mut state);
-    context.set_now(Duration::ZERO);
-    touch(&mut context, 1, TouchPhase::Started, at(200.0, 200.0));
-    context.set_now(Duration::from_millis(600));
-    page(&mut context, &mut state);
-    page(&mut context, &mut state);
-    assert!(context.find(&["view", "menu", "$popup"]).is_some());
-    touch(&mut context, 1, TouchPhase::Moved, at(200.0, 260.0));
-    touch(&mut context, 1, TouchPhase::Ended, at(200.0, 260.0));
-    page(&mut context, &mut state);
-    assert!(!state.gesture.changed() && state.gesture.tapped.is_none());
+    let mut driven = Driven::new(
+        ROOT,
+        Canvas {
+            with_menu: true,
+            ..Canvas::default()
+        },
+        view,
+    );
+    driven.context.set_now(Duration::ZERO);
+    touch(
+        &mut driven.context,
+        1,
+        TouchPhase::Started,
+        at(200.0, 200.0),
+    );
+    driven.context.set_now(Duration::from_millis(600));
+    frame(&mut driven);
+    frame(&mut driven);
+    assert!(driven.context.find(&["view", "menu", "$popup"]).is_some());
+    touch(&mut driven.context, 1, TouchPhase::Moved, at(200.0, 260.0));
+    touch(&mut driven.context, 1, TouchPhase::Ended, at(200.0, 260.0));
+    let gesture = frame(&mut driven);
+    assert!(!gesture.changed() && gesture.tapped.is_none());
 }
 
 #[test]
 fn a_second_tap_and_a_flick_are_told_apart_from_a_tap_and_a_pan() {
-    let (mut context, mut state) = (Context::new(), Page::default());
-    page(&mut context, &mut state);
+    let mut driven = Driven::new(ROOT, Canvas::default(), view);
     let spot = at(200.0, 200.0);
     let tap = |context: &mut Context, at: Point, when: u64| {
         context.set_now(Duration::from_millis(when));
         touch(context, 1, TouchPhase::Started, at);
         touch(context, 1, TouchPhase::Ended, at);
     };
-    tap(&mut context, spot, 1000);
-    page(&mut context, &mut state);
-    assert!(state.gesture.tapped.is_some() && state.gesture.double_tapped.is_none());
+    tap(&mut driven.context, spot, 1000);
+    let gesture = frame(&mut driven);
+    assert!(gesture.tapped.is_some() && gesture.double_tapped.is_none());
 
     // Soon after and near enough: a double tap, which is a tap as well.
-    tap(&mut context, at(spot.x + 4.0, spot.y), 1200);
-    page(&mut context, &mut state);
-    assert!(state.gesture.tapped.is_some() && state.gesture.double_tapped.is_some());
+    tap(&mut driven.context, at(spot.x + 4.0, spot.y), 1200);
+    let gesture = frame(&mut driven);
+    assert!(gesture.tapped.is_some() && gesture.double_tapped.is_some());
     // A third does not pair with the second.
-    tap(&mut context, spot, 1300);
-    page(&mut context, &mut state);
-    assert!(state.gesture.double_tapped.is_none());
+    tap(&mut driven.context, spot, 1300);
+    let gesture = frame(&mut driven);
+    assert!(gesture.double_tapped.is_none());
     // Too late, and too far.
-    tap(&mut context, spot, 2000);
-    page(&mut context, &mut state);
-    tap(&mut context, at(spot.x + 60.0, spot.y), 2100);
-    page(&mut context, &mut state);
-    assert!(state.gesture.double_tapped.is_none());
+    tap(&mut driven.context, spot, 2000);
+    frame(&mut driven);
+    tap(&mut driven.context, at(spot.x + 60.0, spot.y), 2100);
+    let gesture = frame(&mut driven);
+    assert!(gesture.double_tapped.is_none());
 
     // A flick: far and fast in one direction.
-    context.set_now(Duration::from_millis(3000));
-    touch(&mut context, 1, TouchPhase::Started, spot);
+    driven.context.set_now(Duration::from_millis(3000));
+    touch(&mut driven.context, 1, TouchPhase::Started, spot);
     for step in 1..=4u64 {
-        context.set_now(Duration::from_millis(3000 + step * 10));
+        driven
+            .context
+            .set_now(Duration::from_millis(3000 + step * 10));
         touch(
-            &mut context,
+            &mut driven.context,
             1,
             TouchPhase::Moved,
             at(spot.x - 30.0 * step as f32, spot.y),
         );
     }
     touch(
-        &mut context,
+        &mut driven.context,
         1,
         TouchPhase::Ended,
         at(spot.x - 120.0, spot.y),
     );
-    page(&mut context, &mut state);
-    let swipe = state.gesture.swipe.expect("a swipe");
+    let gesture = frame(&mut driven);
+    let swipe = gesture.swipe.expect("a swipe");
     assert_eq!(swipe.direction, rust_gui_core::SwipeDirection::Left);
     assert!(swipe.speed > 1000.0, "{swipe:?}");
-    assert!(state.gesture.tapped.is_none(), "a flick is not a tap");
+    assert!(gesture.tapped.is_none(), "a flick is not a tap");
 
     // A slow drag over the same distance is a pan, not a swipe.
-    context.set_now(Duration::from_millis(4000));
-    touch(&mut context, 1, TouchPhase::Started, spot);
+    driven.context.set_now(Duration::from_millis(4000));
+    touch(&mut driven.context, 1, TouchPhase::Started, spot);
     for step in 1..=4u64 {
-        context.set_now(Duration::from_millis(4000 + step * 200));
+        driven
+            .context
+            .set_now(Duration::from_millis(4000 + step * 200));
         touch(
-            &mut context,
+            &mut driven.context,
             1,
             TouchPhase::Moved,
             at(spot.x - 30.0 * step as f32, spot.y),
         );
     }
     touch(
-        &mut context,
+        &mut driven.context,
         1,
         TouchPhase::Ended,
         at(spot.x - 120.0, spot.y),
     );
-    page(&mut context, &mut state);
-    assert!(state.gesture.swipe.is_none());
-    assert!(state.gesture.pan_x < -100.0, "it panned instead");
+    let gesture = frame(&mut driven);
+    assert!(gesture.swipe.is_none());
+    assert!(gesture.pan_x < -100.0, "it panned instead");
 }

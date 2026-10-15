@@ -1,11 +1,17 @@
+mod support;
+
 use rust_gui_core::{
     Action, Axis, Context, Event, Key, Length, MenuItem, MonospaceMeasurer, PopoverOptions, Role,
     SplitOptions, Style, TOOLTIP_DELAY, Tab, TabsResponse, Ui,
 };
 use rust_gui_scene::{Point, Primitive, Size};
 use std::time::Duration;
+use support::{Driven, on};
 
 const ROOT: Size = Size::new(500.0, 400.0);
+
+/// The message type of a `Driven` view over state `S`.
+type Handler<S> = rust_gui_core::app::Action<S>;
 
 fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) -> rust_gui_core::FrameStats {
     context.run(ROOT, &mut MonospaceMeasurer, view)
@@ -118,6 +124,9 @@ fn tabs_frame(context: &mut Context, selected: &mut usize) -> TabsResponse {
     response
 }
 
+// M35: `tabs_msg` has no close report (`TabsResponse::closed`) and only reports
+// a change through its message, so this test keeps the old closure view until
+// closes have a message form.
 #[test]
 fn tabs_select_by_click_and_arrows_expose_roles_and_report_closes() {
     let mut context = Context::new();
@@ -180,221 +189,262 @@ fn tabs_select_by_click_and_arrows_expose_roles_and_report_closes() {
     assert_eq!(tabs_frame(&mut context, &mut selected).closed, None);
 }
 
-fn split_frame(context: &mut Context, fraction: &mut f32) {
-    frame(context, |ui| {
-        ui.keyed("split", |ui| {
-            ui.split(
-                fraction,
-                Axis::Horizontal,
-                SplitOptions {
-                    min_first: 100.0,
-                    min_second: 100.0,
-                    divider: 10.0,
-                    style: Style::default()
-                        .width(Length::Px(500.0))
-                        .height(Length::Px(200.0)),
-                },
-                |ui| ui.keyed("a", |ui| ui.label("A")),
-                |ui| ui.keyed("b", |ui| ui.label("B")),
-            )
-        });
+#[derive(Default)]
+struct Split {
+    fraction: f32,
+}
+
+fn split_page(state: &Split, ui: &mut Ui<'_, Handler<Split>>) {
+    ui.keyed("split", |ui| {
+        ui.split_msg(
+            state.fraction,
+            on(|s: &mut Split, fraction: f32| s.fraction = fraction),
+            Axis::Horizontal,
+            SplitOptions {
+                min_first: 100.0,
+                min_second: 100.0,
+                divider: 10.0,
+                style: Style::default()
+                    .width(Length::Px(500.0))
+                    .height(Length::Px(200.0)),
+            },
+            |ui| ui.keyed("a", |ui| ui.label("A")),
+            |ui| ui.keyed("b", |ui| ui.label("B")),
+        );
     });
 }
 
 #[test]
 fn split_dividers_drag_within_minimums_move_with_keys_and_accept_semantic_values() {
-    let mut context = Context::new();
-    let mut fraction = 0.5f32;
-    split_frame(&mut context, &mut fraction);
-    let first = bounds(&context, &["split", "$first"]);
-    let divider = context.find(&["split", "$divider"]).unwrap();
-    let second = bounds(&context, &["split", "$second"]);
+    let mut driven = Driven::new(ROOT, Split { fraction: 0.5 }, split_page);
+    let first = bounds(&driven.context, &["split", "$first"]);
+    let divider = driven.context.find(&["split", "$divider"]).unwrap();
+    let second = bounds(&driven.context, &["split", "$second"]);
     assert_eq!((first.x, first.width), (0.0, 250.0));
-    assert_eq!(context.node(divider).unwrap().bounds.x, 250.0);
+    assert_eq!(driven.context.node(divider).unwrap().bounds.x, 250.0);
     assert_eq!((second.x, second.width), (260.0, 240.0));
-    let snapshot = context.node(divider).unwrap();
+    let snapshot = driven.context.node(divider).unwrap();
     assert_eq!(snapshot.semantics.role, Role::Splitter);
     assert_eq!(snapshot.orientation, Some(Axis::Horizontal));
     assert_eq!(snapshot.numeric.unwrap().value, 50.0);
     // Drag to the right, then past the second pane's minimum.
-    context.event(Event::PointerMoved(Point { x: 255.0, y: 100.0 }));
-    context.event(Event::PointerDown);
-    assert_eq!(context.captured(), Some(divider));
-    context.event(Event::PointerMoved(Point { x: 300.0, y: 100.0 }));
-    split_frame(&mut context, &mut fraction);
+    driven
+        .context
+        .event(Event::PointerMoved(Point { x: 255.0, y: 100.0 }));
+    driven.context.event(Event::PointerDown);
+    assert_eq!(driven.context.captured(), Some(divider));
+    driven
+        .context
+        .event(Event::PointerMoved(Point { x: 300.0, y: 100.0 }));
+    driven.frame();
+    let fraction = driven.state().fraction;
     assert!((fraction - 295.0 / 490.0).abs() < 0.001, "{fraction}");
-    let first = bounds(&context, &["split", "$first"]);
+    let first = bounds(&driven.context, &["split", "$first"]);
     assert!((first.width - 500.0 * fraction).abs() < 1.0);
-    context.event(Event::PointerMoved(Point { x: 480.0, y: 100.0 }));
-    split_frame(&mut context, &mut fraction);
+    driven
+        .context
+        .event(Event::PointerMoved(Point { x: 480.0, y: 100.0 }));
+    driven.frame();
+    let fraction = driven.state().fraction;
     assert!(
         (fraction - (1.0 - 100.0 / 490.0)).abs() < 0.001,
         "clamped: {fraction}"
     );
-    context.event(Event::PointerUp);
+    driven.context.event(Event::PointerUp);
     // Keyboard: ten logical pixels per step, Home to the first minimum.
-    context.action(divider, Action::Focus);
-    let before = fraction;
-    key(&mut context, Key::ArrowLeft);
-    split_frame(&mut context, &mut fraction);
-    assert!((before - fraction - 10.0 / 500.0).abs() < 0.001);
-    key(&mut context, Key::Home);
-    split_frame(&mut context, &mut fraction);
-    assert!((fraction - 100.0 / 490.0).abs() < 0.001);
+    driven.context.action(divider, Action::Focus);
+    let before = driven.state().fraction;
+    key(&mut driven.context, Key::ArrowLeft);
+    driven.frame();
+    assert!((before - driven.state().fraction - 10.0 / 500.0).abs() < 0.001);
+    key(&mut driven.context, Key::Home);
+    driven.frame();
+    assert!((driven.state().fraction - 100.0 / 490.0).abs() < 0.001);
     // Accessibility sets a percentage.
-    assert!(context.action(divider, Action::SetNumber(50.0)));
-    split_frame(&mut context, &mut fraction);
-    assert_eq!(fraction, 0.5);
+    assert!(driven.context.action(divider, Action::SetNumber(50.0)));
+    driven.frame();
+    assert_eq!(driven.state().fraction, 0.5);
 }
 
-fn menu_frame(context: &mut Context) -> Option<usize> {
+#[derive(Default)]
+struct Menu {
+    picks: Vec<usize>,
+}
+
+fn menu_page(_: &Menu, ui: &mut Ui<'_, Handler<Menu>>) {
     let items = [
         MenuItem::new("Copy"),
         MenuItem::disabled("Cut"),
         MenuItem::new("Paste"),
     ];
-    let mut chosen = None;
-    frame(context, |ui| {
-        ui.keyed("outside", |ui| ui.button("Outside"));
-        chosen = ui.keyed("area", |ui| {
-            ui.context_menu(
-                &items,
-                Style::default()
-                    .width(Length::Px(400.0))
-                    .height(Length::Px(200.0)),
-                |ui| {
-                    ui.keyed("text", |ui| ui.label("Right-click me"));
-                    ui.keyed("inner", |ui| ui.button("Inner"));
-                },
-            )
-        });
+    ui.keyed("outside", |ui| ui.button("Outside"));
+    ui.keyed("area", |ui| {
+        ui.context_menu_msg(
+            &items,
+            Style::default()
+                .width(Length::Px(400.0))
+                .height(Length::Px(200.0)),
+            on(|s: &mut Menu, index: usize| s.picks.push(index)),
+            |ui| {
+                ui.keyed("text", |ui| ui.label("Right-click me"));
+                ui.keyed("inner", |ui| ui.button("Inner"));
+            },
+        );
     });
-    chosen
 }
 
 #[test]
 fn context_menus_open_at_the_pointer_or_focus_navigate_and_choose_once() {
-    let mut context = Context::new();
-    menu_frame(&mut context);
-    assert!(context.find(&["area", "$popup"]).is_none());
+    let mut driven = Driven::new(ROOT, Menu::default(), menu_page);
+    assert!(driven.context.find(&["area", "$popup"]).is_none());
     assert!(
-        !context.event(Event::ContextMenu(Point { x: 10.0, y: 10.0 })),
+        !driven
+            .context
+            .event(Event::ContextMenu(Point { x: 10.0, y: 10.0 })),
         "outside the area"
     );
-    assert!(context.event(Event::ContextMenu(Point { x: 100.0, y: 120.0 })));
-    menu_frame(&mut context);
-    let popup = context.find(&["area", "$popup"]).unwrap();
-    let rect = context.node(popup).unwrap().bounds;
+    assert!(
+        driven
+            .context
+            .event(Event::ContextMenu(Point { x: 100.0, y: 120.0 }))
+    );
+    driven.frame();
+    let popup = driven.context.find(&["area", "$popup"]).unwrap();
+    let rect = driven.context.node(popup).unwrap().bounds;
     assert_eq!((rect.x, rect.y), (100.0, 120.0), "anchored at the pointer");
-    assert!(context.node(popup).unwrap().is_popup);
-    key(&mut context, Key::ArrowDown);
-    key(&mut context, Key::Enter);
-    assert_eq!(menu_frame(&mut context), Some(2), "skips the disabled item");
-    assert_eq!(menu_frame(&mut context), None);
-    assert!(context.find(&["area", "$popup"]).is_none());
+    assert!(driven.context.node(popup).unwrap().is_popup);
+    key(&mut driven.context, Key::ArrowDown);
+    key(&mut driven.context, Key::Enter);
+    driven.frame();
+    assert_eq!(driven.state().picks, [2], "skips the disabled item, once");
+    driven.frame();
+    assert_eq!(driven.state().picks, [2], "a choice is sent once");
+    assert!(driven.context.find(&["area", "$popup"]).is_none());
     // Escape closes without a choice; near the right edge the menu stays on screen.
-    context.event(Event::ContextMenu(Point { x: 395.0, y: 100.0 }));
-    menu_frame(&mut context);
-    let rect = bounds(&context, &["area", "$popup"]);
+    driven
+        .context
+        .event(Event::ContextMenu(Point { x: 395.0, y: 100.0 }));
+    driven.frame();
+    let rect = bounds(&driven.context, &["area", "$popup"]);
     assert!(rect.x + rect.width <= ROOT.width + 0.5);
-    key(&mut context, Key::Escape);
-    assert_eq!(menu_frame(&mut context), None);
-    assert!(context.find(&["area", "$popup"]).is_none());
+    key(&mut driven.context, Key::Escape);
+    driven.frame();
+    assert_eq!(driven.state().picks, [2]);
+    assert!(driven.context.find(&["area", "$popup"]).is_none());
     // The keyboard opens the menu below the focused control inside the area.
-    let inner = context.find(&["area", "inner"]).unwrap();
-    context.action(inner, Action::Focus);
-    let inner_bounds = context.node(inner).unwrap().bounds;
-    key(&mut context, Key::ContextMenu);
-    menu_frame(&mut context);
-    let rect = bounds(&context, &["area", "$popup"]);
+    let inner = driven.context.find(&["area", "inner"]).unwrap();
+    driven.context.action(inner, Action::Focus);
+    let inner_bounds = driven.context.node(inner).unwrap().bounds;
+    key(&mut driven.context, Key::ContextMenu);
+    driven.frame();
+    let rect = bounds(&driven.context, &["area", "$popup"]);
     assert_eq!(
         (rect.x, rect.y),
         (inner_bounds.x, inner_bounds.y + inner_bounds.height)
     );
-    key(&mut context, Key::Enter);
-    assert_eq!(menu_frame(&mut context), Some(0));
+    key(&mut driven.context, Key::Enter);
+    driven.frame();
+    assert_eq!(driven.state().picks, [2, 0]);
     assert_eq!(
-        focused_key(&context),
+        focused_key(&driven.context),
         "inner",
         "focus returns to where the menu was opened"
     );
 }
 
-fn popover_frame(context: &mut Context, open: &mut bool, second: &mut bool) -> bool {
-    let mut dismissed = false;
-    frame(context, |ui| {
-        ui.keyed("bar", |ui| {
-            ui.row(Style::default(), |ui| {
-                ui.keyed("share", |ui| ui.button("Share"));
-                dismissed = ui
-                    .keyed("pop", |ui| {
-                        ui.popover(open, PopoverOptions::default(), |ui| {
-                            ui.keyed("hint", |ui| ui.label("Share this"));
-                            ui.keyed("copy", |ui| ui.button("Copy link"));
-                        })
-                    })
-                    .dismissed;
-                ui.keyed("more", |ui| ui.button("More"));
-                ui.keyed("pop2", |ui| {
-                    ui.popover(second, PopoverOptions::default(), |ui| {
+#[derive(Default)]
+struct Pops {
+    open: bool,
+    second: bool,
+    dismissed: usize,
+}
+
+fn pop_page(state: &Pops, ui: &mut Ui<'_, Handler<Pops>>) {
+    ui.keyed("bar", |ui| {
+        ui.row(Style::default(), |ui| {
+            ui.keyed("share", |ui| ui.button("Share"));
+            ui.keyed("pop", |ui| {
+                ui.popover_msg(
+                    state.open,
+                    on(|s: &mut Pops, open: bool| {
+                        if !open {
+                            s.dismissed += 1;
+                        }
+                        s.open = open;
+                    }),
+                    PopoverOptions::default(),
+                    |ui| {
+                        ui.keyed("hint", |ui| ui.label("Share this"));
+                        ui.keyed("copy", |ui| ui.button("Copy link"));
+                    },
+                );
+            });
+            ui.keyed("more", |ui| ui.button("More"));
+            ui.keyed("pop2", |ui| {
+                ui.popover_msg(
+                    state.second,
+                    on(|s: &mut Pops, open: bool| s.second = open),
+                    PopoverOptions::default(),
+                    |ui| {
                         ui.keyed("extra", |ui| ui.button("Extra"));
-                    })
-                });
-                ui.keyed("other", |ui| ui.button("Other"));
-            })
-        });
+                    },
+                );
+            });
+            ui.keyed("other", |ui| ui.button("Other"));
+        })
     });
-    dismissed
 }
 
 #[test]
 fn popovers_anchor_below_their_widget_take_focus_and_dismiss_on_escape_or_outside_press() {
-    let mut context = Context::new();
-    let mut open = false;
-    let mut second = false;
-    popover_frame(&mut context, &mut open, &mut second);
-    assert!(context.find(&["bar", "share", "pop"]).is_none());
-    open = true;
-    popover_frame(&mut context, &mut open, &mut second);
-    let share = bounds(&context, &["bar", "share"]);
-    let popover = context.find(&["bar", "share", "pop"]).unwrap();
-    let rect = context.node(popover).unwrap().bounds;
+    let mut driven = Driven::new(ROOT, Pops::default(), pop_page);
+    assert!(driven.context.find(&["bar", "share", "pop"]).is_none());
+    driven.state_mut().open = true;
+    driven.frame();
+    let share = bounds(&driven.context, &["bar", "share"]);
+    let popover = driven.context.find(&["bar", "share", "pop"]).unwrap();
+    let rect = driven.context.node(popover).unwrap().bounds;
     assert_eq!((rect.x, rect.y), (share.x, share.y + share.height));
-    assert!(context.node(popover).unwrap().is_popup);
-    assert_eq!(focused_key(&context), "copy", "focus moves inside");
-    assert!(scene_text(&context, "Share this"));
+    assert!(driven.context.node(popover).unwrap().is_popup);
+    assert_eq!(focused_key(&driven.context), "copy", "focus moves inside");
+    assert!(scene_text(&driven.context, "Share this"));
     // The panel blocks clicks to whatever is under it, and a press inside keeps it open.
     assert_eq!(
-        context.hit_test(Point {
+        driven.context.hit_test(Point {
             x: rect.x + 4.0,
             y: rect.y + 4.0
         }),
         Some(popover)
     );
-    click_at(&mut context, &["bar", "share", "pop", "copy"]);
-    let dismissed = popover_frame(&mut context, &mut open, &mut second);
-    assert!(open && !dismissed);
-    // Escape dismisses and restores focus to the anchor.
-    key(&mut context, Key::Escape);
-    let dismissed = popover_frame(&mut context, &mut open, &mut second);
-    assert!(!open && dismissed);
-    assert_eq!(focused_key(&context), "share");
-    assert!(context.find(&["bar", "share", "pop"]).is_none());
+    click_at(&mut driven.context, &["bar", "share", "pop", "copy"]);
+    driven.frame();
+    assert!(driven.state().open && driven.state().dismissed == 0);
+    // Escape dismisses (one message) and restores focus to the anchor.
+    key(&mut driven.context, Key::Escape);
+    driven.frame();
+    assert!(!driven.state().open);
+    assert_eq!(driven.state().dismissed, 1);
+    assert_eq!(focused_key(&driven.context), "share");
+    assert!(driven.context.find(&["bar", "share", "pop"]).is_none());
     // An outside press dismisses too; the pressed control takes focus.
-    open = true;
-    popover_frame(&mut context, &mut open, &mut second);
-    click_at(&mut context, &["bar", "other"]);
-    let dismissed = popover_frame(&mut context, &mut open, &mut second);
-    assert!(!open && dismissed);
-    assert_eq!(focused_key(&context), "other");
+    driven.state_mut().open = true;
+    driven.frame();
+    click_at(&mut driven.context, &["bar", "other"]);
+    driven.frame();
+    assert!(!driven.state().open);
+    assert_eq!(driven.state().dismissed, 2);
+    assert_eq!(focused_key(&driven.context), "other");
     // Two popovers can be open at once; pressing the first's anchor keeps it.
-    open = true;
-    second = true;
-    popover_frame(&mut context, &mut open, &mut second);
-    assert!(context.find(&["bar", "share", "pop"]).is_some());
-    assert!(context.find(&["bar", "more", "pop2"]).is_some());
-    click_at(&mut context, &["bar", "share"]);
-    popover_frame(&mut context, &mut open, &mut second);
-    assert!(open, "pressing the anchor does not dismiss");
-    assert!(!second, "but it is outside the other popover");
+    driven.state_mut().open = true;
+    driven.state_mut().second = true;
+    driven.frame();
+    assert!(driven.context.find(&["bar", "share", "pop"]).is_some());
+    assert!(driven.context.find(&["bar", "more", "pop2"]).is_some());
+    click_at(&mut driven.context, &["bar", "share"]);
+    driven.frame();
+    assert!(driven.state().open, "pressing the anchor does not dismiss");
+    assert!(
+        !driven.state().second,
+        "but it is outside the other popover"
+    );
 }

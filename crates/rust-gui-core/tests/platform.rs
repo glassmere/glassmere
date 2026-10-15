@@ -1,68 +1,144 @@
 //! What a view asks the desktop for, and what comes back. The host is a
 //! test here: it takes the requests and answers them.
+mod support;
+
 use rust_gui_core::{
-    Command, Context, Event, FileKind, FileRequest, Menu, MenuEntry, MonospaceMeasurer,
-    Notification, Style, Tray, Ui,
+    Action, App, AppDriver, Command, Context, Effects, Event, FileKind, FileRequest, Menu,
+    MenuEntry, MonospaceMeasurer, Notification, Style, Tray, Ui,
 };
 use rust_gui_scene::Size;
 use std::path::PathBuf;
+use support::{Driven, act};
 
 const ROOT: Size = Size::new(400.0, 300.0);
 
+/// The message type of a `Driven` view over state `S`.
+type Handler<S> = rust_gui_core::app::Action<S>;
+
+/// An application, its driver and the context, run together as a window would.
+struct Host<A: App> {
+    context: Context,
+    driver: AppDriver<A::Message>,
+    app: A,
+}
+
+impl<A: App> Host<A> {
+    fn new(app: A) -> Self {
+        Self {
+            context: Context::new(),
+            driver: AppDriver::new(|| true),
+            app,
+        }
+    }
+
+    fn send(&mut self, message: A::Message) {
+        self.driver.send(message);
+    }
+
+    fn frame(&mut self) {
+        self.driver.frame(
+            &mut self.app,
+            &mut self.context,
+            ROOT,
+            &mut MonospaceMeasurer,
+        );
+    }
+}
+
+#[derive(Clone)]
+enum FileMsg {
+    Save,
+    Chosen(Vec<PathBuf>),
+}
+
+#[derive(Default)]
+struct Files {
+    chosen: Option<Vec<PathBuf>>,
+}
+
+impl App for Files {
+    type Message = FileMsg;
+
+    fn update(&mut self, message: FileMsg, effects: &mut Effects<'_, FileMsg>) {
+        match message {
+            FileMsg::Save => effects.choose_files(
+                FileRequest::save("Save the report")
+                    .with_filter("Reports", ["pdf", "html"])
+                    .named("report.pdf"),
+                FileMsg::Chosen,
+            ),
+            FileMsg::Chosen(paths) => self.chosen = Some(paths),
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, FileMsg>) {
+        ui.keyed("state", |ui| ui.label("ready"));
+    }
+}
+
 #[test]
 fn a_file_dialog_is_asked_for_once_and_answered_later() {
-    let mut context = Context::new();
-    let mut ask = false;
-    let mut chosen: Option<Vec<PathBuf>> = None;
-    let declare = |context: &mut Context, ask: &mut bool, chosen: &mut Option<Vec<PathBuf>>| {
-        context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
-            if *ask {
-                *ask = false;
-                ui.choose_file(
-                    FileRequest::save("Save the report")
-                        .with_filter("Reports", ["pdf", "html"])
-                        .named("report.pdf"),
-                );
-            }
-            *chosen = ui.chosen_files().map(<[PathBuf]>::to_vec);
-            ui.keyed("state", |ui| ui.label("ready"));
-        });
-    };
-
-    declare(&mut context, &mut ask, &mut chosen);
-    assert!(context.take_file_request().is_none());
-    ask = true;
-    declare(&mut context, &mut ask, &mut chosen);
-    let request = context.take_file_request().expect("the dialog");
+    let mut host = Host::new(Files::default());
+    host.frame();
+    assert!(host.context.take_file_request().is_none());
+    host.send(FileMsg::Save);
+    host.frame();
+    let request = host.context.take_file_request().expect("the dialog");
     assert_eq!(request.kind, FileKind::Save);
     assert_eq!(request.title, "Save the report");
     assert_eq!(request.file_name.as_deref(), Some("report.pdf"));
     assert_eq!(request.filters[0].1, ["pdf", "html"]);
-    assert!(context.take_file_request().is_none(), "asked once");
-    assert_eq!(chosen, None, "nothing is known until the host answers");
+    assert!(host.context.take_file_request().is_none(), "asked once");
+    assert_eq!(
+        host.app.chosen, None,
+        "nothing is known until the host answers"
+    );
 
-    context.set_chosen_files(vec![PathBuf::from("report.pdf")]);
-    declare(&mut context, &mut ask, &mut chosen);
-    assert_eq!(chosen, Some(vec![PathBuf::from("report.pdf")]));
-    // Cancelling is an answer of no files, not the absence of one.
-    context.set_chosen_files(Vec::new());
-    declare(&mut context, &mut ask, &mut chosen);
-    assert_eq!(chosen, Some(Vec::new()));
+    host.context
+        .set_chosen_files(vec![PathBuf::from("report.pdf")]);
+    host.frame();
+    assert_eq!(host.app.chosen, Some(vec![PathBuf::from("report.pdf")]));
+    // Cancelling is an answer of no files, not the absence of one. Each
+    // dialog is one request with one answer, so this is a second request.
+    host.send(FileMsg::Save);
+    host.frame();
+    assert!(host.context.take_file_request().is_some());
+    host.context.set_chosen_files(Vec::new());
+    host.frame();
+    assert_eq!(host.app.chosen, Some(Vec::new()));
+}
+
+#[derive(Clone)]
+enum NoticeMsg {
+    Post,
+}
+
+#[derive(Default)]
+struct Notices;
+
+impl App for Notices {
+    type Message = NoticeMsg;
+
+    fn update(&mut self, _: NoticeMsg, effects: &mut Effects<'_, NoticeMsg>) {
+        effects.notify(Notification::new("Saved", "The report was saved."));
+        effects.notify(Notification::new("Sent", "And sent.").urgent());
+    }
+
+    fn view(&self, ui: &mut Ui<'_, NoticeMsg>) {
+        ui.keyed("state", |ui| ui.label("ready"));
+    }
 }
 
 #[test]
 fn notifications_queue_in_order_and_are_taken_once() {
-    let mut context = Context::new();
-    context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
-        ui.notify(Notification::new("Saved", "The report was saved."));
-        ui.notify(Notification::new("Sent", "And sent.").urgent());
-        ui.keyed("state", |ui| ui.label("ready"));
-    });
-    let posted = context.take_notifications();
+    let mut host = Host::new(Notices);
+    host.send(NoticeMsg::Post);
+    host.frame();
+    let posted = host.context.take_notifications();
     assert_eq!(posted.len(), 2);
     assert_eq!(posted[0].title, "Saved");
     assert!(posted[1].urgent);
-    assert!(context.take_notifications().is_empty());
+    assert!(host.context.take_notifications().is_empty());
 }
 
 #[test]
@@ -115,38 +191,47 @@ fn a_menu_is_handed_over_only_when_it_changes() {
     );
 }
 
+#[derive(Default)]
+struct Open {
+    enabled: bool,
+    opened: usize,
+}
+
+fn open_page(state: &Open, ui: &mut Ui<'_, Handler<Open>>) {
+    let open = Command {
+        enabled: state.enabled,
+        ..Command::with_id("open", "Open", None)
+    };
+    ui.keyed("open", |ui| {
+        ui.command_button_msg(&open, act(|s: &mut Open| s.opened += 1));
+    });
+    ui.keyed("state", |ui| ui.label("ready"));
+}
+
 /// A menu item does what the command's button does, by the same route.
 #[test]
 fn a_command_chosen_outside_the_window_activates_the_command_inside_it() {
-    let mut context = Context::new();
-    let mut opened = 0;
-    let mut enabled = true;
-    let declare = |context: &mut Context, opened: &mut usize, enabled: bool| {
-        context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
-            let open = Command {
-                enabled,
-                ..Command::with_id("open", "Open", None)
-            };
-            if ui.keyed("open", |ui| ui.command_button(&open)).clicked() {
-                *opened += 1;
-            }
-            ui.keyed("state", |ui| ui.label("ready"));
-        });
-    };
-    declare(&mut context, &mut opened, enabled);
-    assert!(context.event(Event::Command("open".into())));
-    declare(&mut context, &mut opened, enabled);
-    assert_eq!(opened, 1);
+    let mut driven = Driven::new(
+        ROOT,
+        Open {
+            enabled: true,
+            ..Open::default()
+        },
+        open_page,
+    );
+    assert!(driven.context.event(Event::Command("open".into())));
+    driven.frame();
+    assert_eq!(driven.state().opened, 1);
     // An id nobody declares does nothing at all.
-    assert!(!context.event(Event::Command("nonesuch".into())));
-    declare(&mut context, &mut opened, enabled);
-    assert_eq!(opened, 1);
+    assert!(!driven.context.event(Event::Command("nonesuch".into())));
+    driven.frame();
+    assert_eq!(driven.state().opened, 1);
     // A disabled command is not activated from outside either.
-    enabled = false;
-    declare(&mut context, &mut opened, enabled);
-    assert!(!context.event(Event::Command("open".into())));
-    declare(&mut context, &mut opened, enabled);
-    assert_eq!(opened, 1);
+    driven.state_mut().enabled = false;
+    driven.frame();
+    assert!(!driven.context.event(Event::Command("open".into())));
+    driven.frame();
+    assert_eq!(driven.state().opened, 1);
 }
 
 #[test]
@@ -161,58 +246,66 @@ fn files_the_system_opened_with_are_there_from_the_first_frame() {
     assert_eq!(seen, [PathBuf::from("notes.md")]);
 }
 
+#[derive(Default)]
+struct Bar {
+    opened: usize,
+    saved: usize,
+}
+
 /// The menu the framework draws itself, for the platforms where a menu
 /// belongs to the window. Choosing an item takes the same route a native
 /// menu does: it activates the command the view declared.
+fn bar_page(_: &Bar, ui: &mut Ui<'_, Handler<Bar>>) {
+    let menu = Menu::new([MenuEntry::submenu(
+        "File",
+        [
+            MenuEntry::Command(Command::with_id("open", "Open...", None)),
+            MenuEntry::Separator,
+            MenuEntry::Command(Command::with_id("save", "Save as...", None)),
+        ],
+    )]);
+    ui.keyed("bar", |ui| {
+        ui.menu_bar(&menu);
+    });
+    // The commands themselves, declared as any view would.
+    ui.keyed("open", |ui| {
+        ui.command_button_msg(
+            &Command::with_id("open", "Open", None),
+            act(|s: &mut Bar| s.opened += 1),
+        );
+    });
+    ui.keyed("save", |ui| {
+        ui.command_button_msg(
+            &Command::with_id("save", "Save", None),
+            act(|s: &mut Bar| s.saved += 1),
+        );
+    });
+}
+
 #[test]
 fn the_menu_bar_activates_the_command_its_item_names() {
-    use rust_gui_core::Action;
-    let mut context = Context::new();
-    let mut opened = 0;
-    let mut saved = 0;
-    let declare = |context: &mut Context, opened: &mut usize, saved: &mut usize| {
-        context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_>| {
-            let menu = Menu::new([MenuEntry::submenu(
-                "File",
-                [
-                    MenuEntry::Command(Command::with_id("open", "Open...", None)),
-                    MenuEntry::Separator,
-                    MenuEntry::Command(Command::with_id("save", "Save as...", None)),
-                ],
-            )]);
-            ui.keyed("bar", |ui| ui.menu_bar(&menu));
-            // The commands themselves, declared as any view would.
-            if ui
-                .keyed("open", |ui| {
-                    ui.command_button(&Command::with_id("open", "Open", None))
-                })
-                .clicked()
-            {
-                *opened += 1;
-            }
-            if ui
-                .keyed("save", |ui| {
-                    ui.command_button(&Command::with_id("save", "Save", None))
-                })
-                .clicked()
-            {
-                *saved += 1;
-            }
-        });
-    };
-    declare(&mut context, &mut opened, &mut saved);
-    let file = context.find(&["bar", "menu0"]).expect("the File menu");
-    assert!(context.action(file, Action::Expand));
-    declare(&mut context, &mut opened, &mut saved);
+    let mut driven = Driven::new(ROOT, Bar::default(), bar_page);
+    let file = driven
+        .context
+        .find(&["bar", "menu0"])
+        .expect("the File menu");
+    assert!(driven.context.action(file, Action::Expand));
+    driven.frame();
     // Three lines: two commands and the separator between them, which is
     // there but cannot be chosen.
-    let separator = context.find(&["bar", "menu0", "$popup", "1"]).unwrap();
-    assert!(!context.action(separator, Action::Activate));
-    let item = context.find(&["bar", "menu0", "$popup", "2"]).unwrap();
-    assert!(context.action(item, Action::Activate));
+    let separator = driven
+        .context
+        .find(&["bar", "menu0", "$popup", "1"])
+        .unwrap();
+    assert!(!driven.context.action(separator, Action::Activate));
+    let item = driven
+        .context
+        .find(&["bar", "menu0", "$popup", "2"])
+        .unwrap();
+    assert!(driven.context.action(item, Action::Activate));
     // Choosing it closes the menu and activates the command, which the
     // button reports on the next declaration.
-    declare(&mut context, &mut opened, &mut saved);
-    declare(&mut context, &mut opened, &mut saved);
-    assert_eq!((opened, saved), (0, 1));
+    driven.frame();
+    driven.frame();
+    assert_eq!((driven.state().opened, driven.state().saved), (0, 1));
 }

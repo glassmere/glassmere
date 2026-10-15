@@ -1,45 +1,69 @@
-use rust_gui_core::Button;
+mod support;
+
+use rust_gui_core::app::Action;
 use rust_gui_core::{
-    Context, Event, EventArea, Key, Length, MonospaceMeasurer, Style, TextEdit, UiEvent,
+    AreaBuilder, Button, Context, CustomWidget, Event, EventArea, Key, Length, Style, TextEdit, Ui,
+    UiEvent, WidgetBuilder, WidgetInput,
 };
 use rust_gui_scene::{Point, Size};
+use support::{Driven, act, on};
 
 const ROOT: Size = Size::new(300.0, 300.0);
 
 #[derive(Default)]
 struct Seen {
+    outer_area: EventArea,
+    inner_area: EventArea,
     outer: Vec<UiEvent>,
     inner: Vec<UiEvent>,
     clicks: usize,
     typed: String,
 }
 
+fn outer_event(event: UiEvent) -> Option<Action<Seen>> {
+    Some(act(move |s: &mut Seen| s.outer.push(event.clone())))
+}
+
+fn inner_event(event: UiEvent) -> Option<Action<Seen>> {
+    Some(act(move |s: &mut Seen| s.inner.push(event.clone())))
+}
+
 /// An outer area around an inner one, with a button and a field inside.
-fn page(context: &mut Context, seen: &mut Seen, outer: EventArea, inner: EventArea) {
-    context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        seen.outer = ui.keyed("outer", |ui| {
-            ui.event_area(outer, Style::default().padding(4.0), |ui| {
-                seen.inner = ui.keyed("inner", |ui| {
-                    ui.event_area(inner, Style::default().padding(4.0), |ui| {
-                        if ui
-                            .keyed("press", |ui| {
+fn page(state: &Seen, ui: &mut Ui<'_, Action<Seen>>) {
+    ui.keyed("outer", |ui| {
+        ui.event_area_msg(
+            AreaBuilder::new(state.outer_area).on_event(outer_event),
+            Style::default().padding(4.0),
+            |ui| {
+                ui.keyed("inner", |ui| {
+                    ui.event_area_msg(
+                        AreaBuilder::new(state.inner_area).on_event(inner_event),
+                        Style::default().padding(4.0),
+                        |ui| {
+                            ui.keyed("press", |ui| {
                                 ui.button(
-                                    Button::new("Press").enabled(true).style(
-                                        Style::button()
-                                            .width(Length::Px(120.0))
-                                            .height(Length::Px(40.0)),
-                                    ),
-                                )
-                            })
-                            .clicked()
-                        {
-                            seen.clicks += 1;
-                        }
-                        ui.keyed("field", |ui| ui.text_input("Field", &mut seen.typed));
-                    })
+                                    Button::new("Press")
+                                        .enabled(true)
+                                        .style(
+                                            Style::button()
+                                                .width(Length::Px(120.0))
+                                                .height(Length::Px(40.0)),
+                                        )
+                                        .on_click(act(|s: &mut Seen| s.clicks += 1)),
+                                );
+                            });
+                            ui.keyed("field", |ui| {
+                                ui.text_input_msg(
+                                    "Field",
+                                    &state.typed,
+                                    on(|s: &mut Seen, text: String| s.typed = text),
+                                );
+                            });
+                        },
+                    );
                 });
-            })
-        });
+            },
+        );
     });
 }
 
@@ -59,17 +83,23 @@ fn click(context: &mut Context, at: Point) {
 
 #[test]
 fn an_area_sees_what_happened_inside_it_after_the_widgets_did() {
-    let (mut context, mut seen) = (Context::new(), Seen::default());
     let watching = EventArea::pointer();
-    page(&mut context, &mut seen, watching, EventArea::default());
-    let button = centre(&context, &["outer", "inner", "press"]);
-    click(&mut context, button);
-    page(&mut context, &mut seen, watching, EventArea::default());
+    let mut driven = Driven::new(
+        ROOT,
+        Seen {
+            outer_area: watching,
+            ..Seen::default()
+        },
+        page,
+    );
+    let button = centre(&driven.context, &["outer", "inner", "press"]);
+    click(&mut driven.context, button);
+    driven.frame();
 
     // The button still works, and the area was told what reached it.
-    assert_eq!(seen.clicks, 1);
+    assert_eq!(driven.state().clicks, 1);
     assert_eq!(
-        seen.outer,
+        driven.state().outer,
         [
             UiEvent::PointerMoved(button),
             UiEvent::PointerDown(button),
@@ -77,127 +107,158 @@ fn an_area_sees_what_happened_inside_it_after_the_widgets_did() {
         ]
     );
     // An area that watches nothing hears nothing.
-    assert!(seen.inner.is_empty());
+    assert!(driven.state().inner.is_empty());
     // And what was reported is not reported again.
-    page(&mut context, &mut seen, watching, EventArea::default());
-    assert!(seen.outer.is_empty());
+    let reported = driven.state().outer.len();
+    driven.frame();
+    assert_eq!(driven.state().outer.len(), reported);
 }
 
 #[test]
 fn a_capturing_area_takes_the_event_before_the_widgets_and_the_inner_one() {
-    let (mut context, mut seen) = (Context::new(), Seen::default());
-    let blocking = EventArea::pointer().capturing().consuming();
-    let inner = EventArea::pointer();
-    page(&mut context, &mut seen, blocking, inner);
-    let button = centre(&context, &["outer", "inner", "press"]);
-    click(&mut context, button);
-    page(&mut context, &mut seen, blocking, inner);
+    let mut driven = Driven::new(
+        ROOT,
+        Seen {
+            outer_area: EventArea::pointer().capturing().consuming(),
+            inner_area: EventArea::pointer(),
+            ..Seen::default()
+        },
+        page,
+    );
+    let button = centre(&driven.context, &["outer", "inner", "press"]);
+    click(&mut driven.context, button);
+    driven.frame();
 
     // Nothing below it saw anything: not the inner area, not the button.
-    assert_eq!(seen.clicks, 0);
-    assert!(seen.inner.is_empty());
-    assert_eq!(seen.outer.len(), 3);
-    assert_eq!(context.hovered(), None, "not even the hover");
+    assert_eq!(driven.state().clicks, 0);
+    assert!(driven.state().inner.is_empty());
+    assert_eq!(driven.state().outer.len(), 3);
+    assert_eq!(driven.context.hovered(), None, "not even the hover");
 }
 
 #[test]
 fn the_innermost_area_answers_first_on_the_way_up_and_may_stop_there() {
-    let (mut context, mut seen) = (Context::new(), Seen::default());
-    let outer = EventArea::pointer();
-    let inner = EventArea::pointer().consuming();
-    page(&mut context, &mut seen, outer, inner);
-    let button = centre(&context, &["outer", "inner", "press"]);
-    click(&mut context, button);
-    page(&mut context, &mut seen, outer, inner);
+    let mut driven = Driven::new(
+        ROOT,
+        Seen {
+            outer_area: EventArea::pointer(),
+            inner_area: EventArea::pointer().consuming(),
+            ..Seen::default()
+        },
+        page,
+    );
+    let button = centre(&driven.context, &["outer", "inner", "press"]);
+    click(&mut driven.context, button);
+    driven.frame();
 
     // The widgets had it first, then the inner area kept it from the outer.
-    assert_eq!(seen.clicks, 1);
-    assert_eq!(seen.inner.len(), 3);
-    assert!(seen.outer.is_empty());
+    assert_eq!(driven.state().clicks, 1);
+    assert_eq!(driven.state().inner.len(), 3);
+    assert!(driven.state().outer.is_empty());
 }
 
 #[test]
 fn keys_and_text_follow_the_focus_and_scrolling_follows_the_pointer() {
-    let (mut context, mut seen) = (Context::new(), Seen::default());
-    let watching = EventArea::all();
-    page(&mut context, &mut seen, watching, EventArea::default());
-    let field = context.find(&["outer", "inner", "field"]).unwrap();
-    context.action(field, rust_gui_core::Action::Focus);
-    context.event(Event::KeyDown {
+    let mut driven = Driven::new(
+        ROOT,
+        Seen {
+            outer_area: EventArea::all(),
+            ..Seen::default()
+        },
+        page,
+    );
+    let field = driven.context.find(&["outer", "inner", "field"]).unwrap();
+    driven.context.action(field, rust_gui_core::Action::Focus);
+    driven.context.event(Event::KeyDown {
         key: Key::ArrowDown,
         shift: true,
         repeat: false,
     });
-    context.event(Event::Text(TextEdit::Insert("x".into())));
-    context.event(Event::PointerMoved(centre(&context, &["outer", "inner"])));
-    context.event(Event::Scroll {
+    driven
+        .context
+        .event(Event::Text(TextEdit::Insert("x".into())));
+    let inside = centre(&driven.context, &["outer", "inner"]);
+    driven.context.event(Event::PointerMoved(inside));
+    driven.context.event(Event::Scroll {
         delta_x: 0.0,
         delta_y: 12.0,
     });
-    page(&mut context, &mut seen, watching, EventArea::default());
-    assert_eq!(seen.typed, "x", "the field still got it");
-    assert!(seen.outer.contains(&UiEvent::Key {
+    driven.frame();
+    assert_eq!(driven.state().typed, "x", "the field still got it");
+    assert!(driven.state().outer.contains(&UiEvent::Key {
         key: Key::ArrowDown,
         shift: true
     }));
-    assert!(seen.outer.contains(&UiEvent::Text("x".into())));
-    assert!(seen.outer.contains(&UiEvent::Scroll {
+    assert!(driven.state().outer.contains(&UiEvent::Text("x".into())));
+    assert!(driven.state().outer.contains(&UiEvent::Scroll {
         delta_x: 0.0,
         delta_y: 12.0
     }));
 }
 
-#[test]
-fn a_widget_tells_the_area_above_it_something_of_its_own() {
-    let mut context = Context::new();
-    let (mut heard, mut tick) = (Vec::new(), 0);
-    let declare = |context: &mut Context, heard: &mut Vec<UiEvent>, tick: &mut usize| {
-        *tick += 1;
-        let sending = *tick;
-        context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            *heard = ui.keyed("watch", |ui| {
-                ui.event_area(EventArea::custom(), Style::default(), |ui| {
-                    ui.keyed("inside", |ui| {
-                        ui.column(Style::default(), |ui| {
-                            ui.emit("chose", format!("tick {sending}"));
+#[derive(Default)]
+struct Tell {
+    heard: Vec<UiEvent>,
+    chose: usize,
+}
+
+fn tell(_: &Tell, ui: &mut Ui<'_, Action<Tell>>) {
+    ui.keyed("watch", |ui| {
+        ui.event_area_msg(
+            AreaBuilder::new(EventArea::pointer()).on_event(|event: UiEvent| {
+                Some(act(move |s: &mut Tell| s.heard.push(event.clone())))
+            }),
+            Style::default(),
+            |ui| {
+                ui.keyed("inside", |ui| {
+                    ui.widget_msg(
+                        Style::default(),
+                        WidgetBuilder::new(|_: &WidgetInput| CustomWidget {
+                            size: Size::new(40.0, 20.0),
+                            input: EventArea::pointer(),
+                            ..CustomWidget::default()
                         })
-                    });
-                })
-            });
-        });
-        // A declaration that carries an emitted event asks for another.
-        context.stats().activations
-    };
-    let sent = |tick: usize| UiEvent::Custom {
-        name: "chose".into(),
-        data: format!("tick {tick}"),
-    };
-    // Nothing is emitted from a node that does not exist yet, and there is no
-    // area to hear it on that frame either.
-    assert_eq!(declare(&mut context, &mut heard, &mut tick), 0);
-    assert!(heard.is_empty());
-    assert!(declare(&mut context, &mut heard, &mut tick) > 0);
-    assert!(heard.is_empty(), "it arrives on the next declaration");
-    declare(&mut context, &mut heard, &mut tick);
-    assert_eq!(heard, [sent(2)]);
-    declare(&mut context, &mut heard, &mut tick);
-    assert_eq!(heard, [sent(3)], "and each one only once");
+                        .on_event(|event| match event {
+                            UiEvent::PointerDown(_) => Some(act(|s: &mut Tell| s.chose += 1)),
+                            _ => None,
+                        }),
+                    );
+                });
+            },
+        );
+    });
+}
+
+/// `Ui::emit` is gone: a widget inside an area sends its own message, and that
+/// message and the area's events arrive in the same batch.
+#[test]
+fn a_widget_inside_an_area_sends_its_message_in_the_batch_the_area_hears_it() {
+    let mut driven = Driven::new(ROOT, Tell::default(), tell);
+    let widget = centre(&driven.context, &["watch", "inside"]);
+    click(&mut driven.context, widget);
+    driven.frame();
+    assert_eq!(driven.state().chose, 1, "the widget's own message");
+    assert_eq!(
+        driven.state().heard.len(),
+        3,
+        "the area hears the same batch"
+    );
 }
 
 #[test]
 fn a_view_without_areas_dispatches_exactly_as_before() {
-    let (mut context, mut clicks) = (Context::new(), 0);
-    let declare = |context: &mut Context, clicks: &mut usize| {
-        context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            if ui.keyed("press", |ui| ui.button("Press")).clicked() {
-                *clicks += 1;
-            }
-        });
-    };
-    declare(&mut context, &mut clicks);
-    let button = centre(&context, &["press"]);
-    click(&mut context, button);
-    declare(&mut context, &mut clicks);
-    assert_eq!(clicks, 1);
-    assert!(context.hovered().is_some());
+    let mut driven = Driven::new(
+        ROOT,
+        Seen::default(),
+        |_: &Seen, ui: &mut Ui<'_, Action<Seen>>| {
+            ui.keyed("press", |ui| {
+                ui.button(Button::new("Press").on_click(act(|s: &mut Seen| s.clicks += 1)));
+            });
+        },
+    );
+    let button = centre(&driven.context, &["press"]);
+    click(&mut driven.context, button);
+    driven.frame();
+    assert_eq!(driven.state().clicks, 1);
+    assert!(driven.context.hovered().is_some());
 }

@@ -117,20 +117,23 @@ fn layout_that_never_moves_anything_and_wholesale_repaints_are_reported() {
 #[test]
 fn controls_without_a_name_are_reported_and_tooltips_or_labels_fix_them() {
     let mut context = Context::new();
-    let mut value = String::new();
-    let mut selected = 0;
     frame(&mut context, |ui| {
         ui.keyed("empty", |ui| ui.button(""));
         ui.keyed("symbol", |ui| ui.button("→"));
         ui.keyed("described", |ui| ui.button("→"));
         ui.tooltip("Next page");
         ui.keyed("named", |ui| ui.button("Next"));
-        ui.keyed("field", |ui| ui.text_input("", &mut value));
+        ui.keyed("field", |ui| ui.text_input_msg("", "", |_: String| ()));
         // Built-in widgets name their own symbol buttons.
         ui.keyed("tabs", |ui| {
-            ui.tabs(&mut selected, &[Tab::closable("notes.md")], |ui, _| {
-                ui.label("panel");
-            })
+            ui.tabs_msg(
+                0,
+                &[Tab::closable("notes.md")],
+                |_: usize| (),
+                |ui, _| {
+                    ui.label("panel");
+                },
+            )
         });
     });
     let mut reported: Vec<(String, bool)> = context
