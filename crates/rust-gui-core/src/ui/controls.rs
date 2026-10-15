@@ -236,19 +236,37 @@ impl<'a, M: 'static> Ui<'a, M> {
         if clicked {
             *selected = option;
         }
-        let mut response = self.control(
-            key,
-            Kind::Radio,
-            format!("{}  {label}", if *selected == option { "●" } else { "○" }),
-            Style::button(),
-            Control::Radio {
-                label,
-                selected: *selected == option,
-            },
-        );
+        let mut response = self.radio_shown(key, label, *selected == option);
         response.changed = changed;
         response.clicked = clicked;
         response
+    }
+
+    /// One of a set of choices, selected while `selected == option`; a click
+    /// sends `on_select(option)`.
+    #[track_caller]
+    pub fn radio_msg(
+        &mut self,
+        label: impl Into<String>,
+        selected: usize,
+        option: usize,
+        on_select: impl Fn(usize) -> M,
+    ) -> Response<'a> {
+        let key = self.next_key();
+        let response = self.radio_shown(key, label.into(), selected == option);
+        self.set_handler(Handler::Message(on_select(option)));
+        response
+    }
+
+    #[track_caller]
+    fn radio_shown(&mut self, key: WidgetKey, label: String, selected: bool) -> Response<'a> {
+        self.control(
+            key,
+            Kind::Radio,
+            format!("{}  {label}", if selected { "●" } else { "○" }),
+            Style::button(),
+            Control::Radio { label, selected },
+        )
     }
 
     /// A slider over `range`, snapping to `step`.
@@ -331,14 +349,47 @@ impl<'a, M: 'static> Ui<'a, M> {
         items: &[&str],
     ) -> Response<'a> {
         let combo = combo.into();
-        let style = combo.style.unwrap_or_else(Self::field_style);
         let key = self.next_key();
-        let label = combo.label;
         let old = *selected;
         if let Some(ControlUpdate::Choice(index)) = self.take_update(&key, Kind::ComboBox) {
             *selected = index;
         }
         *selected = (*selected).min(items.len().saturating_sub(1));
+        let mut response = self.combo_shown(combo, key, *selected, items);
+        response.changed = old != *selected;
+        response
+    }
+
+    /// A drop-down showing `selected` over `items`; a choice sends
+    /// `on_choose(index)`.
+    #[track_caller]
+    pub fn combo_box_msg(
+        &mut self,
+        combo: impl Into<ComboBox>,
+        selected: usize,
+        items: &[&str],
+        on_choose: impl Fn(usize) -> M + 'static,
+    ) -> Response<'a> {
+        let combo = combo.into();
+        let key = self.next_key();
+        let selected = selected.min(items.len().saturating_sub(1));
+        let response = self.combo_shown(combo, key, selected, items);
+        self.set_handler(Handler::Map(Box::new(move |update| match update {
+            ControlUpdate::Choice(index) => Some(on_choose(index)),
+            _ => None,
+        })));
+        response
+    }
+
+    #[track_caller]
+    fn combo_shown(
+        &mut self,
+        combo: ComboBox,
+        key: WidgetKey,
+        selected: usize,
+        items: &[&str],
+    ) -> Response<'a> {
+        let style = combo.style.unwrap_or_else(Self::field_style);
         let entries = items
             .iter()
             .map(|label| MenuItem::new(*label))
@@ -347,29 +398,27 @@ impl<'a, M: 'static> Ui<'a, M> {
             &key,
             Kind::ComboBox,
             &entries,
-            *selected,
+            selected,
             false,
             Length::Percent(1.0),
         );
-        let mut response = self.push(Element {
+        self.push(Element {
             handler: None,
             seq: 0,
             key,
             kind: Kind::ComboBox,
-            text: format!("{}  ▾", items.get(*selected).copied().unwrap_or("—")),
+            text: format!("{}  ▾", items.get(selected).copied().unwrap_or("—")),
             style,
             enabled: self.enabled && !items.is_empty(),
             children,
             custom: None,
             tooltip: None,
             control: Control::Combo {
-                label,
-                selected: *selected,
+                label: combo.label,
+                selected,
                 items: entries,
             },
-        });
-        response.changed = old != *selected;
-        response
+        })
     }
 
     /// A popup menu. The returned item index is emitted once on activation.
@@ -380,14 +429,43 @@ impl<'a, M: 'static> Ui<'a, M> {
             key,
             format!("{}  ▾", label.into()),
             items,
-            Style {
-                width: Length::Px(220.0),
-                height: Length::Px(44.0),
-                padding: 10.0,
-                ..Style::button()
-            },
+            Self::menu_style(),
             Length::Percent(1.0),
         )
+    }
+
+    /// A popup menu; a pick sends `on_pick(index)`.
+    #[track_caller]
+    pub fn menu_msg(
+        &mut self,
+        label: impl Into<String>,
+        items: &[MenuItem],
+        on_pick: impl Fn(usize) -> M + 'static,
+    ) -> Response<'a> {
+        let key = self.next_key();
+        let response = self.menu_shown(
+            key,
+            format!("{}  ▾", label.into()),
+            items,
+            Self::menu_style(),
+            Length::Percent(1.0),
+        );
+        self.set_handler(Handler::Map(Box::new(move |update| match update {
+            ControlUpdate::Choice(index) => Some(on_pick(index)),
+            _ => None,
+        })));
+        response
+    }
+
+    /// The look of a menu button.
+    #[track_caller]
+    fn menu_style() -> Style {
+        Style {
+            width: Length::Px(220.0),
+            height: Length::Px(44.0),
+            padding: 10.0,
+            ..Style::button()
+        }
     }
 
     /// `menu` with a caller-chosen button look and popup width.
@@ -408,6 +486,19 @@ impl<'a, M: 'static> Ui<'a, M> {
             }
             _ => None,
         };
+        self.menu_shown(key, text, items, style, popup_width);
+        choice
+    }
+
+    #[track_caller]
+    fn menu_shown(
+        &mut self,
+        key: WidgetKey,
+        text: impl Into<String>,
+        items: &[MenuItem],
+        style: Style,
+        popup_width: Length,
+    ) -> Response<'a> {
         let children =
             self.popup_children(&key, Kind::MenuButton, items, usize::MAX, true, popup_width);
         self.push(Element {
@@ -424,8 +515,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             control: Control::Menu {
                 items: items.to_vec(),
             },
-        });
-        choice
+        })
     }
 
     #[track_caller]
@@ -498,6 +588,20 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// same enabled check and one-shot clicked response.
     #[track_caller]
     pub fn command_button(&mut self, command: &crate::Command) -> Response<'a> {
+        self.command_shown(command)
+    }
+
+    /// `command_button`, whose click sends `message`. A menu pick or shortcut
+    /// of the command reaches the same message, since it activates this button.
+    #[track_caller]
+    pub fn command_button_msg(&mut self, command: &crate::Command, message: M) -> Response<'a> {
+        let response = self.command_shown(command);
+        self.set_handler(Handler::Message(message));
+        response
+    }
+
+    #[track_caller]
+    fn command_shown(&mut self, command: &crate::Command) -> Response<'a> {
         let command = self.command(command);
         let response = self.button(
             Button::new(&command.label)

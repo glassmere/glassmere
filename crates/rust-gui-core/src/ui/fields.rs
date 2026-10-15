@@ -1,5 +1,7 @@
 use super::controls::FieldExtra;
 use super::*;
+use crate::app::Handler;
+use crate::editor::single_line;
 use crate::{AutocompleteResponse, Length, MenuItem, NumberOptions, NumericValue};
 
 impl<'a, M: 'static> Ui<'a, M> {
@@ -66,6 +68,68 @@ impl<'a, M: 'static> Ui<'a, M> {
         );
         response.changed |= changed;
         AutocompleteResponse { response, picked }
+    }
+
+    /// `autocomplete` showing `value`: an edit sends `on_change(text)`, and a
+    /// pick from the list sends `on_change` of the suggestion it took.
+    #[track_caller]
+    pub fn autocomplete_msg<S: AsRef<str>>(
+        &mut self,
+        label: impl Into<String>,
+        value: &str,
+        suggestions: &[S],
+        on_change: impl Fn(String) -> M + 'static,
+    ) -> Response<'a> {
+        let key = self.next_key();
+        let labels: Vec<String> = suggestions
+            .iter()
+            .map(|label| label.as_ref().to_owned())
+            .collect();
+        let entries: Vec<MenuItem> = labels
+            .iter()
+            .map(|label| MenuItem::new(label.as_str()))
+            .collect();
+        let id = self.context.child(self.parent, &key, Kind::TextInput);
+        let focused = id.is_some_and(|id| self.context.focused() == Some(id));
+        let children = if focused && !entries.is_empty() {
+            self.popup_children(
+                &key,
+                Kind::TextInput,
+                &entries,
+                usize::MAX,
+                false,
+                Length::Percent(1.0),
+            )
+        } else {
+            Vec::new()
+        };
+        let mut shown = value.to_owned();
+        let response = self.text_field(
+            key,
+            label.into(),
+            &mut shown,
+            "",
+            Self::field_style(),
+            FieldExtra {
+                number: None,
+                suggestions: Some(entries),
+                children,
+                draft: false,
+            },
+        );
+        // Picking a suggestion edits the field to it, and the kernel reports
+        // that pick as the index, which names the text in `labels`.
+        self.set_handler(Handler::Field {
+            change: Some(Box::new(move |update| match update {
+                ControlUpdate::Text(text) => Some(on_change(single_line(&text))),
+                ControlUpdate::Choice(index) => {
+                    labels.get(index).map(|label| on_change(label.clone()))
+                }
+                _ => None,
+            })),
+            submit: None,
+        });
+        response
     }
 
     /// A field for one number with stepper buttons. Typing is free text: Enter,

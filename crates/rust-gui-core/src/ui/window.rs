@@ -56,6 +56,18 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// middle one says which it is from `Ui::window`.
     #[track_caller]
     pub fn window_buttons(&mut self) {
+        self.caption_buttons(None);
+    }
+
+    /// `window_buttons`, whose clicks send `on_command(command)` instead of
+    /// asking the window directly: `Effects::window_command` in `update` does it.
+    #[track_caller]
+    pub fn window_buttons_msg(&mut self, on_command: impl Fn(crate::WindowCommand) -> M) {
+        self.caption_buttons(Some(&on_command));
+    }
+
+    #[track_caller]
+    fn caption_buttons(&mut self, on_command: Option<&dyn Fn(crate::WindowCommand) -> M>) {
         let maximized = self.window().maximized;
         let foreground = self.theme().text;
         // A wash of the text colour, which is how a desktop marks a caption
@@ -122,6 +134,9 @@ impl<'a, M: 'static> Ui<'a, M> {
                     pressed
                 }));
                 let clicked = ui.button_at(key, glyph, true, style).clicked();
+                if let Some(on_command) = on_command {
+                    ui.set_handler(crate::app::Handler::Message(on_command(command)));
+                }
                 // The glyph is what is drawn; the name is what is announced.
                 let label = ui.tr(name);
                 ui.tooltip(label);
@@ -130,7 +145,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                     // layouts when the pointer rests over it.
                     ui.set_control(Control::MaximizeButton);
                 }
-                if clicked {
+                if on_command.is_none() && clicked {
                     ui.window_command(command);
                 }
             }
