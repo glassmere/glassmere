@@ -1,8 +1,11 @@
+mod support;
+
 use rust_gui_core::{
     Context, Event, FontFamily, Key, Length, MonospaceMeasurer, RichRun, RichText, Role, Style,
     TextWrap,
 };
 use rust_gui_scene::{Point, Primitive, Rect, Size};
+use support::{Driven, on};
 
 const ROOT: Size = Size::new(600.0, 400.0);
 const ADVANCE: f32 = 16.0 * 0.6;
@@ -21,20 +24,20 @@ fn sample() -> RichText {
         .run(RichRun::new(" gone").strikethrough())
 }
 
-fn frame(context: &mut Context, text: &RichText, width: f32) -> Option<String> {
-    let mut followed = None;
+/// Declares `text` at `width` with no message wired, for paint checks.
+fn frame(context: &mut Context, text: &RichText, width: f32) {
     context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        followed = ui.keyed("text", |ui| {
-            ui.rich_text(
+        ui.keyed("text", |ui| {
+            ui.rich_text_msg(
                 text,
                 Style::default()
                     .width(Length::Px(width))
                     .wrap(TextWrap::Word),
-            )
+                |_: String| (),
+            );
         });
         ui.button("after");
     });
-    followed
 }
 
 fn bounds(context: &Context) -> Rect {
@@ -42,6 +45,36 @@ fn bounds(context: &Context) -> Rect {
         .node(context.find(&["text"]).unwrap())
         .unwrap()
         .bounds
+}
+
+struct State {
+    text: RichText,
+    width: f32,
+    /// Every link a click or Enter followed, in order.
+    followed: Vec<String>,
+}
+
+fn driven(text: RichText) -> Driven<State> {
+    Driven::new(
+        ROOT,
+        State {
+            text,
+            width: 580.0,
+            followed: Vec::new(),
+        },
+        |state, ui| {
+            ui.keyed("text", |ui| {
+                ui.rich_text_msg(
+                    &state.text,
+                    Style::default()
+                        .width(Length::Px(state.width))
+                        .wrap(TextWrap::Word),
+                    on(|s: &mut State, url: String| s.followed.push(url)),
+                );
+            });
+            ui.button("after");
+        },
+    )
 }
 
 #[test]
@@ -114,48 +147,47 @@ fn rich_blocks_wrap_to_their_width_and_relayout_when_runs_change() {
 
 #[test]
 fn links_follow_by_click_and_keyboard_and_plain_blocks_take_no_focus() {
-    let mut context = Context::new();
-    let text = sample();
-    frame(&mut context, &text, 580.0);
+    let mut app = driven(sample());
     // "source" starts after "See docs or ".
     let point = Point {
         x: 13.0 * ADVANCE,
         y: LINE / 2.0,
     };
-    context.event(Event::PointerMoved(point));
-    context.event(Event::PointerDown);
-    context.event(Event::PointerUp);
-    assert_eq!(
-        frame(&mut context, &text, 580.0).as_deref(),
-        Some("https://example.test/src")
-    );
-    assert_eq!(frame(&mut context, &text, 580.0), None);
+    app.context.event(Event::PointerMoved(point));
+    app.context.event(Event::PointerDown);
+    app.context.event(Event::PointerUp);
+    app.frame();
+    assert_eq!(app.state().followed, ["https://example.test/src"]);
+    app.frame();
+    assert_eq!(app.state().followed.len(), 1, "one click, one message");
     // A click beside the links follows nothing.
-    context.event(Event::PointerMoved(Point { x: 2.0, y: 5.0 }));
-    context.event(Event::PointerDown);
-    context.event(Event::PointerUp);
-    assert_eq!(frame(&mut context, &text, 580.0), None);
+    app.context
+        .event(Event::PointerMoved(Point { x: 2.0, y: 5.0 }));
+    app.context.event(Event::PointerDown);
+    app.context.event(Event::PointerUp);
+    app.frame();
+    assert_eq!(app.state().followed.len(), 1);
 
-    let press = |context: &mut Context, key: Key| {
-        context.event(Event::KeyDown {
+    let press = |app: &mut Driven<State>, key: Key| {
+        app.context.event(Event::KeyDown {
             key,
             shift: false,
             repeat: false,
         });
-        context.event(Event::KeyUp(key));
+        app.context.event(Event::KeyUp(key));
     };
     // The block is focused from the click; the clicked link is the active one.
-    assert_eq!(context.focused(), context.find(&["text"]));
-    press(&mut context, Key::ArrowRight);
-    press(&mut context, Key::Enter);
+    assert_eq!(app.context.focused(), app.context.find(&["text"]));
+    press(&mut app, Key::ArrowRight);
+    press(&mut app, Key::Enter);
+    app.frame();
     assert_eq!(
-        frame(&mut context, &text, 580.0).as_deref(),
+        app.state().followed.last().map(String::as_str),
         Some("https://example.test/docs")
     );
+    assert_eq!(app.state().followed.len(), 2);
 
-    let plain = RichText::new().text("no links ").bold("here");
-    let mut context = Context::new();
-    frame(&mut context, &plain, 580.0);
-    press(&mut context, Key::Tab);
-    assert_ne!(context.focused(), context.find(&["text"]));
+    let mut app = driven(RichText::new().text("no links ").bold("here"));
+    press(&mut app, Key::Tab);
+    assert_ne!(app.context.focused(), app.context.find(&["text"]));
 }

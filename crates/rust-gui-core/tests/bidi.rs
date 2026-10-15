@@ -1,9 +1,14 @@
+mod support;
+
+use rust_gui_core::app::Action;
 use rust_gui_core::{
     Block, BlockKind, CaretMovement, CodeEditorOptions, Context, Event, Key, Length,
-    MonospaceMeasurer, RichDocument, RichEditorOptions, RichPosition, Style, TextDocument,
-    TextEdit, TextMove,
+    MonospaceMeasurer, RichDocument, RichEditorOptions, RichOp, RichPosition, Style, TextDocument,
+    TextEdit, TextMove, TextOp, Ui,
 };
+
 use rust_gui_scene::{Affinity, Point, Size, TextMeasurer, TextStyle};
+use support::{Driven, on};
 
 const ROOT: Size = Size::new(640.0, 400.0);
 /// Latin, a Hebrew word, Latin: `abc אבג def`. The Hebrew run reads right to left.
@@ -104,9 +109,17 @@ fn geometry_places_one_offset_on_both_sides_of_a_direction_boundary() {
     );
 }
 
-fn field_frame(context: &mut Context, value: &mut String) {
-    context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        ui.keyed("field", |ui| ui.text_input("Field", value));
+struct Field {
+    value: String,
+}
+
+fn field(state: &Field, ui: &mut Ui<'_, Action<Field>>) {
+    ui.keyed("field", |ui| {
+        ui.text_input_msg(
+            "Field",
+            &state.value,
+            on(|s: &mut Field, text: String| s.value = text),
+        );
     });
 }
 
@@ -116,21 +129,25 @@ fn caret_x(context: &Context) -> f32 {
 
 #[test]
 fn text_inputs_move_visually_by_default_and_logically_on_request() {
-    let mut value = MIXED.to_owned();
-    let mut context = Context::new();
-    field_frame(&mut context, &mut value);
-    click(&mut context, Point { x: 20.0, y: 20.0 });
-    context.event(Event::Text(TextEdit::Move {
+    let mut app = Driven::new(
+        ROOT,
+        Field {
+            value: MIXED.to_owned(),
+        },
+        field,
+    );
+    click(&mut app.context, Point { x: 20.0, y: 20.0 });
+    app.context.event(Event::Text(TextEdit::Move {
         direction: TextMove::Start,
         select: false,
         word: false,
     }));
-    field_frame(&mut context, &mut value);
-    let mut positions = vec![caret_x(&context)];
+    app.frame();
+    let mut positions = vec![caret_x(&app.context)];
     for _ in 0..11 {
-        key(&mut context, Key::ArrowRight, false);
-        field_frame(&mut context, &mut value);
-        positions.push(caret_x(&context));
+        key(&mut app.context, Key::ArrowRight, false);
+        app.frame();
+        positions.push(caret_x(&app.context));
     }
     // Every press moved the caret one cell to the right.
     assert!(
@@ -140,35 +157,35 @@ fn text_inputs_move_visually_by_default_and_logically_on_request() {
         "{positions:?}"
     );
     // At the end another Right stays put.
-    key(&mut context, Key::ArrowRight, false);
-    field_frame(&mut context, &mut value);
-    assert_eq!(caret_x(&context), *positions.last().unwrap());
+    key(&mut app.context, Key::ArrowRight, false);
+    app.frame();
+    assert_eq!(caret_x(&app.context), *positions.last().unwrap());
 
     // Shift+Left moves the caret visually; the selection is the logical range
     // between the anchor and wherever the caret now is in the text.
     for _ in 0..3 {
-        key(&mut context, Key::ArrowLeft, true);
-        field_frame(&mut context, &mut value);
+        key(&mut app.context, Key::ArrowLeft, true);
+        app.frame();
     }
-    assert_eq!(context.selected_text(), Some("def"));
+    assert_eq!(app.context.selected_text(), Some("def"));
     // The next step enters the Hebrew run at its right end, which is its
     // first letter: everything after that letter is now selected.
-    key(&mut context, Key::ArrowLeft, true);
-    field_frame(&mut context, &mut value);
-    assert_eq!(context.selected_text(), Some("\u{5d1}\u{5d2} def"));
+    key(&mut app.context, Key::ArrowLeft, true);
+    app.frame();
+    assert_eq!(app.context.selected_text(), Some("\u{5d1}\u{5d2} def"));
 
     // Logical movement walks the text order, so the caret jumps on screen.
-    context.set_caret_movement(CaretMovement::Logical);
-    context.event(Event::Text(TextEdit::Move {
+    app.context.set_caret_movement(CaretMovement::Logical);
+    app.context.event(Event::Text(TextEdit::Move {
         direction: TextMove::Start,
         select: false,
         word: false,
     }));
     let mut logical = Vec::new();
     for _ in 0..6 {
-        key(&mut context, Key::ArrowRight, false);
-        field_frame(&mut context, &mut value);
-        logical.push(caret_x(&context));
+        key(&mut app.context, Key::ArrowRight, false);
+        app.frame();
+        logical.push(caret_x(&app.context));
     }
     assert!(
         logical.windows(2).any(|pair| pair[1] < pair[0]),
@@ -177,64 +194,67 @@ fn text_inputs_move_visually_by_default_and_logically_on_request() {
 
     // Clicking either side of the boundary gives the same offset, drawn where
     // the click was.
-    context.set_caret_movement(CaretMovement::Visual);
+    app.context.set_caret_movement(CaretMovement::Visual);
     let origin = positions[0];
     click(
-        &mut context,
+        &mut app.context,
         Point {
             x: origin + 3.9 * 9.6,
             y: 20.0,
         },
     );
-    field_frame(&mut context, &mut value);
-    let left_side = caret_x(&context);
+    app.frame();
+    let left_side = caret_x(&app.context);
     click(
-        &mut context,
+        &mut app.context,
         Point {
             x: origin + 7.9 * 9.6,
             y: 20.0,
         },
     );
-    field_frame(&mut context, &mut value);
-    let right_side = caret_x(&context);
+    app.frame();
+    let right_side = caret_x(&app.context);
     assert!((right_side - left_side - 4.0 * 9.6).abs() < 0.01);
     // Typing Hebrew at the boundary keeps the caret with the typed letter.
-    context.event(Event::Text(TextEdit::Insert("\u{5d3}".into())));
-    field_frame(&mut context, &mut value);
-    field_frame(&mut context, &mut value);
-    assert_eq!(value, "abc \u{5d3}\u{5d0}\u{5d1}\u{5d2} def");
+    app.context
+        .event(Event::Text(TextEdit::Insert("\u{5d3}".into())));
+    app.frame();
+    app.frame();
+    assert_eq!(app.state().value, "abc \u{5d3}\u{5d0}\u{5d1}\u{5d2} def");
+}
+
+fn code(document: &TextDocument, ui: &mut Ui<'_, Action<TextDocument>>) {
+    ui.keyed("code", |ui| {
+        ui.code_editor_msg(
+            document,
+            CodeEditorOptions {
+                line_numbers: false,
+                style: Style::default()
+                    .width(Length::Px(600.0))
+                    .height(Length::Px(200.0))
+                    .padding(8.0),
+                ..CodeEditorOptions::default()
+            },
+            on(|s: &mut TextDocument, op: TextOp| s.apply(op)),
+        );
+    });
 }
 
 #[test]
 fn the_code_editor_steps_visually_on_mixed_lines_and_leaves_them_at_the_visual_end() {
-    let mut document = TextDocument::from_text(&format!("let s = \"{MIXED}\";\nnext"));
-    let mut context = Context::new();
-    let frame = |context: &mut Context, document: &mut TextDocument| {
-        context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            ui.keyed("code", |ui| {
-                ui.code_editor(
-                    document,
-                    CodeEditorOptions {
-                        line_numbers: false,
-                        style: Style::default()
-                            .width(Length::Px(600.0))
-                            .height(Length::Px(200.0))
-                            .padding(8.0),
-                        ..CodeEditorOptions::default()
-                    },
-                )
-            });
-        });
-    };
-    frame(&mut context, &mut document);
-    frame(&mut context, &mut document);
-    click(&mut context, Point { x: 9.0, y: 12.0 });
-    frame(&mut context, &mut document);
-    let mut positions = vec![caret_x(&context)];
+    let mut app = Driven::new(
+        ROOT,
+        TextDocument::from_text(&format!("let s = \"{MIXED}\";\nnext")),
+        code,
+    );
+    app.frame();
+    click(&mut app.context, Point { x: 9.0, y: 12.0 });
+    app.frame();
+    let mut positions = vec![caret_x(&app.context)];
     for _ in 0..22 {
-        key(&mut context, Key::ArrowRight, false);
-        frame(&mut context, &mut document);
-        positions.push(caret_x(&context));
+        key(&mut app.context, Key::ArrowRight, false);
+        app.frame();
+        positions.push(caret_x(&app.context));
     }
     // 22 cells, each press one cell to the right, across the Hebrew run.
     assert!(
@@ -242,51 +262,53 @@ fn the_code_editor_steps_visually_on_mixed_lines_and_leaves_them_at_the_visual_e
         "{positions:?}"
     );
     // One more leaves the line for the start of the next.
-    key(&mut context, Key::ArrowRight, false);
-    frame(&mut context, &mut document);
-    assert_eq!(document.position(document.primary().cursor), (1, 0));
+    key(&mut app.context, Key::ArrowRight, false);
+    app.frame();
+    assert_eq!(app.state().position(app.state().primary().cursor), (1, 0));
+}
+
+fn rich(document: &RichDocument, ui: &mut Ui<'_, Action<RichDocument>>) {
+    ui.keyed("rich", |ui| {
+        ui.rich_editor_msg(
+            document,
+            RichEditorOptions {
+                toolbar: false,
+                style: Style::default()
+                    .width(Length::Px(400.0))
+                    .height(Length::Px(200.0))
+                    .padding(12.0),
+                ..RichEditorOptions::default()
+            },
+            on(|s: &mut RichDocument, op: RichOp| s.apply(op)),
+        );
+    });
 }
 
 #[test]
 fn the_rich_editor_follows_direction_in_blocks_and_flags_the_caret() {
-    let mut document = RichDocument::from_blocks(vec![
-        Block::new(BlockKind::Paragraph, MIXED),
-        Block::new(BlockKind::Paragraph, "\u{5e9}\u{5dc}\u{5d5}\u{5dd} abc"),
-    ]);
-    let mut context = Context::new();
-    let frame = |context: &mut Context, document: &mut RichDocument| {
-        context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            ui.keyed("rich", |ui| {
-                ui.rich_text_editor(
-                    document,
-                    RichEditorOptions {
-                        toolbar: false,
-                        style: Style::default()
-                            .width(Length::Px(400.0))
-                            .height(Length::Px(200.0))
-                            .padding(12.0),
-                        ..RichEditorOptions::default()
-                    },
-                )
-            });
-        });
-    };
-    frame(&mut context, &mut document);
-    frame(&mut context, &mut document);
-    click(&mut context, Point { x: 13.0, y: 16.0 });
-    frame(&mut context, &mut document);
-    let mut positions = vec![caret_x(&context)];
+    let mut app = Driven::new(
+        ROOT,
+        RichDocument::from_blocks(vec![
+            Block::new(BlockKind::Paragraph, MIXED),
+            Block::new(BlockKind::Paragraph, "\u{5e9}\u{5dc}\u{5d5}\u{5dd} abc"),
+        ]),
+        rich,
+    );
+    app.frame();
+    click(&mut app.context, Point { x: 13.0, y: 16.0 });
+    app.frame();
+    let mut positions = vec![caret_x(&app.context)];
     for _ in 0..11 {
-        key(&mut context, Key::ArrowRight, false);
-        frame(&mut context, &mut document);
-        positions.push(caret_x(&context));
+        key(&mut app.context, Key::ArrowRight, false);
+        app.frame();
+        positions.push(caret_x(&app.context));
     }
     assert!(
         positions.windows(2).all(|pair| pair[1] > pair[0]),
         "{positions:?}"
     );
     assert_eq!(
-        document.cursor(),
+        app.state().cursor(),
         RichPosition {
             block: 0,
             offset: 14
@@ -295,25 +317,26 @@ fn the_rich_editor_follows_direction_in_blocks_and_flags_the_caret() {
 
     // In the right-to-left paragraph the text starts at the right: Home goes
     // there, and Left moves forward through the Hebrew word.
-    document.set_cursor(
+    app.state_mut().set_cursor(
         RichPosition {
             block: 1,
             offset: 4,
         },
         false,
     );
-    frame(&mut context, &mut document);
-    key(&mut context, Key::Home, false);
-    frame(&mut context, &mut document);
-    assert_eq!(document.cursor().offset, 0);
-    let home = caret_x(&context);
-    key(&mut context, Key::ArrowLeft, false);
-    frame(&mut context, &mut document);
-    assert_eq!(document.cursor().offset, 2);
-    assert!(caret_x(&context) < home);
+    app.frame();
+    key(&mut app.context, Key::Home, false);
+    app.frame();
+    assert_eq!(app.state().cursor().offset, 0);
+    let home = caret_x(&app.context);
+    key(&mut app.context, Key::ArrowLeft, false);
+    app.frame();
+    assert_eq!(app.state().cursor().offset, 2);
+    assert!(caret_x(&app.context) < home);
     // A flag marks the caret's direction in mixed text: a 4 by 2 quad.
-    frame(&mut context, &mut document);
-    let flags = context
+    app.frame();
+    let flags = app
+        .context
         .scene()
         .primitives
         .iter()

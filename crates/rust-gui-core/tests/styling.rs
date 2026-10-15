@@ -384,6 +384,8 @@ fn installed_classes_style_widgets_and_unknown_classes_warn_once() {
 }
 
 #[test]
+// M35: `ui.set_theme` is an Effects call that `Driven` cannot reach, and the
+// test reads `stats.activations`, so it stays on `Context::run`.
 fn views_switch_themes_and_sheet_tokens_survive_the_switch() {
     let mut context = Context::new();
     context.set_stylesheet(StyleSheet::parse("token accent #ff00ff").unwrap());

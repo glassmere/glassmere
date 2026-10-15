@@ -1,9 +1,13 @@
+mod support;
+
+use rust_gui_core::app::Action;
 use rust_gui_core::{
     Block, BlockKind, Context, EditorCommand, Event, Key, Length, MonospaceMeasurer, RichDocument,
-    RichEditorOptions, RichEditorResponse, RichPosition, Role, Style, TextEdit,
+    RichEditorOptions, RichOp, RichPosition, Role, Style, TextEdit, Ui,
 };
 use rust_gui_scene::{Point, Primitive, Rect, Size};
 use std::time::Duration;
+use support::{Driven, on};
 
 const ROOT: Size = Size::new(640.0, 480.0);
 const ADVANCE: f32 = 16.0 * 0.6;
@@ -12,48 +16,43 @@ const PADDING: f32 = 12.0;
 /// 376 px of content hold 39 monospace characters per visual line.
 const COLUMNS: usize = 39;
 
-struct App {
+struct State {
     document: RichDocument,
     toolbar: bool,
     read_only: bool,
-    last: RichEditorResponse,
 }
 
-fn app(document: RichDocument) -> App {
-    App {
-        document,
-        toolbar: false,
-        read_only: false,
-        last: RichEditorResponse::default(),
-    }
-}
-
-fn frame(context: &mut Context, app: &mut App) {
-    context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        app.last = ui.keyed("editor", |ui| {
-            ui.rich_text_editor(
-                &mut app.document,
-                RichEditorOptions {
-                    label: "Notes".into(),
-                    style: Style::default()
-                        .width(Length::Px(400.0))
-                        .height(Length::Px(300.0))
-                        .padding(PADDING),
-                    toolbar: app.toolbar,
-                    read_only: app.read_only,
-                    ..RichEditorOptions::default()
-                },
-            )
-        });
+fn editor(state: &State, ui: &mut Ui<'_, Action<State>>) {
+    ui.keyed("editor", |ui| {
+        ui.rich_editor_msg(
+            &state.document,
+            RichEditorOptions {
+                label: "Notes".into(),
+                style: Style::default()
+                    .width(Length::Px(400.0))
+                    .height(Length::Px(300.0))
+                    .padding(PADDING),
+                toolbar: state.toolbar,
+                read_only: state.read_only,
+                ..RichEditorOptions::default()
+            },
+            on(|s: &mut State, op: RichOp| s.document.apply(op)),
+        );
     });
 }
 
-fn started(document: RichDocument) -> (Context, App) {
-    let mut context = Context::new();
-    let mut app = app(document);
-    frame(&mut context, &mut app);
-    frame(&mut context, &mut app);
-    (context, app)
+fn started(document: RichDocument) -> Driven<State> {
+    let mut app = Driven::new(
+        ROOT,
+        State {
+            document,
+            toolbar: false,
+            read_only: false,
+        },
+        editor,
+    );
+    app.frame();
+    app
 }
 
 fn at(block: usize, offset: usize) -> RichPosition {
@@ -102,28 +101,29 @@ fn labelled(context: &Context, role: Role, label: &str) -> Rect {
 
 #[test]
 fn typing_marks_enter_and_undo_flow_through_queued_operations() {
-    let (mut context, mut app) = started(RichDocument::new());
-    assert!(!context.accepts_text());
-    click(&mut context, cell(0, 0));
-    assert!(context.accepts_text() && context.editor_focused());
-    insert(&mut context, "Hello ");
-    context.event(Event::Editor(EditorCommand::ToggleBold));
-    insert(&mut context, "world");
-    key(&mut context, Key::Enter, false);
-    insert(&mut context, "next");
-    assert_eq!(app.document.plain_text(), "");
-    frame(&mut context, &mut app);
-    assert!(app.last.changed);
-    assert_eq!(app.document.plain_text(), "Hello world\nnext");
-    let first = &app.document.blocks()[0];
+    let mut app = started(RichDocument::new());
+    assert!(!app.context.accepts_text());
+    click(&mut app.context, cell(0, 0));
+    assert!(app.context.accepts_text() && app.context.editor_focused());
+    insert(&mut app.context, "Hello ");
+    app.context.event(Event::Editor(EditorCommand::ToggleBold));
+    insert(&mut app.context, "world");
+    key(&mut app.context, Key::Enter, false);
+    insert(&mut app.context, "next");
+    assert_eq!(app.state().document.plain_text(), "");
+    let stats = app.frame();
+    assert!(stats.messages > 0);
+    assert_eq!(app.state().document.plain_text(), "Hello world\nnext");
+    let first = &app.state().document.blocks()[0];
     assert_eq!(first.runs.len(), 2);
     assert!(first.runs[1].marks.bold && first.runs[1].text == "world");
     // Bold carries over the line break until it is toggled off.
-    assert!(app.document.blocks()[1].runs[0].marks.bold);
+    assert!(app.state().document.blocks()[1].runs[0].marks.bold);
 
     // The scene has one rich block per paragraph, with a bold span.
-    frame(&mut context, &mut app);
-    let blocks: Vec<_> = context
+    app.frame();
+    let blocks: Vec<_> = app
+        .context
         .scene()
         .primitives
         .iter()
@@ -136,16 +136,17 @@ fn typing_marks_enter_and_undo_flow_through_queued_operations() {
     assert_eq!(blocks[0][1].weight, Some(700));
 
     // Selecting with the keyboard and toggling italic, then undoing it.
-    key(&mut context, Key::ArrowLeft, true);
-    key(&mut context, Key::ArrowLeft, true);
-    context.event(Event::Editor(EditorCommand::ToggleItalic));
-    frame(&mut context, &mut app);
-    assert!(app.document.blocks()[1].runs[1].marks.italic);
-    context.event(Event::Text(TextEdit::Undo));
-    frame(&mut context, &mut app);
-    assert_eq!(app.document.blocks()[1].runs.len(), 1);
+    key(&mut app.context, Key::ArrowLeft, true);
+    key(&mut app.context, Key::ArrowLeft, true);
+    app.context
+        .event(Event::Editor(EditorCommand::ToggleItalic));
+    app.frame();
+    assert!(app.state().document.blocks()[1].runs[1].marks.italic);
+    app.context.event(Event::Text(TextEdit::Undo));
+    app.frame();
+    assert_eq!(app.state().document.blocks()[1].runs.len(), 1);
 
-    let node = context.node(context.focused().unwrap()).unwrap();
+    let node = app.context.node(app.context.focused().unwrap()).unwrap();
     assert_eq!(node.semantics.role, Role::TextInput);
     assert_eq!(node.semantics.label, "Notes");
     assert_eq!(node.value.as_deref(), Some("next"));
@@ -154,84 +155,89 @@ fn typing_marks_enter_and_undo_flow_through_queued_operations() {
 #[test]
 fn vertical_and_line_keys_follow_the_wrapped_lines_with_a_sticky_column() {
     let long = "x".repeat(COLUMNS * 2 + 10);
-    let (mut context, mut app) = started(RichDocument::from_blocks(vec![
+    let mut app = started(RichDocument::from_blocks(vec![
         Block::new(BlockKind::Paragraph, &long),
         Block::new(BlockKind::Paragraph, "short"),
         Block::new(BlockKind::Paragraph, &long),
     ]));
-    click(&mut context, cell(0, 0));
-    frame(&mut context, &mut app);
-    app.document.set_cursor(at(0, 20), false);
-    frame(&mut context, &mut app);
+    click(&mut app.context, cell(0, 0));
+    app.frame();
+    app.state_mut().document.set_cursor(at(0, 20), false);
+    app.frame();
     // Down within the paragraph: same column, next visual line.
-    key(&mut context, Key::ArrowDown, false);
-    frame(&mut context, &mut app);
-    assert_eq!(app.document.cursor(), at(0, COLUMNS + 20));
+    key(&mut app.context, Key::ArrowDown, false);
+    app.frame();
+    assert_eq!(app.state().document.cursor(), at(0, COLUMNS + 20));
     // End goes to the true end of the wrapped line. The same offset starts the
     // next line; the caret's affinity keeps it on this one, so Home returns here.
-    key(&mut context, Key::End, false);
-    frame(&mut context, &mut app);
-    assert_eq!(app.document.cursor(), at(0, COLUMNS * 2));
-    let caret = context.ime_cursor_rect().unwrap();
+    key(&mut app.context, Key::End, false);
+    app.frame();
+    assert_eq!(app.state().document.cursor(), at(0, COLUMNS * 2));
+    let caret = app.context.ime_cursor_rect().unwrap();
     assert!((caret.y - (PADDING + LINE)).abs() < 0.5, "{caret:?}");
-    key(&mut context, Key::Home, false);
-    frame(&mut context, &mut app);
-    assert_eq!(app.document.cursor(), at(0, COLUMNS));
+    key(&mut app.context, Key::Home, false);
+    app.frame();
+    assert_eq!(app.state().document.cursor(), at(0, COLUMNS));
     // Through the short paragraph and back out to column 20.
-    app.document.set_cursor(at(0, COLUMNS * 2 + 5), false);
-    frame(&mut context, &mut app);
-    context.event(Event::Text(TextEdit::Move {
+    app.state_mut()
+        .document
+        .set_cursor(at(0, COLUMNS * 2 + 5), false);
+    app.frame();
+    app.context.event(Event::Text(TextEdit::Move {
         direction: rust_gui_core::TextMove::Right,
         select: false,
         word: false,
     }));
-    frame(&mut context, &mut app);
+    app.frame();
     for _ in 0..3 {
-        key(&mut context, Key::ArrowLeft, false);
+        key(&mut app.context, Key::ArrowLeft, false);
     }
-    frame(&mut context, &mut app);
-    assert_eq!(app.document.cursor(), at(0, COLUMNS * 2 + 3));
-    app.document.set_cursor(at(0, COLUMNS + 20), false);
-    frame(&mut context, &mut app);
-    key(&mut context, Key::ArrowDown, false);
-    frame(&mut context, &mut app);
+    app.frame();
+    assert_eq!(app.state().document.cursor(), at(0, COLUMNS * 2 + 3));
+    app.state_mut()
+        .document
+        .set_cursor(at(0, COLUMNS + 20), false);
+    app.frame();
+    key(&mut app.context, Key::ArrowDown, false);
+    app.frame();
     // The last visual line has ten characters: the column clamps there.
-    assert_eq!(app.document.cursor(), at(0, COLUMNS * 2 + 10));
-    key(&mut context, Key::ArrowDown, false);
-    frame(&mut context, &mut app);
-    assert_eq!(app.document.cursor(), at(1, 5));
-    key(&mut context, Key::ArrowDown, true);
-    frame(&mut context, &mut app);
+    assert_eq!(app.state().document.cursor(), at(0, COLUMNS * 2 + 10));
+    key(&mut app.context, Key::ArrowDown, false);
+    app.frame();
+    assert_eq!(app.state().document.cursor(), at(1, 5));
+    key(&mut app.context, Key::ArrowDown, true);
+    app.frame();
     // The sticky column returns once the line is long enough again.
-    assert_eq!(app.document.cursor(), at(2, 20));
-    assert_eq!(app.document.anchor(), at(1, 5));
+    assert_eq!(app.state().document.cursor(), at(2, 20));
+    assert_eq!(app.state().document.anchor(), at(1, 5));
     // Visual moves resolve against the last shaped frame, one step per declaration.
-    key(&mut context, Key::ArrowUp, false);
-    frame(&mut context, &mut app);
-    key(&mut context, Key::ArrowUp, false);
-    frame(&mut context, &mut app);
-    assert_eq!(app.document.cursor().block, 0);
+    key(&mut app.context, Key::ArrowUp, false);
+    app.frame();
+    key(&mut app.context, Key::ArrowUp, false);
+    app.frame();
+    assert_eq!(app.state().document.cursor().block, 0);
 }
 
 #[test]
 fn pointer_places_drags_and_multi_clicks_across_blocks() {
-    let (mut context, mut app) = started(RichDocument::from_blocks(vec![
+    let mut app = started(RichDocument::from_blocks(vec![
         Block::new(BlockKind::Paragraph, "first paragraph"),
         Block::new(BlockKind::Paragraph, "second one"),
     ]));
-    click(&mut context, cell(1, 3));
-    frame(&mut context, &mut app);
-    assert_eq!(app.document.cursor(), at(1, 3));
-    context.event(Event::PointerMoved(cell(0, 6)));
-    context.event(Event::PointerDown);
-    context.event(Event::PointerMoved(cell(1, 6)));
-    context.event(Event::PointerUp);
-    frame(&mut context, &mut app);
-    assert_eq!(app.document.selected_text(), "paragraph\nsecond");
+    click(&mut app.context, cell(1, 3));
+    app.frame();
+    assert_eq!(app.state().document.cursor(), at(1, 3));
+    app.context.event(Event::PointerMoved(cell(0, 6)));
+    app.context.event(Event::PointerDown);
+    app.context.event(Event::PointerMoved(cell(1, 6)));
+    app.context.event(Event::PointerUp);
+    app.frame();
+    assert_eq!(app.state().document.selected_text(), "paragraph\nsecond");
     // Selection quads are painted in both blocks.
-    frame(&mut context, &mut app);
-    let highlight = context.theme().highlight;
-    let selected = context
+    app.frame();
+    let highlight = app.context.theme().highlight;
+    let selected = app
+        .context
         .scene()
         .primitives
         .iter()
@@ -241,27 +247,58 @@ fn pointer_places_drags_and_multi_clicks_across_blocks() {
         .count();
     assert_eq!(selected, 9 + 6);
 
-    context.set_now(Duration::from_secs(3));
-    click(&mut context, cell(0, 8));
-    context.set_now(Duration::from_millis(3100));
-    click(&mut context, cell(0, 8));
-    frame(&mut context, &mut app);
-    assert_eq!(app.document.selected_text(), "paragraph");
-    context.set_now(Duration::from_millis(3200));
-    click(&mut context, cell(0, 8));
-    frame(&mut context, &mut app);
-    assert_eq!(app.document.selected_text(), "first paragraph");
+    app.context.set_now(Duration::from_secs(3));
+    click(&mut app.context, cell(0, 8));
+    app.context.set_now(Duration::from_millis(3100));
+    click(&mut app.context, cell(0, 8));
+    app.frame();
+    assert_eq!(app.state().document.selected_text(), "paragraph");
+    app.context.set_now(Duration::from_millis(3200));
+    click(&mut app.context, cell(0, 8));
+    app.frame();
+    assert_eq!(app.state().document.selected_text(), "first paragraph");
 }
 
+/// The old-API state of the tests that stay on `Context::run`.
+struct OldApp {
+    document: RichDocument,
+    read_only: bool,
+    toolbar: bool,
+}
+
+fn old_frame(context: &mut Context, app: &mut OldApp) {
+    context.run(ROOT, &mut MonospaceMeasurer, |ui| {
+        ui.keyed("editor", |ui| {
+            ui.rich_text_editor(
+                &mut app.document,
+                RichEditorOptions {
+                    label: "Notes".into(),
+                    style: Style::default()
+                        .width(Length::Px(400.0))
+                        .height(Length::Px(300.0))
+                        .padding(PADDING),
+                    toolbar: app.toolbar,
+                    read_only: app.read_only,
+                    ..RichEditorOptions::default()
+                },
+            )
+        });
+    });
+}
+
+// M35: `rich_toolbar_msg` does not hand focus back to the text after a button
+// press (the old toolbar's `request_focus` in `rich_editor_body` only runs for
+// it), and this test asserts exactly that. Stays on `Context::run`.
 #[test]
 fn the_toolbar_formats_shows_state_and_returns_focus_to_the_text() {
-    let (mut context, mut app) = started(RichDocument::from_blocks(vec![Block::new(
-        BlockKind::Paragraph,
-        "make me bold",
-    )]));
-    app.toolbar = true;
-    frame(&mut context, &mut app);
-    frame(&mut context, &mut app);
+    let mut context = Context::new();
+    let mut app = OldApp {
+        document: RichDocument::from_blocks(vec![Block::new(BlockKind::Paragraph, "make me bold")]),
+        read_only: false,
+        toolbar: true,
+    };
+    old_frame(&mut context, &mut app);
+    old_frame(&mut context, &mut app);
     let area = labelled(&context, Role::TextInput, "Notes");
     click(
         &mut context,
@@ -270,12 +307,12 @@ fn the_toolbar_formats_shows_state_and_returns_focus_to_the_text() {
             y: area.y + PADDING + 4.0,
         },
     );
-    frame(&mut context, &mut app);
+    old_frame(&mut context, &mut app);
     let editor = context.focused();
     app.document.select_all();
-    frame(&mut context, &mut app);
+    old_frame(&mut context, &mut app);
 
-    let press = |context: &mut Context, app: &mut App, label: &str| {
+    let press = |context: &mut Context, app: &mut OldApp, label: &str| {
         let bounds = labelled(context, Role::Button, label);
         click(
             context,
@@ -284,8 +321,8 @@ fn the_toolbar_formats_shows_state_and_returns_focus_to_the_text() {
                 y: bounds.y + bounds.height / 2.0,
             },
         );
-        frame(context, app);
-        frame(context, app);
+        old_frame(context, app);
+        old_frame(context, app);
     };
     press(&mut context, &mut app, "B");
     assert!(app.document.blocks()[0].runs[0].marks.bold);
@@ -307,17 +344,28 @@ fn the_toolbar_formats_shows_state_and_returns_focus_to_the_text() {
     assert_eq!(app.document.block_kind(), BlockKind::Paragraph);
 }
 
+// M35: a clipboard request is serviced by the declaration that follows it
+// (`take_clipboard` reads what that declaration produced), and no message or
+// view-read change asks for one, so a message-model frame never services it.
+// Stays on `Context::run` until the view rule covers the clipboard outbox.
 #[test]
 fn clipboard_read_only_composition_and_scrolling_behave_like_the_code_editor() {
     let blocks: Vec<Block> = (0..60)
         .map(|n| Block::new(BlockKind::Paragraph, &format!("paragraph {n}")))
         .collect();
-    let (mut context, mut app) = started(RichDocument::from_blocks(blocks));
+    let mut context = Context::new();
+    let mut app = OldApp {
+        document: RichDocument::from_blocks(blocks),
+        read_only: false,
+        toolbar: false,
+    };
+    old_frame(&mut context, &mut app);
+    old_frame(&mut context, &mut app);
     click(&mut context, cell(0, 0));
     key(&mut context, Key::ArrowRight, true);
     key(&mut context, Key::ArrowRight, true);
     assert!(context.request_clipboard(false));
-    frame(&mut context, &mut app);
+    old_frame(&mut context, &mut app);
     assert_eq!(context.take_clipboard().as_deref(), Some("pa"));
 
     // Preedit shows inline and leaves the document alone until the commit.
@@ -326,10 +374,10 @@ fn clipboard_read_only_composition_and_scrolling_behave_like_the_code_editor() {
         selection: None,
     }));
     assert!(context.composing_text());
-    frame(&mut context, &mut app);
+    old_frame(&mut context, &mut app);
     assert_eq!(app.document.blocks()[0].text(), "paragraph 0");
     context.event(Event::Text(TextEdit::Commit("日本".into())));
-    frame(&mut context, &mut app);
+    old_frame(&mut context, &mut app);
     assert_eq!(app.document.blocks()[0].text(), "日本ragraph 0");
     assert!(context.ime_cursor_rect().is_some());
 
@@ -339,8 +387,8 @@ fn clipboard_read_only_composition_and_scrolling_behave_like_the_code_editor() {
         select: false,
         word: false,
     }));
-    frame(&mut context, &mut app);
-    frame(&mut context, &mut app);
+    old_frame(&mut context, &mut app);
+    old_frame(&mut context, &mut app);
     let shown = |context: &Context, needle: &str| {
         context.scene().primitives.iter().any(|primitive| {
             matches!(primitive, Primitive::RichText { spans, .. }
@@ -352,10 +400,10 @@ fn clipboard_read_only_composition_and_scrolling_behave_like_the_code_editor() {
     assert!(caret.y + caret.height <= 300.0 - PADDING + 0.5);
 
     app.read_only = true;
-    frame(&mut context, &mut app);
+    old_frame(&mut context, &mut app);
     assert!(!context.accepts_text());
     context.request_clipboard(true);
     key(&mut context, Key::Backspace, false);
-    frame(&mut context, &mut app);
+    old_frame(&mut context, &mut app);
     assert_eq!(app.document.blocks()[59].text(), "paragraph 59");
 }

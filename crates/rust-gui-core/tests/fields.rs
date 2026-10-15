@@ -1,7 +1,12 @@
+mod support;
+
+use rust_gui_core::app::Action as Msg;
 use rust_gui_core::{
-    Action, Context, Event, Key, MonospaceMeasurer, NodeId, NumberOptions, Role, TextEdit, suggest,
+    Action, Context, Event, Key, MonospaceMeasurer, NodeId, NumberOptions, Role, TextEdit, Ui,
+    suggest,
 };
 use rust_gui_scene::{Point, Primitive, Size};
+use support::{Driven, on};
 
 const ROOT: Size = Size::new(600.0, 400.0);
 
@@ -28,6 +33,9 @@ fn click(context: &mut Context, id: NodeId) {
     context.event(Event::PointerUp);
 }
 
+// M35: the draft of a number field is kernel state that the node's semantic
+// value does not show until the next declaration (`Numbers::text` reads that
+// value), and this test reads the draft there. Stays on `Context::run` for now.
 struct Numbers {
     context: Context,
     value: f64,
@@ -65,6 +73,37 @@ impl Numbers {
     fn text(&self) -> String {
         self.context.node(self.field()).unwrap().value.unwrap()
     }
+}
+
+struct Amount {
+    value: f64,
+    options: NumberOptions,
+}
+
+fn numbers(value: f64, options: NumberOptions) -> Driven<Amount> {
+    Driven::new(
+        ROOT,
+        Amount { value, options },
+        |state: &Amount, ui: &mut Ui<'_, Msg<Amount>>| {
+            ui.keyed("amount", |ui| {
+                ui.number_input_msg(
+                    "Amount",
+                    state.value,
+                    state.options.clone(),
+                    on(|s: &mut Amount, value: f64| s.value = value),
+                );
+            });
+            ui.button("elsewhere");
+        },
+    )
+}
+
+fn field(app: &Driven<Amount>) -> NodeId {
+    app.context.find(&["amount", "$field"]).unwrap()
+}
+
+fn text(app: &Driven<Amount>) -> String {
+    app.context.node(field(app)).unwrap().value.unwrap()
 }
 
 #[test]
@@ -116,70 +155,71 @@ fn typing_commits_on_enter_and_on_blur_and_text_that_is_no_number_reverts() {
 
 #[test]
 fn arrows_pages_buttons_the_wheel_and_assistive_technology_step_the_value() {
-    let mut numbers = Numbers::new(
+    let mut app = numbers(
         1.0,
         NumberOptions::default()
             .range(0.0, 2.0)
             .step(0.25)
             .suffix(" m"),
     );
-    assert_eq!(numbers.text(), "1.00 m");
-    let field = numbers.field();
-    numbers.context.action(field, Action::Focus);
-    key(&mut numbers.context, Key::ArrowUp);
-    key(&mut numbers.context, Key::ArrowUp);
-    assert!(numbers.frame(), "two steps between frames add up");
-    assert_eq!((numbers.value, numbers.text().as_str()), (1.5, "1.50 m"));
-    key(&mut numbers.context, Key::PageDown);
-    numbers.frame();
-    assert_eq!(numbers.value, 0.0, "ten steps down stop at the minimum");
+    assert_eq!(text(&app), "1.00 m");
+    let field = field(&app);
+    app.context.action(field, Action::Focus);
+    key(&mut app.context, Key::ArrowUp);
+    key(&mut app.context, Key::ArrowUp);
+    assert!(app.frame().messages > 0, "two steps between frames add up");
+    assert_eq!((app.state().value, text(&app).as_str()), (1.5, "1.50 m"));
+    key(&mut app.context, Key::PageDown);
+    app.frame();
+    assert_eq!(app.state().value, 0.0, "ten steps down stop at the minimum");
 
     // Stepping commits a draft first; a decimal comma and the suffix parse.
-    retype(&mut numbers.context, "0,5 m");
-    key(&mut numbers.context, Key::ArrowUp);
-    numbers.frame();
-    assert_eq!((numbers.value, numbers.text().as_str()), (0.75, "0.75 m"));
+    retype(&mut app.context, "0,5 m");
+    key(&mut app.context, Key::ArrowUp);
+    app.frame();
+    assert_eq!((app.state().value, text(&app).as_str()), (0.75, "0.75 m"));
 
     // The buttons step, are skipped by Tab, and switch off at the ends.
-    let more = numbers.context.find(&["amount", "$more"]).unwrap();
-    let less = numbers.context.find(&["amount", "$less"]).unwrap();
-    assert!(!numbers.context.node(more).unwrap().semantics.focusable);
+    let more = app.context.find(&["amount", "$more"]).unwrap();
+    let less = app.context.find(&["amount", "$less"]).unwrap();
+    assert!(!app.context.node(more).unwrap().semantics.focusable);
     for _ in 0..5 {
-        click(&mut numbers.context, more);
-        numbers.frame();
+        click(&mut app.context, more);
+        app.frame();
     }
-    assert_eq!(numbers.value, 2.0);
-    assert!(numbers.context.node(more).unwrap().semantics.disabled);
-    click(&mut numbers.context, less);
-    numbers.frame();
-    assert_eq!(numbers.value, 1.75);
+    assert_eq!(app.state().value, 2.0);
+    assert!(app.context.node(more).unwrap().semantics.disabled);
+    click(&mut app.context, less);
+    app.frame();
+    assert_eq!(app.state().value, 1.75);
 
     // The wheel steps only with keyboard focus and the pointer on the field.
-    let bounds = numbers.context.node(field).unwrap().bounds;
+    let bounds = app.context.node(field).unwrap().bounds;
     let over = Point {
         x: bounds.x + 10.0,
         y: bounds.y + 10.0,
     };
-    numbers.context.event(Event::PointerMoved(over));
-    numbers.context.event(Event::Scroll {
+    app.context.event(Event::PointerMoved(over));
+    app.context.event(Event::Scroll {
         delta_x: 0.0,
         delta_y: 40.0,
     });
-    numbers.frame();
+    app.frame();
     assert_eq!(
-        numbers.value, 1.75,
+        app.state().value,
+        1.75,
         "not focused: the wheel scrolls the page"
     );
-    numbers.context.action(field, Action::Focus);
-    numbers.context.event(Event::Scroll {
+    app.context.action(field, Action::Focus);
+    app.context.event(Event::Scroll {
         delta_x: 0.0,
         delta_y: 40.0,
     });
-    numbers.frame();
-    assert_eq!(numbers.value, 1.5);
+    app.frame();
+    assert_eq!(app.state().value, 1.5);
 
     // A spin button with a range, that screen readers can step and set.
-    let node = numbers.context.node(field).unwrap();
+    let node = app.context.node(field).unwrap();
     assert_eq!(node.semantics.role, Role::SpinButton);
     assert_eq!(node.semantics.label, "Amount");
     let numeric = node.numeric.unwrap();
@@ -187,12 +227,12 @@ fn arrows_pages_buttons_the_wheel_and_assistive_technology_step_the_value() {
         (numeric.value, numeric.min, numeric.max, numeric.step),
         (1.5, 0.0, 2.0, 0.25)
     );
-    numbers.context.action(field, Action::Increment);
-    numbers.frame();
-    assert_eq!(numbers.value, 1.75);
-    numbers.context.action(field, Action::SetNumber(0.3));
-    numbers.frame();
-    assert_eq!((numbers.value, numbers.text().as_str()), (0.25, "0.25 m"));
+    app.context.action(field, Action::Increment);
+    app.frame();
+    assert_eq!(app.state().value, 1.75);
+    app.context.action(field, Action::SetNumber(0.3));
+    app.frame();
+    assert_eq!((app.state().value, text(&app).as_str()), (0.25, "0.25 m"));
 }
 
 #[test]
@@ -219,6 +259,8 @@ fn number_options_format_parse_and_constrain() {
 
 const CITIES: [&str; 5] = ["Berlin", "Bern", "Bergen", "Brno", "İzmir"];
 
+// M35: `autocomplete_msg` reports neither the picked index nor a submit (Enter
+// with no highlight), and this test asserts both, so it stays on `Context::run`.
 struct Search {
     context: Context,
     text: String,
@@ -340,22 +382,50 @@ fn typing_offers_the_apps_matches_and_keys_or_a_click_take_one() {
     assert!(search.rows().is_empty());
 }
 
+struct City {
+    text: String,
+}
+
 #[test]
 fn the_typed_part_of_a_suggestion_is_drawn_bold_whatever_its_case() {
-    let mut search = Search {
-        context: Context::new(),
-        text: String::new(),
-        picked: None,
-        submitted: false,
-    };
-    search.frame();
-    let field = search.context.find(&["city"]).unwrap();
-    search.context.action(field, Action::Focus);
-    retype(&mut search.context, "ZM");
-    search.frame();
-    search.frame();
-    assert_eq!(search.rows(), ["İzmir"]);
-    let bold: Vec<String> = search
+    let mut app = Driven::new(
+        ROOT,
+        City {
+            text: String::new(),
+        },
+        |state: &City, ui: &mut Ui<'_, Msg<City>>| {
+            ui.keyed("city", |ui| {
+                let matches = suggest(&state.text, &CITIES, 8);
+                ui.autocomplete_msg(
+                    "City",
+                    &state.text,
+                    &matches,
+                    on(|s: &mut City, text: String| s.text = text),
+                );
+            });
+            ui.button("elsewhere");
+        },
+    );
+    let field = app.context.find(&["city"]).unwrap();
+    app.context.action(field, Action::Focus);
+    retype(&mut app.context, "ZM");
+    app.frame();
+    app.frame();
+    let rows: Vec<String> = app
+        .context
+        .find(&["city", "$popup"])
+        .map(|popup| {
+            app.context
+                .node(popup)
+                .unwrap()
+                .children
+                .iter()
+                .map(|row| app.context.node(*row).unwrap().semantics.label.clone())
+                .collect()
+        })
+        .unwrap_or_default();
+    assert_eq!(rows, ["İzmir"]);
+    let bold: Vec<String> = app
         .context
         .scene()
         .primitives

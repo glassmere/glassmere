@@ -9,6 +9,8 @@ fn image() -> Image {
 
 /// What a view copies reaches the host, and what the host reads reaches the
 /// view. Both go through the outbox, so neither happens inside a declaration.
+// M35: copy, paste and the clipboard outbox are Effects, and `Driven` has no
+// Effects access (only `App::update` does), so this stays on `Context::run`.
 #[test]
 fn a_copy_reaches_the_host_and_what_it_reads_reaches_the_view() {
     let mut context = Context::new();
@@ -79,6 +81,8 @@ fn a_clip_carries_every_form_at_once() {
 }
 
 /// The style argument is the node's own, so a view can copy from anywhere.
+// M35: `ui.copy` needs the Effects outbox that `Driven` cannot reach, and the
+// test reads `stats.activations`, so it stays on `Context::run`.
 #[test]
 fn copying_does_not_disturb_the_declaration() {
     let mut context = Context::new();
