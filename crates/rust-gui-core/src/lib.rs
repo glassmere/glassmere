@@ -95,8 +95,9 @@ pub use tree::{
     Semantics, Swipe, SwipeDirection, TouchPhase,
 };
 pub use ui::{
-    Button, ComboBox, DockOptions, DockPanel, DockResponse, Label, Properties, PropertyGrid,
-    Response, TextInput, Ui, suggest,
+    AreaBuilder, Button, ComboBox, DockOptions, DockPanel, DockResponse, DragSourceBuilder,
+    DropTargetBuilder, GestureBuilder, Label, Properties, PropertyGrid, Response, TextInput, Ui,
+    suggest,
 };
-pub use widget::{CustomWidget, WidgetInput};
+pub use widget::{CustomWidget, WidgetBuilder, WidgetInput};
 pub use window::{ResizeEdge, WindowCommand, WindowId, WindowInfo, WindowRequest};

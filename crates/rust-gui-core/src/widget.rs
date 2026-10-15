@@ -34,6 +34,37 @@ pub struct WidgetInput {
     pub events: Vec<UiEvent>,
 }
 
+/// A custom widget declared with `Ui::widget_msg`: how it is built, and the
+/// message its events send. Without [`WidgetBuilder::on_event`] it sends
+/// nothing, and what it hears is handed to `build` as `WidgetInput::events`,
+/// as `Ui::widget` does.
+pub struct WidgetBuilder<F, M = ()> {
+    pub(crate) build: F,
+    pub(crate) on_event: Option<Box<dyn Fn(crate::UiEvent) -> Option<M>>>,
+}
+
+impl<F, M> WidgetBuilder<F, M> {
+    /// `build` is called with what the widget was laid out at, how it is
+    /// being touched, and, on the old path, what reached it.
+    pub fn new(build: F) -> Self
+    where
+        F: FnOnce(&WidgetInput) -> CustomWidget,
+    {
+        Self {
+            build,
+            on_event: None,
+        }
+    }
+
+    /// The message an event that reaches the widget sends, or none for an
+    /// event it does not take. Pointer positions are in the widget's own
+    /// coordinates, from its top left corner. A disabled widget hears nothing.
+    pub fn on_event(mut self, on_event: impl Fn(crate::UiEvent) -> Option<M> + 'static) -> Self {
+        self.on_event = Some(Box::new(on_event));
+        self
+    }
+}
+
 impl WidgetInput {
     /// Moves an event into the widget's own coordinates.
     pub(crate) fn local(event: UiEvent, bounds: Rect) -> UiEvent {

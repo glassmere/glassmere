@@ -10,7 +10,7 @@
 
 use rust_gui::{
     Color, CustomWidget, EventArea, Key, NumericValue, Primitive, Rect, Role, Semantics, Size,
-    Style, Ui, UiEvent,
+    Style, Ui, UiEvent, WidgetBuilder, WidgetInput,
 };
 
 /// How far the dial turns, in radians, and where it starts. Measured
@@ -24,8 +24,16 @@ const TRAVEL: f64 = 180.0;
 const STEP: f64 = 0.05;
 const TICKS: usize = 25;
 
+/// What the dial's messages carry: an event it heard, in its own coordinates.
+/// The application keeps it in its message type, wrapped as it likes.
+#[derive(Clone, Debug)]
+pub enum DialMsg {
+    Heard(UiEvent),
+}
+
 /// A knob holding a number from zero to one. The application owns it, like
-/// every other piece of state here.
+/// every other piece of state here; `update` changes it and `view` only
+/// reads it.
 #[derive(Clone, Debug, Default)]
 pub struct Dial {
     value: f64,
@@ -50,9 +58,26 @@ impl Dial {
         self.value = value.clamp(0.0, 1.0);
     }
 
-    /// Declares the dial and returns whether it turned. `size` is its
-    /// diameter in logical pixels.
-    pub fn ui(&mut self, ui: &mut Ui<'_>, key: &str, label: &str, size: f32) -> bool {
+    /// Applies what the dial heard. Returns whether the value turned.
+    pub fn update(&mut self, message: DialMsg) -> bool {
+        let before = self.value;
+        match message {
+            DialMsg::Heard(event) => self.apply(&event),
+        }
+        self.value != before
+    }
+
+    /// Declares the dial. `size` is its diameter in logical pixels. What it
+    /// hears is sent as `wrap(DialMsg::Heard(..))`, and the view itself only
+    /// reads the dial.
+    pub fn view<M: Clone + 'static>(
+        &self,
+        ui: &mut Ui<'_, M>,
+        key: &str,
+        label: &str,
+        size: f32,
+        wrap: impl Fn(DialMsg) -> M + 'static,
+    ) {
         let theme = ui.theme();
         let (face, ring, mark, dim, focus) = (
             theme.control,
@@ -61,21 +86,12 @@ impl Dial {
             theme.text_muted,
             theme.focus,
         );
-        let before = self.value;
         let label = label.to_owned();
-        ui.keyed(key, |ui| {
-            ui.widget(Style::default(), |input| {
-                if input.enabled {
-                    for event in &input.events {
-                        self.apply(event);
-                    }
-                } else {
-                    self.drag = None;
-                }
-                self.paint(input, size, face, ring, mark, dim, focus, label)
-            })
-        });
-        self.value != before
+        let widget = WidgetBuilder::new(|input: &WidgetInput| {
+            self.paint(input, size, face, ring, mark, dim, focus, label)
+        })
+        .on_event(move |event| Some(wrap(DialMsg::Heard(event))));
+        ui.keyed(key, |ui| ui.widget_msg(Style::default(), widget));
     }
 
     /// One event. Dragging is vertical, because a knob followed around a

@@ -90,16 +90,25 @@ impl Context {
                         change: Some(map), ..
                     },
                 ) => {
-                    if let Some(update) = self.updates.remove(&id)
+                    if let Some(mut update) = self.updates.remove(&id)
                         && enabled
                     {
+                        // Fingers down and pressure are read when the message is
+                        // made, as a declaration would read them.
+                        if let ControlUpdate::Gesture(gesture) = &mut update {
+                            (gesture.active, gesture.pressure) = self.gesture_contacts(id);
+                        }
                         out.extend(map(update));
                     }
                 }
                 (Queued::Area, Handler::Event(map)) => {
                     let bounds = node.bounds;
+                    // Taken even when disabled, so that nothing waits for a
+                    // declaration that will not come.
                     for event in self.take_area_events(id) {
-                        out.extend(map(crate::WidgetInput::local(event, bounds)));
+                        if enabled {
+                            out.extend(map(crate::WidgetInput::local(event, bounds)));
+                        }
                     }
                 }
                 _ => {}

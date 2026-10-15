@@ -1,41 +1,59 @@
 //! Driving a third-party widget headlessly, with the same harness the
 //! framework's own controls are tested with.
-use dial_widget::Dial;
-use rust_gui::{Event, Key, Length, Point, Size, Style, Ui};
+use dial_widget::{Dial, DialMsg};
+use rust_gui::{App, Effects, Event, Key, Length, Point, Size, Style, Ui};
 use rust_gui_testing::Harness;
 
 const ROOT: Size = Size::new(320.0, 240.0);
 const DIAMETER: f32 = 120.0;
 
+#[derive(Clone, Debug)]
+enum Msg {
+    Dial(DialMsg),
+}
+
 #[derive(Default)]
-struct App {
+struct Page {
     dial: Dial,
     changes: usize,
 }
 
-fn app(value: f64) -> Harness<App> {
-    Harness::new(
+impl App for Page {
+    type Message = Msg;
+
+    fn update(&mut self, message: Msg, _: &mut Effects<'_, Msg>) {
+        match message {
+            Msg::Dial(message) => {
+                if self.dial.update(message) {
+                    self.changes += 1;
+                }
+            }
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        ui.keyed("page", |ui| {
+            ui.column(Style::default(), |ui| {
+                self.dial.view(ui, "dial", "Gain", DIAMETER, Msg::Dial);
+                // Somewhere for the focus to go.
+                ui.keyed("after", |ui| ui.button("After"));
+            })
+        });
+    }
+}
+
+fn app(value: f64) -> Harness<Page> {
+    Harness::app(
         ROOT,
-        App {
+        Page {
             dial: Dial::new(value),
             changes: 0,
-        },
-        |app: &mut App, ui: &mut Ui<'_>| {
-            ui.keyed("page", |ui| {
-                ui.column(Style::default(), |ui| {
-                    if app.dial.ui(ui, "dial", "Gain", DIAMETER) {
-                        app.changes += 1;
-                    }
-                    // Somewhere for the focus to go.
-                    ui.keyed("after", |ui| ui.button("After"));
-                })
-            });
         },
     )
 }
 
 /// The middle of the dial, in window coordinates.
-fn centre(harness: &Harness<App>) -> Point {
+fn centre(harness: &Harness<Page>) -> Point {
     let bounds = harness
         .context()
         .node(harness.find(&["page", "dial"]))
@@ -113,35 +131,53 @@ fn it_says_what_it_holds() {
     assert_eq!(harness.by_label("Gain"), harness.find(&["page", "dial"]));
 }
 
+#[derive(Clone, Debug)]
+enum Scrolling {
+    Dial(DialMsg),
+}
+
+#[derive(Default)]
+struct Scroller {
+    dial: Dial,
+}
+
+impl App for Scroller {
+    type Message = Scrolling;
+
+    fn update(&mut self, message: Scrolling, _: &mut Effects<'_, Scrolling>) {
+        let Scrolling::Dial(message) = message;
+        self.dial.update(message);
+    }
+
+    fn view(&self, ui: &mut Ui<'_, Scrolling>) {
+        ui.keyed("page", |ui| {
+            ui.scroll(
+                Style {
+                    height: Length::Px(160.0),
+                    width: Length::Percent(1.0),
+                    ..Style::default()
+                },
+                |ui| {
+                    self.dial
+                        .view(ui, "dial", "Gain", DIAMETER, Scrolling::Dial);
+                    ui.keyed("below", |ui| ui.button("Below"));
+                    for line in 0..20 {
+                        ui.keyed(format!("filler{line}"), |ui| ui.label("Filler"));
+                    }
+                },
+            )
+        });
+    }
+}
+
 /// The reason the dial captures and consumes: an arrow key belongs to the
 /// widget that has the focus, not to the page it sits on.
 #[test]
 fn an_arrow_key_turns_the_dial_without_scrolling_the_page_under_it() {
-    let mut harness = Harness::new(
-        Size::new(320.0, 200.0),
-        App::default(),
-        |app: &mut App, ui: &mut Ui<'_>| {
-            ui.keyed("page", |ui| {
-                ui.scroll(
-                    Style {
-                        height: Length::Px(160.0),
-                        width: Length::Percent(1.0),
-                        ..Style::default()
-                    },
-                    |ui| {
-                        app.dial.ui(ui, "dial", "Gain", DIAMETER);
-                        ui.keyed("below", |ui| ui.button("Below"));
-                        for line in 0..20 {
-                            ui.keyed(format!("filler{line}"), |ui| ui.label("Filler"));
-                        }
-                    },
-                )
-            });
-        },
-    );
+    let mut harness = Harness::app(Size::new(320.0, 200.0), Scroller::default());
     harness.run();
     let scroll = harness.find(&["page"]);
-    let offset = |harness: &Harness<App>| {
+    let offset = |harness: &Harness<Scroller>| {
         harness
             .context()
             .node(scroll)

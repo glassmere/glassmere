@@ -18,6 +18,7 @@ mod overlays;
 mod property_grid;
 pub use property_grid::{Properties, PropertyGrid};
 mod areas;
+pub use areas::{AreaBuilder, DragSourceBuilder, DropTargetBuilder, GestureBuilder};
 mod dialog;
 mod rich_editor;
 mod rich_text;
