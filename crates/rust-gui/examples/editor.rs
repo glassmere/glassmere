@@ -44,6 +44,10 @@ fn lint(document: &TextDocument) -> Vec<Diagnostic> {
     diagnostics
 }
 
+// M35: stays on the closure API (`run`). The find bar (Ctrl+F, Ctrl+H, and
+// `--open`) keeps a `FindState` the editor writes, and `code_editor_msg`
+// rejects `find` as a misuse (`ui/text_area.rs`, `message_misuse`), so the
+// whole code editor needs the view to hold mutable state.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     let open = std::env::args().any(|arg| arg == "--open");

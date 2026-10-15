@@ -5,9 +5,10 @@
 //! cargo run -p rust-gui --example platform --features platform
 //! ```
 use rust_gui::{
-    AppOptions, Color, Command, FileRequest, Label, Length, Menu, MenuEntry, Notification,
-    Shortcut, Size, Style, TextWrap, Tray, run,
+    App, AppOptions, Color, Command, Effects, FileRequest, Label, Length, Menu, MenuEntry,
+    Notification, Shortcut, Size, Style, TextWrap, Tray, Ui, run_app,
 };
+use std::path::PathBuf;
 
 fn menu(saved: bool) -> Menu {
     Menu::new([
@@ -42,123 +43,176 @@ fn menu(saved: bool) -> Menu {
     ])
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let smoke = std::env::args().any(|arg| arg == "--smoke");
-    let mut chosen: Vec<String> = Vec::new();
-    let mut saved = false;
-    let mut said = 0;
-    run(
-        AppOptions {
-            title: "Rust GUI / Desktop".into(),
-            size: Size::new(640.0, 460.0),
-            frame_limit: smoke.then_some(20),
-            ..AppOptions::default()
-        },
-        move |ui| {
-            if smoke {
-                ui.request_redraw();
-            }
-            // The platform's own menu where there is one, and a tray icon
-            // everywhere. Both send the commands declared below.
-            ui.set_menu(menu(saved));
-            ui.set_tray(Some(
-                Tray::new("Rust GUI desktop example").with_menu(menu(saved)),
-            ));
-            let page = Style {
-                padding: 20.0,
-                gap: 14.0,
-                width: Length::Percent(1.0),
-                ..Style::default()
-            };
-            ui.column(page, |ui| {
-                // On Windows and Linux a menu bar belongs to the window, and
-                // this draws it. Choosing an item activates the same command
-                // the platform's menu does.
-                ui.menu_bar(&menu(saved));
-                ui.label(Label::new("Desktop integration").style(Style {
-                        font_size: Some(26.0),
-                        font_weight: Some(700),
-                        ..Style::default()
-                    }));
-                ui.label(Label::new("The menu above, the tray icon and the buttons below all go through the same \
-                     commands. Start the example with a file name to see it arrive.").style(Style {
-                        width: Length::Percent(1.0),
-                        wrap: TextWrap::Word,
-                        ..Style::default()
-                    }));
-                ui.row(Style::default().gap(10.0), |ui| {
-                    if ui.command_button(&Command::with_id("open", "Open...", Some(Shortcut::primary('o'))))
-                        .clicked()
-                        && !smoke
-                    {
-                        ui.choose_file(
-                            FileRequest::open_many("Open some files")
-                                .with_filter("Text", ["txt", "md"])
-                                .with_filter("Every file", ["*"]),
-                        );
-                    }
-                    if ui.command_button(&Command::with_id("save", "Save as...", Some(Shortcut::primary('s'))))
-                        .clicked()
-                    {
-                        saved = true;
-                        if !smoke {
-                            ui.choose_file(FileRequest::save("Save the notes").named("notes.txt"));
-                        }
-                    }
-                    let say = Command {
-                        enabled: saved,
-                        ..Command::with_id("notify", "Say it was saved", None)
-                    };
-                    if ui.command_button(&say).clicked() {
-                        said += 1;
-                        if !smoke {
-                            ui.notify(Notification::new(
-                                "Rust GUI",
-                                "The notes were saved.".to_owned(),
-                            ));
-                        }
-                    }
-                    if ui.command_button(&Command::with_id("quit", "Close the window", None))
-                        .clicked()
-                        && !smoke
-                    {
-                        std::process::exit(0);
-                    }
-                });
-                if let Some(paths) = ui.chosen_files() {
-                    chosen = paths
-                        .iter()
-                        .map(|path| path.display().to_string())
-                        .collect();
+#[derive(Clone)]
+enum Msg {
+    Open,
+    Save,
+    Say,
+    Quit,
+    Chosen(Vec<PathBuf>),
+}
+
+struct Platform {
+    smoke: bool,
+    chosen: Vec<String>,
+    saved: bool,
+    said: u32,
+}
+
+impl App for Platform {
+    type Message = Msg;
+
+    fn update(&mut self, message: Msg, effects: &mut Effects<'_, Msg>) {
+        match message {
+            Msg::Open => {
+                if !self.smoke {
+                    effects.choose_files(
+                        FileRequest::open_many("Open some files")
+                            .with_filter("Text", ["txt", "md"])
+                            .with_filter("Every file", ["*"]),
+                        Msg::Chosen,
+                    );
                 }
-                let opened: Vec<String> = ui
-                    .opened_files()
+            }
+            Msg::Save => {
+                self.saved = true;
+                if !self.smoke {
+                    effects.choose_files(
+                        FileRequest::save("Save the notes").named("notes.txt"),
+                        Msg::Chosen,
+                    );
+                }
+            }
+            Msg::Say => {
+                self.said += 1;
+                if !self.smoke {
+                    effects.notify(Notification::new(
+                        "Rust GUI",
+                        "The notes were saved.".to_owned(),
+                    ));
+                }
+            }
+            Msg::Quit => {
+                if !self.smoke {
+                    std::process::exit(0);
+                }
+            }
+            Msg::Chosen(paths) => {
+                self.chosen = paths
                     .iter()
                     .map(|path| path.display().to_string())
                     .collect();
-                for (key, label, paths) in [
-                    ("opened", "Started with", &opened),
-                    ("chosen", "Chosen in a dialog", &chosen),
-                ] {
-                    ui.keyed(key, |ui| ui.label(Label::new(format!(
+            }
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        if self.smoke {
+            ui.request_redraw();
+        }
+        // The platform's own menu where there is one, and a tray icon
+        // everywhere. Both send the commands declared below.
+        ui.set_menu(menu(self.saved));
+        ui.set_tray(Some(
+            Tray::new("Rust GUI desktop example").with_menu(menu(self.saved)),
+        ));
+        let page = Style {
+            padding: 20.0,
+            gap: 14.0,
+            width: Length::Percent(1.0),
+            ..Style::default()
+        };
+        ui.column(page, |ui| {
+            // On Windows and Linux a menu bar belongs to the window, and
+            // this draws it. Choosing an item activates the same command
+            // the platform's menu does.
+            ui.menu_bar(&menu(self.saved));
+            ui.label(Label::new("Desktop integration").style(Style {
+                font_size: Some(26.0),
+                font_weight: Some(700),
+                ..Style::default()
+            }));
+            ui.label(
+                Label::new(
+                    "The menu above, the tray icon and the buttons below all go through the same \
+                 commands. Start the example with a file name to see it arrive.",
+                )
+                .style(Style {
+                    width: Length::Percent(1.0),
+                    wrap: TextWrap::Word,
+                    ..Style::default()
+                }),
+            );
+            ui.row(Style::default().gap(10.0), |ui| {
+                ui.command_button_msg(
+                    &Command::with_id("open", "Open...", Some(Shortcut::primary('o'))),
+                    Msg::Open,
+                );
+                ui.command_button_msg(
+                    &Command::with_id("save", "Save as...", Some(Shortcut::primary('s'))),
+                    Msg::Save,
+                );
+                let say = Command {
+                    enabled: self.saved,
+                    ..Command::with_id("notify", "Say it was saved", None)
+                };
+                ui.command_button_msg(&say, Msg::Say);
+                ui.command_button_msg(
+                    &Command::with_id("quit", "Close the window", None),
+                    Msg::Quit,
+                );
+            });
+            let opened: Vec<String> = ui
+                .opened_files()
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect();
+            for (key, label, paths) in [
+                ("opened", "Started with", &opened),
+                ("chosen", "Chosen in a dialog", &self.chosen),
+            ] {
+                ui.keyed(key, |ui| {
+                    ui.label(
+                        Label::new(format!(
                             "{label}: {}",
                             if paths.is_empty() {
                                 "nothing".to_owned()
                             } else {
                                 paths.join(", ")
                             }
-                        )).style(Style {
+                        ))
+                        .style(Style {
                             foreground: Some(Color::rgb(103, 232, 206)),
                             width: Length::Percent(1.0),
                             wrap: TextWrap::Word,
                             ..Style::default()
-                        })));
-                }
-                ui.label(format!("Notifications posted: {said}"));
-            });
-            if smoke && said > 0 {
-                println!("PLATFORM saved={saved} said={said}");
+                        }),
+                    )
+                });
             }
+            ui.label(format!("Notifications posted: {}", self.said));
+        });
+        if self.smoke && self.said > 0 {
+            println!("PLATFORM saved={} said={}", self.saved, self.said);
+        }
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let smoke = std::env::args().any(|arg| arg == "--smoke");
+    run_app(
+        AppOptions {
+            title: "Rust GUI / Desktop".into(),
+            size: Size::new(640.0, 460.0),
+            frame_limit: smoke.then_some(20),
+            ..AppOptions::default()
         },
-    )
+        Platform {
+            smoke,
+            chosen: Vec::new(),
+            saved: false,
+            said: 0,
+        },
+    )?;
+    Ok(())
 }

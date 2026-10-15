@@ -44,6 +44,10 @@ struct Card {
     visible: bool,
 }
 
+// M35: stays on the closure API (`run`). Two blockers for the message form:
+// `grid.custom` (the "Preset" row, which edits two fields) has no
+// `PropertyGridMsg` counterpart, and `#[property(flatten)]` on `Card::corners`
+// stops the derive from generating `CardMsg`/`Card::apply`.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     let mut state = PropertyGridState::default();

@@ -1,8 +1,9 @@
 use rust_gui::syntax::SyntectHighlighter;
 use rust_gui::{
-    AppOptions, Axis, CodeEditorOptions, Label, Length, RichDocument, RichEditorOptions, Size,
-    SplitOptions, Style, TextDocument, run,
+    App, AppOptions, Axis, CodeEditorOptions, Effects, Label, Length, RichDocument,
+    RichEditorOptions, RichOp, Size, SplitOptions, Style, TextDocument, TextOp, Ui, run_app,
 };
+use std::cell::RefCell;
 
 const SAMPLE: &str = "# Release notes
 
@@ -27,6 +28,123 @@ std::fs::write(path, document.to_markdown())?;
 ```
 ";
 
+#[derive(Clone)]
+enum Msg {
+    /// An edit, mark or block change made in the rich editor.
+    Rich(RichOp),
+    /// A caret move, selection or copy in the Markdown view.
+    Markdown(TextOp),
+    Split(f32),
+}
+
+struct RichTextApp {
+    document: RichDocument,
+    /// The Markdown view, kept in step with `document` by `update`.
+    markdown: TextDocument,
+    /// The highlighter of the Markdown view, rebuilt when the window theme
+    /// flips between dark and light. The view fills it: it is a cache of
+    /// the rendering, not state the application changes.
+    highlighter: RefCell<Option<(bool, SyntectHighlighter)>>,
+    share: f32,
+}
+
+impl App for RichTextApp {
+    type Message = Msg;
+
+    fn update(&mut self, message: Msg, _effects: &mut Effects<'_, Msg>) {
+        match message {
+            Msg::Rich(op) => {
+                self.document.apply(op);
+                let markdown = self.document.to_markdown();
+                if markdown != self.markdown.text() {
+                    self.markdown.set_text(&markdown);
+                }
+            }
+            Msg::Markdown(op) => self.markdown.apply(op),
+            Msg::Split(share) => self.share = share,
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        let theme = ui.theme().clone();
+        let window = theme.window;
+        let dark = u32::from(window.0) + u32::from(window.1) + u32::from(window.2) < 384;
+        let mut highlighter = self.highlighter.borrow_mut();
+        if highlighter.as_ref().is_none_or(|(was, _)| *was != dark) {
+            *highlighter = Some((dark, SyntectHighlighter::new("md", dark)));
+        }
+        let page = Style::default()
+            .width(Length::Percent(1.0))
+            .height(Length::Percent(1.0))
+            .padding(16.0)
+            .gap(8.0);
+        let fill = || {
+            Style::default()
+                .width(Length::Percent(1.0))
+                .height(Length::Percent(1.0))
+                .padding(12.0)
+                .radius(8.0)
+        };
+        ui.column(page, |ui| {
+            let mut link = None;
+            ui.split_msg(
+                self.share,
+                Msg::Split,
+                Axis::Horizontal,
+                SplitOptions {
+                    min_first: 320.0,
+                    min_second: 240.0,
+                    style: Style::default()
+                        .width(Length::Percent(1.0))
+                        .grow(1.0)
+                        .shrink(1.0),
+                    ..SplitOptions::default()
+                },
+                |ui| {
+                    let response = ui.rich_editor_msg(
+                        &self.document,
+                        RichEditorOptions {
+                            label: "Release notes".into(),
+                            style: fill(),
+                            ..RichEditorOptions::default()
+                        },
+                        Msg::Rich,
+                    );
+                    link = response.link_at_cursor;
+                },
+                |ui| {
+                    ui.code_editor_msg(
+                        &self.markdown,
+                        CodeEditorOptions {
+                            label: "Markdown output".into(),
+                            style: fill(),
+                            read_only: true,
+                            line_numbers: false,
+                            highlighter: highlighter
+                                .as_mut()
+                                .map(|(_, highlighter)| highlighter as _),
+                            ..CodeEditorOptions::default()
+                        },
+                        Msg::Markdown,
+                    );
+                },
+            );
+            ui.label(
+                Label::new(format!(
+                    "{} blocks  ·  link at cursor: {}",
+                    self.document.blocks().len(),
+                    link.as_deref().unwrap_or("none"),
+                ))
+                .style(
+                    Style::default()
+                        .font_size(13.0)
+                        .foreground(theme.text_muted),
+                ),
+            );
+        });
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     // `--rtl` mirrors the window as a right-to-left locale would.
@@ -35,11 +153,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         rust_gui::DirectionChoice::Auto
     };
-    let mut document = RichDocument::from_markdown(SAMPLE);
-    let mut markdown = TextDocument::from_text(&document.to_markdown());
-    let mut highlighter: Option<(bool, SyntectHighlighter)> = None;
-    let mut share = 0.55f32;
-    run(
+    let document = RichDocument::from_markdown(SAMPLE);
+    let markdown = TextDocument::from_text(&document.to_markdown());
+    run_app(
         AppOptions {
             title: "Rust GUI / Rich text".into(),
             size: Size::new(1100.0, 720.0),
@@ -47,85 +163,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             direction,
             ..AppOptions::default()
         },
-        move |ui| {
-            let theme = ui.theme().clone();
-            let window = theme.window;
-            let dark = u32::from(window.0) + u32::from(window.1) + u32::from(window.2) < 384;
-            if highlighter.as_ref().is_none_or(|(was, _)| *was != dark) {
-                highlighter = Some((dark, SyntectHighlighter::new("md", dark)));
-            }
-            let page = Style::default()
-                .width(Length::Percent(1.0))
-                .height(Length::Percent(1.0))
-                .padding(16.0)
-                .gap(8.0);
-            let fill = || {
-                Style::default()
-                    .width(Length::Percent(1.0))
-                    .height(Length::Percent(1.0))
-                    .padding(12.0)
-                    .radius(8.0)
-            };
-            ui.column(page, |ui| {
-                let mut changed = false;
-                let mut link = None;
-                ui.split(
-                    &mut share,
-                    Axis::Horizontal,
-                    SplitOptions {
-                        min_first: 320.0,
-                        min_second: 240.0,
-                        style: Style::default()
-                            .width(Length::Percent(1.0))
-                            .grow(1.0)
-                            .shrink(1.0),
-                        ..SplitOptions::default()
-                    },
-                    |ui| {
-                        let response = ui.rich_text_editor(
-                            &mut document,
-                            RichEditorOptions {
-                                label: "Release notes".into(),
-                                style: fill(),
-                                ..RichEditorOptions::default()
-                            },
-                        );
-                        changed = response.changed;
-                        link = response.link_at_cursor;
-                    },
-                    |ui| {
-                        ui.code_editor(
-                            &mut markdown,
-                            CodeEditorOptions {
-                                label: "Markdown output".into(),
-                                style: fill(),
-                                read_only: true,
-                                line_numbers: false,
-                                highlighter: highlighter
-                                    .as_mut()
-                                    .map(|(_, highlighter)| highlighter as _),
-                                ..CodeEditorOptions::default()
-                            },
-                        );
-                    },
-                );
-                if changed {
-                    markdown.set_text(&document.to_markdown());
-                    ui.request_redraw();
-                }
-                ui.label(
-                    Label::new(format!(
-                        "{} blocks  ·  link at cursor: {}",
-                        document.blocks().len(),
-                        link.as_deref().unwrap_or("none"),
-                    ))
-                    .style(
-                        Style::default()
-                            .font_size(13.0)
-                            .foreground(theme.text_muted),
-                    ),
-                );
-            });
+        RichTextApp {
+            document,
+            markdown,
+            highlighter: RefCell::new(None),
+            share: 0.55,
         },
-    )
+    )?;
+    Ok(())
 }
