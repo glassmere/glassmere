@@ -223,6 +223,17 @@ impl<'a, M: 'static> Ui<'a, M> {
             control: Control::None,
         })
     }
+
+    /// [`Ui::custom`] that sends `on_click` when it is activated: a click, or
+    /// Enter or Space on it, or an accessibility Activate.
+    #[track_caller]
+    pub fn custom_msg(&mut self, style: Style, widget: CustomWidget, on_click: M) {
+        let valid = widget.validate().is_ok();
+        self.custom(style, widget);
+        if valid {
+            self.set_handler(crate::app::Handler::Message(on_click));
+        }
+    }
 }
 
 /// A drag source as [`Ui::drag_source_msg`] declares it: what it drags, and

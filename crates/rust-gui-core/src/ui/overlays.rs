@@ -25,11 +25,12 @@ impl<'a, M: 'static> Ui<'a, M> {
         tabs: &[Tab],
         content: impl FnOnce(&mut Ui<'_, M>, usize),
     ) -> TabsResponse {
-        self.tabs_with(selected, tabs, false, |_, _| {}, content)
+        self.tabs_with(selected, tabs, false, None, |_, _| {}, content)
     }
 
     /// `tabs` with the selection as a value: a click or arrow key on a tab
-    /// sends `on_select(index)`. Closing a closable tab is not reported here.
+    /// sends `on_select(index)`. Closing a closable tab is not reported here;
+    /// `tabs_close_msg` reports it.
     #[track_caller]
     pub fn tabs_msg(
         &mut self,
@@ -38,8 +39,34 @@ impl<'a, M: 'static> Ui<'a, M> {
         on_select: impl Fn(usize) -> M + 'static,
         content: impl FnOnce(&mut Ui<'_, M>, usize),
     ) {
+        self.tabs_close_with(selected, tabs, on_select, None, content);
+    }
+
+    /// `tabs_msg` that also sends `on_close(index)` when the close button of a
+    /// closable tab is pressed, or Delete on the focused tab.
+    #[track_caller]
+    pub fn tabs_close_msg(
+        &mut self,
+        selected: usize,
+        tabs: &[Tab],
+        on_select: impl Fn(usize) -> M + 'static,
+        on_close: impl Fn(usize) -> M,
+        content: impl FnOnce(&mut Ui<'_, M>, usize),
+    ) {
+        self.tabs_close_with(selected, tabs, on_select, Some(&on_close), content);
+    }
+
+    #[track_caller]
+    fn tabs_close_with(
+        &mut self,
+        selected: usize,
+        tabs: &[Tab],
+        on_select: impl Fn(usize) -> M + 'static,
+        on_close: Option<&dyn Fn(usize) -> M>,
+        content: impl FnOnce(&mut Ui<'_, M>, usize),
+    ) {
         let mut shown = selected;
-        self.tabs(&mut shown, tabs, content);
+        self.tabs_with(&mut shown, tabs, false, on_close, |_, _| {}, content);
         // The strip's choices reach the tabs group, which `tabs` declared last.
         self.set_handler(crate::app::Handler::Map(Box::new(
             move |update| match update {
@@ -57,6 +84,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         selected: &mut usize,
         tabs: &[Tab],
         fill: bool,
+        on_close: Option<&dyn Fn(usize) -> M>,
         strip_extra: impl FnOnce(&mut Ui<'_, M>, usize),
         content: impl FnOnce(&mut Ui<'_, M>, usize),
     ) -> TabsResponse {
@@ -143,6 +171,9 @@ impl<'a, M: 'static> Ui<'a, M> {
                                 closed = Some(index);
                             }
                             if tab.closable {
+                                if let Some(on_close) = on_close {
+                                    ui.set_handler(crate::app::Handler::Message(on_close(index)));
+                                }
                                 // The button shows only a symbol; this names it.
                                 ui.tooltip(ui.context.tr(
                                     "rust-gui-tab-close",

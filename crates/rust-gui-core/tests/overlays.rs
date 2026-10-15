@@ -2,7 +2,7 @@ mod support;
 
 use rust_gui_core::{
     Action, Axis, Context, Event, Key, Length, MenuItem, MonospaceMeasurer, PopoverOptions, Role,
-    SplitOptions, Style, TOOLTIP_DELAY, Tab, TabsResponse, Ui,
+    SplitOptions, Style, TOOLTIP_DELAY, Tab, Ui,
 };
 use rust_gui_scene::{Point, Primitive, Size};
 use std::time::Duration;
@@ -108,30 +108,34 @@ fn tooltips_appear_after_a_dwell_request_a_wake_and_hide_on_movement_or_input() 
     assert_eq!(context.next_wake(), None);
 }
 
-fn tabs_frame(context: &mut Context, selected: &mut usize) -> TabsResponse {
-    let tabs = [Tab::new("One"), Tab::closable("Two"), Tab::new("Three")];
-    let mut response = TabsResponse::default();
-    frame(context, |ui| {
-        ui.keyed("before", |ui| ui.button("Before"));
-        response = ui.keyed("tabs", |ui| {
-            ui.tabs(selected, &tabs, |ui, index| {
-                ui.keyed("body", |ui| ui.label(format!("panel {index}")));
-                ui.keyed("inner", |ui| ui.button("Inner"));
-            })
-        });
-        ui.keyed("after", |ui| ui.button("After"));
-    });
-    response
+#[derive(Default)]
+struct Tabs {
+    selected: usize,
+    closed: Vec<usize>,
 }
 
-// M35: `tabs_msg` has no close report (`TabsResponse::closed`) and only reports
-// a change through its message, so this test keeps the old closure view until
-// closes have a message form.
+fn tabs_page(state: &Tabs, ui: &mut Ui<'_, Handler<Tabs>>) {
+    let tabs = [Tab::new("One"), Tab::closable("Two"), Tab::new("Three")];
+    ui.keyed("before", |ui| ui.button("Before"));
+    ui.keyed("tabs", |ui| {
+        ui.tabs_close_msg(
+            state.selected,
+            &tabs,
+            on(|s: &mut Tabs, index: usize| s.selected = index),
+            on(|s: &mut Tabs, index: usize| s.closed.push(index)),
+            |ui, index| {
+                ui.keyed("body", |ui| ui.label(format!("panel {index}")));
+                ui.keyed("inner", |ui| ui.button("Inner"));
+            },
+        );
+    });
+    ui.keyed("after", |ui| ui.button("After"));
+}
+
 #[test]
 fn tabs_select_by_click_and_arrows_expose_roles_and_report_closes() {
-    let mut context = Context::new();
-    let mut selected = 0usize;
-    tabs_frame(&mut context, &mut selected);
+    let mut driven = Driven::new(ROOT, Tabs::default(), tabs_page);
+    let context = &driven.context;
     let strip = context.find(&["tabs", "$strip"]).unwrap();
     assert_eq!(context.node(strip).unwrap().semantics.role, Role::TabList);
     let first = context.find(&["tabs", "$strip", "0"]).unwrap();
@@ -139,54 +143,66 @@ fn tabs_select_by_click_and_arrows_expose_roles_and_report_closes() {
     assert_eq!(context.node(first).unwrap().selected, Some(true));
     let panel = context.find(&["tabs", "$panel"]).unwrap();
     assert_eq!(context.node(panel).unwrap().semantics.role, Role::TabPanel);
-    assert!(scene_text(&context, "panel 0"));
+    assert!(scene_text(context, "panel 0"));
     // Click the second tab.
-    click_at(&mut context, &["tabs", "$strip", "1"]);
-    let response = tabs_frame(&mut context, &mut selected);
-    assert_eq!(selected, 1);
-    assert!(response.changed);
-    assert!(scene_text(&context, "panel 1"));
-    assert!(!tabs_frame(&mut context, &mut selected).changed);
+    click_at(&mut driven.context, &["tabs", "$strip", "1"]);
+    driven.frame();
+    assert_eq!(driven.state().selected, 1);
+    assert!(scene_text(&driven.context, "panel 1"));
     // Only the selected tab is in the Tab order; Tab then enters the panel.
-    context.action(context.find(&["before"]).unwrap(), Action::Focus);
-    key(&mut context, Key::Tab);
-    assert_eq!(focused_key(&context), "1");
-    key(&mut context, Key::Tab);
-    assert_eq!(focused_key(&context), "$close-1");
-    key(&mut context, Key::Tab);
-    assert_eq!(focused_key(&context), "inner");
+    let before = driven.context.find(&["before"]).unwrap();
+    driven.context.action(before, Action::Focus);
+    key(&mut driven.context, Key::Tab);
+    assert_eq!(focused_key(&driven.context), "1");
+    key(&mut driven.context, Key::Tab);
+    assert_eq!(focused_key(&driven.context), "$close-1");
+    key(&mut driven.context, Key::Tab);
+    assert_eq!(focused_key(&driven.context), "inner");
     // Arrows on the focused tab switch immediately and keep focus on the strip.
-    context.action(
-        context.find(&["tabs", "$strip", "1"]).unwrap(),
-        Action::Focus,
+    let tab = driven.context.find(&["tabs", "$strip", "1"]).unwrap();
+    driven.context.action(tab, Action::Focus);
+    key(&mut driven.context, Key::ArrowRight);
+    driven.frame();
+    assert_eq!(
+        (
+            driven.state().selected,
+            focused_key(&driven.context).as_str()
+        ),
+        (2, "2")
     );
-    key(&mut context, Key::ArrowRight);
-    tabs_frame(&mut context, &mut selected);
-    assert_eq!((selected, focused_key(&context).as_str()), (2, "2"));
-    key(&mut context, Key::Home);
-    tabs_frame(&mut context, &mut selected);
-    assert_eq!((selected, focused_key(&context).as_str()), (0, "0"));
-    key(&mut context, Key::End);
-    tabs_frame(&mut context, &mut selected);
-    assert_eq!(selected, 2);
-    key(&mut context, Key::ArrowLeft);
-    tabs_frame(&mut context, &mut selected);
-    assert_eq!(selected, 1);
+    key(&mut driven.context, Key::Home);
+    driven.frame();
+    assert_eq!(
+        (
+            driven.state().selected,
+            focused_key(&driven.context).as_str()
+        ),
+        (0, "0")
+    );
+    key(&mut driven.context, Key::End);
+    driven.frame();
+    assert_eq!(driven.state().selected, 2);
+    key(&mut driven.context, Key::ArrowLeft);
+    driven.frame();
+    assert_eq!(driven.state().selected, 1);
+    assert!(driven.state().closed.is_empty());
     // Close through the button, and through Delete on the focused closable tab.
-    click_at(&mut context, &["tabs", "$strip", "$close-1"]);
-    assert_eq!(tabs_frame(&mut context, &mut selected).closed, Some(1));
-    assert_eq!(tabs_frame(&mut context, &mut selected).closed, None);
-    context.action(
-        context.find(&["tabs", "$strip", "1"]).unwrap(),
-        Action::Focus,
-    );
-    key(&mut context, Key::Delete);
-    assert_eq!(tabs_frame(&mut context, &mut selected).closed, Some(1));
+    click_at(&mut driven.context, &["tabs", "$strip", "$close-1"]);
+    driven.frame();
+    assert_eq!(driven.state().closed, [1]);
+    driven.frame();
+    assert_eq!(driven.state().closed, [1], "a close is sent once");
+    let tab = driven.context.find(&["tabs", "$strip", "1"]).unwrap();
+    driven.context.action(tab, Action::Focus);
+    key(&mut driven.context, Key::Delete);
+    driven.frame();
+    assert_eq!(driven.state().closed, [1, 1]);
     // Delete on a non-closable tab does nothing.
-    key(&mut context, Key::ArrowRight);
-    tabs_frame(&mut context, &mut selected);
-    key(&mut context, Key::Delete);
-    assert_eq!(tabs_frame(&mut context, &mut selected).closed, None);
+    key(&mut driven.context, Key::ArrowRight);
+    driven.frame();
+    key(&mut driven.context, Key::Delete);
+    driven.frame();
+    assert_eq!(driven.state().closed, [1, 1]);
 }
 
 #[derive(Default)]

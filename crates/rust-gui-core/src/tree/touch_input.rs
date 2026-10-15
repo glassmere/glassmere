@@ -282,6 +282,8 @@ impl Context {
         if let Some(area) = self.gesture_area_at(position, target) {
             touch.mode = Mode::Gesture(area);
             self.touches.insert(id, touch);
+            // The area reports that fingers are down, even before they move.
+            self.gesture(area, position, |_, _| {});
             return true;
         }
         // One pointer per control: a second finger on a slider that is being
@@ -418,6 +420,8 @@ impl Context {
             }
             Mode::Gesture(area) => {
                 let alone = self.gesture_partner(area).is_none();
+                // And that they are up, with `active` read at delivery.
+                self.gesture(area, position, |_, _| {});
                 if !touch.travelled && alone {
                     let again = self.tapped_again(position);
                     self.gesture(area, position, |gesture, local| {
@@ -439,6 +443,13 @@ impl Context {
 
     /// The part of touch that happens by the clock: long presses and flings.
     pub(super) fn update_touches(&mut self) {
+        self.update_long_presses();
+        self.update_flings();
+    }
+
+    /// Long presses that came due. A menu one opens is declared by the view,
+    /// so it is due to declare.
+    pub(crate) fn update_long_presses(&mut self) {
         let due: Vec<u64> = self
             .touches
             .iter()
@@ -460,6 +471,7 @@ impl Context {
                 {
                     touch.mode = Mode::Held;
                     self.pending |= Dirty::PAINT;
+                    self.view_stale = true;
                 }
                 self.touches.insert(id, touch);
                 continue;
@@ -489,11 +501,16 @@ impl Context {
             });
             if touch.drag.is_some() {
                 touch.mode = Mode::Dragging;
+            } else {
+                // A context menu, if one opened, is declared by the view.
+                self.view_stale = true;
             }
             self.touches.insert(id, touch);
             self.pending |= Dirty::PAINT;
         }
+    }
 
+    fn update_flings(&mut self) {
         let Some(mut fling) = self.fling.take() else {
             return;
         };

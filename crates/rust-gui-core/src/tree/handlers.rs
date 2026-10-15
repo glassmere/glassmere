@@ -193,6 +193,11 @@ impl Context {
                         each(update, out);
                     }
                 }
+                (Queued::Click, Handler::Event(map)) => {
+                    if enabled && self.clicks.contains(&id) {
+                        out.extend(map(crate::UiEvent::Activate));
+                    }
+                }
                 (Queued::Area, Handler::Event(map)) => {
                     let bounds = node.bounds;
                     // Taken even when disabled, so that nothing waits for a
@@ -358,6 +363,7 @@ impl Context {
     pub(crate) fn prepare_batch(&mut self) {
         self.update_toasts();
         self.start_grid_timers();
+        self.update_long_presses();
     }
 
     /// Whether something the view reads changed since it last declared,

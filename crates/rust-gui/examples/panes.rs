@@ -6,6 +6,7 @@ use rust_gui::{
 #[derive(Clone)]
 enum Msg {
     Select(usize),
+    Close(usize),
     Sidebar(f32),
     EditorSplit(f32),
     ToggleShare,
@@ -32,6 +33,7 @@ struct Panes {
     share: bool,
     link: String,
     last_menu: String,
+    closed: u32,
 }
 
 impl App for Panes {
@@ -40,6 +42,13 @@ impl App for Panes {
     fn update(&mut self, message: Msg, _effects: &mut Effects<'_, Msg>) {
         match message {
             Msg::Select(index) => self.selected = index,
+            Msg::Close(index) => {
+                if self.tabs.len() > 1 {
+                    self.tabs.remove(index);
+                    self.closed += 1;
+                    self.selected = self.selected.min(self.tabs.len() - 1);
+                }
+            }
             Msg::Sidebar(fraction) => self.sidebar = fraction,
             Msg::EditorSplit(fraction) => self.editor_split = fraction,
             Msg::ToggleShare => self.share = !self.share,
@@ -72,12 +81,10 @@ impl App for Panes {
                         ui.button("Email…");
                     });
                 });
-                ui.label(Label::new(format!("Context menu: {}", self.last_menu)).style(muted.clone()));
+                ui.label(Label::new(format!("Context menu: {}  ·  closed tabs: {}", self.last_menu, self.closed)).style(muted.clone()));
             });
             ui.label(Label::new("Hover the toolbar for tooltips. Right-click the editor (or press Shift+F10 while it has focus) for a context menu. Drag the dividers or focus one and use the arrow keys.").style(muted.clone()));
-            // M35: `tabs_msg` has no message for a closed tab, so the close buttons of
-            // closable tabs are not wired yet. The tabs are plain until it has one.
-            ui.tabs_msg(self.selected, &self.tabs, Msg::Select, |ui, index| {
+            ui.tabs_close_msg(self.selected, &self.tabs, Msg::Select, Msg::Close, |ui, index| {
                 ui.split_msg(self.sidebar, Msg::Sidebar, Axis::Horizontal, SplitOptions { min_first: 140.0, min_second: 240.0, style: Style::default().width(Length::Percent(1.0)).height(Length::Px(460.0)), ..SplitOptions::default() }, |ui| {
                     ui.column(Style::default().padding(8.0).gap(4.0).width(Length::Percent(1.0)), |ui| {
                         ui.label(Label::new("Files").style(Style::default().font_weight(700)));
@@ -122,8 +129,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Panes {
             tabs: vec![
                 Tab::new("Overview"),
-                Tab::new("notes.md"),
-                Tab::new("main.rs"),
+                Tab::closable("notes.md"),
+                Tab::closable("main.rs"),
             ],
             selected: 0,
             sidebar: 0.28,
@@ -131,6 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             share: open,
             link: String::from("https://example.test/doc/42"),
             last_menu: String::from("none"),
+            closed: 0,
         },
     )
 }

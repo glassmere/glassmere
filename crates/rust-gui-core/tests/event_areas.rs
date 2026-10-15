@@ -2,8 +2,8 @@ mod support;
 
 use rust_gui_core::app::Action;
 use rust_gui_core::{
-    AreaBuilder, Button, Context, CustomWidget, Event, EventArea, Key, Length, Style, TextEdit, Ui,
-    UiEvent, WidgetBuilder, WidgetInput,
+    AreaBuilder, Button, Context, CustomWidget, Event, EventArea, Key, Length, Role, Semantics,
+    Style, TextEdit, Ui, UiEvent, WidgetBuilder, WidgetInput,
 };
 use rust_gui_scene::{Point, Size};
 use support::{Driven, act, on};
@@ -261,4 +261,51 @@ fn a_view_without_areas_dispatches_exactly_as_before() {
     driven.frame();
     assert_eq!(driven.state().clicks, 1);
     assert!(driven.context.hovered().is_some());
+}
+
+#[derive(Default)]
+struct Pressed {
+    heard: Vec<UiEvent>,
+}
+
+fn pressable(_: &Pressed, ui: &mut Ui<'_, Action<Pressed>>) {
+    ui.keyed("widget", |ui| {
+        ui.widget_msg(
+            Style::default(),
+            WidgetBuilder::new(|_: &WidgetInput| CustomWidget {
+                size: Size::new(40.0, 20.0),
+                semantics: Semantics {
+                    role: Role::Button,
+                    label: "Press".into(),
+                    focusable: true,
+                    ..Semantics::default()
+                },
+                input: EventArea::pointer(),
+                ..CustomWidget::default()
+            })
+            .on_event(|event| Some(act(move |s: &mut Pressed| s.heard.push(event.clone())))),
+        );
+    });
+}
+
+/// Assistive technology's Activate on a widget with `on_event` is an event,
+/// and so is a pointer click on it, after its pointer events.
+#[test]
+fn activating_a_widget_with_on_event_delivers_activate() {
+    let mut driven = Driven::new(ROOT, Pressed::default(), pressable);
+    let widget = driven.context.find(&["widget"]).unwrap();
+    assert!(
+        driven
+            .context
+            .action(widget, rust_gui_core::Action::Activate)
+    );
+    driven.frame();
+    assert_eq!(driven.state().heard, [UiEvent::Activate]);
+    driven.state_mut().heard.clear();
+    let point = centre(&driven.context, &["widget"]);
+    click(&mut driven.context, point);
+    driven.frame();
+    let heard = &driven.state().heard;
+    assert!(heard.iter().any(|e| matches!(e, UiEvent::PointerUp(_))));
+    assert_eq!(heard.last(), Some(&UiEvent::Activate), "{heard:?}");
 }

@@ -511,119 +511,39 @@ fn a_rest_or_a_second_tap_in_text_selects_a_word_and_the_drag_extends_it() {
     assert_eq!(driven.state().typed, "one beta gamma");
 }
 
-mod old {
-    use rust_gui_core::{
-        Context, DragPayload, DropKind, Event, Length, MenuItem, MonospaceMeasurer, Style,
-        TouchPhase, Ui,
-    };
-    use rust_gui_scene::{Point, Size};
-    use std::time::Duration;
-
-    fn sized(width: f32, height: f32) -> Style {
-        Style::default()
-            .width(Length::Px(width))
-            .height(Length::Px(height))
-    }
-
-    fn center(context: &Context, path: &[&str]) -> Point {
-        let bounds = context.node(context.find(path).unwrap()).unwrap().bounds;
-        Point {
-            x: bounds.x + bounds.width / 2.0,
-            y: bounds.y + bounds.height / 2.0,
-        }
-    }
-
-    fn touch(context: &mut Context, id: u64, phase: TouchPhase, position: Point) -> bool {
-        context.event(Event::Touch {
-            id,
-            phase,
-            position,
-            force: None,
-            pen: None,
-        })
-    }
-
-    fn at(x: f32, y: f32) -> Point {
-        Point { x, y }
-    }
-
-    #[derive(Default)]
-    struct Page {
-        menu: Option<usize>,
-    }
-
-    /// The context area with a drag source and a drop target, as the old
-    /// closure view declares them.
-    fn page(context: &mut Context, page: &mut Page) {
-        page.menu = None;
-        context.run(
-            Size::new(600.0, 500.0),
-            &mut MonospaceMeasurer,
-            |ui: &mut Ui<'_>| {
-                let items = [MenuItem::new("Copy"), MenuItem::new("Paste")];
-                page.menu = ui.keyed("area", |ui| {
-                    ui.context_menu(&items, sized(400.0, 80.0), |ui| {
-                        ui.keyed("cards", |ui| {
-                            ui.row(Style::default().gap(20.0), |ui| {
-                                ui.keyed("card", |ui| {
-                                    ui.drag_source(
-                                        "Card",
-                                        DragPayload::Text("hello".into()),
-                                        sized(100.0, 60.0),
-                                        |ui| ui.label("Card"),
-                                    )
-                                });
-                                ui.keyed("bin", |ui| {
-                                    ui.drop_target(
-                                        "Bin",
-                                        DropKind::Text,
-                                        sized(100.0, 60.0),
-                                        |_| {},
-                                    )
-                                });
-                            })
-                        });
-                    })
-                });
-            },
-        );
-    }
-
-    // M35: a long press that opens a context menu (`update_touches`) does not
-    // make the view due, so the popup is only declared by the next declaration
-    // (`Driven` frames alone never show it). The old closure view declared on
-    // every call, so it stays here until the kernel-owned open is view-visible.
-    #[test]
-    fn a_resting_press_opens_the_context_menu_and_does_not_click() {
-        let (mut context, mut state) = (Context::new(), Page::default());
-        page(&mut context, &mut state);
-        let bin = center(&context, &["area", "cards", "bin"]);
-        context.set_now(Duration::from_secs(1));
-        touch(&mut context, 1, TouchPhase::Started, bin);
-        assert_eq!(
-            context.next_wake(),
-            Some(Duration::from_millis(1500)),
-            "the host is asked to come back"
-        );
-        context.set_now(Duration::from_millis(1400));
-        page(&mut context, &mut state);
-        assert!(context.find(&["area", "$popup"]).is_none(), "not yet");
-        context.set_now(Duration::from_millis(1500));
-        page(&mut context, &mut state);
-        page(&mut context, &mut state);
-        assert!(context.find(&["area", "$popup"]).is_some());
-        assert_eq!(context.next_wake(), None);
-        // Lifting the finger neither closes the menu nor clicks what is under it.
-        touch(&mut context, 1, TouchPhase::Ended, bin);
-        page(&mut context, &mut state);
-        assert!(context.find(&["area", "$popup"]).is_some());
-        // A tap on an item chooses it.
-        let paste = context.find(&["area", "$popup"]).unwrap();
-        let paste = context.node(paste).unwrap().bounds;
-        let item = at(paste.x + 20.0, paste.y + paste.height * 0.75);
-        touch(&mut context, 2, TouchPhase::Started, item);
-        touch(&mut context, 2, TouchPhase::Ended, item);
-        page(&mut context, &mut state);
-        assert_eq!(state.menu, Some(1));
-    }
+#[test]
+fn a_resting_press_opens_the_context_menu_and_does_not_click() {
+    let mut driven = Driven::new(ROOT, Page::default(), page);
+    let bin = center(&driven.context, &["area", "cards", "bin"]);
+    driven.context.set_now(Duration::from_secs(1));
+    touch(&mut driven.context, 1, TouchPhase::Started, bin);
+    assert_eq!(
+        driven.context.next_wake(),
+        Some(Duration::from_millis(1500)),
+        "the host is asked to come back"
+    );
+    driven.context.set_now(Duration::from_millis(1400));
+    driven.frame();
+    assert!(
+        driven.context.find(&["area", "$popup"]).is_none(),
+        "not yet"
+    );
+    // One batch at the wake opens the menu and declares it.
+    driven.context.set_now(Duration::from_millis(1500));
+    driven.frame();
+    assert!(driven.context.find(&["area", "$popup"]).is_some());
+    assert_eq!(driven.context.next_wake(), None);
+    // Lifting the finger neither closes the menu nor clicks what is under it.
+    touch(&mut driven.context, 1, TouchPhase::Ended, bin);
+    driven.frame();
+    assert!(driven.context.find(&["area", "$popup"]).is_some());
+    assert_eq!(driven.state().clicks, 0);
+    // A tap on an item chooses it.
+    let popup = driven.context.find(&["area", "$popup"]).unwrap();
+    let popup = driven.context.node(popup).unwrap().bounds;
+    let item = at(popup.x + 20.0, popup.y + popup.height * 0.75);
+    touch(&mut driven.context, 2, TouchPhase::Started, item);
+    touch(&mut driven.context, 2, TouchPhase::Ended, item);
+    driven.frame();
+    assert_eq!(driven.state().menu, Some(1));
 }

@@ -22,6 +22,10 @@ pub enum UiEvent {
         shift: bool,
     },
     Text(String),
+    /// The widget was activated: a click that reached it, Enter or Space on it,
+    /// or the Activate that assistive technology sends. A click sends its
+    /// pointer events first.
+    Activate,
     /// Sent by `Ui::emit` from somewhere inside.
     Custom {
         name: String,

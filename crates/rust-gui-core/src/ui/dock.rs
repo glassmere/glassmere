@@ -550,6 +550,7 @@ fn group<M: 'static>(
             &mut selected,
             &labels,
             true,
+            None,
             |ui, current| {
                 menu(
                     ui,

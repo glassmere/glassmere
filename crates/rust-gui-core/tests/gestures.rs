@@ -118,117 +118,61 @@ fn close(left: f32, right: f32) -> bool {
     (left - right).abs() < 1e-3
 }
 
-mod old {
-    use rust_gui_core::Context;
-    use rust_gui_core::{
-        Button, GestureResponse, Label, Length, MenuItem, MonospaceMeasurer, Style, Ui,
-    };
-    use rust_gui_scene::Size;
-
-    fn sized(width: f32, height: f32) -> Style {
-        Style::default()
-            .width(Length::Px(width))
-            .height(Length::Px(height))
-    }
-
-    #[derive(Default)]
-    pub struct Page {
-        pub gesture: GestureResponse,
-        pub clicks: usize,
-        pub menu: Option<usize>,
-        pub with_menu: bool,
-    }
-
-    pub fn page(context: &mut Context, page: &mut Page) {
-        context.run(
-            Size::new(600.0, 500.0),
-            &mut MonospaceMeasurer,
-            |ui: &mut Ui<'_>| {
-                ui.keyed("view", |ui| {
-                    ui.scroll(sized(500.0, 400.0), |ui| {
-                        ui.keyed("strip", |ui| {
-                            ui.label(Label::new("").style(sized(10.0, 40.0)));
-                        });
-                        let items = [MenuItem::new("Reset")];
-                        let mut canvas = |ui: &mut Ui<'_>| {
-                            page.gesture = ui.keyed("canvas", |ui| {
-                                ui.gesture_area(sized(400.0, 300.0), |ui| {
-                                    if ui
-                                        .keyed("inside", |ui| {
-                                            ui.button(
-                                                Button::new("Inside")
-                                                    .enabled(true)
-                                                    .style(sized(100.0, 40.0)),
-                                            )
-                                        })
-                                        .clicked()
-                                    {
-                                        page.clicks += 1;
-                                    }
-                                })
-                            });
-                        };
-                        if page.with_menu {
-                            page.menu = ui.keyed("menu", |ui| {
-                                ui.context_menu(&items, Style::default(), canvas)
-                            });
-                        } else {
-                            canvas(ui);
-                        }
-                        ui.keyed("tall", |ui| {
-                            ui.label(Label::new("").style(sized(10.0, 900.0)));
-                        });
-                    })
-                });
-            },
-        );
-    }
-}
-
-// M35: `GestureResponse::active` is only reported by a gesture message, which
-// a finger inside the slop does not send; this test asserts `active` on frames
-// with no message. It stays on the old closure view until `active` is observed.
 #[test]
 fn one_finger_pans_after_the_slop_and_a_still_one_taps() {
-    let (mut context, mut state) = (Context::new(), old::Page::default());
-    old::page(&mut context, &mut state);
-    assert_eq!(state.gesture, GestureResponse::default());
-    assert!(!state.gesture.changed());
+    let mut driven = Driven::new(ROOT, Canvas::default(), view);
+    assert_eq!(frame(&mut driven), GestureResponse::default());
 
-    touch(&mut context, 1, TouchPhase::Started, at(200.0, 200.0));
-    touch(&mut context, 1, TouchPhase::Moved, at(204.0, 203.0));
-    old::page(&mut context, &mut state);
-    assert!(state.gesture.active && !state.gesture.changed());
-    assert_eq!(state.gesture.pressure, Some(0.25));
+    // Fingers down are reported at once, with nothing moved yet.
+    touch(
+        &mut driven.context,
+        1,
+        TouchPhase::Started,
+        at(200.0, 200.0),
+    );
+    let gesture = frame(&mut driven);
+    assert!(gesture.active && !gesture.changed());
+    assert_eq!(gesture.pressure, Some(0.25));
+    touch(&mut driven.context, 1, TouchPhase::Moved, at(204.0, 203.0));
+    assert!(!frame(&mut driven).changed(), "inside the slop");
+    assert!(driven.state().gesture.active);
     // Past the slop the picture catches up with the finger.
-    touch(&mut context, 1, TouchPhase::Moved, at(230.0, 240.0));
-    touch(&mut context, 1, TouchPhase::Moved, at(250.0, 220.0));
-    old::page(&mut context, &mut state);
-    assert_eq!((state.gesture.pan_x, state.gesture.pan_y), (50.0, 20.0));
+    touch(&mut driven.context, 1, TouchPhase::Moved, at(230.0, 240.0));
+    touch(&mut driven.context, 1, TouchPhase::Moved, at(250.0, 220.0));
+    let gesture = frame(&mut driven);
+    assert!(gesture.active);
+    assert_eq!((gesture.pan_x, gesture.pan_y), (50.0, 20.0));
     assert_eq!(
-        state.gesture.center,
-        local(&context, at(250.0, 220.0)),
+        gesture.center,
+        local(&driven.context, at(250.0, 220.0)),
         "from the canvas corner"
     );
-    assert_eq!((state.gesture.scale, state.gesture.rotation), (1.0, 0.0));
+    assert_eq!((gesture.scale, gesture.rotation), (1.0, 0.0));
     // Reported once, and the scroll view under the canvas stayed put.
-    old::page(&mut context, &mut state);
-    assert!(!state.gesture.changed() && state.gesture.active);
-    assert_eq!(offset(&context), 0.0);
-    touch(&mut context, 1, TouchPhase::Ended, at(250.0, 220.0));
-    old::page(&mut context, &mut state);
-    assert!(!state.gesture.active);
-    assert_eq!(state.gesture.tapped, None, "a pan is not a tap");
-    assert!(!context.animating(), "and it does not fling anything");
+    assert!(!frame(&mut driven).changed());
+    assert_eq!(offset(&driven.context), 0.0);
+    touch(&mut driven.context, 1, TouchPhase::Ended, at(250.0, 220.0));
+    let gesture = frame(&mut driven);
+    assert!(!gesture.active, "lifting is reported");
+    assert_eq!(gesture.tapped, None, "a pan is not a tap");
+    assert!(
+        !driven.context.animating(),
+        "and it does not fling anything"
+    );
 
-    touch(&mut context, 1, TouchPhase::Started, at(300.0, 100.0));
-    touch(&mut context, 1, TouchPhase::Ended, at(301.0, 100.0));
-    old::page(&mut context, &mut state);
-    assert_eq!(state.gesture.tapped, local(&context, at(301.0, 100.0)));
-    old::page(&mut context, &mut state);
-    assert_eq!(state.gesture.tapped, None);
+    touch(
+        &mut driven.context,
+        1,
+        TouchPhase::Started,
+        at(300.0, 100.0),
+    );
+    frame(&mut driven);
+    touch(&mut driven.context, 1, TouchPhase::Ended, at(301.0, 100.0));
+    let gesture = frame(&mut driven);
+    assert!(!gesture.active);
+    assert_eq!(gesture.tapped, local(&driven.context, at(301.0, 100.0)));
+    assert_eq!(frame(&mut driven).tapped, None);
 }
-
 #[test]
 fn two_fingers_scale_turn_and_move_about_the_point_between_them() {
     let mut driven = Driven::new(ROOT, Canvas::default(), view);

@@ -378,45 +378,57 @@ fn custom_button(color: Color) -> CustomWidget {
     }
 }
 
-// M35: `Ui::custom` has no message form (its handler is always empty), so a
-// custom leaf's activation is only its `Response::clicked`. Stays on it.
+#[derive(Default)]
+struct Clicks {
+    count: usize,
+}
+
+/// A custom leaf that turns green once it has been activated.
+fn custom_view(state: &Clicks, ui: &mut Ui<'_, Message<Clicks>>) {
+    let color = if state.count > 0 {
+        Color::rgb(0, 255, 0)
+    } else {
+        Color::WHITE
+    };
+    ui.keyed("custom", |ui| {
+        ui.custom_msg(
+            Style::default(),
+            custom_button(color),
+            act(|s: &mut Clicks| s.count += 1),
+        )
+    });
+}
+
 #[test]
 fn custom_leaf_shares_activation_and_updates_paint_without_layout() {
-    let mut context = Context::new();
-    frame(&mut context, |ui| {
-        ui.keyed("custom", |ui| {
-            ui.custom(Style::default(), custom_button(Color::WHITE))
-        });
-    });
-    let target = context.find(&["custom"]).unwrap();
-    context.action(target, Action::Focus);
-    context.event(Event::KeyDown {
+    let mut driven = Driven::new(ROOT, Clicks::default(), custom_view);
+    let target = driven.context.find(&["custom"]).unwrap();
+    driven.context.action(target, Action::Focus);
+    driven.context.event(Event::KeyDown {
         key: Key::Enter,
         shift: false,
         repeat: false,
     });
-    context.event(Event::KeyUp(Key::Enter));
-    let mut clicked = false;
-    let stats = frame(&mut context, |ui| {
-        clicked = ui
-            .keyed("custom", |ui| {
-                ui.custom(Style::default(), custom_button(Color::rgb(0, 255, 0)))
-            })
-            .clicked();
-    });
-    assert!(clicked);
+    driven.context.event(Event::KeyUp(Key::Enter));
+    let stats = driven.frame();
+    assert_eq!(driven.state().count, 1);
     assert_eq!(stats.layout_passes, 0);
     assert_eq!(
-        context.node(target).unwrap().semantics.label,
+        driven.context.node(target).unwrap().semantics.label,
         "Custom action"
     );
     assert!(
-        context
+        driven
+            .context
             .scene()
             .primitives
             .iter()
             .any(|p| matches!(p, Primitive::Quad { color, .. } if *color == Color::rgb(0, 255, 0)))
     );
+    // An accessibility activation sends it too.
+    assert!(driven.context.action(target, Action::Activate));
+    driven.frame();
+    assert_eq!(driven.state().count, 2);
 }
 
 #[test]
@@ -429,25 +441,22 @@ fn custom_widgets_cannot_pop_the_host_clip() {
     });
 }
 
-// M35: as above, `Ui::custom` has no message form. Stays on `clicked`.
 #[test]
 fn a_nonfocusable_custom_button_remains_pointer_activatable() {
-    let mut context = Context::new();
-    fn view<'a>(ui: &mut Ui<'a>) -> rust_gui_core::Response<'a> {
+    fn view(_: &Clicks, ui: &mut Ui<'_, Message<Clicks>>) {
         let mut widget = custom_button(Color::WHITE);
         widget.semantics.focusable = false;
-        ui.keyed("custom", |ui| ui.custom(Style::default(), widget))
+        ui.keyed("custom", |ui| {
+            ui.custom_msg(Style::default(), widget, act(|s: &mut Clicks| s.count += 1))
+        });
     }
-    frame(&mut context, |ui| {
-        view(ui);
-    });
-    context.event(Event::PointerMoved(Point { x: 10.0, y: 10.0 }));
-    context.event(Event::PointerDown);
-    assert!(context.focused().is_none());
-    context.event(Event::PointerUp);
-    let mut clicked = false;
-    frame(&mut context, |ui| {
-        clicked = view(ui).clicked();
-    });
-    assert!(clicked);
+    let mut driven = Driven::new(ROOT, Clicks::default(), view);
+    driven
+        .context
+        .event(Event::PointerMoved(Point { x: 10.0, y: 10.0 }));
+    driven.context.event(Event::PointerDown);
+    assert!(driven.context.focused().is_none());
+    driven.context.event(Event::PointerUp);
+    driven.frame();
+    assert_eq!(driven.state().count, 1);
 }

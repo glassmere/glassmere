@@ -1,8 +1,9 @@
 use rust_gui::{
     App, AppOptions, Button, Color, Component, CustomWidget, Effects, Label, Length, MessageSender,
-    Primitive, Rect, Role, Semantics, Size, Style, Ui, WindowCommand, run_app,
+    Primitive, Rect, Role, Semantics, Size, Style, Ui, UiEvent, WidgetBuilder, WidgetInput,
+    WindowCommand, run_app,
 };
-use std::{cell::Cell, sync::mpsc::Sender, time::Duration};
+use std::{sync::mpsc::Sender, time::Duration};
 
 struct Counter {
     name: &'static str,
@@ -30,6 +31,7 @@ enum Message {
     Left(Increase),
     Right(Increase),
     Select(usize),
+    Custom,
     Tick(u32),
 }
 
@@ -40,11 +42,7 @@ struct Workbench {
     closed_probe: Sender<MessageSender<u32>>,
     left: Counter,
     right: Counter,
-    // M35: the custom action stays on `Ui::custom(..).clicked()` with this
-    // Cell. A widget with `WidgetBuilder::on_event` gets no activation (the
-    // `Action::Activate` that assistive technology sends, which
-    // test-desktop.ps1 uses), so its count cannot move to messages yet.
-    custom_count: Cell<u32>,
+    custom_count: u32,
     selection: String,
     tick: u32,
 }
@@ -74,6 +72,7 @@ impl App for Workbench {
             Message::Left(message) => self.left.update(message, &mut effects.map(Message::Left)),
             Message::Right(message) => self.right.update(message, &mut effects.map(Message::Right)),
             Message::Select(index) => self.selection = format!("{index:03}"),
+            Message::Custom => self.custom_count += 1,
             Message::Tick(tick) => {
                 self.tick = tick;
                 if self.smoke {
@@ -97,8 +96,12 @@ impl App for Workbench {
                 ui.component(Style::default(), &self.left, Message::Left);
                 ui.component(Style::default(), &self.right, Message::Right);
             });
-            let custom_count = self.custom_count.get();
-            if ui.custom(Style::default(), custom_action(custom_count)).clicked() { self.custom_count.set(custom_count + 1); }
+            let custom_count = self.custom_count;
+            ui.widget_msg(
+                Style::default(),
+                WidgetBuilder::new(move |_: &WidgetInput| custom_action(custom_count))
+                    .on_event(|event| (event == UiEvent::Activate).then_some(Message::Custom)),
+            );
             ui.button(Button::new("Unavailable action").enabled(false));
             ui.label(format!("Selected row: {}", self.selection));
             ui.scroll(Style {
@@ -172,7 +175,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 name: "right",
                 value: 10,
             },
-            custom_count: Cell::new(0),
+            custom_count: 0,
             selection: String::from("none"),
             tick: 0,
         },
