@@ -1,8 +1,12 @@
+mod support;
+
+use rust_gui_core::app::Action as Message;
 use rust_gui_core::{
-    Action, Context, Event, GridColumn, GridColumns, GridModel, GridState, ItemId, Key, ListModel,
-    MonospaceMeasurer, NodeId, Role, SortDirection, VirtualListOptions,
+    Action, Event, GridColumn, GridColumns, GridModel, GridMsg, GridState, ItemId, Key, ListModel,
+    NodeId, Role, SortDirection, Ui, VirtualListOptions,
 };
 use rust_gui_scene::{Point, Size};
+use support::{Driven, act};
 
 const ROOT: Size = Size::new(900.0, 500.0);
 
@@ -68,31 +72,54 @@ impl GridModel for People {
     }
 }
 
-struct App {
-    context: Context,
+/// What the application owns: the model and the grid's state, which
+/// `GridMsg`s change in `update`.
+struct Grid {
     model: People,
-    state: GridState,
+    grid: GridState,
+}
+
+fn grid_msg(message: GridMsg) -> Message<Grid> {
+    act(move |s: &mut Grid| {
+        s.grid.apply(&message);
+        if let GridMsg::Sort(column, direction) = &message {
+            s.model.sort(*column, *direction);
+        }
+    })
+}
+
+fn grid_view(state: &Grid, ui: &mut Ui<'_, Message<Grid>>) {
+    ui.keyed("grid", |ui| {
+        ui.data_grid_msg(
+            &state.model,
+            &state.grid,
+            VirtualListOptions::default(),
+            grid_msg,
+        )
+    });
+    ui.button("after");
+}
+
+struct App {
+    driven: Driven<Grid>,
 }
 
 impl App {
     fn new() -> Self {
-        let mut app = Self {
-            context: Context::new(),
-            model: People::new(),
-            state: GridState::default(),
-        };
-        app.frame();
-        app
+        Self {
+            driven: Driven::new(
+                ROOT,
+                Grid {
+                    model: People::new(),
+                    grid: GridState::default(),
+                },
+                grid_view,
+            ),
+        }
     }
 
     fn frame(&mut self) {
-        let (model, state) = (&mut self.model, &mut self.state);
-        self.context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            ui.keyed("grid", |ui| {
-                ui.data_grid(model, state, VirtualListOptions::default())
-            });
-            ui.button("after");
-        });
+        self.driven.frame();
     }
 
     fn header(&self, column: usize, part: &[&str]) -> NodeId {
@@ -106,7 +133,7 @@ impl App {
             "$cell",
         ];
         path.extend(part);
-        self.context.find(&path).unwrap()
+        self.driven.context.find(&path).unwrap()
     }
 
     fn sort_button(&self, column: usize) -> NodeId {
@@ -115,7 +142,7 @@ impl App {
 
     /// Labels of the header cells, left to right.
     fn headers(&self) -> Vec<String> {
-        let mut cells: Vec<(f32, String)> = (0..self.model.columns.len())
+        let mut cells: Vec<(f32, String)> = (0..self.driven.state().model.columns.len())
             .filter_map(|column| {
                 let column = column.to_string();
                 let path = [
@@ -129,7 +156,7 @@ impl App {
                     "$drag",
                     "$sort",
                 ];
-                let button = self.context.node(self.context.find(&path)?)?;
+                let button = self.driven.context.node(self.driven.context.find(&path)?)?;
                 Some((button.bounds.x, button.semantics.label.clone()))
             })
             .collect();
@@ -138,7 +165,7 @@ impl App {
     }
 
     fn centre(&self, id: NodeId) -> Point {
-        let bounds = self.context.node(id).unwrap().bounds;
+        let bounds = self.driven.context.node(id).unwrap().bounds;
         Point {
             x: bounds.x + bounds.width / 2.0,
             y: bounds.y + bounds.height / 2.0,
@@ -146,18 +173,18 @@ impl App {
     }
 
     fn drag(&mut self, from: Point, to: Point) {
-        self.context.event(Event::PointerMoved(from));
-        self.context.event(Event::PointerDown);
+        self.driven.context.event(Event::PointerMoved(from));
+        self.driven.context.event(Event::PointerDown);
         // In steps, as a hand would: drags start after a threshold.
         for step in 1..=4 {
             let t = step as f32 / 4.0;
-            self.context.event(Event::PointerMoved(Point {
+            self.driven.context.event(Event::PointerMoved(Point {
                 x: from.x + (to.x - from.x) * t,
                 y: from.y + (to.y - from.y) * t,
             }));
             self.frame();
         }
-        self.context.event(Event::PointerUp);
+        self.driven.context.event(Event::PointerUp);
         self.frame();
         self.frame();
     }
@@ -165,14 +192,15 @@ impl App {
     /// Opens a header's menu from the keyboard and activates the entry with `label`.
     fn menu(&mut self, column: usize, label: &str) {
         let button = self.sort_button(column);
-        self.context.action(button, Action::Focus);
-        self.context.event(Event::KeyDown {
+        self.driven.context.action(button, Action::Focus);
+        self.driven.context.event(Event::KeyDown {
             key: Key::ContextMenu,
             shift: false,
             repeat: false,
         });
         self.frame();
         let popup = self
+            .driven
             .context
             .find(&[
                 "grid",
@@ -184,15 +212,19 @@ impl App {
             ])
             .unwrap();
         let entry = self
+            .driven
             .context
             .node(popup)
             .unwrap()
             .children
             .iter()
             .copied()
-            .find(|entry| self.context.node(*entry).unwrap().semantics.label == label)
+            .find(|entry| self.driven.context.node(*entry).unwrap().semantics.label == label)
             .unwrap_or_else(|| panic!("no menu entry `{label}`"));
-        assert!(self.context.action(entry, Action::Activate), "{label}");
+        assert!(
+            self.driven.context.action(entry, Action::Activate),
+            "{label}"
+        );
         self.frame();
         self.frame();
     }
@@ -239,7 +271,7 @@ fn column_state_arranges_moves_hides_and_survives_a_changed_model() {
 fn dragging_a_header_edge_resizes_its_column_and_the_cells_follow() {
     let mut app = App::new();
     let sizer = app.header(0, &["$size"]);
-    let node = app.context.node(sizer).unwrap();
+    let node = app.driven.context.node(sizer).unwrap();
     assert_eq!(node.semantics.role, Role::Splitter);
     assert_eq!(node.semantics.label, "Resize Name");
     assert!(!node.semantics.focusable, "the menu is the keyboard path");
@@ -253,8 +285,9 @@ fn dragging_a_header_edge_resizes_its_column_and_the_cells_follow() {
             ..grab
         },
     );
-    assert_eq!(app.state.columns.width(0, 160.0), 220.0);
+    assert_eq!(app.driven.state().grid.columns.width(0, 160.0), 220.0);
     let cell = app
+        .driven
         .context
         .find(&[
             "grid",
@@ -266,8 +299,9 @@ fn dragging_a_header_edge_resizes_its_column_and_the_cells_follow() {
             "0",
         ])
         .unwrap();
-    assert_eq!(app.context.node(cell).unwrap().bounds.width, 220.0);
+    assert_eq!(app.driven.context.node(cell).unwrap().bounds.width, 220.0);
     let city = app
+        .driven
         .context
         .find(&[
             "grid",
@@ -279,18 +313,21 @@ fn dragging_a_header_edge_resizes_its_column_and_the_cells_follow() {
             "1",
         ])
         .unwrap();
-    assert_eq!(app.context.node(city).unwrap().bounds.x, 220.0);
+    assert_eq!(app.driven.context.node(city).unwrap().bounds.x, 220.0);
 
     // Far past the minimum stops at the minimum; assistive technology can set it too.
     let grab = app.centre(app.header(0, &["$size"]));
     app.drag(grab, Point { x: -500.0, ..grab });
-    assert_eq!(app.state.columns.width(0, 160.0), GridColumns::MIN_WIDTH);
+    assert_eq!(
+        app.driven.state().grid.columns.width(0, 160.0),
+        GridColumns::MIN_WIDTH
+    );
     let sizer = app.header(0, &["$size"]);
-    assert!(app.context.action(sizer, Action::SetNumber(300.0)));
+    assert!(app.driven.context.action(sizer, Action::SetNumber(300.0)));
     app.frame();
-    assert_eq!(app.state.columns.width(0, 160.0), 300.0);
+    assert_eq!(app.driven.state().grid.columns.width(0, 160.0), 300.0);
     // The other columns kept the model's widths.
-    assert_eq!(app.state.columns.widths.len(), 1);
+    assert_eq!(app.driven.state().grid.columns.widths.len(), 1);
 }
 
 #[test]
@@ -302,13 +339,14 @@ fn dragging_a_header_onto_another_moves_the_column_and_a_click_still_sorts() {
     let to = app.centre(app.sort_button(2));
     app.drag(from, to);
     assert_eq!(app.headers(), ["City", "Age", "Name", "Notes"]);
-    assert_eq!(app.state.columns.order, [1, 2, 0, 3]);
+    assert_eq!(app.driven.state().grid.columns.order, [1, 2, 0, 3]);
     // Toward the start: Notes lands before City. Cells follow the headers.
     let from = app.centre(app.sort_button(3));
     let to = app.centre(app.sort_button(1));
     app.drag(from, to);
     assert_eq!(app.headers(), ["Notes", "City", "Age", "Name"]);
     let first = app
+        .driven
         .context
         .find(&[
             "grid",
@@ -320,18 +358,25 @@ fn dragging_a_header_onto_another_moves_the_column_and_a_click_still_sorts() {
             "3",
         ])
         .unwrap();
-    assert_eq!(app.context.node(first).unwrap().bounds.x, 0.0);
-    assert_eq!(app.context.node(first).unwrap().semantics.label, "note 0");
+    assert_eq!(app.driven.context.node(first).unwrap().bounds.x, 0.0);
+    assert_eq!(
+        app.driven.context.node(first).unwrap().semantics.label,
+        "note 0"
+    );
 
     // A press and release without movement is still a click on the sort button.
     let button = app.sort_button(1);
     let at = app.centre(button);
-    app.context.event(Event::PointerMoved(at));
-    app.context.event(Event::PointerDown);
-    app.context.event(Event::PointerUp);
-    assert!(app.context.node(button).is_some());
+    app.driven.context.event(Event::PointerMoved(at));
+    app.driven.context.event(Event::PointerDown);
+    app.driven.context.event(Event::PointerUp);
+    assert!(app.driven.context.node(button).is_some());
     app.frame();
-    assert_eq!(app.state.columns.order, [3, 1, 2, 0], "no move happened");
+    assert_eq!(
+        app.driven.state().grid.columns.order,
+        [3, 1, 2, 0],
+        "no move happened"
+    );
 }
 
 #[test]
@@ -344,39 +389,42 @@ fn every_column_operation_is_in_the_header_menu_for_the_keyboard() {
     app.menu(1, "Wider");
     app.menu(1, "Wider");
     app.menu(1, "Narrower");
-    assert_eq!(app.state.columns.width(1, 120.0), 140.0);
+    assert_eq!(app.driven.state().grid.columns.width(1, 120.0), 140.0);
     app.menu(2, "Hide Age");
     assert_eq!(app.headers(), ["Name", "City", "Notes"]);
     let grid = app
+        .driven
         .context
-        .node(app.context.find(&["grid"]).unwrap())
+        .node(app.driven.context.find(&["grid"]).unwrap())
         .unwrap();
     assert_eq!(grid.collection.unwrap().columns, Some(3));
     app.menu(3, "Show all columns");
     assert_eq!(app.headers().len(), 4);
     app.menu(3, "Reset columns");
-    assert_eq!(app.state.columns, GridColumns::default());
+    assert_eq!(app.driven.state().grid.columns, GridColumns::default());
 
     // Entries that cannot apply are disabled rather than missing.
     let button = app.sort_button(0);
-    app.context.action(button, Action::Focus);
-    app.context.event(Event::KeyDown {
+    app.driven.context.action(button, Action::Focus);
+    app.driven.context.event(Event::KeyDown {
         key: Key::ContextMenu,
         shift: false,
         repeat: false,
     });
     app.frame();
     let popup = app
+        .driven
         .context
         .find(&["grid", "$header", "$scrolling", "$strip", "0", "$popup"])
         .unwrap();
     let disabled: Vec<String> = app
+        .driven
         .context
         .node(popup)
         .unwrap()
         .children
         .iter()
-        .map(|entry| app.context.node(*entry).unwrap().semantics.clone())
+        .map(|entry| app.driven.context.node(*entry).unwrap().semantics.clone())
         .filter(|semantics| semantics.disabled)
         .map(|semantics| semantics.label)
         .collect();
@@ -391,14 +439,22 @@ fn the_header_stays_one_tab_stop_per_column() {
     let mut app = App::new();
     let mut stops = Vec::new();
     for _ in 0..6 {
-        app.context.event(Event::KeyDown {
+        app.driven.context.event(Event::KeyDown {
             key: Key::Tab,
             shift: false,
             repeat: false,
         });
         app.frame();
-        let focused = app.context.focused().unwrap();
-        stops.push(app.context.node(focused).unwrap().semantics.label.clone());
+        let focused = app.driven.context.focused().unwrap();
+        stops.push(
+            app.driven
+                .context
+                .node(focused)
+                .unwrap()
+                .semantics
+                .label
+                .clone(),
+        );
     }
     assert_eq!(&stops[..4], ["Name", "City", "Age", "Notes"]);
     assert_ne!(stops[4], stops[3], "then the rows, not more header parts");

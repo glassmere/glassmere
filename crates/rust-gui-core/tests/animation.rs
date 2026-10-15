@@ -1,3 +1,6 @@
+mod support;
+
+use rust_gui_core::app::Action as Message;
 use rust_gui_core::{
     Animation, Context, DialogOptions, Easing, Effect, Event, Keyframe, Length, MonospaceMeasurer,
     Paint, Repeat, Style, StyleSheet, Transform, Transition, Ui,
@@ -5,6 +8,7 @@ use rust_gui_core::{
 use rust_gui_core::{Button, Label};
 use rust_gui_scene::{Affine, Color, Point, Primitive, Rect, Size};
 use std::time::Duration;
+use support::{Driven, act};
 
 const ROOT: Size = Size::new(500.0, 400.0);
 const RED: Color = Color(200, 0, 0, 255);
@@ -381,23 +385,33 @@ fn stylesheets_declare_transitions_transforms_and_effects() {
     assert!(StyleSheet::parse("class a {\ntranslate: 1\n}").is_err());
 }
 
+/// Whether the confirm dialog is open; the dialog sends its closing.
+struct Confirm {
+    open: bool,
+}
+
+fn confirm_view(state: &Confirm, ui: &mut Ui<'_, Message<Confirm>>) {
+    ui.dialog_msg(
+        "confirm",
+        state.open,
+        |open| act(move |s: &mut Confirm| s.open = open),
+        DialogOptions::new("Sure?").style(Style::default().exit(Effect {
+            transition: Transition::new(100).easing(Easing::Linear),
+            ..Effect::zoom(0.9, 100)
+        })),
+        |ui| {
+            ui.label("body");
+        },
+    );
+}
+
+fn frame_on(app: &mut Driven<Confirm>, milliseconds: u64) {
+    app.context.set_now(Duration::from_millis(milliseconds));
+    app.frame();
+}
+
 #[test]
 fn a_dialog_panel_with_an_exit_effect_fades_after_the_dialog_closes() {
-    let mut context = Context::new();
-    let view = |mut open: bool| {
-        move |ui: &mut Ui<'_>| {
-            ui.dialog(
-                "confirm",
-                &mut open,
-                DialogOptions::new("Sure?").style(Style::default().exit(Effect {
-                    transition: Transition::new(100).easing(Easing::Linear),
-                    ..Effect::zoom(0.9, 100)
-                })),
-                |ui, _| ui.label("body"),
-            );
-        }
-    };
-    frame_at(&mut context, 0, view(true));
     let layers = |context: &Context| {
         context
             .scene()
@@ -406,13 +420,16 @@ fn a_dialog_panel_with_an_exit_effect_fades_after_the_dialog_closes() {
             .filter(|primitive| matches!(primitive, Primitive::PushLayer { .. }))
             .count()
     };
-    assert_eq!(layers(&context), 0);
-    frame_at(&mut context, 1000, view(false));
-    frame_at(&mut context, 1050, view(false));
-    assert_eq!(layers(&context), 1);
-    assert!(context.animating());
-    balanced(&context);
-    frame_at(&mut context, 1100, view(false));
-    assert_eq!(layers(&context), 0);
-    assert!(!context.animating());
+    let mut app = Driven::new(ROOT, Confirm { open: true }, confirm_view);
+    assert_eq!(layers(&app.context), 0);
+    // Escape reaches the app as the dialog's message, which closes it.
+    app.send(|s: &mut Confirm| s.open = false);
+    frame_on(&mut app, 1000);
+    frame_on(&mut app, 1050);
+    assert_eq!(layers(&app.context), 1);
+    assert!(app.context.animating());
+    balanced(&app.context);
+    frame_on(&mut app, 1100);
+    assert_eq!(layers(&app.context), 0);
+    assert!(!app.context.animating());
 }

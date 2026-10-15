@@ -1,6 +1,12 @@
+mod support;
+
+use rust_gui_core::app::Action as Message;
 use rust_gui_core::{Button, Label};
 use rust_gui_core::{Context, Dirty, Event, Key, Length, MonospaceMeasurer, Style, Ui};
 use rust_gui_scene::{Color, Point, Primitive, Size};
+use support::{Driven, act};
+
+const ROOT: Size = Size::new(640.0, 480.0);
 
 fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) -> rust_gui_core::FrameStats {
     context.run(Size::new(640.0, 480.0), &mut MonospaceMeasurer, view)
@@ -254,79 +260,97 @@ fn equal_intrinsic_text_size_updates_paint_and_semantics_without_layout() {
     );
 }
 
+/// What the buttons sent: clicks of the one under test.
+#[derive(Default)]
+struct Clicks {
+    count: usize,
+}
+
+fn click_view(_: &Clicks, ui: &mut Ui<'_, Message<Clicks>>) {
+    ui.keyed("click", |ui| {
+        ui.button(Button::new("Click").on_click(act(|s: &mut Clicks| s.count += 1)))
+    });
+}
+
 #[test]
 fn click_is_delivered_once_and_release_outside_cancels_activation() {
-    let mut context = Context::new();
-    let mut count = 0;
-    frame(&mut context, |ui| {
-        ui.keyed("click", |ui| ui.button("Click"));
+    let mut app = Driven::new(ROOT, Clicks::default(), click_view);
+    let position = center(&app.context, &["click"]);
+    app.context.event(Event::PointerMoved(position));
+    app.context.event(Event::PointerDown);
+    assert_eq!(app.context.captured(), app.context.find(&["click"]));
+    app.context.event(Event::PointerLeft);
+    app.context.event(Event::PointerUp);
+    app.frame();
+    assert_eq!(app.state().count, 0);
+    app.context.event(Event::PointerMoved(position));
+    app.context.event(Event::PointerDown);
+    app.context.event(Event::PointerUp);
+    app.frame();
+    app.frame();
+    assert_eq!(app.state().count, 1);
+}
+
+/// The three buttons of `buttons`, the first one sending its clicks.
+#[derive(Default)]
+struct Presses {
+    first: usize,
+}
+
+fn presses_view(_: &Presses, ui: &mut Ui<'_, Message<Presses>>) {
+    ui.keyed("actions", |ui| {
+        ui.row(Style::default(), |ui| {
+            ui.keyed("first", |ui| {
+                ui.button(Button::new("First").on_click(act(|s: &mut Presses| s.first += 1)))
+            });
+            ui.keyed("disabled", |ui| {
+                ui.button(
+                    Button::new("Disabled")
+                        .enabled(false)
+                        .style(Style::button()),
+                )
+            });
+            ui.keyed("last", |ui| ui.button("Last"));
+        })
     });
-    let position = center(&context, &["click"]);
-    context.event(Event::PointerMoved(position));
-    context.event(Event::PointerDown);
-    assert_eq!(context.captured(), context.find(&["click"]));
-    context.event(Event::PointerLeft);
-    context.event(Event::PointerUp);
-    frame(&mut context, |ui| {
-        if ui.keyed("click", |ui| ui.button("Click")).clicked() {
-            count += 1;
-        }
-    });
-    assert_eq!(count, 0);
-    context.event(Event::PointerMoved(position));
-    context.event(Event::PointerDown);
-    context.event(Event::PointerUp);
-    for _ in 0..2 {
-        frame(&mut context, |ui| {
-            if ui.keyed("click", |ui| ui.button("Click")).clicked() {
-                count += 1;
-            }
-        });
-    }
-    assert_eq!(count, 1);
 }
 
 #[test]
 fn tab_skips_disabled_buttons_and_keyboard_repeat_does_not_double_activate() {
-    let mut context = Context::new();
-    frame(&mut context, buttons);
+    let mut app = Driven::new(ROOT, Presses::default(), presses_view);
     let tab = |shift| Event::KeyDown {
         key: Key::Tab,
         shift,
         repeat: false,
     };
-    context.event(tab(false));
-    assert_eq!(context.focused(), context.find(&["actions", "first"]));
-    context.event(tab(false));
-    assert_eq!(context.focused(), context.find(&["actions", "last"]));
-    context.event(tab(true));
-    let first = context.focused().unwrap();
-    context.event(Event::KeyDown {
+    app.context.event(tab(false));
+    assert_eq!(
+        app.context.focused(),
+        app.context.find(&["actions", "first"])
+    );
+    app.context.event(tab(false));
+    assert_eq!(
+        app.context.focused(),
+        app.context.find(&["actions", "last"])
+    );
+    app.context.event(tab(true));
+    let first = app.context.focused().unwrap();
+    app.context.event(Event::KeyDown {
         key: Key::Space,
         shift: false,
         repeat: false,
     });
-    context.event(Event::KeyDown {
+    app.context.event(Event::KeyDown {
         key: Key::Space,
         shift: false,
         repeat: true,
     });
-    context.event(Event::KeyUp(Key::Enter));
-    context.event(Event::KeyUp(Key::Space));
-    let mut clicks = 0;
-    for _ in 0..2 {
-        frame(&mut context, |ui| {
-            ui.keyed("actions", |ui| {
-                ui.row(Style::default(), |ui| {
-                    if ui.keyed("first", |ui| ui.button("First")).clicked() {
-                        clicks += 1;
-                    }
-                })
-            });
-        });
-    }
-    assert_eq!(clicks, 1);
-    assert_eq!(context.focused(), Some(first));
+    app.context.event(Event::KeyUp(Key::Enter));
+    app.context.event(Event::KeyUp(Key::Space));
+    app.frame();
+    app.frame();
+    assert_eq!(app.state().first, 1);
+    assert_eq!(app.context.focused(), Some(first));
 }
 
 #[test]

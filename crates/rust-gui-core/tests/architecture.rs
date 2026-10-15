@@ -2,8 +2,14 @@ use rust_gui_core::{
     Action, App, AppDriver, Component, Context, CustomWidget, Effects, Event, Key, Length,
     MonospaceMeasurer, Role, Semantics, Style, Ui,
 };
+mod support;
+
+use rust_gui_core::app::Action as Message;
 use rust_gui_core::{Button, Label};
 use rust_gui_scene::{Color, Point, Primitive, Rect, Size};
+use support::{Driven, act};
+
+const ROOT: Size = Size::new(400.0, 400.0);
 
 fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) -> rust_gui_core::FrameStats {
     context.run(Size::new(400.0, 400.0), &mut MonospaceMeasurer, view)
@@ -145,36 +151,49 @@ fn focus_reveals_offscreen_buttons_and_keyboard_scroll_uses_the_ancestor() {
     assert!(context.node(focused).unwrap().clip.height > 0.0);
 }
 
-#[test]
-fn accessibility_activation_is_once_and_ignores_disabled_and_removed_ids() {
-    let mut context = Context::new();
-    frame(&mut context, |ui| {
-        ui.keyed("active", |ui| ui.button("Active"));
-        ui.keyed("disabled", |ui| {
-            ui.button(
-                Button::new("Disabled")
-                    .enabled(false)
-                    .style(Style::button()),
-            )
-        });
-    });
-    let active = context.find(&["active"]).unwrap();
-    let disabled = context.find(&["disabled"]).unwrap();
-    assert!(!context.action(disabled, Action::Focus));
-    assert!(!context.action(disabled, Action::Activate));
-    assert!(context.action(active, Action::Activate));
-    let mut clicks = 0;
-    for _ in 0..2 {
-        frame(&mut context, |ui| {
-            if ui.keyed("active", |ui| ui.button("Active")).clicked() {
-                clicks += 1;
-            }
+/// The active button's clicks, and whether it is declared at all.
+struct Active {
+    clicks: usize,
+    shown: bool,
+}
+
+fn active_view(state: &Active, ui: &mut Ui<'_, Message<Active>>) {
+    if state.shown {
+        ui.keyed("active", |ui| {
+            ui.button(Button::new("Active").on_click(act(|s: &mut Active| s.clicks += 1)))
         });
     }
-    assert_eq!(clicks, 1);
-    frame(&mut context, |_| {});
-    assert!(!context.action(active, Action::Activate));
-    assert!(!context.action(active, Action::Focus));
+    ui.keyed("disabled", |ui| {
+        ui.button(
+            Button::new("Disabled")
+                .enabled(false)
+                .style(Style::button()),
+        )
+    });
+}
+
+#[test]
+fn accessibility_activation_is_once_and_ignores_disabled_and_removed_ids() {
+    let mut app = Driven::new(
+        ROOT,
+        Active {
+            clicks: 0,
+            shown: true,
+        },
+        active_view,
+    );
+    let active = app.context.find(&["active"]).unwrap();
+    let disabled = app.context.find(&["disabled"]).unwrap();
+    assert!(!app.context.action(disabled, Action::Focus));
+    assert!(!app.context.action(disabled, Action::Activate));
+    assert!(app.context.action(active, Action::Activate));
+    app.frame();
+    app.frame();
+    assert_eq!(app.state().clicks, 1);
+    app.state_mut().shown = false;
+    app.frame();
+    assert!(!app.context.action(active, Action::Activate));
+    assert!(!app.context.action(active, Action::Focus));
 }
 
 #[test]
@@ -359,6 +378,8 @@ fn custom_button(color: Color) -> CustomWidget {
     }
 }
 
+// M35: `Ui::custom` has no message form (its handler is always empty), so a
+// custom leaf's activation is only its `Response::clicked`. Stays on it.
 #[test]
 fn custom_leaf_shares_activation_and_updates_paint_without_layout() {
     let mut context = Context::new();
@@ -408,6 +429,7 @@ fn custom_widgets_cannot_pop_the_host_clip() {
     });
 }
 
+// M35: as above, `Ui::custom` has no message form. Stays on `clicked`.
 #[test]
 fn a_nonfocusable_custom_button_remains_pointer_activatable() {
     let mut context = Context::new();

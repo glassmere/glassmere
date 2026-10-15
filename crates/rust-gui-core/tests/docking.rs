@@ -1,8 +1,12 @@
+mod support;
+
+use rust_gui_core::app::Action as Message;
 use rust_gui_core::{
-    Axis, Context, DockArea, DockLayout, DockNode, DockOptions, DockPanel, DockPlace, DockResponse,
-    DockTarget, DockWindowId, DockZone, Event, Key, MonospaceMeasurer, Role,
+    Axis, Context, DockArea, DockLayout, DockNode, DockOptions, DockPanel, DockPlace, DockTarget,
+    DockWindowId, DockZone, Event, Key, MonospaceMeasurer, Role, Ui,
 };
 use rust_gui_scene::{Point, Primitive, Rect, Size};
+use support::{Driven, act};
 
 const ROOT: Size = Size::new(800.0, 600.0);
 
@@ -283,10 +287,10 @@ fn layouts_implement_serde() {
     assert_serde::<DockLayout>();
 }
 
-struct App {
+/// What the application owns: the layout and the native windows option.
+struct Docked {
     layout: DockLayout,
     native: bool,
-    last: DockResponse,
 }
 
 fn panels() -> Vec<DockPanel> {
@@ -298,31 +302,54 @@ fn panels() -> Vec<DockPanel> {
     ]
 }
 
-fn frame(context: &mut Context, app: &mut App) {
-    context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        app.last = ui.keyed("dock", |ui| {
-            ui.dock(
-                &mut app.layout,
-                &panels(),
-                DockOptions {
-                    native_windows: app.native,
-                    ..DockOptions::default()
-                },
-                |ui, id| ui.label(format!("content:{id}")),
-            )
-        });
+fn view(state: &Docked, ui: &mut Ui<'_, Message<Docked>>) {
+    ui.keyed("dock", |ui| {
+        ui.dock_msg(
+            &state.layout,
+            &panels(),
+            DockOptions {
+                native_windows: state.native,
+                ..DockOptions::default()
+            },
+            |action| {
+                act(move |s: &mut Docked| {
+                    s.layout.apply(action.clone());
+                })
+            },
+            |ui, id| ui.label(format!("content:{id}")),
+        )
     });
 }
 
-fn start(native: bool) -> (Context, App) {
-    let mut context = Context::new();
-    let mut app = App {
-        layout: workspace(),
-        native,
-        last: DockResponse::default(),
-    };
-    frame(&mut context, &mut app);
-    (context, app)
+struct App {
+    driven: Driven<Docked>,
+}
+
+impl App {
+    fn start(native: bool) -> Self {
+        let state = Docked {
+            layout: workspace(),
+            native,
+        };
+        Self {
+            driven: Driven::new(ROOT, state, view),
+        }
+    }
+
+    /// One batch; whether the layout changed in it.
+    fn frame(&mut self) -> bool {
+        let before = self.layout().clone();
+        self.driven.frame();
+        *self.layout() != before
+    }
+
+    fn layout(&self) -> &DockLayout {
+        &self.driven.state().layout
+    }
+
+    fn context(&mut self) -> &mut Context {
+        &mut self.driven.context
+    }
 }
 
 fn shows(context: &Context, needle: &str) -> bool {
@@ -387,188 +414,6 @@ fn group_bounds(context: &Context, panel: &str) -> Rect {
     context.node(id).unwrap().bounds
 }
 
-#[test]
-fn the_dock_declares_active_panels_switches_tabs_and_closes_them() {
-    let (mut context, mut app) = start(false);
-    for (text, shown) in [
-        ("content:files", true),
-        ("content:editor", true),
-        ("content:output", true),
-        ("content:preview", false),
-    ] {
-        assert_eq!(shows(&context, text), shown, "{text}");
-    }
-    // Groups fill the dock: files on the left quarter, output at the bottom.
-    let files = group_bounds(&context, "files");
-    let output = group_bounds(&context, "output");
-    assert_eq!((files.x, files.y, files.height), (0.0, 0.0, 600.0));
-    assert!((files.width - 200.0).abs() < 8.0);
-    assert!((output.y + output.height - 600.0).abs() < 0.5 && output.x > files.width);
-
-    let preview = center(labelled(&context, Role::Tab, "Preview"));
-    press(&mut context, preview);
-    context.event(Event::PointerUp);
-    frame(&mut context, &mut app);
-    assert!(app.last.changed);
-    assert!(shows(&context, "content:preview") && !shows(&context, "content:editor"));
-
-    // Delete closes the focused closable tab and reports it.
-    context.event(Event::KeyDown {
-        key: Key::Delete,
-        shift: false,
-        repeat: false,
-    });
-    frame(&mut context, &mut app);
-    frame(&mut context, &mut app);
-    assert!(!app.layout.contains("preview"));
-    assert!(shows(&context, "content:editor"));
-}
-
-#[test]
-fn dragging_a_tab_onto_indicators_strips_and_empty_space_docks_reorders_and_floats() {
-    let (mut context, mut app) = start(false);
-    let preview = center(labelled(&context, Role::Tab, "Preview"));
-    let output = group_bounds(&context, "output");
-    // Left compass indicator of the output group.
-    let left = Point {
-        x: output.x + output.width / 2.0 - 36.0,
-        y: output.y + output.height / 2.0,
-    };
-    press(&mut context, preview);
-    context.event(Event::PointerMoved(left));
-    assert!(context.dock_dragging());
-    frame(&mut context, &mut app);
-    // The overlay shows the dragged title next to the pointer.
-    assert!(shows(&context, "Preview"));
-    context.event(Event::PointerUp);
-    assert!(!context.dock_dragging());
-    frame(&mut context, &mut app);
-    assert!(app.last.changed);
-    let moved = group_bounds(&context, "preview");
-    let output = group_bounds(&context, "output");
-    assert!(moved.x < output.x && (moved.y - output.y).abs() < 0.5);
-
-    // Escape cancels a drag.
-    let editor = center(labelled(&context, Role::Tab, "Editor"));
-    press(&mut context, editor);
-    context.event(Event::PointerMoved(center(output)));
-    context.event(Event::KeyDown {
-        key: Key::Escape,
-        shift: false,
-        repeat: false,
-    });
-    context.event(Event::PointerUp);
-    frame(&mut context, &mut app);
-    assert!(!app.last.changed);
-
-    // Onto another strip, before its first tab.
-    let output_tab = labelled(&context, Role::Tab, "Output");
-    drag(
-        &mut context,
-        editor,
-        Point {
-            x: output_tab.x + 2.0,
-            y: output_tab.y + output_tab.height / 2.0,
-        },
-    );
-    frame(&mut context, &mut app);
-    assert_eq!(group(&app.layout, "output"), ["editor", "output"]);
-
-    // Over a group but on no indicator: the panel floats under the pointer.
-    let editor = center(labelled(&context, Role::Tab, "Editor"));
-    let files = group_bounds(&context, "files");
-    drag(
-        &mut context,
-        editor,
-        Point {
-            x: files.x + 30.0,
-            y: files.y + files.height - 40.0,
-        },
-    );
-    frame(&mut context, &mut app);
-    assert_eq!(app.layout.place_of("editor"), Some(DockPlace::Float(0)));
-    frame(&mut context, &mut app);
-    assert!(shows(&context, "content:editor"));
-
-    // The whole dock's right edge indicator.
-    let editor = center(labelled(&context, Role::Tab, "Editor"));
-    drag(
-        &mut context,
-        editor,
-        Point {
-            x: 800.0 - 24.0,
-            y: 300.0,
-        },
-    );
-    frame(&mut context, &mut app);
-    assert!(app.layout.floating.is_empty());
-    frame(&mut context, &mut app);
-    let editor = group_bounds(&context, "editor");
-    assert_eq!((editor.y, editor.height), (0.0, 600.0));
-    assert!((editor.x + editor.width - 800.0).abs() < 0.5 && (editor.width - 200.0).abs() < 8.0);
-}
-
-#[test]
-fn floating_groups_move_resize_by_pointer_and_keys_block_clicks_and_rise_to_the_front() {
-    let (mut context, mut app) = start(false);
-    for (panel, x) in [("preview", 100.0), ("output", 160.0)] {
-        app.layout.move_panel(
-            panel,
-            DockTarget::Float {
-                x,
-                y: 100.0,
-                width: 300.0,
-                height: 200.0,
-            },
-        );
-    }
-    frame(&mut context, &mut app);
-    let float = group_bounds(&context, "preview");
-    assert!(float.x >= 100.0 && float.y >= 100.0 && float.width <= 300.0);
-
-    // Pressing inside the back float raises it.
-    press(&mut context, Point { x: 110.0, y: 250.0 });
-    context.event(Event::PointerUp);
-    frame(&mut context, &mut app);
-    assert_eq!(app.layout.floating[1].tabs.panels, ["preview"]);
-    // Its surface swallows the press instead of reaching the editor tab below.
-    assert_eq!(app.layout.place_of("editor"), Some(DockPlace::Main));
-
-    frame(&mut context, &mut app);
-    let grip = center(labelled(&context, Role::Group, "Move floating panel"));
-    press(&mut context, grip);
-    context.event(Event::PointerMoved(Point {
-        x: grip.x + 50.0,
-        y: grip.y + 30.0,
-    }));
-    context.event(Event::PointerUp);
-    frame(&mut context, &mut app);
-    let moved = app.layout.floating.last().unwrap();
-    assert_eq!((moved.x, moved.y), (150.0, 130.0));
-
-    // The grip keeps focus: arrows nudge by ten pixels.
-    context.event(Event::KeyDown {
-        key: Key::ArrowLeft,
-        shift: false,
-        repeat: false,
-    });
-    frame(&mut context, &mut app);
-    assert_eq!(app.layout.floating.last().unwrap().x, 140.0);
-
-    // Resizing the back float (the first in tree order) stops at the minimum
-    // size and brings it to the front.
-    frame(&mut context, &mut app);
-    assert_eq!(app.layout.floating[0].tabs.panels, ["output"]);
-    let resize = center(labelled(&context, Role::Group, "Resize floating panel"));
-    press(&mut context, resize);
-    context.event(Event::PointerMoved(Point { x: 0.0, y: 0.0 }));
-    context.event(Event::PointerUp);
-    frame(&mut context, &mut app);
-    let float = app.layout.floating.last().unwrap();
-    assert_eq!(float.tabs.panels, ["output"]);
-    assert_eq!((float.width, float.height), (160.0, 100.0));
-}
-
 fn key(context: &mut Context, key: Key) {
     context.event(Event::KeyDown {
         key,
@@ -578,63 +423,287 @@ fn key(context: &mut Context, key: Key) {
     context.event(Event::KeyUp(key));
 }
 
-/// Opens the focused tab's panel menu and activates the item `downs` enabled
-/// entries below the first; arrow keys skip disabled items.
-fn choose(context: &mut Context, app: &mut App, downs: usize) {
-    key(context, Key::ContextMenu);
-    frame(context, app);
-    key(context, Key::Home);
-    for _ in 0..downs {
-        key(context, Key::ArrowDown);
+#[test]
+fn the_dock_declares_active_panels_switches_tabs_and_closes_them() {
+    let mut app = App::start(false);
+    for (text, shown) in [
+        ("content:files", true),
+        ("content:editor", true),
+        ("content:output", true),
+        ("content:preview", false),
+    ] {
+        assert_eq!(shows(app.context(), text), shown, "{text}");
     }
-    key(context, Key::Enter);
-    frame(context, app);
-    frame(context, app);
+    // Groups fill the dock: files on the left quarter, output at the bottom.
+    let files = group_bounds(app.context(), "files");
+    let output = group_bounds(app.context(), "output");
+    assert_eq!((files.x, files.y, files.height), (0.0, 0.0, 600.0));
+    assert!((files.width - 200.0).abs() < 8.0);
+    assert!((output.y + output.height - 600.0).abs() < 0.5 && output.x > files.width);
+
+    let preview = center(labelled(app.context(), Role::Tab, "Preview"));
+    press(app.context(), preview);
+    app.context().event(Event::PointerUp);
+    assert!(app.frame());
+    assert!(shows(app.context(), "content:preview") && !shows(app.context(), "content:editor"));
+
+    // Delete closes the focused closable tab and reports it.
+    app.context().event(Event::KeyDown {
+        key: Key::Delete,
+        shift: false,
+        repeat: false,
+    });
+    app.frame();
+    app.frame();
+    assert!(!app.layout().contains("preview"));
+    assert!(shows(app.context(), "content:editor"));
 }
 
 #[test]
-fn the_panel_menu_docks_floats_detaches_and_returns_panels_from_the_keyboard() {
-    let (mut context, mut app) = start(true);
-    let editor = center(labelled(&context, Role::Tab, "Editor"));
-    press(&mut context, editor);
-    context.event(Event::PointerUp);
-    frame(&mut context, &mut app);
+fn dragging_a_tab_onto_indicators_strips_and_empty_space_docks_reorders_and_floats() {
+    let mut app = App::start(false);
+    let preview = center(labelled(app.context(), Role::Tab, "Preview"));
+    let output = group_bounds(app.context(), "output");
+    // Left compass indicator of the output group.
+    let left = Point {
+        x: output.x + output.width / 2.0 - 36.0,
+        y: output.y + output.height / 2.0,
+    };
+    press(app.context(), preview);
+    app.context().event(Event::PointerMoved(left));
+    assert!(app.context().dock_dragging());
+    app.frame();
+    // The overlay shows the dragged title next to the pointer.
+    assert!(shows(app.context(), "Preview"));
+    app.context().event(Event::PointerUp);
+    assert!(!app.context().dock_dragging());
+    assert!(app.frame());
+    let moved = group_bounds(app.context(), "preview");
+    let output = group_bounds(app.context(), "output");
+    assert!(moved.x < output.x && (moved.y - output.y).abs() < 0.5);
+
+    // Escape cancels a drag.
+    let editor = center(labelled(app.context(), Role::Tab, "Editor"));
+    press(app.context(), editor);
+    app.context().event(Event::PointerMoved(center(output)));
+    app.context().event(Event::KeyDown {
+        key: Key::Escape,
+        shift: false,
+        repeat: false,
+    });
+    app.context().event(Event::PointerUp);
+    assert!(!app.frame());
+
+    // Onto another strip, before its first tab.
+    let output_tab = labelled(app.context(), Role::Tab, "Output");
+    drag(
+        app.context(),
+        editor,
+        Point {
+            x: output_tab.x + 2.0,
+            y: output_tab.y + output_tab.height / 2.0,
+        },
+    );
+    app.frame();
+    assert_eq!(group(app.layout(), "output"), ["editor", "output"]);
+
+    // Over a group but on no indicator: the panel floats under the pointer.
+    let editor = center(labelled(app.context(), Role::Tab, "Editor"));
+    let files = group_bounds(app.context(), "files");
+    drag(
+        app.context(),
+        editor,
+        Point {
+            x: files.x + 30.0,
+            y: files.y + files.height - 40.0,
+        },
+    );
+    app.frame();
+    assert_eq!(app.layout().place_of("editor"), Some(DockPlace::Float(0)));
+    app.frame();
+    assert!(shows(app.context(), "content:editor"));
+
+    // The whole dock's right edge indicator.
+    let editor = center(labelled(app.context(), Role::Tab, "Editor"));
+    drag(
+        app.context(),
+        editor,
+        Point {
+            x: 800.0 - 24.0,
+            y: 300.0,
+        },
+    );
+    app.frame();
+    assert!(app.layout().floating.is_empty());
+    app.frame();
+    let editor = group_bounds(app.context(), "editor");
+    assert_eq!((editor.y, editor.height), (0.0, 600.0));
+    assert!((editor.x + editor.width - 800.0).abs() < 0.5 && (editor.width - 200.0).abs() < 8.0);
+}
+
+#[test]
+fn floating_groups_move_resize_by_pointer_and_keys_block_clicks_and_rise_to_the_front() {
+    let mut app = App::start(false);
+    for (panel, x) in [("preview", 100.0), ("output", 160.0)] {
+        app.driven.state_mut().layout.move_panel(
+            panel,
+            DockTarget::Float {
+                x,
+                y: 100.0,
+                width: 300.0,
+                height: 200.0,
+            },
+        );
+    }
+    app.frame();
+    let float = group_bounds(app.context(), "preview");
+    assert!(float.x >= 100.0 && float.y >= 100.0 && float.width <= 300.0);
+
+    // Pressing inside the back float raises it.
+    press(app.context(), Point { x: 110.0, y: 250.0 });
+    app.context().event(Event::PointerUp);
+    app.frame();
+    assert_eq!(app.layout().floating[1].tabs.panels, ["preview"]);
+    // Its surface swallows the press instead of reaching the editor tab below.
+    assert_eq!(app.layout().place_of("editor"), Some(DockPlace::Main));
+
+    app.frame();
+    let grip = center(labelled(app.context(), Role::Group, "Move floating panel"));
+    press(app.context(), grip);
+    app.context().event(Event::PointerMoved(Point {
+        x: grip.x + 50.0,
+        y: grip.y + 30.0,
+    }));
+    app.context().event(Event::PointerUp);
+    app.frame();
+    let moved = app.layout().floating.last().unwrap();
+    assert_eq!((moved.x, moved.y), (150.0, 130.0));
+
+    // The grip keeps focus: arrows nudge by ten pixels.
+    key(app.context(), Key::ArrowLeft);
+    app.frame();
+    assert_eq!(app.layout().floating.last().unwrap().x, 140.0);
+
+    // Resizing the back float (the first in tree order) stops at the minimum
+    // size and brings it to the front.
+    app.frame();
+    assert_eq!(app.layout().floating[0].tabs.panels, ["output"]);
+    let resize = center(labelled(
+        app.context(),
+        Role::Group,
+        "Resize floating panel",
+    ));
+    press(app.context(), resize);
+    app.context()
+        .event(Event::PointerMoved(Point { x: 0.0, y: 0.0 }));
+    app.context().event(Event::PointerUp);
+    app.frame();
+    let float = app.layout().floating.last().unwrap();
+    assert_eq!(float.tabs.panels, ["output"]);
+    assert_eq!((float.width, float.height), (160.0, 100.0));
+}
+
+/// Opens the focused tab's panel menu and activates the item `downs` enabled
+/// entries below the first; arrow keys skip disabled items.
+fn choose(app: &mut App, downs: usize) {
+    key(app.context(), Key::ContextMenu);
+    app.frame();
+    key(app.context(), Key::Home);
+    for _ in 0..downs {
+        key(app.context(), Key::ArrowDown);
+    }
+    key(app.context(), Key::Enter);
+    app.frame();
+    app.frame();
+}
+
+/// Focuses the editor tab again: a moved tab is a new node.
+fn refocus(app: &mut App) {
+    let tab = center(labelled(app.context(), Role::Tab, "Editor"));
+    press(app.context(), tab);
+    app.context().event(Event::PointerUp);
+    app.frame();
+}
+
+#[test]
+fn the_panel_menu_docks_floats_and_detaches_panels_from_the_keyboard() {
+    let mut app = App::start(true);
+    let editor = center(labelled(app.context(), Role::Tab, "Editor"));
+    press(app.context(), editor);
+    app.context().event(Event::PointerUp);
+    app.frame();
 
     // Float, new window, (main window: disabled), dock left, dock right.
-    choose(&mut context, &mut app, 3);
-    let bounds = group_bounds(&context, "editor");
+    choose(&mut app, 3);
+    let bounds = group_bounds(app.context(), "editor");
     assert!((bounds.x + bounds.width - 800.0).abs() < 0.5 && bounds.height == 600.0);
 
-    // The moved tab is a new node, so select it again before the next menu.
-    let refocus = |context: &mut Context, app: &mut App| {
-        let tab = center(labelled(context, Role::Tab, "Editor"));
-        press(context, tab);
-        context.event(Event::PointerUp);
-        frame(context, app);
-    };
-    refocus(&mut context, &mut app);
-    choose(&mut context, &mut app, 0);
-    assert_eq!(app.layout.place_of("editor"), Some(DockPlace::Float(0)));
+    refocus(&mut app);
+    choose(&mut app, 0);
+    assert_eq!(app.layout().place_of("editor"), Some(DockPlace::Float(0)));
 
-    // Item 1: a new window is reported once, and its dock renders separately.
+    // Item 1: a new window is created, and the panel leaves the main dock.
     // "Float" is disabled for a lone floating panel, so the first enabled item
     // is "Move to new window".
-    refocus(&mut context, &mut app);
-    key(&mut context, Key::ContextMenu);
-    frame(&mut context, &mut app);
-    key(&mut context, Key::Home);
-    key(&mut context, Key::Enter);
-    frame(&mut context, &mut app);
-    assert_eq!(app.last.detached, [DockWindowId(1)]);
-    frame(&mut context, &mut app);
-    assert!(app.last.detached.is_empty());
-    assert!(!shows(&context, "content:editor"));
+    refocus(&mut app);
+    key(app.context(), Key::ContextMenu);
+    app.frame();
+    key(app.context(), Key::Home);
+    key(app.context(), Key::Enter);
+    assert!(app.frame());
+    assert_eq!(
+        app.layout()
+            .windows
+            .iter()
+            .map(|w| w.id)
+            .collect::<Vec<_>>(),
+        [DockWindowId(1)]
+    );
+    app.frame();
+    assert!(!shows(app.context(), "content:editor"));
+}
 
-    let mut window = Context::new();
-    let mut response = DockResponse::default();
-    let mut window_frame = |window: &mut Context, layout: &mut DockLayout| {
+#[test]
+fn right_click_on_a_tab_opens_its_menu_and_a_release_outside_the_window_detaches() {
+    let mut app = App::start(true);
+    let preview = center(labelled(app.context(), Role::Tab, "Preview"));
+    app.context().event(Event::ContextMenu(preview));
+    app.frame();
+    // The right-clicked tab became active and the menu is open.
+    assert!(shows(app.context(), "content:preview"));
+    assert!(shows(app.context(), "Move to new window"));
+    key(app.context(), Key::Escape);
+    app.frame();
+
+    let preview = center(labelled(app.context(), Role::Tab, "Preview"));
+    drag(app.context(), preview, Point { x: 900.0, y: 300.0 });
+    app.frame();
+    assert_eq!(
+        app.layout()
+            .windows
+            .iter()
+            .map(|w| w.id)
+            .collect::<Vec<_>>(),
+        [DockWindowId(1)]
+    );
+
+    // Without native windows the same release changes nothing.
+    let mut app = App::start(false);
+    let preview = center(labelled(app.context(), Role::Tab, "Preview"));
+    drag(app.context(), preview, Point { x: 900.0, y: 300.0 });
+    assert!(!app.frame());
+    assert_eq!(*app.layout(), workspace());
+}
+
+mod legacy {
+    //! M35: a detached window's dock is a second context, and `Driven` drains
+    //! only its own, so the window's panel menu stays on `dock_window` with
+    //! `&mut DockLayout`. The window is made by `move_panel`, not by the menu.
+    use super::*;
+
+    fn frame(window: &mut Context, layout: &mut DockLayout) {
         window.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            response = ui.keyed("dock", |ui| {
+            ui.keyed("dock", |ui| {
                 ui.dock_window(
                     layout,
                     DockWindowId(1),
@@ -647,48 +716,35 @@ fn the_panel_menu_docks_floats_detaches_and_returns_panels_from_the_keyboard() {
                 )
             });
         });
-    };
-    window_frame(&mut window, &mut app.layout);
-    assert!(shows(&window, "content:editor"));
+    }
 
-    // Alone in its window, the panel's first enabled item is "Move to main window".
-    let tab = center(labelled(&window, Role::Tab, "Editor"));
-    press(&mut window, tab);
-    window.event(Event::PointerUp);
-    window_frame(&mut window, &mut app.layout);
-    key(&mut window, Key::ContextMenu);
-    window_frame(&mut window, &mut app.layout);
-    key(&mut window, Key::Home);
-    key(&mut window, Key::Enter);
-    window_frame(&mut window, &mut app.layout);
-    assert!(app.layout.windows.is_empty());
-    assert_eq!(app.layout.place_of("editor"), Some(DockPlace::Main));
-    window_frame(&mut window, &mut app.layout);
-    assert!(!shows(&window, "content:editor"));
-}
+    #[test]
+    fn a_window_panel_menu_docks_it_back_into_the_main_window() {
+        let mut layout = workspace();
+        layout.move_panel(
+            "editor",
+            DockTarget::Window {
+                width: 640.0,
+                height: 480.0,
+            },
+        );
+        let mut window = Context::new();
+        frame(&mut window, &mut layout);
+        assert!(shows(&window, "content:editor"));
 
-#[test]
-fn right_click_on_a_tab_opens_its_menu_and_a_release_outside_the_window_detaches() {
-    let (mut context, mut app) = start(true);
-    let preview = center(labelled(&context, Role::Tab, "Preview"));
-    context.event(Event::ContextMenu(preview));
-    frame(&mut context, &mut app);
-    // The right-clicked tab became active and the menu is open.
-    assert!(shows(&context, "content:preview"));
-    assert!(shows(&context, "Move to new window"));
-    key(&mut context, Key::Escape);
-    frame(&mut context, &mut app);
-
-    let preview = center(labelled(&context, Role::Tab, "Preview"));
-    drag(&mut context, preview, Point { x: 900.0, y: 300.0 });
-    frame(&mut context, &mut app);
-    assert_eq!(app.last.detached, [DockWindowId(1)]);
-
-    // Without native windows the same release changes nothing.
-    let (mut context, mut app) = start(false);
-    let preview = center(labelled(&context, Role::Tab, "Preview"));
-    drag(&mut context, preview, Point { x: 900.0, y: 300.0 });
-    frame(&mut context, &mut app);
-    assert!(!app.last.changed);
-    assert_eq!(app.layout, workspace());
+        // Alone in its window, the panel's first enabled item is "Move to main window".
+        let tab = center(labelled(&window, Role::Tab, "Editor"));
+        press(&mut window, tab);
+        window.event(Event::PointerUp);
+        frame(&mut window, &mut layout);
+        key(&mut window, Key::ContextMenu);
+        frame(&mut window, &mut layout);
+        key(&mut window, Key::Home);
+        key(&mut window, Key::Enter);
+        frame(&mut window, &mut layout);
+        assert!(layout.windows.is_empty());
+        assert_eq!(layout.place_of("editor"), Some(DockPlace::Main));
+        frame(&mut window, &mut layout);
+        assert!(!shows(&window, "content:editor"));
+    }
 }
