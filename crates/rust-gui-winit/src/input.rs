@@ -395,7 +395,7 @@ impl Application {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_gui_core::{Action, MonospaceMeasurer};
+    use rust_gui_core::{Action, App, AppDriver, Effects, MonospaceMeasurer, Ui};
     use rust_gui_scene::Size;
 
     #[derive(Default)]
@@ -421,17 +421,41 @@ mod tests {
             Ok(())
         }
     }
-    fn frame(context: &mut Context, value: &mut String) {
-        context.run(Size::new(400.0, 200.0), &mut MonospaceMeasurer, |ui| {
-            ui.keyed("input", |ui| ui.text_input("Name", value));
-        });
+    /// The one text field of the tests; its value is what `update` stored.
+    struct Field {
+        value: String,
+    }
+
+    impl App for Field {
+        type Message = String;
+
+        fn update(&mut self, value: String, _effects: &mut Effects<'_, String>) {
+            self.value = value;
+        }
+
+        fn view(&self, ui: &mut Ui<'_, String>) {
+            ui.keyed("input", |ui| {
+                ui.text_input_msg("Name", &self.value, |value| value)
+            });
+        }
+    }
+
+    fn frame(context: &mut Context, field: &mut Field) {
+        AppDriver::new(|| true).frame(
+            field,
+            context,
+            Size::new(400.0, 200.0),
+            &mut MonospaceMeasurer,
+        );
     }
 
     #[test]
     fn clipboard_cut_is_transactional_and_paste_is_single_undoable_edit() {
         let mut context = Context::new();
-        let mut value = "日本語".into();
-        frame(&mut context, &mut value);
+        let mut field = Field {
+            value: "日本語".into(),
+        };
+        frame(&mut context, &mut field);
         context.action(context.find(&["input"]).unwrap(), Action::Focus);
         context.event(Event::Text(TextEdit::SelectAll));
         let mut clipboard = Clipboard {
@@ -442,16 +466,16 @@ mod tests {
         assert_eq!(context.selected_text(), Some("日本語"));
         clipboard.fail = false;
         assert!(execute(&mut context, &mut clipboard, Command::Cut));
-        frame(&mut context, &mut value);
-        assert!(value.is_empty());
+        frame(&mut context, &mut field);
+        assert!(field.value.is_empty());
         assert_eq!(clipboard.text, "日本語");
         clipboard.text = "two\nlines".into();
         assert!(execute(&mut context, &mut clipboard, Command::Paste));
-        frame(&mut context, &mut value);
-        assert_eq!(value, "two lines");
+        frame(&mut context, &mut field);
+        assert_eq!(field.value, "two lines");
         context.event(Event::Text(TextEdit::Undo));
-        frame(&mut context, &mut value);
-        assert!(value.is_empty());
+        frame(&mut context, &mut field);
+        assert!(field.value.is_empty());
         assert!(!execute(&mut context, &mut clipboard, Command::Copy));
         assert_eq!(clipboard.writes, 1);
     }
@@ -524,9 +548,11 @@ mod tests {
     #[test]
     fn window_reactivation_restores_live_input_without_restarting_composition() {
         let mut context = Context::new();
-        let mut value = "Hello".into();
+        let mut field = Field {
+            value: "Hello".into(),
+        };
         let mut restore = None;
-        frame(&mut context, &mut value);
+        frame(&mut context, &mut field);
         let id = context.find(&["input"]).unwrap();
         context.action(id, Action::Focus);
         context.event(Event::Text(TextEdit::SelectAll));

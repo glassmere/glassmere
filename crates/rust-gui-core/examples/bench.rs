@@ -1,7 +1,11 @@
 //! The four benchmarks the feature list names: a million-row table, a
 //! hundred-thousand-node tree, a multi-megabyte text file and hundreds of
-//! animated elements; and an `App`'s batches that declare nothing. Headless, so the numbers are the framework's own work
-//! without a GPU, a font stack or a compositor in them.
+//! animated elements; and an `App`'s batches that declare nothing. Headless,
+//! so the numbers are the framework's own work without a GPU, a font stack or
+//! a compositor in them.
+//!
+//! Each scenario is an `App`: a frame sends the messages its input produces,
+//! and a frame with none declares only when something it reads changed.
 //!
 //! ```sh
 //! cargo run -p rust-gui-core --example bench --release
@@ -9,8 +13,9 @@
 use rust_gui_core::Label;
 use rust_gui_core::{
     App, AppDriver, Button, CodeEditorOptions, Context, Easing, Effects, Event, FrameStats,
-    GridColumn, GridModel, GridState, ItemId, Length, ListModel, ListState, MonospaceMeasurer,
-    SortDirection, Style, TextDocument, Transition, TreeItem, TreeModel, Ui, VirtualListOptions,
+    GridColumn, GridModel, GridMsg, GridState, ItemId, Length, ListModel, ListState,
+    MonospaceMeasurer, SortDirection, Style, TextDocument, TextOp, Transition, TreeItem, TreeModel,
+    Ui, VirtualListOptions,
 };
 use rust_gui_scene::{Color, Point, Size};
 use std::time::{Duration, Instant};
@@ -133,8 +138,68 @@ fn measure(
     }
 }
 
+/// One scenario's application with its context, driven one batch at a time.
+struct Run<A: App> {
+    app: A,
+    driver: AppDriver<A::Message>,
+    context: Context,
+}
+
+impl<A: App> Run<A> {
+    fn new(app: A) -> Self {
+        Self {
+            app,
+            driver: AppDriver::new(|| true),
+            context: Context::new(),
+        }
+    }
+
+    /// One frame: `messages` are what the frame's input produced, and the
+    /// batch is one `update` each, then at most one declaration.
+    fn frame(&mut self, messages: Vec<A::Message>) -> FrameStats {
+        for message in messages {
+            self.driver.send(message);
+        }
+        self.driver.frame(
+            &mut self.app,
+            &mut self.context,
+            WINDOW,
+            &mut MonospaceMeasurer,
+        )
+    }
+}
+
+/// The table: a scroll is a message, and a still frame has none.
+struct Table {
+    model: Rows,
+    state: GridState,
+}
+
+#[derive(Clone)]
+enum TableMsg {
+    Reveal(usize),
+    Grid(GridMsg),
+}
+
+impl App for Table {
+    type Message = TableMsg;
+
+    fn update(&mut self, message: TableMsg, _effects: &mut Effects<'_, TableMsg>) {
+        match message {
+            TableMsg::Reveal(row) => self.state.rows.reveal(ItemId(row as u64)),
+            TableMsg::Grid(message) => self.state.apply(&message),
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, TableMsg>) {
+        ui.keyed("grid", |ui| {
+            ui.data_grid_msg(&self.model, &self.state, viewport(), TableMsg::Grid)
+        });
+    }
+}
+
 fn table() -> Vec<Timing> {
-    let mut model = Rows {
+    let model = Rows {
         count: ROWS,
         columns: vec![
             column("ID", 120.0),
@@ -145,25 +210,58 @@ fn table() -> Vec<Timing> {
             column("Updated", 160.0),
         ],
     };
-    let mut state = GridState::default();
-    let mut context = Context::new();
-    let mut frame = |row: usize, model: &mut Rows, state: &mut GridState| {
-        state.rows.reveal(ItemId(row as u64));
-        context.run(WINDOW, &mut MonospaceMeasurer, |ui| {
-            ui.keyed("grid", |ui| ui.data_grid(model, state, viewport()));
-        })
-    };
+    let mut run = Run::new(Table {
+        model,
+        state: GridState::default(),
+    });
     vec![
-        measure("table", "still", RUNS, |_| frame(0, &mut model, &mut state)),
-        measure("table", "scrolling", RUNS, |run| {
-            frame(run * 10, &mut model, &mut state)
+        measure("table", "still", RUNS, |_| run.frame(Vec::new())),
+        measure("table", "scrolling", RUNS, |index| {
+            run.frame(vec![TableMsg::Reveal(index * 10)])
         }),
         // Jumping about the million rows, where a table that realized them
         // all would already have given up.
-        measure("table", "far", RUNS, |run| {
-            frame(run * 97_003 % ROWS, &mut model, &mut state)
+        measure("table", "far", RUNS, |index| {
+            run.frame(vec![TableMsg::Reveal(index * 97_003 % ROWS)])
         }),
     ]
+}
+
+/// The tree: a scroll is a message, collapsing the root is one too.
+struct Outline {
+    model: TreeModel,
+    state: ListState,
+}
+
+#[derive(Clone)]
+enum OutlineMsg {
+    Reveal(usize),
+    Collapse(bool),
+    Tree(GridMsg),
+}
+
+impl App for Outline {
+    type Message = OutlineMsg;
+
+    fn update(&mut self, message: OutlineMsg, _effects: &mut Effects<'_, OutlineMsg>) {
+        match message {
+            OutlineMsg::Reveal(row) => self.state.reveal(ItemId(row as u64)),
+            OutlineMsg::Collapse(open) => {
+                self.model.set_expanded(ItemId(0), open);
+            }
+            OutlineMsg::Tree(GridMsg::Select(id)) => self.state.select(Some(id)),
+            OutlineMsg::Tree(GridMsg::Expand { row, open }) => {
+                self.model.set_expanded(row, open);
+            }
+            OutlineMsg::Tree(_) => {}
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, OutlineMsg>) {
+        ui.keyed("tree", |ui| {
+            ui.tree_view_msg(&self.model, &self.state, viewport(), OutlineMsg::Tree)
+        });
+    }
 }
 
 fn tree() -> Vec<Timing> {
@@ -180,26 +278,60 @@ fn tree() -> Vec<Timing> {
     for root in (0..NODES).step_by(branch) {
         model.set_expanded(ItemId(root as u64), true);
     }
-    let mut state = ListState::default();
-    let mut context = Context::new();
-    let mut frame = |row: usize, model: &mut TreeModel, state: &mut ListState| {
-        state.reveal(ItemId(row as u64));
-        context.run(WINDOW, &mut MonospaceMeasurer, |ui| {
-            ui.keyed("tree", |ui| ui.tree_view(model, state, viewport()));
-        })
-    };
+    let mut run = Run::new(Outline {
+        model,
+        state: ListState::default(),
+    });
     vec![
-        measure("tree", "expanded", RUNS, |_| {
-            frame(0, &mut model, &mut state)
+        measure("tree", "expanded", RUNS, |_| run.frame(Vec::new())),
+        measure("tree", "scrolling", RUNS, |index| {
+            run.frame(vec![OutlineMsg::Reveal(index * 10)])
         }),
-        measure("tree", "scrolling", RUNS, |run| {
-            frame(run * 10, &mut model, &mut state)
-        }),
-        measure("tree", "collapse", RUNS, |run| {
-            model.set_expanded(ItemId(0), run % 2 == 0);
-            frame(0, &mut model, &mut state)
+        measure("tree", "collapse", RUNS, |index| {
+            run.frame(vec![
+                OutlineMsg::Collapse(index % 2 == 0),
+                OutlineMsg::Reveal(0),
+            ])
         }),
     ]
+}
+
+/// The document: typing is a message per frame, and an edit from the editor
+/// is applied to the document in `update`.
+struct Source {
+    document: TextDocument,
+}
+
+#[derive(Clone)]
+enum SourceMsg {
+    Type(String),
+    Edit(TextOp),
+}
+
+impl App for Source {
+    type Message = SourceMsg;
+
+    fn update(&mut self, message: SourceMsg, _effects: &mut Effects<'_, SourceMsg>) {
+        match message {
+            SourceMsg::Type(text) => {
+                self.document.insert(&text);
+            }
+            SourceMsg::Edit(op) => self.document.apply(op),
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, SourceMsg>) {
+        ui.keyed("editor", |ui| {
+            ui.code_editor_msg(
+                &self.document,
+                CodeEditorOptions {
+                    line_numbers: true,
+                    ..CodeEditorOptions::default()
+                },
+                SourceMsg::Edit,
+            );
+        });
+    }
 }
 
 fn text() -> Vec<Timing> {
@@ -208,65 +340,74 @@ fn text() -> Vec<Timing> {
         .map(|index| format!("{line} {index}\n"))
         .collect();
     println!("# text document: {} bytes", source.len());
-    let mut document = TextDocument::from_text(&source);
-    let mut context = Context::new();
-    let mut frame = |document: &mut TextDocument| {
-        context.run(WINDOW, &mut MonospaceMeasurer, |ui| {
-            ui.keyed("editor", |ui| {
-                ui.code_editor(
-                    document,
-                    CodeEditorOptions {
-                        line_numbers: true,
-                        ..CodeEditorOptions::default()
-                    },
-                )
-            });
-        })
-    };
-    let open = measure("text", "open", 1, |_| frame(&mut document));
-    let still = measure("text", "still", RUNS, |_| frame(&mut document));
-    let typing = measure("text", "typing", RUNS, |run| {
-        document.insert(&format!("{run}"));
-        frame(&mut document)
+    let mut run = Run::new(Source {
+        document: TextDocument::from_text(&source),
+    });
+    let open = measure("text", "open", 1, |_| run.frame(Vec::new()));
+    let still = measure("text", "still", RUNS, |_| run.frame(Vec::new()));
+    let typing = measure("text", "typing", RUNS, |index| {
+        run.frame(vec![SourceMsg::Type(format!("{index}"))])
     });
     vec![open, still, typing]
 }
 
+/// Hundreds of cells whose colour is retargeted every twentieth frame. The
+/// frames between are interpolation over the retained tree: no declaration.
+struct Wall {
+    lit: bool,
+}
+
+#[derive(Clone)]
+enum WallMsg {
+    Retarget(bool),
+}
+
+impl App for Wall {
+    type Message = WallMsg;
+
+    fn update(&mut self, message: WallMsg, _effects: &mut Effects<'_, WallMsg>) {
+        let WallMsg::Retarget(lit) = message;
+        self.lit = lit;
+    }
+
+    fn view(&self, ui: &mut Ui<'_, WallMsg>) {
+        ui.keyed("wall", |ui| {
+            ui.row(Style::default(), |ui| {
+                for index in 0..ANIMATED {
+                    let shade = (index % 8) as u8 * 24;
+                    ui.keyed(format!("cell{index}"), |ui| {
+                        ui.label(
+                            Label::new("*").style(
+                                Style::default()
+                                    .width(Length::Px(20.0))
+                                    .background(if self.lit {
+                                        Color::rgb(220, 40 + shade, 60)
+                                    } else {
+                                        Color::rgb(40, 60 + shade, 220)
+                                    })
+                                    .transition(Transition::new(300).easing(Easing::EaseInOut)),
+                            ),
+                        )
+                    });
+                }
+            })
+        });
+    }
+}
+
 fn animation() -> Vec<Timing> {
-    let mut context = Context::new();
+    let mut run = Run::new(Wall { lit: true });
     let mut clock = Duration::ZERO;
-    let frame = |run: usize, context: &mut Context, clock: &mut Duration| {
-        // Sixteen milliseconds a frame, with the colour retargeted every
-        // twentieth, so most frames are the interpolation itself.
-        *clock += Duration::from_millis(16);
-        context.set_now(*clock);
-        let lit = (run / 20).is_multiple_of(2);
-        context.run(WINDOW, &mut MonospaceMeasurer, |ui| {
-            ui.keyed("wall", |ui| {
-                ui.row(Style::default(), |ui| {
-                    for index in 0..ANIMATED {
-                        let shade = (index % 8) as u8 * 24;
-                        ui.keyed(format!("cell{index}"), |ui| {
-                            ui.label(
-                                Label::new("*").style(
-                                    Style::default()
-                                        .width(Length::Px(20.0))
-                                        .background(if lit {
-                                            Color::rgb(220, 40 + shade, 60)
-                                        } else {
-                                            Color::rgb(40, 60 + shade, 220)
-                                        })
-                                        .transition(Transition::new(300).easing(Easing::EaseInOut)),
-                                ),
-                            )
-                        });
-                    }
-                })
-            });
-        })
-    };
-    vec![measure("animation", "transitions", RUNS * 4, |run| {
-        frame(run, &mut context, &mut clock)
+    vec![measure("animation", "transitions", RUNS * 4, |index| {
+        // Sixteen milliseconds a frame.
+        clock += Duration::from_millis(16);
+        run.context.set_now(clock);
+        let messages = if index % 20 == 0 {
+            vec![WallMsg::Retarget((index / 20).is_multiple_of(2))]
+        } else {
+            Vec::new()
+        };
+        run.frame(messages)
     })]
 }
 

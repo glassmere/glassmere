@@ -19,6 +19,9 @@ enum Anchor {
     Bottom,
 }
 
+// M35: `#[property(with = ..)]` has no message form: `#[derive(Properties)]`
+// leaves these fields out of `properties_msg`, so this editor and the test
+// that uses it stay on the closure form of `property_grid`.
 fn edit_anchor(ui: &mut Ui<'_>, label: &str, anchor: &mut Anchor) -> bool {
     let clicked = ui
         .keyed("$value", |ui| ui.button(format!("{label}: {anchor:?}")))

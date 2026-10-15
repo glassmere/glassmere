@@ -1,5 +1,6 @@
 use rust_gui_core::{
-    Context, Date, DateStyle, LocaleFormat, MonospaceMeasurer, NumberOptions, Time,
+    App, Context, Date, DateStyle, Effects, LocaleFormat, MonospaceMeasurer, NumberOptions, Time,
+    Ui,
 };
 use rust_gui_icu::IcuFormat;
 use rust_gui_scene::Size;
@@ -80,19 +81,37 @@ fn parsing_accepts_what_the_locale_prints_and_what_people_type() {
     assert_eq!(english.parse_number("1,5"), Some(15.0));
 }
 
+/// The price, which the number input sends each time the user commits it.
+struct Price(f64);
+
+impl App for Price {
+    type Message = f64;
+
+    fn update(&mut self, price: f64, _effects: &mut Effects<'_, f64>) {
+        self.0 = price;
+    }
+
+    fn view(&self, ui: &mut Ui<'_, f64>) {
+        let options = NumberOptions::default().step(0.25).suffix(" Kč");
+        ui.keyed("price", |ui| {
+            ui.number_input_msg("Cena", self.0, options, |price| price)
+        });
+    }
+}
+
 #[test]
 fn the_number_input_shows_and_reads_numbers_in_the_installed_locale() {
-    use rust_gui_core::{Action, Event, Key, TextEdit};
+    use rust_gui_core::{Action, AppDriver, Event, Key, TextEdit};
     let mut context = Context::new();
     context.set_format(Some(Box::new(IcuFormat::new("cs-CZ").unwrap())));
-    let mut price = 1234.5;
-    let frame = |context: &mut Context, price: &mut f64| {
-        context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
-            let options = NumberOptions::default().step(0.25).suffix(" Kč");
-            ui.keyed("price", |ui| ui.number_input("Cena", price, options));
-        });
-    };
-    frame(&mut context, &mut price);
+    let mut app = Price(1234.5);
+    let mut driver = AppDriver::new(|| true);
+    driver.frame(
+        &mut app,
+        &mut context,
+        Size::new(400.0, 300.0),
+        &mut MonospaceMeasurer,
+    );
     let field = context.find(&["price", "$field"]).unwrap();
     let shown = |context: &Context| context.node(field).unwrap().value.unwrap();
     assert_eq!(shown(&context), "1\u{a0}234,50 Kč");
@@ -105,14 +124,31 @@ fn the_number_input_shows_and_reads_numbers_in_the_installed_locale() {
         shift: false,
         repeat: false,
     });
-    frame(&mut context, &mut price);
-    frame(&mut context, &mut price);
-    assert_eq!(price, 2500.75);
+    driver.frame(
+        &mut app,
+        &mut context,
+        Size::new(400.0, 300.0),
+        &mut MonospaceMeasurer,
+    );
+    driver.frame(
+        &mut app,
+        &mut context,
+        Size::new(400.0, 300.0),
+        &mut MonospaceMeasurer,
+    );
+    assert_eq!(app.0, 2500.75);
     assert_eq!(shown(&context), "2\u{a0}500,75 Kč");
 
     // Without an installed format everything stays plain, as before.
+    // A format change the application made outside `update` needs a declaration.
     context.set_format(None);
-    frame(&mut context, &mut price);
+    driver.invalidate();
+    driver.frame(
+        &mut app,
+        &mut context,
+        Size::new(400.0, 300.0),
+        &mut MonospaceMeasurer,
+    );
     assert_eq!(shown(&context), "2500.75 Kč");
     assert_eq!(context.format_date(DAY, DateStyle::Long), "2026-09-21");
     assert_eq!(context.format_time(AFTERNOON, false), "14:05");

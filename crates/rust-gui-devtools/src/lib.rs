@@ -473,6 +473,12 @@ impl Inspector {
         self.tree.selected().map(|id| NodeId(id.0))
     }
 
+    // M35: not migrated. A message form of the list and tree builders cannot
+    // give rows their own style: `virtual_list_msg` and `tree_view_msg` draw
+    // a fixed label, so the events and frames tables lose their monospace
+    // columns and colours, and changed tree rows lose their highlight. Those
+    // lists also need `&mut ListState` in the view, which `App::view(&self)`
+    // cannot give. Until the builders take a row closure, this stays here.
     #[track_caller]
     pub fn ui(&mut self, ui: &mut Ui<'_>, model: &InspectorModel) -> InspectorResponse {
         let mut response = InspectorResponse::default();

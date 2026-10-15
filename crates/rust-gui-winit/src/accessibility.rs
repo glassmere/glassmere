@@ -359,28 +359,22 @@ mod tests {
     #[test]
     fn controls_expose_values_actions_and_unclipped_popup_focus() {
         let mut context = Context::new();
-        let mut text = "Name".into();
-        let mut checked = false;
-        let mut radio = 0;
-        let mut volume = 50.0;
-        let mut selected = 0;
-        let mut view = |ui: &mut rust_gui_core::Ui<'_>| {
-            ui.keyed("input", |ui| ui.text_input("Name", &mut text));
-            ui.keyed("check", |ui| ui.checkbox("Check", &mut checked));
-            ui.keyed("radio", |ui| ui.radio("Radio", &mut radio, 0));
+        // The values are what the view shows; nothing in this test sends a message.
+        let view = |ui: &mut rust_gui_core::Ui<'_>| {
+            ui.keyed("input", |ui| ui.text_input_msg("Name", "Name", |_| ()));
+            ui.keyed("check", |ui| ui.checkbox_msg("Check", false, |_| ()));
+            ui.keyed("radio", |ui| ui.radio_msg("Radio", 0, 0, |_| ()));
             ui.keyed("slider", |ui| {
-                ui.slider("Volume", &mut volume, 0.0..=100.0, 5.0)
+                ui.slider_msg("Volume", 50.0, 0.0..=100.0, 5.0, |_| ())
             });
             ui.keyed("combo", |ui| {
-                ui.combo_box("Theme", &mut selected, &["Dark", "Light"])
+                ui.combo_box_msg("Theme", 0, &["Dark", "Light"], |_| ())
             });
             ui.enabled(false, |ui| {
-                ui.keyed("disabled", |ui| {
-                    ui.text_input("Disabled", &mut String::new())
-                });
+                ui.keyed("disabled", |ui| ui.text_input_msg("Disabled", "", |_| ()));
             });
         };
-        context.run(Size::new(600.0, 800.0), &mut MonospaceMeasurer, &mut view);
+        context.run(Size::new(600.0, 800.0), &mut MonospaceMeasurer, view);
         let get = |context: &Context, key: &str| context.find(&[key]).unwrap();
         let update = tree(&context, "Controls", 1.0);
         let node = |key| {
@@ -410,7 +404,7 @@ mod tests {
             },
             1.0
         ));
-        context.run(Size::new(600.0, 800.0), &mut MonospaceMeasurer, &mut view);
+        context.run(Size::new(600.0, 800.0), &mut MonospaceMeasurer, view);
         let panel = context.find(&["combo", "$popup"]).unwrap();
         let choice = context.find(&["combo", "$popup", "0"]).unwrap();
         let update = tree(&context, "Controls", 1.0);

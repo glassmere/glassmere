@@ -1,4 +1,7 @@
-use rust_gui_core::{Context, Messages, MonospaceMeasurer};
+use rust_gui_core::{
+    App, AppDriver, Context, Effects, Messages, MonospaceMeasurer, PropertyGridOptions,
+    PropertyGridState, PropertyMsg, Toast, Ui,
+};
 use rust_gui_fluent::FluentMessages;
 use rust_gui_scene::Size;
 
@@ -146,39 +149,47 @@ fn a_broken_catalog_names_its_line_and_directories_load_by_locale() {
     std::fs::remove_dir_all(&directory).unwrap();
 }
 
-/// One declaration of a view that installs `wanted` once; what it showed and
-/// whether the host has to declare again.
-fn declare(context: &mut Context, wanted: &mut Option<&str>) -> (String, usize) {
-    let mut shown = String::new();
-    let stats = context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
-        if let Some(locale) = wanted.take() {
-            let mut messages = FluentMessages::new(locale, "en").unwrap();
-            messages.add("cs", CZECH).unwrap();
-            messages.add("en", ENGLISH).unwrap();
-            ui.set_messages(Some(Box::new(messages)));
-        }
-        shown = ui.tr_args("greeting", &[("name", "Ido".into())]);
-    });
-    (shown, stats.activations)
+/// Greets in the language `update` installs for the locale it is sent.
+struct Greeter;
+
+impl App for Greeter {
+    type Message = &'static str;
+
+    fn update(&mut self, locale: &'static str, effects: &mut Effects<'_, &'static str>) {
+        let mut messages = FluentMessages::new(locale, "en").unwrap();
+        messages.add("cs", CZECH).unwrap();
+        messages.add("en", ENGLISH).unwrap();
+        effects.set_messages(Some(Box::new(messages)));
+    }
+
+    fn view(&self, ui: &mut Ui<'_, &'static str>) {
+        let text = ui.tr_args("greeting", &[("name", "Ido".into())]);
+        ui.keyed("greeting", |ui| ui.label(text));
+    }
+}
+
+fn greeting(context: &Context) -> String {
+    let id = context.find(&["greeting"]).unwrap();
+    context.details(id).expect("the greeting").text
 }
 
 #[test]
-fn a_view_installs_and_switches_its_language_and_the_host_declares_once_more() {
+fn a_message_installs_and_switches_the_language_and_the_same_frame_speaks_it() {
     let mut context = Context::new();
-    let mut wanted = Some("cs");
-    // The declaration that asks still speaks the old language, and says so.
-    let (shown, again) = declare(&mut context, &mut wanted);
-    assert_eq!(shown, "greeting");
-    assert!(again > 0, "hosts declare again before presenting");
-    assert_eq!(
-        declare(&mut context, &mut wanted),
-        ("Ahoj, Ido!".to_owned(), 0)
-    );
+    let mut app = Greeter;
+    let mut driver = AppDriver::new(|| true);
+    let size = Size::new(400.0, 300.0);
+    driver.frame(&mut app, &mut context, size, &mut MonospaceMeasurer);
+    assert_eq!(greeting(&context), "greeting");
+
+    driver.send("cs");
+    driver.frame(&mut app, &mut context, size, &mut MonospaceMeasurer);
+    assert_eq!(greeting(&context), "Ahoj, Ido!");
     assert_eq!(context.locale(), "cs");
 
-    wanted = Some("en");
-    declare(&mut context, &mut wanted);
-    assert_eq!(declare(&mut context, &mut wanted).0, "Hello, Ido!");
+    driver.send("en");
+    driver.frame(&mut app, &mut context, size, &mut MonospaceMeasurer);
+    assert_eq!(greeting(&context), "Hello, Ido!");
 }
 
 #[test]
@@ -215,25 +226,56 @@ fn shipped_catalogs_translate_every_built_in_key_and_nothing_else() {
     }
 }
 
-#[test]
-fn the_frameworks_own_controls_speak_the_installed_language() {
-    use rust_gui_core::{PropertyGridOptions, PropertyGridState, Toast};
-    let mut context = Context::new();
-    context.set_messages(Some(Box::new(FluentMessages::new("cs-CZ", "en").unwrap())));
-    let mut state = PropertyGridState::default();
-    let mut width = 1.0;
-    context.push_toast(Toast::new("Uloženo"));
-    for _ in 0..2 {
-        context.run(Size::new(600.0, 600.0), &mut MonospaceMeasurer, |ui| {
-            ui.keyed("grid", |ui| {
-                ui.property_grid(&mut state, PropertyGridOptions::new("Karta"), |grid| {
+/// A property grid of one number, which the application stores.
+struct Form {
+    state: PropertyGridState,
+    width: f64,
+}
+
+impl App for Form {
+    type Message = PropertyMsg;
+
+    fn update(&mut self, message: PropertyMsg, _effects: &mut Effects<'_, PropertyMsg>) {
+        if let PropertyMsg::Number { value, .. } = &message {
+            self.width = *value;
+        }
+        self.state.apply(&message);
+    }
+
+    fn view(&self, ui: &mut Ui<'_, PropertyMsg>) {
+        ui.keyed("grid", |ui| {
+            ui.property_grid_msg(
+                &self.state,
+                PropertyGridOptions::new("Karta"),
+                |message| message,
+                |grid| {
                     grid.group("Rozměry", |grid| {
                         grid.default(2.0)
-                            .number("Šířka", &mut width, Default::default());
+                            .number("Šířka", self.width, Default::default());
                     });
-                })
-            });
+                },
+            )
         });
+    }
+}
+
+#[test]
+fn the_frameworks_own_controls_speak_the_installed_language() {
+    let mut context = Context::new();
+    context.set_messages(Some(Box::new(FluentMessages::new("cs-CZ", "en").unwrap())));
+    let mut app = Form {
+        state: PropertyGridState::default(),
+        width: 1.0,
+    };
+    let mut driver = AppDriver::new(|| true);
+    context.push_toast(Toast::new("Uloženo"));
+    for _ in 0..2 {
+        driver.frame(
+            &mut app,
+            &mut context,
+            Size::new(600.0, 600.0),
+            &mut MonospaceMeasurer,
+        );
     }
     let label = |path: &[&str]| {
         let node = context.node(context.find(path).unwrap()).unwrap();
