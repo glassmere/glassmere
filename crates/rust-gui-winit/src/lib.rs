@@ -80,7 +80,7 @@ use std::{
     time::{Duration, Instant},
 };
 use wakeup::UserEvent;
-pub use wakeup::WakeHandle;
+use wakeup::WakeHandle;
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalPosition, LogicalSize},

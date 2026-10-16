@@ -9,7 +9,7 @@ rust-gui use rust_gui_render_wgpu as render
 rust-gui use rust_gui_scene :: { Affine, Affinity, Color, Image, Point, Primitive, Rect, Scene, Size, VectorImage, }
 rust-gui use rust_gui_syntax as syntax
 rust-gui use rust_gui_winit :: hot
-rust-gui use rust_gui_winit :: { AppOptions, DirectionChoice, GpuMemoryPolicy, GpuSetup, GraphicsBackend, GraphicsOptions, Placement, ThemeChoice, WakeHandle, run, run_with, }
+rust-gui use rust_gui_winit :: { AppOptions, DirectionChoice, GpuMemoryPolicy, GpuSetup, GraphicsBackend, GraphicsOptions, Placement, ThemeChoice, run, run_with, }
 rust-gui-core   field Animation::alternate
 rust-gui-core   field Animation::duration
 rust-gui-core   field Animation::easing
@@ -1210,15 +1210,18 @@ rust-gui-core   variant Granularity::Char
 rust-gui-core   variant Granularity::Line
 rust-gui-core   variant Granularity::Word
 rust-gui-core   variant GridMsg::Activate
-rust-gui-core   variant GridMsg::Columns
 rust-gui-core   variant GridMsg::Deselect
 rust-gui-core   variant GridMsg::Edit
 rust-gui-core   variant GridMsg::Expand
 rust-gui-core   variant GridMsg::Filter
 rust-gui-core   variant GridMsg::FiltersApplied
+rust-gui-core   variant GridMsg::FreezeColumns
+rust-gui-core   variant GridMsg::HideColumn
 rust-gui-core   variant GridMsg::MoveColumn
+rust-gui-core   variant GridMsg::ResetColumns
 rust-gui-core   variant GridMsg::ResizeColumn
 rust-gui-core   variant GridMsg::Select
+rust-gui-core   variant GridMsg::ShowAllColumns
 rust-gui-core   variant GridMsg::Sort
 rust-gui-core   variant ImageFit::Contain
 rust-gui-core   variant ImageFit::Cover
@@ -1927,9 +1930,6 @@ rust-gui-winit   fn ImageFiles::new (wake : WakeHandle) -> Self
 rust-gui-winit   fn ImageFiles::request (& mut self, context : & mut Context, changed : bool)
 rust-gui-winit   fn Poller::changed (& mut self, path : & std :: path :: Path) -> Option < Result < Vec < u8>, String>>
 rust-gui-winit   fn Poller::stamp_changed (& mut self, path : & std :: path :: Path) -> bool
-rust-gui-winit   fn WakeHandle::is_closed (& self) -> bool
-rust-gui-winit   fn WakeHandle::request_exit (& self) -> bool
-rust-gui-winit   fn WakeHandle::request_redraw (& self) -> bool
 rust-gui-winit   variant DirectionChoice::Auto
 rust-gui-winit   variant DirectionChoice::Ltr
 rust-gui-winit   variant DirectionChoice::Rtl
@@ -1963,10 +1963,8 @@ rust-gui-winit struct AppOptions
 rust-gui-winit struct GpuSetup
 rust-gui-winit struct GraphicsOptions
 rust-gui-winit struct SavedWindow
-rust-gui-winit struct WakeHandle
 rust-gui-winit use graphics :: { GpuMemoryPolicy, GraphicsBackend, GraphicsOptions }
 rust-gui-winit use rust_gui_core :: { Mailbox, MessageSender }
-rust-gui-winit use wakeup :: WakeHandle
 rust-gui-testing   fn Harness < A>::app (size : Size, app : A) -> Self
 rust-gui-testing   fn Harness < A>::app_mut (& mut self) -> & mut A
 rust-gui-testing   fn Harness < A>::send (& mut self, message : A :: Message) -> FrameStats

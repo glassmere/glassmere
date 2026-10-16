@@ -982,7 +982,6 @@ impl ApplicationHandler<UserEvent> for Desktop {
     }
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
-            UserEvent::Exit => event_loop.exit(),
             UserEvent::Wake => {
                 self.wake.acknowledge();
                 for app in self.windows.values() {

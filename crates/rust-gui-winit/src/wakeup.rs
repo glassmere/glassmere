@@ -6,7 +6,6 @@ use winit::event_loop::EventLoopProxy;
 
 pub(crate) enum UserEvent {
     Wake,
-    Exit,
     Accessibility(accesskit_winit::Event),
 }
 
@@ -22,15 +21,12 @@ struct WakeState {
     closed: AtomicBool,
 }
 
-/// Cloneable, thread-safe wakeup for application-owned shared state or queues.
-/// Write the new state first, then request a redraw. Repeated requests coalesce.
+/// Cloneable, thread-safe wakeup of the event loop, for the host's own
+/// threads (the mailbox, image decodes). Repeated requests coalesce.
 #[derive(Clone)]
-pub struct WakeHandle(Arc<WakeState>);
+pub(crate) struct WakeHandle(Arc<WakeState>);
 
 impl WakeHandle {
-    pub fn is_closed(&self) -> bool {
-        self.0.closed.load(Ordering::Acquire)
-    }
     pub(crate) fn new(proxy: EventLoopProxy<UserEvent>) -> Self {
         Self(Arc::new(WakeState {
             proxy,
@@ -40,7 +36,7 @@ impl WakeHandle {
     }
 
     /// Returns false after shutdown. This wakes the event loop without polling.
-    pub fn request_redraw(&self) -> bool {
+    pub(crate) fn request_redraw(&self) -> bool {
         if self.0.closed.load(Ordering::Acquire) {
             return false;
         }
@@ -52,10 +48,6 @@ impl WakeHandle {
             return false;
         }
         true
-    }
-
-    pub fn request_exit(&self) -> bool {
-        !self.0.closed.load(Ordering::Acquire) && self.0.proxy.send_event(UserEvent::Exit).is_ok()
     }
 
     pub(crate) fn acknowledge(&self) {

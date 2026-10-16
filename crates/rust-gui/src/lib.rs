@@ -28,5 +28,5 @@ pub use rust_gui_winit::hot;
 #[cfg(feature = "desktop")]
 pub use rust_gui_winit::{
     AppOptions, DirectionChoice, GpuMemoryPolicy, GpuSetup, GraphicsBackend, GraphicsOptions,
-    Placement, ThemeChoice, WakeHandle, run, run_with,
+    Placement, ThemeChoice, run, run_with,
 };
