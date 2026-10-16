@@ -19,6 +19,47 @@ use std::{
     rc::Rc,
 };
 
+/// The view declaring on this thread, if one is: whether a refused write
+/// panics, and the messages of the writes it refused.
+struct Declaration {
+    panics: bool,
+    refused: Vec<String>,
+}
+
+thread_local! {
+    static DECLARATION: RefCell<Option<Declaration>> = const { RefCell::new(None) };
+}
+
+/// Runs a view's declaration with writes to signals refused, and returns
+/// what they tried to write, for the context to report as misuses.
+pub(crate) fn declaring<R>(panics: bool, declare: impl FnOnce() -> R) -> (R, Vec<String>) {
+    /// Puts back the declaration that was running before this one, even when
+    /// the view panics.
+    struct Restore(Option<Declaration>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            DECLARATION.with(|declaration| *declaration.borrow_mut() = self.0.take());
+        }
+    }
+    let outer = DECLARATION.with(|declaration| {
+        declaration.replace(Some(Declaration {
+            panics,
+            refused: Vec::new(),
+        }))
+    });
+    let restore = Restore(outer);
+    let value = declare();
+    let refused = DECLARATION.with(|declaration| {
+        declaration
+            .borrow_mut()
+            .as_mut()
+            .map(|declaration| std::mem::take(&mut declaration.refused))
+            .unwrap_or_default()
+    });
+    drop(restore);
+    (value, refused)
+}
+
 /// What a value in a [`Store`] is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StateKind {
@@ -115,21 +156,41 @@ impl Inner {
 
     /// A memo that writes would make what others read depend on when they
     /// read it, so it is a mistake rather than a policy: a debug build
-    /// panics, and a release build drops the write and logs it. Returns
-    /// whether the write may go ahead.
-    fn may_write(&self) -> bool {
+    /// panics, and a release build drops the write and logs it. A view that
+    /// writes a signal is the same mistake, reported through its declaration.
+    /// Returns whether the write may go ahead.
+    fn may_write(&self, id: usize) -> bool {
         let computing = self.tracking.borrow().last().map(|(id, _)| *id);
-        let Some(id) = computing else {
-            return true;
-        };
-        let name = self.slots.borrow()[id].name.clone();
-        let message =
-            format!("`{name}` changed state while it was computing; a memo may only read");
-        if cfg!(debug_assertions) {
-            panic!("{message}");
+        if let Some(computing) = computing {
+            let name = self.slots.borrow()[computing].name.clone();
+            let message =
+                format!("`{name}` changed state while it was computing; a memo may only read");
+            if cfg!(debug_assertions) {
+                panic!("{message}");
+            }
+            tracing::error!(target: "rust_gui::diagnostics", "{message}");
+            return false;
         }
-        tracing::error!(target: "rust_gui::diagnostics", "{message}");
-        false
+        self.declaration_allows(id)
+    }
+
+    /// Inside a declaration a write is refused: a debug build panics, and a
+    /// release build drops it and hands the message to the declaration, which
+    /// reports it as a misuse.
+    fn declaration_allows(&self, id: usize) -> bool {
+        DECLARATION.with(|declaration| {
+            let mut declaration = declaration.borrow_mut();
+            let Some(Declaration { panics, refused }) = declaration.as_mut() else {
+                return true;
+            };
+            let name = self.slots.borrow()[id].name.clone();
+            let message = format!(
+                "`{name}` was written while a view was declaring; a view reads state and `update` writes it"
+            );
+            assert!(!*panics, "{message}");
+            refused.push(message);
+            false
+        })
     }
 
     /// A cycle has no value to fall back on, so it panics in every build.
@@ -273,7 +334,7 @@ impl<T> Signal<T> {
     where
         T: PartialEq,
     {
-        if !self.store.may_write() || *self.value.borrow() == value {
+        if !self.store.may_write(self.id) || *self.value.borrow() == value {
             return;
         }
         *self.value.borrow_mut() = value;
@@ -283,7 +344,7 @@ impl<T> Signal<T> {
     /// Changes in place, for a value too large to rebuild or not worth
     /// comparing. Always counts as a change.
     pub fn update(&self, change: impl FnOnce(&mut T)) {
-        if !self.store.may_write() {
+        if !self.store.may_write(self.id) {
             return;
         }
         change(&mut self.value.borrow_mut());

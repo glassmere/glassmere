@@ -10,7 +10,7 @@
 //! ```sh
 //! cargo run -p rust-gui-core --example bench --release
 //! ```
-use rust_gui_core::Label;
+use rust_gui_core::{Action, Label};
 use rust_gui_core::{
     App, AppDriver, Button, CodeEditorOptions, Context, Easing, Effects, Event, FrameStats,
     GridColumn, GridModel, GridMsg, GridState, ItemId, Length, ListModel, ListState,
@@ -411,17 +411,23 @@ fn animation() -> Vec<Timing> {
     })]
 }
 
-/// A screenful of buttons whose hover and focus the view does not read.
-struct Buttons;
+/// A screenful of buttons whose hover and focus the view does not read. The
+/// count of clicks is the one thing the view reads.
+struct Buttons {
+    clicks: usize,
+}
 
 impl App for Buttons {
     type Message = usize;
 
-    fn update(&mut self, _: usize, _: &mut Effects<'_, usize>) {}
+    fn update(&mut self, _: usize, _: &mut Effects<'_, usize>) {
+        self.clicks += 1;
+    }
 
     fn view(&self, ui: &mut Ui<'_, usize>) {
         ui.keyed("buttons", |ui| {
             ui.column(Style::default(), |ui| {
+                ui.label(format!("Clicks {}", self.clicks));
                 for index in 0..ANIMATED {
                     ui.keyed(format!("button{index}"), |ui| {
                         ui.button(Button::new(format!("Button {index}")).on_click(index));
@@ -435,7 +441,7 @@ impl App for Buttons {
 /// Batches with no input, and with the pointer moving over buttons nobody
 /// observes: neither declares.
 fn app() -> Vec<Timing> {
-    let mut app = Buttons;
+    let mut app = Buttons { clicks: 0 };
     let mut driver = AppDriver::new(|| true);
     let mut context = Context::new();
     let mut first = true;
@@ -457,11 +463,26 @@ fn app() -> Vec<Timing> {
     ]
 }
 
+/// One click: an activation that sends one message, the update it runs, and
+/// the one declaration that follows.
+fn click() -> Vec<Timing> {
+    let mut run = Run::new(Buttons { clicks: 0 });
+    run.frame(Vec::new());
+    let button = run
+        .context
+        .find(&["buttons", "button0"])
+        .expect("the first button");
+    vec![measure("app", "click", RUNS, |_| {
+        run.context.action(button, Action::Activate);
+        run.frame(Vec::new())
+    })]
+}
+
 fn main() {
     println!(
         "scenario,phase,mean_us,p95_us,shaping_us,elements,element_bytes,measures,paint_nodes,cache_hits"
     );
-    for timing in [table(), tree(), text(), animation(), app()]
+    for timing in [table(), tree(), text(), animation(), app(), click()]
         .into_iter()
         .flatten()
     {

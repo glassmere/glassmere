@@ -391,6 +391,34 @@ mod tests {
     }
 
     #[test]
+    fn a_signal_written_while_a_view_declares_is_a_misuse_and_is_not_written() {
+        let mut context = release();
+        let store = crate::Store::new();
+        let signal = store.signal("count", 0);
+        frame(&mut context, |ui| {
+            signal.set(1);
+            ui.label(format!("count {}", signal.get()));
+        });
+        assert_eq!(signal.get(), 0, "a refused write changed the value");
+        let misuses = misuses(&context);
+        assert_eq!(misuses.len(), 1, "{misuses:?}");
+        assert!(misuses[0].contains("`count`"), "{misuses:?}");
+        // Outside a declaration the same write goes ahead.
+        signal.set(2);
+        assert_eq!(signal.get(), 2);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "was written while a view was declaring")]
+    fn a_signal_written_while_a_view_declares_panics_in_a_debug_build() {
+        let mut context = Context::new();
+        let store = crate::Store::new();
+        let signal = store.signal("count", 0);
+        frame(&mut context, |_| signal.set(1));
+    }
+
+    #[test]
     fn a_duplicate_key_leaves_the_second_widget_out_and_reports_it() {
         let mut context = release();
         frame(&mut context, |ui| {

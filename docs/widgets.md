@@ -55,6 +55,8 @@ Msg::Search(message) => self.search.update(message, &mut effects.map(Msg::Search
 
 The framework keeps nothing for it. The struct is the state, the application holds it, and `Ui::component` gives it a stable scope and turns its messages into the parent's.
 
+A message is built from what the view declared, so two activations of a checkbox in one batch both send `Toggle(true)` when it shows unchecked, and `update` sets the state it is told rather than flipping it; a component that must flip on every activation sends a message that carries no value.
+
 ## A widget of your own
 
 When it draws something the built-in controls cannot, it is a leaf: `Ui::widget` hands it what it needs and takes back what it paints, and `WidgetBuilder::on_event` turns what it hears into a message.

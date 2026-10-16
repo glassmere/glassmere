@@ -1,7 +1,13 @@
-use rust_gui_core::{Action, App, Button, Effects, Event, Key, Style, TextEdit, TextInput, Ui};
+use rust_gui_core::{
+    Action, App, Button, Component, Effects, Event, Key, MessageSender, Style, TextEdit, TextInput,
+    Ui,
+};
 use rust_gui_scene::Size;
 use rust_gui_testing::Harness;
 use std::cell::Cell;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 #[derive(Clone, Debug, PartialEq)]
 enum Msg {
@@ -167,4 +173,153 @@ fn a_slider_sends_a_snapped_value() {
     harness.action(slider, Action::Increment);
     harness.run();
     assert_eq!(harness.state().value, 4.0);
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum Pipe {
+    Start,
+    Target,
+    Spawned(String),
+    Sent(String),
+}
+
+/// Starts a job in `update` and opens a channel in `init`, then records what
+/// arrives.
+#[derive(Default)]
+struct Pipes {
+    sender: Option<MessageSender<String>>,
+    finished: Arc<AtomicBool>,
+    messages: Vec<Pipe>,
+}
+
+impl App for Pipes {
+    type Message = Pipe;
+
+    fn init(&mut self, effects: &mut Effects<'_, Pipe>) {
+        self.sender = Some(effects.channel(4, Pipe::Sent));
+    }
+
+    fn update(&mut self, message: Pipe, effects: &mut Effects<'_, Pipe>) {
+        if message == Pipe::Start {
+            let finished = self.finished.clone();
+            let _ = effects.spawn(
+                "job",
+                move |sender| {
+                    let _ = sender.send("spawned".to_owned());
+                    finished.store(true, Ordering::Release);
+                },
+                Pipe::Spawned,
+            );
+        }
+        self.messages.push(message);
+    }
+
+    fn view(&self, ui: &mut Ui<'_, Pipe>) {
+        ui.button(Button::new("Start").on_click(Pipe::Start));
+        ui.button(Button::new("Target").on_click(Pipe::Target));
+    }
+}
+
+#[test]
+fn spawned_and_channel_messages_arrive_after_the_input_of_their_batch() {
+    let mut harness = Harness::app(Size::new(400.0, 300.0), Pipes::default());
+    harness.click(harness.by_label("Start"));
+    // The job's result is only drained by the next batch, never the one that
+    // started it, so this is the same whether or not the job has finished.
+    assert_eq!(harness.state().messages, [Pipe::Start]);
+    let started = Instant::now();
+    while !harness.state().finished.load(Ordering::Acquire) {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the job never ran"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let sender = harness.state().sender.as_ref().expect("opened in init");
+    sender.try_send("channel".to_owned()).expect("room");
+    harness.click(harness.by_label("Target"));
+    // One batch: the input first, then the spawned job's result, then the
+    // channel's value. `AppDriver::batch` drains workers before channels.
+    assert_eq!(
+        harness.state().messages,
+        [
+            Pipe::Start,
+            Pipe::Target,
+            Pipe::Spawned("spawned".to_owned()),
+            Pipe::Sent("channel".to_owned()),
+        ]
+    );
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum Loader {
+    Load,
+    Loaded(String),
+}
+
+/// A component whose `update` asks for a channel, and whose result comes
+/// back through `Effects::map` as the parent's message.
+#[derive(Default)]
+struct Fetch {
+    loaded: Option<String>,
+}
+
+impl Component for Fetch {
+    type Message = Loader;
+
+    fn update(&mut self, message: Loader, effects: &mut Effects<'_, Loader>) {
+        match message {
+            Loader::Load => {
+                let sender = effects.channel(1, Loader::Loaded);
+                sender.try_send("data".to_owned()).expect("room");
+            }
+            Loader::Loaded(text) => self.loaded = Some(text),
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, Loader>) {
+        ui.button(Button::new("Load").on_click(Loader::Load));
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum Page {
+    Fetch(Loader),
+}
+
+#[derive(Default)]
+struct Parent {
+    fetch: Fetch,
+    received: Vec<Page>,
+}
+
+impl App for Parent {
+    type Message = Page;
+
+    fn update(&mut self, message: Page, effects: &mut Effects<'_, Page>) {
+        self.received.push(message.clone());
+        match message {
+            Page::Fetch(message) => self.fetch.update(message, &mut effects.map(Page::Fetch)),
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, Page>) {
+        ui.component(Style::default(), &self.fetch, Page::Fetch);
+    }
+}
+
+#[test]
+fn a_component_effect_result_reaches_the_parent_as_the_parent_message() {
+    let mut harness = Harness::app(Size::new(400.0, 300.0), Parent::default());
+    harness.click(harness.by_label("Load"));
+    assert_eq!(harness.state().received, [Page::Fetch(Loader::Load)]);
+    harness.run();
+    assert_eq!(
+        harness.state().received,
+        [
+            Page::Fetch(Loader::Load),
+            Page::Fetch(Loader::Loaded("data".to_owned())),
+        ]
+    );
+    assert_eq!(harness.state().fetch.loaded.as_deref(), Some("data"));
 }

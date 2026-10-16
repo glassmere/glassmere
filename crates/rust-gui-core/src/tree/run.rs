@@ -58,6 +58,7 @@ impl Context {
         self.declared_bytes.set(0);
         self.families.borrow_mut().clear();
         self.nodes.get_mut(&self.root).unwrap().resolved = self.root_text();
+        let panics = self.misuse_panics();
         let mut ui = Ui {
             context: self,
             parent: Some(self.root),
@@ -78,9 +79,14 @@ impl Context {
             handlers,
             handler_base: 0,
         };
-        view(&mut ui);
-        ui.declare_toasts();
+        let ((), refused) = crate::reactive::declaring(panics, || {
+            view(&mut ui);
+            ui.declare_toasts();
+        });
         let mut elements = ui.elements;
+        for message in refused {
+            self.misuse(None, message);
+        }
         let mut dialog_keys = HashSet::new();
         for layer in layers {
             if dialog_keys.insert(layer.key.clone()) {
