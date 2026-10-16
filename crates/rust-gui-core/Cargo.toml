@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
+readme.workspace = true
+description = "Retained UI kernel for rust-gui: stable identity, reconciliation, layout, input and semantics."
+keywords = ["gui", "ui", "retained", "layout", "accessibility"]
+categories = ["gui"]
 
 [features]
 serde = ["dep:serde"]

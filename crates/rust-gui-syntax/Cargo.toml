@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
+description = "Syntax highlighting for rust-gui's code editor, using syntect's bundled grammars and themes."
 
 [dependencies]
 rust-gui-core.workspace = true

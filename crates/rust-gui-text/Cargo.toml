@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
+description = "Fonts, shaping and measuring shared by rust-gui's renderers, built on cosmic-text."
 
 [dependencies]
 rust-gui-scene.workspace = true

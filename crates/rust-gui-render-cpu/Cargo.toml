@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
+description = "CPU renderer for rust-gui scenes: screenshots, export, and a desktop fallback without a GPU."
 
 [dependencies]
 rust-gui-scene.workspace = true

@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
+description = "Frame and event recorder, inspector model and views for rust-gui hosts; no platform dependencies."
 
 [dependencies]
 rust-gui-core.workspace = true

@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
+readme.workspace = true
+description = "#[derive(Properties)] for rust-gui: property grid rows generated from a struct's fields."
+keywords = ["gui", "derive", "properties", "proc-macro", "property-grid"]
+categories = ["development-tools::procedural-macro-helpers", "gui"]
 
 [lib]
 proc-macro = true

@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
+readme.workspace = true
+description = "Event-driven desktop host for rust-gui: logical coordinates, a wgpu surface, and native windows."
+keywords = ["gui", "winit", "wgpu", "window", "desktop"]
+categories = ["gui", "graphics"]
 
 [features]
 diagnostics = []

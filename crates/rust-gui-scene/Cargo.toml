@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
+description = "Renderer-independent geometry, text measurement and ordered paint commands for rust-gui."
 
 [lints]
 workspace = true
