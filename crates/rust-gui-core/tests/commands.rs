@@ -1,8 +1,8 @@
 mod support;
 
 use rust_gui_core::{
-    Action, Command, Context, DialogOptions, Event, FocusScope, Key, Length, MenuItem,
-    MonospaceMeasurer, Shortcut, ShortcutKey, Style, Ui,
+    Action, Command, CommandPalette, Context, DialogOptions, Event, FocusScope, Key, Length,
+    MenuItem, MonospaceMeasurer, Shortcut, ShortcutKey, Style, Ui,
 };
 use rust_gui_scene::Size;
 use support::{Driven, act, on};
@@ -225,14 +225,14 @@ fn palette_page(state: &Palette, ui: &mut Ui<'_, Handler<Palette>>) {
         ui.command_palette(
             state.open,
             &state.query,
-            on(|s: &mut Palette, open: bool| s.open = open),
-            on(|s: &mut Palette, query: String| s.query = query),
-            on(|s: &mut Palette, index: usize| {
-                s.picks.push(index);
-                s.open = false;
-                s.query.clear();
-            }),
             &commands,
+            CommandPalette::new(on(|s: &mut Palette, query: String| s.query = query))
+                .on_open(on(|s: &mut Palette, open: bool| s.open = open))
+                .on_pick(on(|s: &mut Palette, index: usize| {
+                    s.picks.push(index);
+                    s.open = false;
+                    s.query.clear();
+                })),
         );
     });
 }

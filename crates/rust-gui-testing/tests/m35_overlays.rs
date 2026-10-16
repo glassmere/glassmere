@@ -1,8 +1,8 @@
 //! Overlays, dialogs, popovers and toasts sending messages through `Harness::app`.
 
 use rust_gui_core::{
-    App, Button, Command, DialogOptions, Effects, Event, Key, MenuItem, PopoverOptions, Style, Tab,
-    Toast, Ui,
+    App, Button, Command, CommandPalette, DialogOptions, Effects, Event, Key, MenuItem,
+    PopoverOptions, Style, Tab, Toast, Ui,
 };
 use rust_gui_scene::{Point, Size};
 use rust_gui_testing::Harness;
@@ -96,10 +96,10 @@ impl App for Overlays {
         ui.command_palette(
             self.palette,
             &self.query,
-            Msg::Palette,
-            Msg::Query,
-            Msg::Pick,
             &commands,
+            CommandPalette::new(Msg::Query)
+                .on_open(Msg::Palette)
+                .on_pick(Msg::Pick),
         );
         ui.button(Button::new("Raise").on_click(Msg::Raise));
         ui.tabs(

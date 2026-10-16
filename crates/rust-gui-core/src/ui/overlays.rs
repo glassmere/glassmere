@@ -1,6 +1,38 @@
 use super::*;
 use crate::{Align, Axis, Length, MenuItem, PopoverOptions, SplitOptions, Tab, TextInput};
 use rust_gui_scene::Color;
+use std::rc::Rc;
+
+/// What a command palette sends; see [`Ui::command_palette`].
+pub struct CommandPalette<M = ()> {
+    on_query: Box<dyn Fn(String) -> M>,
+    on_open: Option<Box<dyn Fn(bool) -> M>>,
+    on_pick: Option<Rc<dyn Fn(usize) -> M>>,
+}
+
+impl<M> CommandPalette<M> {
+    /// A palette that sends `on_query(text)` as the query is typed.
+    pub fn new(on_query: impl Fn(String) -> M + 'static) -> Self {
+        Self {
+            on_query: Box::new(on_query),
+            on_open: None,
+            on_pick: None,
+        }
+    }
+
+    /// Escape or a scrim click sends `message(false)`.
+    pub fn on_open(mut self, message: impl Fn(bool) -> M + 'static) -> Self {
+        self.on_open = Some(Box::new(message));
+        self
+    }
+
+    /// Enter, or a click on a row, sends `message(index)`, where `index` is
+    /// into the commands the palette was given.
+    pub fn on_pick(mut self, message: impl Fn(usize) -> M + 'static) -> Self {
+        self.on_pick = Some(Rc::new(message));
+        self
+    }
+}
 
 impl<'a, M: 'static> Ui<'a, M> {
     /// Attaches hover help to the previously declared widget. It appears after a
@@ -285,19 +317,23 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// a shortcut from the window.
     ///
     /// Escape or a scrim click
-    /// sends `on_open(false)`; typing sends `on_query(text)`; Enter or a click
-    /// on a row sends `on_pick(index)`, where `index` is into `commands`. The
-    /// application closes the palette and clears the query in `update`.
+    /// sends `palette`'s `on_open(false)`; typing sends its `on_query(text)`;
+    /// Enter or a click on a row sends its `on_pick(index)`, where `index` is
+    /// into `commands`. The application closes the palette and clears the
+    /// query in `update`.
     #[track_caller]
     pub fn command_palette(
         &mut self,
         open: bool,
         query: &str,
-        on_open: impl Fn(bool) -> M + 'static,
-        on_query: impl Fn(String) -> M + 'static,
-        on_pick: impl Fn(usize) -> M + 'static,
         commands: &[crate::Command],
+        palette: CommandPalette<M>,
     ) {
+        let CommandPalette {
+            on_query,
+            on_open,
+            on_pick,
+        } = palette;
         // Dialogs need a plain name; a call-site key has none of its own.
         let name = match self.next_key() {
             WidgetKey::Named(name) => name,
@@ -339,7 +375,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                     .find(|(_, command)| command.enabled)
                     .map(|(index, _)| *index);
                 let mut input = TextInput::new(ui.context.tr("rust-gui-palette-query", &[]));
-                if let Some(index) = first {
+                if let (Some(index), Some(on_pick)) = (first, &on_pick) {
                     input = input.on_submit(on_pick(index));
                 }
                 ui.at("query").text_input(input, query, on_query);
@@ -361,7 +397,9 @@ impl<'a, M: 'static> Ui<'a, M> {
                                 command.enabled,
                                 row.clone(),
                             );
-                            ui.set_handler(crate::app::Handler::Message(on_pick(*index)));
+                            if let Some(on_pick) = &on_pick {
+                                ui.set_handler(crate::app::Handler::Message(on_pick(*index)));
+                            }
                             if let Some(shortcut) = &command.shortcut {
                                 ui.set_control(Control::Hint(shortcut.describe()));
                             }
@@ -373,7 +411,10 @@ impl<'a, M: 'static> Ui<'a, M> {
                     },
                 );
             },
-            closing(on_open),
+            match on_open {
+                Some(on_open) => closing(on_open),
+                None => crate::app::Handler::Map(Box::new(|_| None)),
+            },
         );
     }
 

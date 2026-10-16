@@ -15,6 +15,7 @@ mod fields;
 pub use fields::{Autocomplete, suggest};
 mod image;
 mod overlays;
+pub use overlays::CommandPalette;
 mod property_grid;
 pub use property_grid::PropertyGrid;
 mod areas;
@@ -158,13 +159,14 @@ pub(crate) struct Element {
     pub control: Control,
 }
 
-/// What a widget reports about itself. Reading [`Response::hovered`] or
-/// [`Response::focused`] tells the framework the view depends on that state,
+/// What a widget reports about itself. Reading [`Response::hovered`],
+/// [`Response::pressed`] or [`Response::focused`] tells the framework the view depends on that state,
 /// so a change in it declares the view again; a change in a state nobody
 /// read only repaints.
 #[derive(Clone, Copy, Default)]
 pub struct Response<'a> {
     hovered: bool,
+    pressed: bool,
     focused: bool,
     observer: Option<(&'a Context, Observed)>,
 }
@@ -180,6 +182,7 @@ impl std::fmt::Debug for Response<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Response")
             .field("hovered", &self.hovered)
+            .field("pressed", &self.pressed)
             .field("focused", &self.focused)
             .finish()
     }
@@ -191,6 +194,13 @@ impl Response<'_> {
     pub fn hovered(&self) -> bool {
         self.observe();
         self.hovered
+    }
+
+    /// Whether the widget is being held down, by pointer, touch or keyboard;
+    /// the view is declared again when that changes.
+    pub fn pressed(&self) -> bool {
+        self.observe();
+        self.pressed
     }
 
     /// Whether the widget has the keyboard; the view is declared again when
@@ -205,6 +215,7 @@ impl Response<'_> {
     pub(crate) fn rebind(self, context: &Context) -> Response<'_> {
         Response {
             hovered: self.hovered,
+            pressed: self.pressed,
             focused: self.focused,
             observer: self.observer.map(|(_, observed)| (context, observed)),
         }
@@ -375,6 +386,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         let response = match existing {
             Some(id) => Response {
                 hovered: context.hovered() == Some(id),
+                pressed: context.pressed(id),
                 focused: context.focused() == Some(id),
                 observer: Some((context, Observed::Node(id))),
             },
