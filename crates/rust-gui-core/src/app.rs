@@ -186,6 +186,11 @@ trait Delivery {
     fn running(&self, _key: &str) -> bool {
         false
     }
+    /// Whether the table still holds the job under this key: running, or
+    /// finished with results waiting.
+    fn tracks(&self, _key: &str) -> bool {
+        true
+    }
     fn as_any(&mut self) -> &mut dyn Any;
 }
 
@@ -202,6 +207,10 @@ impl<T: Send + 'static> Delivery for Tasks<String, T> {
 
     fn running(&self, key: &str) -> bool {
         Tasks::running(self, &key.to_owned())
+    }
+
+    fn tracks(&self, key: &str) -> bool {
+        Tasks::tracks(self, &key.to_owned())
     }
 
     fn as_any(&mut self) -> &mut dyn Any {
@@ -256,6 +265,7 @@ pub(crate) struct Requests {
 /// in: the driver's own, or a component's mapped onto it.
 trait Sink<M> {
     fn requests(&mut self) -> &mut Requests;
+    fn requests_ref(&self) -> &Requests;
     fn paste(&mut self, message: Box<dyn Fn(Clip) -> M>);
     fn files(&mut self, message: Box<dyn Fn(Vec<PathBuf>) -> M>);
     fn task(&mut self, kind: TypeId, key: String, lift: Lift<M>);
@@ -279,6 +289,10 @@ struct EffectState<M> {
 impl<M> Sink<M> for EffectState<M> {
     fn requests(&mut self) -> &mut Requests {
         &mut self.requests
+    }
+
+    fn requests_ref(&self) -> &Requests {
+        &self.requests
     }
 
     fn paste(&mut self, message: Box<dyn Fn(Clip) -> M>) {
@@ -316,6 +330,10 @@ struct Mapped<'a, N, M> {
 impl<N: 'static, M: 'static> Sink<N> for Mapped<'_, N, M> {
     fn requests(&mut self) -> &mut Requests {
         self.inner.requests()
+    }
+
+    fn requests_ref(&self) -> &Requests {
+        self.inner.requests_ref()
     }
 
     fn paste(&mut self, message: Box<dyn Fn(Clip) -> N>) {
@@ -500,8 +518,12 @@ impl<M: 'static> Effects<'_, M> {
     }
 
     /// Whether a job under this key is still running.
-    pub fn running(&mut self, key: &str) -> bool {
-        self.requests()
+    pub fn running(&self, key: &str) -> bool {
+        let sink: &dyn Sink<M> = match &self.sink {
+            SinkRef::Borrowed(sink) => &**sink,
+            SinkRef::Owned(sink) => &**sink,
+        };
+        sink.requests_ref()
             .tasks
             .values()
             .any(|tasks| tasks.running(key))
@@ -776,6 +798,11 @@ impl<M: Clone + 'static> AppDriver<M> {
                     out.extend(lift(value));
                 }
             });
+            // A job the table has forgotten ended and had everything
+            // delivered, or was cancelled; its way back to a message goes too.
+            if let Some(messages) = effects.task_messages.get_mut(kind) {
+                messages.retain(|key, _| tasks.tracks(key));
+            }
         }
         for (mailbox, lift) in &mut effects.channels {
             mailbox.deliver(DELIVERED_PER_BATCH, &mut |_, value| out.extend(lift(value)));

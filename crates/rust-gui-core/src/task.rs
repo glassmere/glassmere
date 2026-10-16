@@ -234,6 +234,12 @@ impl<K: Clone + Eq + Hash, T> Tasks<K, T> {
         self.live.get(key).is_some_and(|live| !live.finished())
     }
 
+    /// Whether the job under `key` is still known: running, or ended with
+    /// results not yet drained. Cancelled and superseded-away jobs are not.
+    pub(crate) fn tracks(&self, key: &K) -> bool {
+        self.live.contains_key(key)
+    }
+
     pub fn running_keys(&self) -> impl Iterator<Item = &K> {
         self.live
             .iter()
