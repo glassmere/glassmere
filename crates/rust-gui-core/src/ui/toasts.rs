@@ -1,7 +1,5 @@
 use super::*;
-use crate::{
-    Align, Effect, Length, Toast, ToastAction, ToastId, ToastKind, ToastSender, Transition,
-};
+use crate::{Align, Effect, Length, Toast, ToastId, ToastKind, ToastSender, Transition};
 use rust_gui_scene::{Color, TextWrap};
 
 /// What a declaration did with toasts; applied by the context afterwards.
@@ -10,8 +8,6 @@ pub(crate) struct ToastOutbox {
     pub raised: Vec<(ToastId, Toast)>,
     /// Dismissed toasts, and whether through their action button.
     pub closed: Vec<(ToastId, bool)>,
-    /// Actions handed to the app by `Ui::toast_action`.
-    pub taken: usize,
 }
 
 // ponytail: fixed colours; theme tokens when apps need to restyle toasts.
@@ -25,28 +21,6 @@ fn accent(kind: ToastKind, info: Color) -> Color {
 }
 
 impl<'a, M: 'static> Ui<'a, M> {
-    /// Shows a short message in the bottom corner at the end of the reading
-    /// direction. It leaves after its duration, which pauses while the
-    /// pointer or the keyboard is on any toast. Four show at once and later
-    /// ones wait. A toast equal to one already there restarts it instead of
-    /// stacking. Call it when something happens, not every frame.
-    #[track_caller]
-    pub fn toast(&mut self, toast: Toast) -> ToastId {
-        let id = self.context.next_toast_id();
-        self.host.toasts.raised.push((id, toast));
-        *self.redraw = true;
-        id
-    }
-
-    /// The next click on a toast's action button, once. `Effects::toast_msg`
-    /// sends the same actions as messages instead.
-    #[track_caller]
-    pub fn toast_action(&mut self) -> Option<ToastAction> {
-        let action = self.context.toast_action_at(self.host.toasts.taken)?;
-        self.host.toasts.taken += 1;
-        Some(action)
-    }
-
     /// For raising toasts in this window from other threads.
     #[track_caller]
     pub fn toast_sender(&self) -> ToastSender {
@@ -116,16 +90,16 @@ impl<'a, M: 'static> Ui<'a, M> {
                             padding: 8.0,
                             ..Style::button()
                         };
-                        if let Some(action) = &toast.action
-                            && ui
-                                .button_at("$action", action.clone(), true, compact.clone())
-                                .clicked()
-                        {
-                            closed.push((*id, true));
+                        if let Some(action) = &toast.action {
+                            if ui.clicked_at("$action") {
+                                closed.push((*id, true));
+                            }
+                            ui.button_at("$action", action.clone(), true, compact.clone());
                         }
-                        if ui.button_at("$close", "\u{00d7}", true, compact).clicked() {
+                        if ui.clicked_at("$close") {
                             closed.push((*id, false));
                         }
+                        ui.button_at("$close", "\u{00d7}", true, compact);
                         ui.tooltip(ui.context.tr("rust-gui-toast-dismiss", &[]));
                     },
                 );

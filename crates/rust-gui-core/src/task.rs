@@ -141,8 +141,8 @@ pub struct Tasks<K, T> {
 
 impl<K: Clone + Eq + Hash, T> Tasks<K, T> {
     /// `capacity` is how many results can wait, over all jobs together.
-    /// `wake` asks for a UI turn; hosts have one ready, as
-    /// `WakeHandle::tasks`.
+    /// `wake` asks for a UI turn; an application has jobs ready in
+    /// `Effects::spawn`.
     pub fn new(capacity: usize, wake: impl Fn() -> bool + Send + Sync + 'static) -> Self {
         let (sender, mailbox) = message_channel(capacity, wake);
         Self {

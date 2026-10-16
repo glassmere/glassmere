@@ -92,11 +92,11 @@ impl rust_gui::App for CardApp {
 
     fn view(&self, ui: &mut Ui<'_, CardEvent>) {
         ui.keyed("grid", |ui| {
-            ui.property_grid_msg(
+            ui.property_grid(
                 &self.state,
                 PropertyGridOptions::new("Card"),
                 CardEvent::Grid,
-                |grid| self.card.properties_msg(grid, CardEvent::Card),
+                |grid| self.card.properties(grid, CardEvent::Card),
             )
         });
     }
@@ -278,11 +278,11 @@ impl rust_gui::App for LampApp {
     }
 
     fn view(&self, ui: &mut Ui<'_, Msg>) {
-        ui.property_grid_msg(
+        ui.property_grid(
             &self.state,
             PropertyGridOptions::new("Lamp"),
             Msg::Grid,
-            |grid| self.lamp.properties_msg(grid, Msg::Lamp),
+            |grid| self.lamp.properties(grid, Msg::Lamp),
         );
     }
 }

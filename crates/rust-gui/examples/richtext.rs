@@ -1,7 +1,7 @@
 use rust_gui::syntax::SyntectHighlighter;
 use rust_gui::{
     App, AppOptions, Axis, CodeEditorOptions, Effects, Label, Length, RichDocument,
-    RichEditorOptions, RichOp, Size, SplitOptions, Style, TextDocument, TextOp, Ui, run_app,
+    RichEditorOptions, RichOp, Size, SplitOptions, Style, TextDocument, TextOp, Ui, run,
 };
 use std::cell::RefCell;
 
@@ -83,7 +83,7 @@ impl App for RichTextApp {
         };
         ui.column(page, |ui| {
             let mut link = None;
-            ui.split_msg(
+            ui.split(
                 self.share,
                 Msg::Split,
                 Axis::Horizontal,
@@ -97,7 +97,7 @@ impl App for RichTextApp {
                     ..SplitOptions::default()
                 },
                 |ui| {
-                    let response = ui.rich_editor_msg(
+                    let response = ui.rich_editor(
                         &self.document,
                         RichEditorOptions {
                             label: "Release notes".into(),
@@ -109,7 +109,7 @@ impl App for RichTextApp {
                     link = response.link_at_cursor;
                 },
                 |ui| {
-                    ui.code_editor_msg(
+                    ui.code_editor(
                         &self.markdown,
                         CodeEditorOptions {
                             label: "Markdown output".into(),
@@ -149,7 +149,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let document = RichDocument::from_markdown(SAMPLE);
     let markdown = TextDocument::from_text(&document.to_markdown());
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Rich text".into(),
             size: Size::new(1100.0, 720.0),

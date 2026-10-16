@@ -54,7 +54,7 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// sends its buttons' ops the same way, and hands the focus back to the
     /// text after each press.
     #[track_caller]
-    pub fn rich_editor_msg(
+    pub fn rich_editor(
         &mut self,
         document: &RichDocument,
         options: RichEditorOptions,
@@ -70,7 +70,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         let key = self.next_key();
         self.group(key, Kind::CodeEditor, outer, |ui| {
             if options.toolbar && !read_only {
-                ui.rich_toolbar_msg(document, &*on);
+                ui.rich_toolbar(document, &*on);
             }
             ui.rich_editor_declare(document, options, Some(rich_handler(on, read_only)));
         });
@@ -127,9 +127,9 @@ impl<'a, M: 'static> Ui<'a, M> {
         }
     }
 
-    /// The toolbar of [`Ui::rich_editor_msg`]: each button sends its op.
+    /// The toolbar of [`Ui::rich_editor`]: each button sends its op.
     #[track_caller]
-    fn rich_toolbar_msg(&mut self, document: &RichDocument, on: &dyn Fn(RichOp) -> M) {
+    fn rich_toolbar(&mut self, document: &RichDocument, on: &dyn Fn(RichOp) -> M) {
         let theme = self.theme().clone();
         let marks = document.marks();
         let kind = document.block_kind();

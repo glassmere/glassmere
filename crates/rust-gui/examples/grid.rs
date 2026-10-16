@@ -7,7 +7,7 @@
 use rust_gui::{
     App, AppOptions, CellEditor, CellValue, Effects, GridColumn, GridModel, GridMsg, GridState,
     ItemId, Label, Length, ListModel, NumberOptions, Size, SortDirection, Style, Ui,
-    VirtualListOptions, run_app, text_matches,
+    VirtualListOptions, run, text_matches,
 };
 
 const CITIES: [&str; 6] = ["Berlin", "Brno", "Lisbon", "Prague", "Vienna", "Zagreb"];
@@ -263,7 +263,7 @@ impl App for Directory {
                 height: 460.0,
                 ..VirtualListOptions::default()
             };
-            ui.data_grid_msg(&self.people, &self.grid, options, |message| message);
+            ui.data_grid(&self.people, &self.grid, options, |message| message);
             let status = match &self.error {
                 Some(error) => format!("Not stored: {error}"),
                 None => format!("Last change: {}", self.last),
@@ -278,7 +278,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut grid = GridState::default();
     // Id and Name stay in place while the other columns scroll sideways.
     grid.columns.frozen = 2;
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Data grid".into(),
             size: Size::new(860.0, 640.0),

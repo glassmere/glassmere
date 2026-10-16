@@ -64,7 +64,7 @@ fn property_msg(message: PropertyMsg) -> Message<Settings> {
 
 fn settings_view(state: &Settings, ui: &mut Ui<'_, Message<Settings>>) {
     ui.keyed("grid", |ui| {
-        ui.property_grid_msg(
+        ui.property_grid(
             &state.grid,
             PropertyGridOptions::new("Shape"),
             property_msg,
@@ -331,7 +331,7 @@ fn groups_collapse_and_the_filter_opens_matches_and_hides_the_rest() {
 fn a_default_of_the_wrong_type_is_a_programming_error_with_a_clear_message() {
     fn view(_: &Settings, ui: &mut Ui<'_, Message<Settings>>) {
         ui.keyed("grid", |ui| {
-            ui.property_grid_msg(
+            ui.property_grid(
                 &PropertyGridState::default(),
                 PropertyGridOptions::default(),
                 property_msg,
@@ -350,7 +350,7 @@ fn a_scrolling_grid_keeps_its_rows_clear_of_the_scrollbar_and_under_the_header()
     fn view(state: &Settings, ui: &mut Ui<'_, Message<Settings>>) {
         let options = PropertyGridOptions::new("Many").height(200.0);
         ui.keyed("grid", |ui| {
-            ui.property_grid_msg(&state.grid, options, property_msg, |grid| {
+            ui.property_grid(&state.grid, options, property_msg, |grid| {
                 for (index, value) in state.values.iter().enumerate() {
                     grid.number(&format!("Value {index}"), *value, NumberOptions::default());
                 }

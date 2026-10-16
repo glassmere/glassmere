@@ -36,7 +36,7 @@ impl Input {
 fn input_view(state: &Input, ui: &mut Ui<'_, Msg<Input>>) {
     ui.enabled(state.enabled, |ui| {
         ui.keyed("input", |ui| {
-            ui.text_input_msg(
+            ui.text_input(
                 TextInput::new("Name").on_submit(act(|s: &mut Input| s.submits += 1)),
                 &state.value,
                 on(|s: &mut Input, text: String| s.value = text),
@@ -160,7 +160,7 @@ struct Choices {
 
 fn choices_view(state: &Choices, ui: &mut Ui<'_, Msg<Choices>>) {
     ui.keyed("check", |ui| {
-        ui.checkbox_msg(
+        ui.checkbox(
             "Enabled",
             state.checked,
             on(|s: &mut Choices, checked: bool| s.checked = checked),
@@ -170,7 +170,7 @@ fn choices_view(state: &Choices, ui: &mut Ui<'_, Msg<Choices>>) {
         ui.column(Style::default(), |ui| {
             ui.enabled(false, |ui| {
                 ui.keyed("disabled", |ui| {
-                    ui.radio_msg(
+                    ui.radio(
                         "Disabled",
                         state.selected,
                         0,
@@ -179,7 +179,7 @@ fn choices_view(state: &Choices, ui: &mut Ui<'_, Msg<Choices>>) {
                 });
             });
             ui.keyed("one", |ui| {
-                ui.radio_msg(
+                ui.radio(
                     "One",
                     state.selected,
                     1,
@@ -187,7 +187,7 @@ fn choices_view(state: &Choices, ui: &mut Ui<'_, Msg<Choices>>) {
                 )
             });
             ui.keyed("two", |ui| {
-                ui.radio_msg(
+                ui.radio(
                     "Two",
                     state.selected,
                     2,
@@ -234,7 +234,7 @@ struct Volume {
 
 fn volume_view(state: &Volume, ui: &mut Ui<'_, Msg<Volume>>) {
     ui.keyed("slider", |ui| {
-        ui.slider_msg(
+        ui.slider(
             "Volume",
             state.value,
             -5.0..=6.0,
@@ -278,7 +278,7 @@ struct Pick {
 fn pick_view(state: &Pick, ui: &mut Ui<'_, Msg<Pick>>) {
     let items: Vec<&str> = state.entries.iter().map(String::as_str).collect();
     ui.keyed("combo", |ui| {
-        ui.combo_box_msg(
+        ui.combo_box(
             "Choice",
             state.selected,
             &items,
@@ -356,7 +356,7 @@ fn menu_view(_: &Picked, ui: &mut Ui<'_, Msg<Picked>>) {
         MenuItem::new("Save"),
     ];
     ui.keyed("menu", |ui| {
-        ui.menu_msg(
+        ui.menu(
             "File",
             &items,
             on(|s: &mut Picked, i: usize| s.picks.push(i)),
@@ -398,7 +398,7 @@ struct Wheel {
 fn wheel_view(state: &Wheel, ui: &mut Ui<'_, Msg<Wheel>>) {
     let labels: Vec<&str> = state.labels.iter().map(String::as_str).collect();
     ui.keyed("combo", |ui| {
-        ui.combo_box_msg(
+        ui.combo_box(
             "Choices",
             state.selected,
             &labels,

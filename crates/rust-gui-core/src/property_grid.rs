@@ -1,5 +1,5 @@
 use crate::Style;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 /// What a property grid sends when the user does something to it. A value
 /// names its row by path, such as `Layout/Width`; the grid's own state (the
@@ -48,8 +48,6 @@ pub struct PropertyGridState {
     pub collapsed: HashSet<String>,
     /// The name column's share of the width, moved by the header's divider.
     pub name_share: f32,
-    /// Half-typed colour values by property path.
-    pub(crate) drafts: HashMap<String, String>,
 }
 
 impl Default for PropertyGridState {
@@ -58,7 +56,6 @@ impl Default for PropertyGridState {
             filter: String::new(),
             collapsed: HashSet::new(),
             name_share: 0.4,
-            drafts: HashMap::new(),
         }
     }
 }
@@ -128,18 +125,5 @@ impl PropertyGridOptions {
     pub fn style(mut self, style: Style) -> Self {
         self.style = style;
         self
-    }
-}
-
-/// Paths of the properties that changed this frame, such as `Layout/Width`;
-/// a reset counts as a change.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct PropertyGridResponse {
-    pub changed: Vec<String>,
-}
-
-impl PropertyGridResponse {
-    pub fn any(&self) -> bool {
-        !self.changed.is_empty()
     }
 }

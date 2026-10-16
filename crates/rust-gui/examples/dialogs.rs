@@ -1,9 +1,9 @@
 use rust_gui::{
     App, AppOptions, Button, DialogOptions, Effects, FocusScope, Label, Length, Size, Style,
-    TextWrap, Ui, WindowId, WindowRequest, run_app,
+    TextWrap, Ui, WindowId, WindowRequest, run,
 };
 
-/// The window `run_app` opens first. Its id is 0 by construction; the native
+/// The window `run` opens first. Its id is 0 by construction; the native
 /// modal names it as its owner.
 const MAIN: WindowId = WindowId(0);
 
@@ -135,7 +135,7 @@ impl App for Dialogs {
             ui.label(Label::new("Native modal windows block their owner until closed and, on Windows, stay above it as owned windows.").style(muted));
         });
 
-        ui.dialog_msg(
+        ui.dialog(
             "confirm",
             self.confirm,
             Msg::Confirm,
@@ -162,19 +162,19 @@ impl App for Dialogs {
                     );
                     ui.button(Button::new("More options…").on_click(Msg::MoreOptions));
                 });
-                ui.dialog_msg(
+                ui.dialog(
                     "nested",
                     self.nested,
                     Msg::Nested,
                     DialogOptions::new("More options").width(Length::Px(320.0)),
                     |ui| {
-                        ui.checkbox_msg("Keep a backup copy", self.autosave, Msg::Autosave);
+                        ui.checkbox("Keep a backup copy", self.autosave, Msg::Autosave);
                         ui.button(Button::new("Done").on_click(Msg::Nested(false)));
                     },
                 );
             },
         );
-        ui.dialog_msg(
+        ui.dialog(
             "preferences",
             self.preferences,
             Msg::Preferences,
@@ -183,8 +183,8 @@ impl App for Dialogs {
                 .width(Length::Px(360.0)),
             |ui| {
                 ui.label("Document name");
-                ui.text_input_msg("Document name", &self.name, Msg::Name);
-                ui.checkbox_msg("Autosave", self.autosave, Msg::Autosave);
+                ui.text_input("Document name", &self.name, Msg::Name);
+                ui.checkbox("Autosave", self.autosave, Msg::Autosave);
                 ui.button(Button::new("Close").on_click(Msg::ClosePreferences));
             },
         );
@@ -219,7 +219,7 @@ impl App for Dialogs {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     let open = std::env::args().any(|arg| arg == "--open");
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Dialogs and focus".into(),
             size: Size::new(900.0, 720.0),

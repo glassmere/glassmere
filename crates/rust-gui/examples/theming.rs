@@ -1,6 +1,6 @@
 use rust_gui::{
     App, AppOptions, Button, Color, Effects, FontFamily, Label, Length, Paint, Size, Style,
-    TextWrap, Theme, Ui, run_app,
+    TextWrap, Theme, Ui, run,
 };
 use std::path::PathBuf;
 
@@ -100,10 +100,10 @@ impl App for Theming {
                     .on_focused(Paint { radius: Some(2.0), ..Paint::default() });
                 ui.row(Style { gap: 12.0, ..Style::default() }, |ui| {
                     ui.button(Button::new("Outlined action").style(outlined));
-                    ui.text_input_msg("Name", &self.name, Msg::Name);
+                    ui.text_input("Name", &self.name, Msg::Name);
                 });
-                ui.checkbox_msg("Notifications", self.notify, Msg::Notify);
-                ui.slider_msg("Volume", self.volume, 0.0..=100.0, 5.0, Msg::Volume);
+                ui.checkbox("Notifications", self.notify, Msg::Notify);
+                ui.slider("Volume", self.volume, 0.0..=100.0, 5.0, Msg::Volume);
                 ui.label(Label::new("Built-in controls paint from theme tokens: control, hover, pressed, focus, accent, track and selection.").style(Style { wrap: TextWrap::Word, width: Length::Percent(1.0), ..muted }));
             });
         });
@@ -116,7 +116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         env!("CARGO_MANIFEST_DIR"),
         "/examples/theming.style"
     ));
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Theming".into(),
             size: Size::new(860.0, 720.0),

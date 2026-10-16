@@ -1,155 +1,20 @@
 use super::*;
 
 impl<'a, M: 'static> Ui<'a, M> {
-    /// Drags inside the window are delivered to a `drop_target`. A host that
-    /// can hands a drag that leaves the window to the operating system (files
-    /// only today); how that ended is returned here, once.
-    #[track_caller]
-    pub fn drag_source(
-        &mut self,
-        label: impl Into<String>,
-        payload: crate::DragPayload,
-        style: Style,
-        content: impl FnOnce(&mut Ui<'_, M>),
-    ) -> Option<crate::DragOutcome> {
-        let key = self.next_key();
-        let update = self
-            .context
-            .child(self.parent, &key, Kind::DragSource)
-            .and_then(|id| self.updates.remove(&id));
-        self.group(key, Kind::DragSource, style, content);
-        self.set_control(Control::DragSource {
-            label: label.into(),
-            payload,
-        });
-        // Reported once, after a drag that left the window has ended.
-        match update {
-            Some(ControlUpdate::DragEnded(outcome)) => Some(outcome),
-            _ => None,
-        }
-    }
-
-    /// A surface that fingers move, scale and turn: a canvas, a map, a photo.
-    /// Reports what happened since the last declaration; the app applies it
-    /// to its own view state. Controls inside are pressed as anywhere else.
-    /// A pinch on a trackpad and Ctrl with the wheel arrive as `scale`.
-    #[track_caller]
-    pub fn gesture_area(
-        &mut self,
-        style: Style,
-        content: impl FnOnce(&mut Ui<'_, M>),
-    ) -> crate::GestureResponse {
-        let key = self.next_key();
-        let id = self.context.child(self.parent, &key, Kind::GestureArea);
-        let mut response = match id.and_then(|id| self.updates.remove(&id)) {
-            Some(ControlUpdate::Gesture(gesture)) if self.enabled => gesture,
-            _ => crate::GestureResponse::default(),
-        };
-        if let Some(id) = id {
-            (response.active, response.pressure) = self.context.gesture_contacts(id);
-        }
-        self.group(key, Kind::GestureArea, style, content);
-        response
-    }
-
-    #[track_caller]
-    pub fn drop_target(
-        &mut self,
-        label: impl Into<String>,
-        accepts: crate::DropKind,
-        style: Style,
-        content: impl FnOnce(&mut Ui<'_, M>),
-    ) -> Option<crate::DragPayload> {
-        let key = self.next_key();
-        let update = self
-            .context
-            .child(self.parent, &key, Kind::DropTarget)
-            .and_then(|id| self.updates.remove(&id));
-        let payload = match update {
-            Some(ControlUpdate::Drop(payload)) if self.enabled && payload.kind() == accepts => {
-                Some(payload)
-            }
-            _ => None,
-        };
-        self.group(key, Kind::DropTarget, style, content);
-        self.set_control(Control::DropTarget {
-            label: label.into(),
-            accepts,
-        });
-        payload
-    }
-
-    /// A column that watches the events of the widgets inside it, and may
-    /// stop them. What reached it since the last declaration comes back in
-    /// the order it arrived.
-    ///
-    /// A capturing area sees an event before the widgets inside, so consuming
-    /// it keeps it from them; an ordinary one sees what they did not take, on
-    /// the way up. Areas nest: outermost first going down, innermost first
-    /// coming up, and a consumed event stops there.
-    #[track_caller]
-    pub fn event_area(
-        &mut self,
-        area: crate::EventArea,
-        style: Style,
-        content: impl FnOnce(&mut Ui<'_, M>),
-    ) -> Vec<crate::UiEvent> {
-        let key = self.next_key();
-        let arrived = self
-            .context
-            .child(self.parent, &key, Kind::EventArea)
-            .map(|id| self.context.take_area_events(id))
-            .unwrap_or_default();
-        self.group(key, Kind::EventArea, style, content);
-        self.set_control(Control::EventArea(area));
-        arrived
-    }
-
-    /// Tells the areas above this point something. The event travels up from
-    /// the container being declared and arrives on the next declaration, like
-    /// every other input.
-    #[track_caller]
-    pub fn emit(&mut self, name: impl Into<String>, data: impl Into<String>) {
-        if let Some(parent) = self.parent {
-            self.host.emitted.push((
-                parent,
-                crate::UiEvent::Custom {
-                    name: name.into(),
-                    data: data.into(),
-                },
-            ));
-        }
-    }
-
     /// A widget of the application's own, with the input, state, style and
-    /// semantics a built-in one has. The returned `CustomWidget` says how big
-    /// it is, what it paints, what it is for and what it listens to; what it
-    /// heard last time is handed to `build` first, with pointer positions in
-    /// the widget's own coordinates.
+    /// semantics a built-in one has. The `CustomWidget` that `widget`'s
+    /// build function returns says how big it is, what it paints, what it is
+    /// for and what it listens to. With [`crate::WidgetBuilder::on_event`],
+    /// each event that reaches it is handed to that function when it is
+    /// resolved, in the widget's own coordinates, and what it returns goes
+    /// to `update`.
     ///
     /// The widget keeps its state where the application keeps the rest: in a
     /// struct of its own, passed in. Styling is `ui.theme()` and
     /// `ui.class(..)` like anywhere else, and the `style` here is the node's,
     /// so padding, size and background work as they do on a container.
     #[track_caller]
-    pub fn widget(
-        &mut self,
-        style: Style,
-        build: impl FnOnce(&crate::WidgetInput) -> CustomWidget,
-    ) -> Response<'a> {
-        self.widget_msg(style, crate::WidgetBuilder::new(build))
-    }
-
-    /// [`Ui::widget`] with the message its events send: `on_event` gets each
-    /// event that reaches the widget, in the widget's own coordinates, when
-    /// the event is resolved, and what it returns goes to `update`. The view
-    /// does not see those events again.
-    #[track_caller]
-    pub fn widget_msg<F>(
-        &mut self,
-        style: Style,
-        widget: crate::WidgetBuilder<F, M>,
-    ) -> Response<'a>
+    pub fn widget<F>(&mut self, style: Style, widget: crate::WidgetBuilder<F, M>) -> Response<'a>
     where
         F: FnOnce(&crate::WidgetInput) -> CustomWidget,
     {
@@ -168,12 +33,6 @@ impl<'a, M: 'static> Ui<'a, M> {
             input.hovered = self.context.hovered() == Some(id);
             input.focused = self.context.focused() == Some(id);
             input.pressed = self.context.pressed(id);
-            input.events = self
-                .context
-                .take_area_events(id)
-                .into_iter()
-                .map(|event| crate::WidgetInput::local(event, bounds))
-                .collect();
         }
         let widget = build(&input);
         if let Err(message) = widget.validate() {
@@ -193,8 +52,16 @@ impl<'a, M: 'static> Ui<'a, M> {
             tooltip: None,
             control: Control::None,
         });
-        if let Some(on_event) = on_event {
-            self.set_handler(crate::app::Handler::Event(on_event));
+        // What reaches a widget that listens is taken when it is resolved,
+        // so a widget without `on_event` still has a handler that drops it.
+        let listens = self
+            .declared()
+            .and_then(|element| element.custom.as_ref())
+            .is_some_and(|widget| widget.input != crate::EventArea::default());
+        match on_event {
+            Some(on_event) => self.set_handler(crate::app::Handler::Event(on_event)),
+            None if listens => self.set_handler(crate::app::Handler::Event(Box::new(|_| None))),
+            None => {}
         }
         // `build` was handed the hover, focus and press, so a change in them
         // declares again.
@@ -202,14 +69,17 @@ impl<'a, M: 'static> Ui<'a, M> {
         response
     }
 
+    /// A leaf the application paints, which sends `on_click` when it is
+    /// activated: a click, or Enter or Space on it, or an accessibility
+    /// Activate. A leaf that only paints is a [`Ui::widget`].
     #[track_caller]
-    pub fn custom(&mut self, style: Style, widget: CustomWidget) -> Response<'a> {
+    pub fn custom(&mut self, style: Style, widget: CustomWidget, on_click: M) -> Response<'a> {
         if let Err(message) = widget.validate() {
             self.misuse(message);
             return Response::default();
         }
         let key = self.next_key();
-        self.push(Element {
+        let response = self.push(Element {
             handler: None,
             seq: 0,
             key,
@@ -221,22 +91,13 @@ impl<'a, M: 'static> Ui<'a, M> {
             custom: Some(widget),
             tooltip: None,
             control: Control::None,
-        })
-    }
-
-    /// [`Ui::custom`] that sends `on_click` when it is activated: a click, or
-    /// Enter or Space on it, or an accessibility Activate.
-    #[track_caller]
-    pub fn custom_msg(&mut self, style: Style, widget: CustomWidget, on_click: M) {
-        let valid = widget.validate().is_ok();
-        self.custom(style, widget);
-        if valid {
-            self.set_handler(crate::app::Handler::Message(on_click));
-        }
+        });
+        self.set_handler(crate::app::Handler::Message(on_click));
+        response
     }
 }
 
-/// A drag source as [`Ui::drag_source_msg`] declares it: what it drags, and
+/// A drag source as [`Ui::drag_source`] declares it: what it drags, and
 /// the message sent when a drag it started ends outside the window.
 pub struct DragSourceBuilder<M = ()> {
     label: String,
@@ -261,7 +122,7 @@ impl<M> DragSourceBuilder<M> {
     }
 }
 
-/// A drop target as [`Ui::drop_target_msg`] declares it.
+/// A drop target as [`Ui::drop_target`] declares it.
 pub struct DropTargetBuilder<M = ()> {
     label: String,
     accepts: crate::DropKind,
@@ -285,7 +146,7 @@ impl<M> DropTargetBuilder<M> {
     }
 }
 
-/// A gesture area as [`Ui::gesture_area_msg`] declares it.
+/// A gesture area as [`Ui::gesture_area`] declares it.
 pub struct GestureBuilder<M = ()> {
     on_gesture: Option<Box<dyn Fn(crate::GestureResponse) -> M>>,
 }
@@ -309,7 +170,7 @@ impl<M> GestureBuilder<M> {
     }
 }
 
-/// An event area as [`Ui::event_area_msg`] declares it: what it watches, and
+/// An event area as [`Ui::event_area`] declares it: what it watches, and
 /// the message its events send.
 pub struct AreaBuilder<M = ()> {
     area: crate::EventArea,
@@ -333,9 +194,12 @@ impl<M> AreaBuilder<M> {
 }
 
 impl<'a, M: 'static> Ui<'a, M> {
-    /// [`Ui::drag_source`] with the message its drag's end sends.
+    /// Content that drags `source`'s payload. Drags inside the window are
+    /// delivered to a `drop_target`. A host that can hands a drag that leaves
+    /// the window to the operating system (files only today); how that ended
+    /// is sent through [`DragSourceBuilder::on_drag_end`].
     #[track_caller]
-    pub fn drag_source_msg(
+    pub fn drag_source(
         &mut self,
         source: DragSourceBuilder<M>,
         style: Style,
@@ -359,9 +223,13 @@ impl<'a, M: 'static> Ui<'a, M> {
         }
     }
 
-    /// [`Ui::gesture_area`] with the message its gestures send.
+    /// A surface that fingers move, scale and turn: a canvas, a map, a photo.
+    /// What happened is sent through [`GestureBuilder::on_gesture`]; the app
+    /// applies it to its own view state. Controls inside are pressed as
+    /// anywhere else. A pinch on a trackpad and Ctrl with the wheel arrive as
+    /// `scale`.
     #[track_caller]
-    pub fn gesture_area_msg(
+    pub fn gesture_area(
         &mut self,
         gesture: GestureBuilder<M>,
         style: Style,
@@ -379,9 +247,10 @@ impl<'a, M: 'static> Ui<'a, M> {
         }
     }
 
-    /// [`Ui::drop_target`] with the message a drop sends.
+    /// Content that takes drops of `target`'s kind; a drop sends what
+    /// [`DropTargetBuilder::on_drop`] makes of the payload.
     #[track_caller]
-    pub fn drop_target_msg(
+    pub fn drop_target(
         &mut self,
         target: DropTargetBuilder<M>,
         style: Style,
@@ -405,10 +274,16 @@ impl<'a, M: 'static> Ui<'a, M> {
         }
     }
 
-    /// [`Ui::event_area`] with the message its events send. The events are
-    /// taken when they are resolved, so the view never sees them.
+    /// A column that watches the events of the widgets inside it, and may
+    /// stop them; each one that reaches it sends what
+    /// [`AreaBuilder::on_event`] makes of it, when it is resolved.
+    ///
+    /// A capturing area sees an event before the widgets inside, so consuming
+    /// it keeps it from them; an ordinary one sees what they did not take, on
+    /// the way up. Areas nest: outermost first going down, innermost first
+    /// coming up, and a consumed event stops there.
     #[track_caller]
-    pub fn event_area_msg(
+    pub fn event_area(
         &mut self,
         area: AreaBuilder<M>,
         style: Style,

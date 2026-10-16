@@ -29,7 +29,7 @@ impl App for Toasts {
     fn update(&mut self, message: Msg, effects: &mut Effects<'_, Msg>) {
         match message {
             Msg::Raise(toast) if toast.action.is_some() => {
-                effects.toast_msg(toast, Msg::Acted);
+                effects.toast_with(toast, Msg::Acted);
             }
             Msg::Raise(toast) => effects.toast(toast),
             Msg::Acted(action) => self.actions.push(action),
@@ -40,7 +40,7 @@ impl App for Toasts {
     fn view(&self, ui: &mut Ui<'_, Msg>) {
         ui.button("page");
         if self.dialog {
-            ui.dialog_msg(
+            ui.dialog(
                 "modal",
                 true,
                 Msg::Dialog,

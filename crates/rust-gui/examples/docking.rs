@@ -1,7 +1,6 @@
 use rust_gui::{
     App, AppOptions, Button, DockAction, DockLayout, DockNode, DockOptions, DockPanel, DockTarget,
-    DockWindowId, Effects, Label, Length, Size, Style, TextWrap, Ui, WindowId, WindowRequest,
-    run_app,
+    DockWindowId, Effects, Label, Length, Size, Style, TextWrap, Ui, WindowId, WindowRequest, run,
 };
 use std::path::PathBuf;
 
@@ -67,7 +66,7 @@ impl Docking {
         match id {
             "editor" => {
                 ui.label("Notes");
-                ui.text_input_msg("Notes", &self.notes, Msg::Notes);
+                ui.text_input("Notes", &self.notes, Msg::Notes);
                 let (body, style) = text(
                     "Drag a tab onto a drop indicator, another tab strip or empty space. \
                      Right-click a tab, press Shift+F10 on it or use the ▾ button for the same moves.",
@@ -80,7 +79,7 @@ impl Docking {
                 }
             }
             "inspector" => {
-                ui.checkbox_msg("Wrap long lines", self.wrap, Msg::Wrap);
+                ui.checkbox("Wrap long lines", self.wrap, Msg::Wrap);
                 ui.label(format!("Layout saved {} times", self.saves));
             }
             other => {
@@ -188,7 +187,7 @@ impl App for Docking {
                 ui.button(Button::new("Reset layout").on_click(Msg::Reset));
                 ui.button(Button::new("Show all panels").on_click(Msg::ShowAll));
             });
-            ui.dock_msg(
+            ui.dock(
                 &self.layout,
                 &panels(),
                 DockOptions {
@@ -208,7 +207,7 @@ impl App for Docking {
         let Some((id, _)) = self.windows.iter().find(|(_, shown)| *shown == window) else {
             return;
         };
-        ui.dock_window_msg(
+        ui.dock_window(
             &self.layout,
             *id,
             &panels(),
@@ -240,7 +239,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         );
     }
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Docking".into(),
             size: Size::new(1100.0, 760.0),

@@ -31,12 +31,12 @@ fn inner_event(event: UiEvent) -> Option<Action<Seen>> {
 /// An outer area around an inner one, with a button and a field inside.
 fn page(state: &Seen, ui: &mut Ui<'_, Action<Seen>>) {
     ui.keyed("outer", |ui| {
-        ui.event_area_msg(
+        ui.event_area(
             AreaBuilder::new(state.outer_area).on_event(outer_event),
             Style::default().padding(4.0),
             |ui| {
                 ui.keyed("inner", |ui| {
-                    ui.event_area_msg(
+                    ui.event_area(
                         AreaBuilder::new(state.inner_area).on_event(inner_event),
                         Style::default().padding(4.0),
                         |ui| {
@@ -53,7 +53,7 @@ fn page(state: &Seen, ui: &mut Ui<'_, Action<Seen>>) {
                                 );
                             });
                             ui.keyed("field", |ui| {
-                                ui.text_input_msg(
+                                ui.text_input(
                                     "Field",
                                     &state.typed,
                                     on(|s: &mut Seen, text: String| s.typed = text),
@@ -204,14 +204,14 @@ struct Tell {
 
 fn tell(_: &Tell, ui: &mut Ui<'_, Action<Tell>>) {
     ui.keyed("watch", |ui| {
-        ui.event_area_msg(
+        ui.event_area(
             AreaBuilder::new(EventArea::pointer()).on_event(|event: UiEvent| {
                 Some(act(move |s: &mut Tell| s.heard.push(event.clone())))
             }),
             Style::default(),
             |ui| {
                 ui.keyed("inside", |ui| {
-                    ui.widget_msg(
+                    ui.widget(
                         Style::default(),
                         WidgetBuilder::new(|_: &WidgetInput| CustomWidget {
                             size: Size::new(40.0, 20.0),
@@ -229,8 +229,8 @@ fn tell(_: &Tell, ui: &mut Ui<'_, Action<Tell>>) {
     });
 }
 
-/// `Ui::emit` is gone: a widget inside an area sends its own message, and that
-/// message and the area's events arrive in the same batch.
+/// A widget inside an area sends its own message, and that message and the
+/// area's events arrive in the same batch.
 #[test]
 fn a_widget_inside_an_area_sends_its_message_in_the_batch_the_area_hears_it() {
     let mut driven = Driven::new(ROOT, Tell::default(), tell);
@@ -270,7 +270,7 @@ struct Pressed {
 
 fn pressable(_: &Pressed, ui: &mut Ui<'_, Action<Pressed>>) {
     ui.keyed("widget", |ui| {
-        ui.widget_msg(
+        ui.widget(
             Style::default(),
             WidgetBuilder::new(|_: &WidgetInput| CustomWidget {
                 size: Size::new(40.0, 20.0),

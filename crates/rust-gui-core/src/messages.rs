@@ -174,14 +174,6 @@ impl crate::Context {
 }
 
 impl<'a, M: 'static> crate::Ui<'a, M> {
-    /// Installs or replaces the source of localized text after this
-    /// declaration, or removes it with `None`. The host declares once more
-    /// before presenting, so texts looked up earlier in the view change too.
-    /// This is how an app sets its language at start and switches it later.
-    pub fn set_messages(&mut self, messages: Option<Box<dyn Messages>>) {
-        self.host.messages = Some(messages);
-    }
-
     /// Locale of the installed messages; `en` without any.
     pub fn locale(&self) -> &str {
         self.context.locale()

@@ -87,16 +87,16 @@ fn scopes_page(_: &Scopes, ui: &mut Ui<'_, Handler<Scopes>>) {
     let panel = Command::with_id("panel.save", "Save here", Some(Shortcut::primary('s')));
     let only = Command::with_id("panel.only", "Panel only", Some(Shortcut::primary('k'))).scoped();
     ui.keyed("window", |ui| {
-        ui.command_button_msg(&window, act(|s: &mut Scopes| s.fired.push("window")));
+        ui.command_button(&window, act(|s: &mut Scopes| s.fired.push("window")));
     });
     ui.keyed("panel", |ui| {
         ui.focus_scope(FocusScope::default(), Style::default(), |ui| {
             ui.keyed("inside", |ui| ui.button("Inside"));
             ui.keyed("panel", |ui| {
-                ui.command_button_msg(&panel, act(|s: &mut Scopes| s.fired.push("panel")));
+                ui.command_button(&panel, act(|s: &mut Scopes| s.fired.push("panel")));
             });
             ui.keyed("only", |ui| {
-                ui.command_button_msg(&only, act(|s: &mut Scopes| s.fired.push("only")));
+                ui.command_button(&only, act(|s: &mut Scopes| s.fired.push("only")));
             });
         })
     });
@@ -150,7 +150,7 @@ struct Rebind {
 fn rebind_page(_: &Rebind, ui: &mut Ui<'_, Handler<Rebind>>) {
     let save = Command::with_id("save", "Save", Some(Shortcut::primary('s')));
     ui.keyed("save", |ui| {
-        ui.command_button_msg(&save, act(|s: &mut Rebind| s.fired += 1));
+        ui.command_button(&save, act(|s: &mut Rebind| s.fired += 1));
     });
 }
 
@@ -222,7 +222,7 @@ fn palette_page(state: &Palette, ui: &mut Ui<'_, Handler<Palette>>) {
         disabled,
     ];
     ui.keyed("palette", |ui| {
-        ui.command_palette_msg(
+        ui.command_palette(
             state.open,
             &state.query,
             on(|s: &mut Palette, open: bool| s.open = open),
@@ -298,7 +298,7 @@ fn a_menu_item_writes_its_shortcut_along_the_far_edge() {
     let declare = |context: &mut Context| {
         frame(context, |ui| {
             ui.keyed("area", |ui| {
-                ui.context_menu_msg(
+                ui.context_menu(
                     &items,
                     Style::default()
                         .width(Length::Px(300.0))
@@ -354,16 +354,16 @@ fn dialog_window(state: &Dialogs, ui: &mut Ui<'_, Handler<Dialogs>>) {
     let window = Command::with_id("window", "Save", Some(Shortcut::primary('s')));
     let inner = Command::with_id("dialog", "Save here", Some(Shortcut::primary('s')));
     ui.keyed("window", |ui| {
-        ui.command_button_msg(&window, act(|s: &mut Dialogs| s.fired.push("window")));
+        ui.command_button(&window, act(|s: &mut Dialogs| s.fired.push("window")));
     });
-    ui.dialog_msg(
+    ui.dialog(
         "editor",
         state.open,
         on(|s: &mut Dialogs, open: bool| s.open = open),
         DialogOptions::new("Editor"),
         |ui| {
             ui.keyed("inner", |ui| {
-                ui.command_button_msg(&inner, act(|s: &mut Dialogs| s.fired.push("dialog")));
+                ui.command_button(&inner, act(|s: &mut Dialogs| s.fired.push("dialog")));
             });
         },
     );

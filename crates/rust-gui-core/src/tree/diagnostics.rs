@@ -411,11 +411,13 @@ mod tests {
     #[test]
     fn a_popover_without_an_anchor_is_left_out() {
         let mut context = release();
-        let mut open = true;
         frame(&mut context, |ui| {
-            ui.popover(&mut open, PopoverOptions::default(), |ui| {
-                ui.label("inside")
-            });
+            ui.popover(
+                true,
+                |_| (),
+                PopoverOptions::default(),
+                |ui| ui.label("inside"),
+            );
             ui.label("after");
         });
         assert_eq!(labels(&context), ["after"]);
@@ -425,9 +427,8 @@ mod tests {
     #[test]
     fn a_slider_over_an_empty_range_is_left_out() {
         let mut context = release();
-        let mut value = 0.0;
         frame(&mut context, |ui| {
-            ui.slider("volume", &mut value, 1.0..=1.0, 0.1);
+            ui.slider("volume", 0.0, 1.0..=1.0, 0.1, |_| ());
             ui.label("after");
         });
         assert_eq!(labels(&context), ["after"]);

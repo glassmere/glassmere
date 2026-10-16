@@ -1,5 +1,5 @@
 use super::*;
-// A window of an application with `run_app`, as `Effects::open_window` names it.
+// A window of an application, as `Effects::open_window` names it.
 use rust_gui_core::WindowId as AppWindow;
 use rust_gui_core::{AppDriver, Effects, Pacing, TextMeasurer};
 use rust_gui_devtools::{Inspector, InspectorModel, InspectorMsg, InspectorResponse};
@@ -9,139 +9,19 @@ use std::{
 };
 
 pub(crate) type View = Box<dyn Declare>;
-type SendView = Box<dyn FnMut(&mut Ui<'_>) + Send>;
 /// What `update` asked for and the host has not carried out yet.
 type AppRequests = (
     Vec<(AppWindow, rust_gui_core::WindowRequest)>,
     Vec<AppWindow>,
 );
-/// The window `run_app` opens first. Its view is `App::view`.
+/// The window `run` opens first. Its view is `App::view`.
 const MAIN: AppWindow = AppWindow(0);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct WindowKey(pub u64);
+pub(crate) struct WindowKey(pub u64);
 
-#[derive(Clone, Copy, Debug)]
-pub struct DesktopClosed;
-impl std::fmt::Display for DesktopClosed {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("desktop event loop is closed")
-    }
-}
-impl Error for DesktopClosed {}
-
-pub(crate) enum WindowRequest {
-    Open {
-        key: WindowKey,
-        options: Box<AppOptions>,
-        view: SendView,
-        /// A window that stays blocked while this one is open.
-        owner: Option<WindowKey>,
-    },
-    Close(WindowKey),
-    Redraw(WindowKey),
-}
-
-/// Thread-safe desktop requests. View closures are transferred to the UI thread;
-/// share application state between them with Arc/Mutex or bounded mailboxes.
-#[derive(Clone)]
-pub struct DesktopHandle {
-    proxy: EventLoopProxy<UserEvent>,
-    next: Arc<AtomicU64>,
-    wake: WakeHandle,
-}
-impl DesktopHandle {
-    pub fn open_window(
-        &self,
-        options: AppOptions,
-        view: impl FnMut(&mut Ui<'_>) + Send + 'static,
-    ) -> std::result::Result<WindowKey, DesktopClosed> {
-        self.open(options, view, None)
-    }
-
-    /// A native modal window. The owner ignores input and hands focus to the
-    /// dialog until the dialog closes; on Windows it is also an owned window.
-    pub fn open_modal(
-        &self,
-        owner: WindowKey,
-        options: AppOptions,
-        view: impl FnMut(&mut Ui<'_>) + Send + 'static,
-    ) -> std::result::Result<WindowKey, DesktopClosed> {
-        self.open(options, view, Some(owner))
-    }
-
-    fn open(
-        &self,
-        options: AppOptions,
-        view: impl FnMut(&mut Ui<'_>) + Send + 'static,
-        owner: Option<WindowKey>,
-    ) -> std::result::Result<WindowKey, DesktopClosed> {
-        if self.wake.is_closed() {
-            return Err(DesktopClosed);
-        }
-        let key = WindowKey(
-            self.next
-                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
-                    value.checked_add(1)
-                })
-                .map_err(|_| DesktopClosed)?,
-        );
-        self.proxy
-            .send_event(UserEvent::Window(WindowRequest::Open {
-                key,
-                options: Box::new(options),
-                view: Box::new(view),
-                owner,
-            }))
-            .map_err(|_| DesktopClosed)?;
-        Ok(key)
-    }
-    pub fn close_window(&self, key: WindowKey) -> bool {
-        !self.wake.is_closed()
-            && self
-                .proxy
-                .send_event(UserEvent::Window(WindowRequest::Close(key)))
-                .is_ok()
-    }
-    pub fn redraw(&self, key: WindowKey) -> bool {
-        !self.wake.is_closed()
-            && self
-                .proxy
-                .send_event(UserEvent::Window(WindowRequest::Redraw(key)))
-                .is_ok()
-    }
-    pub fn wakeup(&self) -> WakeHandle {
-        self.wake.clone()
-    }
-    pub fn request_exit(&self) -> bool {
-        self.wake.request_exit()
-    }
-}
-
-/// One event loop, graphics device, font system, glyph atlas and clipboard owner
-/// for multiple independently focused windows. All windows use `graphics`;
-/// their AppOptions graphics field is superseded by this desktop-wide policy.
-/// Setup must enqueue at least one window. Closing the last window exits.
-pub fn run_windows(graphics: GraphicsOptions, setup: impl FnOnce(DesktopHandle)) -> Result<()> {
-    let _ = crate::STARTED.set(std::time::Instant::now());
-    let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
-    let proxy = event_loop.create_proxy();
-    let wake = WakeHandle::new(proxy.clone());
-    let next = Arc::new(AtomicU64::new(1));
-    setup(DesktopHandle {
-        proxy: proxy.clone(),
-        next: next.clone(),
-        wake: wake.clone(),
-    });
-    if next.load(Ordering::Acquire) == 1 {
-        wake.close();
-        return Err("run_windows setup must open at least one window".into());
-    }
-    run(event_loop, Desktop::new(proxy, wake, next, graphics))
-}
-
-/// One window whose view need not be `Send`. Backs `run`, `run_with_wakeup`
-/// and `run_app`, whose setup also returns the host of the windows it opens.
+/// The application's first window. Its setup also returns the host of the
+/// windows `update` opens.
 pub(crate) fn run_single(
     options: AppOptions,
     setup: impl FnOnce(WakeHandle) -> (View, Option<Box<dyn Hosting>>),
@@ -185,7 +65,7 @@ struct Pending {
     owner: Option<WindowKey>,
 }
 
-/// What the desktop asks of an application run with `run_app`, whatever its
+/// What the desktop asks of an application run with `run`, whatever its
 /// state is. The windows it opens and closes come from `update`.
 pub(crate) trait Hosting {
     /// The view of a window `update` opened.
@@ -199,7 +79,7 @@ pub(crate) trait Hosting {
     fn closed(&mut self, window: AppWindow, by_app: bool);
 }
 
-/// The state every window of an application with `run_app` declares from:
+/// The state every window of an application with `run` declares from:
 /// the `App`, its driver with the one message queue, and each window's pacing.
 struct Shared<A: App> {
     app: A,
@@ -243,7 +123,7 @@ impl<A: App> Shared<A> {
     }
 }
 
-/// The host of an application run with `run_app`, shared with its windows.
+/// The host of an application run with `run`, shared with its windows.
 struct AppHost<A: App> {
     shared: Rc<RefCell<Shared<A>>>,
 }
@@ -292,7 +172,7 @@ impl<A: App> Hosting for AppHost<A> {
     }
 }
 
-/// One window of an application run with `run_app`. It declares through the
+/// One window of an application run with `run`. It declares through the
 /// shared state, with `App::view` for the main window and `App::view_window`
 /// for the others.
 struct WindowView<A: App> {
@@ -448,7 +328,7 @@ struct Desktop {
     focused: Option<WindowKey>,
     clipboard: Rc<RefCell<input::HostClipboard>>,
     error: Option<Box<dyn Error>>,
-    /// The application's windows, when `run_app` runs one.
+    /// The application's windows, when `run` runs one.
     hosting: Option<Box<dyn Hosting>>,
     /// Application window → the window it is shown in.
     app_windows: HashMap<AppWindow, WindowKey>,
@@ -782,47 +662,6 @@ impl Desktop {
         }
     }
 
-    fn request(&mut self, event_loop: &ActiveEventLoop, request: WindowRequest) {
-        match request {
-            WindowRequest::Open {
-                key,
-                options,
-                view,
-                owner,
-            } => {
-                self.open(event_loop, key, *options, Box::new(Closure(view)), owner);
-            }
-            WindowRequest::Close(key) => {
-                self.windows.remove(&key);
-            }
-            WindowRequest::Redraw(key) => {
-                if let Some(state) = self.windows.get(&key).and_then(|app| app.state.as_ref()) {
-                    state.window.request_redraw();
-                }
-            }
-        }
-        self.finish(event_loop);
-    }
-
-    /// Requests received before the event loop resumed.
-    fn queue(&mut self, request: WindowRequest) {
-        match request {
-            WindowRequest::Open {
-                key,
-                options,
-                view,
-                owner,
-            } => self.pending.push(Pending {
-                key,
-                options: *options,
-                view: Box::new(Closure(view)),
-                owner,
-            }),
-            WindowRequest::Close(key) => self.pending.retain(|pending| pending.key != key),
-            WindowRequest::Redraw(_) => {}
-        }
-    }
-
     fn finish(&mut self, event_loop: &ActiveEventLoop) {
         self.apply_app_requests(event_loop);
         for app in self.windows.values_mut() {
@@ -1143,13 +982,6 @@ impl ApplicationHandler<UserEvent> for Desktop {
     }
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
-            UserEvent::Window(request) => {
-                if self.resumed {
-                    self.request(event_loop, request);
-                } else {
-                    self.queue(request);
-                }
-            }
             UserEvent::Exit => event_loop.exit(),
             UserEvent::Wake => {
                 self.wake.acknowledge();

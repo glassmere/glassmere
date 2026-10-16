@@ -36,7 +36,7 @@ impl App for Widths {
     fn view(&self, ui: &mut Ui<'_, Msg>) {
         self.views.set(self.views.get() + 1);
         ui.label(format!("Shown {}", self.width));
-        ui.number_input_msg(
+        ui.number_input(
             "Width",
             self.width,
             NumberOptions::default().range(0.0, 100.0).step(5.0),
@@ -202,7 +202,7 @@ impl App for Grid {
     }
 
     fn view(&self, ui: &mut Ui<'_, PropertyMsg>) {
-        ui.property_grid_msg(
+        ui.property_grid(
             &self.state,
             PropertyGridOptions::new("Card"),
             |message| message,

@@ -56,13 +56,13 @@ impl App for Log {
         ui.map(Msg::Inner, |ui| {
             ui.button(Button::new("Inner").on_click(Inner::Hit));
         });
-        ui.text_input_msg(
+        ui.text_input(
             TextInput::new("Name").on_submit(Msg::Submit),
             &self.text,
             Msg::Text,
         );
-        ui.checkbox_msg("Agree", self.checked, Msg::Toggle);
-        ui.slider_msg("Level", self.value, 0.0..=10.0, 0.5, Msg::Value);
+        ui.checkbox("Agree", self.checked, Msg::Toggle);
+        ui.slider("Level", self.value, 0.0..=10.0, 0.5, Msg::Value);
     }
 }
 

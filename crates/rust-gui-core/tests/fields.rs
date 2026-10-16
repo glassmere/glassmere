@@ -43,7 +43,7 @@ fn numbers(value: f64, options: NumberOptions) -> Driven<Amount> {
         Amount { value, options },
         |state: &Amount, ui: &mut Ui<'_, Msg<Amount>>| {
             ui.keyed("amount", |ui| {
-                ui.number_input_msg(
+                ui.number_input(
                     "Amount",
                     state.value,
                     state.options.clone(),
@@ -363,7 +363,7 @@ fn the_typed_part_of_a_suggestion_is_drawn_bold_whatever_its_case() {
         |state: &City, ui: &mut Ui<'_, Msg<City>>| {
             ui.keyed("city", |ui| {
                 let matches = suggest(&state.text, &CITIES, 8);
-                ui.autocomplete_msg(
+                ui.autocomplete(
                     "City",
                     &state.text,
                     &matches,

@@ -66,7 +66,7 @@ impl App for Docked {
                 .height(Length::Px(height))
         };
         ui.column(Style::default().width(Length::Percent(1.0)), |ui| {
-            ui.dock_msg(
+            ui.dock(
                 &self.layout,
                 &panels(),
                 DockOptions {
@@ -78,7 +78,7 @@ impl App for Docked {
                     ui.label(format!("Content of {panel}"));
                 },
             );
-            ui.split_msg(
+            ui.split(
                 self.ratio,
                 Msg::Ratio,
                 Axis::Horizontal,

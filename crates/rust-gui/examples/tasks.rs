@@ -5,7 +5,7 @@
 //! as a stream, a few frames' worth at a time.
 use rust_gui::{
     App, AppOptions, Button, Color, Effects, FontFamily, Label, Length, Size, Style, TextWrap, Ui,
-    run_app,
+    run,
 };
 use std::time::Duration;
 
@@ -178,7 +178,7 @@ impl App for Search {
                 }),
             );
             ui.row(Style::default().gap(12.0), |ui| {
-                ui.text_input_msg("Search", &self.query, Msg::Query);
+                ui.text_input("Search", &self.query, Msg::Query);
                 ui.button(
                     Button::new("Stop")
                         .enabled(self.running)
@@ -215,7 +215,7 @@ impl App for Search {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Background work".into(),
             size: Size::new(720.0, 620.0),

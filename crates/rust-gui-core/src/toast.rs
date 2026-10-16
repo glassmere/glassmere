@@ -18,8 +18,8 @@ pub enum ToastKind {
 pub struct Toast {
     pub text: String,
     pub kind: ToastKind,
-    /// Label of one button, such as "Undo"; a click is reported once through
-    /// `Ui::toast_action` and dismisses the toast.
+    /// Label of one button, such as "Undo"; a click sends the message
+    /// `Effects::toast_with` was given, once, and dismisses the toast.
     pub action: Option<String>,
     /// Anything the app wants back with the action, for toasts raised where
     /// their `ToastId` is not at hand, such as other threads.

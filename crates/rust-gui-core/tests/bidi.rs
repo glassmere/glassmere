@@ -115,7 +115,7 @@ struct Field {
 
 fn field(state: &Field, ui: &mut Ui<'_, Action<Field>>) {
     ui.keyed("field", |ui| {
-        ui.text_input_msg(
+        ui.text_input(
             "Field",
             &state.value,
             on(|s: &mut Field, text: String| s.value = text),
@@ -225,7 +225,7 @@ fn text_inputs_move_visually_by_default_and_logically_on_request() {
 
 fn code(document: &TextDocument, ui: &mut Ui<'_, Action<TextDocument>>) {
     ui.keyed("code", |ui| {
-        ui.code_editor_msg(
+        ui.code_editor(
             document,
             CodeEditorOptions {
                 line_numbers: false,
@@ -269,7 +269,7 @@ fn the_code_editor_steps_visually_on_mixed_lines_and_leaves_them_at_the_visual_e
 
 fn rich(document: &RichDocument, ui: &mut Ui<'_, Action<RichDocument>>) {
     ui.keyed("rich", |ui| {
-        ui.rich_editor_msg(
+        ui.rich_editor(
             document,
             RichEditorOptions {
                 toolbar: false,

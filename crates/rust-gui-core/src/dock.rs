@@ -286,7 +286,7 @@ impl DockLayout {
     }
 
     /// Does what a dock change asks of the layout: the change a message from
-    /// `Ui::dock_msg` carries. The view only declares; `update` calls this.
+    /// `Ui::dock` carries. The view only declares; `update` calls this.
     /// Returns whether the layout changed.
     pub fn apply(&mut self, action: DockAction) -> bool {
         let changed = match action {

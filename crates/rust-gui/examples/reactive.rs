@@ -4,7 +4,7 @@
 //! tab to see what each derived value read and which one moved last.
 use rust_gui::{
     App, AppOptions, Color, Effects, Label, Length, Memo, Signal, Size, Store, Style, TextWrap, Ui,
-    run_app,
+    run,
 };
 
 #[derive(Clone)]
@@ -107,15 +107,15 @@ impl App for Pricing {
                     ..Style::default()
                 }),
             );
-            ui.slider_msg(
+            ui.slider(
                 "Quantity",
                 self.quantity.get(),
                 1.0..=20.0,
                 1.0,
                 Msg::Quantity,
             );
-            ui.slider_msg("Price each", self.price.get(), 1.0..=50.0, 0.5, Msg::Price);
-            ui.checkbox_msg("Ten percent off", self.discount.get(), Msg::Discount);
+            ui.slider("Price each", self.price.get(), 1.0..=50.0, 0.5, Msg::Price);
+            ui.checkbox("Ten percent off", self.discount.get(), Msg::Discount);
             for (key, label, value) in [
                 ("subtotal", "Subtotal", self.subtotal.get()),
                 ("tax", "Tax", self.tax.get()),
@@ -135,7 +135,7 @@ impl App for Pricing {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Reactive state".into(),
             size: Size::new(620.0, 460.0),

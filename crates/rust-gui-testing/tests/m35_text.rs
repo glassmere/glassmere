@@ -60,7 +60,7 @@ impl App for Notes {
 
     fn view(&self, ui: &mut Ui<'_, Msg>) {
         ui.label(format!("Count {}", self.count));
-        ui.code_editor_msg(
+        ui.code_editor(
             &self.document,
             CodeEditorOptions {
                 label: "Source".into(),
@@ -72,12 +72,12 @@ impl App for Notes {
             },
             Msg::Edit,
         );
-        ui.rich_text_msg(
+        ui.rich_text(
             &self.text,
             Style::default().width(Length::Px(120.0)),
             Msg::Link,
         );
-        ui.rich_editor_msg(
+        ui.rich_editor(
             &self.rich,
             RichEditorOptions {
                 label: "Notes".into(),

@@ -56,12 +56,6 @@ impl DialogOptions {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct DialogResponse {
-    /// The dialog was closed by Escape or a scrim click since the last declaration.
-    pub dismissed: bool,
-}
-
 /// Retained per-scope focus memory.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct ScopeState {

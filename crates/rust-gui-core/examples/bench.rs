@@ -193,7 +193,7 @@ impl App for Table {
 
     fn view(&self, ui: &mut Ui<'_, TableMsg>) {
         ui.keyed("grid", |ui| {
-            ui.data_grid_msg(&self.model, &self.state, viewport(), TableMsg::Grid)
+            ui.data_grid(&self.model, &self.state, viewport(), TableMsg::Grid)
         });
     }
 }
@@ -259,7 +259,7 @@ impl App for Outline {
 
     fn view(&self, ui: &mut Ui<'_, OutlineMsg>) {
         ui.keyed("tree", |ui| {
-            ui.tree_view_msg(&self.model, &self.state, viewport(), OutlineMsg::Tree)
+            ui.tree_view(&self.model, &self.state, viewport(), OutlineMsg::Tree)
         });
     }
 }
@@ -322,7 +322,7 @@ impl App for Source {
 
     fn view(&self, ui: &mut Ui<'_, SourceMsg>) {
         ui.keyed("editor", |ui| {
-            ui.code_editor_msg(
+            ui.code_editor(
                 &self.document,
                 CodeEditorOptions {
                     line_numbers: true,

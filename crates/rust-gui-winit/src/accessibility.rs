@@ -361,17 +361,17 @@ mod tests {
         let mut context = Context::new();
         // The values are what the view shows; nothing in this test sends a message.
         let view = |ui: &mut rust_gui_core::Ui<'_>| {
-            ui.keyed("input", |ui| ui.text_input_msg("Name", "Name", |_| ()));
-            ui.keyed("check", |ui| ui.checkbox_msg("Check", false, |_| ()));
-            ui.keyed("radio", |ui| ui.radio_msg("Radio", 0, 0, |_| ()));
+            ui.keyed("input", |ui| ui.text_input("Name", "Name", |_| ()));
+            ui.keyed("check", |ui| ui.checkbox("Check", false, |_| ()));
+            ui.keyed("radio", |ui| ui.radio("Radio", 0, 0, |_| ()));
             ui.keyed("slider", |ui| {
-                ui.slider_msg("Volume", 50.0, 0.0..=100.0, 5.0, |_| ())
+                ui.slider("Volume", 50.0, 0.0..=100.0, 5.0, |_| ())
             });
             ui.keyed("combo", |ui| {
-                ui.combo_box_msg("Theme", 0, &["Dark", "Light"], |_| ())
+                ui.combo_box("Theme", 0, &["Dark", "Light"], |_| ())
             });
             ui.enabled(false, |ui| {
-                ui.keyed("disabled", |ui| ui.text_input_msg("Disabled", "", |_| ()));
+                ui.keyed("disabled", |ui| ui.text_input("Disabled", "", |_| ()));
             });
         };
         context.run(Size::new(600.0, 800.0), &mut MonospaceMeasurer, view);

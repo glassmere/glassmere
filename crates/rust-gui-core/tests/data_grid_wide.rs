@@ -62,7 +62,7 @@ fn grid_view(state: &Grid, ui: &mut Ui<'_, Message<Grid>>) {
             style: Style::default().width(Length::Px(450.0)),
             ..VirtualListOptions::default()
         };
-        ui.data_grid_msg(&state.model, &state.grid, options, grid_msg)
+        ui.data_grid(&state.model, &state.grid, options, grid_msg)
     });
 }
 

@@ -173,7 +173,7 @@ impl App for Table {
     fn view(&self, ui: &mut Ui<'_, Msg>) {
         self.views.set(self.views.get() + 1);
         ui.keyed("grid", |ui| {
-            ui.data_grid_msg(
+            ui.data_grid(
                 &self.model,
                 &self.state,
                 VirtualListOptions::default(),
@@ -595,7 +595,7 @@ impl App for Outline {
 
     fn view(&self, ui: &mut Ui<'_, Msg>) {
         ui.keyed("tree", |ui| {
-            ui.tree_view_msg(
+            ui.tree_view(
                 &self.model,
                 &self.state,
                 VirtualListOptions::default(),

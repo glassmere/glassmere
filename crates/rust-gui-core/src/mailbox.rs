@@ -87,8 +87,8 @@ impl<T> Mailbox<T> {
     }
 }
 /// A bounded mailbox and its sending end. `wake` asks for a UI turn and
-/// answers whether the window is still there; hosts have one ready, as
-/// [`WakeHandle::channel`](../rust_gui_winit/struct.WakeHandle.html).
+/// answers whether the window is still there; an application has one ready
+/// in [`crate::Effects::channel`].
 pub fn message_channel<T>(
     capacity: usize,
     wake: impl Fn() -> bool + Send + Sync + 'static,

@@ -6,7 +6,7 @@
 //! ```
 use rust_gui::{
     App, AppOptions, Color, Command, Effects, FileRequest, Label, Length, Menu, MenuEntry,
-    Notification, Shortcut, Size, Style, TextWrap, Tray, Ui, run_app,
+    Notification, Shortcut, Size, Style, TextWrap, Tray, Ui, run,
 };
 use std::path::PathBuf;
 
@@ -144,11 +144,11 @@ impl App for Platform {
                 }),
             );
             ui.row(Style::default().gap(10.0), |ui| {
-                ui.command_button_msg(
+                ui.command_button(
                     &Command::with_id("open", "Open...", Some(Shortcut::primary('o'))),
                     Msg::Open,
                 );
-                ui.command_button_msg(
+                ui.command_button(
                     &Command::with_id("save", "Save as...", Some(Shortcut::primary('s'))),
                     Msg::Save,
                 );
@@ -156,8 +156,8 @@ impl App for Platform {
                     enabled: self.saved,
                     ..Command::with_id("notify", "Say it was saved", None)
                 };
-                ui.command_button_msg(&say, Msg::Say);
-                ui.command_button_msg(
+                ui.command_button(&say, Msg::Say);
+                ui.command_button(
                     &Command::with_id("quit", "Close the window", None),
                     Msg::Quit,
                 );
@@ -200,7 +200,7 @@ impl App for Platform {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Desktop".into(),
             size: Size::new(640.0, 460.0),

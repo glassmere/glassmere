@@ -4,7 +4,7 @@
 //! photo can be dragged at the same time, one finger each.
 use rust_gui::{
     App, AppOptions, Button, Color, Effects, GestureBuilder, GestureResponse, ImageFit,
-    ImageOptions, Length, Size, Style, Transform, Ui, run_app,
+    ImageOptions, Length, Size, Style, Transform, Ui, run,
 };
 
 const PHOTO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/assets/dusk.png");
@@ -76,10 +76,10 @@ impl App for Gestures {
         ui.column(page, |ui| {
             ui.row(Style::default().gap(16.0), |ui| {
                 ui.column(Style::default().width(Length::Px(220.0)), |ui| {
-                    ui.slider_msg("Corners", self.corners, 0.0..=100.0, 1.0, Msg::Corners);
+                    ui.slider("Corners", self.corners, 0.0..=100.0, 1.0, Msg::Corners);
                 });
                 ui.column(Style::default().width(Length::Px(220.0)), |ui| {
-                    ui.slider_msg("Opacity", self.opacity, 0.0..=100.0, 1.0, Msg::Opacity);
+                    ui.slider("Opacity", self.opacity, 0.0..=100.0, 1.0, Msg::Opacity);
                 });
                 ui.button(Button::new("Reset view").on_click(Msg::Reset));
             });
@@ -103,7 +103,7 @@ impl App for Gestures {
                 justify_content: rust_gui::Justify::Center,
                 ..Style::default()
             };
-            ui.gesture_area_msg(
+            ui.gesture_area(
                 GestureBuilder::new().on_gesture(Msg::Gesture),
                 canvas,
                 |ui| {
@@ -140,7 +140,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         (0.0, 0.0, 1.0, 0.0)
     };
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Gestures".into(),
             size: Size::new(780.0, 640.0),

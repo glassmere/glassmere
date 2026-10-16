@@ -90,7 +90,7 @@ fn grid_msg(message: GridMsg) -> Message<Grid> {
 
 fn grid_view(state: &Grid, ui: &mut Ui<'_, Message<Grid>>) {
     ui.keyed("grid", |ui| {
-        ui.data_grid_msg(
+        ui.data_grid(
             &state.model,
             &state.grid,
             VirtualListOptions::default(),

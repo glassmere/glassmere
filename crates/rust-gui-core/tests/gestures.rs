@@ -51,7 +51,7 @@ fn view(state: &Canvas, ui: &mut Ui<'_, Action<Canvas>>) {
             let items = [MenuItem::new("Reset")];
             let canvas = |ui: &mut Ui<'_, Action<Canvas>>| {
                 ui.keyed("canvas", |ui| {
-                    ui.gesture_area_msg(
+                    ui.gesture_area(
                         GestureBuilder::new().on_gesture(on(
                             |s: &mut Canvas, gesture: GestureResponse| {
                                 s.gesture = gesture;
@@ -74,7 +74,7 @@ fn view(state: &Canvas, ui: &mut Ui<'_, Action<Canvas>>) {
             };
             if state.with_menu {
                 ui.keyed("menu", |ui| {
-                    ui.context_menu_msg(
+                    ui.context_menu(
                         &items,
                         Style::default(),
                         on(|s: &mut Canvas, index: usize| s.menu = Some(index)),

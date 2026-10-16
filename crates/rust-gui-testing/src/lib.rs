@@ -1,44 +1,34 @@
 //! Headless harness, semantic finders and text snapshots for UI tests.
 use rust_gui_core::{
     Action, App, AppDriver, Context, Event, FrameStats, Key, MonospaceMeasurer, NodeId,
-    NodeSnapshot, TextEdit, Ui,
+    NodeSnapshot, TextEdit,
 };
 use rust_gui_scene::{Color, Point, Primitive, Rect, Size};
 use std::{any::Any, path::Path};
 
-type View<S> = Box<dyn FnMut(&mut S, &mut Ui<'_>)>;
-
-/// What declares: a closure view, or an [`App`] and its driver.
-enum Runner<S> {
-    View(View<S>),
-    App {
-        /// The `AppDriver` of the app's message.
-        driver: Box<dyn Any>,
-        frame: fn(&mut S, &mut dyn Any, &mut Context, Size) -> FrameStats,
-    },
+/// What declares: an [`App`]'s driver, and the batch it runs.
+struct Runner<S> {
+    /// The `AppDriver` of the app's message.
+    driver: Box<dyn Any>,
+    frame: fn(&mut S, &mut dyn Any, &mut Context, Size) -> FrameStats,
 }
 
-/// Owns application state and a view, declares through a real `Context` with
+/// Owns an application, declares through a real `Context` with
 /// synthetic text metrics, and drives it through the same input paths as a host.
 pub struct Harness<S> {
     state: S,
     runner: Runner<S>,
     context: Context,
-    measurer: MonospaceMeasurer,
     size: Size,
     stats: FrameStats,
 }
 
 impl<S> Harness<S> {
-    pub fn new(size: Size, state: S, view: impl FnMut(&mut S, &mut Ui<'_>) + 'static) -> Self {
-        Self::start(size, state, Runner::View(Box::new(view)))
-    }
     fn start(size: Size, state: S, runner: Runner<S>) -> Self {
         let mut harness = Self {
             state,
             runner,
             context: Context::new(),
-            measurer: MonospaceMeasurer,
             size,
             stats: FrameStats::default(),
         };
@@ -46,37 +36,13 @@ impl<S> Harness<S> {
         harness
     }
 
-    /// One batch. A closure view declares once and, like the desktop host,
-    /// again while activations were consumed (at most three more times), so
-    /// earlier labels reflect the new state even when a click leads to a
-    /// language or theme switch. An app updates on the batch's messages and
-    /// declares at most once.
+    /// One batch: the app updates on the batch's messages and declares at
+    /// most once.
     pub fn run(&mut self) -> FrameStats {
-        let stats = match &mut self.runner {
-            Runner::View(_) => {
-                let mut stats = self.declare();
-                for _ in 0..3 {
-                    if stats.activations == 0 {
-                        break;
-                    }
-                    stats = self.declare();
-                }
-                stats
-            }
-            Runner::App { driver, frame } => {
-                frame(&mut self.state, &mut **driver, &mut self.context, self.size)
-            }
-        };
+        let Runner { driver, frame } = &mut self.runner;
+        let stats = frame(&mut self.state, &mut **driver, &mut self.context, self.size);
         self.stats = stats;
         stats
-    }
-    fn declare(&mut self) -> FrameStats {
-        let Runner::View(view) = &mut self.runner else {
-            unreachable!("only a closure view declares directly")
-        };
-        let state = &mut self.state;
-        self.context
-            .run(self.size, &mut self.measurer, |ui| view(state, ui))
     }
 
     /// What the last batch did.
@@ -463,7 +429,7 @@ impl<A: App> Harness<A> {
         Self::start(
             size,
             app,
-            Runner::App {
+            Runner {
                 driver: Box::new(AppDriver::<A::Message>::new(|| true)),
                 frame: app_frame::<A>,
             },
@@ -487,10 +453,7 @@ impl<A: App> Harness<A> {
         &mut self.state
     }
     fn driver(&mut self) -> Option<&mut AppDriver<A::Message>> {
-        match &mut self.runner {
-            Runner::App { driver, .. } => driver.downcast_mut(),
-            Runner::View(_) => None,
-        }
+        self.runner.driver.downcast_mut()
     }
 }
 

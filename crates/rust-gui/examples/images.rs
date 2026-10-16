@@ -6,7 +6,7 @@
 //! another application.
 use rust_gui::{
     App, AppOptions, BackgroundImage, Button, Color, DragOutcome, DragPayload, DragSourceBuilder,
-    Effects, Image, ImageFit, ImageOptions, ImageTint, Label, Length, Style, Ui, run_app,
+    Effects, Image, ImageFit, ImageOptions, ImageTint, Label, Length, Style, Ui, run,
 };
 
 const ASSETS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/assets");
@@ -247,7 +247,7 @@ impl App for Gallery {
                 ..Style::default()
             };
             let file = std::path::PathBuf::from(format!("{ASSETS}/dusk.png"));
-            ui.drag_source_msg(
+            ui.drag_source(
                 DragSourceBuilder::new("dusk.png, draggable file", DragPayload::Files(vec![file]))
                     .on_drag_end(Msg::Exported),
                 card,
@@ -261,7 +261,7 @@ impl App for Gallery {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Images".into(),
             size: rust_gui::Size::new(980.0, 860.0),

@@ -1,6 +1,6 @@
 use rust_gui::{
     App, AppOptions, Button, Color, Effects, FontFamily, Label, Length, MenuItem, NumberOptions,
-    Size, Style, TextInput, TextWrap, Toast, Ui, run_app, suggest,
+    Size, Style, TextInput, TextWrap, Toast, Ui, run, suggest,
 };
 use std::time::Duration;
 
@@ -72,7 +72,7 @@ impl App for Controls {
                 if index == 0 {
                     self.action = "saved".into();
                     // Toasts confirm without taking focus; the action comes back as a message.
-                    effects.toast_msg(
+                    effects.toast_with(
                         Toast::success("Draft saved").action("Undo").tag("draft"),
                         |_| Msg::Undo,
                     );
@@ -110,7 +110,7 @@ impl App for Controls {
                 ui.column(Style { width: Length::Px(360.0), gap: 12.0, ..Style::default() }, |ui| {
                     ui.label(Label::new("01 / Text editing").style(Style { font_weight: Some(700), ..Style::default() }));
                     ui.label("Name");
-                    ui.text_input_msg(TextInput::new("Name").placeholder("Type a name").style(Style {
+                    ui.text_input(TextInput::new("Name").placeholder("Type a name").style(Style {
                         width: Length::Px(340.0), height: Length::Px(46.0), padding: 10.0, ..Style::button()
                     }).on_submit(Msg::Submitted), &self.name, Msg::Name);
                     ui.label(Label::new(format!("Text: {}", self.name)).style(Style { width: Length::Px(340.0), wrap: TextWrap::Word, ..Style::default() }));
@@ -121,26 +121,26 @@ impl App for Controls {
                     ui.label(Label::new("Shaped serif · bold italic").style(Style { font_family: Some(FontFamily::Serif), font_weight: Some(700), italic: Some(true), font_size: Some(22.0), ..Style::default() }));
                     ui.label(Label::new("let native = true;").style(Style { font_family: Some(FontFamily::Monospace), foreground: Some(Color::rgb(103, 232, 206)), ..Style::default() }));
                     // Disabled, so it never sends: the name's message is only a placeholder here.
-                    ui.enabled(false, |ui| { ui.text_input_msg("Unavailable field", "Unavailable field", Msg::Name); });
+                    ui.enabled(false, |ui| { ui.text_input("Unavailable field", "Unavailable field", Msg::Name); });
                 });
                 ui.column(Style { width: Length::Px(340.0), gap: 12.0, ..Style::default() }, |ui| {
                     ui.label(Label::new("02 / Choices & actions").style(Style { font_weight: Some(700), ..Style::default() }));
-                    ui.checkbox_msg("Notifications", self.notifications, Msg::Notify);
+                    ui.checkbox("Notifications", self.notifications, Msg::Notify);
                     ui.row(Style { gap: 8.0, ..Style::default() }, |ui| {
-                        ui.radio_msg("Quiet", self.mode, 0, Msg::Mode);
-                        ui.radio_msg("Balanced", self.mode, 1, Msg::Mode);
+                        ui.radio("Quiet", self.mode, 0, Msg::Mode);
+                        ui.radio("Balanced", self.mode, 1, Msg::Mode);
                     });
-                    ui.slider_msg("Volume", self.volume, 0.0..=100.0, 5.0, Msg::Volume);
+                    ui.slider("Volume", self.volume, 0.0..=100.0, 5.0, Msg::Volume);
                     ui.label("Theme");
-                    ui.combo_box_msg("Theme", self.theme, &["Dark", "Light", "System"], Msg::Theme);
+                    ui.combo_box("Theme", self.theme, &["Dark", "Light", "System"], Msg::Theme);
                     // Type, then Enter or Tab commits; arrows, PageUp/PageDown and the buttons step.
                     ui.label("Quantity");
-                    ui.number_input_msg("Quantity", self.quantity, NumberOptions::default().range(0.0, 20.0).step(0.5).suffix(" kg"), Msg::Quantity);
+                    ui.number_input("Quantity", self.quantity, NumberOptions::default().range(0.0, 20.0).step(0.5).suffix(" kg"), Msg::Quantity);
                     // The app decides what matches; `suggest` is the simple substring source.
                     let matches = suggest(&self.city, &CITIES, 6);
                     ui.label("City");
-                    ui.autocomplete_msg("City", &self.city, &matches, Msg::City);
-                    ui.menu_msg("Actions", &actions(), Msg::Action);
+                    ui.autocomplete("City", &self.city, &matches, Msg::City);
+                    ui.menu("Actions", &actions(), Msg::Action);
                     ui.label(format!("Last action: {}", self.action));
                     ui.label(format!("State: {} / {} / {:.0} / {}", self.notifications, self.mode, self.volume, self.theme));
                     ui.label(format!("Fields: {} kg / {}", self.quantity, self.city));
@@ -160,7 +160,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         rust_gui::DirectionChoice::Auto
     };
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Text and controls".into(),
             size: Size::new(880.0, 740.0),

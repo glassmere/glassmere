@@ -118,7 +118,7 @@ fn tabs_page(state: &Tabs, ui: &mut Ui<'_, Handler<Tabs>>) {
     let tabs = [Tab::new("One"), Tab::closable("Two"), Tab::new("Three")];
     ui.keyed("before", |ui| ui.button("Before"));
     ui.keyed("tabs", |ui| {
-        ui.tabs_close_msg(
+        ui.tabs_close(
             state.selected,
             &tabs,
             on(|s: &mut Tabs, index: usize| s.selected = index),
@@ -212,7 +212,7 @@ struct Split {
 
 fn split_page(state: &Split, ui: &mut Ui<'_, Handler<Split>>) {
     ui.keyed("split", |ui| {
-        ui.split_msg(
+        ui.split(
             state.fraction,
             on(|s: &mut Split, fraction: f32| s.fraction = fraction),
             Axis::Horizontal,
@@ -295,7 +295,7 @@ fn menu_page(_: &Menu, ui: &mut Ui<'_, Handler<Menu>>) {
     ];
     ui.keyed("outside", |ui| ui.button("Outside"));
     ui.keyed("area", |ui| {
-        ui.context_menu_msg(
+        ui.context_menu(
             &items,
             Style::default()
                 .width(Length::Px(400.0))
@@ -380,7 +380,7 @@ fn pop_page(state: &Pops, ui: &mut Ui<'_, Handler<Pops>>) {
         ui.row(Style::default(), |ui| {
             ui.keyed("share", |ui| ui.button("Share"));
             ui.keyed("pop", |ui| {
-                ui.popover_msg(
+                ui.popover(
                     state.open,
                     on(|s: &mut Pops, open: bool| {
                         if !open {
@@ -397,7 +397,7 @@ fn pop_page(state: &Pops, ui: &mut Ui<'_, Handler<Pops>>) {
             });
             ui.keyed("more", |ui| ui.button("More"));
             ui.keyed("pop2", |ui| {
-                ui.popover_msg(
+                ui.popover(
                     state.second,
                     on(|s: &mut Pops, open: bool| s.second = open),
                     PopoverOptions::default(),

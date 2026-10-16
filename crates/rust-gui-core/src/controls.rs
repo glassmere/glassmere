@@ -169,15 +169,6 @@ impl NumberOptions {
     }
 }
 
-/// What `Ui::autocomplete` reports besides the field's response.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct AutocompleteResponse<'a> {
-    pub response: crate::Response<'a>,
-    /// Index of the suggestion taken this frame, in the list that was offered
-    /// when it was taken. `value` already holds its text.
-    pub picked: Option<usize>,
-}
-
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) enum Control {
     #[default]

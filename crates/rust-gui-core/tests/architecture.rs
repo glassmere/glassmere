@@ -391,7 +391,7 @@ fn custom_view(state: &Clicks, ui: &mut Ui<'_, Message<Clicks>>) {
         Color::WHITE
     };
     ui.keyed("custom", |ui| {
-        ui.custom_msg(
+        ui.custom(
             Style::default(),
             custom_button(color),
             act(|s: &mut Clicks| s.count += 1),
@@ -437,7 +437,7 @@ fn custom_widgets_cannot_pop_the_host_clip() {
     let mut widget = custom_button(Color::WHITE);
     widget.primitives.insert(0, Primitive::PopClip);
     frame(&mut Context::new(), |ui| {
-        ui.keyed("invalid", |ui| ui.custom(Style::default(), widget));
+        ui.keyed("invalid", |ui| ui.custom(Style::default(), widget, ()));
     });
 }
 
@@ -447,7 +447,7 @@ fn a_nonfocusable_custom_button_remains_pointer_activatable() {
         let mut widget = custom_button(Color::WHITE);
         widget.semantics.focusable = false;
         ui.keyed("custom", |ui| {
-            ui.custom_msg(Style::default(), widget, act(|s: &mut Clicks| s.count += 1))
+            ui.custom(Style::default(), widget, act(|s: &mut Clicks| s.count += 1))
         });
     }
     let mut driven = Driven::new(ROOT, Clicks::default(), view);

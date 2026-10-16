@@ -18,7 +18,7 @@ struct Queued {
 
 pub(super) struct ToastState {
     queue: Vec<Queued>,
-    /// Shared with `Ui::toast`, which only has `&Context`.
+    /// Shared with the toast senders of other threads.
     next_id: AtomicU64,
     paused: bool,
     actions: VecDeque<ToastAction>,
@@ -40,7 +40,7 @@ impl Default for ToastState {
 }
 
 impl Context {
-    /// Shows a toast, as `Ui::toast` does; for hosts and tests. A toast equal
+    /// Shows a toast, as `Effects::toast` does; for hosts and tests. A toast equal
     /// to one already waiting or showing restarts that one instead of stacking.
     pub fn push_toast(&mut self, toast: Toast) -> ToastId {
         let id = self.next_toast_id();
@@ -98,12 +98,8 @@ impl Context {
         }
     }
 
-    pub(crate) fn toast_action_at(&self, index: usize) -> Option<ToastAction> {
-        self.toast.actions.get(index).cloned()
-    }
-
-    /// Takes the actions of the toasts `mine` names, leaving the rest for
-    /// `Ui::toast_action`.
+    /// Takes the actions of the toasts `mine` names. The rest, of toasts
+    /// whose action sends nothing, wait at most a few dozen deep.
     pub(crate) fn take_toast_actions(
         &mut self,
         mut mine: impl FnMut(ToastId) -> bool,
@@ -194,8 +190,7 @@ impl Context {
             .min()
     }
 
-    /// After a declaration: what `Ui::toast`, the toast buttons and
-    /// `Ui::toast_action` did.
+    /// After a declaration: what the toast buttons did.
     pub(super) fn apply_toasts(&mut self, outbox: crate::ui::ToastOutbox) {
         for (id, toast) in outbox.raised {
             self.queue_toast(id, toast);
@@ -212,9 +207,6 @@ impl Context {
             }
             self.dismiss_toast(id);
         }
-        self.toast
-            .actions
-            .drain(..outbox.taken.min(self.toast.actions.len()));
         // An app that never asks does not grow a backlog.
         while self.toast.actions.len() > 32 {
             self.toast.actions.pop_front();

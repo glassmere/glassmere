@@ -26,7 +26,7 @@ pub trait App: 'static {
     fn init(&mut self, _effects: &mut Effects<'_, Self::Message>) {}
     fn update(&mut self, message: Self::Message, effects: &mut Effects<'_, Self::Message>);
     fn view(&self, ui: &mut Ui<'_, Self::Message>);
-    /// What `rust-gui-dev` keeps across a rebuild; replaces `Ui::hot_state`.
+    /// What `rust-gui-dev` keeps across a rebuild.
     fn save_state(&self) -> Option<String> {
         None
     }
@@ -432,13 +432,18 @@ impl<M: 'static> Effects<'_, M> {
         self.requests().window_commands.push(command);
     }
 
-    /// Shows a toast, as `Ui::toast` does.
+    /// Shows a short message in the bottom corner at the end of the reading
+    /// direction. It leaves after its duration, which pauses while the
+    /// pointer or the keyboard is on any toast. Four show at once and later
+    /// ones wait. A toast equal to one already there restarts it instead of
+    /// stacking. Its action button, if it has one, only closes it.
     pub fn toast(&mut self, toast: Toast) {
         self.sink().toast(toast, None);
     }
 
-    /// Shows a toast whose action button sends `message(action)` when clicked.
-    pub fn toast_msg(&mut self, toast: Toast, message: impl Fn(ToastAction) -> M + 'static) {
+    /// [`Effects::toast`] whose action button sends `message(action)` when
+    /// clicked.
+    pub fn toast_with(&mut self, toast: Toast, message: impl Fn(ToastAction) -> M + 'static) {
         self.sink().toast(toast, Some(Box::new(message)));
     }
 
@@ -554,7 +559,7 @@ impl Pacing {
 /// Runs an [`App`] on a context: turns each batch of input into messages,
 /// updates, applies what the updates asked for, and declares the view only
 /// when something it reads may have changed. Hosts and the test harness
-/// keep one of these beside the app; applications use `run_app`.
+/// keep one of these beside the app; applications use `run`.
 pub struct AppDriver<M: 'static> {
     effects: EffectState<M>,
     /// Messages sent from outside, and the batch's messages; the capacity

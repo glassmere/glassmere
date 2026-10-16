@@ -309,14 +309,6 @@ impl Default for CodeEditorOptions<'_> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct CodeEditorResponse {
-    /// The document's text changed during this declaration.
-    pub changed: bool,
-    /// The primary selection changed during this declaration.
-    pub selection_changed: bool,
-}
-
 /// How far a click selects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Granularity {

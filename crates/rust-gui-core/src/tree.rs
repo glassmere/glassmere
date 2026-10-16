@@ -369,8 +369,7 @@ pub struct Context {
     exported_drag: Option<NodeId>,
     dock_drag: Option<Box<dock_input::DockDrag>>,
     dock_grab: Option<dock_input::DockGrab>,
-    clipboard_out: Option<String>,
-    /// What `Ui::copy` left for the host, what `Ui::request_paste` asked
+    /// What `Effects::copy` left for the host, what `Effects::paste` asked
     /// for, and what the host last read back.
     clip_out: Option<crate::Clip>,
     paste_requested: bool,
@@ -437,7 +436,7 @@ pub struct Context {
     animating_nodes: Vec<NodeId>,
     ghosts: Vec<animation_state::Ghost>,
     /// The handler slab of the `App` driving this context, typed by its
-    /// message; `None` for a closure view.
+    /// message; `None` before an `App` has declared.
     handlers: Option<Box<dyn std::any::Any>>,
     /// What reconcile did to handlers, for the typed code to apply: the
     /// declared handler each node now has, and the slots of removed nodes.
@@ -447,7 +446,7 @@ pub struct Context {
     grid_filters: std::cell::RefCell<Vec<(NodeId, crate::collection::FilterNote)>>,
     /// The filter delays of grids, by the node of their rows.
     grid_timers: HashMap<NodeId, crate::collection::FilterTimer>,
-    /// What grids declared with `data_grid_msg` keep: cursor, sideways scroll
+    /// What grids declared with `data_grid` keep: cursor, sideways scroll
     /// and the cell being edited, by the node of their rows.
     grid_nodes: std::cell::RefCell<HashMap<NodeId, crate::collection::GridNode>>,
     /// Collection input a declaration queued for the next batch.
@@ -568,7 +567,6 @@ impl Default for Context {
             exported_drag: None,
             dock_drag: None,
             dock_grab: None,
-            clipboard_out: None,
             clip_out: None,
             paste_requested: false,
             clip_in: None,
@@ -747,14 +745,10 @@ impl Context {
         self.watched.get(path)?.text.clone()
     }
 
-    /// Asks the next declaration to save the app's state through
-    /// `Ui::hot_state`; hosts call this before a development restart.
+    /// Asks for the app's state through `App::save_state` at the next
+    /// batch; hosts call this before a development restart.
     pub fn request_hot_save(&mut self) {
         self.hot_save = true;
-    }
-
-    pub(crate) fn hot_save_requested(&self) -> bool {
-        self.hot_save
     }
 
     /// Answers a hot-save request with the state an `App` saves, and spends it.
@@ -846,12 +840,12 @@ impl Context {
         &self.style_warnings
     }
 
-    /// What `Ui::copy` left, for the host to put on the clipboard.
+    /// What `Effects::copy` left, for the host to put on the clipboard.
     pub fn take_clip(&mut self) -> Option<crate::Clip> {
         self.clip_out.take()
     }
 
-    /// Whether a view asked for what is on the clipboard. Answer with
+    /// Whether the application asked for what is on the clipboard. Answer with
     /// `set_clip`, which asks for a declaration of its own.
     pub fn take_paste_request(&mut self) -> bool {
         std::mem::take(&mut self.paste_requested)
@@ -863,11 +857,7 @@ impl Context {
         self.redraw_requested = true;
     }
 
-    pub(crate) fn pasted(&self) -> Option<&crate::Clip> {
-        self.clip_in.as_ref()
-    }
-
-    /// What a view asked the window to do: move it, resize it, minimize,
+    /// What the application asked the window to do: move it, resize it, minimize,
     /// maximize or close it. Hosts take these after a declaration.
     pub fn take_window_commands(&mut self) -> Vec<crate::WindowCommand> {
         std::mem::take(&mut self.window_commands)
@@ -917,10 +907,6 @@ impl Context {
     pub fn set_chosen_files(&mut self, paths: Vec<std::path::PathBuf>) {
         self.chosen_files = Some(paths);
         self.redraw_requested = true;
-    }
-
-    pub(crate) fn chosen_files(&self) -> Option<&[std::path::PathBuf]> {
-        self.chosen_files.as_deref()
     }
 
     /// Files the operating system asked the application to open. Hosts set
@@ -1044,13 +1030,11 @@ impl Context {
     pub fn set_binding(&mut self, id: impl Into<String>, shortcut: Option<Shortcut>) {
         self.bindings.insert(id.into(), shortcut);
         self.pending |= Dirty::PAINT;
-        self.stats.activations += 1;
         self.view_stale = true;
     }
 
     pub fn clear_bindings(&mut self) {
         self.bindings.clear();
-        self.stats.activations += 1;
         self.view_stale = true;
     }
 

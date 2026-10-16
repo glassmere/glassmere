@@ -2,9 +2,7 @@
 //! framework beyond its published API. Drag one, turn the wheel over one, or
 //! tab to one and use the arrow keys.
 use dial_widget::{Dial, DialMsg};
-use rust_gui::{
-    App, AppOptions, Color, Effects, Label, Length, Size, Style, TextWrap, Ui, run_app,
-};
+use rust_gui::{App, AppOptions, Color, Effects, Label, Length, Size, Style, TextWrap, Ui, run};
 
 #[derive(Clone, Debug)]
 enum Msg {
@@ -66,7 +64,7 @@ impl App for Dials {
                     )
                 });
                 ui.keyed("enabled", |ui| {
-                    ui.checkbox_msg("Enabled", self.enabled, Msg::Enabled)
+                    ui.checkbox("Enabled", self.enabled, Msg::Enabled)
                 });
                 ui.enabled(self.enabled, |ui| {
                     ui.keyed("dials", |ui| {
@@ -112,7 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         turns: 0,
         smoke,
     };
-    run_app(
+    run(
         AppOptions {
             title: "Dial widget".into(),
             size: Size::new(560.0, 420.0),

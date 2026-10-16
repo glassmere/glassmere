@@ -621,8 +621,8 @@ impl Inspector {
                         gap: 12.0,
                         ..Style::default()
                     }, |ui| {
-                        ui.keyed("damage", |ui| ui.checkbox_msg("Damage", self.show_damage, InspectorMsg::Damage));
-                        ui.keyed("repaints", |ui| ui.checkbox_msg("Repaints", self.show_repaints, InspectorMsg::Repaints));
+                        ui.keyed("damage", |ui| ui.checkbox("Damage", self.show_damage, InspectorMsg::Damage));
+                        ui.keyed("repaints", |ui| ui.checkbox("Repaints", self.show_repaints, InspectorMsg::Repaints));
                     }));
                 match self.tab {
                     Tab::Tree | Tab::Accessibility => {
@@ -635,7 +635,7 @@ impl Inspector {
                                 ..Style::default()
                             }, |ui| {
                                 let rows = Rows::new(model, &self.collapsed, accessibility);
-                                ui.keyed("tree", |ui| ui.tree_view_msg_with(&rows, &self.tree, VirtualListOptions {
+                                ui.keyed("tree", |ui| ui.tree_view_with(&rows, &self.tree, VirtualListOptions {
                                         label: "Nodes".into(),
                                         height: list_height,
                                         row_height: 24.0,
@@ -673,7 +673,7 @@ impl Inspector {
                     }
                     Tab::Events => {
                         let rows = EventRows(&model.events);
-                        ui.keyed("events", |ui| ui.virtual_list_msg_with(&rows, &self.events, VirtualListOptions {
+                        ui.keyed("events", |ui| ui.virtual_list_with(&rows, &self.events, VirtualListOptions {
                                 label: "Events".into(),
                                 height: list_height,
                                 row_height: 22.0,
@@ -773,7 +773,7 @@ impl Inspector {
                             ..mono.clone()
                         })));
                         let rows = FrameRows(&model.frames);
-                        ui.keyed("frames", |ui| ui.virtual_list_msg_with(&rows, &self.frames, VirtualListOptions {
+                        ui.keyed("frames", |ui| ui.virtual_list_with(&rows, &self.frames, VirtualListOptions {
                                 label: "Frames".into(),
                                 height: (list_height - 96.0).max(120.0),
                                 row_height: 22.0,

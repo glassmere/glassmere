@@ -26,11 +26,6 @@ pub enum UiEvent {
     /// or the Activate that assistive technology sends. A click sends its
     /// pointer events first.
     Activate,
-    /// Sent by `Ui::emit` from somewhere inside.
-    Custom {
-        name: String,
-        data: String,
-    },
 }
 
 impl UiEvent {
@@ -52,7 +47,6 @@ pub struct EventArea {
     pub pointer: bool,
     pub keyboard: bool,
     pub scroll: bool,
-    pub custom: bool,
     /// See the event before the widgets inside rather than after them.
     pub capture: bool,
     /// Nothing else sees the event: no widget, and no area further along.
@@ -81,20 +75,11 @@ impl EventArea {
         }
     }
 
-    /// Only what `Ui::emit` sends.
-    pub fn custom() -> Self {
-        Self {
-            custom: true,
-            ..Self::default()
-        }
-    }
-
     pub fn all() -> Self {
         Self {
             pointer: true,
             keyboard: true,
             scroll: true,
-            custom: true,
             ..Self::default()
         }
     }
@@ -115,7 +100,6 @@ impl EventArea {
             _ if event.pointer() => self.pointer,
             _ if event.keyboard() => self.keyboard,
             UiEvent::Scroll { .. } => self.scroll,
-            UiEvent::Custom { .. } => self.custom,
             _ => false,
         }
     }

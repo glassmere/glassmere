@@ -1,8 +1,5 @@
 use crate::{Length, Style};
-use std::{
-    collections::{HashMap, HashSet},
-    ops::Range,
-};
+use std::collections::{HashMap, HashSet};
 
 /// What a grid, list or tree view sends when the user changes it. The
 /// application applies it to its [`GridState`] with [`GridState::apply`] in
@@ -144,7 +141,6 @@ pub struct ListState {
     /// a row each time it is asked to, not only when the row changes.
     reveals: u32,
     pub(crate) offset: f32,
-    pub(crate) anchor: Option<(ItemId, f32)>,
 }
 impl ListState {
     pub fn selected(&self) -> Option<ItemId> {
@@ -176,17 +172,6 @@ pub(crate) struct ListAnchor {
     pub item: ItemId,
     pub within: f32,
     pub offset: f32,
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct ListResponse {
-    pub changed: bool,
-    pub activated: Option<ItemId>,
-    /// Grids: the row and model column whose edited value the model accepted
-    /// this frame.
-    pub edited: Option<(ItemId, usize)>,
-    /// Realized indices, including bounded overscan.
-    pub realized: Range<usize>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -276,150 +261,6 @@ impl VirtualListOptions {
             return Err("virtual content exceeds supported logical extent");
         }
         Ok(())
-    }
-}
-
-impl ListState {
-    /// `options` have passed [`VirtualListOptions::check`] for this model.
-    pub(crate) fn update(
-        &mut self,
-        model: &mut impl ListModel,
-        input: Vec<CollectionInput>,
-        offset: Option<f32>,
-        options: &VirtualListOptions,
-    ) -> ListResponse {
-        let old = self.selected;
-        let native_offset = offset.unwrap_or(self.offset);
-        // Preserve the top logical item across model reorder when the user has
-        // not independently scrolled since the previous declaration.
-        self.offset = if native_offset == self.offset {
-            self.anchor
-                .and_then(|(id, within)| {
-                    model
-                        .index_of(id)
-                        .map(|index| index as f32 * options.row_height + within)
-                })
-                .unwrap_or(native_offset)
-        } else {
-            native_offset
-        };
-        if self.selected.is_some_and(|id| model.index_of(id).is_none()) {
-            self.selected = None;
-        }
-        let mut activated = None;
-        for action in input {
-            let current = self.selected.and_then(|id| model.index_of(id));
-            let index = match action {
-                CollectionInput::Select(id) => model.index_of(id),
-                CollectionInput::Move(delta) => {
-                    if model.is_empty() {
-                        None
-                    } else {
-                        Some(
-                            current.map_or(if delta < 0 { model.len() - 1 } else { 0 }, |index| {
-                                index.saturating_add_signed(delta).min(model.len() - 1)
-                            }),
-                        )
-                    }
-                }
-                CollectionInput::First => (!model.is_empty()).then_some(0),
-                CollectionInput::Last => model.len().checked_sub(1),
-                CollectionInput::Activate => {
-                    activated = self.selected;
-                    None
-                }
-                // The grid took these out before the rows saw the rest.
-                CollectionInput::Cell { .. }
-                | CollectionInput::Column(_)
-                | CollectionInput::Edit
-                | CollectionInput::Type(_)
-                | CollectionInput::EditKey { .. }
-                | CollectionInput::ScrollX(_) => None,
-                CollectionInput::FiltersDue
-                | CollectionInput::EditValue { .. }
-                | CollectionInput::Activated(_)
-                | CollectionInput::Deselect => None,
-                CollectionInput::SetExpanded { item, open } => {
-                    if let Some(index) = model.index_of(item)
-                        && model.expanded(index).is_some()
-                    {
-                        model.set_expanded(item, open);
-                        self.selected = Some(item);
-                        self.reveal = Some(item);
-                    }
-                    None
-                }
-                CollectionInput::Expand(expand) => {
-                    if let Some(index) = current {
-                        let id = model.item_id(index);
-                        match (expand, model.expanded(index)) {
-                            (true, Some(false)) => {
-                                model.set_expanded(id, true);
-                            }
-                            (true, Some(true)) if index + 1 < model.len() => {
-                                self.selected = Some(model.item_id(index + 1));
-                            }
-                            (false, Some(true)) => {
-                                model.set_expanded(id, false);
-                            }
-                            (false, _) => {
-                                if let Some(parent) = model.parent(id) {
-                                    self.selected = Some(parent);
-                                }
-                            }
-                            _ => {}
-                        }
-                        self.reveal = self.selected;
-                    }
-                    None
-                }
-                CollectionInput::Toggle(id) => {
-                    if let Some(index) = model.index_of(id)
-                        && let Some(expanded) = model.expanded(index)
-                    {
-                        model.set_expanded(id, !expanded);
-                        self.selected = Some(id);
-                        self.reveal = Some(id);
-                    }
-                    None
-                }
-            };
-            if let Some(index) = index {
-                self.selected = Some(model.item_id(index));
-                self.reveal = self.selected;
-            }
-        }
-        let maximum = (model.len() as f64 * f64::from(options.row_height)
-            - f64::from(options.height))
-        .max(0.0);
-        if let Some(index) = self.reveal.take().and_then(|id| model.index_of(id)) {
-            let top = index as f32 * options.row_height;
-            let bottom = top + options.row_height;
-            if top < self.offset {
-                self.offset = top;
-            }
-            if bottom > self.offset + options.height {
-                self.offset = bottom - options.height;
-            }
-        }
-        self.offset = self.offset.clamp(0.0, maximum as f32);
-        let first = (self.offset / options.row_height).floor() as usize;
-        self.anchor = (first < model.len()).then(|| {
-            (
-                model.item_id(first),
-                self.offset - first as f32 * options.row_height,
-            )
-        });
-        let start = first.saturating_sub(options.overscan).min(model.len());
-        let end = (((self.offset + options.height) / options.row_height).ceil() as usize)
-            .saturating_add(options.overscan)
-            .min(model.len());
-        ListResponse {
-            changed: old != self.selected,
-            activated,
-            edited: None,
-            realized: start..end,
-        }
     }
 }
 
@@ -706,32 +547,13 @@ pub struct GridState {
     pub filters: std::collections::BTreeMap<usize, String>,
     /// What the model was last asked to filter by.
     pub(crate) applied_filters: Vec<(usize, String)>,
-    /// When typed filter text is due to reach the model.
-    pub(crate) filter_due: Option<std::time::Duration>,
-    pub(crate) edit: Option<GridEdit>,
-    /// The next declaration gives the keyboard back to the rows.
-    pub(crate) refocus: bool,
     /// The last refused edit, and how many there have been, so that the
     /// grid answers each once.
     pub(crate) refusal: Option<(ItemId, usize, String)>,
     pub(crate) refusals: u64,
 }
 
-/// A cell being edited in place.
-#[derive(Clone, Debug)]
-pub(crate) struct GridEdit {
-    pub item: ItemId,
-    pub column: usize,
-    /// Draft of a text or number editor.
-    pub text: String,
-    /// Draft of a choice editor.
-    pub choice: usize,
-    pub error: Option<String>,
-    /// The editor has had keyboard focus, so losing it means leaving the cell.
-    pub focused: bool,
-}
-
-/// What the kernel keeps for a grid declared with `data_grid_msg`: the state
+/// What the kernel keeps for a grid declared with `data_grid`: the state
 /// its view would otherwise change in the application's `GridState`.
 #[derive(Default)]
 pub(crate) struct GridNode {
@@ -824,21 +646,6 @@ impl GridState {
     /// pairs `GridModel::filter` takes.
     pub fn applied_filters(&self) -> &[(usize, String)] {
         &self.applied_filters
-    }
-
-    /// The row and model column being edited.
-    pub fn editing(&self) -> Option<(ItemId, usize)> {
-        self.edit.as_ref().map(|edit| (edit.item, edit.column))
-    }
-
-    /// Why the model refused the value of the open editor.
-    pub fn edit_error(&self) -> Option<&str> {
-        self.edit.as_ref()?.error.as_deref()
-    }
-
-    /// Closes the editor without storing anything.
-    pub fn cancel_edit(&mut self) {
-        self.edit = None;
     }
 }
 

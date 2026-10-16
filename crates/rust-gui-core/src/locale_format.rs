@@ -102,12 +102,6 @@ impl crate::Context {
 }
 
 impl<'a, M: 'static> crate::Ui<'a, M> {
-    /// Installs or replaces locale-aware formatting after this declaration,
-    /// like `set_messages`; the two usually change together.
-    pub fn set_format(&mut self, format: Option<Box<dyn LocaleFormat>>) {
-        self.host.format = Some(format);
-    }
-
     pub fn format_number(&self, value: f64, decimals: usize) -> String {
         self.context.format_number(value, decimals)
     }

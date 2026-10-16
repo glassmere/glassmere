@@ -14,6 +14,9 @@ pub(super) struct FieldExtra {
 }
 
 impl<'a, M: 'static> Ui<'a, M> {
+    /// What reached the widget the framework is about to declare under `key`
+    /// since the last declaration, for its own composites, whose state is not
+    /// the application's.
     #[track_caller]
     pub(super) fn take_update(&mut self, key: &WidgetKey, kind: Kind) -> Option<ControlUpdate> {
         let id = self.context.child(self.parent, key, kind)?;
@@ -45,39 +48,10 @@ impl<'a, M: 'static> Ui<'a, M> {
         })
     }
 
-    /// A single-line text field. `ui.text_input("Name", &mut name)` is the
-    /// whole of it, and [`TextInput::new`] carries a placeholder or a style.
-    /// The label is what a screen reader announces, not what is drawn.
-    #[track_caller]
-    pub fn text_input(
-        &mut self,
-        input: impl Into<TextInput<M>>,
-        value: &mut String,
-    ) -> Response<'a> {
-        let input = input.into();
-        let key = self.next_key();
-        let style = input.style.unwrap_or_else(Self::field_style);
-        let response = self.text_field(
-            key,
-            input.label,
-            value,
-            &input.placeholder,
-            style,
-            FieldExtra::default(),
-        );
-        if let Some(submit) = input.on_submit {
-            self.set_handler(Handler::Field {
-                change: None,
-                submit: Some(submit),
-            });
-        }
-        response
-    }
-
     /// A single-line text field showing `value`: an edit sends
     /// `on_change(text)`, and Enter what [`TextInput::on_submit`] names.
     #[track_caller]
-    pub fn text_input_msg(
+    pub fn text_input(
         &mut self,
         input: impl Into<TextInput<M>>,
         value: &str,
@@ -86,11 +60,10 @@ impl<'a, M: 'static> Ui<'a, M> {
         let input = input.into();
         let key = self.next_key();
         let style = input.style.unwrap_or_else(Self::field_style);
-        let mut shown = value.to_owned();
         let response = self.text_field(
             key,
             input.label,
-            &mut shown,
+            value,
             &input.placeholder,
             style,
             FieldExtra::default(),
@@ -122,23 +95,13 @@ impl<'a, M: 'static> Ui<'a, M> {
         &mut self,
         key: WidgetKey,
         label: String,
-        value: &mut String,
+        value: &str,
         placeholder: &str,
         mut style: Style,
         extra: FieldExtra,
     ) -> Response<'a> {
-        let mut changed = false;
-        if let Some(ControlUpdate::Text(text)) = self.take_update(&key, Kind::TextInput) {
-            changed = *value != text;
-            *value = text;
-        }
-        let normalized = single_line(value);
-        if normalized != *value {
-            *value = normalized;
-            changed = true;
-        }
         style.wrap = rust_gui_scene::TextWrap::None;
-        let mut response = self.push(Element {
+        self.push(Element {
             handler: None,
             seq: 0,
             key,
@@ -151,29 +114,18 @@ impl<'a, M: 'static> Ui<'a, M> {
             tooltip: None,
             control: Control::TextInput {
                 label,
-                value: value.clone(),
+                value: single_line(value),
                 placeholder: placeholder.into(),
                 number: extra.number,
                 suggestions: extra.suggestions,
                 draft: extra.draft,
             },
-        });
-        response.changed = changed;
-        response
-    }
-
-    /// A checkbox. The label is both what is drawn and what a screen reader
-    /// announces.
-    #[track_caller]
-    pub fn checkbox(&mut self, label: impl Into<String>, checked: &mut bool) -> Response<'a> {
-        let label = label.into();
-        let shown = label.clone();
-        self.checkbox_shown(label, &shown, checked)
+        })
     }
 
     /// A checkbox showing `checked`; a click sends `on_toggle(!checked)`.
     #[track_caller]
-    pub fn checkbox_msg(
+    pub fn checkbox(
         &mut self,
         label: impl Into<String>,
         checked: bool,
@@ -181,8 +133,7 @@ impl<'a, M: 'static> Ui<'a, M> {
     ) -> Response<'a> {
         let label = label.into();
         let shown = label.clone();
-        let mut shown_checked = checked;
-        let response = self.checkbox_shown(label, &shown, &mut shown_checked);
+        let response = self.checkbox_shown(label, &shown, checked);
         self.set_handler(Handler::Message(on_toggle(!checked)));
         response
     }
@@ -194,58 +145,25 @@ impl<'a, M: 'static> Ui<'a, M> {
         &mut self,
         label: impl Into<String>,
         shown: &str,
-        checked: &mut bool,
+        checked: bool,
     ) -> Response<'a> {
         let key = self.next_key();
         let label = label.into();
-        let id = self.context.child(self.parent, &key, Kind::Checkbox);
-        let changed = self.enabled && id.is_some_and(|id| self.clicks.remove(&id));
-        if changed {
-            *checked = !*checked;
-        }
-        let mut response = self.control(
+        self.control(
             key,
             Kind::Checkbox,
-            format!("{}  {shown}", if *checked { "☑" } else { "☐" })
+            format!("{}  {shown}", if checked { "☑" } else { "☐" })
                 .trim_end()
                 .to_owned(),
             Style::button(),
-            Control::Checkbox {
-                label,
-                checked: *checked,
-            },
-        );
-        response.changed = changed;
-        response.clicked = changed;
-        response
-    }
-
-    /// One of a set of choices, selected while `*selected == option`.
-    #[track_caller]
-    pub fn radio(
-        &mut self,
-        label: impl Into<String>,
-        selected: &mut usize,
-        option: usize,
-    ) -> Response<'a> {
-        let key = self.next_key();
-        let label = label.into();
-        let id = self.context.child(self.parent, &key, Kind::Radio);
-        let clicked = self.enabled && id.is_some_and(|id| self.clicks.remove(&id));
-        let changed = clicked && *selected != option;
-        if clicked {
-            *selected = option;
-        }
-        let mut response = self.radio_shown(key, label, *selected == option);
-        response.changed = changed;
-        response.clicked = clicked;
-        response
+            Control::Checkbox { label, checked },
+        )
     }
 
     /// One of a set of choices, selected while `selected == option`; a click
     /// sends `on_select(option)`.
     #[track_caller]
-    pub fn radio_msg(
+    pub fn radio(
         &mut self,
         label: impl Into<String>,
         selected: usize,
@@ -269,14 +187,16 @@ impl<'a, M: 'static> Ui<'a, M> {
         )
     }
 
-    /// A slider over `range`, snapping to `step`.
+    /// A slider showing `value` over `range`: a drag sends `on_change` of
+    /// the value it reaches, snapped to `step`.
     #[track_caller]
     pub fn slider(
         &mut self,
         label: impl Into<String>,
-        value: &mut f64,
+        value: f64,
         range: RangeInclusive<f64>,
         step: f64,
+        on_change: impl Fn(f64) -> M + 'static,
     ) -> Response<'a> {
         let (min, max) = (*range.start(), *range.end());
         if !(min.is_finite() && max.is_finite() && min < max && step.is_finite() && step > 0.0) {
@@ -285,12 +205,8 @@ impl<'a, M: 'static> Ui<'a, M> {
         }
         let key = self.next_key();
         let label = label.into();
-        let old = *value;
-        if let Some(ControlUpdate::Number(number)) = self.take_update(&key, Kind::Slider) {
-            *value = number;
-        }
-        *value = slider_value(*value, min, max, step);
-        let mut response = self.control(
+        let value = slider_value(value, min, max, step);
+        let response = self.control(
             key,
             Kind::Slider,
             format!("{label}: {value:.2}"),
@@ -302,68 +218,24 @@ impl<'a, M: 'static> Ui<'a, M> {
             },
             Control::Slider {
                 label,
-                value: *value,
+                value,
                 min,
                 max,
                 step,
             },
         );
-        response.changed = old != *value;
-        response
-    }
-
-    /// A slider showing `value` over `range`: a drag sends `on_change` of
-    /// the value it reaches, snapped to `step`.
-    #[track_caller]
-    pub fn slider_msg(
-        &mut self,
-        label: impl Into<String>,
-        value: f64,
-        range: RangeInclusive<f64>,
-        step: f64,
-        on_change: impl Fn(f64) -> M + 'static,
-    ) -> Response<'a> {
-        let (min, max) = (*range.start(), *range.end());
-        let mut shown = value;
-        let response = self.slider(label, &mut shown, range, step);
-        // A misused slider declared nothing to send from.
-        if min.is_finite() && max.is_finite() && min < max && step.is_finite() && step > 0.0 {
-            self.set_handler(Handler::Map(Box::new(move |update| match update {
-                ControlUpdate::Number(number) => {
-                    Some(on_change(slider_value(number, min, max, step)))
-                }
-                _ => None,
-            })));
-        }
-        response
-    }
-
-    /// A drop-down over `items`, `*selected` being the one shown.
-    /// `ui.combo_box("Theme", &mut choice, &items)` is the whole of it, and
-    /// [`ComboBox::new`] carries a style.
-    #[track_caller]
-    pub fn combo_box(
-        &mut self,
-        combo: impl Into<ComboBox>,
-        selected: &mut usize,
-        items: &[&str],
-    ) -> Response<'a> {
-        let combo = combo.into();
-        let key = self.next_key();
-        let old = *selected;
-        if let Some(ControlUpdate::Choice(index)) = self.take_update(&key, Kind::ComboBox) {
-            *selected = index;
-        }
-        *selected = (*selected).min(items.len().saturating_sub(1));
-        let mut response = self.combo_shown(combo, key, *selected, items);
-        response.changed = old != *selected;
+        self.set_handler(Handler::Map(Box::new(move |update| match update {
+            ControlUpdate::Number(number) => Some(on_change(slider_value(number, min, max, step))),
+            _ => None,
+        })));
         response
     }
 
     /// A drop-down showing `selected` over `items`; a choice sends
-    /// `on_choose(index)`.
+    /// `on_choose(index)`. `ui.combo_box("Theme", choice, &items, Msg::Theme)`
+    /// is the whole of it, and [`ComboBox::new`] carries a style.
     #[track_caller]
-    pub fn combo_box_msg(
+    pub fn combo_box(
         &mut self,
         combo: impl Into<ComboBox>,
         selected: usize,
@@ -382,7 +254,7 @@ impl<'a, M: 'static> Ui<'a, M> {
     }
 
     #[track_caller]
-    fn combo_shown(
+    pub(super) fn combo_shown(
         &mut self,
         combo: ComboBox,
         key: WidgetKey,
@@ -421,22 +293,9 @@ impl<'a, M: 'static> Ui<'a, M> {
         })
     }
 
-    /// A popup menu. The returned item index is emitted once on activation.
-    #[track_caller]
-    pub fn menu(&mut self, label: impl Into<String>, items: &[MenuItem]) -> Option<usize> {
-        let key = self.next_key();
-        self.menu_styled(
-            key,
-            format!("{}  ▾", label.into()),
-            items,
-            Self::menu_style(),
-            Length::Percent(1.0),
-        )
-    }
-
     /// A popup menu; a pick sends `on_pick(index)`.
     #[track_caller]
-    pub fn menu_msg(
+    pub fn menu(
         &mut self,
         label: impl Into<String>,
         items: &[MenuItem],
@@ -468,9 +327,10 @@ impl<'a, M: 'static> Ui<'a, M> {
         }
     }
 
-    /// `menu` with a caller-chosen button look and popup width.
+    /// A menu over picks the framework handles itself: the index of the
+    /// item picked since the last declaration, if it is enabled.
     #[track_caller]
-    pub(super) fn menu_styled(
+    pub(super) fn menu_pick(
         &mut self,
         key: WidgetKey,
         text: impl Into<String>,
@@ -490,8 +350,9 @@ impl<'a, M: 'static> Ui<'a, M> {
         choice
     }
 
+    /// A menu with a caller-chosen button look and popup width.
     #[track_caller]
-    fn menu_shown(
+    pub(super) fn menu_shown(
         &mut self,
         key: WidgetKey,
         text: impl Into<String>,
@@ -517,7 +378,6 @@ impl<'a, M: 'static> Ui<'a, M> {
             },
         })
     }
-
     #[track_caller]
     pub(super) fn popup_children(
         &mut self,
@@ -584,24 +444,11 @@ impl<'a, M: 'static> Ui<'a, M> {
 }
 
 impl<'a, M: 'static> Ui<'a, M> {
-    /// One command declaration per window. Its shortcut and button share the
-    /// same enabled check and one-shot clicked response.
+    /// One command declaration per window, whose click sends `message`. Its
+    /// shortcut and a menu pick of the command reach the same message, since
+    /// they activate this button.
     #[track_caller]
-    pub fn command_button(&mut self, command: &crate::Command) -> Response<'a> {
-        self.command_shown(command)
-    }
-
-    /// `command_button`, whose click sends `message`. A menu pick or shortcut
-    /// of the command reaches the same message, since it activates this button.
-    #[track_caller]
-    pub fn command_button_msg(&mut self, command: &crate::Command, message: M) -> Response<'a> {
-        let response = self.command_shown(command);
-        self.set_handler(Handler::Message(message));
-        response
-    }
-
-    #[track_caller]
-    fn command_shown(&mut self, command: &crate::Command) -> Response<'a> {
+    pub fn command_button(&mut self, command: &crate::Command, message: M) -> Response<'a> {
         let command = self.command(command);
         let response = self.button(
             Button::new(&command.label)
@@ -614,6 +461,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             while_editing: command.while_editing,
             scoped: command.scoped,
         });
+        self.set_handler(Handler::Message(message));
         response
     }
 

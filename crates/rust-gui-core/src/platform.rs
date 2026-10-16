@@ -20,9 +20,9 @@ pub enum FileKind {
     Directory,
 }
 
-/// A file dialog to put up once the declaration is over. The answer arrives
-/// through [`crate::Ui::chosen_files`] on a later frame, because a dialog is
-/// modal and the view cannot wait inside itself.
+/// A file dialog to put up after the batch. The answer arrives as the message
+/// [`crate::Effects::choose_files`] was given, in a later batch, because a
+/// dialog is modal and `update` cannot wait inside itself.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FileRequest {
     pub kind: FileKind,

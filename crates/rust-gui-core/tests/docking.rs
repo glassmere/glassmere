@@ -304,7 +304,7 @@ fn panels() -> Vec<DockPanel> {
 
 fn view(state: &Docked, ui: &mut Ui<'_, Message<Docked>>) {
     ui.keyed("dock", |ui| {
-        ui.dock_msg(
+        ui.dock(
             &state.layout,
             &panels(),
             DockOptions {
@@ -737,7 +737,7 @@ mod detached {
         };
         let mut app = Driven::new(ROOT, state, |state, ui| {
             ui.keyed("dock", |ui| {
-                ui.dock_msg(
+                ui.dock(
                     &state.layout,
                     &panels(),
                     DockOptions {
@@ -755,7 +755,7 @@ mod detached {
         });
         app.set_window_view(|state, _, ui| {
             ui.keyed("dock", |ui| {
-                ui.dock_window_msg(
+                ui.dock_window(
                     &state.layout,
                     WINDOW,
                     &panels(),

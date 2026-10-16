@@ -27,7 +27,6 @@ pub use rust_gui_syntax as syntax;
 pub use rust_gui_winit::hot;
 #[cfg(feature = "desktop")]
 pub use rust_gui_winit::{
-    AppOptions, DesktopClosed, DesktopHandle, DirectionChoice, DockWindowView, DockWindows,
-    GpuMemoryPolicy, GpuSetup, GraphicsBackend, GraphicsOptions, Placement, ThemeChoice,
-    WakeHandle, WindowKey, run, run_app, run_windows, run_with, run_with_wakeup,
+    AppOptions, DirectionChoice, GpuMemoryPolicy, GpuSetup, GraphicsBackend, GraphicsOptions,
+    Placement, ThemeChoice, WakeHandle, run, run_with,
 };

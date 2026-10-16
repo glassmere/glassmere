@@ -94,7 +94,7 @@ impl App for Price {
     fn view(&self, ui: &mut Ui<'_, f64>) {
         let options = NumberOptions::default().step(0.25).suffix(" Kč");
         ui.keyed("price", |ui| {
-            ui.number_input_msg("Cena", self.0, options, |price| price)
+            ui.number_input("Cena", self.0, options, |price| price)
         });
     }
 }

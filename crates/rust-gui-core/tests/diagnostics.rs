@@ -123,10 +123,10 @@ fn controls_without_a_name_are_reported_and_tooltips_or_labels_fix_them() {
         ui.keyed("described", |ui| ui.button("→"));
         ui.tooltip("Next page");
         ui.keyed("named", |ui| ui.button("Next"));
-        ui.keyed("field", |ui| ui.text_input_msg("", "", |_: String| ()));
+        ui.keyed("field", |ui| ui.text_input("", "", |_: String| ()));
         // Built-in widgets name their own symbol buttons.
         ui.keyed("tabs", |ui| {
-            ui.tabs_msg(
+            ui.tabs(
                 0,
                 &[Tab::closable("notes.md")],
                 |_: usize| (),

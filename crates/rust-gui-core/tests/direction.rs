@@ -165,7 +165,7 @@ struct Panel {
 fn panel_view(state: &Panel, ui: &mut Ui<'_, Msg<Panel>>) {
     let tabs = [Tab::new("One"), Tab::new("Two"), Tab::new("Three")];
     ui.keyed("volume", |ui| {
-        ui.slider_msg(
+        ui.slider(
             "Volume",
             state.volume,
             0.0..=100.0,
@@ -174,7 +174,7 @@ fn panel_view(state: &Panel, ui: &mut Ui<'_, Msg<Panel>>) {
         );
     });
     ui.keyed("split", |ui| {
-        ui.split_msg(
+        ui.split(
             state.fraction,
             on(|s: &mut Panel, fraction: f32| s.fraction = fraction),
             Axis::Horizontal,
@@ -195,7 +195,7 @@ fn panel_view(state: &Panel, ui: &mut Ui<'_, Msg<Panel>>) {
         );
     });
     ui.keyed("tabs", |ui| {
-        ui.tabs_msg(
+        ui.tabs(
             state.selected,
             &tabs,
             on(|s: &mut Panel, index: usize| s.selected = index),
@@ -205,7 +205,7 @@ fn panel_view(state: &Panel, ui: &mut Ui<'_, Msg<Panel>>) {
         );
     });
     ui.keyed("combo", |ui| {
-        ui.combo_box_msg(
+        ui.combo_box(
             "Size",
             state.choice,
             &["Small", "Large"],
@@ -312,14 +312,14 @@ struct Form {
 
 fn form_view(state: &Form, ui: &mut Ui<'_, Msg<Form>>) {
     ui.keyed("name", |ui| {
-        ui.text_input_msg(
+        ui.text_input(
             "Name",
             &state.name,
             on(|s: &mut Form, name: String| s.name = name),
         )
     });
     ui.keyed("code", |ui| {
-        ui.code_editor_msg(
+        ui.code_editor(
             &state.document,
             CodeEditorOptions {
                 line_numbers: false,

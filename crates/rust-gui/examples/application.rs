@@ -2,7 +2,7 @@ use rust_gui::{
     App, AppOptions, Color, Command, DragPayload, DragSourceBuilder, DropKind, DropTargetBuilder,
     Effects, GridColumn, GridModel, GridMsg, GridState, ItemId, ItemOrder, Key, Label, Length,
     ListModel, ListState, Shortcut, ShortcutKey, Size, SortDirection, Style, TextWrap, TreeItem,
-    TreeModel, Ui, VirtualListOptions, WindowId, WindowRequest, run_app,
+    TreeModel, Ui, VirtualListOptions, WindowId, WindowRequest, run,
 };
 use std::{sync::mpsc::TrySendError, thread, time::Duration};
 
@@ -262,30 +262,30 @@ impl App for Application {
                 width: Length::Percent(1.0), wrap: TextWrap::Word, ..muted.clone()
             }));
             ui.row(Style { gap: 8.0, ..Style::default() }, |ui| {
-                ui.command_button_msg(&Command::new("Save   Ctrl+S", Some(Shortcut::primary('s'))), Message::Save);
-                ui.command_button_msg(&Command::new("New ticket   Ctrl+N", Some(Shortcut::primary('n'))), Message::NewTicket);
-                ui.command_button_msg(&Command::new("Details window   Ctrl+D", Some(Shortcut::primary('d'))), Message::OpenDetails);
+                ui.command_button(&Command::new("Save   Ctrl+S", Some(Shortcut::primary('s'))), Message::Save);
+                ui.command_button(&Command::new("New ticket   Ctrl+N", Some(Shortcut::primary('n'))), Message::NewTicket);
+                ui.command_button(&Command::new("Details window   Ctrl+D", Some(Shortcut::primary('d'))), Message::OpenDetails);
                 let archive = Command {
                     enabled: self.list.selected().is_some(),
                     ..Command::new("Archive selected   Delete", Some(Shortcut { key: ShortcutKey::Named(Key::Delete), control: false, alt: false, shift: false, super_key: false }))
                 };
-                ui.command_button_msg(&archive, Message::Archive);
+                ui.command_button(&archive, Message::Archive);
             });
             ui.label(format!("Saved {} times  ·  {} tickets created by the worker  ·  {} archived", self.saves, self.background, self.archived.len()));
             ui.row(Style { gap: 24.0, width: Length::Percent(1.0), ..Style::default() }, |ui| {
                 ui.column(Style { width: Length::Px(480.0), gap: 10.0, ..Style::default() }, |ui| {
                     ui.label(Label::new(format!("Tickets ({})  ·  Enter opens details", self.tickets.len())).style(heading.clone()));
-                    ui.virtual_list_msg(&self.tickets, &self.list, VirtualListOptions {
+                    ui.virtual_list(&self.tickets, &self.list, VirtualListOptions {
                         label: "Tickets".into(), height: 280.0, row_height: 30.0, ..VirtualListOptions::default()
                     }, Message::List);
                     ui.label(Label::new("Areas  ·  arrows expand and collapse").style(heading.clone()));
-                    ui.tree_view_msg(&self.tree, &self.tree_state, VirtualListOptions {
+                    ui.tree_view(&self.tree, &self.tree_state, VirtualListOptions {
                         label: "Areas".into(), height: 180.0, row_height: 30.0, ..VirtualListOptions::default()
                     }, Message::Tree);
                 });
                 ui.column(Style { gap: 10.0, ..Style::default() }, |ui| {
                     ui.label(Label::new("Grid  ·  click a header to sort").style(heading.clone()));
-                    ui.data_grid_msg(&self.tickets, &self.grid, VirtualListOptions {
+                    ui.data_grid(&self.tickets, &self.grid, VirtualListOptions {
                         label: "Ticket grid".into(), height: 300.0, row_height: 30.0,
                         style: Style { width: Length::Px(380.0), ..Style::default() }, ..VirtualListOptions::default()
                     }, Message::Grid);
@@ -294,7 +294,7 @@ impl App for Application {
                         let selected = self.list.selected();
                         let panel = Style { padding: 12.0, radius: 8.0, width: Length::Px(180.0), height: Length::Px(72.0), ..Style::default() };
                         ui.enabled(selected.is_some(), |ui| {
-                            ui.drag_source_msg(
+                            ui.drag_source(
                                 DragSourceBuilder::new("Selected ticket", DragPayload::Item { domain: "ticket".into(), id: selected.unwrap_or(ItemId(0)) }),
                                 Style { background: Some(Color::rgb(22, 105, 99)), ..panel.clone() },
                                 |ui| {
@@ -302,14 +302,14 @@ impl App for Application {
                                 },
                             );
                         });
-                        ui.drop_target_msg(
+                        ui.drop_target(
                             DropTargetBuilder::new("Archive", DropKind::Item).on_drop(Message::Archived),
                             Style { background: Some(Color::rgb(64, 48, 96)), ..panel.clone() },
                             |ui| {
                                 ui.label(format!("Archive: {} tickets", self.archived.len()));
                             },
                         );
-                        ui.drop_target_msg(
+                        ui.drop_target(
                             DropTargetBuilder::new("Drop files", DropKind::Files).on_drop(Message::Files),
                             Style { background: Some(Color::rgb(35, 52, 74)), ..panel.clone() },
                             |ui| {
@@ -351,7 +351,7 @@ impl App for Application {
                         .join(", ")
                 )
             };
-            ui.drop_target_msg(
+            ui.drop_target(
                 DropTargetBuilder::new("Link ticket", DropKind::Item).on_drop(Message::Linked),
                 Style {
                     padding: 12.0,
@@ -389,7 +389,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         node(7, None, "Done"),
         node(8, Some(7), "Virtual lists"),
     ])?;
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Application workbench".into(),
             size: Size::new(1080.0, 840.0),

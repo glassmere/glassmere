@@ -1,28 +1,13 @@
 use super::*;
 
 impl<'a, M: 'static> Ui<'a, M> {
-    /// A dialog layer over the whole window while `*open`. Modal dialogs paint a
-    /// scrim, block pointer and wheel input behind them and trap Tab; focus
-    /// moves inside on open and returns to the previously focused node on close.
-    /// Escape or a scrim click clears `*open` and reports `dismissed` once.
-    /// `content` receives the open flag so buttons inside can close the dialog.
-    /// Dialog keys are unique across the whole view, and later dialogs stack on top.
+    /// A dialog layer over the whole window while `open`. Modal dialogs paint
+    /// a scrim, block pointer and wheel input behind them and trap Tab; focus
+    /// moves inside on open and returns to the previously focused node on
+    /// close. Escape or a scrim click sends `on_open(false)`. Dialog keys are
+    /// unique across the whole view, and later dialogs stack on top.
     #[track_caller]
     pub fn dialog(
-        &mut self,
-        key: impl Into<String>,
-        open: &mut bool,
-        options: crate::DialogOptions,
-        content: impl FnOnce(&mut Ui<'_, M>, &mut bool),
-    ) -> crate::DialogResponse {
-        let dismissed = self.dialog_declared(key.into(), open, options, content, None);
-        crate::DialogResponse { dismissed }
-    }
-
-    /// `dialog` with its open state as a value: Escape or a scrim click sends
-    /// `on_open(false)`, and the dialog is shown while `open`.
-    #[track_caller]
-    pub fn dialog_msg(
         &mut self,
         key: impl Into<String>,
         open: bool,
@@ -30,39 +15,31 @@ impl<'a, M: 'static> Ui<'a, M> {
         options: crate::DialogOptions,
         content: impl FnOnce(&mut Ui<'_, M>),
     ) {
-        let mut shown = open;
         self.dialog_declared(
             key.into(),
-            &mut shown,
+            open,
             options,
-            |ui, _| content(ui),
-            Some(super::overlays::closing(on_open)),
+            content,
+            super::overlays::closing(on_open),
         );
     }
 
-    /// The declaration behind both dialog forms. Returns whether it was
-    /// dismissed since the last declaration, which only the old form reads.
+    /// A dialog layer whose dismissal sends what `dismiss` makes of it.
     #[track_caller]
     pub(super) fn dialog_declared(
         &mut self,
         key: String,
-        open: &mut bool,
+        open: bool,
         options: crate::DialogOptions,
-        content: impl FnOnce(&mut Ui<'_, M>, &mut bool),
-        dismiss: Option<crate::app::Handler<M>>,
-    ) -> bool {
+        content: impl FnOnce(&mut Ui<'_, M>),
+        dismiss: crate::app::Handler<M>,
+    ) {
         let key = WidgetKey::Named(format!("$dialog:{key}"));
         let layer = self
             .context
             .child(Some(self.context.root()), &key, Kind::Dialog);
-        let dismissed = self.enabled
-            && layer
-                .is_some_and(|id| matches!(self.updates.remove(&id), Some(ControlUpdate::Dismiss)));
-        if dismissed {
-            *open = false;
-        }
-        if !*open {
-            return dismissed;
+        if !open {
+            return;
         }
         let popup = self.context.theme().popup;
         let mut panel = options.style;
@@ -92,7 +69,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                     },
                 );
             }
-            content(ui, open);
+            content(ui);
         });
         let mut element = Element {
             handler: None,
@@ -120,10 +97,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         };
         // Nested dialogs declared inside `content` were pushed meanwhile; keep
         // this one below them so children stack on top of their parents.
-        if let Some(handler) = dismiss {
-            element.handler = Some(self.handler_index(handler));
-        }
+        element.handler = Some(self.handler_index(dismiss));
         self.layers.insert(index, element);
-        dismissed
     }
 }

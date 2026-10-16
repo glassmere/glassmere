@@ -3,7 +3,7 @@
 //! added by hand through the builder, which is what the derive expands to.
 use rust_gui::{
     Align, App, AppOptions, Button, Color, Effects, Justify, Length, Properties,
-    PropertyGridOptions, PropertyGridState, PropertyMsg, Size, Style, Ui, run_app,
+    PropertyGridOptions, PropertyGridState, PropertyMsg, Size, Style, Ui, run,
 };
 
 #[derive(Properties)]
@@ -119,8 +119,8 @@ impl App for Gallery {
             let options = PropertyGridOptions::new("Card properties")
                 .height(600.0)
                 .style(Style::default().width(Length::Px(380.0)));
-            ui.property_grid_msg(&self.state, options, Msg::Grid, |grid| {
-                card.properties_msg(grid, Msg::Card);
+            ui.property_grid(&self.state, options, Msg::Grid, |grid| {
+                card.properties(grid, Msg::Card);
                 // Rows the derive cannot know about: a computed value and an
                 // action that touches several fields.
                 grid.group("Extras", |grid| {
@@ -136,7 +136,7 @@ impl App for Gallery {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Property grid".into(),
             size: Size::new(960.0, 720.0),

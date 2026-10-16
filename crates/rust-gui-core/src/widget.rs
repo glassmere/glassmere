@@ -5,8 +5,8 @@ use rust_gui_scene::{Point, Primitive, Rect, Size};
 /// Focusable semantics put it in the tab order and give it the keyboard,
 /// whatever its role; button semantics also opt into the pointer and
 /// accessibility activation path of built-in buttons. `input` is what it
-/// hears of the events that reach it, which `Ui::widget` hands back in the
-/// widget's own coordinates on the next declaration.
+/// hears of the events that reach it, which `Ui::widget` hands to its
+/// `on_event` in the widget's own coordinates.
 /// Commands are clipped to the leaf; nested clip commands must be balanced.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CustomWidget {
@@ -29,23 +29,19 @@ pub struct WidgetInput {
     pub focused: bool,
     /// False inside a disabled scope, so the widget can paint itself so.
     pub enabled: bool,
-    /// In the order they arrived, with pointer positions relative to the
-    /// widget's own top left corner.
-    pub events: Vec<UiEvent>,
 }
 
-/// A custom widget declared with `Ui::widget_msg`: how it is built, and the
+/// A custom widget declared with `Ui::widget`: how it is built, and the
 /// message its events send. Without [`WidgetBuilder::on_event`] it sends
-/// nothing, and what it hears is handed to `build` as `WidgetInput::events`,
-/// as `Ui::widget` does.
+/// nothing.
 pub struct WidgetBuilder<F, M = ()> {
     pub(crate) build: F,
     pub(crate) on_event: Option<Box<dyn Fn(crate::UiEvent) -> Option<M>>>,
 }
 
 impl<F, M> WidgetBuilder<F, M> {
-    /// `build` is called with what the widget was laid out at, how it is
-    /// being touched, and, on the old path, what reached it.
+    /// `build` is called with what the widget was laid out at and how it is
+    /// being touched.
     pub fn new(build: F) -> Self
     where
         F: FnOnce(&WidgetInput) -> CustomWidget,

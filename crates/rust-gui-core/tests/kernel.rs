@@ -169,19 +169,19 @@ fn repeats_of_one_call_site_are_told_apart_by_order() {
 #[test]
 fn every_widget_is_identified_by_the_application_line_that_declared_it() {
     let mut context = Context::new();
-    let (mut text, mut checked, mut choice, mut number) = (String::new(), false, 0, 1.0);
     frame(&mut context, |ui| {
         ui.label("label");
         ui.button("button");
-        ui.text_input("text", &mut text);
-        ui.checkbox("checkbox", &mut checked);
-        ui.radio("radio", &mut choice, 0);
-        ui.slider("slider", &mut number, 0.0..=2.0, 1.0);
-        ui.combo_box("combo", &mut choice, &["one", "two"]);
+        ui.text_input("text", "", |_| ());
+        ui.checkbox("checkbox", false, |_| ());
+        ui.radio("radio", 0, 0, |_| ());
+        ui.slider("slider", 1.0, 0.0..=2.0, 1.0, |_| ());
+        ui.combo_box("combo", 0, &["one", "two"], |_| ());
         ui.number_input(
             "number",
-            &mut number,
+            1.0,
             rust_gui_core::NumberOptions::default(),
+            |_| (),
         );
         ui.column(Style::default(), |_| {});
         ui.row(Style::default(), |_| {});

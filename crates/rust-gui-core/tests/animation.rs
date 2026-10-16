@@ -391,7 +391,7 @@ struct Confirm {
 }
 
 fn confirm_view(state: &Confirm, ui: &mut Ui<'_, Message<Confirm>>) {
-    ui.dialog_msg(
+    ui.dialog(
         "confirm",
         state.open,
         |open| act(move |s: &mut Confirm| s.open = open),

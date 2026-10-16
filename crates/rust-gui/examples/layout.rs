@@ -1,6 +1,6 @@
 use rust_gui::{
     Align, App, AppOptions, Button, Effects, GridArea, Justify, Label, Length, Size, Style,
-    TextInput, TextWrap, Track, Ui, run_app,
+    TextInput, TextWrap, Track, Ui, run,
 };
 
 #[derive(Clone)]
@@ -63,11 +63,11 @@ impl App for Layout {
             ui.label(Label::new("Form · columns [auto, 1fr], rows centered; auto-width items stretch to their cell").style(heading.clone()));
             ui.grid(Style::default().width(Length::Percent(1.0)).columns(vec![Track::Auto, Track::Fr(1.0)]).align_items(Align::Center).gap(10.0), |ui| {
                 ui.label("Name");
-                ui.text_input_msg(TextInput::new("Name").placeholder("Your name").style(Style::button().width(Length::Auto).height(Length::Px(44.0)).padding(10.0)), &self.name, Msg::Name);
+                ui.text_input(TextInput::new("Name").placeholder("Your name").style(Style::button().width(Length::Auto).height(Length::Px(44.0)).padding(10.0)), &self.name, Msg::Name);
                 ui.label("Volume");
-                ui.slider_msg("Volume", self.volume, 0.0..=100.0, 5.0, Msg::Volume);
+                ui.slider("Volume", self.volume, 0.0..=100.0, 5.0, Msg::Volume);
                 ui.label("Notify");
-                ui.checkbox_msg("Send notifications", self.notify, Msg::Notify);
+                ui.checkbox("Send notifications", self.notify, Msg::Notify);
             });
 
             ui.label(Label::new("Alignment · space-between, centered cross axis, one child aligned to the end; second row aligns text bottoms").style(heading.clone()));
@@ -90,7 +90,7 @@ impl App for Layout {
                     }));
                 }
             });
-            ui.checkbox_msg("Let the wide children below shrink to fit", self.shrink, Msg::Shrink);
+            ui.checkbox("Let the wide children below shrink to fit", self.shrink, Msg::Shrink);
             let factor = if self.shrink { 1.0 } else { 0.0 };
             ui.row(Style::default().width(Length::Percent(1.0)).gap(12.0), |ui| {
                 ui.container(card.clone().width(Length::Px(520.0)).min_width(Length::Px(200.0)).shrink(factor), |ui| {
@@ -117,7 +117,7 @@ impl App for Layout {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Layout".into(),
             size: Size::new(900.0, 820.0),

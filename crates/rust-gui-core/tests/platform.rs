@@ -203,7 +203,7 @@ fn open_page(state: &Open, ui: &mut Ui<'_, Handler<Open>>) {
         ..Command::with_id("open", "Open", None)
     };
     ui.keyed("open", |ui| {
-        ui.command_button_msg(&open, act(|s: &mut Open| s.opened += 1));
+        ui.command_button(&open, act(|s: &mut Open| s.opened += 1));
     });
     ui.keyed("state", |ui| ui.label("ready"));
 }
@@ -269,13 +269,13 @@ fn bar_page(_: &Bar, ui: &mut Ui<'_, Handler<Bar>>) {
     });
     // The commands themselves, declared as any view would.
     ui.keyed("open", |ui| {
-        ui.command_button_msg(
+        ui.command_button(
             &Command::with_id("open", "Open", None),
             act(|s: &mut Bar| s.opened += 1),
         );
     });
     ui.keyed("save", |ui| {
-        ui.command_button_msg(
+        ui.command_button(
             &Command::with_id("save", "Save", None),
             act(|s: &mut Bar| s.saved += 1),
         );

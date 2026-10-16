@@ -90,7 +90,6 @@ impl Context {
         }
         drop(pending);
         // Something is waiting for a declaration that will report it.
-        self.stats.activations += 1;
         self.view_stale = true;
         for (id, _) in &arrived {
             if !self.queued.contains(&(*id, Queued::Area)) {
@@ -165,16 +164,6 @@ impl Context {
             self.pointer = Some(*at);
         }
         consumed
-    }
-
-    /// Sends what `Ui::emit` left, from the node that emitted it.
-    pub(super) fn deliver_emitted(&mut self, emitted: Vec<(NodeId, crate::UiEvent)>) {
-        for (from, event) in emitted {
-            if self.nodes.contains_key(&from) {
-                let path = self.path_to(from);
-                self.travel(event, &path);
-            }
-        }
     }
 
     pub fn hit_test(&self, position: Point) -> Option<NodeId> {

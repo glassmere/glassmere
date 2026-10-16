@@ -25,7 +25,7 @@ struct State {
 
 fn editor(state: &State, ui: &mut Ui<'_, Action<State>>) {
     ui.keyed("editor", |ui| {
-        ui.rich_editor_msg(
+        ui.rich_editor(
             &state.document,
             RichEditorOptions {
                 label: "Notes".into(),
@@ -330,7 +330,7 @@ impl App for Notes {
 
     fn view(&self, ui: &mut Ui<'_, RichOp>) {
         ui.keyed("editor", |ui| {
-            ui.rich_editor_msg(
+            ui.rich_editor(
                 &self.document,
                 RichEditorOptions {
                     label: "Notes".into(),

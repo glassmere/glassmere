@@ -108,7 +108,7 @@ fn grid_msg(message: GridMsg) -> Message<Table> {
 
 fn table_view(state: &Table, ui: &mut Ui<'_, Message<Table>>) {
     ui.keyed("grid", |ui| {
-        ui.data_grid_msg(
+        ui.data_grid(
             &state.model,
             &state.grid,
             VirtualListOptions::default(),
@@ -568,7 +568,7 @@ mod filtering {
 
     fn fruit_view(state: &Fruits, ui: &mut Ui<'_, Message<Fruits>>) {
         ui.keyed("grid", |ui| {
-            ui.data_grid_msg(
+            ui.data_grid(
                 &state.model,
                 &state.grid,
                 VirtualListOptions::default(),
@@ -692,7 +692,7 @@ mod filtering {
         let mut driven = driven(0);
         driven.set_view(|state: &Fruits, ui| {
             ui.keyed("grid", |ui| {
-                ui.data_grid_msg(
+                ui.data_grid(
                     &state.model,
                     &state.grid,
                     VirtualListOptions::default(),

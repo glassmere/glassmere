@@ -1,4 +1,4 @@
-use rust_gui::{App, AppOptions, Button, Color, Effects, Label, Length, Style, Ui, run_app};
+use rust_gui::{App, AppOptions, Button, Color, Effects, Label, Length, Style, Ui, run};
 
 const MOTD: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/counter-motd.txt");
 
@@ -70,9 +70,9 @@ impl App for Counter {
     fn view(&self, ui: &mut Ui<'_, Msg>) {
         if self.hook {
             // A leaf that says "the application draws this part".
-            ui.custom(
+            ui.widget(
                 rust_gui::Style::default(),
-                rust_gui::CustomWidget {
+                rust_gui::WidgetBuilder::new(|_| rust_gui::CustomWidget {
                     size: rust_gui::Size::new(120.0, 60.0),
                     semantics: rust_gui::Semantics {
                         label: "Application drawing".into(),
@@ -88,7 +88,7 @@ impl App for Counter {
                         id: 7,
                     }],
                     ..rust_gui::CustomWidget::default()
-                },
+                }),
             );
         }
         let message = ui.watched_text(MOTD);
@@ -146,7 +146,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(600);
     let saved = rust_gui::hot::saved_state().unwrap_or_default();
     let app = Counter::restore(&saved, hook, stress);
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Kernel playground".into(),
             gpu: hook.then(|| {

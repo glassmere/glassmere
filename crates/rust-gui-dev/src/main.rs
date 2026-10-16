@@ -2,7 +2,7 @@
 //!
 //! Builds the app, runs it, and when a watched `.rs` or `.toml` file changes
 //! rebuilds it. After a successful build the running app is asked to stop
-//! (it saves its state through `Ui::hot_state`), and the new build starts
+//! (it saves its state through `App::save_state`), and the new build starts
 //! where the old one was. A failed build leaves the old app running.
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};

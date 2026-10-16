@@ -244,7 +244,7 @@ impl App for Form {
 
     fn view(&self, ui: &mut Ui<'_, PropertyMsg>) {
         ui.keyed("grid", |ui| {
-            ui.property_grid_msg(
+            ui.property_grid(
                 &self.state,
                 PropertyGridOptions::new("Karta"),
                 |message| message,

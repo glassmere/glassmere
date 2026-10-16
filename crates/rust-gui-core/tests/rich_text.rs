@@ -28,7 +28,7 @@ fn sample() -> RichText {
 fn frame(context: &mut Context, text: &RichText, width: f32) {
     context.run(ROOT, &mut MonospaceMeasurer, |ui| {
         ui.keyed("text", |ui| {
-            ui.rich_text_msg(
+            ui.rich_text(
                 text,
                 Style::default()
                     .width(Length::Px(width))
@@ -64,7 +64,7 @@ fn driven(text: RichText) -> Driven<State> {
         },
         |state, ui| {
             ui.keyed("text", |ui| {
-                ui.rich_text_msg(
+                ui.rich_text(
                     &state.text,
                     Style::default()
                         .width(Length::Px(state.width))

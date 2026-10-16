@@ -218,7 +218,7 @@ fn dialog_page(state: &Dialogs, ui: &mut Ui<'_, Handler<Dialogs>>) {
             });
         })
     });
-    ui.dialog_msg(
+    ui.dialog(
         "confirm",
         state.open,
         on(|s: &mut Dialogs, open: bool| {
@@ -397,14 +397,14 @@ struct Stack {
 
 fn stacked(state: &Stack, ui: &mut Ui<'_, Handler<Stack>>) {
     ui.keyed("behind", |ui| ui.button("Behind"));
-    ui.dialog_msg(
+    ui.dialog(
         "outer",
         state.outer,
         on(|s: &mut Stack, open: bool| s.outer = open),
         DialogOptions::new("Outer"),
         |ui| {
             ui.keyed("outer-ok", |ui| ui.button("OK"));
-            ui.dialog_msg(
+            ui.dialog(
                 "inner",
                 state.inner,
                 on(|s: &mut Stack, open: bool| s.inner = open),
@@ -481,7 +481,7 @@ fn pad(state: &Pad, ui: &mut Ui<'_, Handler<Pad>>) {
                     })
                 });
                 ui.keyed("volume", |ui| {
-                    ui.slider_msg(
+                    ui.slider(
                         "Volume",
                         state.volume,
                         0.0..=100.0,
@@ -539,8 +539,8 @@ fn arrow_navigation_moves_between_scope_children_by_geometry_but_leaves_arrow_co
 fn duplicate_dialog_keys_are_rejected() {
     let mut context = Context::new();
     frame(&mut context, |ui| {
-        ui.dialog_msg("same", true, |_: bool| (), DialogOptions::new("A"), |_| {});
-        ui.dialog_msg("same", true, |_: bool| (), DialogOptions::new("B"), |_| {});
+        ui.dialog("same", true, |_: bool| (), DialogOptions::new("A"), |_| {});
+        ui.dialog("same", true, |_: bool| (), DialogOptions::new("B"), |_| {});
     });
 }
 

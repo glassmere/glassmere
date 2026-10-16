@@ -74,7 +74,7 @@ fn list_msg(message: GridMsg) -> Message<Lists> {
 
 fn list_view(state: &Lists, ui: &mut Ui<'_, Message<Lists>>) {
     ui.keyed("list", |ui| {
-        ui.virtual_list_msg(&state.model, &state.list, options(), list_msg)
+        ui.virtual_list(&state.model, &state.list, options(), list_msg)
     });
 }
 
@@ -183,7 +183,7 @@ fn an_application_that_keeps_a_lost_selection_is_told_once() {
         },
         |state, ui| {
             ui.keyed("list", |ui| {
-                ui.virtual_list_msg(&state.model, &state.list, options(), |message| {
+                ui.virtual_list(&state.model, &state.list, options(), |message| {
                     act(move |s: &mut Lists| {
                         if let GridMsg::Select(id) = message {
                             s.list.select(Some(id));
@@ -261,7 +261,7 @@ fn empty_lists_and_disabled_collections_reject_selection() {
     driven.set_view(|state, ui| {
         ui.enabled(false, |ui| {
             ui.keyed("list", |ui| {
-                ui.virtual_list_msg(&state.model, &state.list, options(), list_msg)
+                ui.virtual_list(&state.model, &state.list, options(), list_msg)
             });
         })
     });
@@ -291,7 +291,7 @@ fn tree_msg(message: GridMsg) -> Message<Trees> {
 
 fn tree_view(state: &Trees, ui: &mut Ui<'_, Message<Trees>>) {
     ui.keyed("tree", |ui| {
-        ui.tree_view_msg(&state.tree, &state.list, options(), tree_msg)
+        ui.tree_view(&state.tree, &state.list, options(), tree_msg)
     });
 }
 
@@ -400,7 +400,7 @@ fn grid_msg(message: GridMsg) -> Message<Table> {
 
 fn grid_view(state: &Table, ui: &mut Ui<'_, Message<Table>>) {
     ui.keyed("grid", |ui| {
-        ui.data_grid_msg(state, &state.grid, options(), grid_msg)
+        ui.data_grid(state, &state.grid, options(), grid_msg)
     });
 }
 

@@ -283,17 +283,13 @@ impl ClipboardAccess for HostClipboard {
     }
 }
 
-/// Best effort: a cut already happened in the document and stays undoable.
-pub(super) fn write_clipboard(clipboard: &mut HostClipboard, text: &str) {
-    let _ = clipboard.write(text);
-}
-
 fn execute(context: &mut Context, clipboard: &mut impl ClipboardAccess, command: Command) -> bool {
     match command {
         Command::Input(event) => context.event(event),
         Command::Copy | Command::Cut => {
             // Multi-line editors keep their text in an app-owned document: the
-            // text arrives through `take_clipboard` after the next declaration.
+            // copy is an operation the application applies, and puts on the
+            // clipboard through `Effects::copy`.
             if context.request_clipboard(matches!(command, Command::Cut)) {
                 return true;
             }
@@ -435,7 +431,7 @@ mod tests {
 
         fn view(&self, ui: &mut Ui<'_, String>) {
             ui.keyed("input", |ui| {
-                ui.text_input_msg("Name", &self.value, |value| value)
+                ui.text_input("Name", &self.value, |value| value)
             });
         }
     }

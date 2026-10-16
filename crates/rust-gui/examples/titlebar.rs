@@ -6,7 +6,7 @@
 //! pull any edge or corner to resize.
 use rust_gui::{
     App, AppOptions, Color, Command, Effects, Label, Length, Menu, MenuEntry, Shortcut, Size,
-    Style, TextWrap, Ui, WindowCommand, run_app,
+    Style, TextWrap, Ui, WindowCommand, run,
 };
 
 #[derive(Clone)]
@@ -71,7 +71,7 @@ impl App for TitleBar {
                 ui.menu_bar(&menu());
                 // Everything after this sits at the far end.
                 ui.container(Style::default().grow(1.0), |_| {});
-                ui.window_buttons_msg(Msg::Window);
+                ui.window_buttons(Msg::Window);
             },
         );
         let page = Style {
@@ -97,7 +97,7 @@ impl App for TitleBar {
                     ..Style::default()
                 }),
             );
-            ui.command_button_msg(
+            ui.command_button(
                 &Command::with_id("new", "New window", Some(Shortcut::primary('n'))),
                 Msg::New,
             );
@@ -112,7 +112,7 @@ impl App for TitleBar {
                     ..Style::default()
                 }),
             );
-            ui.command_button_msg(&Command::with_id("quit", "Quit", None), Msg::Quit);
+            ui.command_button(&Command::with_id("quit", "Quit", None), Msg::Quit);
         });
         // Last, so the edges lie over everything else.
         ui.resize_frame(6.0);
@@ -121,7 +121,7 @@ impl App for TitleBar {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Title bar".into(),
             size: Size::new(720.0, 480.0),

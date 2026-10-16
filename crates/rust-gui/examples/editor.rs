@@ -1,8 +1,7 @@
 use rust_gui::syntax::SyntectHighlighter;
 use rust_gui::{
     App, AppOptions, CodeEditorOptions, Diagnostic, Effects, FindState, Highlighter, Label, Length,
-    RichRun, RichText, Severity, Size, Style, TextDocument, TextInput, TextOp, TextWrap, Ui,
-    run_app,
+    RichRun, RichText, Severity, Size, Style, TextDocument, TextInput, TextOp, TextWrap, Ui, run,
 };
 use std::cell::RefCell;
 
@@ -112,7 +111,7 @@ impl App for Editor {
                     ". In the editor: Ctrl+F and Ctrl+H search and replace, F3 steps, Ctrl+D \
                      selects the next occurrence, Alt+click and Ctrl+Alt+Up/Down add cursors.",
                 );
-            ui.rich_text_msg(
+            ui.rich_text(
                 &intro,
                 Style::default()
                     .width(Length::Percent(1.0))
@@ -121,7 +120,7 @@ impl App for Editor {
             );
             // Latin, Hebrew and Arabic in one field: arrows move on screen, and the
             // caret carries a small flag showing the direction of the text it is in.
-            ui.text_input_msg(
+            ui.text_input(
                 TextInput::new("Bidirectional text")
                     .placeholder("")
                     .style(Style {
@@ -133,7 +132,7 @@ impl App for Editor {
                 &self.mixed,
                 Msg::Mixed,
             );
-            ui.code_editor_msg(
+            ui.code_editor(
                 &self.document,
                 CodeEditorOptions {
                     label: "Rust source".into(),
@@ -186,7 +185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         find.refresh(&document);
     }
     let diagnostics = lint(&document);
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Editor".into(),
             size: Size::new(900.0, 700.0),

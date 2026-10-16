@@ -64,7 +64,7 @@ fn page(state: &Page, ui: &mut Ui<'_, Action<Page>>) {
             ui.keyed("left", |ui| {
                 ui.column(sized(200.0, 40.0), |ui| {
                     ui.keyed("slider", |ui| {
-                        ui.slider_msg(
+                        ui.slider(
                             "Left",
                             state.left,
                             0.0..=100.0,
@@ -77,7 +77,7 @@ fn page(state: &Page, ui: &mut Ui<'_, Action<Page>>) {
             ui.keyed("right", |ui| {
                 ui.column(sized(200.0, 40.0), |ui| {
                     ui.keyed("slider", |ui| {
-                        ui.slider_msg(
+                        ui.slider(
                             "Right",
                             state.right,
                             0.0..=100.0,
@@ -91,7 +91,7 @@ fn page(state: &Page, ui: &mut Ui<'_, Action<Page>>) {
     });
     let items = [MenuItem::new("Copy"), MenuItem::new("Paste")];
     ui.keyed("area", |ui| {
-        ui.context_menu_msg(
+        ui.context_menu(
             &items,
             sized(400.0, 80.0),
             on(|s: &mut Page, index: usize| s.menu = Some(index)),
@@ -99,7 +99,7 @@ fn page(state: &Page, ui: &mut Ui<'_, Action<Page>>) {
                 ui.keyed("cards", |ui| {
                     ui.row(Style::default().gap(20.0), |ui| {
                         ui.keyed("card", |ui| {
-                            ui.drag_source_msg(
+                            ui.drag_source(
                                 DragSourceBuilder::new("Card", DragPayload::Text("hello".into())),
                                 sized(100.0, 60.0),
                                 |ui| {
@@ -108,7 +108,7 @@ fn page(state: &Page, ui: &mut Ui<'_, Action<Page>>) {
                             );
                         });
                         ui.keyed("bin", |ui| {
-                            ui.drop_target_msg(
+                            ui.drop_target(
                                 DropTargetBuilder::new("Bin", DropKind::Text).on_drop(on(
                                     |s: &mut Page, payload: DragPayload| {
                                         s.dropped = Some(payload);
@@ -424,7 +424,7 @@ struct Field {
 
 fn field(state: &Field, ui: &mut Ui<'_, Action<Field>>) {
     ui.keyed("field", |ui| {
-        ui.text_input_msg(
+        ui.text_input(
             "Field",
             &state.typed,
             on(|s: &mut Field, text: String| s.typed = text),

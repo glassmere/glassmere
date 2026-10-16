@@ -12,8 +12,8 @@ impl Context {
         measurer: &mut impl TextMeasurer,
         view: impl FnOnce(&mut Ui<'_>),
     ) -> FrameStats {
-        // A closure view sends nothing: what it declares is read back
-        // through `Response`, so no handler is kept.
+        // A view declared without an `App` has no `update` to send to, so
+        // no handler is kept.
         let mut handlers = Vec::new();
         self.declare(size, measurer, &mut handlers, view);
         self.handler_moves.clear();
@@ -39,11 +39,10 @@ impl Context {
         let declare_span = tracing::trace_span!("rust_gui.declare").entered();
         let mut clicks = std::mem::take(&mut self.clicks);
         let mut updates = std::mem::take(&mut self.updates);
-        let mut submitted = std::mem::take(&mut self.submitted);
+        // A submit is only ever a handler's: nothing declared reads one.
+        self.submitted.clear();
         let mut warnings = std::mem::take(&mut self.style_warnings);
         let mut observed = None;
-        let mut theme_request = None;
-        let mut clipboard = None;
         let mut redraw = false;
         let mut focus = None;
         let mut host = crate::ui::HostOutbox::default();
@@ -53,15 +52,7 @@ impl Context {
         self.queued.clear();
         self.observed_new.borrow_mut().clear();
         self.view_stale = false;
-        self.stats.activations = clicks.len() + updates.len() + submitted.len();
-        self.mark_awaiting(
-            clicks
-                .iter()
-                .chain(updates.keys())
-                .chain(submitted.iter())
-                .copied()
-                .collect(),
-        );
+        self.mark_awaiting(clicks.iter().chain(updates.keys()).copied().collect());
         self.skipped.set(0);
         self.declared.set(0);
         self.declared_bytes.set(0);
@@ -77,11 +68,8 @@ impl Context {
             declared: None,
             sites: HashMap::new(),
             updates: &mut updates,
-            submitted: &mut submitted,
             warnings: &mut warnings,
             observed: &mut observed,
-            theme_request: &mut theme_request,
-            clipboard: &mut clipboard,
             redraw: &mut redraw,
             focus: &mut focus,
             host: &mut host,
@@ -108,18 +96,8 @@ impl Context {
             .as_ref()
             .map(crate::Store::graph)
             .unwrap_or_default();
-        if clipboard.is_some() {
-            self.clipboard_out = clipboard;
-        }
         self.redraw_requested = redraw;
         self.apply_outbox(host);
-        if let Some(theme) = theme_request {
-            // Declared token reads used the old theme; count this like an
-            // activation so hosts declare once more before presenting.
-            self.set_theme(theme);
-            self.nodes.get_mut(&self.root).unwrap().resolved = self.root_text();
-            self.stats.activations += 1;
-        }
         let size = Size::new(size.width.max(0.0), size.height.max(0.0));
         self.resize_root(size);
         self.reconcile(self.root, elements, measurer);
@@ -182,26 +160,16 @@ impl Context {
         for (node, message) in std::mem::take(&mut host.misuse) {
             self.misuse(node, message);
         }
-        self.deliver_emitted(std::mem::take(&mut host.emitted));
         for id in std::mem::take(&mut host.commands) {
             self.event(crate::Event::Command(id));
         }
         self.watch_requests = host.watched;
-        if host.clip.is_some() {
-            self.clip_out = host.clip;
-        }
-        self.paste_requested |= host.paste;
-        if host.files.is_some() {
-            self.file_request = host.files;
-        }
-        self.notifications.append(&mut host.notifications);
         if let Some(menu) = host.menu
             && self.menu_shown.as_ref() != Some(&menu)
         {
             self.menu_shown = Some(menu.clone());
             self.menu_out = Some(menu);
         }
-        self.window_commands.append(&mut host.window_commands);
         if let Some(tray) = host.tray
             && self.tray_shown != tray
         {
@@ -211,20 +179,6 @@ impl Context {
         self.image_requests = host.images;
         self.trim_images();
         self.apply_toasts(host.toasts);
-        if host.hot_state.is_some() {
-            self.hot_state = host.hot_state;
-            self.hot_save = false;
-        }
-        if let Some(format) = host.format {
-            self.set_format(format);
-            self.stats.activations += 1;
-        }
-        if let Some(messages) = host.messages {
-            // Like a theme: texts already looked up in this declaration are
-            // in the old language, so the host declares once more.
-            self.set_messages(messages);
-            self.stats.activations += 1;
-        }
     }
 
     /// Gives the root the window's size, when that changed.

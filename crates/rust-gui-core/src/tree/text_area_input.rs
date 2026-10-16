@@ -71,15 +71,10 @@ impl Context {
         })
     }
 
-    /// Text a copy or cut produced during the last declaration. Hosts write it
-    /// to the system clipboard after each `run`.
-    pub fn take_clipboard(&mut self) -> Option<String> {
-        self.clipboard_out.take()
-    }
-
     /// Queues a copy or cut on the focused multi-line editor, whose text lives
-    /// in an app-owned document; the text arrives through `take_clipboard`
-    /// after the next declaration. False when another kind of node has focus.
+    /// in an app-owned document: the editor sends it as an operation, which
+    /// the application applies and copies. False when another kind of node
+    /// has focus.
     pub fn request_clipboard(&mut self, cut: bool) -> bool {
         if let Some(id) = self.focused_rich() {
             self.rich_op(id, crate::rich_editor::RichOp::Clipboard { cut });

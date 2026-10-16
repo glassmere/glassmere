@@ -2,7 +2,7 @@ use super::controls::FieldExtra;
 use super::*;
 use crate::app::Handler;
 use crate::editor::single_line;
-use crate::{AutocompleteResponse, Length, MenuItem, NumberOptions, NumericValue};
+use crate::{Length, MenuItem, NumberOptions, NumericValue};
 
 /// What an autocomplete field sends besides its edits; see
 /// [`Ui::autocomplete_with`].
@@ -47,68 +47,10 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// stays allowed. Up and Down move through the list, Enter or a click
     /// takes a suggestion, Escape closes the list, and Enter without a
     /// highlighted suggestion submits what was typed.
+    /// An edit sends `on_change(text)`, and a pick from the list sends
+    /// `on_change` of the suggestion it took.
     #[track_caller]
     pub fn autocomplete<S: AsRef<str>>(
-        &mut self,
-        label: impl Into<String>,
-        value: &mut String,
-        suggestions: &[S],
-    ) -> AutocompleteResponse<'a> {
-        let key = self.next_key();
-        let id = self.context.child(self.parent, &key, Kind::TextInput);
-        let mut picked = None;
-        let mut changed = false;
-        // The field already holds the chosen text; the list may have moved on.
-        if let Some(ControlUpdate::Choice(index)) = id.and_then(|id| self.updates.get(&id).cloned())
-            && let Some(text) = id
-                .and_then(|id| self.context.field_state(id))
-                .map(|state| state.text)
-        {
-            self.updates.remove(&id.unwrap());
-            if self.enabled {
-                changed = *value != text;
-                *value = text;
-                picked = Some(index);
-            }
-        }
-        let entries: Vec<MenuItem> = suggestions
-            .iter()
-            .map(|label| MenuItem::new(label.as_ref()))
-            .collect();
-        let focused = id.is_some_and(|id| self.context.focused() == Some(id));
-        let children = if focused && !entries.is_empty() {
-            self.popup_children(
-                &key,
-                Kind::TextInput,
-                &entries,
-                usize::MAX,
-                false,
-                Length::Percent(1.0),
-            )
-        } else {
-            Vec::new()
-        };
-        let mut response = self.text_field(
-            key,
-            label.into(),
-            value,
-            "",
-            Self::field_style(),
-            FieldExtra {
-                number: None,
-                suggestions: Some(entries),
-                children,
-                draft: false,
-            },
-        );
-        response.changed |= changed;
-        AutocompleteResponse { response, picked }
-    }
-
-    /// `autocomplete` showing `value`: an edit sends `on_change(text)`, and a
-    /// pick from the list sends `on_change` of the suggestion it took.
-    #[track_caller]
-    pub fn autocomplete_msg<S: AsRef<str>>(
         &mut self,
         label: impl Into<String>,
         value: &str,
@@ -118,7 +60,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         self.autocomplete_with(label, value, suggestions, on_change, Autocomplete::new())
     }
 
-    /// `autocomplete_msg` that also sends what `extra` names: the index of a
+    /// `autocomplete` that also sends what `extra` names: the index of a
     /// pick (after its `on_change`) and Enter without a highlighted suggestion.
     #[track_caller]
     pub fn autocomplete_with<S: AsRef<str>>(
@@ -152,11 +94,10 @@ impl<'a, M: 'static> Ui<'a, M> {
         } else {
             Vec::new()
         };
-        let mut shown = value.to_owned();
         let response = self.text_field(
             key,
             label.into(),
-            &mut shown,
+            value,
             "",
             Self::field_style(),
             FieldExtra {
@@ -185,140 +126,13 @@ impl<'a, M: 'static> Ui<'a, M> {
         response
     }
 
-    /// A field for one number with stepper buttons. Typing is free text: Enter,
-    /// leaving the field or stepping commits it, which parses (a decimal comma
-    /// is accepted), clamps to the range, snaps to the step and reformats;
-    /// text that is not a number reverts. Up and Down step once, PageUp and
-    /// PageDown ten times, and the wheel steps while the field has both the
-    /// keyboard and the pointer.
-    #[track_caller]
-    pub fn number_input(
-        &mut self,
-        label: impl Into<String>,
-        value: &mut f64,
-        options: NumberOptions,
-    ) -> Response<'a> {
-        let label = label.into();
-        let old = *value;
-        *value = options.constrain(*value);
-        let mut row = options.style.clone();
-        if row.width == Length::Auto {
-            row.width = Length::Px(160.0);
-        }
-        row.gap = 4.0;
-        let mut result = Response::default();
-        let key = self.next_key();
-        let context = self.context;
-        self.group(key, Kind::Row, row, |ui| {
-            let child = |ui: &Ui<'_, M>, key: &str, kind| {
-                ui.context.child(ui.parent, &WidgetKey::named(key), kind)
-            };
-            let field = child(ui, "$field", Kind::TextInput);
-            let clicked = |ui: &Ui<'_, M>, key: &str| {
-                child(ui, key, Kind::Button).is_some_and(|id| ui.clicks.contains(&id))
-            };
-            let mut steps = match ui.take_update(&WidgetKey::named("$field"), Kind::TextInput) {
-                Some(ControlUpdate::Number(steps)) => steps,
-                _ => 0.0,
-            };
-            if ui.enabled {
-                steps += f64::from(u8::from(clicked(ui, "$more")));
-                steps -= f64::from(u8::from(clicked(ui, "$less")));
-            }
-            let submitted = field.is_some_and(|id| ui.submitted.contains(&id));
-            let formatted = options.format_in(ui.context, *value);
-            let mut text = formatted.clone();
-            let mut drafting = false;
-            if let Some(state) = field.and_then(|id| ui.context.field_state(id))
-                // Only what the user typed is a draft. Text the field wrote
-                // itself is never parsed back: after a change of locale it
-                // would be read by the wrong rules.
-                && state.draft
-                // The app changing the number wins over a draft.
-                && state.number.is_some_and(|last| last.value == *value)
-            {
-                if !state.focused || submitted || steps != 0.0 {
-                    // Commit; text that is not a number reverts.
-                    *value = options.parse_in(ui.context, &state.text).unwrap_or(*value);
-                } else {
-                    text = state.text;
-                    drafting = true;
-                }
-            }
-            if steps != 0.0 {
-                *value = options.constrain(*value + steps * options.step);
-            }
-            if !drafting {
-                text = options.format_in(ui.context, *value);
-            }
-            let number = NumericValue {
-                value: *value,
-                min: options.min,
-                max: options.max,
-                step: options.step,
-            };
-            let mut style = Self::field_style();
-            style.width = Length::Auto;
-            style.grow = 1.0;
-            result = ui
-                .text_field(
-                    WidgetKey::named("$field"),
-                    label,
-                    &mut text,
-                    "",
-                    style,
-                    FieldExtra {
-                        number: Some(number),
-                        draft: drafting,
-                        ..FieldExtra::default()
-                    },
-                )
-                .rebind(context);
-            for (key, symbol, name, enabled) in [
-                (
-                    "$less",
-                    "\u{2212}",
-                    ui.context.tr("rust-gui-number-decrease", &[]),
-                    *value > options.min,
-                ),
-                (
-                    "$more",
-                    "+",
-                    ui.context.tr("rust-gui-number-increase", &[]),
-                    *value < options.max,
-                ),
-            ] {
-                ui.push(Element {
-                    handler: None,
-                    seq: 0,
-                    key: WidgetKey::Named(key.into()),
-                    kind: Kind::Button,
-                    text: symbol.into(),
-                    style: Style {
-                        width: Length::Px(32.0),
-                        height: Length::Px(44.0),
-                        padding: 10.0,
-                        ..Style::button()
-                    },
-                    enabled: ui.enabled && enabled,
-                    children: Vec::new(),
-                    custom: None,
-                    tooltip: Some(name),
-                    control: Control::Stepper,
-                });
-            }
-        });
-        result.changed = *value != old;
-        result
-    }
-
     /// A number field showing `value`. Enter, leaving the field, a stepper,
     /// Up and Down, PageUp and PageDown and the wheel commit what was typed:
     /// it parses in the context's locale, clamps and snaps, and `on` of the
     /// number is sent when that differs from `value`. Text that is not a
     /// number reverts without a message.
     #[track_caller]
-    pub fn number_input_msg(
+    pub fn number_input(
         &mut self,
         label: impl Into<String>,
         value: f64,
@@ -363,7 +177,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                 .text_field(
                     WidgetKey::named("$field"),
                     label,
-                    &mut text,
+                    &text,
                     "",
                     style,
                     FieldExtra {
@@ -475,6 +289,9 @@ impl<'a, M: 'static> Ui<'a, M> {
             .button(Button::new(text).enabled(enabled).style(style))
     }
 
+    /// A text field over text the framework keeps itself, such as a grid
+    /// cell being edited: what was typed since the last declaration is
+    /// written to `value`. Returns the field and whether `value` changed.
     #[track_caller]
     pub(crate) fn text_input_at(
         &mut self,
@@ -483,13 +300,31 @@ impl<'a, M: 'static> Ui<'a, M> {
         value: &mut String,
         placeholder: &str,
         style: Style,
-    ) -> Response<'a> {
-        self.at(key).text_input(
-            TextInput::new(label).placeholder(placeholder).style(style),
+    ) -> (Response<'a>, bool) {
+        let key = WidgetKey::Named(key.into());
+        let mut changed = false;
+        if let Some(ControlUpdate::Text(text)) = self.take_update(&key, Kind::TextInput) {
+            changed = *value != text;
+            *value = text;
+        }
+        let normalized = single_line(value);
+        if normalized != *value {
+            *value = normalized;
+            changed = true;
+        }
+        let response = self.text_field(
+            key,
+            label.into(),
             value,
-        )
+            placeholder,
+            style,
+            FieldExtra::default(),
+        );
+        (response, changed)
     }
 
+    /// A drop-down over a choice the framework keeps itself. Returns the
+    /// field and whether `selected` changed.
     #[track_caller]
     pub(crate) fn combo_box_at(
         &mut self,
@@ -498,9 +333,28 @@ impl<'a, M: 'static> Ui<'a, M> {
         selected: &mut usize,
         items: &[&str],
         style: Style,
-    ) -> Response<'a> {
-        self.at(key)
-            .combo_box(ComboBox::new(label).style(style), selected, items)
+    ) -> (Response<'a>, bool) {
+        let key = WidgetKey::Named(key.into());
+        let old = *selected;
+        if let Some(ControlUpdate::Choice(index)) = self.take_update(&key, Kind::ComboBox) {
+            *selected = index;
+        }
+        *selected = (*selected).min(items.len().saturating_sub(1));
+        let response = self.combo_shown(ComboBox::new(label).style(style), key, *selected, items);
+        (response, old != *selected)
+    }
+
+    /// Whether the button the framework is about to declare under `key` was
+    /// clicked since the last declaration, for its own composites, whose
+    /// buttons send no message.
+    #[track_caller]
+    pub(crate) fn clicked_at(&mut self, key: impl Into<String>) -> bool {
+        let key = WidgetKey::Named(key.into());
+        self.enabled
+            && self
+                .context
+                .child(self.parent, &key, Kind::Button)
+                .is_some_and(|id| self.clicks.remove(&id))
     }
 
     #[track_caller]

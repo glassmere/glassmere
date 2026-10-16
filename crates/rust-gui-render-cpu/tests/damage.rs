@@ -54,17 +54,15 @@ impl App for Form {
         ui.keyed("page", |ui| {
             ui.column(Style::default().padding(8.0).gap(6.0), |ui| {
                 ui.keyed("title", |ui| ui.label("Damage"));
-                ui.keyed("field", |ui| {
-                    ui.text_input_msg("Name", &self.typed, Msg::Typed)
-                });
+                ui.keyed("field", |ui| ui.text_input("Name", &self.typed, Msg::Typed));
                 ui.keyed("check", |ui| {
-                    ui.checkbox_msg("Ready", self.checked, Msg::Checked)
+                    ui.checkbox("Ready", self.checked, Msg::Checked)
                 });
                 ui.keyed("volume", |ui| {
-                    ui.slider_msg("Volume", self.volume, 0.0..=100.0, 1.0, Msg::Volume)
+                    ui.slider("Volume", self.volume, 0.0..=100.0, 1.0, Msg::Volume)
                 });
                 ui.keyed("combo", |ui| {
-                    ui.combo_box_msg("Theme", self.picked, &["Dark", "Light"], Msg::Picked)
+                    ui.combo_box("Theme", self.picked, &["Dark", "Light"], Msg::Picked)
                 });
                 ui.keyed("add", |ui| ui.button(Button::new("Add").on_click(Msg::Add)));
                 ui.keyed("list", |ui| {
@@ -356,7 +354,7 @@ fn every_overlay_leaves_the_window_as_it_found_it() {
                     ui.keyed("hover", |ui| ui.button("Hover me"));
                     ui.tooltip("What this button does");
                     ui.keyed("area", |ui| {
-                        ui.context_menu_msg(
+                        ui.context_menu(
                             &[MenuItem::new("Cut"), MenuItem::new("Copy")],
                             Style::default()
                                 .width(Length::Percent(1.0))
@@ -366,7 +364,7 @@ fn every_overlay_leaves_the_window_as_it_found_it() {
                         )
                     });
                     ui.keyed("popover", |ui| {
-                        ui.popover_msg(
+                        ui.popover(
                             self.popover,
                             OverMsg::Popover,
                             PopoverOptions::default(),
@@ -380,7 +378,7 @@ fn every_overlay_leaves_the_window_as_it_found_it() {
                             ui.label(format!("A line of text {row}"))
                         });
                     }
-                    ui.dialog_msg(
+                    ui.dialog(
                         "dialog",
                         self.dialog,
                         OverMsg::Dialog,

@@ -4,8 +4,8 @@ use crate::text_area::{
     AreaLine, AreaMark, AreaOp, AreaSelection, FindEdit, MarkKind, line_spans, marks_for,
 };
 use crate::{
-    Align, Button, CodeEditorOptions, CodeEditorResponse, EditorCommand, FindState, FocusScope,
-    Length, Severity, TextDocument, TextInput,
+    Align, Button, CodeEditorOptions, EditorCommand, FindState, FocusScope, Length, Severity,
+    TextDocument, TextInput,
 };
 use std::rc::Rc;
 
@@ -49,7 +49,7 @@ fn find_bar<M: 'static>(
         |ui| {
             ui.row_at("$search", row.clone(), |ui| {
                 let typed = on.clone();
-                ui.at("$query").text_input_msg(
+                ui.at("$query").text_input(
                     TextInput::new("Find")
                         .placeholder("Find")
                         .style(input(220.0))
@@ -68,17 +68,17 @@ fn find_bar<M: 'static>(
                         .on_click(command(EditorCommand::FindNext)),
                 );
                 ui.at("$case")
-                    .checkbox_msg("Match case", find.case_sensitive, |on| {
+                    .checkbox("Match case", find.case_sensitive, |on| {
                         edit(FindEdit::CaseSensitive(on))
                     });
                 ui.enabled(!find.regex, |ui| {
                     ui.at("$word")
-                        .checkbox_msg("Whole word", find.whole_word, |on| {
+                        .checkbox("Whole word", find.whole_word, |on| {
                             edit(FindEdit::WholeWord(on))
                         });
                 });
                 ui.at("$regex")
-                    .checkbox_msg("Regular expression", find.regex, |on| {
+                    .checkbox("Regular expression", find.regex, |on| {
                         edit(FindEdit::Regex(on))
                     });
                 let (matches, error) = find.found(document);
@@ -112,7 +112,7 @@ fn find_bar<M: 'static>(
             if find.replace {
                 ui.row_at("$replace", row.clone(), |ui| {
                     let typed = on.clone();
-                    ui.at("$replacement").text_input_msg(
+                    ui.at("$replacement").text_input(
                         TextInput::new("Replace with")
                             .placeholder("Replace")
                             .style(input(220.0)),
@@ -316,25 +316,23 @@ impl<'a, M: 'static> Ui<'a, M> {
 
 impl<'a, M: 'static> Ui<'a, M> {
     /// A multi-line editor over an app-owned document, without the frame of
-    /// [`Ui::code_editor_msg`]. Each edit arrives as one `TextOp` through
+    /// [`Ui::code_editor`]. Each edit arrives as one `TextOp` through
     /// `on`, in order; `update` applies it with `TextDocument::apply_with`, and
-    /// the view declares the document as it is then. The response reports
-    /// nothing: changes come through `update`.
+    /// the view declares the document as it is then.
     #[track_caller]
-    pub fn text_area_msg(
+    pub fn text_area(
         &mut self,
         document: &TextDocument,
         options: CodeEditorOptions<'_>,
         on: impl Fn(AreaOp) -> M + 'static,
-    ) -> CodeEditorResponse {
+    ) {
         if options.find.is_some() {
-            self.misuse("a text area has no find bar; use code_editor_msg for it".into());
-            return CodeEditorResponse::default();
+            self.misuse("a text area has no find bar; use code_editor for it".into());
+            return;
         }
         let handler = text_handler(Rc::new(on), options.read_only, options.auto_close);
         let key = self.next_key();
         self.editor_view(key, document, options, Some(handler));
-        CodeEditorResponse::default()
     }
 
     /// A code editor over a document the view only reads: each edit arrives
@@ -350,12 +348,12 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// the view reads it. The highlighter, if any, lives in a `RefCell`.
     /// Tab indents; Escape followed by Tab leaves the editor.
     #[track_caller]
-    pub fn code_editor_msg(
+    pub fn code_editor(
         &mut self,
         document: &TextDocument,
         options: CodeEditorOptions<'_>,
         on: impl Fn(AreaOp) -> M + 'static,
-    ) -> CodeEditorResponse {
+    ) {
         let mut outer = options.style.clone();
         outer.padding = 0.0;
         outer.radius = 0.0;
@@ -381,7 +379,6 @@ impl<'a, M: 'static> Ui<'a, M> {
                 handler.take(),
             );
         });
-        CodeEditorResponse::default()
     }
 }
 

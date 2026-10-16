@@ -4,7 +4,7 @@
 //! been declared, sends a message from a worker thread, closes the window and
 //! exits; it fails unless each of those happened.
 
-use rust_gui::{App, AppOptions, Button, Effects, Size, Ui, WindowId, WindowRequest, run_app};
+use rust_gui::{App, AppOptions, Button, Effects, Size, Ui, WindowId, WindowRequest, run};
 use std::{
     sync::{
         Arc,
@@ -102,7 +102,7 @@ impl App for Windows {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     let checks = Checks::default();
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Windows".into(),
             size: Size::new(480.0, 320.0),

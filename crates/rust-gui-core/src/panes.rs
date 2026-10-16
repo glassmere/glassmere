@@ -25,14 +25,6 @@ impl Tab {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct TabsResponse {
-    /// The selection changed since the last declaration.
-    pub changed: bool,
-    /// A closable tab's close button was activated (or Delete pressed on it).
-    pub closed: Option<usize>,
-}
-
 /// Direction along which split panes are laid out.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -82,10 +74,4 @@ impl Default for PopoverOptions {
             style: Style::default(),
         }
     }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct PopoverResponse {
-    /// The popover was closed by Escape or an outside click since the last declaration.
-    pub dismissed: bool,
 }

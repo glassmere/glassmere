@@ -220,7 +220,7 @@ fn nest(state: &NestState, ui: &mut Ui<'_, rust_gui_core::app::Action<NestState>
             let (outer, inner) = state.runs.get();
             state.runs.set((outer + 1, inner));
             ui.keyed("field", |ui| {
-                ui.text_input_msg(
+                ui.text_input(
                     "Field",
                     &state.typed,
                     on(|s: &mut NestState, text: String| s.typed = text),

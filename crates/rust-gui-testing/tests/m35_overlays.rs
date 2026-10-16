@@ -52,7 +52,7 @@ impl App for Overlays {
                 self.query.clear();
             }
             Msg::Raise => effects
-                .toast_msg(Toast::new("Saved").action("Undo").tag("doc"), |action| {
+                .toast_with(Toast::new("Saved").action("Undo").tag("doc"), |action| {
                     Msg::Undo(action.tag)
                 }),
             Msg::Undo(tag) => self.undone.push(tag),
@@ -64,7 +64,7 @@ impl App for Overlays {
         self.views.set(self.views.get() + 1);
         ui.button(Button::new("Behind"));
         ui.button(Button::new("Share").on_click(Msg::Popover(true)));
-        ui.popover_msg(
+        ui.popover(
             self.popover,
             Msg::Popover,
             PopoverOptions::default(),
@@ -73,7 +73,7 @@ impl App for Overlays {
             },
         );
         ui.button(Button::new("Open dialog").on_click(Msg::OpenDialog));
-        ui.dialog_msg(
+        ui.dialog(
             "confirm",
             self.dialog,
             Msg::Dialog,
@@ -82,7 +82,7 @@ impl App for Overlays {
                 ui.button(Button::new("Cancel").on_click(Msg::Dialog(false)));
             },
         );
-        ui.context_menu_msg(
+        ui.context_menu(
             &[MenuItem::new("Copy"), MenuItem::new("Paste")],
             Style::default(),
             Msg::Menu,
@@ -93,7 +93,7 @@ impl App for Overlays {
             Command::with_id("save", "Save", None),
             Command::with_id("open", "Open file", None),
         ];
-        ui.command_palette_msg(
+        ui.command_palette(
             self.palette,
             &self.query,
             Msg::Palette,
@@ -102,7 +102,7 @@ impl App for Overlays {
             &commands,
         );
         ui.button(Button::new("Raise").on_click(Msg::Raise));
-        ui.tabs_msg(
+        ui.tabs(
             self.tab,
             &[Tab::new("One"), Tab::new("Two")],
             Msg::Tab,

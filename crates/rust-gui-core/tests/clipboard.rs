@@ -86,8 +86,7 @@ fn a_clip_carries_every_form_at_once() {
 fn copying_does_not_disturb_the_declaration() {
     let mut app = board();
     app.effects(|_, effects| effects.copy(Clip::text("from inside a container")));
-    let stats = app.frame();
-    assert_eq!(stats.activations, 0);
+    app.frame();
     assert_eq!(
         app.context.take_clip().map(|clip| clip.text),
         Some("from inside a container".to_owned())

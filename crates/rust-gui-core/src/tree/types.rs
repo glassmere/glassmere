@@ -241,9 +241,6 @@ pub enum Event {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FrameStats {
-    /// Queued activations consumed by this declaration. Hosts should declare
-    /// once more after these callbacks so earlier labels see the updated state.
-    pub activations: usize,
     pub created: usize,
     pub reused: usize,
     pub removed: usize,
@@ -274,7 +271,7 @@ pub struct FrameStats {
     /// Bytes of keys and text those elements carried.
     pub element_bytes: usize,
     /// Whether the view ran this frame. An `App` declares only when
-    /// something it reads may have changed; a closure view always does.
+    /// something it reads may have changed; `Context::run` always does.
     pub declared: bool,
     /// Messages the batch delivered to `App::update`.
     pub messages: usize,

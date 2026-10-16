@@ -49,7 +49,7 @@ impl App for Chrome {
                     });
                     // Empty space, which is where a title bar is grabbed.
                     ui.keyed("gap", |ui| ui.container(Style::default().grow(1.0), |_| {}));
-                    ui.keyed("buttons", |ui| ui.window_buttons_msg(Msg::Window));
+                    ui.keyed("buttons", |ui| ui.window_buttons(Msg::Window));
                 },
             )
         });

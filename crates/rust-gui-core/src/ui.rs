@@ -16,7 +16,7 @@ pub use fields::{Autocomplete, suggest};
 mod image;
 mod overlays;
 mod property_grid;
-pub use property_grid::{Properties, PropertyGrid, PropertyGridMsg};
+pub use property_grid::PropertyGrid;
 mod areas;
 pub use areas::{AreaBuilder, DragSourceBuilder, DropTargetBuilder, GestureBuilder};
 mod dialog;
@@ -27,7 +27,7 @@ mod toasts;
 mod window;
 pub(crate) use toasts::ToastOutbox;
 
-pub use dock::{DockOptions, DockPanel, DockResponse};
+pub use dock::{DockOptions, DockPanel};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum WidgetKey {
@@ -59,30 +59,14 @@ impl WidgetKey {
 /// What a declaration hands to the host besides the tree.
 #[derive(Default)]
 pub(crate) struct HostOutbox {
-    /// Custom events `Ui::emit` sent, with the node they came from.
-    pub emitted: Vec<(crate::NodeId, crate::UiEvent)>,
     pub watched: Vec<std::path::PathBuf>,
-    /// What `Ui::copy` put on the clipboard, and whether `Ui::request_paste`
-    /// asked for what is on it.
-    pub clip: Option<crate::Clip>,
-    pub paste: bool,
-    /// A file dialog to put up, notifications to post, and the native menu
-    /// and tray icon as the view last declared them.
-    pub files: Option<crate::FileRequest>,
-    pub notifications: Vec<crate::Notification>,
+    /// The native menu and tray icon as the view last declared them.
     pub menu: Option<crate::Menu>,
     pub tray: Option<Option<crate::Tray>>,
     /// Commands a menu the framework drew itself chose.
     pub commands: Vec<String>,
-    /// What a title bar of the application's own asked the window to do.
-    pub window_commands: Vec<crate::WindowCommand>,
     pub images: Vec<std::path::PathBuf>,
     pub toasts: ToastOutbox,
-    /// A new message source, or `Some(None)` to remove the current one.
-    pub messages: Option<Option<Box<dyn crate::Messages>>>,
-    /// New locale-aware formatting, or `Some(None)` to remove it.
-    pub format: Option<Option<Box<dyn crate::LocaleFormat>>>,
-    pub hot_state: Option<String>,
     /// Misuses a release build skipped, with the parent they were declared in.
     pub misuse: Vec<(Option<crate::NodeId>, String)>,
 }
@@ -180,11 +164,8 @@ pub(crate) struct Element {
 /// read only repaints.
 #[derive(Clone, Copy, Default)]
 pub struct Response<'a> {
-    clicked: bool,
-    pub hovered: bool,
-    pub focused: bool,
-    pub changed: bool,
-    pub submitted: bool,
+    hovered: bool,
+    focused: bool,
     observer: Option<(&'a Context, Observed)>,
 }
 
@@ -198,20 +179,13 @@ enum Observed {
 impl std::fmt::Debug for Response<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Response")
-            .field("clicked", &self.clicked)
             .field("hovered", &self.hovered)
             .field("focused", &self.focused)
-            .field("changed", &self.changed)
-            .field("submitted", &self.submitted)
             .finish()
     }
 }
 
 impl Response<'_> {
-    pub fn clicked(self) -> bool {
-        self.clicked
-    }
-
     /// Whether the pointer is over the widget; the view is declared again
     /// when that changes.
     pub fn hovered(&self) -> bool {
@@ -230,11 +204,8 @@ impl Response<'_> {
     /// declared in a nested scope and returned from the outer one.
     pub(crate) fn rebind(self, context: &Context) -> Response<'_> {
         Response {
-            clicked: self.clicked,
             hovered: self.hovered,
             focused: self.focused,
-            changed: self.changed,
-            submitted: self.submitted,
             observer: self.observer.map(|(_, observed)| (context, observed)),
         }
     }
@@ -262,6 +233,8 @@ pub struct Ui<'a, M: 'static = ()> {
     /// The name [`Ui::keyed`] gave the next element declared, taken by the
     /// first one that asks for a key.
     pub(crate) pending_key: Option<String>,
+    /// Clicks and changes that reached widgets without a handler: the
+    /// framework's own composites, which read them while declaring.
     pub(crate) clicks: &'a mut HashSet<NodeId>,
     pub(crate) elements: Vec<Element>,
     pub(crate) keys: HashSet<WidgetKey>,
@@ -271,14 +244,10 @@ pub struct Ui<'a, M: 'static = ()> {
     /// How many widgets each source location has declared here so far.
     pub(crate) sites: HashMap<&'static Location<'static>, u32>,
     pub(crate) updates: &'a mut HashMap<NodeId, ControlUpdate>,
-    pub(crate) submitted: &'a mut HashSet<NodeId>,
     pub(crate) warnings: &'a mut Vec<String>,
     /// The store `Ui::observe` asked for, read after the declaration so the
     /// graph shows what this frame read, whenever `observe` was called.
     pub(crate) observed: &'a mut Option<crate::Store>,
-    pub(crate) theme_request: &'a mut Option<crate::Theme>,
-    /// Text a copy or cut produced, handed to the host after the declaration.
-    pub(crate) clipboard: &'a mut Option<String>,
     pub(crate) redraw: &'a mut bool,
     pub(crate) focus: &'a mut Option<(Option<NodeId>, WidgetKey)>,
     pub(crate) host: &'a mut HostOutbox,
@@ -298,59 +267,6 @@ impl<'a, M: 'static> Ui<'a, M> {
     #[track_caller]
     pub fn theme(&self) -> &crate::Theme {
         self.context.theme()
-    }
-
-    /// Switches the theme after this declaration; the host declares once more
-    /// so token reads made earlier in the view see the new theme too.
-    #[track_caller]
-    pub fn set_theme(&mut self, theme: crate::Theme) {
-        *self.theme_request = Some(theme);
-    }
-
-    /// Puts something on the clipboard once this declaration is over. The
-    /// text goes to the system clipboard, the image with it where the
-    /// platform can carry one, and any private bytes stay in this
-    /// application.
-    #[track_caller]
-    pub fn copy(&mut self, clip: crate::Clip) {
-        self.host.clip = Some(clip);
-    }
-
-    /// Asks for what is on the clipboard. It arrives on the next
-    /// declaration, through `Ui::pasted`, because reading a clipboard is the
-    /// host's business and can be slow.
-    #[track_caller]
-    pub fn request_paste(&mut self) {
-        self.host.paste = true;
-    }
-
-    /// What the host last read from the clipboard, after
-    /// [`Ui::request_paste`]. It stays readable until the next request, so a
-    /// view can paste on the frame it asked and read it again later.
-    #[track_caller]
-    pub fn pasted(&self) -> Option<&crate::Clip> {
-        self.context.pasted()
-    }
-
-    /// Puts up a file dialog once this declaration is over. The answer
-    /// arrives through [`Ui::chosen_files`] on a later frame.
-    #[track_caller]
-    pub fn choose_file(&mut self, request: crate::FileRequest) {
-        self.host.files = Some(request);
-    }
-
-    /// What the last file dialog answered: the paths chosen, or an empty
-    /// slice when it was cancelled. `None` until one has been answered. It
-    /// stays readable until the next dialog.
-    #[track_caller]
-    pub fn chosen_files(&self) -> Option<&[std::path::PathBuf]> {
-        self.context.chosen_files()
-    }
-
-    /// Posts a message to the desktop's notification area.
-    #[track_caller]
-    pub fn notify(&mut self, notification: crate::Notification) {
-        self.host.notifications.push(notification);
     }
 
     /// Files the operating system asked the application to open, from the
@@ -400,21 +316,11 @@ impl<'a, M: 'static> Ui<'a, M> {
         self.context.watched_text(path)
     }
 
-    /// Registers how to save the app's state for a development restart. The
-    /// closure runs only when the host is about to restart the app; the text
-    /// it returns is handed back by the host's `hot::saved_state` on the next
-    /// start.
-    #[track_caller]
-    pub fn hot_state(&mut self, save: impl FnOnce() -> String) {
-        if self.context.hot_save_requested() {
-            self.host.hot_state = Some(save());
-        }
-    }
-
     /// Moves keyboard focus to the widget declared with `key` in this same
-    /// container, once this declaration has been reconciled.
+    /// container, once this declaration has been reconciled: for the
+    /// framework's own composites, whose focus follows what they show.
     #[track_caller]
-    pub fn request_focus(&mut self, key: impl Into<String>) {
+    pub(crate) fn request_focus(&mut self, key: impl Into<String>) {
         *self.focus = Some((self.parent, WidgetKey::Named(key.into())));
     }
 
@@ -468,11 +374,8 @@ impl<'a, M: 'static> Ui<'a, M> {
         let context: &'a Context = self.context;
         let response = match existing {
             Some(id) => Response {
-                clicked: self.clicks.remove(&id) && element.enabled,
                 hovered: context.hovered() == Some(id),
                 focused: context.focused() == Some(id),
-                changed: false,
-                submitted: element.enabled && self.submitted.remove(&id),
                 observer: Some((context, Observed::Node(id))),
             },
             None => Response {
@@ -650,11 +553,8 @@ impl<'a, M: 'static> Ui<'a, M> {
             declared: self.declared,
             sites: std::mem::take(&mut self.sites),
             updates: &mut *self.updates,
-            submitted: &mut *self.submitted,
             warnings: &mut *self.warnings,
             observed: &mut *self.observed,
-            theme_request: &mut *self.theme_request,
-            clipboard: &mut *self.clipboard,
             redraw: &mut *self.redraw,
             focus: &mut *self.focus,
             host: &mut *self.host,
@@ -689,11 +589,8 @@ impl<'a, M: 'static> Ui<'a, M> {
             declared: None,
             sites: HashMap::new(),
             updates: self.updates,
-            submitted: self.submitted,
             warnings: self.warnings,
             observed: self.observed,
-            theme_request: self.theme_request,
-            clipboard: self.clipboard,
             redraw: self.redraw,
             focus: self.focus,
             host: self.host,

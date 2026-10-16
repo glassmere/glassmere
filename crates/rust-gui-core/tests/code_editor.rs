@@ -39,7 +39,7 @@ impl State {
 
 fn editor(state: &State, ui: &mut Ui<'_, Action<State>>) {
     ui.keyed("editor", |ui| {
-        ui.code_editor_msg(
+        ui.code_editor(
             &state.document,
             CodeEditorOptions {
                 label: "Source".into(),
@@ -84,7 +84,7 @@ impl App for Finder {
 
     fn view(&self, ui: &mut Ui<'_, TextOp>) {
         ui.keyed("editor", |ui| {
-            ui.code_editor_msg(
+            ui.code_editor(
                 &self.document,
                 CodeEditorOptions {
                     label: "Source".into(),
@@ -395,7 +395,7 @@ fn highlighters_colour_visible_lines_only() {
         },
         |state: &Highlighted, ui| {
             ui.keyed("editor", |ui| {
-                ui.code_editor_msg(
+                ui.code_editor(
                     &state.document,
                     CodeEditorOptions {
                         highlighter: Some(&state.highlighter),

@@ -50,20 +50,20 @@ impl App for Controls {
 
     fn view(&self, ui: &mut Ui<'_, Msg>) {
         ui.label(format!("Theme {}", self.theme));
-        ui.combo_box_msg("Theme", self.theme, &THEMES, Msg::Theme);
+        ui.combo_box("Theme", self.theme, &THEMES, Msg::Theme);
         ui.label(format!("Choice {}", self.choice));
-        ui.radio_msg("Pick", self.choice, 1, Msg::Pick);
+        ui.radio("Pick", self.choice, 1, Msg::Pick);
         ui.label(format!("Menu {}", self.menu));
-        ui.menu_msg(
+        ui.menu(
             "Actions",
             &[MenuItem::new("Alpha"), MenuItem::new("Beta")],
             Msg::Menu,
         );
         ui.label(format!("Saved {}", self.saved));
-        ui.command_button_msg(&Command::new("Save", None), Msg::Save);
+        ui.command_button(&Command::new("Save", None), Msg::Save);
         ui.label(format!("Query {}", self.query));
-        ui.autocomplete_msg("Search", &self.query, &SUGGESTIONS, Msg::Query);
-        ui.window_buttons_msg(Msg::Window);
+        ui.autocomplete("Search", &self.query, &SUGGESTIONS, Msg::Query);
+        ui.window_buttons(Msg::Window);
     }
 }
 

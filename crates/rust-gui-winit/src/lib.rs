@@ -2,7 +2,6 @@
 mod accessibility;
 mod desktop;
 mod diagnostics;
-mod dock;
 mod graphics;
 pub mod hot;
 mod images;
@@ -10,8 +9,6 @@ mod input;
 mod os_drag;
 mod platform;
 mod wakeup;
-pub use desktop::{DesktopClosed, DesktopHandle, WindowKey, run_windows};
-pub use dock::{DockWindowView, DockWindows};
 pub use graphics::{GpuMemoryPolicy, GraphicsBackend, GraphicsOptions};
 
 /// What an application draws itself, registered once the window's renderer
@@ -303,43 +300,26 @@ fn report_startup() {
     }
 }
 
-pub fn run(options: AppOptions, view: impl FnMut(&mut Ui<'_>) + 'static) -> Result<()> {
-    run_with_wakeup(options, |_| view)
-}
-
-/// The setup closure receives a handle for worker threads or async tasks, then
-/// returns the view. Application state can be shared via a mutex or channel.
-pub fn run_with_wakeup<F: FnMut(&mut Ui<'_>) + 'static>(
-    options: AppOptions,
-    setup: impl FnOnce(WakeHandle) -> F,
-) -> Result<()> {
-    let _ = STARTED.set(Instant::now());
-    desktop::run_single(options, |wake| {
-        let view: desktop::View = Box::new(Closure(setup(wake)));
-        (view, None)
-    })
-}
-
 /// Runs an [`App`]: each batch of input becomes messages, `update` runs on
 /// them, and a window's view declares at most once, only when something it
 /// reads may have changed. The first window declares with `App::view`; the
 /// windows `Effects::open_window` opens declare with `App::view_window`. The
 /// app stops when its first window closes.
-pub fn run_app<A: App>(options: AppOptions, app: A) -> Result<()> {
+pub fn run<A: App>(options: AppOptions, app: A) -> Result<()> {
     let _ = STARTED.set(Instant::now());
     desktop::run_app(options, app)
 }
 
 /// Runs a state and a view whose widgets send [`Action`]s, changes to apply
-/// to the state: the closure form of [`run_app`], for small programs. Each
+/// to the state: the closure form of [`run`], for small programs. Each
 /// handler costs one `Rc` per declaration, so applications of any size use an
-/// enum message with `run_app`.
+/// enum message with `run`.
 pub fn run_with<S: 'static>(
     options: AppOptions,
     state: S,
     view: impl Fn(&S, &mut Ui<'_, Action<S>>) + 'static,
 ) -> Result<()> {
-    run_app(options, Closures { state, view })
+    run(options, Closures { state, view })
 }
 
 /// A state and a view, as an [`App`] whose messages are actions on it.
@@ -371,36 +351,6 @@ pub(crate) trait Declare {
     /// Whether this window's state is saved for a development restart.
     fn saves_state(&self) -> bool {
         true
-    }
-}
-
-/// A closure view, which reports input through `Response` while declaring.
-pub(crate) struct Closure<F>(pub F);
-
-impl<F: FnMut(&mut Ui<'_>)> Declare for Closure<F> {
-    fn frame(&mut self, context: &mut Context, size: Size, text: &mut TextSystem) -> FrameStats {
-        let mut stats = context.run(size, text, &mut self.0);
-        // A consumed click may make the view ask for something that itself
-        // needs another declaration: a button that switches the language or
-        // the theme. Declare until it settles, within reason, so the frame
-        // that is presented is never a stale one.
-        let mut pending = stats.activations;
-        for _ in 0..3 {
-            if pending == 0 {
-                break;
-            }
-            let again = context.run(size, text, &mut self.0);
-            pending = again.activations;
-            stats = merge(stats, again);
-        }
-        stats
-    }
-
-    fn hot_state(&mut self, context: &mut Context, size: Size, text: &mut TextSystem) -> String {
-        // Declares once more so the view can hand over its state.
-        context.request_hot_save();
-        context.run(size, text, &mut self.0);
-        context.take_hot_state().unwrap_or_default()
     }
 }
 
@@ -1208,9 +1158,6 @@ impl Application {
             let clip = self.clipboard.borrow_mut().read_clip();
             self.context.set_clip(clip);
         }
-        if let Some(text) = self.context.take_clipboard() {
-            input::write_clipboard(&mut self.clipboard.borrow_mut(), &text);
-        }
         // Each new framework diagnostic is printed once; the inspector (F12)
         // lists them with their nodes. They are collected in debug builds.
         let diagnostics = self.context.diagnostics();
@@ -1782,34 +1729,5 @@ impl Application {
             },
             _ => {}
         }
-    }
-}
-
-/// Combines the two declarations of one presented frame into one record.
-fn merge(
-    first: rust_gui_core::FrameStats,
-    second: rust_gui_core::FrameStats,
-) -> rust_gui_core::FrameStats {
-    rust_gui_core::FrameStats {
-        activations: first.activations + second.activations,
-        created: first.created + second.created,
-        reused: first.reused + second.reused,
-        removed: first.removed + second.removed,
-        skipped: first.skipped + second.skipped,
-        text_measures: first.text_measures + second.text_measures,
-        layout_passes: first.layout_passes + second.layout_passes,
-        scene_rebuilt: first.scene_rebuilt || second.scene_rebuilt,
-        dirty: first.dirty | second.dirty,
-        paint_nodes: first.paint_nodes + second.paint_nodes,
-        paint_cache_hits: first.paint_cache_hits + second.paint_cache_hits,
-        frame: second.frame,
-        declare: first.declare + second.declare,
-        layout: first.layout + second.layout,
-        paint: first.paint + second.paint,
-        shaping: first.shaping + second.shaping,
-        elements: first.elements + second.elements,
-        element_bytes: first.element_bytes + second.element_bytes,
-        declared: first.declared || second.declared,
-        messages: first.messages + second.messages,
     }
 }

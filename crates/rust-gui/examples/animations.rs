@@ -1,6 +1,6 @@
 use rust_gui::{
     Animation, App, AppOptions, Button, Color, DialogOptions, Easing, Effect, Effects, Keyframe,
-    Label, Length, Paint, Repeat, Size, Style, TextWrap, Transform, Transition, Ui, run_app,
+    Label, Length, Paint, Repeat, Size, Style, TextWrap, Transform, Transition, Ui, run,
 };
 
 #[derive(Clone)]
@@ -220,7 +220,7 @@ impl App for Animations {
                 });
             }
         });
-        ui.dialog_msg(
+        ui.dialog(
             "animated",
             self.dialog,
             Msg::SetDialog,
@@ -241,7 +241,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     let open = std::env::args().any(|arg| arg == "--open");
     let reduced_motion = std::env::args().any(|arg| arg == "--reduced-motion");
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Animations".into(),
             size: Size::new(900.0, 760.0),

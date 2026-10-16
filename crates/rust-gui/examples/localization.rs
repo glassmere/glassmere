@@ -5,7 +5,7 @@
 use rust_gui::fluent::FluentMessages;
 use rust_gui::{
     App, AppOptions, Button, Effects, Label, Length, NumberOptions, Size, Style, TextWrap, Toast,
-    Ui, run_app, tr,
+    Ui, run, tr,
 };
 
 const LOCALES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/locales");
@@ -118,7 +118,7 @@ impl App for Localization {
             ));
             // The stepper buttons' names are the framework's and follow the language.
             ui.label(ui.tr("weight"));
-            ui.number_input_msg(
+            ui.number_input(
                 ui.tr("weight"),
                 self.weight,
                 NumberOptions::default()
@@ -128,7 +128,7 @@ impl App for Localization {
                 Msg::Weight,
             );
             ui.label(ui.tr("name"));
-            ui.text_input_msg(ui.tr("name"), &self.name, Msg::Name);
+            ui.text_input(ui.tr("name"), &self.name, Msg::Name);
             // The text is localized here, where `ui` is; `update` only raises it.
             let saved = tr!(ui, "saved", name = self.name.as_str());
             ui.button(Button::new(ui.tr("save")).on_click(Msg::Save(saved)));
@@ -142,7 +142,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .skip_while(|arg| arg != "--locale")
         .nth(1)
         .unwrap_or_else(|| "en".into());
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Localization".into(),
             size: Size::new(760.0, 560.0),

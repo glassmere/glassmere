@@ -1,7 +1,7 @@
 use rust_gui::{
     App, AppOptions, Button, Color, Component, CustomWidget, Effects, Label, Length, MessageSender,
     Primitive, Rect, Role, Semantics, Size, Style, Ui, UiEvent, WidgetBuilder, WidgetInput,
-    WindowCommand, run_app,
+    WindowCommand, run,
 };
 use std::{sync::mpsc::Sender, time::Duration};
 
@@ -97,7 +97,7 @@ impl App for Workbench {
                 ui.component(Style::default(), &self.right, Message::Right);
             });
             let custom_count = self.custom_count;
-            ui.widget_msg(
+            ui.widget(
                 Style::default(),
                 WidgetBuilder::new(move |_: &WidgetInput| custom_action(custom_count))
                     .on_event(|event| (event == UiEvent::Activate).then_some(Message::Custom)),
@@ -158,7 +158,7 @@ fn custom_action(count: u32) -> CustomWidget {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     let (closed_probe, probe) = std::sync::mpsc::channel();
-    run_app(
+    run(
         AppOptions {
             title: "Rust GUI / Architecture workbench".into(),
             size: Size::new(920.0, 820.0),

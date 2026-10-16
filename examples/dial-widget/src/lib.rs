@@ -91,7 +91,7 @@ impl Dial {
             self.paint(input, size, face, ring, mark, dim, focus, label)
         })
         .on_event(move |event| Some(wrap(DialMsg::Heard(event))));
-        ui.keyed(key, |ui| ui.widget_msg(Style::default(), widget));
+        ui.keyed(key, |ui| ui.widget(Style::default(), widget));
     }
 
     /// One event. Dragging is vertical, because a knob followed around a
@@ -209,7 +209,6 @@ impl Dial {
                 scroll: true,
                 capture: true,
                 consume: true,
-                custom: false,
             },
         }
     }

@@ -10,14 +10,6 @@ impl<'a, M: 'static> Ui<'a, M> {
         self.host.menu = Some(menu);
     }
 
-    /// Asks the window to move, resize, minimize, maximize or close itself.
-    /// `Ui::title_bar`, `Ui::window_buttons` and `Ui::resize_frame` are made
-    /// of these; this is for a frame of an entirely different shape.
-    #[track_caller]
-    pub fn window_command(&mut self, command: crate::WindowCommand) {
-        self.host.window_commands.push(command);
-    }
-
     /// What the host says about the window: whether it is maximized and
     /// whether it has the keyboard. Of the last frame, like everything a
     /// declaration is given.
@@ -41,7 +33,7 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// ```ignore
     /// ui.title_bar(Style::default().padding(6.0), |ui| {
     ///     ui.label("My application");
-    ///     ui.window_buttons();
+    ///     ui.window_buttons(Msg::Window);
     /// });
     /// ```
     #[track_caller]
@@ -53,21 +45,11 @@ impl<'a, M: 'static> Ui<'a, M> {
     }
 
     /// Minimize, maximize or restore, and close, as three buttons. The
-    /// middle one says which it is from `Ui::window`.
+    /// middle one says which it is from `Ui::window`. A click sends
+    /// `on_command(command)`; `Effects::window_command` in `update` carries
+    /// it out.
     #[track_caller]
-    pub fn window_buttons(&mut self) {
-        self.caption_buttons(None);
-    }
-
-    /// `window_buttons`, whose clicks send `on_command(command)` instead of
-    /// asking the window directly: `Effects::window_command` in `update` does it.
-    #[track_caller]
-    pub fn window_buttons_msg(&mut self, on_command: impl Fn(crate::WindowCommand) -> M) {
-        self.caption_buttons(Some(&on_command));
-    }
-
-    #[track_caller]
-    fn caption_buttons(&mut self, on_command: Option<&dyn Fn(crate::WindowCommand) -> M>) {
+    pub fn window_buttons(&mut self, on_command: impl Fn(crate::WindowCommand) -> M) {
         let maximized = self.window().maximized;
         let foreground = self.theme().text;
         // A wash of the text colour, which is how a desktop marks a caption
@@ -133,10 +115,8 @@ impl<'a, M: 'static> Ui<'a, M> {
                 } else {
                     pressed
                 }));
-                let clicked = ui.button_at(key, glyph, true, style).clicked();
-                if let Some(on_command) = on_command {
-                    ui.set_handler(crate::app::Handler::Message(on_command(command)));
-                }
+                ui.button_at(key, glyph, true, style);
+                ui.set_handler(crate::app::Handler::Message(on_command(command)));
                 // The glyph is what is drawn; the name is what is announced.
                 let label = ui.tr(name);
                 ui.tooltip(label);
@@ -144,9 +124,6 @@ impl<'a, M: 'static> Ui<'a, M> {
                     // Windows asks where this one is, to offer its snap
                     // layouts when the pointer rests over it.
                     ui.set_control(Control::MaximizeButton);
-                }
-                if on_command.is_none() && clicked {
-                    ui.window_command(command);
                 }
             }
         });
@@ -248,7 +225,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                         },
                     })
                     .collect();
-                if let Some(picked) = ui.menu_styled(
+                if let Some(picked) = ui.menu_pick(
                     WidgetKey::named(format!("menu{index}")),
                     label.clone(),
                     &items,

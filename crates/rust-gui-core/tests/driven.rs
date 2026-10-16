@@ -19,7 +19,7 @@ fn a_click_and_typed_text_reach_the_state_through_actions() {
             ui.button(Button::new("Add").on_click(act(|s: &mut State| s.clicks += 1)));
         });
         ui.keyed("name", |ui| {
-            ui.text_input_msg(
+            ui.text_input(
                 "Name",
                 &state.name,
                 on(|s: &mut State, text: String| s.name = text),

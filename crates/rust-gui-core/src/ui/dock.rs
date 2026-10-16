@@ -2,8 +2,8 @@ use super::*;
 use crate::app::Handler;
 use crate::controls::DockAction;
 use crate::{
-    Axis, DockArea, DockFloat, DockLayout, DockNode, DockTabs, DockTarget, DockWindowId, DockZone,
-    Length, MenuItem, SplitOptions, Tab, TabsResponse,
+    DockArea, DockFloat, DockLayout, DockNode, DockTabs, DockTarget, DockWindowId, DockZone,
+    Length, MenuItem, SplitOptions, Tab,
 };
 use rust_gui_scene::Color;
 use std::cell::RefCell;
@@ -58,22 +58,11 @@ impl Default for DockOptions {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct DockResponse {
-    /// The layout changed during this declaration; a good moment to save it.
-    pub changed: bool,
-    /// Panels closed by their tab button, the Delete key or the panel menu.
-    pub closed: Vec<String>,
-    /// Detached windows created during this declaration.
-    pub detached: Vec<DockWindowId>,
-}
-
 const FLOAT_SIZE: (f32, f32) = (360.0, 260.0);
 const WINDOW_SIZE: (f32, f32) = (640.0, 480.0);
 
-/// Where a dock's changes go: the `&mut` form applies them to the layout once
-/// the declaration is over, the message form sends them through `on`.
-type Sink<M> = Option<Rc<dyn Fn(DockAction) -> M>>;
+/// Where a dock's changes go.
+type Sink<M> = Rc<dyn Fn(DockAction) -> M>;
 
 struct Pass<'a, M: 'static> {
     panels: &'a [DockPanel],
@@ -81,8 +70,6 @@ struct Pass<'a, M: 'static> {
     layout: &'a DockLayout,
     content: &'a mut dyn FnMut(&mut Ui<'_, M>, &str),
     sink: Sink<M>,
-    /// What the declaration asked for, in order. Only the `&mut` form keeps it.
-    actions: Vec<DockAction>,
     native: bool,
     area: DockArea,
     tree_groups: usize,
@@ -134,22 +121,12 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// floating groups. Tabs drag onto drop indicators, other tab strips or
     /// empty space (floating), and every group has a panel menu that offers
     /// the same moves from the keyboard. `content` declares one visible panel.
+    ///
+    /// The view only reads the layout. A drag, tab pick, close, divider move
+    /// or panel-menu pick sends `on(action)`; `update` gives the action to
+    /// [`DockLayout::apply`].
     #[track_caller]
     pub fn dock(
-        &mut self,
-        layout: &mut DockLayout,
-        panels: &[DockPanel],
-        options: DockOptions,
-        content: impl FnMut(&mut Ui<'_, M>, &str),
-    ) -> DockResponse {
-        self.dock_area(layout, DockArea::Main, panels, options, content)
-    }
-
-    /// `dock` over a layout the view only reads. A drag, tab pick, close,
-    /// divider move or panel-menu pick sends `on(action)`; `update` gives the
-    /// action to [`DockLayout::apply`]. Nothing here changes the layout.
-    #[track_caller]
-    pub fn dock_msg(
         &mut self,
         layout: &DockLayout,
         panels: &[DockPanel],
@@ -160,23 +137,11 @@ impl<'a, M: 'static> Ui<'a, M> {
         self.dock_message_area(layout, DockArea::Main, panels, options, on, content)
     }
 
-    /// The dock of one detached window. Declares nothing once the window has
-    /// left the layout, which is the app's cue to close the OS window.
+    /// The dock of one detached window, sending what [`Ui::dock`] sends.
+    /// Declares nothing once the window has left the layout, which is the
+    /// app's cue to close the OS window.
     #[track_caller]
     pub fn dock_window(
-        &mut self,
-        layout: &mut DockLayout,
-        window: DockWindowId,
-        panels: &[DockPanel],
-        options: DockOptions,
-        content: impl FnMut(&mut Ui<'_, M>, &str),
-    ) -> DockResponse {
-        self.dock_area(layout, DockArea::Window(window), panels, options, content)
-    }
-
-    /// `dock_window` in the message form of [`Ui::dock_msg`].
-    #[track_caller]
-    pub fn dock_window_msg(
         &mut self,
         layout: &DockLayout,
         window: DockWindowId,
@@ -195,83 +160,6 @@ impl<'a, M: 'static> Ui<'a, M> {
         )
     }
 
-    /// A split of two panes whose divider sends `on` of the first pane's new
-    /// share, between 0.0 and 1.0, when dragged. `ratio` is the share shown.
-    #[track_caller]
-    pub fn split_msg(
-        &mut self,
-        ratio: f32,
-        on: impl Fn(f32) -> M + 'static,
-        axis: Axis,
-        options: SplitOptions,
-        first: impl FnOnce(&mut Ui<'_, M>),
-        second: impl FnOnce(&mut Ui<'_, M>),
-    ) {
-        let mut shown = ratio;
-        self.split(&mut shown, axis, options, first, second);
-        self.set_handler(Handler::Map(Box::new(move |update| match update {
-            ControlUpdate::Number(number) if number.is_finite() => {
-                Some(on((number as f32).clamp(0.0, 1.0)))
-            }
-            _ => None,
-        })));
-    }
-
-    #[track_caller]
-    fn dock_area(
-        &mut self,
-        layout: &mut DockLayout,
-        area: DockArea,
-        panels: &[DockPanel],
-        options: DockOptions,
-        mut content: impl FnMut(&mut Ui<'_, M>, &str),
-    ) -> DockResponse {
-        let key = self.next_key();
-        layout.normalize();
-        let windows: Vec<_> = layout.windows.iter().map(|window| window.id).collect();
-        let bounds = self.dock_size(&key);
-        let mut changed = false;
-        if let Some(ControlUpdate::Dock(action)) = self.take_update(&key, Kind::Dock) {
-            changed |= layout.apply(action);
-        }
-        // Floats are kept inside the dock in the layout itself, not only on screen.
-        for float in &mut layout.floating {
-            (float.x, float.y) = float_origin(float, bounds);
-        }
-        let actions = self.declare_dock(
-            key,
-            layout,
-            area,
-            panels,
-            options,
-            bounds,
-            None,
-            &mut content,
-        );
-        let mut closed = Vec::new();
-        for action in actions {
-            let closing = match &action {
-                DockAction::Close(panel) => Some(panel.clone()),
-                _ => None,
-            };
-            let applied = layout.apply(action);
-            changed |= applied;
-            if let (Some(panel), true) = (closing, applied) {
-                closed.push(panel);
-            }
-        }
-        DockResponse {
-            changed,
-            closed,
-            detached: layout
-                .windows
-                .iter()
-                .map(|window| window.id)
-                .filter(|id| !windows.contains(id))
-                .collect(),
-        }
-    }
-
     #[track_caller]
     fn dock_message_area(
         &mut self,
@@ -284,7 +172,7 @@ impl<'a, M: 'static> Ui<'a, M> {
     ) {
         let key = self.next_key();
         let bounds = self.dock_size(&key);
-        let sink: Sink<M> = Some(Rc::new(on));
+        let sink: Sink<M> = Rc::new(on);
         self.declare_dock(
             key,
             layout,
@@ -307,8 +195,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             .map(|bounds| (bounds.width, bounds.height))
     }
 
-    /// Declares the dock of `area` as `layout` shows it. Returns the changes
-    /// the declaration asked for, which only the `&mut` form uses.
+    /// Declares the dock of `area` as `layout` shows it.
     #[allow(clippy::too_many_arguments)]
     fn declare_dock(
         &mut self,
@@ -320,7 +207,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         bounds: Option<(f32, f32)>,
         sink: Sink<M>,
         content: &mut dyn FnMut(&mut Ui<'_, M>, &str),
-    ) -> Vec<DockAction> {
+    ) {
         let tree_groups = layout.groups_in(area).len()
             - if area == DockArea::Main {
                 layout.floating.len()
@@ -332,7 +219,6 @@ impl<'a, M: 'static> Ui<'a, M> {
             layout,
             content,
             sink: sink.clone(),
-            actions: Vec::new(),
             native: options.native_windows,
             area,
             tree_groups,
@@ -426,13 +312,10 @@ impl<'a, M: 'static> Ui<'a, M> {
             area,
             native: options.native_windows,
         });
-        if let Some(on) = sink {
-            self.set_handler(Handler::Map(Box::new(move |update| match update {
-                ControlUpdate::Dock(action) => Some(on(action)),
-                _ => None,
-            })));
-        }
-        pass.into_inner().actions
+        self.set_handler(Handler::Map(Box::new(move |update| match update {
+            ControlUpdate::Dock(action) => Some(sink(action)),
+            _ => None,
+        })));
     }
 }
 
@@ -452,7 +335,7 @@ fn node<M: 'static>(
             first,
             second,
         } => {
-            let (area, sink) = {
+            let (area, on) = {
                 let pass = pass.borrow();
                 (pass.area, pass.sink.clone())
             };
@@ -466,42 +349,21 @@ fn node<M: 'static>(
             first_path.push(0);
             let mut second_path = path.to_vec();
             second_path.push(1);
-            match sink {
-                Some(on) => {
-                    let path = path.to_vec();
-                    ui.at("$split").split_msg(
-                        *fraction,
-                        move |share| {
-                            on(DockAction::Ratio {
-                                area,
-                                path: path.clone(),
-                                fraction: share,
-                            })
-                        },
-                        *axis,
-                        options,
-                        |ui| node(ui, first, &first_path, pass, min_pane),
-                        |ui| node(ui, second, &second_path, pass, min_pane),
-                    );
-                }
-                None => {
-                    let mut share = *fraction;
-                    ui.at("$split").split(
-                        &mut share,
-                        *axis,
-                        options,
-                        |ui| node(ui, first, &first_path, pass, min_pane),
-                        |ui| node(ui, second, &second_path, pass, min_pane),
-                    );
-                    if share != *fraction {
-                        pass.borrow_mut().actions.push(DockAction::Ratio {
-                            area,
-                            path: path.to_vec(),
-                            fraction: share,
-                        });
-                    }
-                }
-            }
+            let path = path.to_vec();
+            ui.at("$split").split(
+                *fraction,
+                move |share| {
+                    on(DockAction::Ratio {
+                        area,
+                        path: path.clone(),
+                        fraction: share,
+                    })
+                },
+                *axis,
+                options,
+                |ui| node(ui, first, &first_path, pass, min_pane),
+                |ui| node(ui, second, &second_path, pass, min_pane),
+            );
         }
     }
 }
@@ -537,17 +399,16 @@ fn group<M: 'static>(
     let labels: Vec<Tab> = visible.iter().map(|(_, tab, _)| tab.clone()).collect();
     let ids: Vec<String> = visible.iter().map(|(_, _, id)| id.clone()).collect();
     let closable: Vec<bool> = labels.iter().map(|tab| tab.closable).collect();
-    let mut selected = visible
+    let selected = visible
         .iter()
         .position(|(index, ..)| *index == tabs.active)
         .unwrap_or(0);
     let count = tabs.panels.len();
     let sink = pass.borrow().sink.clone();
-    let mut response = TabsResponse::default();
     ui.group(WidgetKey::named("$group"), Kind::DockGroup, fill(), |ui| {
         let strip = ui.at("$tabs");
-        response = strip.tabs_with(
-            &mut selected,
+        strip.tabs_with(
+            selected,
             &labels,
             true,
             None,
@@ -566,24 +427,12 @@ fn group<M: 'static>(
                 (pass.content)(ui, &ids[current]);
             },
         );
-        if let Some(on) = &sink {
-            route_tabs(strip, &ids, &closable, on);
-        }
+        route_tabs(strip, &ids, &closable, &sink);
     });
     ui.set_control(Control::DockGroup {
         panels: ids.clone(),
         float,
     });
-    // The message form sent its changes instead; the `&mut` form keeps them.
-    if sink.is_none() {
-        let mut pass = pass.borrow_mut();
-        if response.changed {
-            pass.actions.push(DockAction::Select(ids[selected].clone()));
-        }
-        if let Some(index) = response.closed {
-            pass.actions.push(DockAction::Close(ids[index].clone()));
-        }
-    }
 }
 
 /// Sends a tab strip's selection and its close buttons as messages. Delete on
@@ -754,27 +603,18 @@ fn menu<M: 'static>(
         background: Some(Color::TRANSPARENT),
         ..Style::default()
     };
-    let choice = ui.menu_styled(
+    ui.menu_shown(
         WidgetKey::named("$menu"),
         "▾",
         &items,
         style,
         Length::Px(220.0),
     );
-    match sink {
-        None => {
-            if let Some(action) = choice.and_then(&action) {
-                pass.borrow_mut().actions.push(action);
-            }
-        }
-        Some(on) => {
-            let actions: Vec<Option<DockAction>> = items
-                .iter()
-                .enumerate()
-                .map(|(choice, item)| if item.enabled { action(choice) } else { None })
-                .collect();
-            route_menu(ui, actions, on);
-        }
-    }
+    let actions: Vec<Option<DockAction>> = items
+        .iter()
+        .enumerate()
+        .map(|(choice, item)| if item.enabled { action(choice) } else { None })
+        .collect();
+    route_menu(ui, actions, sink);
     ui.tooltip("Panel options");
 }
