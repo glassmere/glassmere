@@ -3,7 +3,7 @@ mod support;
 use rust_gui_core::app::Action as Message;
 use rust_gui_core::{
     Axis, Context, DockArea, DockLayout, DockNode, DockOptions, DockPanel, DockPlace, DockTarget,
-    DockWindowId, DockZone, Event, Key, MonospaceMeasurer, Role, Ui,
+    DockWindowId, DockZone, Event, Key, Role, Ui,
 };
 use rust_gui_scene::{Point, Primitive, Rect, Size};
 use support::{Driven, act};
@@ -695,31 +695,34 @@ fn right_click_on_a_tab_opens_its_menu_and_a_release_outside_the_window_detaches
     assert_eq!(*app.layout(), workspace());
 }
 
-mod legacy {
-    //! M35: a detached window's dock is a second context, and `Driven` drains
-    //! only its own, so the window's panel menu stays on `dock_window` with
-    //! `&mut DockLayout`. The window is made by `move_panel`, not by the menu.
+mod detached {
+    //! A detached window's dock is a second context: the app opens an OS
+    //! window for it with `Effects::open_window` and closes it when the layout
+    //! drops it, and `window_closed` is how a closed window comes back.
     use super::*;
+    use rust_gui_core::{WindowId, WindowRequest};
+    use support::act_fx;
 
-    fn frame(window: &mut Context, layout: &mut DockLayout) {
-        window.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            ui.keyed("dock", |ui| {
-                ui.dock_window(
-                    layout,
-                    DockWindowId(1),
-                    &panels(),
-                    DockOptions {
-                        native_windows: true,
-                        ..DockOptions::default()
-                    },
-                    |ui, id| ui.label(format!("content:{id}")),
-                )
-            });
-        });
+    const WINDOW: DockWindowId = DockWindowId(1);
+
+    struct Detached {
+        layout: DockLayout,
+        window: Option<WindowId>,
     }
 
-    #[test]
-    fn a_window_panel_menu_docks_it_back_into_the_main_window() {
+    fn open(app: &mut Driven<Detached>) -> WindowId {
+        app.effects(|state, effects| {
+            state.window = Some(effects.open_window(WindowRequest {
+                title: "Docking (detached)".into(),
+                size: Some(ROOT),
+                modal_owner: None,
+            }));
+        });
+        app.frame();
+        app.state().window.expect("the window was opened")
+    }
+
+    fn start() -> (Driven<Detached>, WindowId) {
         let mut layout = workspace();
         layout.move_panel(
             "editor",
@@ -728,23 +731,109 @@ mod legacy {
                 height: 480.0,
             },
         );
-        let mut window = Context::new();
-        frame(&mut window, &mut layout);
-        assert!(shows(&window, "content:editor"));
+        let state = Detached {
+            layout,
+            window: None,
+        };
+        let mut app = Driven::new(ROOT, state, |state, ui| {
+            ui.keyed("dock", |ui| {
+                ui.dock_msg(
+                    &state.layout,
+                    &panels(),
+                    DockOptions {
+                        native_windows: true,
+                        ..DockOptions::default()
+                    },
+                    |action| {
+                        act(move |s: &mut Detached| {
+                            s.layout.apply(action.clone());
+                        })
+                    },
+                    |ui, id| ui.label(format!("content:{id}")),
+                )
+            });
+        });
+        app.set_window_view(|state, _, ui| {
+            ui.keyed("dock", |ui| {
+                ui.dock_window_msg(
+                    &state.layout,
+                    WINDOW,
+                    &panels(),
+                    DockOptions {
+                        native_windows: true,
+                        ..DockOptions::default()
+                    },
+                    |action| {
+                        // What changed the layout may have emptied the window.
+                        act_fx(move |s: &mut Detached, effects| {
+                            s.layout.apply(action.clone());
+                            if s.layout.window(WINDOW).is_none()
+                                && let Some(window) = s.window.take()
+                            {
+                                effects.close_window(window);
+                            }
+                        })
+                    },
+                    |ui, id| ui.label(format!("content:{id}")),
+                )
+            });
+        });
+        app.on_window_closed(|state, window, _| {
+            if state.window == Some(window) {
+                state.window = None;
+                state.layout.redock(WINDOW);
+            }
+        });
+        let window = open(&mut app);
+        (app, window)
+    }
+
+    #[test]
+    fn a_window_panel_menu_docks_it_back_into_the_main_window() {
+        let (mut app, id) = start();
+        assert!(shows(&app.window(id).context, "content:editor"));
+        assert!(!shows(&app.context, "content:editor"));
 
         // Alone in its window, the panel's first enabled item is "Move to main window".
-        let tab = center(labelled(&window, Role::Tab, "Editor"));
-        press(&mut window, tab);
-        window.event(Event::PointerUp);
-        frame(&mut window, &mut layout);
-        key(&mut window, Key::ContextMenu);
-        frame(&mut window, &mut layout);
-        key(&mut window, Key::Home);
-        key(&mut window, Key::Enter);
-        frame(&mut window, &mut layout);
-        assert!(layout.windows.is_empty());
-        assert_eq!(layout.place_of("editor"), Some(DockPlace::Main));
-        frame(&mut window, &mut layout);
-        assert!(!shows(&window, "content:editor"));
+        let tab = center(labelled(&app.window(id).context, Role::Tab, "Editor"));
+        press(&mut app.window(id).context, tab);
+        app.window(id).context.event(Event::PointerUp);
+        app.frame();
+        key(&mut app.window(id).context, Key::ContextMenu);
+        app.frame();
+        key(&mut app.window(id).context, Key::Home);
+        key(&mut app.window(id).context, Key::Enter);
+        app.frame();
+        let state = app.state();
+        assert!(state.layout.windows.is_empty());
+        assert_eq!(state.layout.place_of("editor"), Some(DockPlace::Main));
+        assert!(app.window_ids().is_empty(), "the app closed the window");
+        app.frame();
+        assert!(shows(&app.context, "content:editor"));
+    }
+
+    #[test]
+    fn closing_the_window_returns_its_panels_to_the_main_window() {
+        let (mut app, id) = start();
+        assert!(!app.state().layout.windows.is_empty());
+        app.close_window_from_outside(id);
+        app.frame();
+        assert!(app.window_ids().is_empty());
+        assert!(app.state().layout.windows.is_empty());
+        assert_eq!(app.state().layout.place_of("editor"), Some(DockPlace::Main));
+        assert!(
+            shows(&app.context, "content:editor"),
+            "the main dock shows it"
+        );
+    }
+
+    #[test]
+    fn the_app_closing_a_window_is_not_a_window_closed_call() {
+        let (mut app, id) = start();
+        app.effects(move |_, effects| effects.close_window(id));
+        app.frame();
+        assert!(app.window_ids().is_empty());
+        // `window_closed` did not run, so the panel is still detached.
+        assert_eq!(app.state().layout.windows.len(), 1);
     }
 }

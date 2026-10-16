@@ -1,9 +1,12 @@
+mod support;
+
 use rust_gui_core::{
     Action, Context, Event, FontFamily, Length, MonospaceMeasurer, Paint, Style, StyleSheet,
     StyleSheetError, Theme, Ui,
 };
 use rust_gui_core::{Button, Label};
 use rust_gui_scene::{Color, Point, Primitive, Size};
+use support::Driven;
 
 fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) -> rust_gui_core::FrameStats {
     context.run(Size::new(500.0, 400.0), &mut MonospaceMeasurer, view)
@@ -384,31 +387,25 @@ fn installed_classes_style_widgets_and_unknown_classes_warn_once() {
 }
 
 #[test]
-// M35: `ui.set_theme` is an Effects call that `Driven` cannot reach, and the
-// test reads `stats.activations`, so it stays on `Context::run`.
 fn views_switch_themes_and_sheet_tokens_survive_the_switch() {
-    let mut context = Context::new();
-    context.set_stylesheet(StyleSheet::parse("token accent #ff00ff").unwrap());
-    assert_eq!(context.theme().accent, Color::rgb(255, 0, 255));
-    let mut wanted = Some(Theme::light());
-    let mut view = |ui: &mut Ui<'_>| {
-        if let Some(theme) = wanted.take() {
-            ui.set_theme(theme);
-        }
+    let mut app = Driven::new(Size::new(500.0, 400.0), (), |_, ui| {
         ui.keyed("name", |ui| ui.label(ui.theme().name.clone()));
-    };
-    let stats = frame(&mut context, &mut view);
-    assert_eq!(
-        stats.activations, 1,
-        "hosts declare again after a theme request"
-    );
+    });
+    app.context
+        .set_stylesheet(StyleSheet::parse("token accent #ff00ff").unwrap());
+    assert_eq!(app.context.theme().accent, Color::rgb(255, 0, 255));
+    app.effects(|_, effects| effects.set_theme(Theme::light()));
+    let stats = app.frame();
+    assert!(stats.declared, "the view declares with the new theme");
+    let context = &app.context;
     assert_eq!(context.theme().name, "light");
     assert_eq!(
         context.theme().accent,
         Color::rgb(255, 0, 255),
         "sheet tokens overlay"
     );
-    frame(&mut context, &mut view);
+    app.frame();
+    let context = &app.context;
     assert_eq!(
         context
             .details(context.find(&["name"]).unwrap())
@@ -424,4 +421,48 @@ fn views_switch_themes_and_sheet_tokens_survive_the_switch() {
             .foreground,
         Theme::light().text
     );
+}
+
+/// What a window's batch asked for reaches every window, not only the one
+/// whose batch ran the update.
+#[test]
+fn a_theme_asked_for_in_one_window_reaches_every_window() {
+    let mut app = Driven::new(
+        Size::new(500.0, 400.0),
+        None::<rust_gui_core::WindowId>,
+        |_, ui| {
+            ui.keyed("name", |ui| ui.label(ui.theme().name.clone()));
+        },
+    );
+    app.set_window_view(|_, _, ui| {
+        ui.keyed("switch", |ui| {
+            ui.button(Button::new("Light").on_click(support::act_fx(|_, effects| {
+                effects.set_theme(Theme::light());
+            })))
+        });
+    });
+    app.effects(|window, effects| {
+        *window = Some(effects.open_window(rust_gui_core::WindowRequest::default()));
+    });
+    app.frame();
+    let second = app.state().expect("the app opened a window");
+    assert_ne!(app.window(second).context.theme().name, "light");
+
+    let context = &mut app.window(second).context;
+    let button = context
+        .node(context.find(&["switch"]).unwrap())
+        .unwrap()
+        .bounds;
+    let at = Point {
+        x: button.x + button.width / 2.0,
+        y: button.y + button.height / 2.0,
+    };
+    context.event(Event::PointerMoved(at));
+    context.event(Event::PointerDown);
+    context.event(Event::PointerUp);
+    app.frame();
+    // The first window applies it in its own next batch, which the host wakes.
+    app.frame();
+    assert_eq!(app.window(second).context.theme().name, "light");
+    assert_eq!(app.context.theme().name, "light");
 }

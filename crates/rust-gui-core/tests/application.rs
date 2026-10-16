@@ -3,7 +3,7 @@ mod support;
 use rust_gui_core::app::Action as Message;
 use rust_gui_core::{
     Action, Command, Context, DragOutcome, DragPayload, DragSourceBuilder, DropKind,
-    DropTargetBuilder, Event, Key, Length, Shortcut, Style, Ui,
+    DropTargetBuilder, Event, Key, Length, Shortcut, Style, Ui, WindowId, WindowRequest,
 };
 use rust_gui_scene::{Point, Size};
 use support::{Driven, act};
@@ -386,76 +386,92 @@ fn an_adopted_drag_can_be_taken_back_without_ending_it() {
     assert!(app.state().dropped.is_empty());
 }
 
-mod legacy {
-    //! M35: a drag that crosses to a second window needs the second window's
-    //! context to deliver its drop, and `Driven` drains only its own context.
-    //! Stays on the closure form: `Ui::drop_target` returns the payload and
-    //! `Ui::drag_source` the outcome, and the test reads them per declaration.
-    use super::*;
-    use rust_gui_core::MonospaceMeasurer;
+/// The state of an app with a source in its main window and a bin in a second.
+#[derive(Default)]
+struct Cross {
+    window: Option<WindowId>,
+    dropped: Vec<DragPayload>,
+    outcomes: Vec<DragOutcome>,
+}
 
-    fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) {
-        context.run(Size::new(500.0, 500.0), &mut MonospaceMeasurer, view);
+fn card() -> DragPayload {
+    DragPayload::Item {
+        domain: "card".into(),
+        id: rust_gui_core::ItemId(7),
     }
+}
 
-    fn item_payload() -> DragPayload {
-        DragPayload::Item {
-            domain: "card".into(),
-            id: rust_gui_core::ItemId(7),
-        }
-    }
+fn cross() -> (Driven<Cross>, WindowId) {
+    let mut app = Driven::new(ROOT, Cross::default(), |_, ui| {
+        ui.keyed("source", |ui| {
+            ui.drag_source_msg(
+                DragSourceBuilder::new("Card", card())
+                    .on_drag_end(|outcome| act(move |s: &mut Cross| s.outcomes.push(outcome))),
+                boxed(),
+                |ui| {
+                    ui.label("Card");
+                },
+            )
+        });
+    });
+    app.set_window_view(|_, _, ui| {
+        ui.keyed("bin", |ui| {
+            ui.drop_target_msg(
+                DropTargetBuilder::new("Item bin", DropKind::Item)
+                    .on_drop(|payload| act(move |s: &mut Cross| s.dropped.push(payload.clone()))),
+                boxed(),
+                |_| {},
+            )
+        });
+    });
+    app.effects(|state, effects| {
+        state.window = Some(effects.open_window(WindowRequest {
+            title: "Bin".into(),
+            size: Some(ROOT),
+            modal_owner: None,
+        }));
+    });
+    app.frame();
+    let id = app.state().window.expect("the app opened a window");
+    assert_eq!(app.window_ids(), [id]);
+    (app, id)
+}
 
-    #[test]
-    fn a_drag_crosses_to_another_window_and_the_source_hears_how_it_ended() {
-        let (mut first, mut second) = (Context::new(), Context::new());
-        let item = item_payload();
-        let payload = item.clone();
-        let mut source_outcome = None;
-        let declare_first = |context: &mut Context, outcome: &mut Option<DragOutcome>| {
-            frame(context, |ui| {
-                *outcome = ui.keyed("source", |ui| {
-                    ui.drag_source("Card", payload.clone(), boxed(), |ui| ui.label("Card"))
-                });
-            });
-        };
-        let mut dropped = None;
-        let declare_second = |context: &mut Context, dropped: &mut Option<DragPayload>| {
-            frame(context, |ui| {
-                let landed = ui.keyed("bin", |ui| {
-                    ui.drop_target("Item bin", DropKind::Item, boxed(), |_| {})
-                });
-                if landed.is_some() {
-                    *dropped = landed;
-                }
-            });
-        };
-        declare_first(&mut first, &mut source_outcome);
-        declare_second(&mut second, &mut dropped);
+#[test]
+fn a_drag_crosses_to_another_window_and_the_source_hears_how_it_ended() {
+    let (mut app, id) = cross();
 
-        // The drag starts, then the pointer leaves the first window.
-        first.event(Event::PointerMoved(center(&first, &["source"])));
-        first.event(Event::PointerDown);
-        first.event(Event::PointerMoved(Point { x: 600.0, y: 20.0 }));
-        let carried = first.export_drag().expect("the host takes it over");
-        assert_eq!(carried, item);
-        declare_first(&mut first, &mut source_outcome);
-        assert!(!dragging(&first, &["source"]));
+    // The drag starts, then the pointer leaves the first window.
+    let source = center(&app.context, &["source"]);
+    app.context.event(Event::PointerMoved(source));
+    app.context.event(Event::PointerDown);
+    app.context
+        .event(Event::PointerMoved(Point { x: 600.0, y: 20.0 }));
+    let carried = app.context.export_drag().expect("the host takes it over");
+    assert_eq!(carried, card());
+    app.frame();
+    assert!(!dragging(&app.context, &["source"]));
 
-        // The host finds the second window under the pointer and hands it over.
-        let over = center(&second, &["bin"]);
-        assert!(second.adopt_drag(carried.clone(), over));
-        declare_second(&mut second, &mut dropped);
-        assert!(can_drop(&second, &["bin"]), "the target lights up");
-        assert!(second.accepts_drop(over, &carried), "and would take it");
-        second.event(Event::PointerUp);
-        declare_second(&mut second, &mut dropped);
-        assert_eq!(dropped, Some(item));
+    // The host finds the second window under the pointer and hands it over.
+    let over = center(&app.window(id).context, &["bin"]);
+    assert!(app.window(id).context.adopt_drag(carried.clone(), over));
+    app.frame();
+    assert!(
+        can_drop(&app.window(id).context, &["bin"]),
+        "the target lights up"
+    );
+    assert!(
+        app.window(id).context.accepts_drop(over, &carried),
+        "and would take it"
+    );
+    app.window(id).context.event(Event::PointerUp);
+    app.frame();
+    assert_eq!(app.state().dropped, [card()]);
 
-        // The window it came from is told, once.
-        first.finish_exported_drag(DragOutcome::Dropped);
-        declare_first(&mut first, &mut source_outcome);
-        assert_eq!(source_outcome, Some(DragOutcome::Dropped));
-        declare_first(&mut first, &mut source_outcome);
-        assert_eq!(source_outcome, None);
-    }
+    // The window it came from is told, once.
+    app.context.finish_exported_drag(DragOutcome::Dropped);
+    app.frame();
+    assert_eq!(app.state().outcomes, [DragOutcome::Dropped]);
+    app.frame();
+    assert_eq!(app.state().outcomes.len(), 1);
 }

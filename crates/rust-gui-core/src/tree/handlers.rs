@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::NumberOptions;
+use crate::app::Shared;
 use crate::app::{Handler, HandlerSlab, Requests};
 use crate::collection::CollectionInput;
 
@@ -429,16 +430,27 @@ impl Context {
     /// of it, and so has to declare.
     pub(crate) fn apply_requests(&mut self, requests: &mut Requests) -> bool {
         let mut changed = false;
-        if let Some(theme) = requests.theme.take() {
-            self.set_theme(theme);
+        if self.settings.0 != requests.theme.0 {
+            self.settings.0 = requests.theme.0;
+            if let Some(theme) = requests.theme.1.clone() {
+                self.set_theme(theme);
+            }
             changed = true;
         }
-        if let Some(messages) = requests.messages.take() {
-            self.set_messages(messages);
+        if self.settings.1 != requests.messages.0 {
+            self.settings.1 = requests.messages.0;
+            self.set_messages(
+                requests
+                    .messages
+                    .1
+                    .clone()
+                    .map(|m| Box::new(Shared(m)) as _),
+            );
             changed = true;
         }
-        if let Some(format) = requests.format.take() {
-            self.set_format(format);
+        if self.settings.2 != requests.format.0 {
+            self.settings.2 = requests.format.0;
+            self.set_format(requests.format.1.clone().map(|f| Box::new(Shared(f)) as _));
             changed = true;
         }
         for (id, shortcut) in requests.bindings.drain(..) {

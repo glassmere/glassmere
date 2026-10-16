@@ -30,6 +30,10 @@ pub trait App: 'static {
     fn save_state(&self) -> Option<String> {
         None
     }
+    /// A window opened with `Effects::open_window` was closed by the user or
+    /// the OS (or went with its owner). Not called for a window `update`
+    /// closed with `Effects::close_window`, which the app already knows of.
+    fn window_closed(&mut self, _window: WindowId, _effects: &mut Effects<'_, Self::Message>) {}
     /// A window opened with `Effects::open_window`; the main window uses `view`.
     fn view_window(&self, _window: WindowId, ui: &mut Ui<'_, Self::Message>) {
         self.view(ui)
@@ -220,9 +224,12 @@ const TASK_CAPACITY: usize = 1024;
 
 /// What `update` asked for that does not depend on the message type.
 pub(crate) struct Requests {
-    pub theme: Option<Theme>,
-    pub messages: Option<Option<Box<dyn Messages>>>,
-    pub format: Option<Option<Box<dyn LocaleFormat>>>,
+    /// The latest theme, messages and format `update` asked for, each with
+    /// the number of times it was asked: every window's context applies it
+    /// once, whichever window's batch ran the `update`.
+    pub theme: (u64, Option<Theme>),
+    pub messages: (u64, Option<Rc<dyn Messages>>),
+    pub format: (u64, Option<Rc<dyn LocaleFormat>>),
     pub bindings: Vec<(String, Option<Shortcut>)>,
     pub clip: Option<Clip>,
     pub files: Option<FileRequest>,
@@ -362,17 +369,20 @@ impl<M: 'static> Effects<'_, M> {
 
     /// Switches design tokens; the view declares once, with the new theme.
     pub fn set_theme(&mut self, theme: Theme) {
-        self.requests().theme = Some(theme);
+        let requests = self.requests();
+        requests.theme = (requests.theme.0 + 1, Some(theme));
     }
 
     /// Installs the source of localized text, or removes it with `None`.
     pub fn set_messages(&mut self, messages: Option<Box<dyn Messages>>) {
-        self.requests().messages = Some(messages);
+        let requests = self.requests();
+        requests.messages = (requests.messages.0 + 1, messages.map(Rc::from));
     }
 
     /// Installs locale-aware formatting, or removes it with `None`.
     pub fn set_format(&mut self, format: Option<Box<dyn LocaleFormat>>) {
-        self.requests().format = Some(format);
+        let requests = self.requests();
+        requests.format = (requests.format.0 + 1, format.map(Rc::from));
     }
 
     /// Binds a command to other keys; `None` unbinds it.
@@ -559,9 +569,9 @@ impl<M: Clone + 'static> AppDriver<M> {
         Self {
             effects: EffectState {
                 requests: Requests {
-                    theme: None,
-                    messages: None,
-                    format: None,
+                    theme: (0, None),
+                    messages: (0, None),
+                    format: (0, None),
                     bindings: Vec::new(),
                     clip: None,
                     files: None,
@@ -617,6 +627,17 @@ impl<M: Clone + 'static> AppDriver<M> {
         )
     }
 
+    /// Tells the app a window of its own was closed from outside, ; every view is due, and the windows `update` asked for are
+    /// in [`take_windows`](Self::take_windows).
+    pub fn window_closed<A: App<Message = M>>(&mut self, app: &mut A, window: WindowId) {
+        app.window_closed(
+            window,
+            &mut Effects {
+                sink: SinkRef::Borrowed(&mut self.effects),
+            },
+        );
+    }
+
     /// The first half of a batch, on the context of one window: the input
     /// the context has collected since its last frame becomes messages, and
     /// `update` runs on each in order. Returns how many messages there were,
@@ -669,6 +690,7 @@ impl<M: Clone + 'static> AppDriver<M> {
         pacing: &mut Pacing,
         messages: usize,
     ) -> FrameStats {
+        context.answer_hot_save(|| app.save_state());
         let forced = std::mem::take(&mut pacing.force);
         let declare = !pacing.declared || forced || context.view_wanted(size, pacing.interaction);
         if declare {
@@ -749,5 +771,36 @@ impl<M: Clone + 'static> AppDriver<M> {
         for (mailbox, lift) in &mut effects.channels {
             mailbox.deliver(DELIVERED_PER_BATCH, &mut |_, value| out.extend(lift(value)));
         }
+    }
+}
+
+/// One messages source or format shared by every window's context.
+pub(crate) struct Shared<T: ?Sized>(pub Rc<T>);
+
+impl Messages for Shared<dyn Messages> {
+    fn locale(&self) -> &str {
+        self.0.locale()
+    }
+
+    fn text(&self, key: &str, args: &[(&str, crate::MessageArg)]) -> Option<String> {
+        self.0.text(key, args)
+    }
+}
+
+impl LocaleFormat for Shared<dyn LocaleFormat> {
+    fn number(&self, value: f64, decimals: usize) -> String {
+        self.0.number(value, decimals)
+    }
+
+    fn parse_number(&self, text: &str) -> Option<f64> {
+        self.0.parse_number(text)
+    }
+
+    fn date(&self, date: crate::Date, style: crate::DateStyle) -> String {
+        self.0.date(date, style)
+    }
+
+    fn time(&self, time: crate::Time, seconds: bool) -> String {
+        self.0.time(time, seconds)
     }
 }

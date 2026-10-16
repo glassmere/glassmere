@@ -1,4 +1,4 @@
-use rust_gui_core::{Context, MonospaceMeasurer, Ui};
+use rust_gui_core::{App, AppDriver, Context, Effects, MonospaceMeasurer, Ui};
 use rust_gui_scene::{Primitive, Size};
 use std::path::Path;
 
@@ -61,30 +61,42 @@ fn watched_files_are_requested_delivered_reloaded_and_survive_errors() {
     assert!(context.watched_paths().is_empty());
 }
 
-// M35: `App::save_state` exists, but `AppDriver` does not route
-// `request_hot_save` to it yet, and the state here is collected by `ui.hot_state`
-// from a view closure, so this test keeps the old closure view.
+struct Counter {
+    count: i32,
+}
+
+impl App for Counter {
+    type Message = ();
+
+    fn update(&mut self, (): (), _effects: &mut Effects<'_, ()>) {
+        self.count += 1;
+    }
+
+    fn view(&self, ui: &mut Ui<'_, ()>) {
+        ui.label(format!("count {}", self.count));
+    }
+
+    fn save_state(&self) -> Option<String> {
+        Some(format!("count {}", self.count))
+    }
+}
+
 #[test]
 fn hot_state_is_collected_only_when_the_host_asks_for_it() {
     let mut context = Context::new();
-    let mut count = 41;
-    let mut saves = 0;
-    let run = |context: &mut Context, count: &mut i32, saves: &mut u32| {
-        context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            *count += 1;
-            ui.hot_state(|| {
-                *saves += 1;
-                format!("count {count}")
-            });
-        });
+    let mut app = Counter { count: 41 };
+    let mut driver = AppDriver::new(|| true);
+    let frame = |context: &mut Context, driver: &mut AppDriver<()>, app: &mut Counter| {
+        driver.frame(app, context, ROOT, &mut MonospaceMeasurer);
     };
-    run(&mut context, &mut count, &mut saves);
-    assert_eq!((saves, context.take_hot_state()), (0, None));
-    context.request_hot_save();
-    run(&mut context, &mut count, &mut saves);
-    assert_eq!(context.take_hot_state().as_deref(), Some("count 43"));
+    frame(&mut context, &mut driver, &mut app);
     assert_eq!(context.take_hot_state(), None);
-    // The request is spent.
-    run(&mut context, &mut count, &mut saves);
-    assert_eq!(saves, 1);
+    context.request_hot_save();
+    driver.send(());
+    frame(&mut context, &mut driver, &mut app);
+    assert_eq!(context.take_hot_state().as_deref(), Some("count 42"));
+    assert_eq!(context.take_hot_state(), None);
+    // The request is spent, and an idle frame asks nothing more of the app.
+    frame(&mut context, &mut driver, &mut app);
+    assert_eq!(context.take_hot_state(), None);
 }

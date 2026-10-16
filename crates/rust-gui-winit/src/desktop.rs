@@ -194,8 +194,9 @@ pub(crate) trait Hosting {
     fn take_requests(&mut self) -> AppRequests;
     /// The windows whose view a batch made due, which need a frame.
     fn due(&self) -> Vec<AppWindow>;
-    /// A window is gone; its pacing goes with it.
-    fn closed(&mut self, window: AppWindow);
+    /// A window is gone; its pacing goes with it. `by_app` when `update`
+    /// closed it, otherwise the app is told and its answer is a request.
+    fn closed(&mut self, window: AppWindow, by_app: bool);
 }
 
 /// The state every window of an application with `run_app` declares from:
@@ -274,8 +275,20 @@ impl<A: App> Hosting for AppHost<A> {
             .collect()
     }
 
-    fn closed(&mut self, window: AppWindow) {
-        self.shared.borrow_mut().windows.remove(&window);
+    fn closed(&mut self, window: AppWindow, by_app: bool) {
+        let mut shared = self.shared.borrow_mut();
+        let shared = &mut *shared;
+        shared.windows.remove(&window);
+        if by_app || window == MAIN {
+            return;
+        }
+        shared.driver.window_closed(&mut shared.app, window);
+        let (opened, closed) = shared.driver.take_windows();
+        shared.opened.extend(opened);
+        shared.closed.extend(closed);
+        for pacing in shared.windows.values_mut() {
+            pacing.invalidate();
+        }
     }
 }
 
@@ -782,6 +795,8 @@ impl Desktop {
         self.modals
             .retain(|dialog, _| self.windows.contains_key(dialog));
         self.sync_app_windows();
+        // The app's answer to a window it was told is gone.
+        self.apply_app_requests(event_loop);
         self.sync_inspectors(event_loop);
         // An application stops when its first window closes.
         let main_closed = self.hosting.is_some() && !self.app_windows.contains_key(&MAIN);
@@ -800,8 +815,11 @@ impl Desktop {
         };
         let (opened, closed) = hosting.take_requests();
         for window in closed {
-            if let Some(key) = self.app_windows.get(&window) {
-                self.windows.remove(key);
+            if let Some(key) = self.app_windows.remove(&window) {
+                self.windows.remove(&key);
+                if let Some(hosting) = self.hosting.as_mut() {
+                    hosting.closed(window, true);
+                }
             }
         }
         for (window, request) in opened {
@@ -839,7 +857,7 @@ impl Desktop {
         for window in gone {
             self.app_windows.remove(&window);
             if let Some(hosting) = self.hosting.as_mut() {
-                hosting.closed(window);
+                hosting.closed(window, false);
             }
         }
     }
@@ -1221,6 +1239,8 @@ mod tests {
         count: i32,
         second: Option<AppWindow>,
         seen: Seen,
+        /// The windows the app was told were closed from outside.
+        gone: Vec<AppWindow>,
     }
 
     impl App for Probe {
@@ -1241,6 +1261,11 @@ mod tests {
                     }
                 }
             }
+        }
+
+        fn window_closed(&mut self, window: AppWindow, effects: &mut Effects<'_, Msg>) {
+            self.gone.push(window);
+            self.second = Some(effects.open_window(Default::default()));
         }
 
         fn view(&self, ui: &mut Ui<'_, Msg>) {
@@ -1293,6 +1318,32 @@ mod tests {
             .frame(MAIN, &mut main, SIZE, &mut MonospaceMeasurer);
         assert_eq!(host.take_requests().1, vec![AppWindow(1)]);
         assert!(host.take_requests().0.is_empty());
+    }
+
+    #[test]
+    fn a_window_closed_from_outside_is_reported_and_its_answer_reaches_the_host() {
+        let shared = shared(Probe::default());
+        let mut host = AppHost {
+            shared: shared.clone(),
+        };
+        let mut main = Context::new();
+        shared
+            .borrow_mut()
+            .frame(MAIN, &mut main, SIZE, &mut MonospaceMeasurer);
+        let second = AppWindow(1);
+        host.open_view(second);
+
+        // The app closed it itself: nothing to report.
+        host.closed(second, true);
+        assert!(shared.borrow().app.gone.is_empty());
+        assert!(host.take_requests().0.is_empty());
+
+        // The user closed it: the app answers, and every view is due.
+        host.open_view(second);
+        host.closed(second, false);
+        assert_eq!(shared.borrow().app.gone, [second]);
+        assert_eq!(host.take_requests().0.len(), 1);
+        assert_eq!(host.due(), vec![MAIN]);
     }
 
     #[test]

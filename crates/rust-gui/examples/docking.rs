@@ -1,23 +1,28 @@
 use rust_gui::{
-    AppOptions, DesktopHandle, DockLayout, DockNode, DockOptions, DockPanel, DockTarget,
-    DockWindowId, DockWindowView, DockWindows, GraphicsOptions, Label, Length, Size, Style,
-    TextWrap, Ui, WindowKey, run_windows,
+    App, AppOptions, Button, DockAction, DockLayout, DockNode, DockOptions, DockPanel, DockTarget,
+    DockWindowId, Effects, Label, Length, Size, Style, TextWrap, Ui, WindowId, WindowRequest,
+    run_app,
 };
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 
-struct State {
+#[derive(Clone)]
+enum Msg {
+    Dock(DockAction),
+    Reset,
+    ShowAll,
+    Notes(String),
+    Wrap(bool),
+}
+
+struct Docking {
     layout: DockLayout,
     notes: String,
     wrap: bool,
     saves: u32,
-    /// Set by detached windows so the main window refreshes the others.
-    stale: bool,
     save_to: Option<PathBuf>,
-    main: Option<WindowKey>,
+    /// The OS window shown for each detached dock window of the layout.
+    windows: Vec<(DockWindowId, WindowId)>,
 }
-
-type Shared = Arc<Mutex<State>>;
 
 fn default_layout() -> DockLayout {
     DockLayout::new(DockNode::row(
@@ -47,106 +52,173 @@ fn panels() -> Vec<DockPanel> {
     ]
 }
 
-fn panel(ui: &mut Ui<'_>, state: &mut State, id: &str) {
-    let muted = ui.theme().text_muted;
-    let text = |body: &str| {
-        (
-            body.to_owned(),
-            Style::default()
-                .wrap(TextWrap::Word)
-                .width(Length::Percent(1.0))
-                .foreground(muted),
-        )
-    };
-    match id {
-        "editor" => {
-            ui.label("Notes");
-            ui.text_input("Notes", &mut state.notes);
-            let (body, style) = text(
-                "Drag a tab onto a drop indicator, another tab strip or empty space. \
-                 Right-click a tab, press Shift+F10 on it or use the ▾ button for the same moves.",
-            );
-            ui.label(Label::new(body).style(style));
-        }
-        "files" => {
-            for name in ["Cargo.toml", "README.md", "src/main.rs", "src/lib.rs"] {
-                ui.keyed(name, |ui| ui.button(name));
+impl Docking {
+    fn panel(&self, ui: &mut Ui<'_, Msg>, id: &str) {
+        let muted = ui.theme().text_muted;
+        let text = |body: &str| {
+            (
+                body.to_owned(),
+                Style::default()
+                    .wrap(TextWrap::Word)
+                    .width(Length::Percent(1.0))
+                    .foreground(muted),
+            )
+        };
+        match id {
+            "editor" => {
+                ui.label("Notes");
+                ui.text_input_msg("Notes", &self.notes, Msg::Notes);
+                let (body, style) = text(
+                    "Drag a tab onto a drop indicator, another tab strip or empty space. \
+                     Right-click a tab, press Shift+F10 on it or use the ▾ button for the same moves.",
+                );
+                ui.label(Label::new(body).style(style));
             }
-        }
-        "inspector" => {
-            ui.checkbox("Wrap long lines", &mut state.wrap);
-            ui.label(format!("Layout saved {} times", state.saves));
-        }
-        other => {
-            let (body, style) = text(&format!("The {other} panel."));
-            ui.label(Label::new(body).style(style));
-        }
-    }
-}
-
-fn changed(state: &mut State) {
-    if let Some(path) = &state.save_to
-        && std::fs::write(path, state.layout.to_text()).is_ok()
-    {
-        state.saves += 1;
-    }
-}
-
-fn detached(
-    shared: &Shared,
-    desktop: &DesktopHandle,
-    id: DockWindowId,
-    size: Size,
-) -> DockWindowView {
-    let (view_state, close_state) = (shared.clone(), shared.clone());
-    let (view_desktop, close_desktop) = (desktop.clone(), desktop.clone());
-    DockWindowView {
-        options: AppOptions {
-            title: "Rust GUI / Docking (detached)".into(),
-            size,
-            ..AppOptions::default()
-        },
-        view: Box::new(move |ui| {
-            let mut state = view_state.lock().unwrap();
-            let state = &mut *state;
-            let mut layout = std::mem::take(&mut state.layout);
-            let response = ui.dock_window(
-                &mut layout,
-                id,
-                &panels(),
-                DockOptions {
-                    native_windows: true,
-                    ..DockOptions::default()
-                },
-                |ui, panel_id| panel(ui, state, panel_id),
-            );
-            state.layout = layout;
-            if response.changed {
-                changed(state);
-                state.stale = true;
-                if let Some(main) = state.main {
-                    view_desktop.redraw(main);
+            "files" => {
+                for name in ["Cargo.toml", "README.md", "src/main.rs", "src/lib.rs"] {
+                    ui.keyed(name, |ui| ui.button(name));
                 }
             }
-        }),
-        // Closing a detached window returns its panels to the main window.
-        on_close: Box::new(move || {
-            let mut state = close_state.lock().unwrap();
-            if state.layout.redock(id) {
-                changed(&mut state);
+            "inspector" => {
+                ui.checkbox_msg("Wrap long lines", self.wrap, Msg::Wrap);
+                ui.label(format!("Layout saved {} times", self.saves));
             }
-            if let Some(main) = state.main {
-                close_desktop.redraw(main);
+            other => {
+                let (body, style) = text(&format!("The {other} panel."));
+                ui.label(Label::new(body).style(style));
             }
-        }),
+        }
+    }
+
+    fn options() -> DockOptions {
+        DockOptions {
+            native_windows: true,
+            ..DockOptions::default()
+        }
+    }
+
+    /// Saves a changed layout, and opens and closes the OS windows to match
+    /// the layout's detached ones. Windows closed here are not reported back
+    /// through `window_closed`.
+    fn layout_changed(&mut self, effects: &mut Effects<'_, Msg>) {
+        if let Some(path) = &self.save_to
+            && std::fs::write(path, self.layout.to_text()).is_ok()
+        {
+            self.saves += 1;
+        }
+        self.sync_windows(effects);
+    }
+
+    fn sync_windows(&mut self, effects: &mut Effects<'_, Msg>) {
+        let layout = &self.layout;
+        self.windows.retain(|(id, window)| {
+            let keep = layout.window(*id).is_some();
+            if !keep {
+                effects.close_window(*window);
+            }
+            keep
+        });
+        for dock in &self.layout.windows {
+            if self.windows.iter().any(|(id, _)| *id == dock.id) {
+                continue;
+            }
+            let window = effects.open_window(WindowRequest {
+                title: "Rust GUI / Docking (detached)".into(),
+                size: Some(Size::new(dock.width, dock.height)),
+                modal_owner: None,
+            });
+            self.windows.push((dock.id, window));
+        }
     }
 }
 
-// M35: stays on the closure API. Detached dock windows are `DockWindows` over
-// `DesktopHandle::open_window`, and each one's `on_close` returns its panels to
-// the layout. `App` has no message for a window closing, so under `run_app` a
-// closed detached panel could never go back. The main window's dock would
-// convert with `Ui::dock_msg` once that exists.
+impl App for Docking {
+    type Message = Msg;
+
+    fn init(&mut self, effects: &mut Effects<'_, Msg>) {
+        self.sync_windows(effects);
+    }
+
+    fn update(&mut self, message: Msg, effects: &mut Effects<'_, Msg>) {
+        let changed = match message {
+            Msg::Dock(action) => self.layout.apply(action),
+            Msg::Reset => {
+                self.layout = default_layout();
+                true
+            }
+            Msg::ShowAll => {
+                for panel in panels() {
+                    self.layout.show(&panel.id);
+                }
+                true
+            }
+            Msg::Notes(notes) => {
+                self.notes = notes;
+                false
+            }
+            Msg::Wrap(wrap) => {
+                self.wrap = wrap;
+                false
+            }
+        };
+        if changed {
+            self.layout_changed(effects);
+        }
+    }
+
+    // Closing a detached window returns its panels to the main window.
+    fn window_closed(&mut self, window: WindowId, effects: &mut Effects<'_, Msg>) {
+        let Some(at) = self.windows.iter().position(|(_, shown)| *shown == window) else {
+            return;
+        };
+        let (id, _) = self.windows.remove(at);
+        if self.layout.redock(id) {
+            self.layout_changed(effects);
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        let page = Style::default()
+            .width(Length::Percent(1.0))
+            .height(Length::Percent(1.0))
+            .padding(12.0)
+            .gap(8.0);
+        ui.column(page, |ui| {
+            ui.row(Style::default().gap(8.0), |ui| {
+                ui.button(Button::new("Reset layout").on_click(Msg::Reset));
+                ui.button(Button::new("Show all panels").on_click(Msg::ShowAll));
+            });
+            ui.dock_msg(
+                &self.layout,
+                &panels(),
+                DockOptions {
+                    style: Style::default()
+                        .width(Length::Percent(1.0))
+                        .grow(1.0)
+                        .shrink(1.0),
+                    ..Self::options()
+                },
+                Msg::Dock,
+                |ui, id| self.panel(ui, id),
+            );
+        });
+    }
+
+    fn view_window(&self, window: WindowId, ui: &mut Ui<'_, Msg>) {
+        let Some((id, _)) = self.windows.iter().find(|(_, shown)| *shown == window) else {
+            return;
+        };
+        ui.dock_window_msg(
+            &self.layout,
+            *id,
+            &panels(),
+            Self::options(),
+            Msg::Dock,
+            |ui, panel| self.panel(ui, panel),
+        );
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     let reset = std::env::args().any(|arg| arg == "--reset");
@@ -168,83 +240,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         );
     }
-    let shared: Shared = Arc::new(Mutex::new(State {
-        layout,
-        notes: String::from("Docking keeps this text while panels move."),
-        wrap: true,
-        saves: 0,
-        stale: false,
-        save_to: (!smoke && !open).then_some(path),
-        main: None,
-    }));
-    run_windows(GraphicsOptions::default(), move |desktop| {
-        let handle = desktop.clone();
-        let main_state = shared.clone();
-        let mut windows = DockWindows::new();
-        let key = desktop
-            .open_window(
-                AppOptions {
-                    title: "Rust GUI / Docking".into(),
-                    size: Size::new(1100.0, 760.0),
-                    frame_limit: smoke.then_some(3),
-                    ..AppOptions::default()
-                },
-                move |ui| {
-                    let mut guard = main_state.lock().unwrap();
-                    let state = &mut *guard;
-                    let page = Style::default()
-                        .width(Length::Percent(1.0))
-                        .height(Length::Percent(1.0))
-                        .padding(12.0)
-                        .gap(8.0);
-                    let mut layout = std::mem::take(&mut state.layout);
-                    let mut dirty = false;
-                    ui.column(page, |ui| {
-                        ui.row(Style::default().gap(8.0), |ui| {
-                            if ui.button("Reset layout").clicked() {
-                                layout = default_layout();
-                                dirty = true;
-                            }
-                            if ui.button("Show all panels").clicked() {
-                                for panel in panels() {
-                                    layout.show(&panel.id);
-                                }
-                                dirty = true;
-                            }
-                        });
-                        let response = ui.dock(
-                            &mut layout,
-                            &panels(),
-                            DockOptions {
-                                style: Style::default()
-                                    .width(Length::Percent(1.0))
-                                    .grow(1.0)
-                                    .shrink(1.0),
-                                native_windows: true,
-                                ..DockOptions::default()
-                            },
-                            |ui, id| panel(ui, state, id),
-                        );
-                        dirty |= response.changed;
-                    });
-                    state.layout = layout;
-                    if dirty {
-                        changed(state);
-                    }
-                    if dirty || std::mem::take(&mut state.stale) {
-                        windows.redraw(&handle);
-                    }
-                    windows.sync(&handle, &state.layout, |window| {
-                        detached(
-                            &main_state,
-                            &handle,
-                            window.id,
-                            Size::new(window.width, window.height),
-                        )
-                    });
-                },
-            )
-            .expect("the desktop is running during setup");
-        shared.lock().unwrap().main = Some(key);
-    })
+    run_app(
+        AppOptions {
+            title: "Rust GUI / Docking".into(),
+            size: Size::new(1100.0, 760.0),
+            frame_limit: smoke.then_some(3),
+            ..AppOptions::default()
+        },
+        Docking {
+            layout,
+            notes: String::from("Docking keeps this text while panels move."),
+            wrap: true,
+            saves: 0,
+            save_to: (!smoke && !open).then_some(path),
+            windows: Vec::new(),
+        },
+    )
 }

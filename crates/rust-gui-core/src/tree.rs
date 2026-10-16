@@ -409,6 +409,9 @@ pub struct Context {
     images: HashMap<std::path::PathBuf, image::LoadedImage>,
     image_requests: Vec<std::path::PathBuf>,
     hot_save: bool,
+    /// How many theme, messages and format requests of the app this context
+    /// has applied.
+    pub(crate) settings: (u64, u64, u64),
     hot_state: Option<String>,
     diagnostic: diagnostics::DiagnosticState,
     toast: toasts::ToastState,
@@ -586,6 +589,7 @@ impl Default for Context {
             image_requests: Vec::new(),
             watch_requests: Vec::new(),
             hot_save: false,
+            settings: (0, 0, 0),
             hot_state: None,
             diagnostic: diagnostics::DiagnosticState::new(),
             toast: toasts::ToastState::default(),
@@ -744,6 +748,14 @@ impl Context {
 
     pub(crate) fn hot_save_requested(&self) -> bool {
         self.hot_save
+    }
+
+    /// Answers a hot-save request with the state an `App` saves, and spends it.
+    pub(crate) fn answer_hot_save(&mut self, state: impl FnOnce() -> Option<String>) {
+        if self.hot_save {
+            self.hot_save = false;
+            self.hot_state = state();
+        }
     }
 
     /// The state text the last declaration saved, once.
