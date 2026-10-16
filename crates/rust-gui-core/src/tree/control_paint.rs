@@ -110,8 +110,9 @@ impl Context {
             .nodes
             .iter()
             .filter_map(|(id, node)| {
-                matches!(&node.control,
-                    Control::Choice { hint, .. } | Control::Hint(hint) if !hint.is_empty())
+                (node.changed_frame == self.frame
+                    && matches!(&node.control,
+                        Control::Choice { hint, .. } | Control::Hint(hint) if !hint.is_empty()))
                 .then_some(*id)
             })
             .collect();
@@ -127,24 +128,23 @@ impl Context {
         }
         self.prepare_rich_text(measurer);
         self.prepare_rich_editors(measurer);
-        let ids: Vec<_> = self
+        // Only the editors whose layout changed are collected, so an idle
+        // frame allocates nothing here.
+        let reflowed: Vec<_> = self
             .nodes
-            .iter()
-            .filter_map(|(id, node)| node.editor.is_some().then_some(*id))
+            .iter_mut()
+            .filter_map(|(id, node)| {
+                let width = (node.bounds.width - node.style.padding.max(0.0) * 2.0).max(1.0);
+                let text_style = node.text_style();
+                let rtl = node.resolved.rtl();
+                node.editor
+                    .as_mut()?
+                    .prepare(measurer, text_style, width, rtl)
+                    .then_some(*id)
+            })
             .collect();
-        for id in ids {
-            let node = self.nodes.get_mut(&id).unwrap();
-            let width = (node.bounds.width - node.style.padding.max(0.0) * 2.0).max(1.0);
-            let text_style = node.text_style();
-            let rtl = node.resolved.rtl();
-            if node
-                .editor
-                .as_mut()
-                .unwrap()
-                .prepare(measurer, text_style, width, rtl)
-            {
-                self.invalidate_paint(id);
-            }
+        for id in reflowed {
+            self.invalidate_paint(id);
         }
         if let Some(popup) = self.popup
             && popup.reveal_highlight

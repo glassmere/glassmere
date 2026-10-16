@@ -225,11 +225,8 @@ fn a_batch_without_input_allocates_nothing_and_does_not_declare() {
     assert_eq!(allocations(), before + 1);
 }
 
-// Found while writing the text input tests: an idle batch with a text input
-// in the view allocates once. Nothing is dirty and nothing is declared, so
-// the contract says zero. Not fixed here: it lives in the kernel.
+// A field's hint is measured when it changes, not on every frame.
 #[test]
-#[ignore = "an idle batch with a text input allocates once per frame"]
 fn an_idle_batch_with_a_text_input_allocates_nothing() {
     let mut running = Running::new(Counter::with_field(20, true));
     let allocated = running.allocated_by(|_| {});
