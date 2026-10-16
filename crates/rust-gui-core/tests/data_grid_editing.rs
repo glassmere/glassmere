@@ -86,16 +86,22 @@ struct Table {
     model: People,
     grid: GridState,
     edited: Vec<(ItemId, usize)>,
+    activated: Vec<ItemId>,
 }
 
 fn grid_msg(message: GridMsg) -> Message<Table> {
     act(move |s: &mut Table| {
         s.grid.apply(&message);
+        if let GridMsg::Activate(row) = &message {
+            s.activated.push(*row);
+        }
         if let GridMsg::Edit { row, column, value } = &message
             && let Some(index) = s.model.index_of(*row)
-            && s.model.set_cell(index, *column, value.clone()).is_ok()
         {
-            s.edited.push((*row, *column));
+            match s.model.set_cell(index, *column, value.clone()) {
+                Ok(()) => s.edited.push((*row, *column)),
+                Err(message) => s.grid.refuse_edit(*row, *column, message),
+            }
         }
     })
 }
@@ -142,6 +148,7 @@ impl App {
                 },
                 grid: GridState::default(),
                 edited: Vec::new(),
+                activated: Vec::new(),
             },
             table_view,
         );
@@ -203,6 +210,12 @@ impl App {
                 .label
                 .clone(),
         )
+    }
+
+    /// The reason the open editor's tooltip gives, if any.
+    fn error_text(&self) -> Option<String> {
+        let editor = self.editor(0)?;
+        self.driven.context.node(editor)?.description.clone()
     }
 
     fn retype(&mut self, text: &str) {
@@ -284,10 +297,9 @@ fn f2_and_enter_edit_a_text_cell_and_enter_stores_it_and_moves_down() {
         "the grid has the keys back"
     );
 
-    // Enter on an editable cell edits.
-    // M35: a row activation (Enter on a read-only cell) has no GridMsg, so
-    // `activated` is not asserted any more.
+    // Enter on an editable cell edits, and does not activate the row.
     app.key(Key::Enter);
+    assert!(app.driven.state().activated.is_empty());
     assert_eq!(app.editing_label(1).as_deref(), Some("Name"));
     // Escape drops the draft.
     app.retype("Nobody");
@@ -295,6 +307,41 @@ fn f2_and_enter_edit_a_text_cell_and_enter_stores_it_and_moves_down() {
     assert!(app.editor(1).is_none());
     assert_eq!(app.model().rows[1].name, "Person 1");
     assert_eq!(app.driven.context.focused(), Some(app.rows()));
+}
+
+#[test]
+fn enter_on_a_read_only_cell_activates_the_row() {
+    let mut app = App::new();
+    for _ in 0..4 {
+        app.key(Key::ArrowRight);
+    }
+    app.key(Key::Enter);
+    assert!(app.editor(0).is_none(), "the Id column has no editor");
+    assert_eq!(app.driven.state().activated, [ItemId(0)]);
+    app.key(Key::ArrowDown);
+    app.key(Key::Enter);
+    assert_eq!(app.driven.state().activated, [ItemId(0), ItemId(1)]);
+}
+
+#[test]
+fn a_refused_edit_keeps_the_editor_open_shows_why_and_can_be_committed_again() {
+    let mut app = App::new();
+    app.key(Key::F2);
+    app.retype("   ");
+    app.key(Key::Enter);
+    assert_eq!(app.model().rows[0].name, "Person 0");
+    assert!(app.editor(0).is_some(), "the editor stays");
+    assert_eq!(
+        app.error_text().as_deref(),
+        Some("A name is required."),
+        "and says why"
+    );
+    app.retype("Grace");
+    app.key(Key::Enter);
+    assert_eq!(app.model().rows[0].name, "Grace");
+    assert!(app.editor(0).is_none());
+    assert_eq!(app.selected(), Some(ItemId(1)));
+    assert_eq!(app.error_text(), None);
 }
 
 #[test]
@@ -606,11 +653,13 @@ mod filtering {
             .node(driven.context.find(&["grid"]).unwrap())
             .unwrap();
         assert_eq!(info.collection.unwrap().total, 2);
-        // M35: a selected row filtered away is not sent as a message (Select
-        // takes an ItemId, not none), so the state keeps Some(row 2) here and
-        // that is not asserted.
         driven.context.set_now(Duration::from_millis(500));
         driven.frame();
+        assert_eq!(
+            driven.state().grid.rows.selected(),
+            None,
+            "the filtered-away selection is cleared by a message"
+        );
         assert_eq!(
             driven.state().model.calls.len(),
             1,
@@ -636,80 +685,5 @@ mod filtering {
         driven.frame();
         assert_eq!(driven.state().model.calls.last().unwrap(), &Vec::new());
         assert_eq!(driven.state().model.len(), 4);
-    }
-}
-
-/// The one test whose refusal path stays on the closure form. See the note in
-/// it.
-mod legacy {
-    use super::{CellEditor, GridColumn, ItemId, Key, People, Person, ROOT};
-    use rust_gui_core::{
-        Action, Context, Event, GridState, MonospaceMeasurer, TextEdit, VirtualListOptions,
-    };
-
-    fn people() -> People {
-        People {
-            columns: vec![
-                GridColumn::new("Name", 160.0).editor(CellEditor::Text),
-                GridColumn::new("Id", 80.0),
-            ],
-            rows: (0..20)
-                .map(|row| Person {
-                    name: format!("Person {row}"),
-                    city: row % 3,
-                    age: 30.0 + row as f64,
-                    active: false,
-                })
-                .collect(),
-        }
-    }
-
-    fn frame(context: &mut Context, model: &mut People, state: &mut GridState) {
-        context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-            ui.keyed("grid", |ui| {
-                ui.data_grid(model, state, VirtualListOptions::default())
-            });
-            ui.button("after");
-        });
-    }
-
-    fn key(context: &mut Context, model: &mut People, state: &mut GridState, key: Key) {
-        context.event(Event::KeyDown {
-            key,
-            shift: false,
-            repeat: false,
-        });
-        frame(context, model, state);
-        frame(context, model, state);
-    }
-
-    fn retype(context: &mut Context, model: &mut People, state: &mut GridState, text: &str) {
-        context.event(Event::Text(TextEdit::SelectAll));
-        context.event(Event::Text(TextEdit::Insert(text.into())));
-        frame(context, model, state);
-    }
-
-    #[test]
-    fn the_model_can_refuse_a_value_with_its_own_message() {
-        // M35: in the message model a refused Edit leaves the editor waiting
-        // for the model's value to change, which never happens, so Enter
-        // cannot retry; and the model's refusal text has no channel back to
-        // the grid. Stays here until a refused edit is answered by a message.
-        let (mut context, mut model, mut state) = (Context::new(), people(), GridState::default());
-        frame(&mut context, &mut model, &mut state);
-        let rows = context.find(&["grid", "$rows"]).unwrap();
-        context.action(rows, Action::Focus);
-        state.rows.select(Some(ItemId(0)));
-        frame(&mut context, &mut model, &mut state);
-
-        key(&mut context, &mut model, &mut state, Key::F2);
-        retype(&mut context, &mut model, &mut state, "   ");
-        key(&mut context, &mut model, &mut state, Key::Enter);
-        assert_eq!(state.edit_error(), Some("A name is required."));
-        assert_eq!(model.rows[0].name, "Person 0");
-        retype(&mut context, &mut model, &mut state, "Grace");
-        key(&mut context, &mut model, &mut state, Key::Enter);
-        assert_eq!(model.rows[0].name, "Grace");
-        assert_eq!(state.edit_error(), None);
     }
 }

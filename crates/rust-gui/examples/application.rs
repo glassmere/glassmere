@@ -188,11 +188,12 @@ impl App for Application {
                 self.tickets.append();
                 self.background += 1;
             }
-            Message::List(message) => {
-                if let GridMsg::Select(id) = message {
-                    self.list.select(Some(id));
-                }
-            }
+            Message::List(message) => match message {
+                GridMsg::Select(id) => self.list.select(Some(id)),
+                GridMsg::Deselect => self.list.select(None),
+                GridMsg::Activate(_) => self.open_details(effects),
+                _ => {}
+            },
             Message::Grid(message) => {
                 self.grid.apply(&message);
                 match message {
@@ -213,6 +214,7 @@ impl App for Application {
             }
             Message::Tree(message) => match message {
                 GridMsg::Select(id) => self.tree_state.select(Some(id)),
+                GridMsg::Deselect => self.tree_state.select(None),
                 GridMsg::Expand { row, open } => {
                     self.tree.set_expanded(row, open);
                 }
@@ -272,10 +274,7 @@ impl App for Application {
             ui.label(format!("Saved {} times  ·  {} tickets created by the worker  ·  {} archived", self.saves, self.background, self.archived.len()));
             ui.row(Style { gap: 24.0, width: Length::Percent(1.0), ..Style::default() }, |ui| {
                 ui.column(Style { width: Length::Px(480.0), gap: 10.0, ..Style::default() }, |ui| {
-                    ui.label(Label::new(format!("Tickets ({})", self.tickets.len())).style(heading.clone()));
-                    // M35: Enter on a ticket should open the details window. The row
-                    // form sends no message for Enter (`rows_handler` drops
-                    // `CollectionInput::Activate`), so Ctrl+D and the toolbar open it.
+                    ui.label(Label::new(format!("Tickets ({})  ·  Enter opens details", self.tickets.len())).style(heading.clone()));
                     ui.virtual_list_msg(&self.tickets, &self.list, VirtualListOptions {
                         label: "Tickets".into(), height: 280.0, row_height: 30.0, ..VirtualListOptions::default()
                     }, Message::List);

@@ -1,7 +1,10 @@
+mod support;
+
 use rust_gui_core::{Context, MonospaceMeasurer, Style};
 use rust_gui_devtools::{GpuSnapshot, Inspector, InspectorModel, Recorder, Tab};
 use rust_gui_scene::Size;
 use std::time::Duration;
+use support::Shown;
 
 const TARGET: Size = Size::new(400.0, 300.0);
 
@@ -46,12 +49,10 @@ fn snapshot(timestamps: bool) -> GpuSnapshot {
 }
 
 /// Labels of the inspector's GPU tab for a model.
-fn shown(model: &InspectorModel) -> Vec<String> {
-    let mut inspector = Inspector::showing(Tab::Gpu);
-    let mut context = Context::new();
-    context.run(Size::new(800.0, 700.0), &mut MonospaceMeasurer, |ui| {
-        inspector.ui(ui, model);
-    });
+fn shown(model: InspectorModel) -> Vec<String> {
+    let mut shown = Shown::new(Inspector::showing(Tab::Gpu), model);
+    shown.frame();
+    let context = shown.context;
     context
         .snapshots()
         .into_iter()
@@ -98,7 +99,7 @@ fn the_gpu_tab_shows_times_passes_counters_and_memory() {
     declare(&mut context, &mut recorder);
     recorder.gpu(snapshot(true), Some((1, Duration::from_micros(2000))));
     let model = InspectorModel::capture(&context, "Target", TARGET, &recorder);
-    let labels = shown(&model);
+    let labels = shown(model);
     let has = |needle: &str| labels.iter().any(|label| label.contains(needle));
     assert!(has("Test adapter (Dx12)"));
     assert!(has("last 2.00 ms") && has("average 2.00 ms over 1 frames"));
@@ -116,14 +117,14 @@ fn without_timestamps_or_without_a_report_the_tab_says_so() {
     declare(&mut context, &mut recorder);
     let model = InspectorModel::capture(&context, "Target", TARGET, &recorder);
     assert!(
-        shown(&model)
+        shown(model)
             .iter()
             .any(|label| label.contains("does not report GPU statistics"))
     );
 
     recorder.gpu(snapshot(false), None);
     let model = InspectorModel::capture(&context, "Target", TARGET, &recorder);
-    let labels = shown(&model);
+    let labels = shown(model);
     let has = |needle: &str| labels.iter().any(|label| label.contains(needle));
     assert!(has("no timestamp queries") && has("not the GPU"));
     assert!(!has("Passes of the last timed frame"));
@@ -141,7 +142,7 @@ fn without_timestamps_or_without_a_report_the_tab_says_so() {
         None,
     );
     let model = InspectorModel::capture(&context, "Target", TARGET, &recorder);
-    let labels = shown(&model);
+    let labels = shown(model);
     let has = |needle: &str| labels.iter().any(|label| label.contains(needle));
     assert!(has("CPU renderer, no graphics adapter"));
     assert!(has("painted by the CPU renderer"));

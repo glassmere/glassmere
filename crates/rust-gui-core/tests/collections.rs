@@ -60,13 +60,15 @@ fn options() -> VirtualListOptions {
 struct Lists {
     model: Million,
     list: ListState,
+    activated: Vec<ItemId>,
 }
 
 fn list_msg(message: GridMsg) -> Message<Lists> {
-    act(move |s: &mut Lists| {
-        if let GridMsg::Select(id) = &message {
-            s.list.select(Some(*id));
-        }
+    act(move |s: &mut Lists| match &message {
+        GridMsg::Select(id) => s.list.select(Some(*id)),
+        GridMsg::Deselect => s.list.select(None),
+        GridMsg::Activate(id) => s.activated.push(*id),
+        _ => {}
     })
 }
 
@@ -91,6 +93,7 @@ fn million_items_realize_only_the_viewport_and_can_jump_to_last_item() {
         Lists {
             model: model(1_000_000),
             list: ListState::default(),
+            activated: Vec::new(),
         },
         list_view,
     );
@@ -120,11 +123,53 @@ fn million_items_realize_only_the_viewport_and_can_jump_to_last_item() {
         Some(row)
     );
     assert_eq!(driven.context.focused(), Some(owner));
-    // M35: Enter on a row activates it, and a list has no message for that
-    // (`ListResponse::activated` is not sent as a GridMsg), so the activation
-    // is not asserted here.
+    // Enter activates the selected row, once.
+    assert!(driven.state().activated.is_empty());
     key(&mut driven, Key::Enter);
     driven.frame();
+    assert_eq!(driven.state().activated, [ItemId(999_999)]);
+}
+
+#[test]
+fn enter_activates_only_a_selected_row() {
+    let mut driven = Driven::new(
+        ROOT,
+        Lists {
+            model: model(10),
+            list: ListState::default(),
+            activated: Vec::new(),
+        },
+        list_view,
+    );
+    let owner = driven.context.find(&["list"]).unwrap();
+    driven.context.action(owner, Action::Focus);
+    key(&mut driven, Key::Enter);
+    driven.frame();
+    assert!(driven.state().activated.is_empty());
+    key(&mut driven, Key::ArrowDown);
+    key(&mut driven, Key::Enter);
+    driven.frame();
+    assert_eq!(driven.state().activated, [ItemId(0)]);
+}
+
+#[test]
+fn a_selection_the_model_lost_is_cleared_by_a_message() {
+    let mut driven = Driven::new(
+        ROOT,
+        Lists {
+            model: model(10),
+            list: ListState::default(),
+            activated: Vec::new(),
+        },
+        list_view,
+    );
+    driven.state_mut().list.select(Some(ItemId(8)));
+    driven.frame();
+    assert_eq!(driven.state().list.selected(), Some(ItemId(8)));
+    driven.state_mut().model.count = 5;
+    driven.frame();
+    driven.frame();
+    assert_eq!(driven.state().list.selected(), None);
 }
 
 #[test]
@@ -134,6 +179,7 @@ fn pointer_capture_survives_the_intervening_frame_and_keyboard_events_accumulate
         Lists {
             model: model(1000),
             list: ListState::default(),
+            activated: Vec::new(),
         },
         list_view,
     );
@@ -170,11 +216,10 @@ fn empty_lists_and_disabled_collections_reject_selection() {
         Lists {
             model: model(0),
             list: ListState::default(),
+            activated: Vec::new(),
         },
         list_view,
     );
-    // M35: the kernel no longer clears a selection it finds out of range (no
-    // message carries it), so `selected()` is not asserted on an empty model.
     let owner = driven.context.find(&["list"]).unwrap();
     driven.context.action(owner, Action::Focus);
     key(&mut driven, Key::End);
@@ -390,53 +435,40 @@ fn grid_realizes_bounded_cells_and_sorting_preserves_selected_identity() {
     assert_eq!(info.columns, Some(2));
 }
 
-/// The one test whose anchor check stays on the closure form. See the note in
-/// it.
-mod legacy {
-    use super::{Million, model, options};
-    use rust_gui_core::{Action, Context, ItemId, ListState, MonospaceMeasurer};
-    use rust_gui_scene::Size;
-
-    fn frame(
-        context: &mut Context,
-        model: &mut impl rust_gui_core::ListModel,
-        state: &mut ListState,
-    ) {
-        context.run(Size::new(500.0, 500.0), &mut MonospaceMeasurer, |ui| {
-            ui.keyed("list", |ui| ui.virtual_list(model, state, options()));
-        });
-    }
-
-    #[test]
-    fn stable_selection_outlives_unrealized_nodes_and_reorder_preserves_anchor() {
-        // M35: the scroll anchor that keeps the top row in place when the model
-        // reorders is kept in `ListState` only by the closure form; a
-        // `virtual_list_msg` declaration has no place to keep it, so after a
-        // reorder the offset stays where it was instead of following the row.
-        let mut context = Context::new();
-        let mut model: Million = model(1000);
-        let mut state = ListState::default();
-        frame(&mut context, &mut model, &mut state);
-        let old_node = context.find(&["list", "item-4"]).unwrap();
-        context.action(old_node, Action::Activate);
-        frame(&mut context, &mut model, &mut state);
-        let owner = context.find(&["list"]).unwrap();
-        context.action(owner, Action::ScrollTo(15000.0));
-        frame(&mut context, &mut model, &mut state);
-        assert!(context.node(old_node).is_none());
-        assert_eq!(state.selected(), Some(ItemId(4)));
-        assert_eq!(state.scroll_offset(), 15000.0);
-        model.reverse = true;
-        frame(&mut context, &mut model, &mut state);
-        assert_eq!(state.scroll_offset(), 499.0 * 30.0);
-        assert_eq!(state.selected(), Some(ItemId(4)));
-        state.reveal(ItemId(4));
-        frame(&mut context, &mut model, &mut state);
-        assert_ne!(context.find(&["list", "item-4"]).unwrap(), old_node);
-        assert!(!context.action(old_node, Action::Activate));
-        model.count = 3;
-        frame(&mut context, &mut model, &mut state);
-        assert_eq!(state.selected(), None);
-        assert_eq!(state.scroll_offset(), 0.0);
-    }
+#[test]
+fn stable_selection_outlives_unrealized_nodes_and_reorder_preserves_anchor() {
+    let mut driven = Driven::new(
+        ROOT,
+        Lists {
+            model: model(1000),
+            list: ListState::default(),
+            activated: Vec::new(),
+        },
+        list_view,
+    );
+    let old_node = driven.context.find(&["list", "item-4"]).unwrap();
+    driven.context.action(old_node, Action::Activate);
+    driven.frame();
+    let owner = driven.context.find(&["list"]).unwrap();
+    let offset =
+        |driven: &Driven<Lists>| driven.context.node(owner).unwrap().scroll.unwrap().offset;
+    driven.context.action(owner, Action::ScrollTo(15000.0));
+    driven.frame();
+    assert!(driven.context.node(old_node).is_none());
+    assert_eq!(driven.state().list.selected(), Some(ItemId(4)));
+    assert_eq!(offset(&driven), 15000.0);
+    // The row on top (500) is where the reversed model puts it.
+    driven.state_mut().model.reverse = true;
+    driven.frame();
+    assert_eq!(offset(&driven), 499.0 * 30.0);
+    assert_eq!(driven.state().list.selected(), Some(ItemId(4)));
+    driven.state_mut().list.reveal(ItemId(4));
+    driven.frame();
+    assert_ne!(driven.context.find(&["list", "item-4"]).unwrap(), old_node);
+    assert!(!driven.context.action(old_node, Action::Activate));
+    driven.state_mut().model.count = 3;
+    driven.frame();
+    driven.frame();
+    assert_eq!(driven.state().list.selected(), None);
+    assert_eq!(offset(&driven), 0.0);
 }

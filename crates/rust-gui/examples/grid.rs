@@ -233,7 +233,10 @@ impl App for Directory {
                                 self.people.columns[column].label, row.0
                             );
                         }
-                        Err(error) => self.error = Some(error),
+                        Err(error) => {
+                            self.grid.refuse_edit(row, column, error.clone());
+                            self.error = Some(error);
+                        }
                     }
                 }
             }

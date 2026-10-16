@@ -25,6 +25,13 @@ pub enum GridMsg {
     FiltersApplied,
     /// A row was chosen.
     Select(ItemId),
+    /// Enter was pressed on the selected row, or on a read-only cell of it
+    /// (Enter on an editable cell edits it instead). Open it, or do what the
+    /// row is for; nothing in the state changes.
+    Activate(ItemId),
+    /// The selected row is no longer in the model: removed, or filtered
+    /// away. The selection is cleared, as [`GridState::apply`] does.
+    Deselect,
     /// A cell was edited to `value`; `set_cell` stores it.
     Edit {
         row: ItemId,
@@ -133,6 +140,9 @@ impl Default for VirtualListOptions {
 pub struct ListState {
     selected: Option<ItemId>,
     reveal: Option<ItemId>,
+    /// Counts every `select` and `reveal`, so a message-form list scrolls to
+    /// a row each time it is asked to, not only when the row changes.
+    reveals: u32,
     pub(crate) offset: f32,
     pub(crate) anchor: Option<(ItemId, f32)>,
 }
@@ -143,13 +153,29 @@ impl ListState {
     pub fn select(&mut self, id: Option<ItemId>) {
         self.selected = id;
         self.reveal = id;
+        self.reveals = self.reveals.wrapping_add(1);
     }
     pub fn reveal(&mut self, id: ItemId) {
         self.reveal = Some(id);
+        self.reveals = self.reveals.wrapping_add(1);
+    }
+    /// What a message-form list scrolls into view, and which request it is.
+    pub(crate) fn reveal_target(&self) -> (Option<ItemId>, u32) {
+        (self.reveal, self.reveals)
     }
     pub fn scroll_offset(&self) -> f32 {
         self.offset
     }
+}
+
+/// Where a message-form list's top row was, to keep it there when the model
+/// reorders: the row, how far into it the list was scrolled, and the offset
+/// the declaration showed, which tells whether the user scrolled since.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ListAnchor {
+    pub item: ItemId,
+    pub within: f32,
+    pub offset: f32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -177,6 +203,11 @@ pub(crate) enum CollectionInput {
     First,
     Last,
     Activate,
+    /// The selected row, activated: what `Activate` becomes when a grid has
+    /// seen that its cell is not editable.
+    Activated(ItemId),
+    /// The selection is not in the model any more.
+    Deselect,
     Expand(bool),
     Toggle(ItemId),
     /// Grids: a press landed on this cell of this row.
@@ -304,7 +335,10 @@ impl ListState {
                 | CollectionInput::Type(_)
                 | CollectionInput::EditKey { .. }
                 | CollectionInput::ScrollX(_) => None,
-                CollectionInput::FiltersDue | CollectionInput::EditValue { .. } => None,
+                CollectionInput::FiltersDue
+                | CollectionInput::EditValue { .. }
+                | CollectionInput::Activated(_)
+                | CollectionInput::Deselect => None,
                 CollectionInput::SetExpanded { item, open } => {
                     if let Some(index) = model.index_of(item)
                         && model.expanded(index).is_some()
@@ -666,6 +700,10 @@ pub struct GridState {
     pub(crate) edit: Option<GridEdit>,
     /// The next declaration gives the keyboard back to the rows.
     pub(crate) refocus: bool,
+    /// The last refused edit, and how many there have been, so that the
+    /// grid answers each once.
+    pub(crate) refusal: Option<(ItemId, usize, String)>,
+    pub(crate) refusals: u64,
 }
 
 /// A cell being edited in place.
@@ -697,6 +735,8 @@ pub(crate) struct GridNode {
     pub refocus: bool,
     /// The selected row as the last declaration showed it.
     pub shown: Option<ItemId>,
+    /// How many refused edits of the state this grid has answered.
+    pub refusals_seen: u64,
 }
 
 /// A cell being edited in place, in a [`GridNode`].
@@ -745,10 +785,19 @@ impl GridState {
             }
             GridMsg::FiltersApplied => self.applied_filters = self.wanted_filters(),
             GridMsg::Select(id) => self.rows.select(Some(*id)),
+            GridMsg::Deselect => self.rows.select(None),
             GridMsg::Columns(layout) => self.columns = layout.clone(),
             // The application's model call is all these change.
-            GridMsg::Edit { .. } | GridMsg::Expand { .. } => {}
+            GridMsg::Edit { .. } | GridMsg::Expand { .. } | GridMsg::Activate(_) => {}
         }
+    }
+
+    /// Reports that the model refused the value of `GridMsg::Edit` for this
+    /// cell: call it from `update` when `set_cell` returned an error. The
+    /// grid keeps the editor open, shows `message` and lets Enter try again.
+    pub fn refuse_edit(&mut self, row: ItemId, column: usize, message: impl Into<String>) {
+        self.refusals += 1;
+        self.refusal = Some((row, column, message.into()));
     }
 
     /// The filters the model should have: trimmed, and without empty texts.

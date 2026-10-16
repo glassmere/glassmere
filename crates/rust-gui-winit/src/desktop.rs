@@ -1,8 +1,8 @@
 use super::*;
 // A window of an application with `run_app`, as `Effects::open_window` names it.
 use rust_gui_core::WindowId as AppWindow;
-use rust_gui_core::{AppDriver, Pacing, TextMeasurer};
-use rust_gui_devtools::{Inspector, InspectorModel, InspectorResponse};
+use rust_gui_core::{AppDriver, Effects, Pacing, TextMeasurer};
+use rust_gui_devtools::{Inspector, InspectorModel, InspectorMsg, InspectorResponse};
 use std::{
     collections::HashMap,
     sync::atomic::{AtomicU64, Ordering},
@@ -350,6 +350,57 @@ struct InspectorShared {
     inspector: Inspector,
     model: InspectorModel,
     response: InspectorResponse,
+}
+
+/// The inspector's window as an application: its messages are
+/// `InspectorMsg`, and what it asks of the inspected window collects in the
+/// shared response.
+struct InspectorApp {
+    shared: Rc<RefCell<InspectorShared>>,
+}
+
+impl App for InspectorApp {
+    type Message = InspectorMsg;
+
+    fn update(&mut self, message: InspectorMsg, _: &mut Effects<'_, InspectorMsg>) {
+        let shared = &mut *self.shared.borrow_mut();
+        let response = shared.inspector.update(message, &shared.model);
+        shared.response.export_csv |= response.export_csv;
+        shared.response.focus = response.focus.or(shared.response.focus);
+    }
+
+    fn view(&self, ui: &mut Ui<'_, InspectorMsg>) {
+        let shared = self.shared.borrow();
+        shared.inspector.view(ui, &shared.model);
+    }
+}
+
+/// The inspector window's declaration. The model is replaced before every
+/// frame, so its view is always due.
+struct InspectorView {
+    app: InspectorApp,
+    driver: AppDriver<InspectorMsg>,
+    pacing: Pacing,
+}
+
+impl Declare for InspectorView {
+    fn frame(&mut self, context: &mut Context, size: Size, text: &mut TextSystem) -> FrameStats {
+        let (messages, _) = self.driver.batch(&mut self.app, context);
+        self.pacing.invalidate();
+        self.driver.declare(
+            &self.app,
+            context,
+            size,
+            text,
+            None,
+            &mut self.pacing,
+            messages,
+        )
+    }
+
+    fn hot_state(&mut self, _: &mut Context, _: Size, _: &mut TextSystem) -> String {
+        String::new()
+    }
 }
 
 struct InspectorLink {
@@ -964,11 +1015,13 @@ impl Desktop {
             model: InspectorModel::default(),
             response: InspectorResponse::default(),
         }));
-        let view_shared = shared.clone();
-        let view: View = Box::new(Closure(move |ui: &mut Ui<'_>| {
-            let shared = &mut *view_shared.borrow_mut();
-            shared.response = shared.inspector.ui(ui, &shared.model);
-        }));
+        let view: View = Box::new(InspectorView {
+            app: InspectorApp {
+                shared: shared.clone(),
+            },
+            driver: AppDriver::new(|| true),
+            pacing: Pacing::default(),
+        });
         let key = self.allocate_key();
         if self.open(event_loop, key, options, view, None) {
             self.inspectors
@@ -1001,6 +1054,8 @@ impl Desktop {
             viewport
         };
         shared.model.export_path = export_path;
+        let shared = &mut *shared;
+        shared.inspector.sync(&shared.model);
     }
 
     /// Applies the inspector's overlay and requests to its target after it declared.

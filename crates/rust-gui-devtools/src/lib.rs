@@ -6,8 +6,9 @@
 //! back to the inspected window.
 use rust_gui_core::{Button, Label};
 use rust_gui_core::{
-    Context, FontFamily, FrameStats, GraphNode, ItemId, Length, ListModel, ListState, MemoryReport,
-    NodeDetails, NodeId, NodeSnapshot, StateKind, Style, TextWrap, Ui, VirtualListOptions,
+    Context, FontFamily, FrameStats, GraphNode, GridMsg, ItemId, Length, ListModel, ListState,
+    MemoryReport, NodeDetails, NodeId, NodeSnapshot, StateKind, Style, TextWrap, Ui,
+    VirtualListOptions,
 };
 use rust_gui_scene::{Affine, Color, Primitive, Rect, Size};
 use std::{
@@ -428,7 +429,28 @@ pub struct InspectorResponse {
     pub focus: Option<NodeId>,
 }
 
-/// Retained inspector UI state. Declare with [`Inspector::ui`] inside any window.
+/// What the inspector's own window sends. A host runs it as an application
+/// whose message this is: `update` calls [`Inspector::update`], `view` calls
+/// [`Inspector::view`], and the host calls [`Inspector::sync`] after it
+/// replaces the model.
+#[derive(Clone, Debug, PartialEq)]
+pub enum InspectorMsg {
+    Tab(Tab),
+    Damage(bool),
+    Repaints(bool),
+    /// The node list of the Tree and Accessibility tabs.
+    Tree(GridMsg),
+    Events(GridMsg),
+    Frames(GridMsg),
+    ExportCsv,
+    /// Focus a node in the inspected window.
+    Focus(NodeId),
+    /// A diagnostic's node: select it in the tree and show the tree.
+    ShowNode(NodeId),
+}
+
+/// Retained inspector UI state: what the inspector's view shows, changed only
+/// by [`Inspector::update`] and [`Inspector::sync`].
 pub struct Inspector {
     pub tab: Tab,
     pub show_damage: bool,
@@ -473,15 +495,65 @@ impl Inspector {
         self.tree.selected().map(|id| NodeId(id.0))
     }
 
-    // M35: not migrated. A message form of the list and tree builders cannot
-    // give rows their own style: `virtual_list_msg` and `tree_view_msg` draw
-    // a fixed label, so the events and frames tables lose their monospace
-    // columns and colours, and changed tree rows lose their highlight. Those
-    // lists also need `&mut ListState` in the view, which `App::view(&self)`
-    // cannot give. Until the builders take a row closure, this stays here.
-    #[track_caller]
-    pub fn ui(&mut self, ui: &mut Ui<'_>, model: &InspectorModel) -> InspectorResponse {
+    /// Applies what the inspector's window sent. The returned requests are
+    /// for the inspected window.
+    pub fn update(&mut self, message: InspectorMsg, model: &InspectorModel) -> InspectorResponse {
         let mut response = InspectorResponse::default();
+        let select = |list: &mut ListState, message: GridMsg| match message {
+            GridMsg::Select(id) => list.select(Some(id)),
+            GridMsg::Deselect => list.select(None),
+            _ => {}
+        };
+        match message {
+            InspectorMsg::Tab(tab) => self.tab = tab,
+            InspectorMsg::Damage(on) => self.show_damage = on,
+            InspectorMsg::Repaints(on) => self.show_repaints = on,
+            InspectorMsg::Tree(GridMsg::Expand { row, open }) => {
+                let id = NodeId(row.0);
+                if model
+                    .node(id)
+                    .is_some_and(|node| !node.snapshot.children.is_empty())
+                {
+                    if open {
+                        self.collapsed.remove(&id);
+                    } else {
+                        self.collapsed.insert(id);
+                    }
+                }
+            }
+            InspectorMsg::Tree(message) => select(&mut self.tree, message),
+            InspectorMsg::Events(message) => select(&mut self.events, message),
+            InspectorMsg::Frames(message) => select(&mut self.frames, message),
+            InspectorMsg::ExportCsv => response.export_csv = true,
+            InspectorMsg::Focus(id) => response.focus = Some(id),
+            InspectorMsg::ShowNode(id) => {
+                self.tree.select(Some(ItemId(id.0)));
+                self.tab = Tab::Tree;
+            }
+        }
+        response
+    }
+
+    /// Notes that the host has replaced the model: the Events and Frames
+    /// lists follow the newest record.
+    pub fn sync(&mut self, model: &InspectorModel) {
+        if model.events.len() != self.seen_events {
+            self.seen_events = model.events.len();
+            if let Some(last) = model.events.last() {
+                self.events.reveal(ItemId(last.sequence));
+            }
+        }
+        if let Some(last) = model.frames.last()
+            && last.stats.frame != self.seen_frames
+        {
+            self.seen_frames = last.stats.frame;
+            self.frames.reveal(ItemId(last.stats.frame));
+        }
+    }
+
+    /// Declares the inspector in a window whose message is [`InspectorMsg`].
+    #[track_caller]
+    pub fn view(&self, ui: &mut Ui<'_, InspectorMsg>, model: &InspectorModel) {
         let list_height = (model.viewport.height - 132.0).max(120.0);
         let width = (model.viewport.width - 36.0).max(300.0);
         let mono = Style {
@@ -540,11 +612,7 @@ impl Inspector {
                                 background: (self.tab == tab).then_some(ui.theme().selection),
                                 ..Style::button()
                             };
-                            if ui.keyed(format!("{tab:?}"), |ui| ui.button(Button::new(label).enabled(true).style(style)))
-                                .clicked()
-                            {
-                                self.tab = tab;
-                            }
+                            ui.keyed(format!("{tab:?}"), |ui| ui.button(Button::new(label).enabled(true).style(style).on_click(InspectorMsg::Tab(tab))));
                         }
                     }));
                 // Their own row: with seven tabs there is no width left for
@@ -553,8 +621,8 @@ impl Inspector {
                         gap: 12.0,
                         ..Style::default()
                     }, |ui| {
-                        ui.keyed("damage", |ui| ui.checkbox("Damage", &mut self.show_damage));
-                        ui.keyed("repaints", |ui| ui.checkbox("Repaints", &mut self.show_repaints));
+                        ui.keyed("damage", |ui| ui.checkbox_msg("Damage", self.show_damage, InspectorMsg::Damage));
+                        ui.keyed("repaints", |ui| ui.checkbox_msg("Repaints", self.show_repaints, InspectorMsg::Repaints));
                     }));
                 match self.tab {
                     Tab::Tree | Tab::Accessibility => {
@@ -566,8 +634,8 @@ impl Inspector {
                                 width: Length::Percent(1.0),
                                 ..Style::default()
                             }, |ui| {
-                                let mut rows = Rows::new(model, &mut self.collapsed, accessibility);
-                                ui.keyed("tree", |ui| ui.tree_view_with(&mut rows, &mut self.tree, VirtualListOptions {
+                                let rows = Rows::new(model, &self.collapsed, accessibility);
+                                ui.keyed("tree", |ui| ui.tree_view_msg_with(&rows, &self.tree, VirtualListOptions {
                                         label: "Nodes".into(),
                                         height: list_height,
                                         row_height: 24.0,
@@ -576,7 +644,7 @@ impl Inspector {
                                             ..Style::default()
                                         },
                                         ..VirtualListOptions::default()
-                                    }, |ui, rows, index, _| {
+                                    }, InspectorMsg::Tree, |ui, rows, index, _| {
                                         let node = rows.node(index);
                                         ui.keyed("label", |ui| ui.label(Label::new(rows.text(index)).style(Style {
                                                 width: Length::Percent(1.0),
@@ -587,13 +655,12 @@ impl Inspector {
                                                 ..Style::default()
                                             })));
                                     }));
-                                drop(rows);
                                 ui.keyed("details", |ui| ui.column(Style {
                                         gap: 4.0,
                                         width: Length::Px(width - tree_width - 12.0),
                                         ..Style::default()
                                     }, |ui| match selected.and_then(|id| model.node(id)) {
-                                        Some(node) => details(ui, model, node, &mut response),
+                                        Some(node) => details(ui, model, node),
                                         None => ui.keyed("hint", |ui| ui.label(Label::new("Select a node. Arrows move, Right/Left expand and collapse. Orange rows changed in the last declaration; ▮ marks a repainted node.").style(Style {
                                                 font_size: Some(13.0),
                                                 foreground: Some(MUTED),
@@ -605,19 +672,13 @@ impl Inspector {
                             }));
                     }
                     Tab::Events => {
-                        if model.events.len() != self.seen_events {
-                            self.seen_events = model.events.len();
-                            if let Some(last) = model.events.last() {
-                                self.events.reveal(ItemId(last.sequence));
-                            }
-                        }
-                        let mut rows = EventRows(&model.events);
-                        ui.keyed("events", |ui| ui.virtual_list_with(&mut rows, &mut self.events, VirtualListOptions {
+                        let rows = EventRows(&model.events);
+                        ui.keyed("events", |ui| ui.virtual_list_msg_with(&rows, &self.events, VirtualListOptions {
                                 label: "Events".into(),
                                 height: list_height,
                                 row_height: 22.0,
                                 ..VirtualListOptions::default()
-                            }, |ui, rows, index, _| {
+                            }, InspectorMsg::Events, |ui, rows, index, _| {
                                 let event = &rows.0[index];
                                 ui.keyed("label", |ui| ui.label(Label::new(format!(
                                         "f{:<6} {} {}",
@@ -655,18 +716,16 @@ impl Inspector {
                                         },
                                         entry.count
                                     );
-                                    if ui.keyed(format!("entry-{index}"), |ui| ui.button(Button::new(title).enabled(entry.node.is_some()).style(Style {
-                                                width: Length::Percent(1.0),
-                                                padding: 6.0,
-                                                ..Style::button()
-                                            })))
-                                        .clicked()
-                                        && let Some(node) = entry.node
-                                    {
-                                        self.tree.select(Some(ItemId(node.0)));
-                                        self.tree.reveal(ItemId(node.0));
-                                        self.tab = Tab::Tree;
-                                    }
+                                    let button = Button::new(title).enabled(entry.node.is_some()).style(Style {
+                                        width: Length::Percent(1.0),
+                                        padding: 6.0,
+                                        ..Style::button()
+                                    });
+                                    let button = match entry.node {
+                                        Some(node) => button.on_click(InspectorMsg::ShowNode(node)),
+                                        None => button,
+                                    };
+                                    ui.keyed(format!("entry-{index}"), |ui| ui.button(button));
                                     ui.keyed(format!("message-{index}"), |ui| ui.label(Label::new(entry.message.clone()).style(Style {
                                             font_size: Some(12.0),
                                             foreground: Some(MUTED),
@@ -700,9 +759,7 @@ impl Inspector {
                                 gap: 8.0,
                                 ..Style::default()
                             }, |ui| {
-                                if ui.keyed("export", |ui| ui.button("Export CSV")).clicked() {
-                                    response.export_csv = true;
-                                }
+                                ui.keyed("export", |ui| ui.button(Button::new("Export CSV").on_click(InspectorMsg::ExportCsv)));
                                 if let Some(path) = &model.export_path {
                                     ui.keyed("path", |ui| ui.label(Label::new(format!("Written to {path}")).style(Style {
                                             font_size: Some(13.0),
@@ -711,29 +768,22 @@ impl Inspector {
                                         })));
                                 }
                             }));
-                        if let Some(last) = model.frames.last()
-                            && last.stats.frame != self.seen_frames
-                        {
-                            self.seen_frames = last.stats.frame;
-                            self.frames.reveal(ItemId(last.stats.frame));
-                        }
                         ui.keyed("columns", |ui| ui.label(Label::new(FrameRecord::SUMMARY_HEADER).style(Style {
                             foreground: Some(MUTED),
                             ..mono.clone()
                         })));
-                        let mut rows = FrameRows(&model.frames);
-                        ui.keyed("frames", |ui| ui.virtual_list_with(&mut rows, &mut self.frames, VirtualListOptions {
+                        let rows = FrameRows(&model.frames);
+                        ui.keyed("frames", |ui| ui.virtual_list_msg_with(&rows, &self.frames, VirtualListOptions {
                                 label: "Frames".into(),
                                 height: (list_height - 96.0).max(120.0),
                                 row_height: 22.0,
                                 ..VirtualListOptions::default()
-                            }, |ui, rows, index, _| {
+                            }, InspectorMsg::Frames, |ui, rows, index, _| {
                                 ui.keyed("label", |ui| ui.label(Label::new(rows.0[index].summary()).style(mono.clone())));
                             }));
                     }
                 }
             }));
-        response
     }
 
     /// Logical-coordinate primitives for the inspected window to paint after its scene.
@@ -806,16 +856,11 @@ fn hex(color: Color) -> String {
     }
 }
 
-fn details(
-    ui: &mut Ui<'_>,
-    model: &InspectorModel,
-    node: &InspectedNode,
-    response: &mut InspectorResponse,
-) {
+fn details(ui: &mut Ui<'_, InspectorMsg>, model: &InspectorModel, node: &InspectedNode) {
     let snapshot = &node.snapshot;
     let details = &node.details;
     let style = &details.style;
-    let line = |ui: &mut Ui<'_>, key: &str, text: String| {
+    let line = |ui: &mut Ui<'_, InspectorMsg>, key: &str, text: String| {
         ui.keyed(key, |ui| {
             ui.label(Label::new(text).style(Style {
                 font_size: Some(13.0),
@@ -1008,30 +1053,26 @@ fn details(
     if let Some(selection) = snapshot.text_selection {
         line(ui, "selection", format!("Text selection: {selection:?}"));
     }
-    if snapshot.semantics.focusable
-        && ui
-            .keyed("focus", |ui| ui.button("Focus in inspected window"))
-            .clicked()
-    {
-        response.focus = Some(snapshot.id);
+    if snapshot.semantics.focusable {
+        ui.keyed("focus", |ui| {
+            ui.button(
+                Button::new("Focus in inspected window").on_click(InspectorMsg::Focus(snapshot.id)),
+            )
+        });
     }
 }
 
 /// Visible tree rows over the captured nodes, honoring collapsed subtrees.
 struct Rows<'a> {
     model: &'a InspectorModel,
-    collapsed: &'a mut HashSet<NodeId>,
+    collapsed: &'a HashSet<NodeId>,
     accessibility: bool,
     visible: Vec<usize>,
     position: HashMap<NodeId, usize>,
 }
 
 impl<'a> Rows<'a> {
-    fn new(
-        model: &'a InspectorModel,
-        collapsed: &'a mut HashSet<NodeId>,
-        accessibility: bool,
-    ) -> Self {
+    fn new(model: &'a InspectorModel, collapsed: &'a HashSet<NodeId>, accessibility: bool) -> Self {
         let mut rows = Self {
             model,
             collapsed,
@@ -1126,7 +1167,7 @@ fn truncate(text: &str) -> String {
 }
 
 /// What the window holds on the CPU, and the layers of its last scene.
-fn scene_tab(ui: &mut Ui<'_>, model: &InspectorModel, mono: &Style) {
+fn scene_tab(ui: &mut Ui<'_, InspectorMsg>, model: &InspectorModel, mono: &Style) {
     let memory = &model.memory;
     let kb = |bytes: usize| format!("{:.1} kB", bytes as f64 / 1024.0);
     for (index, line) in [
@@ -1209,7 +1250,7 @@ fn scene_tab(ui: &mut Ui<'_>, model: &InspectorModel, mono: &Style) {
 
 /// The reactive store: what it holds, what each derived value read, and what
 /// moved last. Empty until the window calls `Ui::observe`.
-fn state_tab(ui: &mut Ui<'_>, model: &InspectorModel, mono: &Style) {
+fn state_tab(ui: &mut Ui<'_, InspectorMsg>, model: &InspectorModel, mono: &Style) {
     if model.state.is_empty() {
         ui.keyed("none", |ui| {
             ui.label(
@@ -1309,25 +1350,6 @@ impl ListModel for Rows<'_> {
             .and_then(|node| node.snapshot.parent)
             .map(|parent| ItemId(parent.0))
     }
-    fn set_expanded(&mut self, id: ItemId, expanded: bool) -> bool {
-        let id = NodeId(id.0);
-        if self
-            .model
-            .node(id)
-            .is_none_or(|node| node.snapshot.children.is_empty())
-        {
-            return false;
-        }
-        let changed = if expanded {
-            self.collapsed.remove(&id)
-        } else {
-            self.collapsed.insert(id)
-        };
-        if changed {
-            self.rebuild();
-        }
-        changed
-    }
 }
 
 struct EventRows<'a>(&'a [EventRecord]);
@@ -1380,7 +1402,14 @@ fn mebibytes(bytes: u64) -> String {
 }
 
 /// A label, a value and a bar whose length is `share` of the row.
-fn bar_row(ui: &mut Ui<'_>, key: &str, label: &str, value: String, share: f32, mono: &Style) {
+fn bar_row(
+    ui: &mut Ui<'_, InspectorMsg>,
+    key: &str,
+    label: &str,
+    value: String,
+    share: f32,
+    mono: &Style,
+) {
     ui.keyed(key, |ui| {
         ui.row(
             Style {
@@ -1416,7 +1445,7 @@ fn bar_row(ui: &mut Ui<'_>, key: &str, label: &str, value: String, share: f32, m
     });
 }
 
-fn gpu_tab(ui: &mut Ui<'_>, model: &InspectorModel, mono: &Style) {
+fn gpu_tab(ui: &mut Ui<'_, InspectorMsg>, model: &InspectorModel, mono: &Style) {
     let muted = Style {
         font_size: Some(13.0),
         foreground: Some(MUTED),

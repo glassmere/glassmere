@@ -1,5 +1,7 @@
 use super::*;
-use crate::collection::{CollectionInput, CollectionKind, FILTER_DELAY, FilterTimer, GridNode};
+use crate::collection::{
+    CollectionInput, CollectionKind, FILTER_DELAY, FilterTimer, GridNode, ListAnchor,
+};
 
 impl Context {
     /// Records what a grid's view wants of its filters: `Some` while the
@@ -50,6 +52,22 @@ impl Context {
         self.revealed
             .get_mut()
             .retain(|id, _| nodes.contains_key(id));
+        self.list_anchors
+            .get_mut()
+            .retain(|id, _| nodes.contains_key(id));
+    }
+
+    /// The top row of a message-form list as its last declaration left it.
+    pub(crate) fn list_anchor(&self, rows: NodeId) -> Option<ListAnchor> {
+        self.list_anchors.borrow().get(&rows).copied()
+    }
+
+    pub(crate) fn set_list_anchor(&self, rows: NodeId, anchor: Option<ListAnchor>) {
+        let mut anchors = self.list_anchors.borrow_mut();
+        match anchor {
+            Some(anchor) => drop(anchors.insert(rows, anchor)),
+            None => drop(anchors.remove(&rows)),
+        }
     }
 
     /// The kernel state of a message-form grid, for the declaration to change.
@@ -91,10 +109,14 @@ impl Context {
             .is_some_and(|timer| !timer.fired)
     }
 
-    /// Whether `selected` is not what this collection last scrolled to; it
-    /// is remembered, so a selection is revealed once.
-    pub(crate) fn reveal_selection(&self, rows: NodeId, selected: Option<crate::ItemId>) -> bool {
-        self.revealed.borrow_mut().insert(rows, selected) != Some(selected)
+    /// Whether `target` is not what this collection last scrolled to; it
+    /// is remembered, so a request is honored once.
+    pub(crate) fn reveal_selection(
+        &self,
+        rows: NodeId,
+        target: (Option<crate::ItemId>, u32),
+    ) -> bool {
+        self.revealed.borrow_mut().insert(rows, target) != Some(target)
     }
 
     /// The grids whose filter delay has passed since it was started, each once.

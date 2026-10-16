@@ -455,7 +455,9 @@ pub struct Context {
     /// Nodes whose text the user edited in the batch being resolved.
     text_typed: HashSet<NodeId>,
     /// The selection a message-form collection last scrolled into view.
-    revealed: std::cell::RefCell<HashMap<NodeId, Option<crate::ItemId>>>,
+    revealed: std::cell::RefCell<HashMap<NodeId, (Option<crate::ItemId>, u32)>>,
+    /// The top row of each message-form list, kept in place across a reorder.
+    list_anchors: std::cell::RefCell<HashMap<NodeId, crate::collection::ListAnchor>>,
     /// Activations, edits and submissions in the order they arrived, beside
     /// the maps the old `Response` path reads.
     queued: Vec<(NodeId, Queued)>,
@@ -622,6 +624,7 @@ impl Default for Context {
             grid_pending: Default::default(),
             text_typed: HashSet::new(),
             revealed: Default::default(),
+            list_anchors: Default::default(),
             queued: Vec::new(),
             observed_new: std::cell::RefCell::new(Vec::new()),
             view_stale: true,

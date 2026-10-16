@@ -713,8 +713,10 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
         response
     }
 
-    /// A list whose selection is sent as [`GridMsg::Select`]. The list keeps
-    /// no state of its own that its view changes.
+    /// A list whose selection is sent as [`GridMsg::Select`], Enter on a row
+    /// as [`GridMsg::Activate`], and a selection the model lost as
+    /// [`GridMsg::Deselect`]. The list keeps no state of its own that its view
+    /// changes.
     #[track_caller]
     pub fn virtual_list_msg(
         &mut self,
@@ -723,31 +725,40 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
         options: VirtualListOptions,
         on: impl Fn(GridMsg) -> Msg + 'static,
     ) {
+        self.virtual_list_msg_with(model, state, options, on, |ui, model, index, _| {
+            ui.label_at(
+                "label",
+                model.label(index),
+                Style {
+                    width: Length::Percent(1.0),
+                    padding: 6.0,
+                    ..Style::default()
+                },
+            );
+        });
+    }
+
+    /// [`virtual_list_msg`](Self::virtual_list_msg) with the content of a row
+    /// declared by `row`, from the model, the row's index and whether it is
+    /// selected. The row's key is up to the closure.
+    #[track_caller]
+    pub fn virtual_list_msg_with<M: ListModel>(
+        &mut self,
+        model: &M,
+        state: &ListState,
+        options: VirtualListOptions,
+        on: impl Fn(GridMsg) -> Msg + 'static,
+        row: impl FnMut(&mut Ui<'_, Msg>, &M, usize, bool),
+    ) {
         let key = self.next_key();
         let on: Rc<dyn Fn(GridMsg) -> Msg> = Rc::new(on);
-        let nav = self.rows_msg(
-            key,
-            model,
-            state,
-            options,
-            CollectionKind::List,
-            |ui, model, index, _| {
-                ui.label_at(
-                    "label",
-                    model.label(index),
-                    Style {
-                        width: Length::Percent(1.0),
-                        padding: 6.0,
-                        ..Style::default()
-                    },
-                );
-            },
-        );
+        let nav = self.rows_msg(key, model, state, options, CollectionKind::List, row);
         self.set_handler(rows_handler(on, nav));
     }
 
     /// A tree whose selection and disclosure, by pointer or keyboard, are sent
-    /// as [`GridMsg::Select`] and [`GridMsg::Expand`].
+    /// as [`GridMsg::Select`] and [`GridMsg::Expand`], with the activation and
+    /// the lost selection of [`virtual_list_msg`](Self::virtual_list_msg).
     #[track_caller]
     pub fn tree_view_msg(
         &mut self,
@@ -756,31 +767,39 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
         options: VirtualListOptions,
         on: impl Fn(GridMsg) -> Msg + 'static,
     ) {
+        self.tree_view_msg_with(model, state, options, on, |ui, model, index, _| {
+            let prefix = match model.expanded(index) {
+                Some(true) => "▾",
+                Some(false) => "▸",
+                None => " ",
+            };
+            ui.label_at(
+                "label",
+                format!("{prefix}  {}", model.label(index)),
+                Style {
+                    width: Length::Percent(1.0),
+                    padding: 6.0,
+                    ..Style::default()
+                },
+            );
+        });
+    }
+
+    /// [`tree_view_msg`](Self::tree_view_msg) with the content of a row
+    /// declared by `row`, after the indent; the disclosure mark is the
+    /// closure's to draw.
+    #[track_caller]
+    pub fn tree_view_msg_with<M: ListModel>(
+        &mut self,
+        model: &M,
+        state: &ListState,
+        options: VirtualListOptions,
+        on: impl Fn(GridMsg) -> Msg + 'static,
+        row: impl FnMut(&mut Ui<'_, Msg>, &M, usize, bool),
+    ) {
         let key = self.next_key();
         let on: Rc<dyn Fn(GridMsg) -> Msg> = Rc::new(on);
-        let nav = self.rows_msg(
-            key,
-            model,
-            state,
-            options,
-            CollectionKind::Tree,
-            |ui, model, index, _| {
-                let prefix = match model.expanded(index) {
-                    Some(true) => "▾",
-                    Some(false) => "▸",
-                    None => " ",
-                };
-                ui.label_at(
-                    "label",
-                    format!("{prefix}  {}", model.label(index)),
-                    Style {
-                        width: Length::Percent(1.0),
-                        padding: 6.0,
-                        ..Style::default()
-                    },
-                );
-            },
-        );
+        let nav = self.rows_msg(key, model, state, options, CollectionKind::Tree, row);
         self.set_handler(rows_handler(on, nav));
     }
 
@@ -791,13 +810,15 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
     /// row chosen by pointer or keyboard sends `Select`, and typing in a
     /// filter field sends `Filter`, which the grid turns into
     /// `FiltersApplied` once typing pauses; filter text the application set
-    /// itself applies at once. Committing a cell edit sends `Edit`.
+    /// itself applies at once. Committing a cell edit sends `Edit`, and Enter
+    /// on a cell that cannot be edited sends `Activate`.
     ///
     /// The cell cursor, the sideways scroll and the cell being edited belong
     /// to the grid's node, not to `state`. An edit stays open, showing its
     /// draft, until the model's value for the cell differs from what it was
     /// when the edit began, so a `set_cell` that refuses the value leaves the
-    /// editor open; Escape cancels it. Messages that follow a commit (the
+    /// editor open. Report the refusal with [`GridState::refuse_edit`] and the
+    /// editor shows it and accepts another commit; Escape cancels the edit. Messages that follow a commit (the
     /// edit itself, the move to the next row) are sent one batch later.
     #[track_caller]
     pub fn data_grid_msg(
@@ -878,8 +899,15 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
         for input in inputs {
             let mut start = None;
             match input {
-                // Enter opens an editable cell; elsewhere it does nothing here.
+                // Enter opens an editable cell; elsewhere it activates the row.
                 CollectionInput::Activate if editable => start = Some(None),
+                CollectionInput::Activate => {
+                    if let Some(item) = selected
+                        && grid.edit.is_none()
+                    {
+                        sends.push(CollectionInput::Activated(item));
+                    }
+                }
                 CollectionInput::Cell { item, position } => {
                     let Some(&column) = visible.get(position) else {
                         continue;
@@ -942,6 +970,19 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                     typed,
                     &mut sends,
                 );
+            }
+        }
+        // A refusal the application reported answers the edit that waits for
+        // it: the editor stays, shows why, and can be committed again.
+        if state.refusals != grid.refusals_seen {
+            grid.refusals_seen = state.refusals;
+            if let (Some(edit), Some((item, column, message))) = (&mut grid.edit, &state.refusal)
+                && edit.waiting.is_some()
+                && edit.item == *item
+                && edit.column == *column
+            {
+                edit.error = Some(message.clone());
+                edit.waiting = None;
             }
         }
         // An edit the model has taken is over.
@@ -1417,17 +1458,27 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
             return Nav::default();
         }
         let owner = self.context.child(self.parent, &key, Kind::Collection);
-        let native = owner
+        let mut native = owner
             .and_then(|id| self.context.node(id))
             .and_then(|node| node.scroll.map(|scroll| scroll.offset))
             .unwrap_or(state.scroll_offset());
+        // The top row stays in place when the model reorders, unless the user
+        // scrolled since the last declaration.
+        if let Some(owner) = owner
+            && let Some(anchor) = self.context.list_anchor(owner)
+            && anchor.offset == native
+            && let Some(index) = model.index_of(anchor.item)
+        {
+            native = index as f32 * options.row_height + anchor.within;
+        }
         let top = (model.len() as f64 * f64::from(options.row_height) - f64::from(options.height))
             .max(0.0) as f32;
         let mut offset = native.clamp(0.0, top);
-        // A selection the user or the application just moved is scrolled into view once.
+        // A row the user or the application just moved to, or asked to
+        // reveal, is scrolled into view once.
         if let Some(owner) = owner
-            && self.context.reveal_selection(owner, state.selected())
-            && let Some(index) = state.selected().and_then(|id| model.index_of(id))
+            && self.context.reveal_selection(owner, state.reveal_target())
+            && let Some(index) = state.reveal_target().0.and_then(|id| model.index_of(id))
         {
             let first = index as f32 * options.row_height;
             let last = first + options.row_height;
@@ -1438,6 +1489,27 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                 offset = last - options.height;
             }
             offset = offset.clamp(0.0, top);
+        }
+        if let Some(owner) = owner {
+            let first = (offset / options.row_height).floor() as usize;
+            self.context.set_list_anchor(
+                owner,
+                (first < model.len()).then(|| crate::collection::ListAnchor {
+                    item: model.item_id(first),
+                    within: offset - first as f32 * options.row_height,
+                    offset,
+                }),
+            );
+            // A selection the model no longer has is for the application to
+            // drop: the next batch sends it.
+            if state
+                .selected()
+                .is_some_and(|id| model.index_of(id).is_none())
+            {
+                self.context
+                    .queue_grid_input(owner, CollectionInput::Deselect);
+                self.request_redraw();
+            }
         }
         let nav = Nav::new(model, state.selected(), &options);
         let window = Window {
@@ -1759,6 +1831,13 @@ fn rows_handler<M: 'static>(on: Rc<dyn Fn(GridMsg) -> M>, nav: Nav) -> crate::ap
                         _ => {}
                     }
                 }
+                CollectionInput::Activate => {
+                    if let Some(entry) = current.and_then(|index| nav.entry(index)) {
+                        out.push(on(GridMsg::Activate(entry.id)));
+                    }
+                }
+                CollectionInput::Activated(row) => out.push(on(GridMsg::Activate(row))),
+                CollectionInput::Deselect => out.push(on(GridMsg::Deselect)),
                 CollectionInput::FiltersDue => out.push(on(GridMsg::FiltersApplied)),
                 CollectionInput::EditValue {
                     item,
