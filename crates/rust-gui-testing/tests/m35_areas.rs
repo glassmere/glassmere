@@ -66,23 +66,23 @@ impl App for Areas {
         });
         ui.keyed("canvas", |ui| {
             ui.gesture_area(
-                GestureBuilder::new().on_gesture(Msg::Gesture),
                 sized(200.0, 200.0),
+                GestureBuilder::new().on_gesture(Msg::Gesture),
                 |_| {},
             )
         });
         ui.keyed("bin", |ui| {
             ui.drop_target(
-                DropTargetBuilder::new("Bin", DropKind::Text).on_drop(Msg::Dropped),
                 sized(120.0, 40.0),
+                DropTargetBuilder::new("Bin", DropKind::Text).on_drop(Msg::Dropped),
                 |_| {},
             )
         });
         ui.keyed("source", |ui| {
             ui.drag_source(
+                sized(80.0, 30.0),
                 DragSourceBuilder::new("Card", DragPayload::Text("card".into()))
                     .on_drag_end(Msg::Ended),
-                sized(80.0, 30.0),
                 |ui| ui.label("Card"),
             )
         });

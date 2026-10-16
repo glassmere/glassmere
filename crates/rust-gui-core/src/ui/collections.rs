@@ -435,9 +435,9 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                                     // The drop's handler follows: it takes only this
                                     // grid's columns.
                                     let target = DropTargetBuilder::new("", crate::DropKind::Item);
-                                    ui.at("$drop").drop_target(target, grip.clone(), |ui| {
+                                    ui.at("$drop").drop_target(grip.clone(), target, |ui| {
                                         let source = DragSourceBuilder::new("", payload);
-                                        ui.at("$drag").drag_source(source, grip, |ui| {
+                                        ui.at("$drag").drag_source(grip, source, |ui| {
                                             let sort = Style {
                                                 padding: 6.0,
                                                 radius: 0.0,

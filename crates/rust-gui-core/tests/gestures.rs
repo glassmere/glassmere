@@ -52,13 +52,13 @@ fn view(state: &Canvas, ui: &mut Ui<'_, Action<Canvas>>) {
             let canvas = |ui: &mut Ui<'_, Action<Canvas>>| {
                 ui.keyed("canvas", |ui| {
                     ui.gesture_area(
+                        sized(400.0, 300.0),
                         GestureBuilder::new().on_gesture(on(
                             |s: &mut Canvas, gesture: GestureResponse| {
                                 s.gesture = gesture;
                                 s.reports += 1;
                             },
                         )),
-                        sized(400.0, 300.0),
                         |ui| {
                             ui.keyed("inside", |ui| {
                                 ui.button(

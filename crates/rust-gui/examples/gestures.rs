@@ -103,10 +103,7 @@ impl App for Gestures {
                 justify_content: rust_gui::Justify::Center,
                 ..Style::default()
             };
-            ui.gesture_area(
-                GestureBuilder::new().on_gesture(Msg::Gesture),
-                canvas,
-                |ui| {
+            ui.gesture_area(canvas, GestureBuilder::new().on_gesture(Msg::Gesture), |ui| {
                     let photo = Style {
                         width: Length::Px(320.0),
                         height: Length::Px(200.0),
@@ -126,8 +123,7 @@ impl App for Gestures {
                             .fit(ImageFit::Cover)
                             .style(photo),
                     );
-                },
-            );
+                },);
         });
     }
 }

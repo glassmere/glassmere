@@ -201,8 +201,8 @@ impl<'a, M: 'static> Ui<'a, M> {
     #[track_caller]
     pub fn drag_source(
         &mut self,
-        source: DragSourceBuilder<M>,
         style: Style,
+        source: DragSourceBuilder<M>,
         content: impl FnOnce(&mut Ui<'_, M>),
     ) {
         let DragSourceBuilder {
@@ -231,8 +231,8 @@ impl<'a, M: 'static> Ui<'a, M> {
     #[track_caller]
     pub fn gesture_area(
         &mut self,
-        gesture: GestureBuilder<M>,
         style: Style,
+        gesture: GestureBuilder<M>,
         content: impl FnOnce(&mut Ui<'_, M>),
     ) {
         let key = self.next_key();
@@ -252,8 +252,8 @@ impl<'a, M: 'static> Ui<'a, M> {
     #[track_caller]
     pub fn drop_target(
         &mut self,
-        target: DropTargetBuilder<M>,
         style: Style,
+        target: DropTargetBuilder<M>,
         content: impl FnOnce(&mut Ui<'_, M>),
     ) {
         let DropTargetBuilder {
@@ -285,8 +285,8 @@ impl<'a, M: 'static> Ui<'a, M> {
     #[track_caller]
     pub fn event_area(
         &mut self,
-        area: AreaBuilder<M>,
         style: Style,
+        area: AreaBuilder<M>,
         content: impl FnOnce(&mut Ui<'_, M>),
     ) {
         let key = self.next_key();

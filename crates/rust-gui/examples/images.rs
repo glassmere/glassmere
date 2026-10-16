@@ -247,14 +247,10 @@ impl App for Gallery {
                 ..Style::default()
             };
             let file = std::path::PathBuf::from(format!("{ASSETS}/dusk.png"));
-            ui.drag_source(
-                DragSourceBuilder::new("dusk.png, draggable file", DragPayload::Files(vec![file]))
-                    .on_drag_end(Msg::Exported),
-                card,
-                |ui| {
+            ui.drag_source(card, DragSourceBuilder::new("dusk.png, draggable file", DragPayload::Files(vec![file]))
+                    .on_drag_end(Msg::Exported), |ui| {
                     ui.label("dusk.png");
-                },
-            );
+                },);
         });
     }
 }

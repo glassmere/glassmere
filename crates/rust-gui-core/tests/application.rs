@@ -83,9 +83,9 @@ fn board_view(state: &Board, ui: &mut Ui<'_, Message<Board>>) {
     let payload = state.payload.clone();
     ui.keyed("source", |ui| {
         ui.drag_source(
+            boxed(),
             DragSourceBuilder::new("Card", payload)
                 .on_drag_end(|outcome| act(move |s: &mut Board| s.outcomes.push(outcome))),
-            boxed(),
             |ui| {
                 ui.label("Card");
             },
@@ -94,18 +94,18 @@ fn board_view(state: &Board, ui: &mut Ui<'_, Message<Board>>) {
     ui.enabled(state.target_enabled, |ui| {
         ui.keyed("text", |ui| {
             ui.drop_target(
+                boxed(),
                 DropTargetBuilder::new("Text bin", DropKind::Text)
                     .on_drop(|payload| act(move |s: &mut Board| s.text.push(payload.clone()))),
-                boxed(),
                 |_| {},
             )
         });
     });
     ui.keyed("item", |ui| {
         ui.drop_target(
+            boxed(),
             DropTargetBuilder::new("Item bin", DropKind::Item)
                 .on_drop(|payload| act(move |s: &mut Board| s.item.push(payload.clone()))),
-            boxed(),
             |_| {},
         )
     });
@@ -247,9 +247,9 @@ struct Dropped {
 fn files_view(_: &Dropped, ui: &mut Ui<'_, Message<Dropped>>) {
     ui.keyed("files", |ui| {
         ui.drop_target(
+            boxed(),
             DropTargetBuilder::new("Files", DropKind::Files)
                 .on_drop(|payload| act(move |s: &mut Dropped| s.dropped.push(payload.clone()))),
-            boxed(),
             |_| {},
         )
     });
@@ -354,9 +354,9 @@ fn duplicate_enabled_shortcuts_are_rejected_at_declaration() {
 fn bin_view(_: &Dropped, ui: &mut Ui<'_, Message<Dropped>>) {
     ui.keyed("bin", |ui| {
         ui.drop_target(
+            boxed(),
             DropTargetBuilder::new("Text bin", DropKind::Text)
                 .on_drop(|payload| act(move |s: &mut Dropped| s.dropped.push(payload.clone()))),
-            boxed(),
             |_| {},
         )
     });
@@ -401,9 +401,9 @@ fn cross() -> (Driven<Cross>, WindowId) {
     let mut app = Driven::new(ROOT, Cross::default(), |_, ui| {
         ui.keyed("source", |ui| {
             ui.drag_source(
+                boxed(),
                 DragSourceBuilder::new("Card", card())
                     .on_drag_end(|outcome| act(move |s: &mut Cross| s.outcomes.push(outcome))),
-                boxed(),
                 |ui| {
                     ui.label("Card");
                 },
@@ -413,9 +413,9 @@ fn cross() -> (Driven<Cross>, WindowId) {
     app.set_window_view(|_, _, ui| {
         ui.keyed("bin", |ui| {
             ui.drop_target(
+                boxed(),
                 DropTargetBuilder::new("Item bin", DropKind::Item)
                     .on_drop(|payload| act(move |s: &mut Cross| s.dropped.push(payload.clone()))),
-                boxed(),
                 |_| {},
             )
         });

@@ -32,13 +32,13 @@ fn inner_event(event: UiEvent) -> Option<Action<Seen>> {
 fn page(state: &Seen, ui: &mut Ui<'_, Action<Seen>>) {
     ui.keyed("outer", |ui| {
         ui.event_area(
-            AreaBuilder::new(state.outer_area).on_event(outer_event),
             Style::default().padding(4.0),
+            AreaBuilder::new(state.outer_area).on_event(outer_event),
             |ui| {
                 ui.keyed("inner", |ui| {
                     ui.event_area(
-                        AreaBuilder::new(state.inner_area).on_event(inner_event),
                         Style::default().padding(4.0),
+                        AreaBuilder::new(state.inner_area).on_event(inner_event),
                         |ui| {
                             ui.keyed("press", |ui| {
                                 ui.button(
@@ -205,10 +205,10 @@ struct Tell {
 fn tell(_: &Tell, ui: &mut Ui<'_, Action<Tell>>) {
     ui.keyed("watch", |ui| {
         ui.event_area(
+            Style::default(),
             AreaBuilder::new(EventArea::pointer()).on_event(|event: UiEvent| {
                 Some(act(move |s: &mut Tell| s.heard.push(event.clone())))
             }),
-            Style::default(),
             |ui| {
                 ui.keyed("inside", |ui| {
                     ui.widget(
@@ -317,10 +317,10 @@ fn pointer_moves_that_send_nothing_do_not_declare() {
     let mut driven = Driven::new(ROOT, (), |_, ui| {
         ui.keyed("area", |ui| {
             ui.event_area(
-                AreaBuilder::new(EventArea::pointer()).on_event(|_| None),
                 Style::default()
                     .width(Length::Px(100.0))
                     .height(Length::Px(100.0)),
+                AreaBuilder::new(EventArea::pointer()).on_event(|_| None),
                 |_| {},
             );
         });

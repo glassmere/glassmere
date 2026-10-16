@@ -294,28 +294,16 @@ impl App for Application {
                         let selected = self.list.selected();
                         let panel = Style { padding: 12.0, radius: 8.0, width: Length::Px(180.0), height: Length::Px(72.0), ..Style::default() };
                         ui.enabled(selected.is_some(), |ui| {
-                            ui.drag_source(
-                                DragSourceBuilder::new("Selected ticket", DragPayload::Item { domain: "ticket".into(), id: selected.unwrap_or(ItemId(0)) }),
-                                Style { background: Some(Color::rgb(22, 105, 99)), ..panel.clone() },
-                                |ui| {
+                            ui.drag_source(Style { background: Some(Color::rgb(22, 105, 99)), ..panel.clone() }, DragSourceBuilder::new("Selected ticket", DragPayload::Item { domain: "ticket".into(), id: selected.unwrap_or(ItemId(0)) }), |ui| {
                                     ui.label(selected.map_or("Select a ticket to drag".into(), |id| format!("Drag ticket #{}", id.0)));
-                                },
-                            );
+                                },);
                         });
-                        ui.drop_target(
-                            DropTargetBuilder::new("Archive", DropKind::Item).on_drop(Message::Archived),
-                            Style { background: Some(Color::rgb(64, 48, 96)), ..panel.clone() },
-                            |ui| {
+                        ui.drop_target(Style { background: Some(Color::rgb(64, 48, 96)), ..panel.clone() }, DropTargetBuilder::new("Archive", DropKind::Item).on_drop(Message::Archived), |ui| {
                                 ui.label(format!("Archive: {} tickets", self.archived.len()));
-                            },
-                        );
-                        ui.drop_target(
-                            DropTargetBuilder::new("Drop files", DropKind::Files).on_drop(Message::Files),
-                            Style { background: Some(Color::rgb(35, 52, 74)), ..panel.clone() },
-                            |ui| {
+                            },);
+                        ui.drop_target(Style { background: Some(Color::rgb(35, 52, 74)), ..panel.clone() }, DropTargetBuilder::new("Drop files", DropKind::Files).on_drop(Message::Files), |ui| {
                                 ui.label(if self.files.is_empty() { "Drop files from the OS here".into() } else { self.files.join(", ") });
-                            },
-                        );
+                            },);
                     });
                 });
             });
@@ -351,20 +339,16 @@ impl App for Application {
                         .join(", ")
                 )
             };
-            ui.drop_target(
-                DropTargetBuilder::new("Link ticket", DropKind::Item).on_drop(Message::Linked),
-                Style {
+            ui.drop_target(Style {
                     padding: 12.0,
                     radius: 8.0,
                     width: Length::Px(380.0),
                     height: Length::Px(64.0),
                     background: Some(Color::rgb(64, 48, 96)),
                     ..Style::default()
-                },
-                |ui| {
+                }, DropTargetBuilder::new("Link ticket", DropKind::Item).on_drop(Message::Linked), |ui| {
                     ui.label(linked);
-                },
-            );
+                },);
             ui.label(Label::new("Selection changes in the main window redraw this one. Close it from the title bar.").style(Style {
                 font_size: Some(13.0), foreground: Some(Color::rgb(162, 180, 198)), width: Length::Px(380.0), wrap: TextWrap::Word, ..Style::default()
             }));

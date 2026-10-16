@@ -100,8 +100,8 @@ fn page(state: &Page, ui: &mut Ui<'_, Action<Page>>) {
                     ui.row(Style::default().gap(20.0), |ui| {
                         ui.keyed("card", |ui| {
                             ui.drag_source(
-                                DragSourceBuilder::new("Card", DragPayload::Text("hello".into())),
                                 sized(100.0, 60.0),
+                                DragSourceBuilder::new("Card", DragPayload::Text("hello".into())),
                                 |ui| {
                                     ui.label("Card");
                                 },
@@ -109,12 +109,12 @@ fn page(state: &Page, ui: &mut Ui<'_, Action<Page>>) {
                         });
                         ui.keyed("bin", |ui| {
                             ui.drop_target(
+                                sized(100.0, 60.0),
                                 DropTargetBuilder::new("Bin", DropKind::Text).on_drop(on(
                                     |s: &mut Page, payload: DragPayload| {
                                         s.dropped = Some(payload);
                                     },
                                 )),
-                                sized(100.0, 60.0),
                                 |_| {},
                             );
                         });
