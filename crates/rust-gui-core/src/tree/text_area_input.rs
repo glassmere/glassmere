@@ -1,5 +1,5 @@
 use super::*;
-use crate::text_area::{AreaLine, AreaOp, Granularity, MarkKind};
+use crate::text_area::{AreaLine, Granularity, MarkKind, TextOp};
 use crate::{EditorCommand, Motion, TextEdit, TextMove};
 use rust_gui_scene::{Affinity, FontFamily, TextGeometry, TextSpan};
 
@@ -83,7 +83,7 @@ impl Context {
         let Some(id) = self.focused_area() else {
             return false;
         };
-        self.area_op(id, AreaOp::Clipboard { cut });
+        self.area_op(id, TextOp::Clipboard { cut });
         true
     }
 
@@ -160,13 +160,13 @@ impl Context {
         Some(node.area.as_ref()?.caret?.intersect(node.clip))
     }
 
-    fn area_op(&mut self, id: NodeId, op: AreaOp) {
+    fn area_op(&mut self, id: NodeId, op: TextOp) {
         if let Some(area) = self.nodes.get_mut(&id).and_then(|node| node.area.as_mut()) {
             area.pending_affinity = match op {
                 // Typed text keeps the caret with the character just entered.
-                AreaOp::Insert(_) => Some(Affinity::Upstream),
+                TextOp::Insert(_) => Some(Affinity::Upstream),
                 // Set by whoever resolved the position from the shaped line.
-                AreaOp::Pointer { .. } => area.pending_affinity,
+                TextOp::Pointer { .. } => area.pending_affinity,
                 _ => None,
             };
         }
@@ -224,7 +224,7 @@ impl Context {
     /// A visual Left or Right for a single cursor on a line that contains
     /// right-to-left text. Other lines, several cursors and logical movement
     /// use the document's own motions.
-    fn area_visual(&mut self, id: NodeId, right: bool, select: bool, word: bool) -> Option<AreaOp> {
+    fn area_visual(&mut self, id: NodeId, right: bool, select: bool, word: bool) -> Option<TextOp> {
         if self.caret_movement != crate::CaretMovement::Visual {
             return None;
         }
@@ -247,7 +247,7 @@ impl Context {
         let rtl_line = layout.geometry.lines.first().is_some_and(|line| line.rtl);
         let Some((byte, affinity)) = step else {
             // Leaving the line: its right end is the logical end only when LTR.
-            return Some(AreaOp::Move {
+            return Some(TextOp::Move {
                 motion: if right != rtl_line {
                     Motion::Right
                 } else {
@@ -259,7 +259,7 @@ impl Context {
         if word {
             // Inside a right-to-left run the arrow points against the text.
             let forward = byte > primary.1 || (byte == primary.1 && right != rtl_line);
-            return Some(AreaOp::Move {
+            return Some(TextOp::Move {
                 motion: if forward {
                     Motion::WordRight
                 } else {
@@ -269,7 +269,7 @@ impl Context {
             });
         }
         self.set_pending_affinity(id, affinity);
-        Some(AreaOp::Pointer {
+        Some(TextOp::Pointer {
             line: primary.0,
             byte,
             select,
@@ -307,7 +307,7 @@ impl Context {
                 self.captured = Some(id);
                 self.area_op(
                     id,
-                    AreaOp::Pointer {
+                    TextOp::Pointer {
                         line,
                         byte,
                         select: matches!(event, Event::PointerDownWithShift),
@@ -331,7 +331,7 @@ impl Context {
                 self.set_pending_affinity(id, affinity);
                 self.area_op(
                     id,
-                    AreaOp::Pointer {
+                    TextOp::Pointer {
                         line,
                         byte,
                         select: true,
@@ -354,7 +354,7 @@ impl Context {
                 self.focus_control(id);
                 self.area_op(
                     id,
-                    AreaOp::Pointer {
+                    TextOp::Pointer {
                         line,
                         byte,
                         select: false,
@@ -369,7 +369,7 @@ impl Context {
                 if self.nodes.get(&id)?.kind != Kind::TextArea {
                     return None;
                 }
-                self.area_op(id, AreaOp::Command(*command));
+                self.area_op(id, TextOp::Command(*command));
                 Some(true)
             }
             // Escape in the find bar closes it; focus returns to the text.
@@ -379,7 +379,7 @@ impl Context {
                 let id = self
                     .editor_area()
                     .filter(|id| self.nodes[id].kind == Kind::TextArea)?;
-                self.area_op(id, AreaOp::Command(EditorCommand::CloseFind));
+                self.area_op(id, TextOp::Command(EditorCommand::CloseFind));
                 Some(true)
             }
             Event::KeyDown { key, shift, .. } => {
@@ -412,14 +412,14 @@ impl Context {
             return true;
         }
         let op = match edit {
-            TextEdit::Insert(text) => AreaOp::Insert(text.clone()),
-            TextEdit::Backspace { word } => AreaOp::Backspace { word: *word },
-            TextEdit::Delete { word } => AreaOp::Delete { word: *word },
+            TextEdit::Insert(text) => TextOp::Insert(text.clone()),
+            TextEdit::Backspace { word } => TextOp::Backspace { word: *word },
+            TextEdit::Delete { word } => TextOp::Delete { word: *word },
             TextEdit::Move {
                 direction,
                 select,
                 word,
-            } => AreaOp::Move {
+            } => TextOp::Move {
                 motion: match (direction, word) {
                     (TextMove::Left, false) => Motion::Left,
                     (TextMove::Left, true) => Motion::WordLeft,
@@ -432,9 +432,9 @@ impl Context {
                 },
                 select: *select,
             },
-            TextEdit::SelectAll => AreaOp::SelectAll,
-            TextEdit::Undo => AreaOp::Undo,
-            TextEdit::Redo => AreaOp::Redo,
+            TextEdit::SelectAll => TextOp::SelectAll,
+            TextEdit::Undo => TextOp::Undo,
+            TextEdit::Redo => TextOp::Redo,
             // Byte selections address single-line inputs only.
             TextEdit::Select { .. } => return false,
             TextEdit::Preedit { text, .. } => {
@@ -449,7 +449,7 @@ impl Context {
                 if let Some(area) = self.nodes.get_mut(&id).and_then(|node| node.area.as_mut()) {
                     area.preedit = None;
                 }
-                AreaOp::Insert(text.clone())
+                TextOp::Insert(text.clone())
             }
             TextEdit::CancelComposition => {
                 if let Some(area) = self.nodes.get_mut(&id).and_then(|node| node.area.as_mut()) {
@@ -476,7 +476,7 @@ impl Context {
         let area = node.area.as_ref()?;
         let page = ((content(node).height / area.line_height.max(1.0)) as isize - 1).max(1);
         let escaped = area.tab_escape;
-        let motion = |motion| AreaOp::Move {
+        let motion = |motion| TextOp::Move {
             motion,
             select: shift,
         };
@@ -495,15 +495,15 @@ impl Context {
             Key::End => motion(Motion::LineEnd),
             Key::PageUp => motion(Motion::Lines(-page)),
             Key::PageDown => motion(Motion::Lines(page)),
-            Key::Backspace => AreaOp::Backspace { word: false },
-            Key::Delete => AreaOp::Delete { word: false },
-            Key::Enter if !read_only => AreaOp::Newline,
+            Key::Backspace => TextOp::Backspace { word: false },
+            Key::Delete => TextOp::Delete { word: false },
+            Key::Enter if !read_only => TextOp::Newline,
             // Keyboard users leave the editor with Escape, then Tab.
             Key::Tab if !read_only && !escaped => {
                 if shift {
-                    AreaOp::Outdent
+                    TextOp::Outdent
                 } else {
-                    AreaOp::Indent
+                    TextOp::Indent
                 }
             }
             Key::Escape => {
@@ -511,7 +511,7 @@ impl Context {
                     area.tab_escape = true;
                 }
                 if selection_count > 1 {
-                    self.area_op(id, AreaOp::CollapseSelections);
+                    self.area_op(id, TextOp::CollapseSelections);
                     return Some(true);
                 }
                 // Dialogs and popups still see Escape.

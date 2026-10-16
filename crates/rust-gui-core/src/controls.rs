@@ -393,7 +393,7 @@ pub(crate) enum ControlUpdate {
     Gesture(crate::GestureResponse),
     Dismiss,
     Dock(DockAction),
-    TextOps(Vec<crate::text_area::AreaOp>),
+    TextOps(Vec<crate::text_area::TextOp>),
     RichOps(Vec<crate::rich_editor::RichOp>),
 }
 

@@ -178,11 +178,11 @@ impl FindState {
     pub fn apply<M: 'static>(
         &mut self,
         document: &mut TextDocument,
-        op: AreaOp,
+        op: TextOp,
         effects: &mut crate::Effects<'_, M>,
     ) {
         match op {
-            AreaOp::Command(search @ (EditorCommand::Find | EditorCommand::Replace)) => {
+            TextOp::Command(search @ (EditorCommand::Find | EditorCommand::Replace)) => {
                 self.open = true;
                 self.replace |= search == EditorCommand::Replace;
                 // Search for the selection, as editors do.
@@ -191,14 +191,14 @@ impl FindState {
                     self.query = selected;
                 }
             }
-            AreaOp::Command(EditorCommand::CloseFind) => self.open = false,
-            AreaOp::Command(EditorCommand::FindNext) => {
+            TextOp::Command(EditorCommand::CloseFind) => self.open = false,
+            TextOp::Command(EditorCommand::FindNext) => {
                 self.step(document, true);
             }
-            AreaOp::Command(EditorCommand::FindPrevious) => {
+            TextOp::Command(EditorCommand::FindPrevious) => {
                 self.step(document, false);
             }
-            AreaOp::Find(edit) => match edit {
+            TextOp::Find(edit) => match edit {
                 FindEdit::Query(query) => self.query = query,
                 FindEdit::Replacement(replacement) => self.replacement = replacement,
                 FindEdit::CaseSensitive(on) => self.case_sensitive = on,
@@ -319,7 +319,7 @@ pub enum Granularity {
 
 /// One edit to a text area's document, as a message carries it.
 #[derive(Clone, Debug, PartialEq)]
-pub enum AreaOp {
+pub enum TextOp {
     Insert(String),
     /// Typing an opening bracket or quote, with its partner (auto-close).
     InsertPaired(String),
@@ -371,7 +371,7 @@ pub enum FindEdit {
     ReplaceAll,
 }
 
-impl AreaOp {
+impl TextOp {
     /// Whether the op changes the text. A read-only editor drops these and
     /// keeps the ones that move, select, copy or search.
     pub(crate) fn is_edit(&self) -> bool {
@@ -396,8 +396,8 @@ impl TextDocument {
     /// [`TextDocument::apply`] that also puts the text of a copy or cut on the
     /// clipboard, through `effects`, before applying it. A copy or cut is
     /// serviced in the batch that carries it, whether or not a view follows.
-    pub fn apply_with<M: 'static>(&mut self, op: AreaOp, effects: &mut crate::Effects<'_, M>) {
-        if matches!(op, AreaOp::Clipboard { .. }) {
+    pub fn apply_with<M: 'static>(&mut self, op: TextOp, effects: &mut crate::Effects<'_, M>) {
+        if matches!(op, TextOp::Clipboard { .. }) {
             effects.copy(crate::Clip::text(self.copy_text()));
         }
         self.apply(op);
@@ -407,10 +407,10 @@ impl TextDocument {
     /// and without a find bar, which need state of the editor. A cut removes
     /// the selection; the text a copy or cut puts on the clipboard is
     /// `copy_text()`, read before applying, which `apply_with` does.
-    pub fn apply(&mut self, op: AreaOp) {
+    pub fn apply(&mut self, op: TextOp) {
         match op {
-            AreaOp::Move { motion, select } => self.move_cursors(motion, select),
-            AreaOp::Pointer {
+            TextOp::Move { motion, select } => self.move_cursors(motion, select),
+            TextOp::Pointer {
                 line,
                 byte,
                 select,
@@ -436,14 +436,14 @@ impl TextDocument {
                     self.set_selection(anchor, cursor);
                 }
             }
-            AreaOp::SelectAll => self.select_all(),
-            AreaOp::CollapseSelections => self.collapse_selections(),
-            AreaOp::Clipboard { cut } => {
+            TextOp::SelectAll => self.select_all(),
+            TextOp::CollapseSelections => self.collapse_selections(),
+            TextOp::Clipboard { cut } => {
                 if cut {
                     self.cut();
                 }
             }
-            AreaOp::Command(command) => match command {
+            TextOp::Command(command) => match command {
                 EditorCommand::SelectNextOccurrence => {
                     self.select_next_occurrence();
                 }
@@ -457,35 +457,35 @@ impl TextDocument {
                 _ => {}
             },
             // The find bar's own edits belong to `FindState::apply`.
-            AreaOp::Find(_) => {}
-            AreaOp::Insert(text) => {
+            TextOp::Find(_) => {}
+            TextOp::Insert(text) => {
                 self.insert(&text);
             }
-            AreaOp::InsertPaired(text) => {
+            TextOp::InsertPaired(text) => {
                 self.insert_paired(&text);
             }
-            AreaOp::Backspace { word } => {
+            TextOp::Backspace { word } => {
                 self.backspace(word);
             }
-            AreaOp::BackspacePaired => {
+            TextOp::BackspacePaired => {
                 self.backspace_paired();
             }
-            AreaOp::Delete { word } => {
+            TextOp::Delete { word } => {
                 self.delete(word);
             }
-            AreaOp::Newline => {
+            TextOp::Newline => {
                 self.newline();
             }
-            AreaOp::Indent => {
+            TextOp::Indent => {
                 self.indent();
             }
-            AreaOp::Outdent => {
+            TextOp::Outdent => {
                 self.outdent();
             }
-            AreaOp::Undo => {
+            TextOp::Undo => {
                 self.undo();
             }
-            AreaOp::Redo => {
+            TextOp::Redo => {
                 self.redo();
             }
         }

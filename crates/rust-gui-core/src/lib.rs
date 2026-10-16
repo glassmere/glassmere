@@ -76,8 +76,8 @@ pub use style::{
 pub use stylesheet::{StyleSheet, StyleSheetError};
 pub use task::{Cancel, TaskSender, Tasks};
 pub use text_area::{
-    AreaOp as TextOp, CodeEditorOptions, Diagnostic, EditorCommand, FindEdit, FindState,
-    HighlightSpan, Highlighter, Severity,
+    CodeEditorOptions, Diagnostic, EditorCommand, FindEdit, FindState, HighlightSpan, Highlighter,
+    Severity, TextOp,
 };
 pub use theme::{TOKENS, Theme};
 pub use toast::{Toast, ToastAction, ToastId, ToastKind, ToastSender};

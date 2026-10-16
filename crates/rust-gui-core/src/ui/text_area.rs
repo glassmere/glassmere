@@ -1,7 +1,7 @@
 use super::*;
 use crate::app::Handler;
 use crate::text_area::{
-    AreaLine, AreaMark, AreaOp, AreaSelection, FindEdit, MarkKind, line_spans, marks_for,
+    AreaLine, AreaMark, AreaSelection, FindEdit, MarkKind, TextOp, line_spans, marks_for,
 };
 use crate::{
     Align, Button, CodeEditorOptions, EditorCommand, FindState, FocusScope, Length, Severity,
@@ -28,7 +28,7 @@ fn find_bar<M: 'static>(
     find: &FindState,
     document: &TextDocument,
     read_only: bool,
-    on: &Rc<dyn Fn(AreaOp) -> M>,
+    on: &Rc<dyn Fn(TextOp) -> M>,
 ) {
     let input = |width| Style {
         width: Length::Px(width),
@@ -36,8 +36,8 @@ fn find_bar<M: 'static>(
         ..compact()
     };
     let row = Style::default().gap(6.0).align_items(Align::Center);
-    let command = |command: EditorCommand| on(AreaOp::Command(command));
-    let edit = |edit: FindEdit| on(AreaOp::Find(edit));
+    let command = |command: EditorCommand| on(TextOp::Command(command));
+    let edit = |edit: FindEdit| on(TextOp::Find(edit));
     ui.focus_scope_at(
         "$find",
         FocusScope {
@@ -55,7 +55,7 @@ fn find_bar<M: 'static>(
                         .style(input(220.0))
                         .on_submit(command(EditorCommand::FindNext)),
                     &find.query,
-                    move |query| typed(AreaOp::Find(FindEdit::Query(query))),
+                    move |query| typed(TextOp::Find(FindEdit::Query(query))),
                 );
                 ui.at("$previous").button(
                     Button::new("Previous")
@@ -117,7 +117,7 @@ fn find_bar<M: 'static>(
                             .placeholder("Replace")
                             .style(input(220.0)),
                         &find.replacement,
-                        move |text| typed(AreaOp::Find(FindEdit::Replacement(text))),
+                        move |text| typed(TextOp::Find(FindEdit::Replacement(text))),
                     );
                     ui.at("$one").button(
                         Button::new("Replace")
@@ -324,7 +324,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         &mut self,
         document: &TextDocument,
         options: CodeEditorOptions<'_>,
-        on: impl Fn(AreaOp) -> M + 'static,
+        on: impl Fn(TextOp) -> M + 'static,
     ) {
         if options.find.is_some() {
             self.misuse("a text area has no find bar; use code_editor for it".into());
@@ -352,14 +352,14 @@ impl<'a, M: 'static> Ui<'a, M> {
         &mut self,
         document: &TextDocument,
         options: CodeEditorOptions<'_>,
-        on: impl Fn(AreaOp) -> M + 'static,
+        on: impl Fn(TextOp) -> M + 'static,
     ) {
         let mut outer = options.style.clone();
         outer.padding = 0.0;
         outer.radius = 0.0;
         outer.background = None;
         outer.gap = 6.0;
-        let on: Rc<dyn Fn(AreaOp) -> M> = Rc::new(on);
+        let on: Rc<dyn Fn(TextOp) -> M> = Rc::new(on);
         let mut handler = Some(text_handler(
             on.clone(),
             options.read_only,
@@ -386,7 +386,7 @@ impl<'a, M: 'static> Ui<'a, M> {
 /// the edits and turns a cut into a copy, as the kernel does; auto-close
 /// turns a typed bracket or quote, and a backspace, into their paired ops.
 fn text_handler<M: 'static>(
-    on: Rc<dyn Fn(AreaOp) -> M>,
+    on: Rc<dyn Fn(TextOp) -> M>,
     read_only: bool,
     auto_close: bool,
 ) -> Handler<M> {
@@ -396,12 +396,12 @@ fn text_handler<M: 'static>(
         };
         for op in ops {
             let op = match op {
-                AreaOp::Clipboard { cut } => AreaOp::Clipboard {
+                TextOp::Clipboard { cut } => TextOp::Clipboard {
                     cut: cut && !read_only,
                 },
                 op if read_only && op.is_edit() => continue,
-                AreaOp::Insert(text) if auto_close => AreaOp::InsertPaired(text),
-                AreaOp::Backspace { word: false } if auto_close => AreaOp::BackspacePaired,
+                TextOp::Insert(text) if auto_close => TextOp::InsertPaired(text),
+                TextOp::Backspace { word: false } if auto_close => TextOp::BackspacePaired,
                 op => op,
             };
             out.push(on(op));
