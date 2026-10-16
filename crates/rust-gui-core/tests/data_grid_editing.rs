@@ -686,4 +686,26 @@ mod filtering {
         assert_eq!(driven.state().model.calls.last().unwrap(), &Vec::new());
         assert_eq!(driven.state().model.len(), 4);
     }
+
+    #[test]
+    fn filters_the_app_never_applies_do_not_keep_the_view_declaring() {
+        let mut driven = driven(0);
+        driven.set_view(|state: &Fruits, ui| {
+            ui.keyed("grid", |ui| {
+                ui.data_grid_msg(
+                    &state.model,
+                    &state.grid,
+                    VirtualListOptions::default(),
+                    |_| act(|_: &mut Fruits| {}),
+                )
+            });
+        });
+        driven.state_mut().grid.filters.insert(1, "red".into());
+        driven.context.set_now(Duration::from_millis(600));
+        let declared = (0..6).filter(|_| driven.frame().declared).count();
+        assert!(
+            declared <= 2,
+            "the view declared {declared} times in 6 batches"
+        );
+    }
 }

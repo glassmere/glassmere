@@ -671,6 +671,17 @@ pub const FILTER_DELAY: std::time::Duration = std::time::Duration::from_millis(2
 /// The filters of a grid: `(model column, text)` pairs, trimmed and non-empty.
 pub(crate) type Filters = Vec<(usize, String)>;
 
+/// What a declaration of a message-form grid reports about its filters.
+#[derive(Clone, Debug)]
+pub(crate) enum FilterNote {
+    /// The model has the filters the view wants.
+    Applied,
+    /// Typed filters, sent once typing pauses.
+    Waiting(Filters),
+    /// Filters set from code, sent by this declaration.
+    Sent(Filters),
+}
+
 /// A grid's filter delay, kept by the kernel: the filters it waits on, when
 /// they are due, and whether `FiltersApplied` has been queued for them.
 #[derive(Clone, Debug)]

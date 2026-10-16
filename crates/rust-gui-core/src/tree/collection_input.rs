@@ -1,31 +1,39 @@
 use super::*;
 use crate::collection::{
-    CollectionInput, CollectionKind, FILTER_DELAY, FilterTimer, GridNode, ListAnchor,
+    CollectionInput, CollectionKind, FILTER_DELAY, FilterNote, FilterTimer, GridNode, ListAnchor,
 };
 
 impl Context {
-    /// Records what a grid's view wants of its filters: `Some` while the
-    /// model is behind them. The next batch starts or fires their delay.
-    pub(crate) fn note_grid_filters(
-        &self,
-        rows: NodeId,
-        pending: Option<crate::collection::Filters>,
-    ) {
-        self.grid_filters.borrow_mut().push((rows, pending));
+    /// Records what a grid's view wants of its filters. The next batch
+    /// starts or fires their delay.
+    pub(crate) fn note_grid_filters(&self, rows: NodeId, note: FilterNote) {
+        self.grid_filters.borrow_mut().push((rows, note));
     }
 
     /// Starts or restarts the filter delays of the grids that declared
     /// filters since the last batch. Firing is in `due_grid_filters`.
     pub(crate) fn start_grid_timers(&mut self) {
         let now = self.now;
-        for (rows, pending) in std::mem::take(&mut *self.grid_filters.borrow_mut()) {
-            match pending {
-                None => {
+        for (rows, note) in std::mem::take(&mut *self.grid_filters.borrow_mut()) {
+            match note {
+                FilterNote::Applied => {
                     self.grid_timers.remove(&rows);
+                }
+                // Sent without a delay: remembered as fired, so a model that
+                // stays behind them is not sent them again.
+                FilterNote::Sent(filters) => {
+                    self.grid_timers.insert(
+                        rows,
+                        FilterTimer {
+                            due: now,
+                            filters,
+                            fired: true,
+                        },
+                    );
                 }
                 // A declaration may still report filters that have just fired;
                 // only different filters start a new delay.
-                Some(filters) => {
+                FilterNote::Waiting(filters) => {
                     if self
                         .grid_timers
                         .get(&rows)
@@ -55,6 +63,22 @@ impl Context {
         self.list_anchors
             .get_mut()
             .retain(|id, _| nodes.contains_key(id));
+        self.lost_selections
+            .get_mut()
+            .retain(|id, _| nodes.contains_key(id));
+    }
+
+    /// Whether a collection's lost selection is news: `lost` is the selected
+    /// id its model no longer has, if any. Each lost id is reported once.
+    pub(crate) fn report_lost_selection(&self, rows: NodeId, lost: Option<crate::ItemId>) -> bool {
+        let mut reported = self.lost_selections.borrow_mut();
+        match lost {
+            Some(id) => reported.insert(rows, id) != Some(id),
+            None => {
+                reported.remove(&rows);
+                false
+            }
+        }
     }
 
     /// The top row of a message-form list as its last declaration left it.
@@ -107,6 +131,18 @@ impl Context {
         self.grid_timers
             .get(&rows)
             .is_some_and(|timer| !timer.fired)
+    }
+
+    /// Whether these filters were already sent to the application, which has
+    /// not applied them: they are not sent again.
+    pub(crate) fn grid_filters_sent(
+        &self,
+        rows: NodeId,
+        filters: &crate::collection::Filters,
+    ) -> bool {
+        self.grid_timers
+            .get(&rows)
+            .is_some_and(|timer| timer.fired && timer.filters == *filters)
     }
 
     /// Whether `target` is not what this collection last scrolled to; it

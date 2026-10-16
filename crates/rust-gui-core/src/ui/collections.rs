@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     GridModel, GridMsg, GridState, Length, ListModel, ListResponse, ListState, SortDirection,
     VirtualListOptions,
-    collection::{After, CollectionInput, CollectionKind, GridNode, NodeEdit},
+    collection::{After, CollectionInput, CollectionKind, FilterNote, GridNode, NodeEdit},
 };
 use std::rc::Rc;
 
@@ -1410,18 +1410,27 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
             }
         }
         let queued = !sends.is_empty();
+        // Filters this grid already sent and the application has not applied
+        // are not sent again, and do not keep frames coming.
+        let mut waiting = pending;
         if let Some(rows) = rows {
             if pending {
                 if typed_filter || self.context.grid_filters_waiting(rows) {
-                    self.context.note_grid_filters(rows, Some(wanted));
+                    self.context
+                        .note_grid_filters(rows, FilterNote::Waiting(wanted));
+                } else if self.context.grid_filters_sent(rows, &wanted) {
+                    self.context
+                        .note_grid_filters(rows, FilterNote::Sent(wanted));
+                    waiting = false;
                 } else {
                     // Set from code: the model hears about it at once.
                     self.context
                         .queue_grid_input(rows, CollectionInput::FiltersDue);
-                    self.context.note_grid_filters(rows, None);
+                    self.context
+                        .note_grid_filters(rows, FilterNote::Sent(wanted));
                 }
             } else {
-                self.context.note_grid_filters(rows, None);
+                self.context.note_grid_filters(rows, FilterNote::Applied);
             }
             for input in sends.drain(..) {
                 self.context.queue_grid_input(rows, input);
@@ -1431,7 +1440,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
         }
         // Frames until what was queued has been sent, and until the delay of
         // typed filters is over.
-        if pending || queued {
+        if waiting || queued {
             self.request_redraw();
         }
         self.set_control(Control::Grid {
@@ -1501,11 +1510,9 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                 }),
             );
             // A selection the model no longer has is for the application to
-            // drop: the next batch sends it.
-            if state
-                .selected()
-                .is_some_and(|id| model.index_of(id).is_none())
-            {
+            // drop: the next batch sends it, once per lost id.
+            let lost = state.selected().filter(|&id| model.index_of(id).is_none());
+            if self.context.report_lost_selection(owner, lost) {
                 self.context
                     .queue_grid_input(owner, CollectionInput::Deselect);
                 self.request_redraw();

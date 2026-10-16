@@ -444,7 +444,7 @@ pub struct Context {
     handler_moves: Vec<(NodeId, Option<u32>)>,
     freed_handlers: Vec<u32>,
     /// Pending filters each grid declared, read by the next batch.
-    grid_filters: std::cell::RefCell<Vec<(NodeId, Option<crate::collection::Filters>)>>,
+    grid_filters: std::cell::RefCell<Vec<(NodeId, crate::collection::FilterNote)>>,
     /// The filter delays of grids, by the node of their rows.
     grid_timers: HashMap<NodeId, crate::collection::FilterTimer>,
     /// What grids declared with `data_grid_msg` keep: cursor, sideways scroll
@@ -458,6 +458,9 @@ pub struct Context {
     revealed: std::cell::RefCell<HashMap<NodeId, (Option<crate::ItemId>, u32)>>,
     /// The top row of each message-form list, kept in place across a reorder.
     list_anchors: std::cell::RefCell<HashMap<NodeId, crate::collection::ListAnchor>>,
+    /// The selection each message-form collection last reported as lost, so
+    /// an application that keeps it is told once, not every batch.
+    lost_selections: std::cell::RefCell<HashMap<NodeId, crate::ItemId>>,
     /// Activations, edits and submissions in the order they arrived, beside
     /// the maps the old `Response` path reads.
     queued: Vec<(NodeId, Queued)>,
@@ -625,6 +628,7 @@ impl Default for Context {
             text_typed: HashSet::new(),
             revealed: Default::default(),
             list_anchors: Default::default(),
+            lost_selections: Default::default(),
             queued: Vec::new(),
             observed_new: std::cell::RefCell::new(Vec::new()),
             view_stale: true,

@@ -173,6 +173,38 @@ fn a_selection_the_model_lost_is_cleared_by_a_message() {
 }
 
 #[test]
+fn an_application_that_keeps_a_lost_selection_is_told_once() {
+    let mut driven = Driven::new(
+        ROOT,
+        Lists {
+            model: model(10),
+            list: ListState::default(),
+            activated: Vec::new(),
+        },
+        |state, ui| {
+            ui.keyed("list", |ui| {
+                ui.virtual_list_msg(&state.model, &state.list, options(), |message| {
+                    act(move |s: &mut Lists| {
+                        if let GridMsg::Select(id) = message {
+                            s.list.select(Some(id));
+                        }
+                    })
+                })
+            });
+        },
+    );
+    driven.state_mut().list.select(Some(ItemId(8)));
+    driven.frame();
+    driven.state_mut().model.count = 5;
+    let declared = (0..6).filter(|_| driven.frame().declared).count();
+    assert_eq!(driven.state().list.selected(), Some(ItemId(8)));
+    assert!(
+        declared <= 2,
+        "the view declared {declared} times in 6 batches"
+    );
+}
+
+#[test]
 fn pointer_capture_survives_the_intervening_frame_and_keyboard_events_accumulate() {
     let mut driven = Driven::new(
         ROOT,
