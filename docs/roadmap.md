@@ -44,7 +44,7 @@ The [milestone report](milestone-3.md) describes the controls gallery, contracts
 - [x] Virtualized lists, trees and a sortable DataGrid realizing only the viewport.
 - [x] Commands with shortcuts sharing the button's enabled state and one-shot response.
 - [x] In-process drag/drop with keyboard and accessibility paths; incoming OS file drops.
-- [x] Bounded worker/async mailbox and multi-window `run_windows` on one shared device.
+- [x] Bounded worker/async mailbox and multiple windows of one `App` on one shared device.
 - [x] Headless collection, drag and command tests plus a two-window smoke run.
 - [ ] Variable row heights, multi-selection, cell editing, outgoing OS drags and native Linux/macOS multi-window checks.
 

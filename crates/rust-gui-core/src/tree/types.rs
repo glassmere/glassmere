@@ -255,7 +255,7 @@ pub struct FrameStats {
     pub paint_cache_hits: usize,
     /// Monotonic declaration counter for this context.
     pub frame: u64,
-    /// CPU time spent running the view closure and reconciling the tree.
+    /// CPU time spent running the view and reconciling the tree.
     pub declare: Duration,
     /// CPU time spent in layout and bounds propagation; zero when skipped.
     pub layout: Duration,

@@ -4,11 +4,11 @@ What makes a frame expensive here, what it costs, and how to see it. The numbers
 
 ## The five phases of a frame
 
-A frame runs the view closure, reconciles what it declared against the retained tree, lays out what moved, paints what changed and hands the scene to a renderer. Each phase can be skipped, and skipping is the whole design.
+A frame runs the view, reconciles what it declared against the retained tree, lays out what moved, paints what changed and hands the scene to a renderer. Each phase can be skipped, and skipping is the whole design.
 
 | Phase | Runs when | What makes it expensive | What to do about it |
 | --- | --- | --- | --- |
-| Declare | Every frame the host asks for one: input arrived, a message arrived, an animation is running, or the application asked. | The view closure itself, plus one `Element` per widget it declares. | `Ui::memo` skips a subtree whose state has not changed. Virtualized collections declare only what is visible, whatever the model's size. |
+| Declare | Every frame the host asks for one: input arrived, a message arrived, an animation is running, or the application asked. | The view itself, plus one `Element` per widget it declares. | `Ui::memo` skips a subtree whose state has not changed. Virtualized collections declare only what is visible, whatever the model's size. |
 | Reconcile | With the declaration. | Matching keys against the retained children, one map lookup per widget. | Stable keys. A key that changes every frame destroys and recreates the node, and its scroll, focus and animation state with it. |
 | Layout | Only when a declaration changed something layout depends on: size, spacing, text that measures differently. | Taffy over the dirty subtree, plus the text measurer. | Do not change sizes for a cosmetic state. A colour change alone never reaches layout. |
 | Paint | When anything changed that is drawn: layout, colour, text, focus, hover. | One chunk per node; unchanged subtrees reuse the chunk they had. | The inspector's Repaints overlay shows what repainted. |

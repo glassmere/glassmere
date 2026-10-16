@@ -100,7 +100,8 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
     /// A virtual grid whose changes are sent as [`GridMsg`]s, shown from
     /// `state`, which the view does not change. Dragging a header's end edge
     /// sends `ResizeColumn`, a header clicked sends `Sort`, a header dropped
-    /// on another sends `MoveColumn`, the header menu sends `Columns`, a
+    /// on another sends `MoveColumn`, the header menu sends `HideColumn`,
+    /// `ShowAllColumns`, `ResetColumns` or `FreezeColumns`, a
     /// row chosen by pointer or keyboard sends `Select`, and typing in a
     /// filter field sends `Filter`, which the grid turns into
     /// `FiltersApplied` once typing pauses; filter text the application set

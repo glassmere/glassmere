@@ -87,7 +87,7 @@ pub fn update(&mut self, message: DialMsg) {
 }
 ```
 
-What `WidgetInput` carries is of the last frame, because that is what there is to know while this one is being declared: the room it was given, and whether it is hovered, pressed, focused and enabled. The events that reach the widget go to `on_event` when the batch is resolved, with pointer positions relative to its own top left corner, and what it returns goes to `update`.
+What `WidgetInput` carries is of the last frame, because that is what there is to know while this one is being declared: the room it was given, and whether it is hovered, pressed, focused and enabled. The events that reach the widget go to `on_event` when the batch is resolved, with pointer positions relative to its own top left corner, and what it returns goes to `update`. `UiEvent::Activate` comes only from the keyboard and assistive technology; a pointer click arrives as `PointerDown` and `PointerUp`.
 
 - **Input** is what `CustomWidget::input` asks for. Nothing is delivered until it does. A widget that uses the arrow keys should capture and consume the keyboard, or the page it sits on will scroll as well. Pointer events are heard but never kept: focus, hover and press are the framework's services to the widget.
 - **Focus** is `Semantics::focusable`, for any role. A focusable widget joins the tab order and receives keys.

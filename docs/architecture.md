@@ -35,7 +35,7 @@ What `update` asks of the framework goes through `Effects`: clipboard, focus, fi
 
 A widget without an explicit key is identified by its call site: the source location of the `Ui` method that declared it (every declaring method is `#[track_caller]`), and how many siblings that same location declared before it. A widget declared conditionally therefore does not shift the identity of the siblings after it; only repeats of one location, such as a loop body, are told apart by order, and those want `Ui::keyed` when they can be inserted, removed or reordered. A helper function of the application's that declares widgets can take `#[track_caller]` too, so its widgets are identified by where the helper is called. Explicit keys and call-site keys occupy separate namespaces.
 
-A click produces the button's message once per activation. A `Response` reports only what the widget looked like on the last frame: hovered and focused.
+A click produces the button's message once per activation. A `Response` reports only what the widget looked like on the last frame: `hovered`, `pressed` and `focused`.
 
 `Ui::component` gives an application-owned `Component` a stable parent/key scope and maps its messages into the parent's. The framework does not store opaque component state. `Ui::widget` accepts a leaf's intrinsic size, local scene primitives and semantic metadata, and its `on_event` turns the events that reach it into messages; `Ui::custom` is the simpler leaf that sends one message when activated. Clip stacks must balance inside a leaf.
 

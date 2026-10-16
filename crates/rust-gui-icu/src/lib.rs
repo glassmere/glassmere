@@ -1,7 +1,7 @@
 //! CLDR formatting through ICU4X as a `rust_gui_core::LocaleFormat`.
 //!
 //! ```ignore
-//! ui.set_format(rust_gui::icu::IcuFormat::new("cs-CZ").ok().map(|format| Box::new(format) as _));
+//! effects.set_format(rust_gui::icu::IcuFormat::new("cs-CZ").ok().map(|format| Box::new(format) as _));
 //! ui.label(ui.format_number(1234567.5, 2));                 // 1 234 567,50
 //! ui.label(ui.format_date(Date { year: 2026, month: 9, day: 21 }, DateStyle::Long));
 //! ```

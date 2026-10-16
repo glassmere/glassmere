@@ -40,7 +40,7 @@ IME preedit is shown inline and committed as one undo step; the host tells the p
 ## Testing it without a screen reader
 
 ```rust
-let mut harness = Harness::new(size, state, view);
+let mut harness = Harness::app(size, app);
 harness.run();
 assert_eq!(harness.by_label("Save"), harness.find(&["toolbar", "save"]));
 assert!(harness.snapshot_accessibility().contains("Slider \"Gain\" value=\"70%\" number=70.0"));
