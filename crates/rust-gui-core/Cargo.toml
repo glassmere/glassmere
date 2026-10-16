@@ -21,10 +21,5 @@ taffy.workspace = true
 unicode-segmentation.workspace = true
 ropey.workspace = true
 
-# The workspace's lints, except that `unsafe_code` is `deny` here and `forbid`
-# in `lib.rs`: the allocation test needs a global allocator of its own.
-[lints.rust]
-unsafe_code = "deny"
-
-[lints.clippy]
-all = "warn"
+[lints]
+workspace = true

@@ -3865,6 +3865,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-gui-allocations"
+version = "0.1.0"
+dependencies = [
+ "rust-gui-core",
+ "rust-gui-scene",
+]
+
+[[package]]
 name = "rust-gui-core"
 version = "0.1.0"
 dependencies = [

@@ -17,6 +17,7 @@ members = [
     "crates/rust-gui-icu",
     "crates/rust-gui-dev",
     "crates/rust-gui-win32",
+    "crates/rust-gui-allocations",
     # A widget built the way a third party would build one.
     "examples/dial-widget",
 ]
