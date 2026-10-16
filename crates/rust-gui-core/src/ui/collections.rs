@@ -388,7 +388,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                             item(&named("rust-gui-grid-freeze"), flags[7]),
                             item(&text("rust-gui-grid-unfreeze"), flags[8]),
                         ];
-                        // A pick sends the layout it leads to.
+                        // A pick sends what it does to the columns.
                         let (on_pick, layout, visible_now) =
                             (on.clone(), layout.clone(), visible_shared.clone());
                         let default_width = descriptor.width;
@@ -399,23 +399,25 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                             if !flags.get(index).copied().unwrap_or(false) {
                                 return None;
                             }
-                            let mut next = (*layout).clone();
-                            let width = next.width(column, default_width);
-                            match index {
-                                0 => drop(next.shift(count, column, -1)),
-                                1 => drop(next.shift(count, column, 1)),
-                                2 => next.set_width(column, width + WIDTH_STEP),
-                                3 => next.set_width(column, width - WIDTH_STEP),
-                                4 => drop(next.hide(count, column)),
-                                5 => next.show_all(),
-                                6 => next.reset(),
+                            let width = layout.width(column, default_width);
+                            let message = match index {
+                                0 | 1 => {
+                                    let mut next = (*layout).clone();
+                                    next.shift(count, column, if index == 0 { -1 } else { 1 });
+                                    GridMsg::MoveColumn(next.order)
+                                }
+                                2 => GridMsg::ResizeColumn(column, width + WIDTH_STEP),
+                                3 => GridMsg::ResizeColumn(column, width - WIDTH_STEP),
+                                4 => GridMsg::HideColumn(column),
+                                5 => GridMsg::ShowAllColumns,
+                                6 => GridMsg::ResetColumns,
                                 7 => {
                                     let at = visible_now.iter().position(|other| *other == column);
-                                    next.frozen = at.map_or(0, |at| at + 1);
+                                    GridMsg::FreezeColumns(at.map_or(0, |at| at + 1))
                                 }
-                                _ => next.frozen = 0,
-                            }
-                            Some(on_pick(GridMsg::Columns(next)))
+                                _ => GridMsg::FreezeColumns(0),
+                            };
+                            Some(on_pick(message))
                         }));
                         let domain = &domain;
                         ui.at(column.to_string()).context_menu_with(

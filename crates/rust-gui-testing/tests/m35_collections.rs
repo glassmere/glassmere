@@ -542,16 +542,14 @@ fn header_menu_pick_sends_the_new_column_layout() {
     assert!(harness.action(entry, Action::Activate));
     harness.run();
 
-    let layout = harness
-        .state()
-        .log
-        .iter()
-        .find_map(|message| match message {
-            GridMsg::Columns(layout) => Some(layout.clone()),
-            _ => None,
-        })
-        .expect("a Columns message");
-    assert_eq!(layout.width(0, 120.0), 140.0);
+    assert!(
+        harness
+            .state()
+            .log
+            .contains(&GridMsg::ResizeColumn(0, 140.0)),
+        "{:?}",
+        harness.state().log
+    );
     assert_eq!(harness.state().state.columns.width(0, 120.0), 140.0);
 }
 

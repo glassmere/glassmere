@@ -37,9 +37,15 @@ pub enum GridMsg {
     },
     /// A tree row was opened or closed; `set_expanded` stores it.
     Expand { row: ItemId, open: bool },
-    /// The column layout after a header menu action: move, wider, narrower,
-    /// hide, show all, reset, freeze or unfreeze.
-    Columns(GridColumns),
+    /// A column was hidden from the header menu.
+    HideColumn(usize),
+    /// Every hidden column shows again.
+    ShowAllColumns,
+    /// Back to the model's column order and widths, everything showing.
+    ResetColumns,
+    /// How many leading visible columns stay in place while the rest scroll
+    /// sideways; `0` unfreezes.
+    FreezeColumns(usize),
 }
 
 /// Application identity. Independent of a realized widget's short-lived NodeId.
@@ -619,7 +625,10 @@ impl GridState {
             GridMsg::FiltersApplied => self.applied_filters = self.wanted_filters(),
             GridMsg::Select(id) => self.rows.select(Some(*id)),
             GridMsg::Deselect => self.rows.select(None),
-            GridMsg::Columns(layout) => self.columns = layout.clone(),
+            GridMsg::HideColumn(column) => drop(self.columns.hidden.insert(*column)),
+            GridMsg::ShowAllColumns => self.columns.show_all(),
+            GridMsg::ResetColumns => self.columns.reset(),
+            GridMsg::FreezeColumns(count) => self.columns.frozen = *count,
             // The application's model call is all these change.
             GridMsg::Edit { .. } | GridMsg::Expand { .. } | GridMsg::Activate(_) => {}
         }
