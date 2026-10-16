@@ -58,6 +58,17 @@ fn run(event_loop: EventLoop<UserEvent>, mut desktop: Desktop) -> Result<()> {
     }
 }
 
+/// The options of a window `update` opened: the main window's, with the
+/// title and size it asked for and the system's placement.
+fn window_options(main: &AppOptions, request: rust_gui_core::WindowRequest) -> AppOptions {
+    AppOptions {
+        title: request.title,
+        size: request.size.unwrap_or(AppOptions::default().size),
+        placement: Placement::System,
+        ..main.clone()
+    }
+}
+
 struct Pending {
     key: WindowKey,
     options: AppOptions,
@@ -717,10 +728,18 @@ impl Desktop {
             let owner = request
                 .modal_owner
                 .and_then(|owner| self.app_windows.get(&owner).copied());
-            let options = AppOptions {
-                title: request.title,
-                size: request.size.unwrap_or(AppOptions::default().size),
-                ..AppOptions::default()
+            let main = self
+                .app_windows
+                .get(&MAIN)
+                .and_then(|key| self.windows.get(key))
+                .map(|app| &app.options);
+            let options = match main {
+                Some(main) => window_options(main, request),
+                None => AppOptions {
+                    title: request.title,
+                    size: request.size.unwrap_or(AppOptions::default().size),
+                    ..AppOptions::default()
+                },
             };
             let Some(view) = self
                 .hosting
@@ -1177,6 +1196,33 @@ mod tests {
             opened: Vec::new(),
             closed: Vec::new(),
         }))
+    }
+
+    #[test]
+    fn an_opened_window_inherits_the_main_windows_options_but_its_own_title_and_size() {
+        let main = AppOptions {
+            title: "Main".into(),
+            size: Size::new(1200.0, 800.0),
+            placement: Placement::Centered,
+            theme: ThemeChoice::Fixed(Theme::dark()),
+            stylesheet: Some("app.css".into()),
+            decorations: false,
+            devtools: false,
+            reduced_motion: true,
+            ..AppOptions::default()
+        };
+        let request = rust_gui_core::WindowRequest {
+            title: "Second".into(),
+            size: None,
+            modal_owner: None,
+        };
+        let options = window_options(&main, request);
+        assert_eq!(options.title, "Second");
+        assert_eq!(options.size, AppOptions::default().size);
+        assert_eq!(options.placement, Placement::System);
+        assert_eq!(options.theme, main.theme);
+        assert_eq!(options.stylesheet, main.stylesheet);
+        assert!(!options.decorations && !options.devtools && options.reduced_motion);
     }
 
     #[test]
