@@ -53,9 +53,6 @@ impl<S> Harness<S> {
     pub fn state(&self) -> &S {
         &self.state
     }
-    pub fn state_mut(&mut self) -> &mut S {
-        &mut self.state
-    }
     pub fn context(&self) -> &Context {
         &self.context
     }
@@ -451,6 +448,10 @@ impl<A: App> Harness<A> {
             driver.invalidate();
         }
         &mut self.state
+    }
+    /// Same as [`app_mut`](Self::app_mut): the next batch declares the view.
+    pub fn state_mut(&mut self) -> &mut A {
+        self.app_mut()
     }
     fn driver(&mut self) -> Option<&mut AppDriver<A::Message>> {
         self.runner.driver.downcast_mut()
