@@ -291,7 +291,7 @@ fn pressable(_: &Pressed, ui: &mut Ui<'_, Action<Pressed>>) {
 /// Assistive technology's Activate on a widget with `on_event` is an event,
 /// and so is a pointer click on it, after its pointer events.
 #[test]
-fn activating_a_widget_with_on_event_delivers_activate() {
+fn keys_and_assistive_technology_send_activate_and_a_pointer_click_does_not() {
     let mut driven = Driven::new(ROOT, Pressed::default(), pressable);
     let widget = driven.context.find(&["widget"]).unwrap();
     assert!(
@@ -307,5 +307,5 @@ fn activating_a_widget_with_on_event_delivers_activate() {
     driven.frame();
     let heard = &driven.state().heard;
     assert!(heard.iter().any(|e| matches!(e, UiEvent::PointerUp(_))));
-    assert_eq!(heard.last(), Some(&UiEvent::Activate), "{heard:?}");
+    assert!(!heard.contains(&UiEvent::Activate), "{heard:?}");
 }

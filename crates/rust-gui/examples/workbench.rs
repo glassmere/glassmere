@@ -100,7 +100,14 @@ impl App for Workbench {
             ui.widget(
                 Style::default(),
                 WidgetBuilder::new(move |_: &WidgetInput| custom_action(custom_count))
-                    .on_event(|event| (event == UiEvent::Activate).then_some(Message::Custom)),
+                    .on_event(|event| match event {
+                        UiEvent::Activate => Some(Message::Custom),
+                        // A pointer click arrives as its release over the widget.
+                        UiEvent::PointerUp(at) if (0.0..230.0).contains(&at.x) && (0.0..44.0).contains(&at.y) => {
+                            Some(Message::Custom)
+                        }
+                        _ => None,
+                    }),
             );
             ui.button(Button::new("Unavailable action").enabled(false));
             ui.label(format!("Selected row: {}", self.selection));

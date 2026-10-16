@@ -221,8 +221,9 @@ impl Context {
                         each(update, out);
                     }
                 }
+                // A pointer click already reached the widget as pointer events.
                 (Queued::Click, Handler::Event(map)) => {
-                    if enabled && self.clicks.contains(&id) {
+                    if enabled && self.clicks.contains(&id) && !self.pointer_clicks.contains(&id) {
                         out.extend(map(crate::UiEvent::Activate));
                     }
                 }
@@ -245,6 +246,7 @@ impl Context {
         let nodes = &self.nodes;
         let handled = |id: &NodeId| nodes.get(id).is_none_or(|node| node.handler.is_none());
         self.clicks.retain(handled);
+        self.pointer_clicks.retain(|id| self.clicks.contains(id));
         self.submitted.retain(handled);
         self.handlers = Some(boxed);
     }

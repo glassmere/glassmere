@@ -22,9 +22,9 @@ pub enum UiEvent {
         shift: bool,
     },
     Text(String),
-    /// The widget was activated: a click that reached it, Enter or Space on it,
-    /// or the Activate that assistive technology sends. A click sends its
-    /// pointer events first.
+    /// The widget was activated by Enter or Space on it, or by the Activate
+    /// that assistive technology sends. A pointer click is not repeated as
+    /// `Activate`: it reaches the widget as its pointer events.
     Activate,
 }
 

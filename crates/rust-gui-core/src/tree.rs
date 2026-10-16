@@ -333,6 +333,9 @@ pub struct Context {
     keyboard_pressed: Option<(NodeId, Key)>,
     pointer: Option<Point>,
     clicks: HashSet<NodeId>,
+    /// The clicks a pointer made, as opposed to keys or assistive
+    /// technology: a widget that hears pointer events gets no `Activate` for them.
+    pointer_clicks: HashSet<NodeId>,
     pending: Dirty,
     scene: Scene,
     stats: FrameStats,
@@ -545,6 +548,7 @@ impl Default for Context {
             keyboard_pressed: None,
             pointer: None,
             clicks: HashSet::new(),
+            pointer_clicks: HashSet::new(),
             pending: Dirty::all(),
             scene: Scene::default(),
             stats: FrameStats::default(),

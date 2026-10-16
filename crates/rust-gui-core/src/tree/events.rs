@@ -339,6 +339,9 @@ impl Context {
                     .filter(|id| self.hovered == Some(*id) && self.nodes[id].activatable())
                 {
                     activated = self.activate(id);
+                    if activated {
+                        self.pointer_clicks.insert(id);
+                    }
                 }
             }
             Event::KeyDown {
@@ -394,6 +397,7 @@ impl Context {
                 self.pointer = None;
                 self.focused = None;
                 self.clicks.clear();
+                self.pointer_clicks.clear();
             }
             Event::Scroll { .. } => unreachable!(),
             Event::Text(_)
