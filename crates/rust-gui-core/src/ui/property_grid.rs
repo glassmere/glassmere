@@ -522,7 +522,6 @@ impl<'a, M: 'static> Ui<'a, M> {
             let share = send.clone();
             ui.at("$columns").split(
                 state.name_share,
-                move |share_now| share(PropertyMsg::NameShare(share_now)),
                 Axis::Horizontal,
                 SplitOptions {
                     min_first: 60.0,
@@ -532,6 +531,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                         .width(content_width)
                         .height(Length::Px(22.0)),
                 },
+                move |share_now| share(PropertyMsg::NameShare(share_now)),
                 header("rust-gui-property-column"),
                 header("rust-gui-value-column"),
             );

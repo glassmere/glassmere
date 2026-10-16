@@ -359,8 +359,8 @@ fn dialog_window(state: &Dialogs, ui: &mut Ui<'_, Handler<Dialogs>>) {
     ui.dialog(
         "editor",
         state.open,
-        on(|s: &mut Dialogs, open: bool| s.open = open),
         DialogOptions::new("Editor"),
+        on(|s: &mut Dialogs, open: bool| s.open = open),
         |ui| {
             ui.keyed("inner", |ui| {
                 ui.command_button(&inner, act(|s: &mut Dialogs| s.fired.push("dialog")));

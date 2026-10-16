@@ -187,9 +187,9 @@ impl<'a, M: 'static> Ui<'a, M> {
     pub fn split(
         &mut self,
         ratio: f32,
-        on: impl Fn(f32) -> M + 'static,
         axis: Axis,
         options: SplitOptions,
+        on: impl Fn(f32) -> M + 'static,
         first: impl FnOnce(&mut Ui<'_, M>),
         second: impl FnOnce(&mut Ui<'_, M>),
     ) {
@@ -434,8 +434,8 @@ impl<'a, M: 'static> Ui<'a, M> {
     pub fn popover(
         &mut self,
         open: bool,
-        on_open: impl Fn(bool) -> M + 'static,
         options: PopoverOptions,
+        on_open: impl Fn(bool) -> M + 'static,
         content: impl FnOnce(&mut Ui<'_, M>),
     ) {
         let key = self.next_key();

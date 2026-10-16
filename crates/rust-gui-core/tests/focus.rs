@@ -221,15 +221,15 @@ fn dialog_page(state: &Dialogs, ui: &mut Ui<'_, Handler<Dialogs>>) {
     ui.dialog(
         "confirm",
         state.open,
+        DialogOptions::new("Delete file?")
+            .dismissible(state.dismissible)
+            .modal(state.modal),
         on(|s: &mut Dialogs, open: bool| {
             if !open {
                 s.dismissed += 1;
             }
             s.open = open;
         }),
-        DialogOptions::new("Delete file?")
-            .dismissible(state.dismissible)
-            .modal(state.modal),
         |ui| {
             ui.keyed("question", |ui| ui.label("This cannot be undone."));
             ui.keyed("actions", |ui| {
@@ -400,15 +400,15 @@ fn stacked(state: &Stack, ui: &mut Ui<'_, Handler<Stack>>) {
     ui.dialog(
         "outer",
         state.outer,
-        on(|s: &mut Stack, open: bool| s.outer = open),
         DialogOptions::new("Outer"),
+        on(|s: &mut Stack, open: bool| s.outer = open),
         |ui| {
             ui.keyed("outer-ok", |ui| ui.button("OK"));
             ui.dialog(
                 "inner",
                 state.inner,
-                on(|s: &mut Stack, open: bool| s.inner = open),
                 DialogOptions::new("Inner"),
+                on(|s: &mut Stack, open: bool| s.inner = open),
                 |ui| {
                     ui.keyed("inner-ok", |ui| ui.button("OK"));
                 },
@@ -539,8 +539,8 @@ fn arrow_navigation_moves_between_scope_children_by_geometry_but_leaves_arrow_co
 fn duplicate_dialog_keys_are_rejected() {
     let mut context = Context::new();
     frame(&mut context, |ui| {
-        ui.dialog("same", true, |_: bool| (), DialogOptions::new("A"), |_| {});
-        ui.dialog("same", true, |_: bool| (), DialogOptions::new("B"), |_| {});
+        ui.dialog("same", true, DialogOptions::new("A"), |_: bool| (), |_| {});
+        ui.dialog("same", true, DialogOptions::new("B"), |_: bool| (), |_| {});
     });
 }
 

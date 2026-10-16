@@ -414,8 +414,8 @@ mod tests {
         frame(&mut context, |ui| {
             ui.popover(
                 true,
-                |_| (),
                 PopoverOptions::default(),
+                |_| (),
                 |ui| ui.label("inside"),
             );
             ui.label("after");

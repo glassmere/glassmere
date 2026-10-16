@@ -85,7 +85,6 @@ impl App for RichTextApp {
             let mut link = None;
             ui.split(
                 self.share,
-                Msg::Split,
                 Axis::Horizontal,
                 SplitOptions {
                     min_first: 320.0,
@@ -96,6 +95,7 @@ impl App for RichTextApp {
                         .shrink(1.0),
                     ..SplitOptions::default()
                 },
+                Msg::Split,
                 |ui| {
                     let response = ui.rich_editor(
                         &self.document,

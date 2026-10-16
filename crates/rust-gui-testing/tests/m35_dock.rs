@@ -80,7 +80,6 @@ impl App for Docked {
             );
             ui.split(
                 self.ratio,
-                Msg::Ratio,
                 Axis::Horizontal,
                 SplitOptions {
                     style: fixed(200.0),
@@ -88,6 +87,7 @@ impl App for Docked {
                     min_second: 0.0,
                     ..SplitOptions::default()
                 },
+                Msg::Ratio,
                 |ui| {
                     ui.label("Left pane");
                 },

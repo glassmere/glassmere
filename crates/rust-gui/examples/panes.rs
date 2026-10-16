@@ -73,7 +73,7 @@ impl App for Panes {
                 ui.tooltip("Open a document from disk");
                 ui.button(Button::new("Share ▾").on_click(Msg::ToggleShare));
                 ui.tooltip("Share a link to this document");
-                ui.popover(self.share, Msg::Share, PopoverOptions { width: Length::Px(340.0), ..PopoverOptions::default() }, |ui| {
+                ui.popover(self.share, PopoverOptions { width: Length::Px(340.0), ..PopoverOptions::default() }, Msg::Share, |ui| {
                     ui.label(Label::new("Share link").style(Style::default().font_weight(700)));
                     ui.text_input("Link", &self.link, Msg::Link);
                     ui.row(Style::default().gap(8.0), |ui| {
@@ -85,7 +85,7 @@ impl App for Panes {
             });
             ui.label(Label::new("Hover the toolbar for tooltips. Right-click the editor (or press Shift+F10 while it has focus) for a context menu. Drag the dividers or focus one and use the arrow keys.").style(muted.clone()));
             ui.tabs_close(self.selected, &self.tabs, Msg::Select, Msg::Close, |ui, index| {
-                ui.split(self.sidebar, Msg::Sidebar, Axis::Horizontal, SplitOptions { min_first: 140.0, min_second: 240.0, style: Style::default().width(Length::Percent(1.0)).height(Length::Px(460.0)), ..SplitOptions::default() }, |ui| {
+                ui.split(self.sidebar, Axis::Horizontal, SplitOptions { min_first: 140.0, min_second: 240.0, style: Style::default().width(Length::Percent(1.0)).height(Length::Px(460.0)), ..SplitOptions::default() }, Msg::Sidebar, |ui| {
                     ui.column(Style::default().padding(8.0).gap(4.0).width(Length::Percent(1.0)), |ui| {
                         ui.label(Label::new("Files").style(Style::default().font_weight(700)));
                         for name in ["README.md", "notes.md", "main.rs", "Cargo.toml"] {
@@ -93,7 +93,7 @@ impl App for Panes {
                         }
                     });
                 }, |ui| {
-                    ui.split(self.editor_split, Msg::EditorSplit, Axis::Vertical, SplitOptions { min_first: 120.0, min_second: 80.0, ..SplitOptions::default() }, |ui| {
+                    ui.split(self.editor_split, Axis::Vertical, SplitOptions { min_first: 120.0, min_second: 80.0, ..SplitOptions::default() }, Msg::EditorSplit, |ui| {
                         ui.context_menu(&editor_menu(), Style::default().width(Length::Percent(1.0)).height(Length::Percent(1.0)).padding(12.0).background(theme.surface), Msg::Menu, |ui| {
                             ui.label(Label::new(format!("Editor for tab {index}: right-click anywhere in this area.")).style(Style::default().wrap(TextWrap::Word).width(Length::Percent(1.0))));
                             ui.button("A focusable control inside the area");

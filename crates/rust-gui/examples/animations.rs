@@ -223,12 +223,12 @@ impl App for Animations {
         ui.dialog(
             "animated",
             self.dialog,
-            Msg::SetDialog,
             DialogOptions::new("Animated dialog").style(
                 Style::default()
                     .enter(Effect::zoom(0.92, 160))
                     .exit(Effect::zoom(0.96, 120)),
             ),
+            Msg::SetDialog,
             |ui| {
                 ui.label("The panel zooms in, and fades out after it is removed.");
                 ui.button(Button::new("Close").on_click(Msg::SetDialog(false)));

@@ -394,11 +394,11 @@ fn confirm_view(state: &Confirm, ui: &mut Ui<'_, Message<Confirm>>) {
     ui.dialog(
         "confirm",
         state.open,
-        |open| act(move |s: &mut Confirm| s.open = open),
         DialogOptions::new("Sure?").style(Style::default().exit(Effect {
             transition: Transition::new(100).easing(Easing::Linear),
             ..Effect::zoom(0.9, 100)
         })),
+        |open| act(move |s: &mut Confirm| s.open = open),
         |ui| {
             ui.label("body");
         },

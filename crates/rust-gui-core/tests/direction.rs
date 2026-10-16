@@ -176,7 +176,6 @@ fn panel_view(state: &Panel, ui: &mut Ui<'_, Msg<Panel>>) {
     ui.keyed("split", |ui| {
         ui.split(
             state.fraction,
-            on(|s: &mut Panel, fraction: f32| s.fraction = fraction),
             Axis::Horizontal,
             SplitOptions {
                 style: Style::default()
@@ -186,6 +185,7 @@ fn panel_view(state: &Panel, ui: &mut Ui<'_, Msg<Panel>>) {
                 min_second: 20.0,
                 ..SplitOptions::default()
             },
+            on(|s: &mut Panel, fraction: f32| s.fraction = fraction),
             |ui| {
                 ui.label("first");
             },

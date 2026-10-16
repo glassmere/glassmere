@@ -11,8 +11,8 @@ impl<'a, M: 'static> Ui<'a, M> {
         &mut self,
         key: impl Into<String>,
         open: bool,
-        on_open: impl Fn(bool) -> M + 'static,
         options: crate::DialogOptions,
+        on_open: impl Fn(bool) -> M + 'static,
         content: impl FnOnce(&mut Ui<'_, M>),
     ) {
         self.dialog_declared(

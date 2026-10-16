@@ -352,6 +352,8 @@ fn node<M: 'static>(
             let path = path.to_vec();
             ui.at("$split").split(
                 *fraction,
+                *axis,
+                options,
                 move |share| {
                     on(DockAction::Ratio {
                         area,
@@ -359,8 +361,6 @@ fn node<M: 'static>(
                         fraction: share,
                     })
                 },
-                *axis,
-                options,
                 |ui| node(ui, first, &first_path, pass, min_pane),
                 |ui| node(ui, second, &second_path, pass, min_pane),
             );

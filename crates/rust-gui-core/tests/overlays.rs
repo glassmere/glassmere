@@ -214,7 +214,6 @@ fn split_page(state: &Split, ui: &mut Ui<'_, Handler<Split>>) {
     ui.keyed("split", |ui| {
         ui.split(
             state.fraction,
-            on(|s: &mut Split, fraction: f32| s.fraction = fraction),
             Axis::Horizontal,
             SplitOptions {
                 min_first: 100.0,
@@ -224,6 +223,7 @@ fn split_page(state: &Split, ui: &mut Ui<'_, Handler<Split>>) {
                     .width(Length::Px(500.0))
                     .height(Length::Px(200.0)),
             },
+            on(|s: &mut Split, fraction: f32| s.fraction = fraction),
             |ui| ui.keyed("a", |ui| ui.label("A")),
             |ui| ui.keyed("b", |ui| ui.label("B")),
         );
@@ -382,13 +382,13 @@ fn pop_page(state: &Pops, ui: &mut Ui<'_, Handler<Pops>>) {
             ui.keyed("pop", |ui| {
                 ui.popover(
                     state.open,
+                    PopoverOptions::default(),
                     on(|s: &mut Pops, open: bool| {
                         if !open {
                             s.dismissed += 1;
                         }
                         s.open = open;
                     }),
-                    PopoverOptions::default(),
                     |ui| {
                         ui.keyed("hint", |ui| ui.label("Share this"));
                         ui.keyed("copy", |ui| ui.button("Copy link"));
@@ -399,8 +399,8 @@ fn pop_page(state: &Pops, ui: &mut Ui<'_, Handler<Pops>>) {
             ui.keyed("pop2", |ui| {
                 ui.popover(
                     state.second,
-                    on(|s: &mut Pops, open: bool| s.second = open),
                     PopoverOptions::default(),
+                    on(|s: &mut Pops, open: bool| s.second = open),
                     |ui| {
                         ui.keyed("extra", |ui| ui.button("Extra"));
                     },

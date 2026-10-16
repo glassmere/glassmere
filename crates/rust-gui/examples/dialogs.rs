@@ -138,8 +138,8 @@ impl App for Dialogs {
         ui.dialog(
             "confirm",
             self.confirm,
-            Msg::Confirm,
             DialogOptions::new("Delete file?"),
+            Msg::Confirm,
             |ui| {
                 ui.label(
                     Label::new("The file will be removed permanently. This cannot be undone.")
@@ -165,8 +165,8 @@ impl App for Dialogs {
                 ui.dialog(
                     "nested",
                     self.nested,
-                    Msg::Nested,
                     DialogOptions::new("More options").width(Length::Px(320.0)),
+                    Msg::Nested,
                     |ui| {
                         ui.checkbox("Keep a backup copy", self.autosave, Msg::Autosave);
                         ui.button(Button::new("Done").on_click(Msg::Nested(false)));
@@ -177,10 +177,10 @@ impl App for Dialogs {
         ui.dialog(
             "preferences",
             self.preferences,
-            Msg::Preferences,
             DialogOptions::new("Preferences")
                 .modal(false)
                 .width(Length::Px(360.0)),
+            Msg::Preferences,
             |ui| {
                 ui.label("Document name");
                 ui.text_input("Document name", &self.name, Msg::Name);

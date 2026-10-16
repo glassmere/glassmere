@@ -66,8 +66,8 @@ impl App for Overlays {
         ui.button(Button::new("Share").on_click(Msg::Popover(true)));
         ui.popover(
             self.popover,
-            Msg::Popover,
             PopoverOptions::default(),
+            Msg::Popover,
             |ui| {
                 ui.button("Inside");
             },
@@ -76,8 +76,8 @@ impl App for Overlays {
         ui.dialog(
             "confirm",
             self.dialog,
-            Msg::Dialog,
             DialogOptions::new("Delete?"),
+            Msg::Dialog,
             |ui| {
                 ui.button(Button::new("Cancel").on_click(Msg::Dialog(false)));
             },

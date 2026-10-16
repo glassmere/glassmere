@@ -43,8 +43,8 @@ impl App for Toasts {
             ui.dialog(
                 "modal",
                 true,
-                Msg::Dialog,
                 DialogOptions::new("Busy"),
+                Msg::Dialog,
                 |ui| {
                     ui.button("inside");
                 },

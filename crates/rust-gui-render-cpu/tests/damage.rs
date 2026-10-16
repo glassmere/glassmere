@@ -366,8 +366,8 @@ fn every_overlay_leaves_the_window_as_it_found_it() {
                     ui.keyed("popover", |ui| {
                         ui.popover(
                             self.popover,
-                            OverMsg::Popover,
                             PopoverOptions::default(),
+                            OverMsg::Popover,
                             |ui| {
                                 ui.keyed("note", |ui| ui.label("A popover over the page"));
                             },
@@ -381,8 +381,8 @@ fn every_overlay_leaves_the_window_as_it_found_it() {
                     ui.dialog(
                         "dialog",
                         self.dialog,
-                        OverMsg::Dialog,
                         DialogOptions::new("A dialog"),
+                        OverMsg::Dialog,
                         |ui| ui.keyed("body", |ui| ui.label("Over everything")),
                     );
                 })
