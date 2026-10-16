@@ -2,11 +2,12 @@ mod support;
 
 use rust_gui_core::app::Action;
 use rust_gui_core::{
-    CodeEditorOptions, Context, Diagnostic, EditorCommand, Event, FindState, HighlightSpan,
-    Highlighter, Key, Length, MonospaceMeasurer, Role, Severity, Style, TOOLTIP_DELAY,
-    TextDocument, TextEdit, TextMove, TextOp, Ui,
+    App, AppDriver, CodeEditorOptions, Context, Diagnostic, EditorCommand, Effects, Event,
+    FindState, FrameStats, HighlightSpan, Highlighter, Key, Length, MonospaceMeasurer, Role,
+    Severity, Style, TOOLTIP_DELAY, TextDocument, TextEdit, TextMove, TextOp, Ui,
 };
 use rust_gui_scene::{Color, Point, Primitive, Size};
+use std::cell::RefCell;
 use std::time::Duration;
 use support::{Driven, on};
 
@@ -65,33 +66,72 @@ fn started(text: &str) -> Driven<State> {
     app
 }
 
-// The find bar keeps its state in the view, which `code_editor_msg` refuses;
-// the test that needs it stays on `Context::run` until that form exists.
-struct OldApp {
+/// An editor with a find bar. It is a real `App`, not closures on a state:
+/// `update` applies each op with `FindState::apply`, which needs the
+/// `Effects` of the batch for the clipboard.
+struct Finder {
     document: TextDocument,
     find: FindState,
     read_only: bool,
 }
 
-fn old_frame(context: &mut Context, app: &mut OldApp) {
-    context.run(ROOT, &mut MonospaceMeasurer, |ui| {
+impl App for Finder {
+    type Message = TextOp;
+
+    fn update(&mut self, op: TextOp, effects: &mut Effects<'_, TextOp>) {
+        self.find.apply(&mut self.document, op, effects);
+    }
+
+    fn view(&self, ui: &mut Ui<'_, TextOp>) {
         ui.keyed("editor", |ui| {
-            ui.code_editor(
-                &mut app.document,
+            ui.code_editor_msg(
+                &self.document,
                 CodeEditorOptions {
                     label: "Source".into(),
                     style: Style::default()
-                        .width(Length::Px(600.0))
+                        .width(Length::Px(1000.0))
                         .height(Length::Px(216.0))
                         .padding(PADDING),
                     font_size: SIZE,
-                    read_only: app.read_only,
-                    find: Some(&mut app.find),
+                    read_only: self.read_only,
+                    find: Some(&self.find),
                     ..CodeEditorOptions::default()
                 },
+                |op| op,
             )
         });
-    });
+    }
+}
+
+struct Rig {
+    app: Finder,
+    driver: AppDriver<TextOp>,
+    context: Context,
+}
+
+impl Rig {
+    fn new(text: &str) -> Self {
+        let mut rig = Self {
+            app: Finder {
+                document: TextDocument::from_text(text),
+                find: FindState::default(),
+                read_only: false,
+            },
+            driver: AppDriver::new(|| true),
+            context: Context::new(),
+        };
+        rig.frame();
+        rig
+    }
+
+    fn frame(&mut self) -> FrameStats {
+        self.driver.frame(
+            &mut self.app,
+            &mut self.context,
+            Size::new(1200.0, 400.0),
+            &mut MonospaceMeasurer,
+        )
+    }
 }
 
 /// A point inside the cell at `(line, column)` of an editor without a gutter
@@ -283,48 +323,41 @@ fn clicks_drags_and_multi_clicks_place_carets_and_select_words_and_lines() {
     assert!(app.state().document.primary().is_caret());
 }
 
-// M35: a clipboard request is serviced by the declaration that follows it
-// (`take_clipboard` reads what that declaration produced), and no message or
-// view-read change asks for one, so a message-model frame never services it.
-// Stays on `Context::run` until the view rule covers the clipboard outbox.
 #[test]
-fn copy_and_cut_travel_through_the_clipboard_outbox_and_read_only_blocks_edits() {
-    let mut context = Context::new();
-    let mut app = OldApp {
-        document: TextDocument::from_text("one\ntwo\nthree"),
-        find: FindState::default(),
-        read_only: false,
-    };
-    old_frame(&mut context, &mut app);
-    old_frame(&mut context, &mut app);
-    assert!(!context.request_clipboard(false));
-    click(&mut context, cell(1, 1));
-    old_frame(&mut context, &mut app);
-    // No selection: the whole line.
-    assert!(context.request_clipboard(false));
-    assert_eq!(context.take_clipboard(), None);
-    old_frame(&mut context, &mut app);
-    assert_eq!(context.take_clipboard().as_deref(), Some("two\n"));
-    assert_eq!(context.take_clipboard(), None);
+fn copy_and_cut_reach_the_clipboard_in_the_batch_and_read_only_blocks_edits() {
+    let mut rig = Rig::new("one\ntwo\nthree");
+    rig.frame();
+    assert!(!rig.context.request_clipboard(false));
+    click(&mut rig.context, cell(1, 1));
+    rig.frame();
+    // No selection: the whole line. The batch that carries the request
+    // services it, so the text is out after that one frame.
+    assert!(rig.context.request_clipboard(false));
+    assert!(rig.context.take_clip().is_none());
+    rig.frame();
+    assert_eq!(rig.context.take_clip().unwrap().text, "two\n");
+    assert!(rig.context.take_clip().is_none());
 
-    context.event(Event::Text(TextEdit::SelectAll));
-    app.read_only = true;
-    old_frame(&mut context, &mut app);
-    assert!(!context.accepts_text());
+    rig.context.event(Event::Text(TextEdit::SelectAll));
+    rig.app.read_only = true;
+    rig.driver.invalidate();
+    rig.frame();
+    assert!(!rig.context.accepts_text());
     // Cut degrades to copy, and edits are ignored.
-    context.request_clipboard(true);
-    key(&mut context, Key::Delete, false);
-    key(&mut context, Key::Enter, false);
-    old_frame(&mut context, &mut app);
-    assert_eq!(context.take_clipboard().as_deref(), Some("one\ntwo\nthree"));
-    assert_eq!(app.document.text(), "one\ntwo\nthree");
+    rig.context.request_clipboard(true);
+    key(&mut rig.context, Key::Delete, false);
+    key(&mut rig.context, Key::Enter, false);
+    rig.frame();
+    assert_eq!(rig.context.take_clip().unwrap().text, "one\ntwo\nthree");
+    assert_eq!(rig.app.document.text(), "one\ntwo\nthree");
 
-    app.read_only = false;
-    old_frame(&mut context, &mut app);
-    context.request_clipboard(true);
-    old_frame(&mut context, &mut app);
-    assert_eq!(context.take_clipboard().as_deref(), Some("one\ntwo\nthree"));
-    assert_eq!(app.document.text(), "");
+    rig.app.read_only = false;
+    rig.driver.invalidate();
+    rig.frame();
+    rig.context.request_clipboard(true);
+    rig.frame();
+    assert_eq!(rig.context.take_clip().unwrap().text, "one\ntwo\nthree");
+    assert_eq!(rig.app.document.text(), "");
 }
 
 struct Keywords {
@@ -346,30 +379,40 @@ impl Highlighter for Keywords {
     }
 }
 
-// M35: the highlighter is `&mut` for every declaration and keeps a call log;
-// a message-model view only has `&State`, so this stays on `Context::run`.
 #[test]
 fn highlighters_colour_visible_lines_only() {
     let text: String = (0..1000).map(|n| format!("let x{n} = let;\n")).collect();
-    let mut document = TextDocument::from_text(&text);
-    let mut highlighter = Keywords { calls: Vec::new() };
-    let mut context = Context::new();
-    for _ in 0..2 {
-        highlighter.calls.clear();
-        context.run(ROOT, &mut MonospaceMeasurer, |ui| {
+    // The view only has `&State`: the highlighter is a `RefCell` of the state.
+    struct Highlighted {
+        document: TextDocument,
+        highlighter: RefCell<Keywords>,
+    }
+    let mut app = Driven::new(
+        ROOT,
+        Highlighted {
+            document: TextDocument::from_text(&text),
+            highlighter: RefCell::new(Keywords { calls: Vec::new() }),
+        },
+        |state: &Highlighted, ui| {
             ui.keyed("editor", |ui| {
-                ui.code_editor(
-                    &mut document,
+                ui.code_editor_msg(
+                    &state.document,
                     CodeEditorOptions {
-                        highlighter: Some(&mut highlighter),
+                        highlighter: Some(&state.highlighter),
                         ..CodeEditorOptions::default()
                     },
+                    on(|s: &mut Highlighted, op: TextOp| s.document.apply(op)),
                 )
             });
-        });
-    }
-    assert!(highlighter.calls.len() < 50, "{}", highlighter.calls.len());
-    assert!(highlighter.calls.windows(2).all(|pair| pair[0] < pair[1]));
+        },
+    );
+    app.state().highlighter.borrow_mut().calls.clear();
+    app.state_mut();
+    app.frame();
+    let calls = app.state().highlighter.borrow().calls.clone();
+    assert!(!calls.is_empty() && calls.len() < 50, "{}", calls.len());
+    assert!(calls.windows(2).all(|pair| pair[0] < pair[1]));
+    let context = &app.context;
     let Some(Primitive::RichText { spans, .. }) = context
         .scene()
         .primitives
@@ -451,19 +494,6 @@ fn labelled(context: &Context, role: Role, label: &str) -> rust_gui_scene::Rect 
     panic!("no {role:?} labelled {label}");
 }
 
-fn press_button(context: &mut Context, app: &mut OldApp, label: &str) {
-    let bounds = labelled(context, Role::Button, label);
-    click(
-        context,
-        Point {
-            x: bounds.x + bounds.width / 2.0,
-            y: bounds.y + bounds.height / 2.0,
-        },
-    );
-    old_frame(context, app);
-    old_frame(context, app);
-}
-
 fn quads(context: &Context, color: Color) -> usize {
     context
         .scene()
@@ -473,83 +503,92 @@ fn quads(context: &Context, color: Color) -> usize {
         .count()
 }
 
-// M35: the find bar (`CodeEditorOptions::find`) keeps its state in the view;
-// `code_editor_msg` refuses it, so this test stays on the old API.
-#[test]
-fn find_and_replace_search_step_wrap_and_replace_from_the_bar_and_the_keyboard() {
-    let mut context = Context::new();
-    let mut app = OldApp {
-        document: TextDocument::from_text("foo bar\nFoo foo\nfoobar foo"),
-        find: FindState::default(),
-        read_only: false,
-    };
-    old_frame(&mut context, &mut app);
-    old_frame(&mut context, &mut app);
-    // Select the first word, then Ctrl+F: the bar opens searching for it.
-    context.set_now(Duration::from_secs(1));
-    click(&mut context, cell(0, 1));
-    context.set_now(Duration::from_millis(1100));
-    click(&mut context, cell(0, 1));
-    old_frame(&mut context, &mut app);
-    let editor = context.focused();
-    context.event(Event::Editor(EditorCommand::Find));
-    old_frame(&mut context, &mut app);
-    old_frame(&mut context, &mut app);
-    assert!(app.find.open);
-    assert_eq!(app.find.query, "foo");
-    assert_eq!(app.find.matches().len(), 5);
-    // The query field took focus, so typing edits the query, not the document.
-    assert_ne!(context.focused(), editor);
-    context.event(Event::Text(TextEdit::SelectAll));
-    insert(&mut context, "foo");
-    old_frame(&mut context, &mut app);
-    assert_eq!(app.document.text(), "foo bar\nFoo foo\nfoobar foo");
-
-    // Enter in the field and F3 step through matches; Shift+F3 goes back and wraps.
-    key(&mut context, Key::Enter, false);
-    old_frame(&mut context, &mut app);
-    assert_eq!(app.document.primary().range(), 8..11);
-    context.event(Event::Editor(EditorCommand::FindNext));
-    old_frame(&mut context, &mut app);
-    assert_eq!(app.document.primary().range(), 12..15);
-    for _ in 0..3 {
-        context.event(Event::Editor(EditorCommand::FindPrevious));
-    }
-    old_frame(&mut context, &mut app);
-    assert_eq!(app.document.primary().range(), 23..26);
-
-    // Options narrow the matches.
-    app.find.case_sensitive = true;
-    app.find.whole_word = true;
-    old_frame(&mut context, &mut app);
-    assert_eq!(app.find.matches(), [0..3, 12..15, 23..26]);
-
-    // Ctrl+H adds the replace row; one replacement, then all, each one undo step.
-    context.event(Event::Editor(EditorCommand::Replace));
-    old_frame(&mut context, &mut app);
-    old_frame(&mut context, &mut app);
-    app.find.replacement = "qux".into();
-    press_button(&mut context, &mut app, "Replace");
-    assert_eq!(app.document.text(), "foo bar\nFoo foo\nfoobar qux");
-    press_button(&mut context, &mut app, "Replace all");
-    assert_eq!(app.document.text(), "qux bar\nFoo qux\nfoobar qux");
-    context.event(Event::Text(TextEdit::Undo));
-    old_frame(&mut context, &mut app);
-
-    // Escape in the bar closes it and gives the focus back to the text.
-    let field = labelled(&context, Role::TextInput, "Find");
+/// Clicks the centre of the first node with this role and label, then lets
+/// the batch run.
+fn press(rig: &mut Rig, role: Role, label: &str) {
+    let bounds = labelled(&rig.context, role, label);
     click(
-        &mut context,
+        &mut rig.context,
         Point {
-            x: field.x + 5.0,
-            y: field.y + 5.0,
+            x: bounds.x + bounds.width / 2.0,
+            y: bounds.y + bounds.height / 2.0,
         },
     );
-    key(&mut context, Key::Escape, false);
-    old_frame(&mut context, &mut app);
-    old_frame(&mut context, &mut app);
-    assert!(!app.find.open);
-    assert_eq!(context.focused(), editor);
+    rig.frame();
+    rig.frame();
+}
+
+#[test]
+fn find_and_replace_search_step_wrap_and_replace_from_the_bar_and_the_keyboard() {
+    let mut rig = Rig::new("foo bar\nFoo foo\nfoobar foo");
+    rig.frame();
+    // Select the first word, then Ctrl+F: the bar opens searching for it.
+    rig.context.set_now(Duration::from_secs(1));
+    click(&mut rig.context, cell(0, 1));
+    rig.context.set_now(Duration::from_millis(1100));
+    click(&mut rig.context, cell(0, 1));
+    rig.frame();
+    let editor = rig.context.focused();
+    rig.context.event(Event::Editor(EditorCommand::Find));
+    rig.frame();
+    rig.frame();
+    assert!(rig.app.find.open);
+    assert_eq!(rig.app.find.query, "foo");
+    assert_eq!(rig.app.find.matches().len(), 5);
+    // The query field took focus, so typing edits the query, not the document.
+    assert_ne!(rig.context.focused(), editor);
+    rig.context.event(Event::Text(TextEdit::SelectAll));
+    insert(&mut rig.context, "foo");
+    rig.frame();
+    assert_eq!(rig.app.document.text(), "foo bar\nFoo foo\nfoobar foo");
+
+    // Enter in the field and F3 step through matches; Shift+F3 goes back and wraps.
+    key(&mut rig.context, Key::Enter, false);
+    rig.frame();
+    assert_eq!(rig.app.document.primary().range(), 8..11);
+    rig.context.event(Event::Editor(EditorCommand::FindNext));
+    rig.frame();
+    assert_eq!(rig.app.document.primary().range(), 12..15);
+    // Three steps in one batch: each resolves against the document the
+    // one before left.
+    for _ in 0..3 {
+        rig.context
+            .event(Event::Editor(EditorCommand::FindPrevious));
+    }
+    rig.frame();
+    assert_eq!(rig.app.document.primary().range(), 23..26);
+
+    // Options narrow the matches, from the bar's check boxes.
+    press(&mut rig, Role::Checkbox, "Match case");
+    press(&mut rig, Role::Checkbox, "Whole word");
+    assert!(rig.app.find.case_sensitive, "case");
+    assert!(rig.app.find.whole_word, "word");
+    assert_eq!(rig.app.find.matches(), [0..3, 12..15, 23..26]);
+
+    // Ctrl+H adds the replace row; one replacement, then all, each one undo step.
+    rig.context.event(Event::Editor(EditorCommand::Replace));
+    rig.frame();
+    rig.frame();
+    assert!(rig.app.find.replace);
+    press(&mut rig, Role::TextInput, "Replace with");
+    rig.context.event(Event::Text(TextEdit::SelectAll));
+    insert(&mut rig.context, "qux");
+    rig.frame();
+    assert_eq!(rig.app.find.replacement, "qux");
+    press(&mut rig, Role::Button, "Replace");
+    assert_eq!(rig.app.document.text(), "foo bar\nFoo foo\nfoobar qux");
+    press(&mut rig, Role::Button, "Replace all");
+    assert_eq!(rig.app.document.text(), "qux bar\nFoo qux\nfoobar qux");
+    rig.context.event(Event::Text(TextEdit::Undo));
+    rig.frame();
+
+    // Escape in the bar closes it and gives the focus back to the text.
+    press(&mut rig, Role::TextInput, "Find");
+    key(&mut rig.context, Key::Escape, false);
+    rig.frame();
+    rig.frame();
+    assert!(!rig.app.find.open);
+    assert_eq!(rig.context.focused(), editor);
 }
 
 #[test]

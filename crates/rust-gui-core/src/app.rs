@@ -87,6 +87,9 @@ pub(crate) enum Handler<M> {
     },
     /// A stepper button: steps the number field of its row by this many steps.
     Step(f64),
+    /// Sent as it is, and the focus goes back to the text of the editor the
+    /// button belongs to: a toolbar button.
+    Refocus(M),
 }
 
 impl<M: 'static> Handler<M> {
@@ -138,6 +141,7 @@ impl<M: 'static> Handler<M> {
                 }
             }
             Self::Step(steps) => Handler::Step(steps),
+            Self::Refocus(message) => Handler::Refocus(f(message)),
         }
     }
 }

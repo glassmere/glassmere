@@ -47,32 +47,12 @@ fn toolbar_style(theme: &Theme, active: bool) -> Style {
 impl<'a, M: 'static> Ui<'a, M> {
     /// A WYSIWYG editor over an app-owned `RichDocument`: wrapped paragraphs,
     /// headings, lists, quotes and code blocks with bold, italic, underline,
-    /// strikethrough, inline code and links. Input is queued and applied
-    /// here, like `code_editor`. Ctrl+B, Ctrl+I and Ctrl+U toggle marks; the
-    /// optional toolbar offers marks and block kinds.
-    #[track_caller]
-    pub fn rich_text_editor(
-        &mut self,
-        document: &mut RichDocument,
-        options: RichEditorOptions,
-    ) -> RichEditorResponse {
-        let mut outer = options.style.clone();
-        outer.padding = 0.0;
-        outer.radius = 0.0;
-        outer.background = None;
-        outer.gap = 6.0;
-        let mut response = RichEditorResponse::default();
-        let key = self.next_key();
-        self.group(key, Kind::CodeEditor, outer, |ui| {
-            response = ui.rich_editor_body(document, options);
-        });
-        response
-    }
-
-    /// [`Ui::rich_text_editor`] over a document the view only reads: each
-    /// edit, mark or block change arrives as one `RichOp` through `on`, in
-    /// order, and `update` applies it with `RichDocument::apply`. The toolbar
-    /// sends its buttons' ops the same way.
+    /// strikethrough, inline code and links. Each edit, mark or block change
+    /// arrives as one `RichOp` through `on`, in order, and `update` applies it
+    /// with `RichDocument::apply_with`, which also puts a copy or cut on the
+    /// clipboard. Ctrl+B, Ctrl+I and Ctrl+U toggle marks; the optional toolbar
+    /// sends its buttons' ops the same way, and hands the focus back to the
+    /// text after each press.
     #[track_caller]
     pub fn rich_editor_msg(
         &mut self,
@@ -98,39 +78,6 @@ impl<'a, M: 'static> Ui<'a, M> {
             link_at_cursor: document.marks().link,
             ..RichEditorResponse::default()
         }
-    }
-
-    #[track_caller]
-    fn rich_editor_body(
-        &mut self,
-        document: &mut RichDocument,
-        options: RichEditorOptions,
-    ) -> RichEditorResponse {
-        let key = "$area";
-        let revision = document.revision();
-        let before = (document.anchor(), document.cursor());
-        let mut clipboard = None;
-        if let Some(ControlUpdate::RichOps(ops)) =
-            self.take_update(&WidgetKey::named(key), Kind::RichEditor)
-        {
-            for op in ops {
-                op.apply(document, options.read_only, &mut clipboard);
-            }
-        }
-        if let Some(text) = clipboard {
-            *self.clipboard = Some(text);
-        }
-        if options.toolbar && !options.read_only && self.rich_toolbar(document) {
-            // Formatting from the toolbar keeps the text ready for typing.
-            self.request_focus(key);
-        }
-        let response = RichEditorResponse {
-            changed: document.revision() != revision,
-            selection_changed: before != (document.anchor(), document.cursor()),
-            link_at_cursor: document.marks().link,
-        };
-        self.rich_editor_declare(document, options, None);
-        response
     }
 
     /// Declares the editor's node with what the document shows now, and the
@@ -180,50 +127,6 @@ impl<'a, M: 'static> Ui<'a, M> {
         }
     }
 
-    /// Mark and block buttons reflecting the state at the cursor. Returns
-    /// whether one was used.
-    #[track_caller]
-    fn rich_toolbar(&mut self, document: &mut RichDocument) -> bool {
-        let theme = self.theme().clone();
-        let marks = document.marks();
-        let kind = document.block_kind();
-        let mut used = false;
-        self.row_at("$toolbar", toolbar_row(), |ui| {
-            for (label, tip, mark) in MARKS {
-                if ui
-                    .button_at(
-                        format!("$mark-{label}"),
-                        label,
-                        true,
-                        toolbar_style(&theme, marks.has(mark)),
-                    )
-                    .clicked()
-                {
-                    document.toggle_mark(mark);
-                    used = true;
-                }
-                ui.tooltip(tip);
-            }
-            ui.label_at("$gap", "", Style::default().width(Length::Px(8.0)));
-            for (label, tip, block) in BLOCKS {
-                if ui
-                    .button_at(
-                        format!("$block-{tip}"),
-                        label,
-                        true,
-                        toolbar_style(&theme, kind == block),
-                    )
-                    .clicked()
-                {
-                    document.set_block_kind(block);
-                    used = true;
-                }
-                ui.tooltip(tip);
-            }
-        });
-        used
-    }
-
     /// The toolbar of [`Ui::rich_editor_msg`]: each button sends its op.
     #[track_caller]
     fn rich_toolbar_msg(&mut self, document: &RichDocument, on: &dyn Fn(RichOp) -> M) {
@@ -238,7 +141,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                     true,
                     toolbar_style(&theme, marks.has(mark)),
                 );
-                ui.set_handler(Handler::Message(on(RichOp::Toggle(mark))));
+                ui.set_handler(Handler::Refocus(on(RichOp::Toggle(mark))));
                 ui.tooltip(tip);
             }
             ui.label_at("$gap", "", Style::default().width(Length::Px(8.0)));
@@ -249,7 +152,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                     true,
                     toolbar_style(&theme, kind == block),
                 );
-                ui.set_handler(Handler::Message(on(RichOp::SetBlock(block))));
+                ui.set_handler(Handler::Refocus(on(RichOp::SetBlock(block))));
                 ui.tooltip(tip);
             }
         });

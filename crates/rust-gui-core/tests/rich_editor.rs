@@ -2,8 +2,9 @@ mod support;
 
 use rust_gui_core::app::Action;
 use rust_gui_core::{
-    Block, BlockKind, Context, EditorCommand, Event, Key, Length, MonospaceMeasurer, RichDocument,
-    RichEditorOptions, RichOp, RichPosition, Role, Style, TextEdit, Ui,
+    App, AppDriver, Block, BlockKind, Context, EditorCommand, Effects, Event, Key, Length,
+    MonospaceMeasurer, RichDocument, RichEditorOptions, RichOp, RichPosition, Role, Style,
+    TextEdit, Ui,
 };
 use rust_gui_scene::{Point, Primitive, Rect, Size};
 use std::time::Duration;
@@ -259,114 +260,118 @@ fn pointer_places_drags_and_multi_clicks_across_blocks() {
     assert_eq!(app.state().document.selected_text(), "first paragraph");
 }
 
-/// The old-API state of the tests that stay on `Context::run`.
-struct OldApp {
-    document: RichDocument,
-    read_only: bool,
-    toolbar: bool,
-}
-
-fn old_frame(context: &mut Context, app: &mut OldApp) {
-    context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        ui.keyed("editor", |ui| {
-            ui.rich_text_editor(
-                &mut app.document,
-                RichEditorOptions {
-                    label: "Notes".into(),
-                    style: Style::default()
-                        .width(Length::Px(400.0))
-                        .height(Length::Px(300.0))
-                        .padding(PADDING),
-                    toolbar: app.toolbar,
-                    read_only: app.read_only,
-                    ..RichEditorOptions::default()
-                },
-            )
-        });
-    });
-}
-
-// M35: `rich_toolbar_msg` does not hand focus back to the text after a button
-// press (the old toolbar's `request_focus` in `rich_editor_body` only runs for
-// it), and this test asserts exactly that. Stays on `Context::run`.
 #[test]
 fn the_toolbar_formats_shows_state_and_returns_focus_to_the_text() {
-    let mut context = Context::new();
-    let mut app = OldApp {
-        document: RichDocument::from_blocks(vec![Block::new(BlockKind::Paragraph, "make me bold")]),
-        read_only: false,
-        toolbar: true,
-    };
-    old_frame(&mut context, &mut app);
-    old_frame(&mut context, &mut app);
-    let area = labelled(&context, Role::TextInput, "Notes");
+    let mut app = started(RichDocument::from_blocks(vec![Block::new(
+        BlockKind::Paragraph,
+        "make me bold",
+    )]));
+    app.state_mut().toolbar = true;
+    app.frame();
+    let area = labelled(&app.context, Role::TextInput, "Notes");
     click(
-        &mut context,
+        &mut app.context,
         Point {
             x: area.x + PADDING + 1.0,
             y: area.y + PADDING + 4.0,
         },
     );
-    old_frame(&mut context, &mut app);
-    let editor = context.focused();
-    app.document.select_all();
-    old_frame(&mut context, &mut app);
+    app.frame();
+    let editor = app.context.focused();
+    app.state_mut().document.select_all();
+    app.frame();
 
-    let press = |context: &mut Context, app: &mut OldApp, label: &str| {
-        let bounds = labelled(context, Role::Button, label);
+    let press = |app: &mut Driven<State>, label: &str| {
+        let bounds = labelled(&app.context, Role::Button, label);
         click(
-            context,
+            &mut app.context,
             Point {
                 x: bounds.x + bounds.width / 2.0,
                 y: bounds.y + bounds.height / 2.0,
             },
         );
-        old_frame(context, app);
-        old_frame(context, app);
+        app.frame();
+        app.frame();
     };
-    press(&mut context, &mut app, "B");
-    assert!(app.document.blocks()[0].runs[0].marks.bold);
+    press(&mut app, "B");
+    assert!(app.state().document.blocks()[0].runs[0].marks.bold);
     // Focus came back, so typing continues without another click.
-    assert_eq!(context.focused(), editor);
-    press(&mut context, &mut app, "H2");
-    assert_eq!(app.document.block_kind(), BlockKind::Heading(2));
-    assert_eq!(context.focused(), editor);
+    assert_eq!(app.context.focused(), editor);
+    press(&mut app, "H2");
+    assert_eq!(app.state().document.block_kind(), BlockKind::Heading(2));
+    assert_eq!(app.context.focused(), editor);
     // Active buttons take the accent colour.
-    let accent = context.theme().accent;
-    let active = context
+    let accent = app.context.theme().accent;
+    let active = app
+        .context
         .scene()
         .primitives
         .iter()
         .filter(|primitive| matches!(primitive, Primitive::Quad { color, .. } if *color == accent))
         .count();
     assert!(active >= 2, "{active}");
-    press(&mut context, &mut app, "H2");
-    assert_eq!(app.document.block_kind(), BlockKind::Paragraph);
+    press(&mut app, "H2");
+    assert_eq!(app.state().document.block_kind(), BlockKind::Paragraph);
 }
 
-// M35: a clipboard request is serviced by the declaration that follows it
-// (`take_clipboard` reads what that declaration produced), and no message or
-// view-read change asks for one, so a message-model frame never services it.
-// Stays on `Context::run` until the view rule covers the clipboard outbox.
+/// A real `App`: `update` applies each op with `RichDocument::apply_with`,
+/// which needs the `Effects` of the batch for the clipboard.
+struct Notes {
+    document: RichDocument,
+    read_only: bool,
+}
+
+impl App for Notes {
+    type Message = RichOp;
+
+    fn update(&mut self, op: RichOp, effects: &mut Effects<'_, RichOp>) {
+        self.document.apply_with(op, effects);
+    }
+
+    fn view(&self, ui: &mut Ui<'_, RichOp>) {
+        ui.keyed("editor", |ui| {
+            ui.rich_editor_msg(
+                &self.document,
+                RichEditorOptions {
+                    label: "Notes".into(),
+                    style: Style::default()
+                        .width(Length::Px(400.0))
+                        .height(Length::Px(300.0))
+                        .padding(PADDING),
+                    toolbar: false,
+                    read_only: self.read_only,
+                    ..RichEditorOptions::default()
+                },
+                |op| op,
+            )
+        });
+    }
+}
+
+fn frame(driver: &mut AppDriver<RichOp>, notes: &mut Notes, context: &mut Context) {
+    driver.frame(notes, context, ROOT, &mut MonospaceMeasurer);
+}
+
 #[test]
 fn clipboard_read_only_composition_and_scrolling_behave_like_the_code_editor() {
     let blocks: Vec<Block> = (0..60)
         .map(|n| Block::new(BlockKind::Paragraph, &format!("paragraph {n}")))
         .collect();
-    let mut context = Context::new();
-    let mut app = OldApp {
+    let mut notes = Notes {
         document: RichDocument::from_blocks(blocks),
         read_only: false,
-        toolbar: false,
     };
-    old_frame(&mut context, &mut app);
-    old_frame(&mut context, &mut app);
+    let mut driver = AppDriver::new(|| true);
+    let mut context = Context::new();
+    frame(&mut driver, &mut notes, &mut context);
+    frame(&mut driver, &mut notes, &mut context);
     click(&mut context, cell(0, 0));
     key(&mut context, Key::ArrowRight, true);
     key(&mut context, Key::ArrowRight, true);
     assert!(context.request_clipboard(false));
-    old_frame(&mut context, &mut app);
-    assert_eq!(context.take_clipboard().as_deref(), Some("pa"));
+    // The batch that carries the request services it.
+    frame(&mut driver, &mut notes, &mut context);
+    assert_eq!(context.take_clip().unwrap().text, "pa");
 
     // Preedit shows inline and leaves the document alone until the commit.
     context.event(Event::Text(TextEdit::Preedit {
@@ -374,11 +379,11 @@ fn clipboard_read_only_composition_and_scrolling_behave_like_the_code_editor() {
         selection: None,
     }));
     assert!(context.composing_text());
-    old_frame(&mut context, &mut app);
-    assert_eq!(app.document.blocks()[0].text(), "paragraph 0");
+    frame(&mut driver, &mut notes, &mut context);
+    assert_eq!(notes.document.blocks()[0].text(), "paragraph 0");
     context.event(Event::Text(TextEdit::Commit("日本".into())));
-    old_frame(&mut context, &mut app);
-    assert_eq!(app.document.blocks()[0].text(), "日本ragraph 0");
+    frame(&mut driver, &mut notes, &mut context);
+    assert_eq!(notes.document.blocks()[0].text(), "日本ragraph 0");
     assert!(context.ime_cursor_rect().is_some());
 
     // Moving to the end scrolls the last paragraph into view.
@@ -387,8 +392,8 @@ fn clipboard_read_only_composition_and_scrolling_behave_like_the_code_editor() {
         select: false,
         word: false,
     }));
-    old_frame(&mut context, &mut app);
-    old_frame(&mut context, &mut app);
+    frame(&mut driver, &mut notes, &mut context);
+    frame(&mut driver, &mut notes, &mut context);
     let shown = |context: &Context, needle: &str| {
         context.scene().primitives.iter().any(|primitive| {
             matches!(primitive, Primitive::RichText { spans, .. }
@@ -399,11 +404,12 @@ fn clipboard_read_only_composition_and_scrolling_behave_like_the_code_editor() {
     let caret = context.ime_cursor_rect().unwrap();
     assert!(caret.y + caret.height <= 300.0 - PADDING + 0.5);
 
-    app.read_only = true;
-    old_frame(&mut context, &mut app);
+    notes.read_only = true;
+    driver.invalidate();
+    frame(&mut driver, &mut notes, &mut context);
     assert!(!context.accepts_text());
     context.request_clipboard(true);
     key(&mut context, Key::Backspace, false);
-    old_frame(&mut context, &mut app);
-    assert_eq!(app.document.blocks()[59].text(), "paragraph 59");
+    frame(&mut driver, &mut notes, &mut context);
+    assert_eq!(notes.document.blocks()[59].text(), "paragraph 59");
 }

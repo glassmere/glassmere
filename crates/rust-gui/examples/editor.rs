@@ -1,8 +1,10 @@
 use rust_gui::syntax::SyntectHighlighter;
 use rust_gui::{
-    AppOptions, CodeEditorOptions, Diagnostic, FindState, Label, Length, RichRun, RichText,
-    Severity, Size, Style, TextDocument, TextInput, TextWrap, run,
+    App, AppOptions, CodeEditorOptions, Diagnostic, Effects, FindState, Highlighter, Label, Length,
+    RichRun, RichText, Severity, Size, Style, TextDocument, TextInput, TextOp, TextWrap, Ui,
+    run_app,
 };
+use std::cell::RefCell;
 
 const SAMPLE: &str = r#"use std::collections::HashMap;
 
@@ -44,110 +46,164 @@ fn lint(document: &TextDocument) -> Vec<Diagnostic> {
     diagnostics
 }
 
-// M35: stays on the closure API (`run`). The find bar (Ctrl+F, Ctrl+H, and
-// `--open`) keeps a `FindState` the editor writes, and `code_editor_msg`
-// rejects `find` as a misuse (`ui/text_area.rs`, `message_misuse`), so the
-// whole code editor needs the view to hold mutable state.
+#[derive(Clone)]
+enum Msg {
+    /// An edit, a caret move or a find bar change in the code editor.
+    Edit(TextOp),
+    /// A link of the rich text block was followed.
+    Link(String),
+    Mixed(String),
+}
+
+struct Editor {
+    document: TextDocument,
+    find: FindState,
+    diagnostics: Vec<Diagnostic>,
+    /// One highlighter per window theme; the view reads the one that fits,
+    /// and the editor fills it as it declares.
+    dark: RefCell<SyntectHighlighter>,
+    light: RefCell<SyntectHighlighter>,
+    followed: String,
+    mixed: String,
+}
+
+impl App for Editor {
+    type Message = Msg;
+
+    fn update(&mut self, message: Msg, effects: &mut Effects<'_, Msg>) {
+        match message {
+            Msg::Edit(op) => {
+                let revision = self.document.revision();
+                self.find.apply(&mut self.document, op, effects);
+                if self.document.revision() != revision {
+                    self.diagnostics = lint(&self.document);
+                }
+            }
+            Msg::Link(target) => self.followed = target,
+            Msg::Mixed(text) => self.mixed = text,
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        let theme = ui.theme().clone();
+        let window = theme.window;
+        let dark = u32::from(window.0) + u32::from(window.1) + u32::from(window.2) < 384;
+        let highlighter: &RefCell<dyn Highlighter> = if dark { &self.dark } else { &self.light };
+        let page = Style::default()
+            .width(Length::Percent(1.0))
+            .height(Length::Percent(1.0))
+            .padding(20.0)
+            .gap(12.0);
+        ui.column(page, |ui| {
+            let intro = RichText::new()
+                .text("A ")
+                .bold("rich text")
+                .text(" block mixes ")
+                .italic("styles")
+                .text(", ")
+                .code("inline code")
+                .text(", ")
+                .run(RichRun::new("decorations").underline())
+                .text(" and links such as ")
+                .link("the milestone report", "docs/milestone-7.md")
+                .text(" or ")
+                .link("the roadmap", "docs/roadmap.md")
+                .text(
+                    ". In the editor: Ctrl+F and Ctrl+H search and replace, F3 steps, Ctrl+D \
+                     selects the next occurrence, Alt+click and Ctrl+Alt+Up/Down add cursors.",
+                );
+            ui.rich_text_msg(
+                &intro,
+                Style::default()
+                    .width(Length::Percent(1.0))
+                    .wrap(TextWrap::Word),
+                Msg::Link,
+            );
+            // Latin, Hebrew and Arabic in one field: arrows move on screen, and the
+            // caret carries a small flag showing the direction of the text it is in.
+            ui.text_input_msg(
+                TextInput::new("Bidirectional text")
+                    .placeholder("")
+                    .style(Style {
+                        width: Length::Px(420.0),
+                        height: Length::Px(40.0),
+                        padding: 10.0,
+                        ..Style::button()
+                    }),
+                &self.mixed,
+                Msg::Mixed,
+            );
+            ui.code_editor_msg(
+                &self.document,
+                CodeEditorOptions {
+                    label: "Rust source".into(),
+                    style: Style::default()
+                        .width(Length::Percent(1.0))
+                        .grow(1.0)
+                        .shrink(1.0)
+                        .padding(8.0)
+                        .radius(8.0),
+                    highlighter: Some(highlighter),
+                    find: Some(&self.find),
+                    diagnostics: &self.diagnostics,
+                    ..CodeEditorOptions::default()
+                },
+                Msg::Edit,
+            );
+            let (line, byte) = self.document.position(self.document.primary().cursor);
+            ui.label(
+                Label::new(format!(
+                    "Ln {}, byte {}  ·  {} cursors  ·  {} problems  ·  {}  ·  last link: {}",
+                    line + 1,
+                    byte,
+                    self.document.selections().len(),
+                    self.diagnostics.len(),
+                    if self.document.is_modified() {
+                        "modified"
+                    } else {
+                        "saved"
+                    },
+                    self.followed,
+                ))
+                .style(
+                    Style::default()
+                        .font_size(13.0)
+                        .foreground(theme.text_muted),
+                ),
+            );
+        });
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     let open = std::env::args().any(|arg| arg == "--open");
-    let mut document = TextDocument::from_text(SAMPLE);
+    let document = TextDocument::from_text(SAMPLE);
     let mut find = FindState::default();
     if open {
         find.open = true;
         find.query = "counts".into();
+        find.refresh(&document);
     }
-    let mut diagnostics = lint(&document);
-    // Rebuilt when the window theme flips between dark and light.
-    let mut highlighter: Option<(bool, SyntectHighlighter)> = None;
-    let mut followed = String::from("none");
-    // Latin, Hebrew and Arabic in one field: arrows move on screen, and the
-    // caret carries a small flag showing the direction of the text it is in.
-    let mut mixed = String::from(
-        "name: \u{5e9}\u{5dc}\u{5d5}\u{5dd} \u{5e2}\u{5d5}\u{5dc}\u{5dd} (\u{633}\u{644}\u{627}\u{645}) ok",
-    );
-    run(
+    let diagnostics = lint(&document);
+    run_app(
         AppOptions {
             title: "Rust GUI / Editor".into(),
             size: Size::new(900.0, 700.0),
             frame_limit: smoke.then_some(3),
             ..AppOptions::default()
         },
-        move |ui| {
-            let theme = ui.theme().clone();
-            let window = theme.window;
-            let dark = u32::from(window.0) + u32::from(window.1) + u32::from(window.2) < 384;
-            if highlighter.as_ref().is_none_or(|(was, _)| *was != dark) {
-                highlighter = Some((dark, SyntectHighlighter::new("rs", dark)));
-            }
-            let page = Style::default()
-                .width(Length::Percent(1.0))
-                .height(Length::Percent(1.0))
-                .padding(20.0)
-                .gap(12.0);
-            ui.column(page, |ui| {
-                let intro = RichText::new()
-                    .text("A ")
-                    .bold("rich text")
-                    .text(" block mixes ")
-                    .italic("styles")
-                    .text(", ")
-                    .code("inline code")
-                    .text(", ")
-                    .run(RichRun::new("decorations").underline())
-                    .text(" and links such as ")
-                    .link("the milestone report", "docs/milestone-7.md")
-                    .text(" or ")
-                    .link("the roadmap", "docs/roadmap.md")
-                    .text(
-                        ". In the editor: Ctrl+F and Ctrl+H search and replace, F3 steps, Ctrl+D \
-                         selects the next occurrence, Alt+click and Ctrl+Alt+Up/Down add cursors.",
-                    );
-                if let Some(target) = ui.rich_text(&intro, Style::default()
-                        .width(Length::Percent(1.0))
-                        .wrap(TextWrap::Word)) {
-                    followed = target;
-                }
-                ui.text_input(TextInput::new("Bidirectional text").placeholder("").style(Style {
-                        width: Length::Px(420.0),
-                        height: Length::Px(40.0),
-                        padding: 10.0,
-                        ..Style::button()
-                    }), &mut mixed);
-                let response = ui.code_editor(&mut document, CodeEditorOptions {
-                        label: "Rust source".into(),
-                        style: Style::default()
-                            .width(Length::Percent(1.0))
-                            .grow(1.0)
-                            .shrink(1.0)
-                            .padding(8.0)
-                            .radius(8.0),
-                        highlighter: highlighter
-                            .as_mut()
-                            .map(|(_, highlighter)| highlighter as _),
-                        find: Some(&mut find),
-                        diagnostics: &diagnostics,
-                        ..CodeEditorOptions::default()
-                    });
-                if response.changed {
-                    diagnostics = lint(&document);
-                }
-                let (line, byte) = document.position(document.primary().cursor);
-                ui.label(Label::new(format!(
-                        "Ln {}, byte {}  ·  {} cursors  ·  {} problems  ·  {}  ·  last link: {followed}",
-                        line + 1,
-                        byte,
-                        document.selections().len(),
-                        diagnostics.len(),
-                        if document.is_modified() {
-                            "modified"
-                        } else {
-                            "saved"
-                        },
-                    )).style(Style::default()
-                        .font_size(13.0)
-                        .foreground(theme.text_muted)));
-            });
+        Editor {
+            document,
+            find,
+            diagnostics,
+            dark: RefCell::new(SyntectHighlighter::new("rs", true)),
+            light: RefCell::new(SyntectHighlighter::new("rs", false)),
+            followed: String::from("none"),
+            mixed: String::from(
+                "name: \u{5e9}\u{5dc}\u{5d5}\u{5dd} \u{5e2}\u{5d5}\u{5dc}\u{5dd} (\u{633}\u{644}\u{627}\u{645}) ok",
+            ),
         },
-    )
+    )?;
+    Ok(())
 }

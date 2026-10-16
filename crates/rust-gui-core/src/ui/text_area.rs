@@ -1,88 +1,17 @@
 use super::*;
 use crate::app::Handler;
 use crate::text_area::{
-    AreaLine, AreaMark, AreaOp, AreaSelection, MarkKind, line_spans, marks_for,
+    AreaLine, AreaMark, AreaOp, AreaSelection, FindEdit, MarkKind, line_spans, marks_for,
 };
 use crate::{
-    Align, CodeEditorOptions, CodeEditorResponse, EditorCommand, FindState, FocusScope, Length,
-    Severity, TextDocument,
+    Align, Button, CodeEditorOptions, CodeEditorResponse, EditorCommand, FindState, FocusScope,
+    Length, Severity, TextDocument, TextInput,
 };
+use std::rc::Rc;
 
 /// Lines declared beyond the viewport on each side, so small scrolls and the
 /// first frame after a resize already have their text.
 const OVERSCAN: usize = 8;
-
-struct Applied<'a, 'b> {
-    document: &'a mut TextDocument,
-    find: Option<&'a mut FindState>,
-    read_only: bool,
-    auto_close: bool,
-    clipboard: &'b mut Option<String>,
-}
-
-impl Applied<'_, '_> {
-    fn command(&mut self, command: EditorCommand) {
-        match command {
-            EditorCommand::SelectNextOccurrence
-            | EditorCommand::AddCursorAbove
-            | EditorCommand::AddCursorBelow => {
-                self.document.apply(AreaOp::Command(command));
-            }
-            // Resolved into a pointer operation when the event arrives, or meant
-            // for rich text editors.
-            EditorCommand::AddCursorAt(_)
-            | EditorCommand::ToggleBold
-            | EditorCommand::ToggleItalic
-            | EditorCommand::ToggleUnderline
-            | EditorCommand::ToggleStrikethrough
-            | EditorCommand::ToggleCode => {}
-            search => {
-                let Some(find) = self.find.as_deref_mut() else {
-                    return;
-                };
-                match search {
-                    EditorCommand::Find | EditorCommand::Replace => {
-                        find.open = true;
-                        find.replace |= search == EditorCommand::Replace;
-                        // Search for the selection, as editors do.
-                        let selected = self.document.selected_text();
-                        if !selected.is_empty() && !selected.contains('\n') {
-                            find.query = selected;
-                        }
-                    }
-                    EditorCommand::CloseFind => find.open = false,
-                    EditorCommand::FindNext => {
-                        find.step(self.document, true);
-                    }
-                    _ => {
-                        find.step(self.document, false);
-                    }
-                }
-            }
-        }
-    }
-
-    fn op(&mut self, op: AreaOp) {
-        match op {
-            AreaOp::Clipboard { cut } => {
-                *self.clipboard = Some(if cut && !self.read_only {
-                    self.document.cut()
-                } else {
-                    self.document.copy_text()
-                });
-            }
-            AreaOp::Command(command) => self.command(command),
-            op if self.read_only && op.is_edit() => {}
-            AreaOp::Insert(text) if self.auto_close => {
-                self.document.insert_paired(&text);
-            }
-            AreaOp::Backspace { word: false } if self.auto_close => {
-                self.document.backspace_paired();
-            }
-            op => self.document.apply(op),
-        }
-    }
-}
 
 fn compact() -> Style {
     Style {
@@ -93,11 +22,13 @@ fn compact() -> Style {
 }
 
 /// The find bar: query, options, match count and, optionally, replacement.
+/// Every change is sent as a `TextOp` that `FindState::apply` handles.
 fn find_bar<M: 'static>(
     ui: &mut Ui<'_, M>,
-    find: &mut FindState,
-    document: &mut TextDocument,
+    find: &FindState,
+    document: &TextDocument,
     read_only: bool,
+    on: &Rc<dyn Fn(AreaOp) -> M>,
 ) {
     let input = |width| Style {
         width: Length::Px(width),
@@ -105,6 +36,8 @@ fn find_bar<M: 'static>(
         ..compact()
     };
     let row = Style::default().gap(6.0).align_items(Align::Center);
+    let command = |command: EditorCommand| on(AreaOp::Command(command));
+    let edit = |edit: FindEdit| on(AreaOp::Find(edit));
     ui.focus_scope_at(
         "$find",
         FocusScope {
@@ -115,30 +48,44 @@ fn find_bar<M: 'static>(
         Style::default().gap(6.0),
         |ui| {
             ui.row_at("$search", row.clone(), |ui| {
-                let query =
-                    ui.text_input_at("$query", "Find", &mut find.query, "Find", input(220.0));
-                if query.submitted {
-                    find.step(document, true);
-                }
-                if ui
-                    .button_at("$previous", "Previous", true, compact())
-                    .clicked()
-                {
-                    find.step(document, false);
-                }
-                if ui.button_at("$next", "Next", true, compact()).clicked() {
-                    find.step(document, true);
-                }
-                ui.checkbox_at("$case", "Match case", &mut find.case_sensitive);
+                let typed = on.clone();
+                ui.at("$query").text_input_msg(
+                    TextInput::new("Find")
+                        .placeholder("Find")
+                        .style(input(220.0))
+                        .on_submit(command(EditorCommand::FindNext)),
+                    &find.query,
+                    move |query| typed(AreaOp::Find(FindEdit::Query(query))),
+                );
+                ui.at("$previous").button(
+                    Button::new("Previous")
+                        .style(compact())
+                        .on_click(command(EditorCommand::FindPrevious)),
+                );
+                ui.at("$next").button(
+                    Button::new("Next")
+                        .style(compact())
+                        .on_click(command(EditorCommand::FindNext)),
+                );
+                ui.at("$case")
+                    .checkbox_msg("Match case", find.case_sensitive, |on| {
+                        edit(FindEdit::CaseSensitive(on))
+                    });
                 ui.enabled(!find.regex, |ui| {
-                    ui.checkbox_at("$word", "Whole word", &mut find.whole_word);
+                    ui.at("$word")
+                        .checkbox_msg("Whole word", find.whole_word, |on| {
+                            edit(FindEdit::WholeWord(on))
+                        });
                 });
-                ui.checkbox_at("$regex", "Regular expression", &mut find.regex);
-                find.refresh(document);
+                ui.at("$regex")
+                    .checkbox_msg("Regular expression", find.regex, |on| {
+                        edit(FindEdit::Regex(on))
+                    });
+                let (matches, error) = find.found(document);
                 let current = document.primary().range();
-                let position = find.matches().iter().position(|range| *range == current);
+                let position = matches.iter().position(|range| *range == current);
                 let muted = ui.theme().text_muted;
-                let count = match (find.matches().len(), position) {
+                let count = match (matches.len(), position) {
                     (0, _) if find.query.is_empty() => String::new(),
                     (0, _) => "No results".into(),
                     (total, Some(index)) => format!("{} of {total}", index + 1),
@@ -146,8 +93,8 @@ fn find_bar<M: 'static>(
                 };
                 // A pattern that cannot be used says so where the count would be.
                 // No token means trouble, so the accent stands in for one.
-                let (text, colour) = match find.error() {
-                    Some(error) => (error.to_owned(), ui.theme().accent),
+                let (text, colour) = match error {
+                    Some(error) => (error.into_owned(), ui.theme().accent),
                     None => (count, muted),
                 };
                 ui.label_at(
@@ -155,32 +102,35 @@ fn find_bar<M: 'static>(
                     text,
                     Style::default().font_size(13.0).foreground(colour),
                 );
-                if ui.button_at("$close", "×", true, compact()).clicked() {
-                    find.open = false;
-                }
+                ui.at("$close").button(
+                    Button::new("×")
+                        .style(compact())
+                        .on_click(command(EditorCommand::CloseFind)),
+                );
                 ui.tooltip(ui.context.tr("rust-gui-find-close", &[]));
             });
             if find.replace {
                 ui.row_at("$replace", row.clone(), |ui| {
-                    ui.text_input_at(
-                        "$replacement",
-                        "Replace with",
-                        &mut find.replacement,
-                        "Replace",
-                        input(220.0),
+                    let typed = on.clone();
+                    ui.at("$replacement").text_input_msg(
+                        TextInput::new("Replace with")
+                            .placeholder("Replace")
+                            .style(input(220.0)),
+                        &find.replacement,
+                        move |text| typed(AreaOp::Find(FindEdit::Replacement(text))),
                     );
-                    if ui
-                        .button_at("$one", "Replace", !read_only, compact())
-                        .clicked()
-                    {
-                        find.replace_one(document);
-                    }
-                    if ui
-                        .button_at("$all", "Replace all", !read_only, compact())
-                        .clicked()
-                    {
-                        find.replace_all(document);
-                    }
+                    ui.at("$one").button(
+                        Button::new("Replace")
+                            .enabled(!read_only)
+                            .style(compact())
+                            .on_click(edit(FindEdit::ReplaceOne)),
+                    );
+                    ui.at("$all").button(
+                        Button::new("Replace all")
+                            .enabled(!read_only)
+                            .style(compact())
+                            .on_click(edit(FindEdit::ReplaceAll)),
+                    );
                 });
             }
         },
@@ -188,88 +138,14 @@ fn find_bar<M: 'static>(
 }
 
 impl<'a, M: 'static> Ui<'a, M> {
-    /// A monospace, non-wrapping editor over an app-owned document. Only the
-    /// visible lines are declared, shaped and painted. Input is queued as
-    /// operations and applied here, so the document is never touched between
-    /// declarations. Tab indents; Escape followed by Tab leaves the editor.
-    /// With `options.find`, Ctrl+F and Ctrl+H open a find bar above the text.
-    #[track_caller]
-    pub fn code_editor(
-        &mut self,
-        document: &mut TextDocument,
-        options: CodeEditorOptions<'_>,
-    ) -> CodeEditorResponse {
-        let mut outer = options.style.clone();
-        outer.padding = 0.0;
-        outer.radius = 0.0;
-        outer.background = None;
-        outer.gap = 6.0;
-        let mut response = CodeEditorResponse::default();
-        let key = self.next_key();
-        self.group(key, Kind::CodeEditor, outer, |ui| {
-            response = ui.editor_body(document, options);
-        });
-        response
-    }
-
-    #[track_caller]
-    fn editor_body(
-        &mut self,
-        document: &mut TextDocument,
-        mut options: CodeEditorOptions<'_>,
-    ) -> CodeEditorResponse {
-        let key = "$area";
-        let revision = document.revision();
-        let before = document.primary();
-        let mut applied = false;
-        let mut clipboard = None;
-        if let Some(ControlUpdate::TextOps(ops)) =
-            self.take_update(&WidgetKey::named(key), Kind::TextArea)
-        {
-            let mut target = Applied {
-                document: &mut *document,
-                find: options.find.as_deref_mut(),
-                read_only: options.read_only,
-                auto_close: options.auto_close,
-                clipboard: &mut clipboard,
-            };
-            for op in ops {
-                applied = true;
-                target.op(op);
-            }
-        }
-        if let Some(text) = clipboard {
-            *self.clipboard = Some(text);
-        }
-        if let Some(find) = options.find.as_deref_mut()
-            && find.open
-        {
-            find_bar(self, find, document, options.read_only);
-        }
-        applied |= document.primary() != before;
-        self.editor_view(
-            WidgetKey::Named(key.into()),
-            document,
-            options,
-            applied,
-            None,
-        );
-        CodeEditorResponse {
-            changed: document.revision() != revision,
-            selection_changed: document.primary() != before,
-        }
-    }
-
-    /// Declares the editor's node with what the document shows now. `applied`
-    /// says the caret moved this batch, so it is scrolled into view. `handler`
-    /// is what the node sends when the user edits it.
+    /// Declares the editor's node with what the document shows now.
+    /// `handler` is what the node sends when the user edits it.
     #[track_caller]
     fn editor_view(
         &mut self,
         key: WidgetKey,
         document: &TextDocument,
-        mut options: CodeEditorOptions<'_>,
-        applied: bool,
+        options: CodeEditorOptions<'_>,
         handler: Option<Handler<M>>,
     ) {
         let id = self.context.child(self.parent, &key, Kind::TextArea);
@@ -292,8 +168,10 @@ impl<'a, M: 'static> Ui<'a, M> {
             |view| view.viewport,
         );
         let mut scroll_y = view.map_or(0.0, |view| view.scroll_y);
+        // The caret is scrolled into view when it is not where the last layout
+        // saw it, which is what an edit or a find step does to it.
         let moved = view.is_none_or(|view| view.primary != Some(primary));
-        if (applied || moved) && view.is_some() {
+        if moved && view.is_some() {
             let top = primary.0 as f32 * line_height;
             scroll_y = scroll_y.min(top).max(top + line_height - viewport);
         }
@@ -301,31 +179,29 @@ impl<'a, M: 'static> Ui<'a, M> {
 
         let first = ((scroll_y / line_height) as usize).saturating_sub(OVERSCAN);
         let last = (first + (viewport / line_height).ceil() as usize + 2 * OVERSCAN + 1).min(total);
-        if let Some(highlighter) = options.highlighter.as_mut() {
+        let mut highlighter = options.highlighter.map(|cell| cell.borrow_mut());
+        if let Some(highlighter) = highlighter.as_mut() {
             highlighter.begin(document);
         }
         let lines = (first..last)
             .map(|line| {
                 let text = document.line(line);
-                let highlights = options
-                    .highlighter
-                    .as_mut()
-                    .map_or_else(Vec::new, |highlighter| {
-                        highlighter.highlight(document, line)
-                    });
+                let highlights = highlighter.as_mut().map_or_else(Vec::new, |highlighter| {
+                    highlighter.highlight(document, line)
+                });
                 AreaLine {
                     spans: line_spans(&text, &highlights),
                     text,
                 }
             })
             .collect();
-        if options
-            .highlighter
+        if highlighter
             .as_ref()
             .is_some_and(|highlighter| highlighter.pending())
         {
             self.request_redraw();
         }
+        drop(highlighter);
 
         // Decorations inside the declared window of lines.
         let window = document.line_range(first).start
@@ -333,15 +209,13 @@ impl<'a, M: 'static> Ui<'a, M> {
         let inside =
             |range: &std::ops::Range<usize>| range.start <= window.end && range.end >= window.start;
         let mut marks: Vec<AreaMark> = Vec::new();
-        if let Some(find) = options.find.as_deref_mut()
+        if let Some(find) = options.find
             && find.open
         {
-            find.refresh(document);
+            let (matches, _) = find.found(document);
             let current = document.primary().range();
-            let from = find
-                .matches()
-                .partition_point(|range| range.end < window.start);
-            for range in find.matches()[from..]
+            let from = matches.partition_point(|range| range.end < window.start);
+            for range in matches[from..]
                 .iter()
                 .take_while(|range| range.start <= window.end)
             {
@@ -443,8 +317,8 @@ impl<'a, M: 'static> Ui<'a, M> {
 impl<'a, M: 'static> Ui<'a, M> {
     /// A multi-line editor over an app-owned document, without the frame of
     /// [`Ui::code_editor_msg`]. Each edit arrives as one `TextOp` through
-    /// `on`, in order; `update` applies it with `TextDocument::apply`, and the
-    /// view declares the document as it is then. The response reports
+    /// `on`, in order; `update` applies it with `TextDocument::apply_with`, and
+    /// the view declares the document as it is then. The response reports
     /// nothing: changes come through `update`.
     #[track_caller]
     pub fn text_area_msg(
@@ -453,22 +327,28 @@ impl<'a, M: 'static> Ui<'a, M> {
         options: CodeEditorOptions<'_>,
         on: impl Fn(AreaOp) -> M + 'static,
     ) -> CodeEditorResponse {
-        if let Some(message) = message_misuse(&options) {
-            self.misuse(message.into());
+        if options.find.is_some() {
+            self.misuse("a text area has no find bar; use code_editor_msg for it".into());
             return CodeEditorResponse::default();
         }
-        let handler = text_handler(on, options.read_only, options.auto_close);
+        let handler = text_handler(Rc::new(on), options.read_only, options.auto_close);
         let key = self.next_key();
-        self.editor_view(key, document, options, false, Some(handler));
+        self.editor_view(key, document, options, Some(handler));
         CodeEditorResponse::default()
     }
 
-    /// [`Ui::code_editor`] over a document the view only reads: each edit
-    /// arrives as one `TextOp` through `on`, in order, and `update` applies it
-    /// with `TextDocument::apply`. Undo, the caret, the selection and IME
+    /// A code editor over a document the view only reads: each edit arrives
+    /// as one `TextOp` through `on`, in order, and `update` applies it with
+    /// `TextDocument::apply_with`. Undo, the caret, the selection and IME
     /// composition stay in the document and the editor, so they survive the
-    /// declaration that follows. The find bar and auto-close keep state that
-    /// only the view can change, so they are misuses here.
+    /// declaration that follows. A copy or cut is a `TextOp::Clipboard`, which
+    /// `apply_with` puts on the clipboard in the batch that carries it.
+    ///
+    /// With `options.find`, Ctrl+F and Ctrl+H open a find bar above the text.
+    /// The application owns the `FindState` and applies every `TextOp` with
+    /// `FindState::apply` instead, which also handles the bar's own edits;
+    /// the view reads it. The highlighter, if any, lives in a `RefCell`.
+    /// Tab indents; Escape followed by Tab leaves the editor.
     #[track_caller]
     pub fn code_editor_msg(
         &mut self,
@@ -476,23 +356,28 @@ impl<'a, M: 'static> Ui<'a, M> {
         options: CodeEditorOptions<'_>,
         on: impl Fn(AreaOp) -> M + 'static,
     ) -> CodeEditorResponse {
-        if let Some(message) = message_misuse(&options) {
-            self.misuse(message.into());
-            return CodeEditorResponse::default();
-        }
         let mut outer = options.style.clone();
         outer.padding = 0.0;
         outer.radius = 0.0;
         outer.background = None;
         outer.gap = 6.0;
-        let mut handler = Some(text_handler(on, options.read_only, options.auto_close));
+        let on: Rc<dyn Fn(AreaOp) -> M> = Rc::new(on);
+        let mut handler = Some(text_handler(
+            on.clone(),
+            options.read_only,
+            options.auto_close,
+        ));
         let key = self.next_key();
         self.group(key, Kind::CodeEditor, outer, |ui| {
+            if let Some(find) = options.find
+                && find.open
+            {
+                find_bar(ui, find, document, options.read_only, &on);
+            }
             ui.editor_view(
                 WidgetKey::Named("$area".into()),
                 document,
                 options,
-                false,
                 handler.take(),
             );
         });
@@ -500,19 +385,11 @@ impl<'a, M: 'static> Ui<'a, M> {
     }
 }
 
-/// What the message forms cannot declare, as a misuse message.
-fn message_misuse(options: &CodeEditorOptions<'_>) -> Option<&'static str> {
-    options
-        .find
-        .is_some()
-        .then_some("the find bar keeps its state in the view; use code_editor for it")
-}
-
 /// The handler of an editor that sends its edits. A read-only editor drops
 /// the edits and turns a cut into a copy, as the kernel does; auto-close
 /// turns a typed bracket or quote, and a backspace, into their paired ops.
 fn text_handler<M: 'static>(
-    on: impl Fn(AreaOp) -> M + 'static,
+    on: Rc<dyn Fn(AreaOp) -> M>,
     read_only: bool,
     auto_close: bool,
 ) -> Handler<M> {

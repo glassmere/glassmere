@@ -95,31 +95,22 @@ impl RichOp {
                 | Self::SetBlock(_)
         )
     }
-
-    pub(crate) fn apply(
-        self,
-        document: &mut RichDocument,
-        read_only: bool,
-        clipboard: &mut Option<String>,
-    ) {
-        match self {
-            Self::Clipboard { cut } => {
-                *clipboard = Some(if cut && !read_only {
-                    document.cut()
-                } else {
-                    document.selected_text()
-                });
-            }
-            op if read_only && op.is_edit() => {}
-            op => document.apply(op),
-        }
-    }
 }
 
 impl RichDocument {
+    /// [`RichDocument::apply`] that also puts the text of a copy or cut on the
+    /// clipboard, through `effects`, before applying it. A copy or cut is
+    /// serviced in the batch that carries it, whether or not a view follows.
+    pub fn apply_with<M: 'static>(&mut self, op: RichOp, effects: &mut crate::Effects<'_, M>) {
+        if matches!(op, RichOp::Clipboard { .. }) {
+            effects.copy(crate::Clip::text(self.selected_text()));
+        }
+        self.apply(op);
+    }
+
     /// Applies one operation to the document. A cut removes the selection;
     /// the text a copy or cut puts on the clipboard is `selected_text()`,
-    /// read before applying.
+    /// read before applying, which `apply_with` does.
     pub fn apply(&mut self, op: RichOp) {
         match op {
             RichOp::Move { motion, select } => self.move_cursor(motion, select),

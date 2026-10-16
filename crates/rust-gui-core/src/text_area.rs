@@ -3,6 +3,8 @@
 //! declaration can apply them to the app-owned document.
 use crate::{Length, Motion, Style, TextDocument};
 use rust_gui_scene::{Color, Point, TextSpan};
+use std::borrow::Cow;
+use std::cell::RefCell;
 use std::ops::Range;
 
 /// Colour and font changes for a byte range of one line.
@@ -113,30 +115,106 @@ impl FindState {
         self.error.as_deref()
     }
 
-    /// Searches again only when the document or the query changed. The find
-    /// bar calls this itself; an application that searches without one calls
-    /// it before reading `matches`.
-    pub fn refresh(&mut self, document: &TextDocument) {
-        let key = (
+    fn key(&self, document: &TextDocument) -> (u64, String, bool, bool, bool) {
+        (
             document.revision(),
             self.query.clone(),
             self.case_sensitive,
             self.whole_word,
             self.regex,
-        );
+        )
+    }
+
+    fn search(&self, document: &TextDocument) -> (Vec<Range<usize>>, Option<String>) {
+        if self.regex {
+            match document.find_all_regex(&self.query, self.case_sensitive) {
+                Ok(matches) => (matches, None),
+                Err(error) => (Vec::new(), Some(error)),
+            }
+        } else {
+            (
+                document.find_all(&self.query, self.case_sensitive, self.whole_word),
+                None,
+            )
+        }
+    }
+
+    /// Searches again only when the document or the query changed. `apply`
+    /// calls this itself; an application that searches without it calls it
+    /// before reading `matches`.
+    pub fn refresh(&mut self, document: &TextDocument) {
+        let key = self.key(document);
         if self.searched.as_ref() != Some(&key) {
-            (self.matches, self.error) = if self.regex {
-                match document.find_all_regex(&self.query, self.case_sensitive) {
-                    Ok(matches) => (matches, None),
-                    Err(error) => (Vec::new(), Some(error)),
-                }
-            } else {
-                (
-                    document.find_all(&self.query, self.case_sensitive, self.whole_word),
-                    None,
-                )
-            };
+            (self.matches, self.error) = self.search(document);
             self.searched = Some(key);
+        }
+    }
+
+    /// The matches and error `refresh` would leave, without keeping them:
+    /// what the find bar reads in a view that only has `&FindState`. The last
+    /// search is reused while it is current, which it is unless the document
+    /// changed outside `apply`.
+    pub(crate) fn found(
+        &self,
+        document: &TextDocument,
+    ) -> (Cow<'_, [Range<usize>]>, Option<Cow<'_, str>>) {
+        if self.searched.as_ref() == Some(&self.key(document)) {
+            (
+                Cow::Borrowed(&self.matches),
+                self.error.as_deref().map(Cow::Borrowed),
+            )
+        } else {
+            let (matches, error) = self.search(document);
+            (Cow::Owned(matches), error.map(Cow::Owned))
+        }
+    }
+
+    /// Applies one operation of a code editor that has a find bar: the
+    /// editor commands that open, close and step through the search, the bar's
+    /// own edits (`TextOp::Find`), and everything else through
+    /// [`TextDocument::apply_with`]. Call it from `update` instead of
+    /// `TextDocument::apply`; the matches are searched again here, so the view
+    /// reads them without writing.
+    pub fn apply<M: 'static>(
+        &mut self,
+        document: &mut TextDocument,
+        op: AreaOp,
+        effects: &mut crate::Effects<'_, M>,
+    ) {
+        match op {
+            AreaOp::Command(search @ (EditorCommand::Find | EditorCommand::Replace)) => {
+                self.open = true;
+                self.replace |= search == EditorCommand::Replace;
+                // Search for the selection, as editors do.
+                let selected = document.selected_text();
+                if !selected.is_empty() && !selected.contains('\n') {
+                    self.query = selected;
+                }
+            }
+            AreaOp::Command(EditorCommand::CloseFind) => self.open = false,
+            AreaOp::Command(EditorCommand::FindNext) => {
+                self.step(document, true);
+            }
+            AreaOp::Command(EditorCommand::FindPrevious) => {
+                self.step(document, false);
+            }
+            AreaOp::Find(edit) => match edit {
+                FindEdit::Query(query) => self.query = query,
+                FindEdit::Replacement(replacement) => self.replacement = replacement,
+                FindEdit::CaseSensitive(on) => self.case_sensitive = on,
+                FindEdit::WholeWord(on) => self.whole_word = on,
+                FindEdit::Regex(on) => self.regex = on,
+                FindEdit::ReplaceOne => {
+                    self.replace_one(document);
+                }
+                FindEdit::ReplaceAll => {
+                    self.replace_all(document);
+                }
+            },
+            op => document.apply_with(op, effects),
+        }
+        if self.open {
+            self.refresh(document);
         }
     }
 
@@ -197,9 +275,12 @@ pub struct CodeEditorOptions<'a> {
     pub line_numbers: bool,
     /// Selection, copy, search and navigation still work.
     pub read_only: bool,
-    pub highlighter: Option<&'a mut dyn Highlighter>,
-    /// Enables the find bar and match highlighting.
-    pub find: Option<&'a mut FindState>,
+    /// The view only has `&self`, so the highlighter lives in a `RefCell` the
+    /// application owns; the editor borrows it while it declares.
+    pub highlighter: Option<&'a RefCell<dyn Highlighter + 'a>>,
+    /// Enables the find bar and match highlighting. The application applies
+    /// the bar's messages with `FindState::apply`.
+    pub find: Option<&'a FindState>,
     pub diagnostics: &'a [Diagnostic],
     /// Typing an opening bracket or quote inserts its partner.
     pub auto_close: bool,
@@ -281,6 +362,21 @@ pub enum AreaOp {
         cut: bool,
     },
     Command(EditorCommand),
+    /// An edit of the find bar; `FindState::apply` handles it.
+    Find(FindEdit),
+}
+
+/// What the find bar of a code editor sends when the user changes it. Search
+/// steps and closing the bar travel as `EditorCommand`s.
+#[derive(Clone, Debug, PartialEq)]
+pub enum FindEdit {
+    Query(String),
+    Replacement(String),
+    CaseSensitive(bool),
+    WholeWord(bool),
+    Regex(bool),
+    ReplaceOne,
+    ReplaceAll,
 }
 
 impl AreaOp {
@@ -299,15 +395,26 @@ impl AreaOp {
                 | Self::Outdent
                 | Self::Undo
                 | Self::Redo
+                | Self::Find(FindEdit::ReplaceOne | FindEdit::ReplaceAll)
         )
     }
 }
 
 impl TextDocument {
+    /// [`TextDocument::apply`] that also puts the text of a copy or cut on the
+    /// clipboard, through `effects`, before applying it. A copy or cut is
+    /// serviced in the batch that carries it, whether or not a view follows.
+    pub fn apply_with<M: 'static>(&mut self, op: AreaOp, effects: &mut crate::Effects<'_, M>) {
+        if matches!(op, AreaOp::Clipboard { .. }) {
+            effects.copy(crate::Clip::text(self.copy_text()));
+        }
+        self.apply(op);
+    }
+
     /// Applies one operation the way a code editor does, without auto-close
     /// and without a find bar, which need state of the editor. A cut removes
     /// the selection; the text a copy or cut puts on the clipboard is
-    /// `copy_text()`, read before applying.
+    /// `copy_text()`, read before applying, which `apply_with` does.
     pub fn apply(&mut self, op: AreaOp) {
         match op {
             AreaOp::Move { motion, select } => self.move_cursors(motion, select),
@@ -357,6 +464,8 @@ impl TextDocument {
                 // Search needs a find bar, and the rest is pointer or rich text.
                 _ => {}
             },
+            // The find bar's own edits belong to `FindState::apply`.
+            AreaOp::Find(_) => {}
             AreaOp::Insert(text) => {
                 self.insert(&text);
             }

@@ -41,10 +41,10 @@ struct RichTextApp {
     document: RichDocument,
     /// The Markdown view, kept in step with `document` by `update`.
     markdown: TextDocument,
-    /// The highlighter of the Markdown view, rebuilt when the window theme
-    /// flips between dark and light. The view fills it: it is a cache of
-    /// the rendering, not state the application changes.
-    highlighter: RefCell<Option<(bool, SyntectHighlighter)>>,
+    /// The highlighters of the Markdown view, light then dark, one for each
+    /// window theme. The view reads the one that fits; the editor fills it
+    /// as it declares.
+    highlighters: [RefCell<SyntectHighlighter>; 2],
     share: f32,
 }
 
@@ -69,10 +69,6 @@ impl App for RichTextApp {
         let theme = ui.theme().clone();
         let window = theme.window;
         let dark = u32::from(window.0) + u32::from(window.1) + u32::from(window.2) < 384;
-        let mut highlighter = self.highlighter.borrow_mut();
-        if highlighter.as_ref().is_none_or(|(was, _)| *was != dark) {
-            *highlighter = Some((dark, SyntectHighlighter::new("md", dark)));
-        }
         let page = Style::default()
             .width(Length::Percent(1.0))
             .height(Length::Percent(1.0))
@@ -120,9 +116,7 @@ impl App for RichTextApp {
                             style: fill(),
                             read_only: true,
                             line_numbers: false,
-                            highlighter: highlighter
-                                .as_mut()
-                                .map(|(_, highlighter)| highlighter as _),
+                            highlighter: Some(&self.highlighters[usize::from(dark)]),
                             ..CodeEditorOptions::default()
                         },
                         Msg::Markdown,
@@ -166,7 +160,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         RichTextApp {
             document,
             markdown,
-            highlighter: RefCell::new(None),
+            highlighters: [
+                RefCell::new(SyntectHighlighter::new("md", false)),
+                RefCell::new(SyntectHighlighter::new("md", true)),
+            ],
             share: 0.55,
         },
     )?;

@@ -125,6 +125,12 @@ impl Context {
                         out.push(message.clone());
                     }
                 }
+                (Queued::Click, Handler::Refocus(message)) => {
+                    if enabled && self.clicks.contains(&id) {
+                        out.push(message.clone());
+                        self.refocus_editor(id);
+                    }
+                }
                 (Queued::Click, Handler::Step(steps)) => {
                     let row = node.parent.and_then(|row| self.nodes.get(&row));
                     let field = row.and_then(|row| {
@@ -241,6 +247,24 @@ impl Context {
         self.clicks.retain(handled);
         self.submitted.retain(handled);
         self.handlers = Some(boxed);
+    }
+
+    /// Gives the focus to the text of the editor that the button `id` is part
+    /// of, as a toolbar press does: the text is ready for typing again.
+    fn refocus_editor(&mut self, id: NodeId) {
+        let area = WidgetKey::named("$area");
+        let mut next = self.nodes.get(&id).and_then(|node| node.parent);
+        while let Some(group) = next {
+            let Some(node) = self.nodes.get(&group) else {
+                return;
+            };
+            if let Some(target) = node.children_by_key.get(&area).copied() {
+                self.focus_control(target);
+                self.note_focus();
+                return;
+            }
+            next = node.parent;
+        }
     }
 
     /// Commits the number field `id`: `steps` steps from its draft, or from

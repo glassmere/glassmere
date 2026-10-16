@@ -504,16 +504,6 @@ impl<'a, M: 'static> Ui<'a, M> {
     }
 
     #[track_caller]
-    pub(crate) fn checkbox_at(
-        &mut self,
-        key: impl Into<String>,
-        label: impl Into<String>,
-        checked: &mut bool,
-    ) -> Response<'a> {
-        self.at(key).checkbox(label, checked)
-    }
-
-    #[track_caller]
     pub(crate) fn column_at(
         &mut self,
         key: impl Into<String>,
