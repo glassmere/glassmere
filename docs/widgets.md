@@ -7,11 +7,17 @@ There are three ways to add something to the framework, and the first one that f
 Most "widgets" are a function that declares built-in ones. It needs no trait, no state of its own and no registration:
 
 ```rust
-fn labelled_slider(ui: &mut Ui<'_>, label: &str, value: &mut f64) -> bool {
+#[track_caller]
+fn labelled_slider<M: 'static>(
+    ui: &mut Ui<'_, M>,
+    label: &str,
+    value: f64,
+    on_change: impl Fn(f64) -> M + 'static,
+) {
     ui.row(Style::default().gap(8.0), |ui| {
         ui.label(label);
-        ui.slider(label, value, 0.0..=1.0, 0.05).changed
-    })
+        ui.slider(label, value, 0.0..=1.0, 0.05, on_change);
+    });
 }
 ```
 
@@ -19,51 +25,67 @@ The row scopes everything inside it, so the same function used twice in the same
 
 ## A component
 
-When it has state of its own, make it a struct and let the application own it. `Component` is the shape:
+When it has state and messages of its own, make it a struct and let the application own it. `Component` is the shape:
 
 ```rust
 struct Search { query: String, results: Vec<String> }
 
+#[derive(Clone)]
+enum SearchMsg { Query(String) }
+
 impl Component for Search {
-    fn ui(&mut self, ui: &mut Ui<'_>) {
-        if ui.text_input("Search", &mut self.query).changed {
-            self.results = look_up(&self.query);
-        }
+    type Message = SearchMsg;
+    fn update(&mut self, message: SearchMsg, _: &mut Effects<'_, SearchMsg>) {
+        let SearchMsg::Query(query) = message;
+        self.results = look_up(&query);
+        self.query = query;
+    }
+    fn view(&self, ui: &mut Ui<'_, SearchMsg>) {
+        ui.text_input("Search", &self.query, SearchMsg::Query);
         for result in &self.results {
             ui.label(result.clone());
         }
     }
 }
 
-ui.component(Style::default(), &mut search);
+// In the parent's view, and in its update:
+ui.component(Style::default(), &self.search, Msg::Search);
+Msg::Search(message) => self.search.update(message, &mut effects.map(Msg::Search)),
 ```
 
-The framework keeps nothing for it. The struct is the state, the application holds it, and `Ui::component` only gives it a stable scope.
+The framework keeps nothing for it. The struct is the state, the application holds it, and `Ui::component` gives it a stable scope and turns its messages into the parent's.
 
 ## A widget of your own
 
-When it draws something the built-in controls cannot, it is a leaf: `Ui::widget` hands it what it needs and takes back what it paints.
+When it draws something the built-in controls cannot, it is a leaf: `Ui::widget` hands it what it needs and takes back what it paints, and `WidgetBuilder::on_event` turns what it hears into a message.
 
 ```rust
-pub fn ui(&mut self, ui: &mut Ui<'_>, key: &str, label: &str, size: f32) -> bool {
+pub fn view<M: Clone + 'static>(
+    &self,
+    ui: &mut Ui<'_, M>,
+    label: &str,
+    size: f32,
+    wrap: impl Fn(DialMsg) -> M + 'static,
+) {
     let (face, ring) = (ui.theme().control, ui.theme().accent);
-    let before = self.value;
-    ui.widget(key, Style::default(), |input| {
-        for event in &input.events {
-            self.apply(event);          // pointer positions are the widget's own
-        }
-        CustomWidget {
-            size: Size::new(size, size),
-            semantics: Semantics { role: Role::Slider, label: label.into(), focusable: true, .. },
-            primitives: self.paint(input, face, ring),
-            input: EventArea { pointer: true, keyboard: true, capture: true, consume: true, .. },
-        }
-    });
-    self.value != before
+    let widget = WidgetBuilder::new(|input: &WidgetInput| CustomWidget {
+        size: Size::new(size, size),
+        semantics: Semantics { role: Role::Slider, label: label.into(), focusable: true, .. },
+        primitives: self.paint(input, face, ring),
+        input: EventArea { pointer: true, keyboard: true, capture: true, consume: true, .. },
+    })
+    // Pointer positions in the event are the widget's own.
+    .on_event(move |event| Some(wrap(DialMsg::Heard(event))));
+    ui.widget(Style::default(), widget);
+}
+
+pub fn update(&mut self, message: DialMsg) {
+    let DialMsg::Heard(event) = message;
+    self.apply(&event);
 }
 ```
 
-What `WidgetInput` carries is of the last frame, because that is what there is to know while this one is being declared: the room it was given, whether it is hovered, pressed, focused and enabled, and the events that have reached it since, with pointer positions relative to its own top left corner.
+What `WidgetInput` carries is of the last frame, because that is what there is to know while this one is being declared: the room it was given, and whether it is hovered, pressed, focused and enabled. The events that reach the widget go to `on_event` when the batch is resolved, with pointer positions relative to its own top left corner, and what it returns goes to `update`.
 
 - **Input** is what `CustomWidget::input` asks for. Nothing is delivered until it does. A widget that uses the arrow keys should capture and consume the keyboard, or the page it sits on will scroll as well. Pointer events are heard but never kept: focus, hover and press are the framework's services to the widget.
 - **Focus** is `Semantics::focusable`, for any role. A focusable widget joins the tab order and receives keys.
@@ -76,7 +98,7 @@ What `WidgetInput` carries is of the last frame, because that is what there is t
 The same harness the built-in controls use, with no window:
 
 ```rust
-let mut harness = Harness::new(Size::new(320.0, 240.0), app, |app, ui| app.dial.ui(ui, "dial", "Gain", 120.0));
+let mut harness = Harness::app(Size::new(320.0, 240.0), Page { dial: Dial::new(0.5) });
 harness.run();
 harness.focus(harness.find(&["dial"]));
 harness.press(Key::ArrowUp);

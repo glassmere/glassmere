@@ -163,20 +163,38 @@ cargo run -p rust-gui --example docking --release
 Dockable tab groups in a split tree, drop indicators, floating groups, detached OS windows, a keyboard panel menu and a saved workspace layout. See [milestone 7a](docs/milestone-7.md#milestone-7a-docking).
 
 ```rust
-use rust_gui::{run, AppOptions};
+use rust_gui::{run, App, AppOptions, Button, Effects, Ui};
+
+#[derive(Clone)]
+enum Msg {
+    Increase,
+}
+
+struct Counter {
+    count: u32,
+}
+
+impl App for Counter {
+    type Message = Msg;
+
+    fn update(&mut self, message: Msg, _: &mut Effects<'_, Msg>) {
+        match message {
+            Msg::Increase => self.count += 1,
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        ui.label(format!("Count: {}", self.count));
+        ui.button(Button::new("Increase").on_click(Msg::Increase));
+    }
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut count = 0;
-    run(AppOptions::default(), move |ui| {
-        ui.label(format!("Count: {count}"));
-        if ui.button("Increase").clicked() {
-            count += 1;
-        }
-    })
+    run(AppOptions::default(), Counter { count: 0 })
 }
 ```
 
-The view may run more than once per input event. Put application actions behind responses such as `clicked()`. The host declares again after activation to make labels declared before a button reflect state changes in the same presentation.
+Widgets send messages; `update` changes the state and `view` only reads it. Input is resolved into messages in batches, the batch is delivered to `update`, and the view runs once after it, so everything it declares already shows the new state. `run_with` takes a closure per change instead of a message enum, for small programs. See [where state lives](docs/state.md).
 
 ## Implemented
 
@@ -196,7 +214,7 @@ The view may run more than once per input event. Put application actions behind 
 - Framework diagnostics in debug builds: unstable ids, needless relayout, excessive repainting, unnamed controls, oversized layers and huge containers, in the inspector, the log and `Context::diagnostics`.
 - Scroll views and collections scroll on both axes, with Shift+wheel, touchpads, arrow keys, focus reveal and right-to-left support.
 - `#[derive(Properties)]` turns a struct into property grid rows.
-- A property grid bound directly to app values: groups, filter, resizable name column, reset buttons, numbers with units, colours and custom rows.
+- A property grid that reads app values and sends their edits as messages: groups, filter, resizable name column, reset buttons, numbers with units, colours and custom rows.
 - Toasts owned by the framework: timed, held while hovered, announced to screen readers, with an action button and a sender for other threads.
 - Number input with commit-on-Enter drafts, ranges, steps and units, and autocomplete over app-supplied matches.
 - Images: PNG, JPEG, WebP, GIF and SVG, decoded in the background with placeholders and live reload, fit modes, theme-following icon tints, background images with nine-slice frames from code or stylesheets, a shared GPU atlas and SVGs rasterized sharp at every size.
@@ -205,7 +223,7 @@ The view may run more than once per input event. Put application actions behind 
 - Vertical scrolling, nested wheel propagation, keyboard scrolling and focus revealing off-screen controls.
 - AccessKit bridge sharing widget IDs, bounds, disabled state and activation with layout/input.
 - Application-owned `Component` scopes and `CustomWidget` leaves with intrinsic size, local paint and semantics.
-- Thread-safe, coalesced `WakeHandle` updates through `run_with_wakeup`.
+- Thread-safe, coalesced wake-ups for messages from `Effects::spawn` and `Effects::channel`.
 - Subtree paint caches, conservative damage bounds and a reproducible large-tree benchmark.
 - Stable `ItemId` models with virtualized lists, trees and a sortable data grid that realize only the viewport.
 - Commands with keyboard shortcuts, in-process drag/drop with keyboard and accessibility paths, and incoming OS file drops.
@@ -216,13 +234,13 @@ The view may run more than once per input event. Put application actions behind 
 - [The API stability note](docs/api-stability.md) says what is public and how it changes, guarded by a snapshot of the whole surface.
 - `Ui::title_bar`, `Ui::window_buttons` and `Ui::resize_frame` let a window with no system frame move, maximize and resize itself, with the shell's own caption glyphs, and Windows offers its snap layouts over the maximize button.
 - Behind the `platform` feature: native file dialogs, notifications, an application menu, a tray icon and the files an association opens.
-- `Ui::copy` and `Ui::request_paste` carry text, images and the application's own formats, and a drag can cross to another of its windows.
+- `Effects::copy` and `Effects::paste` carry text, images and the application's own formats, and a drag can cross to another of its windows.
 - [The performance guide](docs/performance.md) says what makes a frame expensive, what it costs and how to see it.
 - `Ui::widget` gives a control of your own the input, state, style, semantics and tests a built-in one has; `examples/dial-widget` is one, built from outside.
 - Optional reactive state: `Store` signals and memos that record what they read, and an inspector tab that shows the graph.
-- `Tasks` runs background jobs that can be cancelled and superseded, and a superseded job's results never reach the view.
+- `Effects::spawn` runs background jobs that can be cancelled and superseded, and a superseded job's results never reach `update`.
 - Gradients and shadows on both renderers, and `AppOptions::gpu` hands a rectangle to an application's own wgpu drawing.
-- `Ui::event_area` watches or intercepts the events of a subtree, and `Ui::emit` sends one of the application's own.
+- `Ui::event_area` watches or intercepts the events of a subtree and turns them into messages.
 - Commands carry their scope and binding, and feed buttons, shortcuts, menu items and `Ui::command_palette`.
 - F12 inspector window with per-node change flags, frame timings, CSV export and `tracing` spans.
 - GPU tab: pass times from timestamp queries where the adapter has them, draw calls, renderer memory by category and the driver's report; measured only while an inspector is open.
