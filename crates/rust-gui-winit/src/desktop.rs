@@ -15,7 +15,7 @@ type AppRequests = (
     Vec<AppWindow>,
 );
 /// The window `run` opens first. Its view is `App::view`.
-const MAIN: AppWindow = AppWindow(0);
+const MAIN: AppWindow = AppWindow::MAIN;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct WindowKey(pub u64);
@@ -110,7 +110,7 @@ impl<A: App> Shared<A> {
         size: Size,
         text: &mut impl TextMeasurer,
     ) -> FrameStats {
-        let (messages, dirty) = self.driver.batch(&mut self.app, context);
+        let (messages, dirty) = self.driver.batch_in(window, &mut self.app, context);
         let (opened, closed) = self.driver.take_windows();
         self.opened.extend(opened);
         self.closed.extend(closed);
@@ -157,13 +157,21 @@ impl<A: App> Hosting for AppHost<A> {
     }
 
     fn due(&self) -> Vec<AppWindow> {
-        self.shared
-            .borrow()
+        let shared = self.shared.borrow();
+        let mut due: Vec<_> = shared
             .windows
             .iter()
             .filter(|(_, pacing)| pacing.invalidated())
             .map(|(window, _)| *window)
-            .collect()
+            .collect();
+        // Something aimed at a window other than the one that ran `update`
+        // is applied by that window's own batch.
+        for window in shared.driver.awaiting() {
+            if !due.contains(&window) {
+                due.push(window);
+            }
+        }
+        due
     }
 
     fn closed(&mut self, window: AppWindow, by_app: bool) {

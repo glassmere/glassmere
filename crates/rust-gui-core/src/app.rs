@@ -178,6 +178,10 @@ type Lift<M> = Box<dyn Fn(&mut dyn Any) -> Option<M>>;
 /// What a toast's action button sends, built from the action taken.
 type OnToastAction<M> = Box<dyn Fn(ToastAction) -> M>;
 
+/// What a paste or a file dialog sends once answered, and for which window.
+type OnPaste<M> = (WindowId, Box<dyn Fn(Clip) -> M>);
+type OnFiles<M> = (WindowId, Box<dyn Fn(Vec<PathBuf>) -> M>);
+
 /// Delivered values waiting in one task table or channel.
 trait Delivery {
     /// Up to `limit` values, each as `&mut Option<T>` with its task key.
@@ -245,14 +249,25 @@ pub(crate) struct Requests {
     pub format: (u64, Option<Rc<dyn LocaleFormat>>),
     pub bindings: Vec<(String, Option<Shortcut>)>,
     pub clip: Option<Clip>,
-    pub files: Option<FileRequest>,
-    pub paste: bool,
-    pub focus: Option<String>,
+    /// What is aimed at one window waits here until that window's batch
+    /// applies it: the window whose input sent the message `update` is
+    /// running on, the main window for a message from anywhere else, or the
+    /// one `Effects::in_window` names.
+    pub files: Vec<(WindowId, FileRequest)>,
+    /// Windows with a file dialog asked for and not yet answered; the next
+    /// request for one waits for the answer.
+    pub file_busy: Vec<WindowId>,
+    pub paste: Vec<WindowId>,
+    pub focus: Vec<(WindowId, String)>,
     pub notifications: Vec<Notification>,
-    pub window_commands: Vec<WindowCommand>,
-    pub toasts: Vec<Toast>,
-    /// The id each of `toasts` got when it was raised, in the same order.
-    pub toast_ids: Vec<ToastId>,
+    pub window_commands: Vec<(WindowId, WindowCommand)>,
+    /// Each toast with a number that ties it to its action.
+    pub toasts: Vec<(WindowId, u64, Toast)>,
+    /// The id each toast got in its window when it was raised.
+    pub toast_ids: Vec<(u64, WindowId, ToastId)>,
+    next_toast: u64,
+    /// The window whose input sent the message `update` is running on.
+    origin: WindowId,
     /// Windows `update` asked to open and to close, taken by the host.
     pub open_windows: Vec<(WindowId, WindowRequest)>,
     pub close_windows: Vec<WindowId>,
@@ -266,24 +281,25 @@ pub(crate) struct Requests {
 trait Sink<M> {
     fn requests(&mut self) -> &mut Requests;
     fn requests_ref(&self) -> &Requests;
-    fn paste(&mut self, message: Box<dyn Fn(Clip) -> M>);
-    fn files(&mut self, message: Box<dyn Fn(Vec<PathBuf>) -> M>);
+    fn paste(&mut self, window: WindowId, message: Box<dyn Fn(Clip) -> M>);
+    fn files(&mut self, window: WindowId, message: Box<dyn Fn(Vec<PathBuf>) -> M>);
     fn task(&mut self, kind: TypeId, key: String, lift: Lift<M>);
     fn channel(&mut self, mailbox: Box<dyn Delivery>, lift: Lift<M>);
-    fn toast(&mut self, toast: Toast, action: Option<OnToastAction<M>>);
+    fn toast(&mut self, window: WindowId, toast: Toast, action: Option<OnToastAction<M>>);
 }
 
 /// Everything the driver keeps for `Effects`, typed by the app's message.
 struct EffectState<M> {
     requests: Requests,
-    paste: Option<Box<dyn Fn(Clip) -> M>>,
-    files: Option<Box<dyn Fn(Vec<PathBuf>) -> M>>,
+    /// What each window's pastes and file dialogs send, oldest first.
+    paste: Vec<OnPaste<M>>,
+    files: Vec<OnFiles<M>>,
     task_messages: HashMap<TypeId, HashMap<String, Lift<M>>>,
     channels: Vec<(Box<dyn Delivery>, Lift<M>)>,
-    /// One per entry of `requests.toasts`: what its action sends, if anything.
-    toast_actions: Vec<Option<OnToastAction<M>>>,
-    /// The actions of raised toasts, by id, until the toast leaves.
-    toast_messages: HashMap<ToastId, OnToastAction<M>>,
+    /// What the action of a toast of `requests.toasts` sends, by its number.
+    toast_actions: HashMap<u64, OnToastAction<M>>,
+    /// The actions of raised toasts, by window and id, until the toast leaves.
+    toast_messages: HashMap<(WindowId, ToastId), OnToastAction<M>>,
 }
 
 impl<M> Sink<M> for EffectState<M> {
@@ -295,12 +311,12 @@ impl<M> Sink<M> for EffectState<M> {
         &self.requests
     }
 
-    fn paste(&mut self, message: Box<dyn Fn(Clip) -> M>) {
-        self.paste = Some(message);
+    fn paste(&mut self, window: WindowId, message: Box<dyn Fn(Clip) -> M>) {
+        self.paste.push((window, message));
     }
 
-    fn files(&mut self, message: Box<dyn Fn(Vec<PathBuf>) -> M>) {
-        self.files = Some(message);
+    fn files(&mut self, window: WindowId, message: Box<dyn Fn(Vec<PathBuf>) -> M>) {
+        self.files.push((window, message));
     }
 
     fn task(&mut self, kind: TypeId, key: String, lift: Lift<M>) {
@@ -314,9 +330,13 @@ impl<M> Sink<M> for EffectState<M> {
         self.channels.push((mailbox, lift));
     }
 
-    fn toast(&mut self, toast: Toast, action: Option<OnToastAction<M>>) {
-        self.requests.toasts.push(toast);
-        self.toast_actions.push(action);
+    fn toast(&mut self, window: WindowId, toast: Toast, action: Option<OnToastAction<M>>) {
+        let number = self.requests.next_toast;
+        self.requests.next_toast += 1;
+        self.requests.toasts.push((window, number, toast));
+        if let Some(action) = action {
+            self.toast_actions.insert(number, action);
+        }
     }
 }
 
@@ -336,14 +356,16 @@ impl<N: 'static, M: 'static> Sink<N> for Mapped<'_, N, M> {
         self.inner.requests_ref()
     }
 
-    fn paste(&mut self, message: Box<dyn Fn(Clip) -> N>) {
+    fn paste(&mut self, window: WindowId, message: Box<dyn Fn(Clip) -> N>) {
         let f = self.f.clone();
-        self.inner.paste(Box::new(move |clip| f(message(clip))));
+        self.inner
+            .paste(window, Box::new(move |clip| f(message(clip))));
     }
 
-    fn files(&mut self, message: Box<dyn Fn(Vec<PathBuf>) -> N>) {
+    fn files(&mut self, window: WindowId, message: Box<dyn Fn(Vec<PathBuf>) -> N>) {
         let f = self.f.clone();
-        self.inner.files(Box::new(move |paths| f(message(paths))));
+        self.inner
+            .files(window, Box::new(move |paths| f(message(paths))));
     }
 
     fn task(&mut self, kind: TypeId, key: String, lift: Lift<N>) {
@@ -358,11 +380,11 @@ impl<N: 'static, M: 'static> Sink<N> for Mapped<'_, N, M> {
             .channel(mailbox, Box::new(move |value| lift(value).map(|n| f(n))));
     }
 
-    fn toast(&mut self, toast: Toast, action: Option<OnToastAction<N>>) {
+    fn toast(&mut self, window: WindowId, toast: Toast, action: Option<OnToastAction<N>>) {
         let f = self.f.clone();
         let action =
             action.map(|message| Box::new(move |found| f(message(found))) as OnToastAction<M>);
-        self.inner.toast(toast, action);
+        self.inner.toast(window, toast, action);
     }
 }
 
@@ -375,9 +397,52 @@ enum SinkRef<'a, M> {
 /// updates and before the view.
 pub struct Effects<'a, M> {
     sink: SinkRef<'a, M>,
+    /// The window [`Effects::in_window`] named, for what is asked after it.
+    window: Option<WindowId>,
+}
+
+impl<'a, M> Effects<'a, M> {
+    fn new(sink: &'a mut dyn Sink<M>) -> Self {
+        Self {
+            sink: SinkRef::Borrowed(sink),
+            window: None,
+        }
+    }
 }
 
 impl<M: 'static> Effects<'_, M> {
+    fn sink_ref(&self) -> &dyn Sink<M> {
+        match &self.sink {
+            SinkRef::Borrowed(sink) => &**sink,
+            SinkRef::Owned(sink) => &**sink,
+        }
+    }
+
+    /// The window what is asked now is aimed at.
+    fn target(&self) -> WindowId {
+        self.window
+            .unwrap_or_else(|| self.sink_ref().requests_ref().origin)
+    }
+
+    /// Aims what is asked next, on this `Effects`, at `window`: [`toast`],
+    /// [`toast_with`], [`window_command`], [`request_focus`], [`paste`] and
+    /// [`choose_files`] (whose dialog is parented to it). Without it each
+    /// goes to the window whose input sent the message `update` is handling,
+    /// or to the main window, `WindowId::MAIN`, for a message that came from a
+    /// task, a channel or `AppDriver::send`. Theme, messages and format
+    /// reach every window and are not aimed.
+    ///
+    /// [`toast`]: Effects::toast
+    /// [`toast_with`]: Effects::toast_with
+    /// [`window_command`]: Effects::window_command
+    /// [`request_focus`]: Effects::request_focus
+    /// [`paste`]: Effects::paste
+    /// [`choose_files`]: Effects::choose_files
+    pub fn in_window(&mut self, window: WindowId) -> &mut Self {
+        self.window = Some(window);
+        self
+    }
+
     fn sink(&mut self) -> &mut dyn Sink<M> {
         match &mut self.sink {
             SinkRef::Borrowed(sink) => &mut **sink,
@@ -419,8 +484,9 @@ impl<M: 'static> Effects<'_, M> {
 
     /// Reads the clipboard; what is on it arrives as `message(clip)`.
     pub fn paste(&mut self, message: impl Fn(Clip) -> M + 'static) {
-        self.requests().paste = true;
-        self.sink().paste(Box::new(message));
+        let window = self.target();
+        self.requests().paste.push(window);
+        self.sink().paste(window, Box::new(message));
     }
 
     /// Puts up a file dialog; the paths chosen arrive as `message(paths)`,
@@ -430,14 +496,16 @@ impl<M: 'static> Effects<'_, M> {
         request: FileRequest,
         message: impl Fn(Vec<PathBuf>) -> M + 'static,
     ) {
-        self.requests().files = Some(request);
-        self.sink().files(Box::new(message));
+        let window = self.target();
+        self.requests().files.push((window, request));
+        self.sink().files(window, Box::new(message));
     }
 
     /// Moves keyboard focus to the widget declared with this key, once the
     /// view has declared.
     pub fn request_focus(&mut self, key: impl Into<String>) {
-        self.requests().focus = Some(key.into());
+        let window = self.target();
+        self.requests().focus.push((window, key.into()));
     }
 
     /// Posts a message to the desktop's notification area.
@@ -447,7 +515,8 @@ impl<M: 'static> Effects<'_, M> {
 
     /// Moves, resizes, minimizes, maximizes or closes the window.
     pub fn window_command(&mut self, command: WindowCommand) {
-        self.requests().window_commands.push(command);
+        let window = self.target();
+        self.requests().window_commands.push((window, command));
     }
 
     /// Shows a short message in the bottom corner at the end of the reading
@@ -456,13 +525,15 @@ impl<M: 'static> Effects<'_, M> {
     /// ones wait. A toast equal to one already there restarts it instead of
     /// stacking. Its action button, if it has one, only closes it.
     pub fn toast(&mut self, toast: Toast) {
-        self.sink().toast(toast, None);
+        let window = self.target();
+        self.sink().toast(window, toast, None);
     }
 
     /// [`Effects::toast`] whose action button sends `message(action)` when
     /// clicked.
     pub fn toast_with(&mut self, toast: Toast, message: impl Fn(ToastAction) -> M + 'static) {
-        self.sink().toast(toast, Some(Box::new(message)));
+        let window = self.target();
+        self.sink().toast(window, toast, Some(Box::new(message)));
     }
 
     /// Opens another window, which `App::view_window` declares. The identity
@@ -519,11 +590,8 @@ impl<M: 'static> Effects<'_, M> {
 
     /// Whether a job under this key is still running.
     pub fn running(&self, key: &str) -> bool {
-        let sink: &dyn Sink<M> = match &self.sink {
-            SinkRef::Borrowed(sink) => &**sink,
-            SinkRef::Owned(sink) => &**sink,
-        };
-        sink.requests_ref()
+        self.sink_ref()
+            .requests_ref()
             .tasks
             .values()
             .any(|tasks| tasks.running(key))
@@ -547,11 +615,13 @@ impl<M: 'static> Effects<'_, M> {
 
     /// The effects of a component, whose messages `f` turns into this one's.
     pub fn map<N: 'static>(&mut self, f: impl Fn(N) -> M + 'static) -> Effects<'_, N> {
+        let window = self.window;
         Effects {
             sink: SinkRef::Owned(Box::new(Mapped {
                 inner: self.sink(),
                 f: Rc::new(f),
             })),
+            window,
         }
     }
 }
@@ -605,24 +675,27 @@ impl<M: Clone + 'static> AppDriver<M> {
                     format: (0, None),
                     bindings: Vec::new(),
                     clip: None,
-                    files: None,
-                    paste: false,
-                    focus: None,
+                    files: Vec::new(),
+                    file_busy: Vec::new(),
+                    paste: Vec::new(),
+                    focus: Vec::new(),
                     notifications: Vec::new(),
                     window_commands: Vec::new(),
                     toasts: Vec::new(),
                     toast_ids: Vec::new(),
+                    next_toast: 0,
+                    origin: WindowId::MAIN,
                     open_windows: Vec::new(),
                     close_windows: Vec::new(),
                     next_window: 0,
                     tasks: HashMap::new(),
                     wake: Arc::new(wake),
                 },
-                paste: None,
-                files: None,
+                paste: Vec::new(),
+                files: Vec::new(),
                 task_messages: HashMap::new(),
                 channels: Vec::new(),
-                toast_actions: Vec::new(),
+                toast_actions: HashMap::new(),
                 toast_messages: HashMap::new(),
             },
             sent: Vec::new(),
@@ -652,21 +725,76 @@ impl<M: Clone + 'static> AppDriver<M> {
     /// for the host to carry out.
     pub fn take_windows(&mut self) -> (Vec<(WindowId, WindowRequest)>, Vec<WindowId>) {
         let requests = &mut self.effects.requests;
-        (
-            std::mem::take(&mut requests.open_windows),
-            std::mem::take(&mut requests.close_windows),
-        )
+        let opened = std::mem::take(&mut requests.open_windows);
+        let closed = std::mem::take(&mut requests.close_windows);
+        for window in &closed {
+            self.forget_window(*window);
+        }
+        (opened, closed)
     }
 
     /// Tells the app a window of its own was closed from outside, ; every view is due, and the windows `update` asked for are
     /// in [`take_windows`](Self::take_windows).
     pub fn window_closed<A: App<Message = M>>(&mut self, app: &mut A, window: WindowId) {
-        app.window_closed(
-            window,
-            &mut Effects {
-                sink: SinkRef::Borrowed(&mut self.effects),
-            },
-        );
+        self.forget_window(window);
+        self.effects.requests.origin = WindowId::MAIN;
+        app.window_closed(window, &mut Effects::new(&mut self.effects));
+    }
+
+    /// Drops what was aimed at a window that is gone, and the messages that
+    /// were to answer it.
+    fn forget_window(&mut self, window: WindowId) {
+        let effects = &mut self.effects;
+        let requests = &mut effects.requests;
+        requests.files.retain(|(target, _)| *target != window);
+        requests.file_busy.retain(|target| *target != window);
+        requests.paste.retain(|target| *target != window);
+        requests.focus.retain(|(target, _)| *target != window);
+        requests
+            .window_commands
+            .retain(|(target, _)| *target != window);
+        let actions = &mut effects.toast_actions;
+        requests.toasts.retain(|(target, number, _)| {
+            let keep = *target != window;
+            if !keep {
+                actions.remove(number);
+            }
+            keep
+        });
+        effects.paste.retain(|(target, _)| *target != window);
+        effects.files.retain(|(target, _)| *target != window);
+        effects
+            .toast_messages
+            .retain(|(target, _), _| *target != window);
+    }
+
+    /// The windows with something aimed at them that their next batch
+    /// applies. A host gives each one a frame, which is how an effect aimed
+    /// at a window other than the one that ran `update` gets there.
+    pub fn awaiting(&self) -> Vec<WindowId> {
+        let requests = &self.effects.requests;
+        let mut windows = Vec::new();
+        let mut note = |window: WindowId| {
+            if !windows.contains(&window) {
+                windows.push(window);
+            }
+        };
+        requests
+            .toasts
+            .iter()
+            .for_each(|(window, ..)| note(*window));
+        requests
+            .window_commands
+            .iter()
+            .for_each(|(window, _)| note(*window));
+        requests.focus.iter().for_each(|(window, _)| note(*window));
+        requests.paste.iter().for_each(|window| note(*window));
+        for (window, _) in &requests.files {
+            if !requests.file_busy.contains(window) {
+                note(*window);
+            }
+        }
+        windows
     }
 
     /// The first half of a batch, on the context of one window: the input
@@ -680,27 +808,42 @@ impl<M: Clone + 'static> AppDriver<M> {
         app: &mut A,
         context: &mut Context,
     ) -> (usize, bool) {
+        self.batch_in(WindowId::MAIN, app, context)
+    }
+
+    /// [`batch`](Self::batch) on the context of `window`, `WindowId::MAIN`
+    /// for the first one. What the updates ask of one window goes to the
+    /// window whose input sent the message, and to the main window for a
+    /// message from [`send`](Self::send), a task or a channel; `window`'s
+    /// context gets what was aimed at it, from this batch or an earlier one.
+    pub fn batch_in<A: App<Message = M>>(
+        &mut self,
+        window: WindowId,
+        app: &mut A,
+        context: &mut Context,
+    ) -> (usize, bool) {
         if !self.started {
             self.started = true;
-            app.init(&mut Effects {
-                sink: SinkRef::Borrowed(&mut self.effects),
-            });
+            self.effects.requests.origin = WindowId::MAIN;
+            app.init(&mut Effects::new(&mut self.effects));
         }
         let mut batch = std::mem::take(&mut self.batch);
         batch.append(&mut self.sent);
+        let sent = batch.len();
         context.resolve(&mut batch);
-        self.deliver(context, &mut batch);
+        let own = self.deliver(window, context, &mut batch);
         let messages = batch.len();
-        for message in batch.drain(..) {
-            app.update(
-                message,
-                &mut Effects {
-                    sink: SinkRef::Borrowed(&mut self.effects),
-                },
-            );
+        for (index, message) in batch.drain(..).enumerate() {
+            self.effects.requests.origin = if index < sent || index >= own {
+                WindowId::MAIN
+            } else {
+                window
+            };
+            app.update(message, &mut Effects::new(&mut self.effects));
         }
+        self.effects.requests.origin = WindowId::MAIN;
         self.batch = batch;
-        let changed = context.apply_requests(&mut self.effects.requests);
+        let changed = context.apply_requests(window, &mut self.effects.requests);
         self.adopt_toast_actions();
         context.prepare_batch();
         (messages, messages > 0 || changed)
@@ -733,7 +876,15 @@ impl<M: Clone + 'static> AppDriver<M> {
         } else {
             context.refresh(size, measurer);
         }
-        if let Some(key) = self.effects.requests.focus.take() {
+        let target = window.unwrap_or(WindowId::MAIN);
+        let mut focus = None;
+        self.effects.requests.focus.retain(|(window, key)| {
+            if *window == target {
+                focus = Some(key.clone());
+            }
+            *window != target
+        });
+        if let Some(key) = focus {
             context.focus_named(&key);
         }
         pacing.interaction = context.interaction();
@@ -743,10 +894,9 @@ impl<M: Clone + 'static> AppDriver<M> {
     /// Keeps the actions of the toasts just raised, under the ids they got.
     fn adopt_toast_actions(&mut self) {
         let effects = &mut self.effects;
-        let raised = effects.requests.toast_ids.drain(..);
-        for (id, action) in raised.zip(effects.toast_actions.drain(..)) {
-            if let Some(action) = action {
-                effects.toast_messages.insert(id, action);
+        for (number, window, id) in effects.requests.toast_ids.drain(..) {
+            if let Some(action) = effects.toast_actions.remove(&number) {
+                effects.toast_messages.insert((window, id), action);
             }
         }
     }
@@ -770,27 +920,44 @@ impl<M: Clone + 'static> AppDriver<M> {
         stats
     }
 
-    /// What arrived for the messages `Effects` registered: the clipboard,
-    /// a file dialog's answer, workers and channels.
-    fn deliver(&mut self, context: &mut Context, out: &mut Vec<M>) {
+    /// What arrived for the messages `Effects` registered: the toast
+    /// actions, the clipboard and a file dialog's answer for this window,
+    /// then workers and channels. Returns where the messages from workers and
+    /// channels begin in `out`: the main window's.
+    fn deliver(&mut self, window: WindowId, context: &mut Context, out: &mut Vec<M>) -> usize {
         let effects = &mut self.effects;
         let messages = &mut effects.toast_messages;
-        for action in context.take_toast_actions(|id| messages.contains_key(&id)) {
-            if let Some(message) = messages.remove(&action.id) {
+        for action in context.take_toast_actions(|id| messages.contains_key(&(window, id))) {
+            if let Some(message) = messages.remove(&(window, action.id)) {
                 out.push(message(action));
             }
         }
-        messages.retain(|id, _| context.has_toast(*id));
-        if effects.paste.is_some()
+        messages.retain(|(target, id), _| *target != window || context.has_toast(*id));
+        if effects.paste.iter().any(|(target, _)| *target == window)
             && let Some(clip) = context.take_pasted()
         {
-            out.push((effects.paste.take().unwrap())(clip));
+            // One answer serves every paste asked before it came.
+            for (_, message) in effects
+                .paste
+                .extract_if(.., |(target, _)| *target == window)
+            {
+                out.push(message(clip.clone()));
+            }
         }
-        if effects.files.is_some()
+        if let Some(first) = effects
+            .files
+            .iter()
+            .position(|(target, _)| *target == window)
             && let Some(paths) = context.take_chosen_files()
         {
-            out.push((effects.files.take().unwrap())(paths));
+            effects
+                .requests
+                .file_busy
+                .retain(|target| *target != window);
+            let (_, message) = effects.files.remove(first);
+            out.push(message(paths));
         }
+        let own_end = out.len();
         for (kind, tasks) in &mut effects.requests.tasks {
             let messages = effects.task_messages.get(kind);
             tasks.deliver(DELIVERED_PER_BATCH, &mut |key, value| {
@@ -807,6 +974,7 @@ impl<M: Clone + 'static> AppDriver<M> {
         for (mailbox, lift) in &mut effects.channels {
             mailbox.deliver(DELIVERED_PER_BATCH, &mut |_, value| out.extend(lift(value)));
         }
+        own_end
     }
 }
 

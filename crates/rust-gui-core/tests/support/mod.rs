@@ -126,7 +126,9 @@ impl<S: 'static> Driven<S> {
         let (main_messages, mut dirty) = self.driver.batch(&mut self.app, &mut self.context);
         let mut counts = Vec::new();
         for (id, window) in &mut self.windows {
-            let (messages, changed) = self.driver.batch(&mut self.app, &mut window.context);
+            let (messages, changed) = self
+                .driver
+                .batch_in(*id, &mut self.app, &mut window.context);
             counts.push((*id, messages));
             dirty |= changed;
         }

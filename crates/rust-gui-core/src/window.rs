@@ -66,6 +66,11 @@ pub enum WindowCommand {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct WindowId(pub u64);
 
+impl WindowId {
+    /// The window the app opens first, which declares with `App::view`.
+    pub const MAIN: WindowId = WindowId(0);
+}
+
 /// A window to open: its title, its logical size, and the window it is modal
 /// over, if it is.
 #[derive(Clone, Debug, Default, PartialEq)]

@@ -455,7 +455,9 @@ rust-gui-core   fn App::update (& mut self, message : Self :: Message, effects :
 rust-gui-core   fn App::view (& self, ui : & mut Ui < '_, Self :: Message>)
 rust-gui-core   fn App::view_window (& self, _window : WindowId, ui : & mut Ui < '_, Self :: Message>)
 rust-gui-core   fn App::window_closed (& mut self, _window : WindowId, _effects : & mut Effects < '_, Self :: Message>)
+rust-gui-core   fn AppDriver < M>::awaiting (& self) -> Vec < WindowId>
 rust-gui-core   fn AppDriver < M>::batch < A : App < Message = M>> (& mut self, app : & mut A, context : & mut Context,) -> (usize, bool)
+rust-gui-core   fn AppDriver < M>::batch_in < A : App < Message = M>> (& mut self, window : WindowId, app : & mut A, context : & mut Context,) -> (usize, bool)
 rust-gui-core   fn AppDriver < M>::declare < A : App < Message = M>> (& mut self, app : & A, context : & mut Context, size : Size, measurer : & mut impl TextMeasurer, window : Option < WindowId>, pacing : & mut Pacing, messages : usize,) -> FrameStats
 rust-gui-core   fn AppDriver < M>::frame < A : App < Message = M>> (& mut self, app : & mut A, context : & mut Context, size : Size, measurer : & mut impl TextMeasurer,) -> FrameStats
 rust-gui-core   fn AppDriver < M>::has_messages (& self) -> bool
@@ -642,12 +644,13 @@ rust-gui-core   fn Effects < '_, M>::channel < T : Send + 'static> (& mut self, 
 rust-gui-core   fn Effects < '_, M>::choose_files (& mut self, request : FileRequest, message : impl Fn (Vec < PathBuf>) -> M + 'static,)
 rust-gui-core   fn Effects < '_, M>::close_window (& mut self, window : WindowId)
 rust-gui-core   fn Effects < '_, M>::copy (& mut self, clip : Clip)
+rust-gui-core   fn Effects < '_, M>::in_window (& mut self, window : WindowId) -> & mut Self
 rust-gui-core   fn Effects < '_, M>::map < N : 'static> (& mut self, f : impl Fn (N) -> M + 'static) -> Effects < '_, N>
 rust-gui-core   fn Effects < '_, M>::notify (& mut self, notification : Notification)
 rust-gui-core   fn Effects < '_, M>::open_window (& mut self, request : WindowRequest) -> WindowId
 rust-gui-core   fn Effects < '_, M>::paste (& mut self, message : impl Fn (Clip) -> M + 'static)
 rust-gui-core   fn Effects < '_, M>::request_focus (& mut self, key : impl Into < String>)
-rust-gui-core   fn Effects < '_, M>::running (& mut self, key : & str) -> bool
+rust-gui-core   fn Effects < '_, M>::running (& self, key : & str) -> bool
 rust-gui-core   fn Effects < '_, M>::set_binding (& mut self, id : impl Into < String>, shortcut : Option < Shortcut>)
 rust-gui-core   fn Effects < '_, M>::set_format (& mut self, format : Option < Box < dyn LocaleFormat>>)
 rust-gui-core   fn Effects < '_, M>::set_messages (& mut self, messages : Option < Box < dyn Messages>>)
@@ -1974,6 +1977,7 @@ rust-gui-winit use rust_gui_core :: { Mailbox, MessageSender }
 rust-gui-testing   fn Harness < A>::app (size : Size, app : A) -> Self
 rust-gui-testing   fn Harness < A>::app_mut (& mut self) -> & mut A
 rust-gui-testing   fn Harness < A>::send (& mut self, message : A :: Message) -> FrameStats
+rust-gui-testing   fn Harness < A>::state_mut (& mut self) -> & mut A
 rust-gui-testing   fn Harness < S>::action (& mut self, id : NodeId, action : Action) -> bool
 rust-gui-testing   fn Harness < S>::by_label (& self, label : & str) -> NodeId
 rust-gui-testing   fn Harness < S>::click (& mut self, id : NodeId) -> FrameStats
@@ -1994,7 +1998,6 @@ rust-gui-testing   fn Harness < S>::snapshot_layout (& self) -> String
 rust-gui-testing   fn Harness < S>::snapshot_scene (& self) -> String
 rust-gui-testing   fn Harness < S>::snapshot_tree (& self) -> String
 rust-gui-testing   fn Harness < S>::state (& self) -> & S
-rust-gui-testing   fn Harness < S>::state_mut (& mut self) -> & mut S
 rust-gui-testing   fn Harness < S>::stats (& self) -> FrameStats
 rust-gui-testing   fn Harness < S>::type_text (& mut self, text : & str) -> FrameStats
 rust-gui-testing fn assert_snapshot (dir : impl AsRef < Path>, name : & str, actual : & str)

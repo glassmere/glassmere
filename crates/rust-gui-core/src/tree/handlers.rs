@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::NumberOptions;
+use crate::WindowId;
 use crate::app::Shared;
 use crate::app::{Handler, HandlerSlab, Requests};
 use crate::collection::CollectionInput;
@@ -467,7 +468,7 @@ impl Context {
 
     /// Applies what `update` asked for. Returns whether the view reads any
     /// of it, and so has to declare.
-    pub(crate) fn apply_requests(&mut self, requests: &mut Requests) -> bool {
+    pub(crate) fn apply_requests(&mut self, window: WindowId, requests: &mut Requests) -> bool {
         let mut changed = false;
         if self.settings.0 != requests.theme.0 {
             self.settings.0 = requests.theme.0;
@@ -499,18 +500,37 @@ impl Context {
         if let Some(clip) = requests.clip.take() {
             self.clip_out = Some(clip);
         }
-        if std::mem::take(&mut requests.paste) {
+        if requests.paste.contains(&window) {
+            requests.paste.retain(|target| *target != window);
             self.clip_in = None;
             self.paste_requested = true;
         }
-        if let Some(files) = requests.files.take() {
+        // One dialog at a time: the next waits for the answer to this one.
+        if !requests.file_busy.contains(&window)
+            && let Some(first) = requests
+                .files
+                .iter()
+                .position(|(target, _)| *target == window)
+        {
+            let (_, files) = requests.files.remove(first);
+            requests.file_busy.push(window);
             self.chosen_files = None;
             self.file_request = Some(files);
         }
         self.notifications.append(&mut requests.notifications);
-        self.window_commands.append(&mut requests.window_commands);
-        for toast in requests.toasts.drain(..) {
-            requests.toast_ids.push(self.push_toast(toast));
+        self.window_commands.extend(
+            requests
+                .window_commands
+                .extract_if(.., |(target, _)| *target == window)
+                .map(|(_, command)| command),
+        );
+        for (_, number, toast) in requests
+            .toasts
+            .extract_if(.., |(target, ..)| *target == window)
+        {
+            requests
+                .toast_ids
+                .push((number, window, self.push_toast(toast)));
             changed = true;
         }
         changed
