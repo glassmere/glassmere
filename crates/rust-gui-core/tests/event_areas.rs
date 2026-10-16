@@ -309,3 +309,41 @@ fn keys_and_assistive_technology_send_activate_and_a_pointer_click_does_not() {
     assert!(heard.iter().any(|e| matches!(e, UiEvent::PointerUp(_))));
     assert!(!heard.contains(&UiEvent::Activate), "{heard:?}");
 }
+
+/// Pointer moves that reach areas and widgets which send nothing for them
+/// do not run the view: their handlers answer them without a declaration.
+#[test]
+fn pointer_moves_that_send_nothing_do_not_declare() {
+    let mut driven = Driven::new(ROOT, (), |_, ui| {
+        ui.keyed("area", |ui| {
+            ui.event_area(
+                AreaBuilder::new(EventArea::pointer()).on_event(|_| None),
+                Style::default()
+                    .width(Length::Px(100.0))
+                    .height(Length::Px(100.0)),
+                |_| {},
+            );
+        });
+        ui.keyed("widget", |ui| {
+            ui.widget(
+                Style::default(),
+                WidgetBuilder::new(|_: &WidgetInput| CustomWidget {
+                    size: Size::new(100.0, 100.0),
+                    input: EventArea::pointer(),
+                    ..CustomWidget::default()
+                }),
+            );
+        });
+    });
+    for path in ["area", "widget"] {
+        let at = centre(&driven.context, &[path]);
+        for dx in [0.0, 5.0, 10.0] {
+            driven.context.event(Event::PointerMoved(Point {
+                x: at.x + dx,
+                y: at.y,
+            }));
+            let stats = driven.frame();
+            assert!(!stats.declared, "{path}: a move declared");
+        }
+    }
+}

@@ -8,16 +8,29 @@ use crate::app::{Handler, HandlerSlab, Requests};
 use crate::collection::CollectionInput;
 
 impl Context {
+    /// Input for `id` that no handler will answer waits for a declaration
+    /// that reads it; input that a handler answers declares only through the
+    /// messages it sends.
+    pub(super) fn stale_unless_handled(&mut self, id: NodeId) {
+        if self
+            .nodes
+            .get(&id)
+            .is_none_or(|node| node.handler.is_none())
+        {
+            self.view_stale = true;
+        }
+    }
+
     pub(super) fn queue_click(&mut self, id: NodeId) {
         self.clicks.insert(id);
         self.queued.push((id, Queued::Click));
-        self.view_stale = true;
+        self.stale_unless_handled(id);
     }
 
     pub(super) fn queue_submit(&mut self, id: NodeId) {
         self.submitted.insert(id);
         self.queued.push((id, Queued::Submit));
-        self.view_stale = true;
+        self.stale_unless_handled(id);
     }
 
     pub(super) fn queue_update(&mut self, id: NodeId, update: ControlUpdate) {
@@ -74,7 +87,7 @@ impl Context {
         if !self.queued.contains(&(id, Queued::Update)) {
             self.queued.push((id, Queued::Update));
         }
-        self.view_stale = true;
+        self.stale_unless_handled(id);
     }
 
     /// The slab of the `App` driving this context, taken out so that the

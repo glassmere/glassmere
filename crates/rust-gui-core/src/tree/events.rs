@@ -89,12 +89,11 @@ impl Context {
             pending.entry(*id).or_default().push(event.clone());
         }
         drop(pending);
-        // Something is waiting for a declaration that will report it.
-        self.view_stale = true;
         for (id, _) in &arrived {
             if !self.queued.contains(&(*id, Queued::Area)) {
                 self.queued.push((*id, Queued::Area));
             }
+            self.stale_unless_handled(*id);
         }
         consumed
     }
@@ -219,7 +218,6 @@ impl Context {
         // from them.
         if self.travelled(&event) {
             self.note_focus();
-            self.view_stale = true;
             return true;
         }
         match event {
