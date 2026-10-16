@@ -9,14 +9,12 @@ rust-gui use rust_gui_render_wgpu as render
 rust-gui use rust_gui_scene :: { Affine, Affinity, Color, Image, Point, Primitive, Rect, Scene, Size, VectorImage, }
 rust-gui use rust_gui_syntax as syntax
 rust-gui use rust_gui_winit :: hot
-rust-gui use rust_gui_winit :: { AppOptions, DesktopClosed, DesktopHandle, DirectionChoice, DockWindowView, DockWindows, GpuMemoryPolicy, GpuSetup, GraphicsBackend, GraphicsOptions, Placement, ThemeChoice, WakeHandle, WindowKey, run, run_windows, run_with_wakeup, }
+rust-gui use rust_gui_winit :: { AppOptions, DirectionChoice, GpuMemoryPolicy, GpuSetup, GraphicsBackend, GraphicsOptions, Placement, ThemeChoice, WakeHandle, run, run_with, }
 rust-gui-core   field Animation::alternate
 rust-gui-core   field Animation::duration
 rust-gui-core   field Animation::easing
 rust-gui-core   field Animation::keyframes
 rust-gui-core   field Animation::repeat
-rust-gui-core   field AutocompleteResponse::picked
-rust-gui-core   field AutocompleteResponse::response
 rust-gui-core   field BackgroundImage::fit
 rust-gui-core   field BackgroundImage::slice
 rust-gui-core   field BackgroundImage::source
@@ -36,8 +34,6 @@ rust-gui-core   field CodeEditorOptions::line_numbers
 rust-gui-core   field CodeEditorOptions::match_brackets
 rust-gui-core   field CodeEditorOptions::read_only
 rust-gui-core   field CodeEditorOptions::style
-rust-gui-core   field CodeEditorResponse::changed
-rust-gui-core   field CodeEditorResponse::selection_changed
 rust-gui-core   field CollectionInfo::column
 rust-gui-core   field CollectionInfo::columns
 rust-gui-core   field CollectionInfo::index
@@ -66,7 +62,6 @@ rust-gui-core   field DialogOptions::modal
 rust-gui-core   field DialogOptions::style
 rust-gui-core   field DialogOptions::title
 rust-gui-core   field DialogOptions::width
-rust-gui-core   field DialogResponse::dismissed
 rust-gui-core   field DockFloat::height
 rust-gui-core   field DockFloat::tabs
 rust-gui-core   field DockFloat::width
@@ -83,9 +78,6 @@ rust-gui-core   field DockOptions::style
 rust-gui-core   field DockPanel::closable
 rust-gui-core   field DockPanel::id
 rust-gui-core   field DockPanel::title
-rust-gui-core   field DockResponse::changed
-rust-gui-core   field DockResponse::closed
-rust-gui-core   field DockResponse::detached
 rust-gui-core   field DockTabs::active
 rust-gui-core   field DockTabs::panels
 rust-gui-core   field DockWindow::height
@@ -100,7 +92,6 @@ rust-gui-core   field Effect::transform
 rust-gui-core   field Effect::transition
 rust-gui-core   field EventArea::capture
 rust-gui-core   field EventArea::consume
-rust-gui-core   field EventArea::custom
 rust-gui-core   field EventArea::keyboard
 rust-gui-core   field EventArea::pointer
 rust-gui-core   field EventArea::scroll
@@ -126,15 +117,16 @@ rust-gui-core   field FrameDiagnostic::kind
 rust-gui-core   field FrameDiagnostic::message
 rust-gui-core   field FrameDiagnostic::node
 rust-gui-core   field FrameDiagnostic::path
-rust-gui-core   field FrameStats::activations
 rust-gui-core   field FrameStats::created
 rust-gui-core   field FrameStats::declare
+rust-gui-core   field FrameStats::declared
 rust-gui-core   field FrameStats::dirty
 rust-gui-core   field FrameStats::element_bytes
 rust-gui-core   field FrameStats::elements
 rust-gui-core   field FrameStats::frame
 rust-gui-core   field FrameStats::layout
 rust-gui-core   field FrameStats::layout_passes
+rust-gui-core   field FrameStats::messages
 rust-gui-core   field FrameStats::paint
 rust-gui-core   field FrameStats::paint_cache_hits
 rust-gui-core   field FrameStats::paint_nodes
@@ -200,10 +192,6 @@ rust-gui-core   field Keyframe::background
 rust-gui-core   field Keyframe::foreground
 rust-gui-core   field Keyframe::opacity
 rust-gui-core   field Keyframe::transform
-rust-gui-core   field ListResponse::activated
-rust-gui-core   field ListResponse::changed
-rust-gui-core   field ListResponse::edited
-rust-gui-core   field ListResponse::realized
 rust-gui-core   field Marks::bold
 rust-gui-core   field Marks::code
 rust-gui-core   field Marks::italic
@@ -277,12 +265,10 @@ rust-gui-core   field Pen::tilt_x
 rust-gui-core   field Pen::tilt_y
 rust-gui-core   field PopoverOptions::style
 rust-gui-core   field PopoverOptions::width
-rust-gui-core   field PopoverResponse::dismissed
 rust-gui-core   field PropertyGridOptions::filter
 rust-gui-core   field PropertyGridOptions::height
 rust-gui-core   field PropertyGridOptions::label
 rust-gui-core   field PropertyGridOptions::style
-rust-gui-core   field PropertyGridResponse::changed
 rust-gui-core   field PropertyGridState::collapsed
 rust-gui-core   field PropertyGridState::filter
 rust-gui-core   field PropertyGridState::name_share
@@ -293,10 +279,6 @@ rust-gui-core   field ResolvedText::font_size
 rust-gui-core   field ResolvedText::font_weight
 rust-gui-core   field ResolvedText::foreground
 rust-gui-core   field ResolvedText::italic
-rust-gui-core   field Response::changed
-rust-gui-core   field Response::focused
-rust-gui-core   field Response::hovered
-rust-gui-core   field Response::submitted
 rust-gui-core   field RichEditorOptions::font_size
 rust-gui-core   field RichEditorOptions::label
 rust-gui-core   field RichEditorOptions::read_only
@@ -397,8 +379,6 @@ rust-gui-core   field Swipe::direction
 rust-gui-core   field Swipe::speed
 rust-gui-core   field Tab::closable
 rust-gui-core   field Tab::label
-rust-gui-core   field TabsResponse::changed
-rust-gui-core   field TabsResponse::closed
 rust-gui-core   field TextDocument::indentation
 rust-gui-core   field TextSelection::anchor
 rust-gui-core   field TextSelection::cursor
@@ -454,19 +434,41 @@ rust-gui-core   field VirtualListOptions::overscan
 rust-gui-core   field VirtualListOptions::row_height
 rust-gui-core   field VirtualListOptions::style
 rust-gui-core   field WidgetInput::enabled
-rust-gui-core   field WidgetInput::events
 rust-gui-core   field WidgetInput::focused
 rust-gui-core   field WidgetInput::hovered
 rust-gui-core   field WidgetInput::pressed
 rust-gui-core   field WidgetInput::size
 rust-gui-core   field WindowInfo::focused
 rust-gui-core   field WindowInfo::maximized
+rust-gui-core   field WindowRequest::modal_owner
+rust-gui-core   field WindowRequest::size
+rust-gui-core   field WindowRequest::title
 rust-gui-core   fn Animation::alternate (mut self, alternate : bool) -> Self
 rust-gui-core   fn Animation::easing (mut self, easing : Easing) -> Self
 rust-gui-core   fn Animation::new (keyframes : Vec < Keyframe>, milliseconds : u64) -> Self
 rust-gui-core   fn Animation::pulse (low : f32, milliseconds : u64) -> Self
 rust-gui-core   fn Animation::repeat (mut self, repeat : Repeat) -> Self
 rust-gui-core   fn Animation::spin (milliseconds : u64) -> Self
+rust-gui-core   fn App::init (& mut self, _effects : & mut Effects < '_, Self :: Message>)
+rust-gui-core   fn App::save_state (& self) -> Option < String>
+rust-gui-core   fn App::update (& mut self, message : Self :: Message, effects : & mut Effects < '_, Self :: Message>)
+rust-gui-core   fn App::view (& self, ui : & mut Ui < '_, Self :: Message>)
+rust-gui-core   fn App::view_window (& self, _window : WindowId, ui : & mut Ui < '_, Self :: Message>)
+rust-gui-core   fn App::window_closed (& mut self, _window : WindowId, _effects : & mut Effects < '_, Self :: Message>)
+rust-gui-core   fn AppDriver < M>::batch < A : App < Message = M>> (& mut self, app : & mut A, context : & mut Context,) -> (usize, bool)
+rust-gui-core   fn AppDriver < M>::declare < A : App < Message = M>> (& mut self, app : & A, context : & mut Context, size : Size, measurer : & mut impl TextMeasurer, window : Option < WindowId>, pacing : & mut Pacing, messages : usize,) -> FrameStats
+rust-gui-core   fn AppDriver < M>::frame < A : App < Message = M>> (& mut self, app : & mut A, context : & mut Context, size : Size, measurer : & mut impl TextMeasurer,) -> FrameStats
+rust-gui-core   fn AppDriver < M>::has_messages (& self) -> bool
+rust-gui-core   fn AppDriver < M>::invalidate (& mut self)
+rust-gui-core   fn AppDriver < M>::new (wake : impl Fn () -> bool + Send + Sync + 'static) -> Self
+rust-gui-core   fn AppDriver < M>::send (& mut self, message : M)
+rust-gui-core   fn AppDriver < M>::take_windows (& mut self) -> (Vec < (WindowId, WindowRequest)>, Vec < WindowId>)
+rust-gui-core   fn AppDriver < M>::window_closed < A : App < Message = M>> (& mut self, app : & mut A, window : WindowId)
+rust-gui-core   fn AreaBuilder < M>::new (area : crate :: EventArea) -> Self
+rust-gui-core   fn AreaBuilder < M>::on_event (mut self, on_event : impl Fn (crate :: UiEvent) -> Option < M> + 'static) -> Self
+rust-gui-core   fn Autocomplete < M>::new () -> Self
+rust-gui-core   fn Autocomplete < M>::on_pick (mut self, message : impl Fn (usize) -> M + 'static) -> Self
+rust-gui-core   fn Autocomplete < M>::on_submit (mut self, message : M) -> Self
 rust-gui-core   fn BackgroundImage::file (path : impl Into < PathBuf>) -> Self
 rust-gui-core   fn BackgroundImage::fit (mut self, fit : ImageFit) -> Self
 rust-gui-core   fn BackgroundImage::new (image : & Image) -> Self
@@ -476,9 +478,10 @@ rust-gui-core   fn Block::is_empty (& self) -> bool
 rust-gui-core   fn Block::len (& self) -> usize
 rust-gui-core   fn Block::new (kind : BlockKind, text : & str) -> Self
 rust-gui-core   fn Block::text (& self) -> String
-rust-gui-core   fn Button::enabled (mut self, enabled : bool) -> Self
-rust-gui-core   fn Button::new (text : impl Into < String>) -> Self
-rust-gui-core   fn Button::style (mut self, style : Style) -> Self
+rust-gui-core   fn Button < M>::enabled (mut self, enabled : bool) -> Self
+rust-gui-core   fn Button < M>::new (text : impl Into < String>) -> Self
+rust-gui-core   fn Button < M>::on_click (mut self, message : M) -> Self
+rust-gui-core   fn Button < M>::style (mut self, style : Style) -> Self
 rust-gui-core   fn Cancel::cancel (& self)
 rust-gui-core   fn Cancel::cancelled (& self) -> bool
 rust-gui-core   fn Cancel::new () -> Self
@@ -495,7 +498,8 @@ rust-gui-core   fn ComboBox::style (mut self, style : Style) -> Self
 rust-gui-core   fn Command::new (label : impl Into < String>, shortcut : Option < Shortcut>) -> Self
 rust-gui-core   fn Command::scoped (mut self) -> Self
 rust-gui-core   fn Command::with_id (id : impl Into < String>, label : impl Into < String>, shortcut : Option < Shortcut>,) -> Self
-rust-gui-core   fn Component::ui (& mut self, ui : & mut Ui < '_>)
+rust-gui-core   fn Component::update (& mut self, message : Self :: Message, effects : & mut Effects < '_, Self :: Message>)
+rust-gui-core   fn Component::view (& self, ui : & mut Ui < '_, Self :: Message>)
 rust-gui-core   fn Context::accepts_drop (& self, at : Point, payload : & DragPayload) -> bool
 rust-gui-core   fn Context::accepts_text (& self) -> bool
 rust-gui-core   fn Context::action (& mut self, target : NodeId, action : Action) -> bool
@@ -567,7 +571,6 @@ rust-gui-core   fn Context::stats (& self) -> FrameStats
 rust-gui-core   fn Context::style_warnings (& self) -> & [String]
 rust-gui-core   fn Context::stylesheet (& self) -> & StyleSheet
 rust-gui-core   fn Context::take_clip (& mut self) -> Option < crate :: Clip>
-rust-gui-core   fn Context::take_clipboard (& mut self) -> Option < String>
 rust-gui-core   fn Context::take_file_request (& mut self) -> Option < crate :: FileRequest>
 rust-gui-core   fn Context::take_hot_state (& mut self) -> Option < String>
 rust-gui-core   fn Context::take_menu (& mut self) -> Option < crate :: Menu>
@@ -589,6 +592,7 @@ rust-gui-core   fn DialogOptions::new (title : impl Into < String>) -> Self
 rust-gui-core   fn DialogOptions::style (mut self, style : Style) -> Self
 rust-gui-core   fn DialogOptions::width (mut self, width : Length) -> Self
 rust-gui-core   fn DockLayout::activate (& mut self, panel : & str) -> bool
+rust-gui-core   fn DockLayout::apply (& mut self, action : DockAction) -> bool
 rust-gui-core   fn DockLayout::close (& mut self, panel : & str) -> bool
 rust-gui-core   fn DockLayout::contains (& self, panel : & str) -> bool
 rust-gui-core   fn DockLayout::group_of (& self, panel : & str) -> Option < & [String]>
@@ -611,6 +615,10 @@ rust-gui-core   fn DockNode::tabs < S : Into < String>> (panels : impl IntoItera
 rust-gui-core   fn DockPanel::new (id : impl Into < String>, title : impl Into < String>) -> Self
 rust-gui-core   fn DockPanel::pinned (id : impl Into < String>, title : impl Into < String>) -> Self
 rust-gui-core   fn DragPayload::kind (& self) -> DropKind
+rust-gui-core   fn DragSourceBuilder < M>::new (label : impl Into < String>, payload : crate :: DragPayload) -> Self
+rust-gui-core   fn DragSourceBuilder < M>::on_drag_end (mut self, message : impl Fn (crate :: DragOutcome) -> M + 'static) -> Self
+rust-gui-core   fn DropTargetBuilder < M>::new (label : impl Into < String>, accepts : crate :: DropKind) -> Self
+rust-gui-core   fn DropTargetBuilder < M>::on_drop (mut self, message : impl Fn (crate :: DragPayload) -> M + 'static) -> Self
 rust-gui-core   fn Easing::apply (self, t : f32) -> f32
 rust-gui-core   fn Editor::apply (& mut self, edit : TextEdit) -> bool
 rust-gui-core   fn Editor::caret (& self) -> Option < Rect>
@@ -626,10 +634,28 @@ rust-gui-core   fn Editor::synchronize (& mut self, text : & str)
 rust-gui-core   fn Effect::fade (milliseconds : u64) -> Self
 rust-gui-core   fn Effect::slide (x : f32, y : f32, milliseconds : u64) -> Self
 rust-gui-core   fn Effect::zoom (factor : f32, milliseconds : u64) -> Self
+rust-gui-core   fn Effects < '_, M>::cancel (& mut self, key : & str)
+rust-gui-core   fn Effects < '_, M>::channel < T : Send + 'static> (& mut self, capacity : usize, message : impl Fn (T) -> M + 'static,) -> MessageSender < T>
+rust-gui-core   fn Effects < '_, M>::choose_files (& mut self, request : FileRequest, message : impl Fn (Vec < PathBuf>) -> M + 'static,)
+rust-gui-core   fn Effects < '_, M>::close_window (& mut self, window : WindowId)
+rust-gui-core   fn Effects < '_, M>::copy (& mut self, clip : Clip)
+rust-gui-core   fn Effects < '_, M>::map < N : 'static> (& mut self, f : impl Fn (N) -> M + 'static) -> Effects < '_, N>
+rust-gui-core   fn Effects < '_, M>::notify (& mut self, notification : Notification)
+rust-gui-core   fn Effects < '_, M>::open_window (& mut self, request : WindowRequest) -> WindowId
+rust-gui-core   fn Effects < '_, M>::paste (& mut self, message : impl Fn (Clip) -> M + 'static)
+rust-gui-core   fn Effects < '_, M>::request_focus (& mut self, key : impl Into < String>)
+rust-gui-core   fn Effects < '_, M>::running (& mut self, key : & str) -> bool
+rust-gui-core   fn Effects < '_, M>::set_binding (& mut self, id : impl Into < String>, shortcut : Option < Shortcut>)
+rust-gui-core   fn Effects < '_, M>::set_format (& mut self, format : Option < Box < dyn LocaleFormat>>)
+rust-gui-core   fn Effects < '_, M>::set_messages (& mut self, messages : Option < Box < dyn Messages>>)
+rust-gui-core   fn Effects < '_, M>::set_theme (& mut self, theme : Theme)
+rust-gui-core   fn Effects < '_, M>::spawn < T : Send + 'static> (& mut self, key : impl Into < String>, job : impl FnOnce (TaskSender < String, T>) + Send + 'static, message : impl Fn (T) -> M + 'static,) -> Cancel
+rust-gui-core   fn Effects < '_, M>::toast (& mut self, toast : Toast)
+rust-gui-core   fn Effects < '_, M>::toast_with (& mut self, toast : Toast, message : impl Fn (ToastAction) -> M + 'static)
+rust-gui-core   fn Effects < '_, M>::window_command (& mut self, command : WindowCommand)
 rust-gui-core   fn EventArea::all () -> Self
 rust-gui-core   fn EventArea::capturing (mut self) -> Self
 rust-gui-core   fn EventArea::consuming (mut self) -> Self
-rust-gui-core   fn EventArea::custom () -> Self
 rust-gui-core   fn EventArea::keyboard () -> Self
 rust-gui-core   fn EventArea::pointer () -> Self
 rust-gui-core   fn EventArea::scroll () -> Self
@@ -640,9 +666,12 @@ rust-gui-core   fn FileRequest::open (title : impl Into < String>) -> Self
 rust-gui-core   fn FileRequest::open_many (title : impl Into < String>) -> Self
 rust-gui-core   fn FileRequest::save (title : impl Into < String>) -> Self
 rust-gui-core   fn FileRequest::with_filter (mut self, name : impl Into < String>, extensions : impl IntoIterator < Item = impl Into < String>>,) -> Self
+rust-gui-core   fn FindState::apply < M : 'static> (& mut self, document : & mut TextDocument, op : AreaOp, effects : & mut crate :: Effects < '_, M>,)
 rust-gui-core   fn FindState::error (& self) -> Option < & str>
 rust-gui-core   fn FindState::matches (& self) -> & [Range < usize>]
 rust-gui-core   fn FindState::refresh (& mut self, document : & TextDocument)
+rust-gui-core   fn GestureBuilder < M>::new () -> Self
+rust-gui-core   fn GestureBuilder < M>::on_gesture (mut self, message : impl Fn (crate :: GestureResponse) -> M + 'static) -> Self
 rust-gui-core   fn GestureResponse::changed (& self) -> bool
 rust-gui-core   fn Gradient::down (from : Color, to : Color) -> Self
 rust-gui-core   fn Gradient::linear (from : (f32, f32), to : (f32, f32), start : Color, end : Color) -> Self
@@ -669,9 +698,9 @@ rust-gui-core   fn GridModel::filter (& mut self, filters : & [(usize, & str)]) 
 rust-gui-core   fn GridModel::set_cell (& mut self, row : usize, column : usize, value : CellValue) -> Result < (), String>
 rust-gui-core   fn GridModel::sort (& mut self, column : usize, direction : SortDirection) -> bool
 rust-gui-core   fn GridModel::value (& self, row : usize, column : usize) -> CellValue
-rust-gui-core   fn GridState::cancel_edit (& mut self)
-rust-gui-core   fn GridState::edit_error (& self) -> Option < & str>
-rust-gui-core   fn GridState::editing (& self) -> Option < (ItemId, usize)>
+rust-gui-core   fn GridState::applied_filters (& self) -> & [(usize, String)]
+rust-gui-core   fn GridState::apply (& mut self, message : & GridMsg)
+rust-gui-core   fn GridState::refuse_edit (& mut self, row : ItemId, column : usize, message : impl Into < String>)
 rust-gui-core   fn Highlighter::begin (& mut self, _document : & TextDocument)
 rust-gui-core   fn Highlighter::highlight (& mut self, document : & TextDocument, line : usize) -> Vec < HighlightSpan>
 rust-gui-core   fn Highlighter::pending (& self) -> bool
@@ -735,31 +764,40 @@ rust-gui-core   fn NumberOptions::range (mut self, min : f64, max : f64) -> Self
 rust-gui-core   fn NumberOptions::step (mut self, step : f64) -> Self
 rust-gui-core   fn NumberOptions::style (mut self, style : crate :: Style) -> Self
 rust-gui-core   fn NumberOptions::suffix (mut self, suffix : impl Into < String>) -> Self
+rust-gui-core   fn Pacing::invalidate (& mut self)
+rust-gui-core   fn Pacing::invalidated (& self) -> bool
 rust-gui-core   fn Paint::background (color : Color) -> Self
 rust-gui-core   fn Paint::foreground (color : Color) -> Self
 rust-gui-core   fn Paint::opacity (opacity : f32) -> Self
 rust-gui-core   fn Paint::transform (transform : Transform) -> Self
-rust-gui-core   fn Properties::properties (& mut self, grid : & mut PropertyGrid < '_, '_>)
-rust-gui-core   fn PropertyGrid < '_, '_>::bool (& mut self, name : & str, value : & mut bool) -> bool
-rust-gui-core   fn PropertyGrid < '_, '_>::choice (& mut self, name : & str, value : & mut usize, choices : & [& str]) -> bool
-rust-gui-core   fn PropertyGrid < '_, '_>::color (& mut self, name : & str, value : & mut Color) -> bool
-rust-gui-core   fn PropertyGrid < '_, '_>::custom (& mut self, name : & str, editor : impl FnOnce (& mut Ui < '_>, & str) -> bool) -> bool
-rust-gui-core   fn PropertyGrid < '_, '_>::default < T : Any> (& mut self, value : T) -> & mut Self
-rust-gui-core   fn PropertyGrid < '_, '_>::group (& mut self, name : & str, content : impl FnOnce (& mut PropertyGrid < '_, '_>))
-rust-gui-core   fn PropertyGrid < '_, '_>::number (& mut self, name : & str, value : & mut f64, options : NumberOptions) -> bool
-rust-gui-core   fn PropertyGrid < '_, '_>::readonly (& mut self, name : & str, text : impl Into < String>)
-rust-gui-core   fn PropertyGrid < '_, '_>::text (& mut self, name : & str, value : & mut String) -> bool
+rust-gui-core   fn PropertyGrid < '_, '_, M>::bool (& mut self, name : & str, value : bool)
+rust-gui-core   fn PropertyGrid < '_, '_, M>::bool_with (& mut self, name : & str, value : bool, on : impl Fn (bool) -> M + 'static)
+rust-gui-core   fn PropertyGrid < '_, '_, M>::choice (& mut self, name : & str, value : usize, choices : & [& str])
+rust-gui-core   fn PropertyGrid < '_, '_, M>::choice_with (& mut self, name : & str, value : usize, choices : & [& str], on : impl Fn (usize) -> M + 'static,)
+rust-gui-core   fn PropertyGrid < '_, '_, M>::color (& mut self, name : & str, value : Color)
+rust-gui-core   fn PropertyGrid < '_, '_, M>::color_with (& mut self, name : & str, value : Color, on : impl Fn (Color) -> M + 'static)
+rust-gui-core   fn PropertyGrid < '_, '_, M>::custom (& mut self, name : & str, editor : impl FnOnce (& mut Ui < '_, M>, & str))
+rust-gui-core   fn PropertyGrid < '_, '_, M>::default < T : Any> (& mut self, value : T) -> & mut Self
+rust-gui-core   fn PropertyGrid < '_, '_, M>::group (& mut self, name : & str, content : impl FnOnce (& mut PropertyGrid < '_, '_, M>))
+rust-gui-core   fn PropertyGrid < '_, '_, M>::number (& mut self, name : & str, value : f64, options : NumberOptions)
+rust-gui-core   fn PropertyGrid < '_, '_, M>::number_with (& mut self, name : & str, value : f64, options : NumberOptions, on : impl Fn (f64) -> M + 'static,)
+rust-gui-core   fn PropertyGrid < '_, '_, M>::readonly (& mut self, name : & str, text : impl Into < String>)
+rust-gui-core   fn PropertyGrid < '_, '_, M>::text (& mut self, name : & str, value : & str)
+rust-gui-core   fn PropertyGrid < '_, '_, M>::text_with (& mut self, name : & str, value : & str, on : impl Fn (String) -> M + 'static)
 rust-gui-core   fn PropertyGridOptions::filter (mut self, filter : bool) -> Self
 rust-gui-core   fn PropertyGridOptions::height (mut self, height : f32) -> Self
 rust-gui-core   fn PropertyGridOptions::new (label : impl Into < String>) -> Self
 rust-gui-core   fn PropertyGridOptions::style (mut self, style : Style) -> Self
-rust-gui-core   fn PropertyGridResponse::any (& self) -> bool
+rust-gui-core   fn PropertyGridState::apply (& mut self, message : & PropertyMsg)
 rust-gui-core   fn ResizeEdge::name (self) -> & 'static str
 rust-gui-core   fn ResolvedText::from_theme (theme : & Theme) -> Self
 rust-gui-core   fn ResolvedText::rtl (& self) -> bool
 rust-gui-core   fn ResolvedText::text_style (& self, wrap : TextWrap) -> TextStyle
-rust-gui-core   fn Response::clicked (self) -> bool
+rust-gui-core   fn Response < '_>::focused (& self) -> bool
+rust-gui-core   fn Response < '_>::hovered (& self) -> bool
 rust-gui-core   fn RichDocument::anchor (& self) -> RichPosition
+rust-gui-core   fn RichDocument::apply (& mut self, op : RichOp)
+rust-gui-core   fn RichDocument::apply_with < M : 'static> (& mut self, op : RichOp, effects : & mut crate :: Effects < '_, M>)
 rust-gui-core   fn RichDocument::backspace (& mut self, word : bool)
 rust-gui-core   fn RichDocument::block_kind (& self) -> BlockKind
 rust-gui-core   fn RichDocument::blocks (& self) -> & [Block]
@@ -857,6 +895,8 @@ rust-gui-core   fn Tasks < K, T>::spawn (& mut self, key : K, job : impl FnOnce 
 rust-gui-core   fn Tasks < K, T>::start (& mut self, key : K) -> TaskSender < K, T>
 rust-gui-core   fn TextDocument::add_cursor_vertically (& mut self, down : bool) -> bool
 rust-gui-core   fn TextDocument::add_selection (& mut self, anchor : usize, cursor : usize)
+rust-gui-core   fn TextDocument::apply (& mut self, op : AreaOp)
+rust-gui-core   fn TextDocument::apply_with < M : 'static> (& mut self, op : AreaOp, effects : & mut crate :: Effects < '_, M>)
 rust-gui-core   fn TextDocument::backspace (& mut self, word : bool) -> bool
 rust-gui-core   fn TextDocument::backspace_paired (& mut self) -> bool
 rust-gui-core   fn TextDocument::can_redo (& self) -> bool
@@ -900,9 +940,10 @@ rust-gui-core   fn TextDocument::set_text (& mut self, text : & str)
 rust-gui-core   fn TextDocument::text (& self) -> String
 rust-gui-core   fn TextDocument::undo (& mut self) -> bool
 rust-gui-core   fn TextDocument::word_at (& self, offset : usize) -> Range < usize>
-rust-gui-core   fn TextInput::new (label : impl Into < String>) -> Self
-rust-gui-core   fn TextInput::placeholder (mut self, placeholder : impl Into < String>) -> Self
-rust-gui-core   fn TextInput::style (mut self, style : Style) -> Self
+rust-gui-core   fn TextInput < M>::new (label : impl Into < String>) -> Self
+rust-gui-core   fn TextInput < M>::on_submit (mut self, message : M) -> Self
+rust-gui-core   fn TextInput < M>::placeholder (mut self, placeholder : impl Into < String>) -> Self
+rust-gui-core   fn TextInput < M>::style (mut self, style : Style) -> Self
 rust-gui-core   fn TextSelection::range (self) -> Range < usize>
 rust-gui-core   fn Theme::dark () -> Self
 rust-gui-core   fn Theme::light () -> Self
@@ -931,84 +972,77 @@ rust-gui-core   fn Tray::with_icon (mut self, icon : Image) -> Self
 rust-gui-core   fn Tray::with_menu (mut self, menu : Menu) -> Self
 rust-gui-core   fn TreeModel::item (& self, id : ItemId) -> Option < & TreeItem>
 rust-gui-core   fn TreeModel::new (items : Vec < TreeItem>) -> Result < Self, ModelError>
-rust-gui-core   fn Ui < '_>::autocomplete < S : AsRef < str>> (& mut self, label : impl Into < String>, value : & mut String, suggestions : & [S],) -> AutocompleteResponse
-rust-gui-core   fn Ui < '_>::button (& mut self, button : impl Into < Button>) -> Response
-rust-gui-core   fn Ui < '_>::checkbox (& mut self, label : impl Into < String>, checked : & mut bool) -> Response
-rust-gui-core   fn Ui < '_>::choose_file (& mut self, request : crate :: FileRequest)
-rust-gui-core   fn Ui < '_>::chosen_files (& self) -> Option < & [std :: path :: PathBuf]>
-rust-gui-core   fn Ui < '_>::class (& mut self, name : & str) -> Style
-rust-gui-core   fn Ui < '_>::code_editor (& mut self, document : & mut TextDocument, options : CodeEditorOptions < '_>,) -> CodeEditorResponse
-rust-gui-core   fn Ui < '_>::column (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_>))
-rust-gui-core   fn Ui < '_>::combo_box (& mut self, combo : impl Into < ComboBox>, selected : & mut usize, items : & [& str],) -> Response
-rust-gui-core   fn Ui < '_>::command (& self, command : & crate :: Command) -> crate :: Command
-rust-gui-core   fn Ui < '_>::command_button (& mut self, command : & crate :: Command) -> Response
-rust-gui-core   fn Ui < '_>::command_palette (& mut self, open : & mut bool, query : & mut String, commands : & [crate :: Command],) -> Option < String>
-rust-gui-core   fn Ui < '_>::component (& mut self, style : Style, component : & mut impl Component)
-rust-gui-core   fn Ui < '_>::container (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_>))
-rust-gui-core   fn Ui < '_>::context_menu (& mut self, items : & [MenuItem], style : Style, content : impl FnOnce (& mut Ui < '_>),) -> Option < usize>
-rust-gui-core   fn Ui < '_>::copy (& mut self, clip : crate :: Clip)
-rust-gui-core   fn Ui < '_>::custom (& mut self, style : Style, widget : CustomWidget) -> Response
-rust-gui-core   fn Ui < '_>::data_grid (& mut self, model : & mut impl GridModel, state : & mut GridState, options : VirtualListOptions,) -> ListResponse
-rust-gui-core   fn Ui < '_>::dialog (& mut self, key : impl Into < String>, open : & mut bool, options : crate :: DialogOptions, content : impl FnOnce (& mut Ui < '_>, & mut bool),) -> crate :: DialogResponse
-rust-gui-core   fn Ui < '_>::dock (& mut self, layout : & mut DockLayout, panels : & [DockPanel], options : DockOptions, content : impl FnMut (& mut Ui < '_>, & str),) -> DockResponse
-rust-gui-core   fn Ui < '_>::dock_window (& mut self, layout : & mut DockLayout, window : DockWindowId, panels : & [DockPanel], options : DockOptions, content : impl FnMut (& mut Ui < '_>, & str),) -> DockResponse
-rust-gui-core   fn Ui < '_>::drag_source (& mut self, label : impl Into < String>, payload : crate :: DragPayload, style : Style, content : impl FnOnce (& mut Ui < '_>),) -> Option < crate :: DragOutcome>
-rust-gui-core   fn Ui < '_>::drop_target (& mut self, label : impl Into < String>, accepts : crate :: DropKind, style : Style, content : impl FnOnce (& mut Ui < '_>),) -> Option < crate :: DragPayload>
-rust-gui-core   fn Ui < '_>::emit (& mut self, name : impl Into < String>, data : impl Into < String>)
-rust-gui-core   fn Ui < '_>::enabled (& mut self, enabled : bool, content : impl FnOnce (& mut Ui < '_>))
-rust-gui-core   fn Ui < '_>::event_area (& mut self, area : crate :: EventArea, style : Style, content : impl FnOnce (& mut Ui < '_>),) -> Vec < crate :: UiEvent>
-rust-gui-core   fn Ui < '_>::focus_scope (& mut self, scope : crate :: FocusScope, style : Style, content : impl FnOnce (& mut Ui < '_>),)
-rust-gui-core   fn Ui < '_>::gesture_area (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_>),) -> crate :: GestureResponse
-rust-gui-core   fn Ui < '_>::grid (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_>))
-rust-gui-core   fn Ui < '_>::hot_state (& mut self, save : impl FnOnce () -> String)
-rust-gui-core   fn Ui < '_>::image (& mut self, image : & Image, options : ImageOptions)
-rust-gui-core   fn Ui < '_>::image_file (& mut self, path : impl AsRef < std :: path :: Path>, options : ImageOptions)
-rust-gui-core   fn Ui < '_>::keyed < R> (& mut self, key : impl Into < String>, content : impl FnOnce (& mut Ui < '_>) -> R,) -> R
-rust-gui-core   fn Ui < '_>::label (& mut self, label : impl Into < Label>)
-rust-gui-core   fn Ui < '_>::memo < S : std :: hash :: Hash> (& mut self, state : & S, style : Style, content : impl FnOnce (& mut Ui < '_>),) -> bool
-rust-gui-core   fn Ui < '_>::menu (& mut self, label : impl Into < String>, items : & [MenuItem]) -> Option < usize>
-rust-gui-core   fn Ui < '_>::menu_bar (& mut self, menu : & crate :: Menu)
-rust-gui-core   fn Ui < '_>::notify (& mut self, notification : crate :: Notification)
-rust-gui-core   fn Ui < '_>::number_input (& mut self, label : impl Into < String>, value : & mut f64, options : NumberOptions,) -> Response
-rust-gui-core   fn Ui < '_>::observe (& mut self, store : & crate :: Store)
-rust-gui-core   fn Ui < '_>::opened_files (& self) -> & [std :: path :: PathBuf]
-rust-gui-core   fn Ui < '_>::pasted (& self) -> Option < & crate :: Clip>
-rust-gui-core   fn Ui < '_>::popover (& mut self, open : & mut bool, options : PopoverOptions, content : impl FnOnce (& mut Ui < '_>),) -> PopoverResponse
-rust-gui-core   fn Ui < '_>::property_grid (& mut self, state : & mut PropertyGridState, options : PropertyGridOptions, content : impl FnOnce (& mut PropertyGrid < '_, '_>),) -> PropertyGridResponse
-rust-gui-core   fn Ui < '_>::radio (& mut self, label : impl Into < String>, selected : & mut usize, option : usize,) -> Response
-rust-gui-core   fn Ui < '_>::request_focus (& mut self, key : impl Into < String>)
-rust-gui-core   fn Ui < '_>::request_paste (& mut self)
-rust-gui-core   fn Ui < '_>::request_redraw (& mut self)
-rust-gui-core   fn Ui < '_>::resize_frame (& mut self, thickness : f32)
-rust-gui-core   fn Ui < '_>::responsive (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_>, f32)) -> f32
-rust-gui-core   fn Ui < '_>::rich_text (& mut self, text : & RichText, style : Style) -> Option < String>
-rust-gui-core   fn Ui < '_>::rich_text_editor (& mut self, document : & mut RichDocument, options : RichEditorOptions,) -> RichEditorResponse
-rust-gui-core   fn Ui < '_>::row (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_>))
-rust-gui-core   fn Ui < '_>::scroll (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_>))
-rust-gui-core   fn Ui < '_>::set_menu (& mut self, menu : crate :: Menu)
-rust-gui-core   fn Ui < '_>::set_theme (& mut self, theme : crate :: Theme)
-rust-gui-core   fn Ui < '_>::set_tray (& mut self, tray : Option < crate :: Tray>)
-rust-gui-core   fn Ui < '_>::slider (& mut self, label : impl Into < String>, value : & mut f64, range : RangeInclusive < f64>, step : f64,) -> Response
-rust-gui-core   fn Ui < '_>::split (& mut self, fraction : & mut f32, axis : Axis, options : SplitOptions, first : impl FnOnce (& mut Ui < '_>), second : impl FnOnce (& mut Ui < '_>),)
-rust-gui-core   fn Ui < '_>::tabs (& mut self, selected : & mut usize, tabs : & [Tab], content : impl FnOnce (& mut Ui < '_>, usize),) -> TabsResponse
-rust-gui-core   fn Ui < '_>::text_input (& mut self, input : impl Into < TextInput>, value : & mut String) -> Response
-rust-gui-core   fn Ui < '_>::theme (& self) -> & crate :: Theme
-rust-gui-core   fn Ui < '_>::title_bar (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_>))
-rust-gui-core   fn Ui < '_>::toast (& mut self, toast : Toast) -> ToastId
-rust-gui-core   fn Ui < '_>::toast_action (& mut self) -> Option < ToastAction>
-rust-gui-core   fn Ui < '_>::toast_sender (& self) -> ToastSender
-rust-gui-core   fn Ui < '_>::tooltip (& mut self, text : impl Into < String>)
-rust-gui-core   fn Ui < '_>::tree_view (& mut self, model : & mut impl ListModel, state : & mut ListState, options : VirtualListOptions,) -> ListResponse
-rust-gui-core   fn Ui < '_>::tree_view_with < M : ListModel> (& mut self, model : & mut M, state : & mut ListState, options : VirtualListOptions, row : impl FnMut (& mut Ui < '_>, & M, usize, bool),) -> ListResponse
-rust-gui-core   fn Ui < '_>::virtual_list (& mut self, model : & mut impl ListModel, state : & mut ListState, options : VirtualListOptions,) -> ListResponse
-rust-gui-core   fn Ui < '_>::virtual_list_with < M : ListModel> (& mut self, model : & mut M, state : & mut ListState, options : VirtualListOptions, row : impl FnMut (& mut Ui < '_>, & M, usize, bool),) -> ListResponse
-rust-gui-core   fn Ui < '_>::watched_bytes (& mut self, path : impl AsRef < std :: path :: Path>) -> Option < Arc < [u8]>>
-rust-gui-core   fn Ui < '_>::watched_text (& mut self, path : impl AsRef < std :: path :: Path>) -> Option < Arc < str>>
-rust-gui-core   fn Ui < '_>::widget (& mut self, style : Style, build : impl FnOnce (& crate :: WidgetInput) -> CustomWidget,) -> Response
-rust-gui-core   fn Ui < '_>::window (& self) -> crate :: WindowInfo
-rust-gui-core   fn Ui < '_>::window_buttons (& mut self)
-rust-gui-core   fn Ui < '_>::window_command (& mut self, command : crate :: WindowCommand)
-rust-gui-core   fn Ui < '_>::window_size (& self) -> rust_gui_scene :: Size
+rust-gui-core   fn Ui < '_, M>::component < C : Component> (& mut self, style : Style, component : & C, f : impl Fn (C :: Message) -> M + 'static,)
+rust-gui-core   fn Ui < 'a, M>::autocomplete < S : AsRef < str>> (& mut self, label : impl Into < String>, value : & str, suggestions : & [S], on_change : impl Fn (String) -> M + 'static,) -> Response < 'a>
+rust-gui-core   fn Ui < 'a, M>::autocomplete_with < S : AsRef < str>> (& mut self, label : impl Into < String>, value : & str, suggestions : & [S], on_change : impl Fn (String) -> M + 'static, extra : Autocomplete < M>,) -> Response < 'a>
+rust-gui-core   fn Ui < 'a, M>::button (& mut self, button : impl Into < Button < M>>) -> Response < 'a>
+rust-gui-core   fn Ui < 'a, M>::checkbox (& mut self, label : impl Into < String>, checked : bool, on_toggle : impl Fn (bool) -> M,) -> Response < 'a>
+rust-gui-core   fn Ui < 'a, M>::class (& mut self, name : & str) -> Style
+rust-gui-core   fn Ui < 'a, M>::code_editor (& mut self, document : & TextDocument, options : CodeEditorOptions < '_>, on : impl Fn (AreaOp) -> M + 'static,)
+rust-gui-core   fn Ui < 'a, M>::column (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+rust-gui-core   fn Ui < 'a, M>::combo_box (& mut self, combo : impl Into < ComboBox>, selected : usize, items : & [& str], on_choose : impl Fn (usize) -> M + 'static,) -> Response < 'a>
+rust-gui-core   fn Ui < 'a, M>::command (& self, command : & crate :: Command) -> crate :: Command
+rust-gui-core   fn Ui < 'a, M>::command_button (& mut self, command : & crate :: Command, message : M) -> Response < 'a>
+rust-gui-core   fn Ui < 'a, M>::command_palette (& mut self, open : bool, query : & str, on_open : impl Fn (bool) -> M + 'static, on_query : impl Fn (String) -> M + 'static, on_pick : impl Fn (usize) -> M + 'static, commands : & [crate :: Command],)
+rust-gui-core   fn Ui < 'a, M>::container (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+rust-gui-core   fn Ui < 'a, M>::context_menu (& mut self, items : & [MenuItem], style : Style, on_pick : impl Fn (usize) -> M + 'static, content : impl FnOnce (& mut Ui < '_, M>),)
+rust-gui-core   fn Ui < 'a, M>::custom (& mut self, style : Style, widget : CustomWidget, on_click : M) -> Response < 'a>
+rust-gui-core   fn Ui < 'a, M>::dialog (& mut self, key : impl Into < String>, open : bool, on_open : impl Fn (bool) -> M + 'static, options : crate :: DialogOptions, content : impl FnOnce (& mut Ui < '_, M>),)
+rust-gui-core   fn Ui < 'a, M>::dock (& mut self, layout : & DockLayout, panels : & [DockPanel], options : DockOptions, on : impl Fn (DockAction) -> M + 'static, content : impl FnMut (& mut Ui < '_, M>, & str),)
+rust-gui-core   fn Ui < 'a, M>::dock_window (& mut self, layout : & DockLayout, window : DockWindowId, panels : & [DockPanel], options : DockOptions, on : impl Fn (DockAction) -> M + 'static, content : impl FnMut (& mut Ui < '_, M>, & str),)
+rust-gui-core   fn Ui < 'a, M>::drag_source (& mut self, source : DragSourceBuilder < M>, style : Style, content : impl FnOnce (& mut Ui < '_, M>),)
+rust-gui-core   fn Ui < 'a, M>::drop_target (& mut self, target : DropTargetBuilder < M>, style : Style, content : impl FnOnce (& mut Ui < '_, M>),)
+rust-gui-core   fn Ui < 'a, M>::enabled (& mut self, enabled : bool, content : impl FnOnce (& mut Ui < '_, M>))
+rust-gui-core   fn Ui < 'a, M>::event_area (& mut self, area : AreaBuilder < M>, style : Style, content : impl FnOnce (& mut Ui < '_, M>),)
+rust-gui-core   fn Ui < 'a, M>::focus_scope (& mut self, scope : crate :: FocusScope, style : Style, content : impl FnOnce (& mut Ui < '_, M>),)
+rust-gui-core   fn Ui < 'a, M>::gesture_area (& mut self, gesture : GestureBuilder < M>, style : Style, content : impl FnOnce (& mut Ui < '_, M>),)
+rust-gui-core   fn Ui < 'a, M>::grid (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+rust-gui-core   fn Ui < 'a, M>::image (& mut self, image : & Image, options : ImageOptions)
+rust-gui-core   fn Ui < 'a, M>::image_file (& mut self, path : impl AsRef < std :: path :: Path>, options : ImageOptions)
+rust-gui-core   fn Ui < 'a, M>::keyed < R> (& mut self, key : impl Into < String>, content : impl FnOnce (& mut Ui < 'a, M>) -> R,) -> R
+rust-gui-core   fn Ui < 'a, M>::label (& mut self, label : impl Into < Label>)
+rust-gui-core   fn Ui < 'a, M>::map < N : Clone + 'static> (& mut self, f : impl Fn (N) -> M + 'static, content : impl FnOnce (& mut Ui < '_, N>),)
+rust-gui-core   fn Ui < 'a, M>::memo < S : std :: hash :: Hash> (& mut self, state : & S, style : Style, content : impl FnOnce (& mut Ui < '_, M>),) -> bool
+rust-gui-core   fn Ui < 'a, M>::menu (& mut self, label : impl Into < String>, items : & [MenuItem], on_pick : impl Fn (usize) -> M + 'static,) -> Response < 'a>
+rust-gui-core   fn Ui < 'a, M>::menu_bar (& mut self, menu : & crate :: Menu)
+rust-gui-core   fn Ui < 'a, M>::number_input (& mut self, label : impl Into < String>, value : f64, options : NumberOptions, on : impl Fn (f64) -> M + 'static,) -> Response < 'a>
+rust-gui-core   fn Ui < 'a, M>::observe (& mut self, store : & crate :: Store)
+rust-gui-core   fn Ui < 'a, M>::opened_files (& self) -> & [std :: path :: PathBuf]
+rust-gui-core   fn Ui < 'a, M>::popover (& mut self, open : bool, on_open : impl Fn (bool) -> M + 'static, options : PopoverOptions, content : impl FnOnce (& mut Ui < '_, M>),)
+rust-gui-core   fn Ui < 'a, M>::property_grid (& mut self, state : & PropertyGridState, options : PropertyGridOptions, on : impl Fn (PropertyMsg) -> M + 'static, content : impl FnOnce (& mut PropertyGrid < '_, '_, M>),)
+rust-gui-core   fn Ui < 'a, M>::radio (& mut self, label : impl Into < String>, selected : usize, option : usize, on_select : impl Fn (usize) -> M,) -> Response < 'a>
+rust-gui-core   fn Ui < 'a, M>::request_redraw (& mut self)
+rust-gui-core   fn Ui < 'a, M>::resize_frame (& mut self, thickness : f32)
+rust-gui-core   fn Ui < 'a, M>::responsive (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>, f32)) -> f32
+rust-gui-core   fn Ui < 'a, M>::rich_editor (& mut self, document : & RichDocument, options : RichEditorOptions, on : impl Fn (RichOp) -> M + 'static,) -> RichEditorResponse
+rust-gui-core   fn Ui < 'a, M>::rich_text (& mut self, text : & RichText, style : Style, on_link : impl Fn (String) -> M + 'static,) -> Response < 'a>
+rust-gui-core   fn Ui < 'a, M>::row (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+rust-gui-core   fn Ui < 'a, M>::scroll (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+rust-gui-core   fn Ui < 'a, M>::set_menu (& mut self, menu : crate :: Menu)
+rust-gui-core   fn Ui < 'a, M>::set_tray (& mut self, tray : Option < crate :: Tray>)
+rust-gui-core   fn Ui < 'a, M>::slider (& mut self, label : impl Into < String>, value : f64, range : RangeInclusive < f64>, step : f64, on_change : impl Fn (f64) -> M + 'static,) -> Response < 'a>
+rust-gui-core   fn Ui < 'a, M>::split (& mut self, ratio : f32, on : impl Fn (f32) -> M + 'static, axis : Axis, options : SplitOptions, first : impl FnOnce (& mut Ui < '_, M>), second : impl FnOnce (& mut Ui < '_, M>),)
+rust-gui-core   fn Ui < 'a, M>::tabs (& mut self, selected : usize, tabs : & [Tab], on_select : impl Fn (usize) -> M + 'static, content : impl FnOnce (& mut Ui < '_, M>, usize),)
+rust-gui-core   fn Ui < 'a, M>::tabs_close (& mut self, selected : usize, tabs : & [Tab], on_select : impl Fn (usize) -> M + 'static, on_close : impl Fn (usize) -> M, content : impl FnOnce (& mut Ui < '_, M>, usize),)
+rust-gui-core   fn Ui < 'a, M>::text_area (& mut self, document : & TextDocument, options : CodeEditorOptions < '_>, on : impl Fn (AreaOp) -> M + 'static,)
+rust-gui-core   fn Ui < 'a, M>::text_input (& mut self, input : impl Into < TextInput < M>>, value : & str, on_change : impl Fn (String) -> M + 'static,) -> Response < 'a>
+rust-gui-core   fn Ui < 'a, M>::theme (& self) -> & crate :: Theme
+rust-gui-core   fn Ui < 'a, M>::title_bar (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+rust-gui-core   fn Ui < 'a, M>::toast_sender (& self) -> ToastSender
+rust-gui-core   fn Ui < 'a, M>::tooltip (& mut self, text : impl Into < String>)
+rust-gui-core   fn Ui < 'a, M>::watched_bytes (& mut self, path : impl AsRef < std :: path :: Path>) -> Option < Arc < [u8]>>
+rust-gui-core   fn Ui < 'a, M>::watched_text (& mut self, path : impl AsRef < std :: path :: Path>) -> Option < Arc < str>>
+rust-gui-core   fn Ui < 'a, M>::widget < F> (& mut self, style : Style, widget : crate :: WidgetBuilder < F, M>) -> Response < 'a> where F : FnOnce (& crate :: WidgetInput) -> CustomWidget,
+rust-gui-core   fn Ui < 'a, M>::window (& self) -> crate :: WindowInfo
+rust-gui-core   fn Ui < 'a, M>::window_buttons (& mut self, on_command : impl Fn (crate :: WindowCommand) -> M)
+rust-gui-core   fn Ui < 'a, M>::window_size (& self) -> rust_gui_scene :: Size
+rust-gui-core   fn Ui < 'a, Msg>::data_grid (& mut self, model : & impl GridModel, state : & GridState, options : VirtualListOptions, on : impl Fn (GridMsg) -> Msg + 'static,)
+rust-gui-core   fn Ui < 'a, Msg>::tree_view (& mut self, model : & impl ListModel, state : & ListState, options : VirtualListOptions, on : impl Fn (GridMsg) -> Msg + 'static,)
+rust-gui-core   fn Ui < 'a, Msg>::tree_view_with < M : ListModel> (& mut self, model : & M, state : & ListState, options : VirtualListOptions, on : impl Fn (GridMsg) -> Msg + 'static, row : impl FnMut (& mut Ui < '_, Msg>, & M, usize, bool),)
+rust-gui-core   fn Ui < 'a, Msg>::virtual_list (& mut self, model : & impl ListModel, state : & ListState, options : VirtualListOptions, on : impl Fn (GridMsg) -> Msg + 'static,)
+rust-gui-core   fn Ui < 'a, Msg>::virtual_list_with < M : ListModel> (& mut self, model : & M, state : & ListState, options : VirtualListOptions, on : impl Fn (GridMsg) -> Msg + 'static, row : impl FnMut (& mut Ui < '_, Msg>, & M, usize, bool),)
+rust-gui-core   fn WidgetBuilder < F, M>::new (build : F) -> Self where F : FnOnce (& WidgetInput) -> CustomWidget,
+rust-gui-core   fn WidgetBuilder < F, M>::on_event (mut self, on_event : impl Fn (crate :: UiEvent) -> Option < M> + 'static) -> Self
 rust-gui-core   fn crate :: Context::format_date (& self, date : Date, style : DateStyle) -> String
 rust-gui-core   fn crate :: Context::format_number (& self, value : f64, decimals : usize) -> String
 rust-gui-core   fn crate :: Context::format_time (& self, time : Time, seconds : bool) -> String
@@ -1018,14 +1052,12 @@ rust-gui-core   fn crate :: Context::parse_number (& self, text : & str) -> Opti
 rust-gui-core   fn crate :: Context::set_format (& mut self, format : Option < Box < dyn LocaleFormat>>)
 rust-gui-core   fn crate :: Context::set_messages (& mut self, messages : Option < Box < dyn Messages>>)
 rust-gui-core   fn crate :: Context::tr (& self, key : & str, args : & [(& str, MessageArg)]) -> String
-rust-gui-core   fn crate :: Ui < '_>::format_date (& self, date : Date, style : DateStyle) -> String
-rust-gui-core   fn crate :: Ui < '_>::format_number (& self, value : f64, decimals : usize) -> String
-rust-gui-core   fn crate :: Ui < '_>::format_time (& self, time : Time, seconds : bool) -> String
-rust-gui-core   fn crate :: Ui < '_>::locale (& self) -> & str
-rust-gui-core   fn crate :: Ui < '_>::set_format (& mut self, format : Option < Box < dyn LocaleFormat>>)
-rust-gui-core   fn crate :: Ui < '_>::set_messages (& mut self, messages : Option < Box < dyn Messages>>)
-rust-gui-core   fn crate :: Ui < '_>::tr (& self, key : & str) -> String
-rust-gui-core   fn crate :: Ui < '_>::tr_args (& self, key : & str, args : & [(& str, MessageArg)]) -> String
+rust-gui-core   fn crate :: Ui < 'a, M>::format_date (& self, date : Date, style : DateStyle) -> String
+rust-gui-core   fn crate :: Ui < 'a, M>::format_number (& self, value : f64, decimals : usize) -> String
+rust-gui-core   fn crate :: Ui < 'a, M>::format_time (& self, time : Time, seconds : bool) -> String
+rust-gui-core   fn crate :: Ui < 'a, M>::locale (& self) -> & str
+rust-gui-core   fn crate :: Ui < 'a, M>::tr (& self, key : & str) -> String
+rust-gui-core   fn crate :: Ui < 'a, M>::tr_args (& self, key : & str, args : & [(& str, MessageArg)]) -> String
 rust-gui-core   variant Action::Activate
 rust-gui-core   variant Action::Collapse
 rust-gui-core   variant Action::Decrement
@@ -1046,6 +1078,23 @@ rust-gui-core   variant Align::Center
 rust-gui-core   variant Align::End
 rust-gui-core   variant Align::Start
 rust-gui-core   variant Align::Stretch
+rust-gui-core   variant AreaOp::Backspace
+rust-gui-core   variant AreaOp::BackspacePaired
+rust-gui-core   variant AreaOp::Clipboard
+rust-gui-core   variant AreaOp::CollapseSelections
+rust-gui-core   variant AreaOp::Command
+rust-gui-core   variant AreaOp::Delete
+rust-gui-core   variant AreaOp::Find
+rust-gui-core   variant AreaOp::Indent
+rust-gui-core   variant AreaOp::Insert
+rust-gui-core   variant AreaOp::InsertPaired
+rust-gui-core   variant AreaOp::Move
+rust-gui-core   variant AreaOp::Newline
+rust-gui-core   variant AreaOp::Outdent
+rust-gui-core   variant AreaOp::Pointer
+rust-gui-core   variant AreaOp::Redo
+rust-gui-core   variant AreaOp::SelectAll
+rust-gui-core   variant AreaOp::Undo
 rust-gui-core   variant Axis::Horizontal
 rust-gui-core   variant Axis::Vertical
 rust-gui-core   variant BlockKind::Bullet
@@ -1078,6 +1127,12 @@ rust-gui-core   variant DiagnosticKind::Resource
 rust-gui-core   variant DiagnosticKind::UnstableIds
 rust-gui-core   variant Direction::Ltr
 rust-gui-core   variant Direction::Rtl
+rust-gui-core   variant DockAction::Close
+rust-gui-core   variant DockAction::FloatRect
+rust-gui-core   variant DockAction::Move
+rust-gui-core   variant DockAction::Raise
+rust-gui-core   variant DockAction::Ratio
+rust-gui-core   variant DockAction::Select
 rust-gui-core   variant DockArea::Main
 rust-gui-core   variant DockArea::Window
 rust-gui-core   variant DockNode::Split
@@ -1144,6 +1199,27 @@ rust-gui-core   variant FileKind::Directory
 rust-gui-core   variant FileKind::Open
 rust-gui-core   variant FileKind::OpenMany
 rust-gui-core   variant FileKind::Save
+rust-gui-core   variant FindEdit::CaseSensitive
+rust-gui-core   variant FindEdit::Query
+rust-gui-core   variant FindEdit::Regex
+rust-gui-core   variant FindEdit::ReplaceAll
+rust-gui-core   variant FindEdit::ReplaceOne
+rust-gui-core   variant FindEdit::Replacement
+rust-gui-core   variant FindEdit::WholeWord
+rust-gui-core   variant Granularity::Char
+rust-gui-core   variant Granularity::Line
+rust-gui-core   variant Granularity::Word
+rust-gui-core   variant GridMsg::Activate
+rust-gui-core   variant GridMsg::Columns
+rust-gui-core   variant GridMsg::Deselect
+rust-gui-core   variant GridMsg::Edit
+rust-gui-core   variant GridMsg::Expand
+rust-gui-core   variant GridMsg::Filter
+rust-gui-core   variant GridMsg::FiltersApplied
+rust-gui-core   variant GridMsg::MoveColumn
+rust-gui-core   variant GridMsg::ResizeColumn
+rust-gui-core   variant GridMsg::Select
+rust-gui-core   variant GridMsg::Sort
 rust-gui-core   variant ImageFit::Contain
 rust-gui-core   variant ImageFit::Cover
 rust-gui-core   variant ImageFit::Fill
@@ -1205,6 +1281,14 @@ rust-gui-core   variant Motion::Right
 rust-gui-core   variant Motion::Up
 rust-gui-core   variant Motion::WordLeft
 rust-gui-core   variant Motion::WordRight
+rust-gui-core   variant PropertyMsg::Bool
+rust-gui-core   variant PropertyMsg::Choice
+rust-gui-core   variant PropertyMsg::Color
+rust-gui-core   variant PropertyMsg::Filter
+rust-gui-core   variant PropertyMsg::Group
+rust-gui-core   variant PropertyMsg::NameShare
+rust-gui-core   variant PropertyMsg::Number
+rust-gui-core   variant PropertyMsg::Text
 rust-gui-core   variant Repeat::Count
 rust-gui-core   variant Repeat::Forever
 rust-gui-core   variant Repeat::Once
@@ -1216,6 +1300,9 @@ rust-gui-core   variant ResizeEdge::South
 rust-gui-core   variant ResizeEdge::SouthEast
 rust-gui-core   variant ResizeEdge::SouthWest
 rust-gui-core   variant ResizeEdge::West
+rust-gui-core   variant RichGranularity::Block
+rust-gui-core   variant RichGranularity::Char
+rust-gui-core   variant RichGranularity::Word
 rust-gui-core   variant RichMotion::BlockEnd
 rust-gui-core   variant RichMotion::BlockStart
 rust-gui-core   variant RichMotion::DocumentEnd
@@ -1224,6 +1311,18 @@ rust-gui-core   variant RichMotion::Left
 rust-gui-core   variant RichMotion::Right
 rust-gui-core   variant RichMotion::WordLeft
 rust-gui-core   variant RichMotion::WordRight
+rust-gui-core   variant RichOp::Backspace
+rust-gui-core   variant RichOp::Clipboard
+rust-gui-core   variant RichOp::Delete
+rust-gui-core   variant RichOp::Insert
+rust-gui-core   variant RichOp::Move
+rust-gui-core   variant RichOp::Newline
+rust-gui-core   variant RichOp::Redo
+rust-gui-core   variant RichOp::SelectAll
+rust-gui-core   variant RichOp::SetBlock
+rust-gui-core   variant RichOp::SetCursor
+rust-gui-core   variant RichOp::Toggle
+rust-gui-core   variant RichOp::Undo
 rust-gui-core   variant Role::Alert
 rust-gui-core   variant Role::Button
 rust-gui-core   variant Role::Cell
@@ -1303,7 +1402,7 @@ rust-gui-core   variant TrackSize::Auto
 rust-gui-core   variant TrackSize::Fr
 rust-gui-core   variant TrackSize::Percent
 rust-gui-core   variant TrackSize::Px
-rust-gui-core   variant UiEvent::Custom
+rust-gui-core   variant UiEvent::Activate
 rust-gui-core   variant UiEvent::Key
 rust-gui-core   variant UiEvent::PointerDown
 rust-gui-core   variant UiEvent::PointerMoved
@@ -1327,6 +1426,7 @@ rust-gui-core const TOOLTIP_DELAY
 rust-gui-core const UNSTABLE_ID_FRAMES
 rust-gui-core enum Action
 rust-gui-core enum Align
+rust-gui-core enum AreaOp
 rust-gui-core enum Axis
 rust-gui-core enum BlockKind
 rust-gui-core enum CaretMovement
@@ -1335,6 +1435,7 @@ rust-gui-core enum CellValue
 rust-gui-core enum DateStyle
 rust-gui-core enum DiagnosticKind
 rust-gui-core enum Direction
+rust-gui-core enum DockAction
 rust-gui-core enum DockArea
 rust-gui-core enum DockNode
 rust-gui-core enum DockPlace
@@ -1347,6 +1448,9 @@ rust-gui-core enum Easing
 rust-gui-core enum EditorCommand
 rust-gui-core enum Event
 rust-gui-core enum FileKind
+rust-gui-core enum FindEdit
+rust-gui-core enum Granularity
+rust-gui-core enum GridMsg
 rust-gui-core enum ImageFit
 rust-gui-core enum ImageSource
 rust-gui-core enum ImageTint
@@ -1359,9 +1463,12 @@ rust-gui-core enum MenuEntry
 rust-gui-core enum MessageArg
 rust-gui-core enum ModelError
 rust-gui-core enum Motion
+rust-gui-core enum PropertyMsg
 rust-gui-core enum Repeat
 rust-gui-core enum ResizeEdge
+rust-gui-core enum RichGranularity
 rust-gui-core enum RichMotion
+rust-gui-core enum RichOp
 rust-gui-core enum Role
 rust-gui-core enum Severity
 rust-gui-core enum ShortcutKey
@@ -1380,14 +1487,15 @@ rust-gui-core fn message_channel < T> (capacity : usize, wake : impl Fn () -> bo
 rust-gui-core fn suggest < 'a> (typed : & str, candidates : & [& 'a str], limit : usize) -> Vec < & 'a str>
 rust-gui-core fn text_matches (cell : & str, filter : & str) -> bool
 rust-gui-core struct Animation
-rust-gui-core struct AutocompleteResponse
+rust-gui-core struct AppDriver
+rust-gui-core struct AreaBuilder
+rust-gui-core struct Autocomplete
 rust-gui-core struct BackgroundImage
 rust-gui-core struct Block
 rust-gui-core struct Button
 rust-gui-core struct Cancel
 rust-gui-core struct Clip
 rust-gui-core struct CodeEditorOptions
-rust-gui-core struct CodeEditorResponse
 rust-gui-core struct CollectionInfo
 rust-gui-core struct ComboBox
 rust-gui-core struct Command
@@ -1396,24 +1504,26 @@ rust-gui-core struct CustomWidget
 rust-gui-core struct Date
 rust-gui-core struct Diagnostic
 rust-gui-core struct DialogOptions
-rust-gui-core struct DialogResponse
 rust-gui-core struct DockFloat
 rust-gui-core struct DockLayout
 rust-gui-core struct DockLayoutError
 rust-gui-core struct DockOptions
 rust-gui-core struct DockPanel
-rust-gui-core struct DockResponse
 rust-gui-core struct DockTabs
 rust-gui-core struct DockWindow
 rust-gui-core struct DockWindowId
 rust-gui-core struct DragInfo
+rust-gui-core struct DragSourceBuilder
+rust-gui-core struct DropTargetBuilder
 rust-gui-core struct Effect
+rust-gui-core struct Effects
 rust-gui-core struct EventArea
 rust-gui-core struct FileRequest
 rust-gui-core struct FindState
 rust-gui-core struct FocusScope
 rust-gui-core struct FrameDiagnostic
 rust-gui-core struct FrameStats
+rust-gui-core struct GestureBuilder
 rust-gui-core struct GestureResponse
 rust-gui-core struct Gradient
 rust-gui-core struct GraphNode
@@ -1429,7 +1539,6 @@ rust-gui-core struct ItemId
 rust-gui-core struct ItemOrder
 rust-gui-core struct Keyframe
 rust-gui-core struct Label
-rust-gui-core struct ListResponse
 rust-gui-core struct ListState
 rust-gui-core struct Mailbox
 rust-gui-core struct Marks
@@ -1444,13 +1553,12 @@ rust-gui-core struct NodeSnapshot
 rust-gui-core struct Notification
 rust-gui-core struct NumberOptions
 rust-gui-core struct NumericValue
+rust-gui-core struct Pacing
 rust-gui-core struct Paint
 rust-gui-core struct Pen
 rust-gui-core struct PopoverOptions
-rust-gui-core struct PopoverResponse
 rust-gui-core struct PropertyGrid
 rust-gui-core struct PropertyGridOptions
-rust-gui-core struct PropertyGridResponse
 rust-gui-core struct PropertyGridState
 rust-gui-core struct ResolvedText
 rust-gui-core struct Response
@@ -1474,7 +1582,6 @@ rust-gui-core struct StyleSheet
 rust-gui-core struct StyleSheetError
 rust-gui-core struct Swipe
 rust-gui-core struct Tab
-rust-gui-core struct TabsResponse
 rust-gui-core struct TaskSender
 rust-gui-core struct Tasks
 rust-gui-core struct TextDocument
@@ -1493,40 +1600,46 @@ rust-gui-core struct TreeItem
 rust-gui-core struct TreeModel
 rust-gui-core struct Ui
 rust-gui-core struct VirtualListOptions
+rust-gui-core struct WidgetBuilder
 rust-gui-core struct WidgetInput
+rust-gui-core struct WindowId
 rust-gui-core struct WindowInfo
+rust-gui-core struct WindowRequest
+rust-gui-core trait App
 rust-gui-core trait Component
 rust-gui-core trait GridModel
 rust-gui-core trait Highlighter
 rust-gui-core trait ListModel
 rust-gui-core trait LocaleFormat
 rust-gui-core trait Messages
-rust-gui-core trait Properties
+rust-gui-core type Action
 rust-gui-core use animation :: { Animation, Easing, Effect, Keyframe, Repeat, Transform, Transition }
+rust-gui-core use app :: { App, AppDriver, Component, Effects, Pacing }
+rust-gui-core use areas :: { AreaBuilder, DragSourceBuilder, DropTargetBuilder, GestureBuilder }
 rust-gui-core use builders :: { Button, ComboBox, Label, TextInput }
 rust-gui-core use clipboard :: Clip
-rust-gui-core use collection :: { CellEditor, CellValue, FILTER_DELAY, GridColumn, GridColumns, GridModel, GridState, ItemId, ItemOrder, ListModel, ListResponse, ListState, ModelError, SortDirection, TreeItem, TreeModel, VirtualListOptions, text_matches, }
+rust-gui-core use collection :: { CellEditor, CellValue, FILTER_DELAY, GridColumn, GridColumns, GridModel, GridMsg, GridState, ItemId, ItemOrder, ListModel, ListState, ModelError, SortDirection, TreeItem, TreeModel, VirtualListOptions, text_matches, }
 rust-gui-core use command :: { Command, Shortcut, ShortcutKey }
-rust-gui-core use controls :: { AutocompleteResponse, MenuItem, NumberOptions }
+rust-gui-core use controls :: { DockAction, MenuItem, NumberOptions }
 rust-gui-core use dock :: { DockArea, DockFloat, DockLayout, DockLayoutError, DockNode, DockPlace, DockTabs, DockTarget, DockWindow, DockWindowId, DockZone, }
-rust-gui-core use dock :: { DockOptions, DockPanel, DockResponse }
+rust-gui-core use dock :: { DockOptions, DockPanel }
 rust-gui-core use document :: { Indentation, Motion, Selection, TextDocument }
 rust-gui-core use drag :: { DragInfo, DragOutcome, DragPayload, DropKind }
 rust-gui-core use editor :: { CaretMovement, TextEdit, TextMove, TextSelection }
 rust-gui-core use events :: { EventArea, UiEvent }
-rust-gui-core use fields :: suggest
-rust-gui-core use focus :: { DialogOptions, DialogResponse, FocusScope }
+rust-gui-core use fields :: { Autocomplete, suggest }
+rust-gui-core use focus :: { DialogOptions, FocusScope }
 rust-gui-core use image :: { BackgroundImage, ImageFit, ImageOptions, ImageSource, ImageTint }
 rust-gui-core use locale_format :: { Date, DateStyle, LocaleFormat, Time }
 rust-gui-core use mailbox :: { Mailbox, MessageSender, message_channel }
 rust-gui-core use messages :: { BUILTIN_MESSAGES, MessageArg, Messages }
-rust-gui-core use panes :: { Axis, PopoverOptions, PopoverResponse, SplitOptions, TOOLTIP_DELAY, Tab, TabsResponse, }
+rust-gui-core use panes :: { Axis, PopoverOptions, SplitOptions, TOOLTIP_DELAY, Tab }
 rust-gui-core use platform :: { FileKind, FileRequest, Menu, MenuEntry, Notification, Tray }
-rust-gui-core use property_grid :: { Properties, PropertyGrid }
-rust-gui-core use property_grid :: { PropertyGridOptions, PropertyGridResponse, PropertyGridState }
+rust-gui-core use property_grid :: PropertyGrid
+rust-gui-core use property_grid :: { PropertyGridOptions, PropertyGridState, PropertyMsg }
 rust-gui-core use reactive :: { GraphNode, Memo, Signal, StateKind, Store }
 rust-gui-core use rich_document :: { Block, BlockKind, InlineRun, Mark, Marks, RichDocument, RichMotion, RichPosition, }
-rust-gui-core use rich_editor :: { RichEditorOptions, RichEditorResponse }
+rust-gui-core use rich_editor :: { RichEditorOptions, RichEditorResponse, RichOp }
 rust-gui-core use rich_text :: { RichRun, RichText }
 rust-gui-core use rust_gui_scene :: GradientStop
 rust-gui-core use rust_gui_scene :: { FontFamily, TextSpan, TextStyle, TextWrap }
@@ -1534,16 +1647,16 @@ rust-gui-core use rust_gui_scene :: { MonospaceMeasurer, TextMeasurer }
 rust-gui-core use style :: { Align, Direction, Gradient, GridArea, Justify, Length, Paint, ResolvedText, Shadow, StateStyles, Style, Track, TrackSize, }
 rust-gui-core use stylesheet :: { StyleSheet, StyleSheetError }
 rust-gui-core use task :: { Cancel, TaskSender, Tasks }
-rust-gui-core use text_area :: { CodeEditorOptions, CodeEditorResponse, Diagnostic, EditorCommand, FindState, HighlightSpan, Highlighter, Severity, }
+rust-gui-core use text_area :: { AreaOp as TextOp, CodeEditorOptions, Diagnostic, EditorCommand, FindEdit, FindState, HighlightSpan, Highlighter, Severity, }
 rust-gui-core use theme :: { TOKENS, Theme }
 rust-gui-core use toast :: { Toast, ToastAction, ToastId, ToastKind, ToastSender }
 rust-gui-core use touch_input :: { GestureResponse, Pen, Swipe, SwipeDirection, TouchPhase }
 rust-gui-core use tree :: diagnostics :: { DiagnosticKind, FrameDiagnostic, HUGE_CHILDREN, LAYER_AREA, RELAYOUT_FRAMES, REPAINT_FRAMES, REPAINT_MIN_NODES, UNSTABLE_ID_FRAMES, }
 rust-gui-core use tree :: { Action, CollectionInfo, Context, Dirty, Event, FrameStats, GestureResponse, Key, Live, MemoryReport, NodeDetails, NodeId, NodeSnapshot, NumericValue, Pen, Role, ScrollState, Semantics, Swipe, SwipeDirection, TouchPhase, }
 rust-gui-core use types :: *
-rust-gui-core use ui :: { Button, ComboBox, DockOptions, DockPanel, DockResponse, Label, Properties, PropertyGrid, Response, TextInput, Ui, suggest, }
-rust-gui-core use widget :: { Component, CustomWidget, WidgetInput }
-rust-gui-core use window :: { ResizeEdge, WindowCommand, WindowInfo }
+rust-gui-core use ui :: { AreaBuilder, Autocomplete, Button, ComboBox, DockOptions, DockPanel, DragSourceBuilder, DropTargetBuilder, GestureBuilder, Label, PropertyGrid, Response, TextInput, Ui, suggest, }
+rust-gui-core use widget :: { CustomWidget, WidgetBuilder, WidgetInput }
+rust-gui-core use window :: { ResizeEdge, WindowCommand, WindowId, WindowInfo, WindowRequest }
 rust-gui-scene   field Affine::a
 rust-gui-scene   field Affine::b
 rust-gui-scene   field Affine::c
@@ -1799,9 +1912,6 @@ rust-gui-winit   field AppOptions::size
 rust-gui-winit   field AppOptions::stylesheet
 rust-gui-winit   field AppOptions::theme
 rust-gui-winit   field AppOptions::title
-rust-gui-winit   field DockWindowView::on_close
-rust-gui-winit   field DockWindowView::options
-rust-gui-winit   field DockWindowView::view
 rust-gui-winit   field GraphicsOptions::backend
 rust-gui-winit   field GraphicsOptions::max_resource_bindings
 rust-gui-winit   field GraphicsOptions::maximum_frame_latency
@@ -1810,27 +1920,16 @@ rust-gui-winit   field SavedWindow::height
 rust-gui-winit   field SavedWindow::width
 rust-gui-winit   field SavedWindow::x
 rust-gui-winit   field SavedWindow::y
-rust-gui-winit   fn DesktopHandle::close_window (& self, key : WindowKey) -> bool
-rust-gui-winit   fn DesktopHandle::open_modal (& self, owner : WindowKey, options : AppOptions, view : impl FnMut (& mut Ui < '_>) + Send + 'static,) -> std :: result :: Result < WindowKey, DesktopClosed>
-rust-gui-winit   fn DesktopHandle::open_window (& self, options : AppOptions, view : impl FnMut (& mut Ui < '_>) + Send + 'static,) -> std :: result :: Result < WindowKey, DesktopClosed>
-rust-gui-winit   fn DesktopHandle::redraw (& self, key : WindowKey) -> bool
-rust-gui-winit   fn DesktopHandle::request_exit (& self) -> bool
-rust-gui-winit   fn DesktopHandle::wakeup (& self) -> WakeHandle
 rust-gui-winit   fn DirectionChoice::resolve (self) -> rust_gui_core :: Direction
-rust-gui-winit   fn DockWindows::new () -> Self
-rust-gui-winit   fn DockWindows::redraw (& self, desktop : & DesktopHandle)
-rust-gui-winit   fn DockWindows::sync (& mut self, desktop : & DesktopHandle, layout : & DockLayout, mut open : impl FnMut (& DockWindow) -> DockWindowView,)
 rust-gui-winit   fn GpuSetup::new (setup : impl FnMut (& mut Renderer) + Send + 'static) -> Self
 rust-gui-winit   fn ImageFiles::deliver (& mut self, context : & mut Context)
 rust-gui-winit   fn ImageFiles::new (wake : WakeHandle) -> Self
 rust-gui-winit   fn ImageFiles::request (& mut self, context : & mut Context, changed : bool)
 rust-gui-winit   fn Poller::changed (& mut self, path : & std :: path :: Path) -> Option < Result < Vec < u8>, String>>
 rust-gui-winit   fn Poller::stamp_changed (& mut self, path : & std :: path :: Path) -> bool
-rust-gui-winit   fn WakeHandle::channel < T> (& self, capacity : usize) -> (MessageSender < T>, Mailbox < T>)
 rust-gui-winit   fn WakeHandle::is_closed (& self) -> bool
 rust-gui-winit   fn WakeHandle::request_exit (& self) -> bool
 rust-gui-winit   fn WakeHandle::request_redraw (& self) -> bool
-rust-gui-winit   fn WakeHandle::tasks < K : Clone + Eq + std :: hash :: Hash, T> (& self, capacity : usize) -> Tasks < K, T>
 rust-gui-winit   variant DirectionChoice::Auto
 rust-gui-winit   variant DirectionChoice::Ltr
 rust-gui-winit   variant DirectionChoice::Rtl
@@ -1857,25 +1956,20 @@ rust-gui-winit enum Placement
 rust-gui-winit enum ThemeChoice
 rust-gui-winit fn active () -> bool
 rust-gui-winit fn locale_direction (locale : & str) -> rust_gui_core :: Direction
-rust-gui-winit fn run (options : AppOptions, view : impl FnMut (& mut Ui < '_>) + 'static) -> Result < ()>
-rust-gui-winit fn run_windows (graphics : GraphicsOptions, setup : impl FnOnce (DesktopHandle)) -> Result < ()>
-rust-gui-winit fn run_with_wakeup < F : FnMut (& mut Ui < '_>) + 'static> (options : AppOptions, setup : impl FnOnce (WakeHandle) -> F,) -> Result < ()>
+rust-gui-winit fn run < A : App> (options : AppOptions, app : A) -> Result < ()>
+rust-gui-winit fn run_with < S : 'static> (options : AppOptions, state : S, view : impl Fn (& S, & mut Ui < '_, Action < S>>) + 'static,) -> Result < ()>
 rust-gui-winit fn saved_state () -> Option < String>
 rust-gui-winit struct AppOptions
-rust-gui-winit struct DesktopClosed
-rust-gui-winit struct DesktopHandle
-rust-gui-winit struct DockWindowView
-rust-gui-winit struct DockWindows
 rust-gui-winit struct GpuSetup
 rust-gui-winit struct GraphicsOptions
 rust-gui-winit struct SavedWindow
 rust-gui-winit struct WakeHandle
-rust-gui-winit struct WindowKey
-rust-gui-winit use desktop :: { DesktopClosed, DesktopHandle, WindowKey, run_windows }
-rust-gui-winit use dock :: { DockWindowView, DockWindows }
 rust-gui-winit use graphics :: { GpuMemoryPolicy, GraphicsBackend, GraphicsOptions }
 rust-gui-winit use rust_gui_core :: { Mailbox, MessageSender }
 rust-gui-winit use wakeup :: WakeHandle
+rust-gui-testing   fn Harness < A>::app (size : Size, app : A) -> Self
+rust-gui-testing   fn Harness < A>::app_mut (& mut self) -> & mut A
+rust-gui-testing   fn Harness < A>::send (& mut self, message : A :: Message) -> FrameStats
 rust-gui-testing   fn Harness < S>::action (& mut self, id : NodeId, action : Action) -> bool
 rust-gui-testing   fn Harness < S>::by_label (& self, label : & str) -> NodeId
 rust-gui-testing   fn Harness < S>::click (& mut self, id : NodeId) -> FrameStats
@@ -1884,19 +1978,20 @@ rust-gui-testing   fn Harness < S>::event (& mut self, event : Event) -> bool
 rust-gui-testing   fn Harness < S>::find (& self, path : & [& str]) -> NodeId
 rust-gui-testing   fn Harness < S>::focus (& mut self, id : NodeId) -> FrameStats
 rust-gui-testing   fn Harness < S>::hover (& mut self, id : NodeId) -> FrameStats
-rust-gui-testing   fn Harness < S>::new (size : Size, state : S, view : impl FnMut (& mut S, & mut Ui < '_>) + 'static) -> Self
 rust-gui-testing   fn Harness < S>::path (& self, id : NodeId) -> String
 rust-gui-testing   fn Harness < S>::press (& mut self, key : Key) -> FrameStats
 rust-gui-testing   fn Harness < S>::press_shift (& mut self, key : Key) -> FrameStats
 rust-gui-testing   fn Harness < S>::query_label (& self, label : & str) -> Option < NodeId>
 rust-gui-testing   fn Harness < S>::resize (& mut self, size : Size) -> FrameStats
 rust-gui-testing   fn Harness < S>::run (& mut self) -> FrameStats
+rust-gui-testing   fn Harness < S>::set_now (& mut self, now : std :: time :: Duration)
 rust-gui-testing   fn Harness < S>::snapshot_accessibility (& self) -> String
 rust-gui-testing   fn Harness < S>::snapshot_layout (& self) -> String
 rust-gui-testing   fn Harness < S>::snapshot_scene (& self) -> String
 rust-gui-testing   fn Harness < S>::snapshot_tree (& self) -> String
 rust-gui-testing   fn Harness < S>::state (& self) -> & S
 rust-gui-testing   fn Harness < S>::state_mut (& mut self) -> & mut S
+rust-gui-testing   fn Harness < S>::stats (& self) -> FrameStats
 rust-gui-testing   fn Harness < S>::type_text (& mut self, text : & str) -> FrameStats
 rust-gui-testing fn assert_snapshot (dir : impl AsRef < Path>, name : & str, actual : & str)
 rust-gui-testing struct Harness
@@ -1956,7 +2051,9 @@ rust-gui-devtools   fn GpuSnapshot::memory_total (& self) -> u64
 rust-gui-devtools   fn Inspector::overlay (& self, model : & InspectorModel) -> Vec < Primitive>
 rust-gui-devtools   fn Inspector::selected (& self) -> Option < NodeId>
 rust-gui-devtools   fn Inspector::showing (tab : Tab) -> Self
-rust-gui-devtools   fn Inspector::ui (& mut self, ui : & mut Ui < '_>, model : & InspectorModel) -> InspectorResponse
+rust-gui-devtools   fn Inspector::sync (& mut self, model : & InspectorModel)
+rust-gui-devtools   fn Inspector::update (& mut self, message : InspectorMsg, model : & InspectorModel) -> InspectorResponse
+rust-gui-devtools   fn Inspector::view (& self, ui : & mut Ui < '_, InspectorMsg>, model : & InspectorModel)
 rust-gui-devtools   fn InspectorModel::capture (context : & Context, title : & str, size : Size, recorder : & Recorder) -> Self
 rust-gui-devtools   fn InspectorModel::node (& self, id : NodeId) -> Option < & InspectedNode>
 rust-gui-devtools   fn InspectorModel::path (& self, id : NodeId) -> String
@@ -1968,6 +2065,15 @@ rust-gui-devtools   fn Recorder::frames (& self) -> & VecDeque < FrameRecord>
 rust-gui-devtools   fn Recorder::gpu (& mut self, snapshot : GpuSnapshot, completed : Option < (u64, Duration)>)
 rust-gui-devtools   fn Recorder::gpu_snapshot (& self) -> Option < & GpuSnapshot>
 rust-gui-devtools   fn Recorder::new (capacity : usize) -> Self
+rust-gui-devtools   variant InspectorMsg::Damage
+rust-gui-devtools   variant InspectorMsg::Events
+rust-gui-devtools   variant InspectorMsg::ExportCsv
+rust-gui-devtools   variant InspectorMsg::Focus
+rust-gui-devtools   variant InspectorMsg::Frames
+rust-gui-devtools   variant InspectorMsg::Repaints
+rust-gui-devtools   variant InspectorMsg::ShowNode
+rust-gui-devtools   variant InspectorMsg::Tab
+rust-gui-devtools   variant InspectorMsg::Tree
 rust-gui-devtools   variant Tab::Accessibility
 rust-gui-devtools   variant Tab::Diagnostics
 rust-gui-devtools   variant Tab::Events
@@ -1976,6 +2082,7 @@ rust-gui-devtools   variant Tab::Gpu
 rust-gui-devtools   variant Tab::Scene
 rust-gui-devtools   variant Tab::State
 rust-gui-devtools   variant Tab::Tree
+rust-gui-devtools enum InspectorMsg
 rust-gui-devtools enum Tab
 rust-gui-devtools struct EventRecord
 rust-gui-devtools struct FrameRecord

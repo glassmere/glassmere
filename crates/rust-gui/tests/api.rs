@@ -34,7 +34,6 @@ const CRATES: [&str; 11] = [
 ];
 
 #[test]
-#[ignore = "the public surface changes through milestone 35; regenerated in its phase 3"]
 fn the_public_surface_is_what_was_recorded() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
