@@ -1,0 +1,2115 @@
+seaglass use seaglass_core :: *
+seaglass use seaglass_derive :: { Properties, style_sheet, tr }
+seaglass use seaglass_devtools as devtools
+seaglass use seaglass_fluent as fluent
+seaglass use seaglass_icu as icu
+seaglass use seaglass_image as image
+seaglass use seaglass_render_cpu :: { CpuRenderer, CpuStats }
+seaglass use seaglass_render_wgpu as render
+seaglass use seaglass_scene :: { Affine, Affinity, Color, Image, Point, Primitive, Rect, Scene, Size, VectorImage, }
+seaglass use seaglass_syntax as syntax
+seaglass use seaglass_winit :: hot
+seaglass use seaglass_winit :: { AppOptions, DirectionChoice, GpuMemoryPolicy, GpuSetup, GraphicsBackend, GraphicsOptions, Placement, ThemeChoice, run, run_with, }
+seaglass-core   field Animation::alternate
+seaglass-core   field Animation::duration
+seaglass-core   field Animation::easing
+seaglass-core   field Animation::keyframes
+seaglass-core   field Animation::repeat
+seaglass-core   field BackgroundImage::fit
+seaglass-core   field BackgroundImage::slice
+seaglass-core   field BackgroundImage::source
+seaglass-core   field BackgroundImage::tint
+seaglass-core   field Block::kind
+seaglass-core   field Block::runs
+seaglass-core   field Clip::custom
+seaglass-core   field Clip::image
+seaglass-core   field Clip::text
+seaglass-core   field CodeEditorOptions::auto_close
+seaglass-core   field CodeEditorOptions::diagnostics
+seaglass-core   field CodeEditorOptions::find
+seaglass-core   field CodeEditorOptions::font_size
+seaglass-core   field CodeEditorOptions::highlighter
+seaglass-core   field CodeEditorOptions::label
+seaglass-core   field CodeEditorOptions::line_numbers
+seaglass-core   field CodeEditorOptions::match_brackets
+seaglass-core   field CodeEditorOptions::read_only
+seaglass-core   field CodeEditorOptions::style
+seaglass-core   field CollectionInfo::column
+seaglass-core   field CollectionInfo::columns
+seaglass-core   field CollectionInfo::index
+seaglass-core   field CollectionInfo::item
+seaglass-core   field CollectionInfo::level
+seaglass-core   field CollectionInfo::sort
+seaglass-core   field CollectionInfo::total
+seaglass-core   field Command::enabled
+seaglass-core   field Command::id
+seaglass-core   field Command::label
+seaglass-core   field Command::scoped
+seaglass-core   field Command::shortcut
+seaglass-core   field Command::while_editing
+seaglass-core   field CustomWidget::input
+seaglass-core   field CustomWidget::primitives
+seaglass-core   field CustomWidget::semantics
+seaglass-core   field CustomWidget::size
+seaglass-core   field Date::day
+seaglass-core   field Date::month
+seaglass-core   field Date::year
+seaglass-core   field Diagnostic::message
+seaglass-core   field Diagnostic::range
+seaglass-core   field Diagnostic::severity
+seaglass-core   field DialogOptions::dismissible
+seaglass-core   field DialogOptions::modal
+seaglass-core   field DialogOptions::style
+seaglass-core   field DialogOptions::title
+seaglass-core   field DialogOptions::width
+seaglass-core   field DockFloat::height
+seaglass-core   field DockFloat::tabs
+seaglass-core   field DockFloat::width
+seaglass-core   field DockFloat::x
+seaglass-core   field DockFloat::y
+seaglass-core   field DockLayout::floating
+seaglass-core   field DockLayout::root
+seaglass-core   field DockLayout::windows
+seaglass-core   field DockLayoutError::line
+seaglass-core   field DockLayoutError::message
+seaglass-core   field DockOptions::min_pane
+seaglass-core   field DockOptions::native_windows
+seaglass-core   field DockOptions::style
+seaglass-core   field DockPanel::closable
+seaglass-core   field DockPanel::id
+seaglass-core   field DockPanel::title
+seaglass-core   field DockTabs::active
+seaglass-core   field DockTabs::panels
+seaglass-core   field DockWindow::height
+seaglass-core   field DockWindow::id
+seaglass-core   field DockWindow::root
+seaglass-core   field DockWindow::width
+seaglass-core   field DragInfo::can_drop
+seaglass-core   field DragInfo::dragging
+seaglass-core   field DragInfo::source
+seaglass-core   field Effect::opacity
+seaglass-core   field Effect::transform
+seaglass-core   field Effect::transition
+seaglass-core   field EventArea::capture
+seaglass-core   field EventArea::consume
+seaglass-core   field EventArea::keyboard
+seaglass-core   field EventArea::pointer
+seaglass-core   field EventArea::scroll
+seaglass-core   field FileRequest::directory
+seaglass-core   field FileRequest::file_name
+seaglass-core   field FileRequest::filters
+seaglass-core   field FileRequest::kind
+seaglass-core   field FileRequest::title
+seaglass-core   field FindState::case_sensitive
+seaglass-core   field FindState::open
+seaglass-core   field FindState::query
+seaglass-core   field FindState::regex
+seaglass-core   field FindState::replace
+seaglass-core   field FindState::replacement
+seaglass-core   field FindState::whole_word
+seaglass-core   field FocusScope::arrows
+seaglass-core   field FocusScope::autofocus
+seaglass-core   field FocusScope::restore
+seaglass-core   field FocusScope::trap
+seaglass-core   field FrameDiagnostic::count
+seaglass-core   field FrameDiagnostic::frame
+seaglass-core   field FrameDiagnostic::kind
+seaglass-core   field FrameDiagnostic::message
+seaglass-core   field FrameDiagnostic::node
+seaglass-core   field FrameDiagnostic::path
+seaglass-core   field FrameStats::created
+seaglass-core   field FrameStats::declare
+seaglass-core   field FrameStats::declared
+seaglass-core   field FrameStats::dirty
+seaglass-core   field FrameStats::element_bytes
+seaglass-core   field FrameStats::elements
+seaglass-core   field FrameStats::frame
+seaglass-core   field FrameStats::layout
+seaglass-core   field FrameStats::layout_passes
+seaglass-core   field FrameStats::messages
+seaglass-core   field FrameStats::paint
+seaglass-core   field FrameStats::paint_cache_hits
+seaglass-core   field FrameStats::paint_nodes
+seaglass-core   field FrameStats::removed
+seaglass-core   field FrameStats::reused
+seaglass-core   field FrameStats::scene_rebuilt
+seaglass-core   field FrameStats::shaping
+seaglass-core   field FrameStats::skipped
+seaglass-core   field FrameStats::text_measures
+seaglass-core   field GestureResponse::active
+seaglass-core   field GestureResponse::center
+seaglass-core   field GestureResponse::double_tapped
+seaglass-core   field GestureResponse::pan_x
+seaglass-core   field GestureResponse::pan_y
+seaglass-core   field GestureResponse::pressure
+seaglass-core   field GestureResponse::rotation
+seaglass-core   field GestureResponse::scale
+seaglass-core   field GestureResponse::swipe
+seaglass-core   field GestureResponse::tapped
+seaglass-core   field Gradient::from
+seaglass-core   field Gradient::radial
+seaglass-core   field Gradient::stops
+seaglass-core   field Gradient::to
+seaglass-core   field GraphNode::changed_at
+seaglass-core   field GraphNode::dirty
+seaglass-core   field GraphNode::inputs
+seaglass-core   field GraphNode::kind
+seaglass-core   field GraphNode::name
+seaglass-core   field GraphNode::version
+seaglass-core   field GridArea::column
+seaglass-core   field GridArea::column_span
+seaglass-core   field GridArea::row
+seaglass-core   field GridArea::row_span
+seaglass-core   field GridColumn::editor
+seaglass-core   field GridColumn::filterable
+seaglass-core   field GridColumn::label
+seaglass-core   field GridColumn::sortable
+seaglass-core   field GridColumn::width
+seaglass-core   field GridColumns::frozen
+seaglass-core   field GridColumns::hidden
+seaglass-core   field GridColumns::order
+seaglass-core   field GridColumns::widths
+seaglass-core   field GridState::columns
+seaglass-core   field GridState::cursor
+seaglass-core   field GridState::filters
+seaglass-core   field GridState::rows
+seaglass-core   field GridState::scroll_x
+seaglass-core   field GridState::sort
+seaglass-core   field HighlightSpan::color
+seaglass-core   field HighlightSpan::italic
+seaglass-core   field HighlightSpan::range
+seaglass-core   field HighlightSpan::weight
+seaglass-core   field ImageOptions::alt
+seaglass-core   field ImageOptions::fit
+seaglass-core   field ImageOptions::style
+seaglass-core   field ImageOptions::tint
+seaglass-core   field Indentation::tab_width
+seaglass-core   field Indentation::unit
+seaglass-core   field InlineRun::marks
+seaglass-core   field InlineRun::text
+seaglass-core   field Keyframe::at
+seaglass-core   field Keyframe::background
+seaglass-core   field Keyframe::foreground
+seaglass-core   field Keyframe::opacity
+seaglass-core   field Keyframe::transform
+seaglass-core   field Marks::bold
+seaglass-core   field Marks::code
+seaglass-core   field Marks::italic
+seaglass-core   field Marks::link
+seaglass-core   field Marks::strikethrough
+seaglass-core   field Marks::underline
+seaglass-core   field MemoryReport::cached_nodes
+seaglass-core   field MemoryReport::cached_primitives
+seaglass-core   field MemoryReport::image_bytes
+seaglass-core   field MemoryReport::images
+seaglass-core   field MemoryReport::node_bytes
+seaglass-core   field MemoryReport::nodes
+seaglass-core   field MemoryReport::scene_bytes
+seaglass-core   field MemoryReport::scene_primitives
+seaglass-core   field MemoryReport::text_bytes
+seaglass-core   field Menu::entries
+seaglass-core   field MenuItem::enabled
+seaglass-core   field MenuItem::hint
+seaglass-core   field MenuItem::label
+seaglass-core   field NodeDetails::changed
+seaglass-core   field NodeDetails::explicit
+seaglass-core   field NodeDetails::key
+seaglass-core   field NodeDetails::kind
+seaglass-core   field NodeDetails::painted
+seaglass-core   field NodeDetails::resolved
+seaglass-core   field NodeDetails::style
+seaglass-core   field NodeDetails::text
+seaglass-core   field NodeSnapshot::active_descendant
+seaglass-core   field NodeSnapshot::bounds
+seaglass-core   field NodeSnapshot::checked
+seaglass-core   field NodeSnapshot::children
+seaglass-core   field NodeSnapshot::clip
+seaglass-core   field NodeSnapshot::collection
+seaglass-core   field NodeSnapshot::description
+seaglass-core   field NodeSnapshot::drag
+seaglass-core   field NodeSnapshot::expanded
+seaglass-core   field NodeSnapshot::focused
+seaglass-core   field NodeSnapshot::id
+seaglass-core   field NodeSnapshot::is_popup
+seaglass-core   field NodeSnapshot::live
+seaglass-core   field NodeSnapshot::modal
+seaglass-core   field NodeSnapshot::numeric
+seaglass-core   field NodeSnapshot::orientation
+seaglass-core   field NodeSnapshot::parent
+seaglass-core   field NodeSnapshot::scroll
+seaglass-core   field NodeSnapshot::selected
+seaglass-core   field NodeSnapshot::semantics
+seaglass-core   field NodeSnapshot::text_selection
+seaglass-core   field NodeSnapshot::value
+seaglass-core   field Notification::body
+seaglass-core   field Notification::title
+seaglass-core   field Notification::urgent
+seaglass-core   field NumberOptions::decimals
+seaglass-core   field NumberOptions::max
+seaglass-core   field NumberOptions::min
+seaglass-core   field NumberOptions::step
+seaglass-core   field NumberOptions::style
+seaglass-core   field NumberOptions::suffix
+seaglass-core   field NumericValue::max
+seaglass-core   field NumericValue::min
+seaglass-core   field NumericValue::step
+seaglass-core   field NumericValue::value
+seaglass-core   field Paint::background
+seaglass-core   field Paint::foreground
+seaglass-core   field Paint::opacity
+seaglass-core   field Paint::radius
+seaglass-core   field Paint::transform
+seaglass-core   field Pen::barrel
+seaglass-core   field Pen::eraser
+seaglass-core   field Pen::tilt_x
+seaglass-core   field Pen::tilt_y
+seaglass-core   field PopoverOptions::style
+seaglass-core   field PopoverOptions::width
+seaglass-core   field PropertyGridOptions::filter
+seaglass-core   field PropertyGridOptions::height
+seaglass-core   field PropertyGridOptions::label
+seaglass-core   field PropertyGridOptions::style
+seaglass-core   field PropertyGridState::collapsed
+seaglass-core   field PropertyGridState::filter
+seaglass-core   field PropertyGridState::name_share
+seaglass-core   field ResolvedText::base_direction
+seaglass-core   field ResolvedText::direction
+seaglass-core   field ResolvedText::font_family
+seaglass-core   field ResolvedText::font_size
+seaglass-core   field ResolvedText::font_weight
+seaglass-core   field ResolvedText::foreground
+seaglass-core   field ResolvedText::italic
+seaglass-core   field RichEditorOptions::font_size
+seaglass-core   field RichEditorOptions::label
+seaglass-core   field RichEditorOptions::read_only
+seaglass-core   field RichEditorOptions::style
+seaglass-core   field RichEditorOptions::toolbar
+seaglass-core   field RichEditorResponse::changed
+seaglass-core   field RichEditorResponse::link_at_cursor
+seaglass-core   field RichEditorResponse::selection_changed
+seaglass-core   field RichPosition::block
+seaglass-core   field RichPosition::offset
+seaglass-core   field RichRun::background
+seaglass-core   field RichRun::bold
+seaglass-core   field RichRun::code
+seaglass-core   field RichRun::color
+seaglass-core   field RichRun::italic
+seaglass-core   field RichRun::link
+seaglass-core   field RichRun::strikethrough
+seaglass-core   field RichRun::text
+seaglass-core   field RichRun::underline
+seaglass-core   field RichText::runs
+seaglass-core   field ScrollState::maximum
+seaglass-core   field ScrollState::maximum_x
+seaglass-core   field ScrollState::offset
+seaglass-core   field ScrollState::offset_x
+seaglass-core   field Selection::anchor
+seaglass-core   field Selection::cursor
+seaglass-core   field Semantics::disabled
+seaglass-core   field Semantics::focusable
+seaglass-core   field Semantics::label
+seaglass-core   field Semantics::numeric
+seaglass-core   field Semantics::role
+seaglass-core   field Semantics::value
+seaglass-core   field Shadow::blur
+seaglass-core   field Shadow::color
+seaglass-core   field Shadow::inset
+seaglass-core   field Shadow::offset
+seaglass-core   field Shadow::spread
+seaglass-core   field Shortcut::alt
+seaglass-core   field Shortcut::control
+seaglass-core   field Shortcut::key
+seaglass-core   field Shortcut::shift
+seaglass-core   field Shortcut::super_key
+seaglass-core   field SplitOptions::divider
+seaglass-core   field SplitOptions::min_first
+seaglass-core   field SplitOptions::min_second
+seaglass-core   field SplitOptions::style
+seaglass-core   field StateStyles::disabled
+seaglass-core   field StateStyles::focused
+seaglass-core   field StateStyles::hover
+seaglass-core   field StateStyles::pressed
+seaglass-core   field Style::align_items
+seaglass-core   field Style::align_self
+seaglass-core   field Style::animation
+seaglass-core   field Style::area
+seaglass-core   field Style::aspect_ratio
+seaglass-core   field Style::auto_columns
+seaglass-core   field Style::auto_rows
+seaglass-core   field Style::background
+seaglass-core   field Style::background_image
+seaglass-core   field Style::base_direction
+seaglass-core   field Style::columns
+seaglass-core   field Style::direction
+seaglass-core   field Style::enter
+seaglass-core   field Style::exit
+seaglass-core   field Style::font_family
+seaglass-core   field Style::font_size
+seaglass-core   field Style::font_weight
+seaglass-core   field Style::foreground
+seaglass-core   field Style::gap
+seaglass-core   field Style::gradient
+seaglass-core   field Style::grow
+seaglass-core   field Style::height
+seaglass-core   field Style::italic
+seaglass-core   field Style::justify_content
+seaglass-core   field Style::justify_self
+seaglass-core   field Style::layout_transition
+seaglass-core   field Style::max_height
+seaglass-core   field Style::max_width
+seaglass-core   field Style::min_height
+seaglass-core   field Style::min_width
+seaglass-core   field Style::offset
+seaglass-core   field Style::opacity
+seaglass-core   field Style::padding
+seaglass-core   field Style::radius
+seaglass-core   field Style::rows
+seaglass-core   field Style::shadow
+seaglass-core   field Style::shrink
+seaglass-core   field Style::states
+seaglass-core   field Style::transform
+seaglass-core   field Style::transition
+seaglass-core   field Style::width
+seaglass-core   field Style::wrap
+seaglass-core   field StyleSheet::theme
+seaglass-core   field StyleSheet::tokens
+seaglass-core   field StyleSheetError::line
+seaglass-core   field StyleSheetError::message
+seaglass-core   field Swipe::direction
+seaglass-core   field Swipe::speed
+seaglass-core   field Tab::closable
+seaglass-core   field Tab::label
+seaglass-core   field TextDocument::indentation
+seaglass-core   field TextSelection::anchor
+seaglass-core   field TextSelection::cursor
+seaglass-core   field Theme::accent
+seaglass-core   field Theme::control
+seaglass-core   field Theme::control_disabled
+seaglass-core   field Theme::control_hover
+seaglass-core   field Theme::control_pressed
+seaglass-core   field Theme::focus
+seaglass-core   field Theme::font_family
+seaglass-core   field Theme::font_size
+seaglass-core   field Theme::highlight
+seaglass-core   field Theme::name
+seaglass-core   field Theme::popup
+seaglass-core   field Theme::row
+seaglass-core   field Theme::row_alternate
+seaglass-core   field Theme::scrim
+seaglass-core   field Theme::scrollbar
+seaglass-core   field Theme::selection
+seaglass-core   field Theme::selection_inactive
+seaglass-core   field Theme::surface
+seaglass-core   field Theme::text
+seaglass-core   field Theme::text_disabled
+seaglass-core   field Theme::text_muted
+seaglass-core   field Theme::thumb
+seaglass-core   field Theme::track
+seaglass-core   field Theme::window
+seaglass-core   field Time::hour
+seaglass-core   field Time::minute
+seaglass-core   field Time::second
+seaglass-core   field Toast::action
+seaglass-core   field Toast::duration
+seaglass-core   field Toast::kind
+seaglass-core   field Toast::tag
+seaglass-core   field Toast::text
+seaglass-core   field ToastAction::id
+seaglass-core   field ToastAction::tag
+seaglass-core   field Transform::rotate
+seaglass-core   field Transform::scale
+seaglass-core   field Transform::translate
+seaglass-core   field Transition::delay
+seaglass-core   field Transition::duration
+seaglass-core   field Transition::easing
+seaglass-core   field Tray::icon
+seaglass-core   field Tray::menu
+seaglass-core   field Tray::tooltip
+seaglass-core   field TreeItem::id
+seaglass-core   field TreeItem::label
+seaglass-core   field TreeItem::parent
+seaglass-core   field VirtualListOptions::height
+seaglass-core   field VirtualListOptions::label
+seaglass-core   field VirtualListOptions::overscan
+seaglass-core   field VirtualListOptions::row_height
+seaglass-core   field VirtualListOptions::style
+seaglass-core   field WidgetInput::enabled
+seaglass-core   field WidgetInput::focused
+seaglass-core   field WidgetInput::hovered
+seaglass-core   field WidgetInput::pressed
+seaglass-core   field WidgetInput::size
+seaglass-core   field WindowInfo::focused
+seaglass-core   field WindowInfo::maximized
+seaglass-core   field WindowRequest::modal_owner
+seaglass-core   field WindowRequest::size
+seaglass-core   field WindowRequest::title
+seaglass-core   fn Animation::alternate (mut self, alternate : bool) -> Self
+seaglass-core   fn Animation::easing (mut self, easing : Easing) -> Self
+seaglass-core   fn Animation::new (keyframes : Vec < Keyframe>, milliseconds : u64) -> Self
+seaglass-core   fn Animation::pulse (low : f32, milliseconds : u64) -> Self
+seaglass-core   fn Animation::repeat (mut self, repeat : Repeat) -> Self
+seaglass-core   fn Animation::spin (milliseconds : u64) -> Self
+seaglass-core   fn App::init (& mut self, _effects : & mut Effects < '_, Self :: Message>)
+seaglass-core   fn App::save_state (& self) -> Option < String>
+seaglass-core   fn App::update (& mut self, message : Self :: Message, effects : & mut Effects < '_, Self :: Message>)
+seaglass-core   fn App::view (& self, ui : & mut Ui < '_, Self :: Message>)
+seaglass-core   fn App::view_window (& self, _window : WindowId, ui : & mut Ui < '_, Self :: Message>)
+seaglass-core   fn App::window_closed (& mut self, _window : WindowId, _effects : & mut Effects < '_, Self :: Message>)
+seaglass-core   fn AppDriver < M>::awaiting (& self) -> Vec < WindowId>
+seaglass-core   fn AppDriver < M>::batch < A : App < Message = M>> (& mut self, app : & mut A, context : & mut Context,) -> (usize, bool)
+seaglass-core   fn AppDriver < M>::batch_in < A : App < Message = M>> (& mut self, window : WindowId, app : & mut A, context : & mut Context,) -> (usize, bool)
+seaglass-core   fn AppDriver < M>::declare < A : App < Message = M>> (& mut self, app : & A, context : & mut Context, size : Size, measurer : & mut impl TextMeasurer, window : Option < WindowId>, pacing : & mut Pacing, messages : usize,) -> FrameStats
+seaglass-core   fn AppDriver < M>::frame < A : App < Message = M>> (& mut self, app : & mut A, context : & mut Context, size : Size, measurer : & mut impl TextMeasurer,) -> FrameStats
+seaglass-core   fn AppDriver < M>::has_messages (& self) -> bool
+seaglass-core   fn AppDriver < M>::invalidate (& mut self)
+seaglass-core   fn AppDriver < M>::new (wake : impl Fn () -> bool + Send + Sync + 'static) -> Self
+seaglass-core   fn AppDriver < M>::send (& mut self, message : M)
+seaglass-core   fn AppDriver < M>::take_windows (& mut self) -> (Vec < (WindowId, WindowRequest)>, Vec < WindowId>)
+seaglass-core   fn AppDriver < M>::window_closed < A : App < Message = M>> (& mut self, app : & mut A, window : WindowId)
+seaglass-core   fn AreaBuilder < M>::new (area : crate :: EventArea) -> Self
+seaglass-core   fn AreaBuilder < M>::on_event (mut self, on_event : impl Fn (crate :: UiEvent) -> Option < M> + 'static) -> Self
+seaglass-core   fn Autocomplete < M>::new () -> Self
+seaglass-core   fn Autocomplete < M>::on_pick (mut self, message : impl Fn (usize) -> M + 'static) -> Self
+seaglass-core   fn Autocomplete < M>::on_submit (mut self, message : M) -> Self
+seaglass-core   fn BackgroundImage::file (path : impl Into < PathBuf>) -> Self
+seaglass-core   fn BackgroundImage::fit (mut self, fit : ImageFit) -> Self
+seaglass-core   fn BackgroundImage::new (image : & Image) -> Self
+seaglass-core   fn BackgroundImage::slice (mut self, top : f32, right : f32, bottom : f32, left : f32) -> Self
+seaglass-core   fn BackgroundImage::tint (mut self, tint : ImageTint) -> Self
+seaglass-core   fn Block::is_empty (& self) -> bool
+seaglass-core   fn Block::len (& self) -> usize
+seaglass-core   fn Block::new (kind : BlockKind, text : & str) -> Self
+seaglass-core   fn Block::text (& self) -> String
+seaglass-core   fn Button < M>::enabled (mut self, enabled : bool) -> Self
+seaglass-core   fn Button < M>::new (text : impl Into < String>) -> Self
+seaglass-core   fn Button < M>::on_click (mut self, message : M) -> Self
+seaglass-core   fn Button < M>::style (mut self, style : Style) -> Self
+seaglass-core   fn Cancel::cancel (& self)
+seaglass-core   fn Cancel::cancelled (& self) -> bool
+seaglass-core   fn Cancel::new () -> Self
+seaglass-core   fn CellEditor::number (options : crate :: NumberOptions) -> Self
+seaglass-core   fn Clip::bytes (& self, format : & str) -> Option < & [u8]>
+seaglass-core   fn Clip::custom (format : impl Into < String>, bytes : Vec < u8>) -> Self
+seaglass-core   fn Clip::image (image : Image) -> Self
+seaglass-core   fn Clip::is_empty (& self) -> bool
+seaglass-core   fn Clip::text (text : impl Into < String>) -> Self
+seaglass-core   fn Clip::with_image (mut self, image : Image) -> Self
+seaglass-core   fn Clip::with_text (mut self, text : impl Into < String>) -> Self
+seaglass-core   fn ComboBox::new (label : impl Into < String>) -> Self
+seaglass-core   fn ComboBox::style (mut self, style : Style) -> Self
+seaglass-core   fn Command::new (label : impl Into < String>, shortcut : Option < Shortcut>) -> Self
+seaglass-core   fn Command::scoped (mut self) -> Self
+seaglass-core   fn Command::with_id (id : impl Into < String>, label : impl Into < String>, shortcut : Option < Shortcut>,) -> Self
+seaglass-core   fn CommandPalette < M>::new (on_query : impl Fn (String) -> M + 'static) -> Self
+seaglass-core   fn CommandPalette < M>::on_open (mut self, message : impl Fn (bool) -> M + 'static) -> Self
+seaglass-core   fn CommandPalette < M>::on_pick (mut self, message : impl Fn (usize) -> M + 'static) -> Self
+seaglass-core   fn Component::update (& mut self, message : Self :: Message, effects : & mut Effects < '_, Self :: Message>)
+seaglass-core   fn Component::view (& self, ui : & mut Ui < '_, Self :: Message>)
+seaglass-core   fn Context::accepts_drop (& self, at : Point, payload : & DragPayload) -> bool
+seaglass-core   fn Context::accepts_text (& self) -> bool
+seaglass-core   fn Context::action (& mut self, target : NodeId, action : Action) -> bool
+seaglass-core   fn Context::adopt_drag (& mut self, payload : DragPayload, at : Point) -> bool
+seaglass-core   fn Context::animating (& self) -> bool
+seaglass-core   fn Context::binding (& self, id : & str) -> Option < & Option < Shortcut>>
+seaglass-core   fn Context::captured (& self) -> Option < NodeId>
+seaglass-core   fn Context::caret_movement (& self) -> crate :: CaretMovement
+seaglass-core   fn Context::clear_bindings (& mut self)
+seaglass-core   fn Context::clear_diagnostics (& mut self)
+seaglass-core   fn Context::composing_text (& self) -> bool
+seaglass-core   fn Context::damage_regions (& self) -> & [Rect]
+seaglass-core   fn Context::details (& self, id : NodeId) -> Option < NodeDetails>
+seaglass-core   fn Context::diagnostics (& self) -> & [FrameDiagnostic]
+seaglass-core   fn Context::diagnostics_enabled (& self) -> bool
+seaglass-core   fn Context::direction (& self) -> crate :: Direction
+seaglass-core   fn Context::dismiss_toast (& mut self, id : ToastId)
+seaglass-core   fn Context::dock_dragging (& self) -> bool
+seaglass-core   fn Context::dragging (& self) -> Option < & DragPayload>
+seaglass-core   fn Context::editor_focused (& self) -> bool
+seaglass-core   fn Context::event (& mut self, event : Event) -> bool
+seaglass-core   fn Context::export_drag (& mut self) -> Option < DragPayload>
+seaglass-core   fn Context::find (& self, path : & [& str]) -> Option < NodeId>
+seaglass-core   fn Context::finish_exported_drag (& mut self, outcome : crate :: DragOutcome)
+seaglass-core   fn Context::focused (& self) -> Option < NodeId>
+seaglass-core   fn Context::hit_test (& self, position : Point) -> Option < NodeId>
+seaglass-core   fn Context::hovered (& self) -> Option < NodeId>
+seaglass-core   fn Context::image_error (& self, path : & Path) -> Option < & str>
+seaglass-core   fn Context::image_known (& self, path : & Path) -> bool
+seaglass-core   fn Context::image_paths (& self) -> & [PathBuf]
+seaglass-core   fn Context::ime_cursor_rect (& self) -> Option < Rect>
+seaglass-core   fn Context::maximize_button (& self) -> Option < Rect>
+seaglass-core   fn Context::memory (& self) -> MemoryReport
+seaglass-core   fn Context::new () -> Self
+seaglass-core   fn Context::next_wake (& self) -> Option < Duration>
+seaglass-core   fn Context::node (& self, id : NodeId) -> Option < NodeSnapshot>
+seaglass-core   fn Context::node_count (& self) -> usize
+seaglass-core   fn Context::now (& self) -> Duration
+seaglass-core   fn Context::pressed (& self, id : NodeId) -> bool
+seaglass-core   fn Context::push_toast (& mut self, toast : Toast) -> ToastId
+seaglass-core   fn Context::report_font (& mut self, message : impl Into < String>)
+seaglass-core   fn Context::request_clipboard (& mut self, cut : bool) -> bool
+seaglass-core   fn Context::request_hot_save (& mut self)
+seaglass-core   fn Context::requested_families (& self) -> Vec < String>
+seaglass-core   fn Context::resize_grip (& self, id : NodeId) -> Option < crate :: ResizeEdge>
+seaglass-core   fn Context::root (& self) -> NodeId
+seaglass-core   fn Context::run (& mut self, size : Size, measurer : & mut impl TextMeasurer, view : impl FnOnce (& mut Ui < '_>),) -> FrameStats
+seaglass-core   fn Context::scene (& self) -> & Scene
+seaglass-core   fn Context::selected_text (& self) -> Option < & str>
+seaglass-core   fn Context::set_binding (& mut self, id : impl Into < String>, shortcut : Option < Shortcut>)
+seaglass-core   fn Context::set_caret_movement (& mut self, movement : crate :: CaretMovement)
+seaglass-core   fn Context::set_chosen_files (& mut self, paths : Vec < std :: path :: PathBuf>)
+seaglass-core   fn Context::set_clip (& mut self, clip : crate :: Clip)
+seaglass-core   fn Context::set_diagnostics (& mut self, enabled : bool)
+seaglass-core   fn Context::set_direction (& mut self, direction : crate :: Direction)
+seaglass-core   fn Context::set_image_file (& mut self, path : & Path, image : std :: result :: Result < Image, String>,) -> bool
+seaglass-core   fn Context::set_now (& mut self, now : Duration)
+seaglass-core   fn Context::set_opened_files (& mut self, paths : Vec < std :: path :: PathBuf>)
+seaglass-core   fn Context::set_reduced_motion (& mut self, reduced : bool)
+seaglass-core   fn Context::set_stylesheet (& mut self, sheet : StyleSheet)
+seaglass-core   fn Context::set_theme (& mut self, theme : Theme)
+seaglass-core   fn Context::set_toast_wake (& mut self, wake : impl Fn () + Send + 'static)
+seaglass-core   fn Context::set_watched_file (& mut self, path : & std :: path :: Path, content : std :: result :: Result < Vec < u8>, String>,) -> bool
+seaglass-core   fn Context::set_window_info (& mut self, info : crate :: WindowInfo)
+seaglass-core   fn Context::size (& self) -> Size
+seaglass-core   fn Context::snapshots (& self) -> Vec < NodeSnapshot>
+seaglass-core   fn Context::state_graph (& self) -> & [crate :: GraphNode]
+seaglass-core   fn Context::stats (& self) -> FrameStats
+seaglass-core   fn Context::style_warnings (& self) -> & [String]
+seaglass-core   fn Context::stylesheet (& self) -> & StyleSheet
+seaglass-core   fn Context::take_clip (& mut self) -> Option < crate :: Clip>
+seaglass-core   fn Context::take_file_request (& mut self) -> Option < crate :: FileRequest>
+seaglass-core   fn Context::take_hot_state (& mut self) -> Option < String>
+seaglass-core   fn Context::take_menu (& mut self) -> Option < crate :: Menu>
+seaglass-core   fn Context::take_notifications (& mut self) -> Vec < crate :: Notification>
+seaglass-core   fn Context::take_paste_request (& mut self) -> bool
+seaglass-core   fn Context::take_tray (& mut self) -> Option < Option < crate :: Tray>>
+seaglass-core   fn Context::take_window_commands (& mut self) -> Vec < crate :: WindowCommand>
+seaglass-core   fn Context::theme (& self) -> & Theme
+seaglass-core   fn Context::toasts (& self) -> impl Iterator < Item = (ToastId, & Toast)>
+seaglass-core   fn Context::touches (& self) -> impl Iterator < Item = (u64, Point, Option < f32>, Option < Pen>)> + '_
+seaglass-core   fn Context::watch_error (& self, path : & std :: path :: Path) -> Option < & str>
+seaglass-core   fn Context::watched_known (& self, path : & std :: path :: Path) -> bool
+seaglass-core   fn Context::watched_paths (& self) -> & [std :: path :: PathBuf]
+seaglass-core   fn Context::withdraw_drag (& mut self) -> Option < DragPayload>
+seaglass-core   fn DiagnosticState::new () -> Self
+seaglass-core   fn DialogOptions::dismissible (mut self, dismissible : bool) -> Self
+seaglass-core   fn DialogOptions::modal (mut self, modal : bool) -> Self
+seaglass-core   fn DialogOptions::new (title : impl Into < String>) -> Self
+seaglass-core   fn DialogOptions::style (mut self, style : Style) -> Self
+seaglass-core   fn DialogOptions::width (mut self, width : Length) -> Self
+seaglass-core   fn DockLayout::activate (& mut self, panel : & str) -> bool
+seaglass-core   fn DockLayout::apply (& mut self, action : DockAction) -> bool
+seaglass-core   fn DockLayout::close (& mut self, panel : & str) -> bool
+seaglass-core   fn DockLayout::contains (& self, panel : & str) -> bool
+seaglass-core   fn DockLayout::group_of (& self, panel : & str) -> Option < & [String]>
+seaglass-core   fn DockLayout::groups_in (& self, area : DockArea) -> Vec < & [String]>
+seaglass-core   fn DockLayout::move_panel (& mut self, panel : & str, target : DockTarget) -> bool
+seaglass-core   fn DockLayout::new (root : DockNode) -> Self
+seaglass-core   fn DockLayout::normalize (& mut self)
+seaglass-core   fn DockLayout::panels (& self) -> Vec < & str>
+seaglass-core   fn DockLayout::parse (text : & str) -> Result < Self, DockLayoutError>
+seaglass-core   fn DockLayout::place_of (& self, panel : & str) -> Option < DockPlace>
+seaglass-core   fn DockLayout::redock (& mut self, id : DockWindowId) -> bool
+seaglass-core   fn DockLayout::remove_window (& mut self, id : DockWindowId) -> Vec < String>
+seaglass-core   fn DockLayout::retain_panels (& mut self, mut keep : impl FnMut (& str) -> bool)
+seaglass-core   fn DockLayout::show (& mut self, panel : & str)
+seaglass-core   fn DockLayout::to_text (& self) -> String
+seaglass-core   fn DockLayout::window (& self, id : DockWindowId) -> Option < & DockWindow>
+seaglass-core   fn DockNode::column (fraction : f32, first : Self, second : Self) -> Self
+seaglass-core   fn DockNode::row (fraction : f32, first : Self, second : Self) -> Self
+seaglass-core   fn DockNode::tabs < S : Into < String>> (panels : impl IntoIterator < Item = S>) -> Self
+seaglass-core   fn DockPanel::new (id : impl Into < String>, title : impl Into < String>) -> Self
+seaglass-core   fn DockPanel::pinned (id : impl Into < String>, title : impl Into < String>) -> Self
+seaglass-core   fn DragPayload::kind (& self) -> DropKind
+seaglass-core   fn DragSourceBuilder < M>::new (label : impl Into < String>, payload : crate :: DragPayload) -> Self
+seaglass-core   fn DragSourceBuilder < M>::on_drag_end (mut self, message : impl Fn (crate :: DragOutcome) -> M + 'static) -> Self
+seaglass-core   fn DropTargetBuilder < M>::new (label : impl Into < String>, accepts : crate :: DropKind) -> Self
+seaglass-core   fn DropTargetBuilder < M>::on_drop (mut self, message : impl Fn (crate :: DragPayload) -> M + 'static) -> Self
+seaglass-core   fn Easing::apply (self, t : f32) -> f32
+seaglass-core   fn Editor::apply (& mut self, edit : TextEdit) -> bool
+seaglass-core   fn Editor::caret (& self) -> Option < Rect>
+seaglass-core   fn Editor::caret_direction (& self) -> Option < bool>
+seaglass-core   fn Editor::composing (& self) -> bool
+seaglass-core   fn Editor::composition_range (& self) -> Option < Range < usize>>
+seaglass-core   fn Editor::display (& self) -> String
+seaglass-core   fn Editor::display_cursor (& self) -> Option < usize>
+seaglass-core   fn Editor::new (text : & str) -> Self
+seaglass-core   fn Editor::prepare (& mut self, measurer : & mut impl TextMeasurer, mut style : TextStyle, width : f32, rtl : bool,) -> bool
+seaglass-core   fn Editor::selected_text (& self) -> & str
+seaglass-core   fn Editor::synchronize (& mut self, text : & str)
+seaglass-core   fn Effect::fade (milliseconds : u64) -> Self
+seaglass-core   fn Effect::slide (x : f32, y : f32, milliseconds : u64) -> Self
+seaglass-core   fn Effect::zoom (factor : f32, milliseconds : u64) -> Self
+seaglass-core   fn Effects < '_, M>::cancel (& mut self, key : & str)
+seaglass-core   fn Effects < '_, M>::channel < T : Send + 'static> (& mut self, capacity : usize, message : impl Fn (T) -> M + 'static,) -> MessageSender < T>
+seaglass-core   fn Effects < '_, M>::choose_files (& mut self, request : FileRequest, message : impl Fn (Vec < PathBuf>) -> M + 'static,)
+seaglass-core   fn Effects < '_, M>::close_window (& mut self, window : WindowId)
+seaglass-core   fn Effects < '_, M>::copy (& mut self, clip : Clip)
+seaglass-core   fn Effects < '_, M>::in_window (& mut self, window : WindowId) -> & mut Self
+seaglass-core   fn Effects < '_, M>::map < N : 'static> (& mut self, f : impl Fn (N) -> M + 'static) -> Effects < '_, N>
+seaglass-core   fn Effects < '_, M>::notify (& mut self, notification : Notification)
+seaglass-core   fn Effects < '_, M>::open_window (& mut self, request : WindowRequest) -> WindowId
+seaglass-core   fn Effects < '_, M>::paste (& mut self, message : impl Fn (Clip) -> M + 'static)
+seaglass-core   fn Effects < '_, M>::request_focus (& mut self, key : impl Into < String>)
+seaglass-core   fn Effects < '_, M>::running (& self, key : & str) -> bool
+seaglass-core   fn Effects < '_, M>::set_binding (& mut self, id : impl Into < String>, shortcut : Option < Shortcut>)
+seaglass-core   fn Effects < '_, M>::set_format (& mut self, format : Option < Box < dyn LocaleFormat>>)
+seaglass-core   fn Effects < '_, M>::set_messages (& mut self, messages : Option < Box < dyn Messages>>)
+seaglass-core   fn Effects < '_, M>::set_theme (& mut self, theme : Theme)
+seaglass-core   fn Effects < '_, M>::spawn < T : Send + 'static> (& mut self, key : impl Into < String>, job : impl FnOnce (TaskSender < String, T>) + Send + 'static, message : impl Fn (T) -> M + 'static,) -> Cancel
+seaglass-core   fn Effects < '_, M>::toast (& mut self, toast : Toast)
+seaglass-core   fn Effects < '_, M>::toast_with (& mut self, toast : Toast, message : impl Fn (ToastAction) -> M + 'static)
+seaglass-core   fn Effects < '_, M>::window_command (& mut self, command : WindowCommand)
+seaglass-core   fn EventArea::all () -> Self
+seaglass-core   fn EventArea::capturing (mut self) -> Self
+seaglass-core   fn EventArea::consuming (mut self) -> Self
+seaglass-core   fn EventArea::keyboard () -> Self
+seaglass-core   fn EventArea::pointer () -> Self
+seaglass-core   fn EventArea::scroll () -> Self
+seaglass-core   fn FileRequest::directory (title : impl Into < String>) -> Self
+seaglass-core   fn FileRequest::in_directory (mut self, directory : impl Into < PathBuf>) -> Self
+seaglass-core   fn FileRequest::named (mut self, file_name : impl Into < String>) -> Self
+seaglass-core   fn FileRequest::open (title : impl Into < String>) -> Self
+seaglass-core   fn FileRequest::open_many (title : impl Into < String>) -> Self
+seaglass-core   fn FileRequest::save (title : impl Into < String>) -> Self
+seaglass-core   fn FileRequest::with_filter (mut self, name : impl Into < String>, extensions : impl IntoIterator < Item = impl Into < String>>,) -> Self
+seaglass-core   fn FindState::apply < M : 'static> (& mut self, document : & mut TextDocument, op : TextOp, effects : & mut crate :: Effects < '_, M>,)
+seaglass-core   fn FindState::error (& self) -> Option < & str>
+seaglass-core   fn FindState::matches (& self) -> & [Range < usize>]
+seaglass-core   fn FindState::refresh (& mut self, document : & TextDocument)
+seaglass-core   fn GestureBuilder < M>::new () -> Self
+seaglass-core   fn GestureBuilder < M>::on_gesture (mut self, message : impl Fn (crate :: GestureResponse) -> M + 'static) -> Self
+seaglass-core   fn GestureResponse::changed (& self) -> bool
+seaglass-core   fn Gradient::down (from : Color, to : Color) -> Self
+seaglass-core   fn Gradient::linear (from : (f32, f32), to : (f32, f32), start : Color, end : Color) -> Self
+seaglass-core   fn Gradient::radial (centre : Color, edge : Color) -> Self
+seaglass-core   fn Gradient::stops (mut self, stops : Vec < seaglass_scene :: GradientStop>) -> Self
+seaglass-core   fn GridArea::cell (column : u16, row : u16) -> Self
+seaglass-core   fn GridArea::span (column : u16, row : u16, column_span : u16, row_span : u16) -> Self
+seaglass-core   fn GridColumn::editor (mut self, editor : CellEditor) -> Self
+seaglass-core   fn GridColumn::filterable (mut self, filterable : bool) -> Self
+seaglass-core   fn GridColumn::new (label : impl Into < String>, width : f32) -> Self
+seaglass-core   fn GridColumn::sortable (mut self, sortable : bool) -> Self
+seaglass-core   fn GridColumns::arranged (& self, count : usize) -> Vec < usize>
+seaglass-core   fn GridColumns::hide (& mut self, count : usize, column : usize) -> bool
+seaglass-core   fn GridColumns::move_before (& mut self, count : usize, column : usize, before : Option < usize>)
+seaglass-core   fn GridColumns::reset (& mut self)
+seaglass-core   fn GridColumns::set_width (& mut self, column : usize, width : f32)
+seaglass-core   fn GridColumns::shift (& mut self, count : usize, column : usize, by : isize) -> bool
+seaglass-core   fn GridColumns::show_all (& mut self)
+seaglass-core   fn GridColumns::visible (& self, count : usize) -> Vec < usize>
+seaglass-core   fn GridColumns::width (& self, column : usize, default : f32) -> f32
+seaglass-core   fn GridModel::cell (& self, row : usize, column : usize) -> String
+seaglass-core   fn GridModel::columns (& self) -> & [GridColumn]
+seaglass-core   fn GridModel::filter (& mut self, filters : & [(usize, & str)]) -> bool
+seaglass-core   fn GridModel::set_cell (& mut self, row : usize, column : usize, value : CellValue) -> Result < (), String>
+seaglass-core   fn GridModel::sort (& mut self, column : usize, direction : SortDirection) -> bool
+seaglass-core   fn GridModel::value (& self, row : usize, column : usize) -> CellValue
+seaglass-core   fn GridState::applied_filters (& self) -> & [(usize, String)]
+seaglass-core   fn GridState::apply (& mut self, message : & GridMsg)
+seaglass-core   fn GridState::refuse_edit (& mut self, row : ItemId, column : usize, message : impl Into < String>)
+seaglass-core   fn Highlighter::begin (& mut self, _document : & TextDocument)
+seaglass-core   fn Highlighter::highlight (& mut self, document : & TextDocument, line : usize) -> Vec < HighlightSpan>
+seaglass-core   fn Highlighter::pending (& self) -> bool
+seaglass-core   fn ImageOptions::fit (mut self, fit : ImageFit) -> Self
+seaglass-core   fn ImageOptions::new (alt : impl Into < String>) -> Self
+seaglass-core   fn ImageOptions::style (mut self, style : Style) -> Self
+seaglass-core   fn ImageOptions::tint (mut self, tint : ImageTint) -> Self
+seaglass-core   fn ItemOrder::ids (& self) -> & [ItemId]
+seaglass-core   fn ItemOrder::index_of (& self, id : ItemId) -> Option < usize>
+seaglass-core   fn ItemOrder::new (ids : impl IntoIterator < Item = ItemId>) -> Result < Self, ModelError>
+seaglass-core   fn Keyframe::at (at : f32) -> Self
+seaglass-core   fn Keyframe::background (mut self, color : Color) -> Self
+seaglass-core   fn Keyframe::foreground (mut self, color : Color) -> Self
+seaglass-core   fn Keyframe::opacity (mut self, opacity : f32) -> Self
+seaglass-core   fn Keyframe::transform (mut self, transform : Transform) -> Self
+seaglass-core   fn Label::new (text : impl Into < String>) -> Self
+seaglass-core   fn Label::style (mut self, style : Style) -> Self
+seaglass-core   fn ListModel::depth (& self, _index : usize) -> usize
+seaglass-core   fn ListModel::expanded (& self, _index : usize) -> Option < bool>
+seaglass-core   fn ListModel::index_of (& self, id : ItemId) -> Option < usize>
+seaglass-core   fn ListModel::is_empty (& self) -> bool
+seaglass-core   fn ListModel::item_id (& self, index : usize) -> ItemId
+seaglass-core   fn ListModel::label (& self, index : usize) -> String
+seaglass-core   fn ListModel::len (& self) -> usize
+seaglass-core   fn ListModel::parent (& self, _id : ItemId) -> Option < ItemId>
+seaglass-core   fn ListModel::set_expanded (& mut self, _id : ItemId, _expanded : bool) -> bool
+seaglass-core   fn ListState::reveal (& mut self, id : ItemId)
+seaglass-core   fn ListState::scroll_offset (& self) -> f32
+seaglass-core   fn ListState::select (& mut self, id : Option < ItemId>)
+seaglass-core   fn ListState::selected (& self) -> Option < ItemId>
+seaglass-core   fn LocaleFormat::date (& self, date : Date, style : DateStyle) -> String
+seaglass-core   fn LocaleFormat::number (& self, value : f64, decimals : usize) -> String
+seaglass-core   fn LocaleFormat::parse_number (& self, text : & str) -> Option < f64>
+seaglass-core   fn LocaleFormat::time (& self, time : Time, seconds : bool) -> String
+seaglass-core   fn Mailbox < T>::drain (& self, limit : usize) -> Vec < T>
+seaglass-core   fn Mailbox < T>::pending (& self) -> usize
+seaglass-core   fn Marks::has (& self, mark : Mark) -> bool
+seaglass-core   fn Memo < T>::get (& self) -> T where T : Clone,
+seaglass-core   fn Memo < T>::version (& self) -> u64
+seaglass-core   fn Memo < T>::with < R> (& self, read : impl FnOnce (& T) -> R) -> R
+seaglass-core   fn Menu::is_empty (& self) -> bool
+seaglass-core   fn Menu::new (entries : impl IntoIterator < Item = MenuEntry>) -> Self
+seaglass-core   fn MenuEntry::submenu (label : impl Into < String>, entries : impl IntoIterator < Item = MenuEntry>) -> Self
+seaglass-core   fn MenuItem::command (command : & crate :: Command) -> Self
+seaglass-core   fn MenuItem::disabled (label : impl Into < String>) -> Self
+seaglass-core   fn MenuItem::new (label : impl Into < String>) -> Self
+seaglass-core   fn MessageSender < T>::send_blocking (& self, message : T) -> Result < (), SendError < T>>
+seaglass-core   fn MessageSender < T>::try_send (& self, message : T) -> Result < (), TrySendError < T>>
+seaglass-core   fn MessageSender < T>::wake (& self) -> bool
+seaglass-core   fn Messages::locale (& self) -> & str
+seaglass-core   fn Messages::text (& self, key : & str, args : & [(& str, MessageArg)]) -> Option < String>
+seaglass-core   fn Notification::new (title : impl Into < String>, body : impl Into < String>) -> Self
+seaglass-core   fn Notification::urgent (mut self) -> Self
+seaglass-core   fn NumberOptions::constrain (& self, value : f64) -> f64
+seaglass-core   fn NumberOptions::decimals (mut self, decimals : usize) -> Self
+seaglass-core   fn NumberOptions::format (& self, value : f64) -> String
+seaglass-core   fn NumberOptions::format_in (& self, context : & crate :: Context, value : f64) -> String
+seaglass-core   fn NumberOptions::parse (& self, text : & str) -> Option < f64>
+seaglass-core   fn NumberOptions::parse_in (& self, context : & crate :: Context, text : & str) -> Option < f64>
+seaglass-core   fn NumberOptions::range (mut self, min : f64, max : f64) -> Self
+seaglass-core   fn NumberOptions::step (mut self, step : f64) -> Self
+seaglass-core   fn NumberOptions::style (mut self, style : crate :: Style) -> Self
+seaglass-core   fn NumberOptions::suffix (mut self, suffix : impl Into < String>) -> Self
+seaglass-core   fn Pacing::invalidate (& mut self)
+seaglass-core   fn Pacing::invalidated (& self) -> bool
+seaglass-core   fn Paint::background (color : Color) -> Self
+seaglass-core   fn Paint::foreground (color : Color) -> Self
+seaglass-core   fn Paint::opacity (opacity : f32) -> Self
+seaglass-core   fn Paint::transform (transform : Transform) -> Self
+seaglass-core   fn PropertyGrid < '_, '_, M>::bool (& mut self, name : & str, value : bool)
+seaglass-core   fn PropertyGrid < '_, '_, M>::bool_with (& mut self, name : & str, value : bool, on : impl Fn (bool) -> M + 'static)
+seaglass-core   fn PropertyGrid < '_, '_, M>::choice (& mut self, name : & str, value : usize, choices : & [& str])
+seaglass-core   fn PropertyGrid < '_, '_, M>::choice_with (& mut self, name : & str, value : usize, choices : & [& str], on : impl Fn (usize) -> M + 'static,)
+seaglass-core   fn PropertyGrid < '_, '_, M>::color (& mut self, name : & str, value : Color)
+seaglass-core   fn PropertyGrid < '_, '_, M>::color_with (& mut self, name : & str, value : Color, on : impl Fn (Color) -> M + 'static)
+seaglass-core   fn PropertyGrid < '_, '_, M>::custom (& mut self, name : & str, editor : impl FnOnce (& mut Ui < '_, M>, & str))
+seaglass-core   fn PropertyGrid < '_, '_, M>::default < T : Any> (& mut self, value : T) -> & mut Self
+seaglass-core   fn PropertyGrid < '_, '_, M>::group (& mut self, name : & str, content : impl FnOnce (& mut PropertyGrid < '_, '_, M>))
+seaglass-core   fn PropertyGrid < '_, '_, M>::number (& mut self, name : & str, value : f64, options : NumberOptions)
+seaglass-core   fn PropertyGrid < '_, '_, M>::number_with (& mut self, name : & str, value : f64, options : NumberOptions, on : impl Fn (f64) -> M + 'static,)
+seaglass-core   fn PropertyGrid < '_, '_, M>::readonly (& mut self, name : & str, text : impl Into < String>)
+seaglass-core   fn PropertyGrid < '_, '_, M>::text (& mut self, name : & str, value : & str)
+seaglass-core   fn PropertyGrid < '_, '_, M>::text_with (& mut self, name : & str, value : & str, on : impl Fn (String) -> M + 'static)
+seaglass-core   fn PropertyGridOptions::filter (mut self, filter : bool) -> Self
+seaglass-core   fn PropertyGridOptions::height (mut self, height : f32) -> Self
+seaglass-core   fn PropertyGridOptions::new (label : impl Into < String>) -> Self
+seaglass-core   fn PropertyGridOptions::style (mut self, style : Style) -> Self
+seaglass-core   fn PropertyGridState::apply (& mut self, message : & PropertyMsg)
+seaglass-core   fn ResizeEdge::name (self) -> & 'static str
+seaglass-core   fn ResolvedText::from_theme (theme : & Theme) -> Self
+seaglass-core   fn ResolvedText::rtl (& self) -> bool
+seaglass-core   fn ResolvedText::text_style (& self, wrap : TextWrap) -> TextStyle
+seaglass-core   fn Response < '_>::focused (& self) -> bool
+seaglass-core   fn Response < '_>::hovered (& self) -> bool
+seaglass-core   fn Response < '_>::pressed (& self) -> bool
+seaglass-core   fn RichDocument::anchor (& self) -> RichPosition
+seaglass-core   fn RichDocument::apply (& mut self, op : RichOp)
+seaglass-core   fn RichDocument::apply_with < M : 'static> (& mut self, op : RichOp, effects : & mut crate :: Effects < '_, M>)
+seaglass-core   fn RichDocument::backspace (& mut self, word : bool)
+seaglass-core   fn RichDocument::block_kind (& self) -> BlockKind
+seaglass-core   fn RichDocument::blocks (& self) -> & [Block]
+seaglass-core   fn RichDocument::can_redo (& self) -> bool
+seaglass-core   fn RichDocument::can_undo (& self) -> bool
+seaglass-core   fn RichDocument::cursor (& self) -> RichPosition
+seaglass-core   fn RichDocument::cut (& mut self) -> String
+seaglass-core   fn RichDocument::delete (& mut self, word : bool)
+seaglass-core   fn RichDocument::from_blocks (mut blocks : Vec < Block>) -> Self
+seaglass-core   fn RichDocument::from_markdown (text : & str) -> Self
+seaglass-core   fn RichDocument::has_selection (& self) -> bool
+seaglass-core   fn RichDocument::insert_text (& mut self, text : & str)
+seaglass-core   fn RichDocument::marks (& self) -> Marks
+seaglass-core   fn RichDocument::move_cursor (& mut self, motion : RichMotion, select : bool)
+seaglass-core   fn RichDocument::new () -> Self
+seaglass-core   fn RichDocument::newline (& mut self)
+seaglass-core   fn RichDocument::plain_text (& self) -> String
+seaglass-core   fn RichDocument::redo (& mut self) -> bool
+seaglass-core   fn RichDocument::revision (& self) -> u64
+seaglass-core   fn RichDocument::select_all (& mut self)
+seaglass-core   fn RichDocument::select_block (& mut self, block : usize)
+seaglass-core   fn RichDocument::select_word (& mut self, position : RichPosition)
+seaglass-core   fn RichDocument::selected_text (& self) -> String
+seaglass-core   fn RichDocument::selection (& self) -> (RichPosition, RichPosition)
+seaglass-core   fn RichDocument::set_block_kind (& mut self, kind : BlockKind)
+seaglass-core   fn RichDocument::set_cursor (& mut self, position : RichPosition, select : bool)
+seaglass-core   fn RichDocument::set_link (& mut self, target : Option < & str>)
+seaglass-core   fn RichDocument::to_markdown (& self) -> String
+seaglass-core   fn RichDocument::toggle_mark (& mut self, mark : Mark)
+seaglass-core   fn RichDocument::undo (& mut self) -> bool
+seaglass-core   fn RichRun::background (mut self, color : Color) -> Self
+seaglass-core   fn RichRun::bold (mut self) -> Self
+seaglass-core   fn RichRun::code (mut self) -> Self
+seaglass-core   fn RichRun::color (mut self, color : Color) -> Self
+seaglass-core   fn RichRun::italic (mut self) -> Self
+seaglass-core   fn RichRun::link (mut self, target : impl Into < String>) -> Self
+seaglass-core   fn RichRun::new (text : impl Into < String>) -> Self
+seaglass-core   fn RichRun::strikethrough (mut self) -> Self
+seaglass-core   fn RichRun::underline (mut self) -> Self
+seaglass-core   fn RichText::bold (self, text : impl Into < String>) -> Self
+seaglass-core   fn RichText::code (self, text : impl Into < String>) -> Self
+seaglass-core   fn RichText::italic (self, text : impl Into < String>) -> Self
+seaglass-core   fn RichText::link (self, text : impl Into < String>, target : impl Into < String>) -> Self
+seaglass-core   fn RichText::new () -> Self
+seaglass-core   fn RichText::plain (& self) -> String
+seaglass-core   fn RichText::run (mut self, run : RichRun) -> Self
+seaglass-core   fn RichText::text (self, text : impl Into < String>) -> Self
+seaglass-core   fn Selection::caret (at : usize) -> Self
+seaglass-core   fn Selection::is_caret (self) -> bool
+seaglass-core   fn Selection::range (self) -> Range < usize>
+seaglass-core   fn Shadow::inset (mut self) -> Self
+seaglass-core   fn Shadow::lift (color : Color, blur : f32, down : f32) -> Self
+seaglass-core   fn Shadow::new (color : Color, blur : f32) -> Self
+seaglass-core   fn Shadow::spread (mut self, spread : f32) -> Self
+seaglass-core   fn Shortcut::describe (& self) -> String
+seaglass-core   fn Shortcut::primary (character : char) -> Self
+seaglass-core   fn Signal < T>::get (& self) -> T where T : Clone,
+seaglass-core   fn Signal < T>::set (& self, value : T) where T : PartialEq,
+seaglass-core   fn Signal < T>::update (& self, change : impl FnOnce (& mut T))
+seaglass-core   fn Signal < T>::version (& self) -> u64
+seaglass-core   fn Signal < T>::with < R> (& self, read : impl FnOnce (& T) -> R) -> R
+seaglass-core   fn Store::graph (& self) -> Vec < GraphNode>
+seaglass-core   fn Store::memo < T> (& self, name : impl Into < String>, compute : impl FnMut () -> T + 'static,) -> Memo < T>
+seaglass-core   fn Store::new () -> Self
+seaglass-core   fn Store::signal < T> (& self, name : impl Into < String>, value : T) -> Signal < T>
+seaglass-core   fn Store::version (& self) -> u64
+seaglass-core   fn Style::base_direction (mut self, direction : Direction) -> Self
+seaglass-core   fn Style::button () -> Self
+seaglass-core   fn Style::gradient (mut self, gradient : Gradient) -> Self
+seaglass-core   fn Style::offset (mut self, x : f32, y : f32) -> Self
+seaglass-core   fn Style::on_disabled (self, paint : Paint) -> Self
+seaglass-core   fn Style::on_focused (self, paint : Paint) -> Self
+seaglass-core   fn Style::on_hover (self, paint : Paint) -> Self
+seaglass-core   fn Style::on_pressed (self, paint : Paint) -> Self
+seaglass-core   fn Style::resolve_text (& self, inherited : & ResolvedText) -> ResolvedText
+seaglass-core   fn Style::shadow (mut self, shadow : Shadow) -> Self
+seaglass-core   fn StyleSheet::apply_to (& self, current : & Theme) -> Theme
+seaglass-core   fn StyleSheet::class (& self, name : & str) -> Option < & Style>
+seaglass-core   fn StyleSheet::classes (& self) -> impl Iterator < Item = (& str, & Style)>
+seaglass-core   fn StyleSheet::insert (& mut self, name : impl Into < String>, style : Style)
+seaglass-core   fn StyleSheet::parse (text : & str) -> Result < Self, StyleSheetError>
+seaglass-core   fn StyleSheet::rebase (& mut self, directory : & std :: path :: Path)
+seaglass-core   fn Tab::closable (label : impl Into < String>) -> Self
+seaglass-core   fn Tab::new (label : impl Into < String>) -> Self
+seaglass-core   fn TaskSender < K, T>::cancelled (& self) -> bool
+seaglass-core   fn TaskSender < K, T>::send (& self, value : T) -> Result < (), TrySendError < T>>
+seaglass-core   fn TaskSender < K, T>::send_blocking (& self, value : T) -> Result < (), SendError < T>>
+seaglass-core   fn Tasks < K, T>::cancel (& mut self, key : & K)
+seaglass-core   fn Tasks < K, T>::cancel_all (& mut self)
+seaglass-core   fn Tasks < K, T>::drain (& mut self, limit : usize) -> Vec < (K, T)>
+seaglass-core   fn Tasks < K, T>::new (capacity : usize, wake : impl Fn () -> bool + Send + Sync + 'static) -> Self
+seaglass-core   fn Tasks < K, T>::running (& self, key : & K) -> bool
+seaglass-core   fn Tasks < K, T>::running_keys (& self) -> impl Iterator < Item = & K>
+seaglass-core   fn Tasks < K, T>::spawn (& mut self, key : K, job : impl FnOnce (TaskSender < K, T>) + Send + 'static) -> Cancel where K : Send + 'static, T : Send + 'static,
+seaglass-core   fn Tasks < K, T>::start (& mut self, key : K) -> TaskSender < K, T>
+seaglass-core   fn TextDocument::add_cursor_vertically (& mut self, down : bool) -> bool
+seaglass-core   fn TextDocument::add_selection (& mut self, anchor : usize, cursor : usize)
+seaglass-core   fn TextDocument::apply (& mut self, op : TextOp)
+seaglass-core   fn TextDocument::apply_with < M : 'static> (& mut self, op : TextOp, effects : & mut crate :: Effects < '_, M>)
+seaglass-core   fn TextDocument::backspace (& mut self, word : bool) -> bool
+seaglass-core   fn TextDocument::backspace_paired (& mut self) -> bool
+seaglass-core   fn TextDocument::can_redo (& self) -> bool
+seaglass-core   fn TextDocument::can_undo (& self) -> bool
+seaglass-core   fn TextDocument::changed_since (& self, revision : u64) -> Option < usize>
+seaglass-core   fn TextDocument::collapse_selections (& mut self)
+seaglass-core   fn TextDocument::copy_text (& self) -> String
+seaglass-core   fn TextDocument::cut (& mut self) -> String
+seaglass-core   fn TextDocument::delete (& mut self, word : bool) -> bool
+seaglass-core   fn TextDocument::find_all (& self, query : & str, case_sensitive : bool, whole_word : bool,) -> Vec < Range < usize>>
+seaglass-core   fn TextDocument::find_all_regex (& self, pattern : & str, case_sensitive : bool,) -> Result < Vec < Range < usize>>, String>
+seaglass-core   fn TextDocument::from_text (text : & str) -> Self
+seaglass-core   fn TextDocument::indent (& mut self) -> bool
+seaglass-core   fn TextDocument::insert (& mut self, text : & str) -> bool
+seaglass-core   fn TextDocument::insert_paired (& mut self, text : & str) -> bool
+seaglass-core   fn TextDocument::is_modified (& self) -> bool
+seaglass-core   fn TextDocument::len_chars (& self) -> usize
+seaglass-core   fn TextDocument::len_lines (& self) -> usize
+seaglass-core   fn TextDocument::line (& self, line : usize) -> String
+seaglass-core   fn TextDocument::line_range (& self, line : usize) -> Range < usize>
+seaglass-core   fn TextDocument::mark_saved (& mut self)
+seaglass-core   fn TextDocument::matching_bracket (& self, offset : usize) -> Option < (usize, usize)>
+seaglass-core   fn TextDocument::move_cursors (& mut self, motion : Motion, select : bool)
+seaglass-core   fn TextDocument::new () -> Self
+seaglass-core   fn TextDocument::newline (& mut self) -> bool
+seaglass-core   fn TextDocument::offset (& self, line : usize, byte : usize) -> usize
+seaglass-core   fn TextDocument::outdent (& mut self) -> bool
+seaglass-core   fn TextDocument::position (& self, offset : usize) -> (usize, usize)
+seaglass-core   fn TextDocument::primary (& self) -> Selection
+seaglass-core   fn TextDocument::redo (& mut self) -> bool
+seaglass-core   fn TextDocument::replace_range (& mut self, range : Range < usize>, text : & str) -> bool
+seaglass-core   fn TextDocument::replace_ranges (& mut self, mut edits : Vec < (Range < usize>, String)>) -> bool
+seaglass-core   fn TextDocument::revision (& self) -> u64
+seaglass-core   fn TextDocument::rope (& self) -> & Rope
+seaglass-core   fn TextDocument::select_all (& mut self)
+seaglass-core   fn TextDocument::select_next_occurrence (& mut self) -> bool
+seaglass-core   fn TextDocument::selected_text (& self) -> String
+seaglass-core   fn TextDocument::selections (& self) -> & [Selection]
+seaglass-core   fn TextDocument::set_selection (& mut self, anchor : usize, cursor : usize)
+seaglass-core   fn TextDocument::set_text (& mut self, text : & str)
+seaglass-core   fn TextDocument::text (& self) -> String
+seaglass-core   fn TextDocument::undo (& mut self) -> bool
+seaglass-core   fn TextDocument::word_at (& self, offset : usize) -> Range < usize>
+seaglass-core   fn TextInput < M>::new (label : impl Into < String>) -> Self
+seaglass-core   fn TextInput < M>::on_submit (mut self, message : M) -> Self
+seaglass-core   fn TextInput < M>::placeholder (mut self, placeholder : impl Into < String>) -> Self
+seaglass-core   fn TextInput < M>::style (mut self, style : Style) -> Self
+seaglass-core   fn TextSelection::range (self) -> Range < usize>
+seaglass-core   fn Theme::dark () -> Self
+seaglass-core   fn Theme::light () -> Self
+seaglass-core   fn Theme::set_token (& mut self, name : & str, color : Color) -> bool
+seaglass-core   fn Theme::token (& self, name : & str) -> Option < Color>
+seaglass-core   fn Toast::action (mut self, label : impl Into < String>) -> Self
+seaglass-core   fn Toast::duration (mut self, duration : Duration) -> Self
+seaglass-core   fn Toast::error (text : impl Into < String>) -> Self
+seaglass-core   fn Toast::kind (mut self, kind : ToastKind) -> Self
+seaglass-core   fn Toast::new (text : impl Into < String>) -> Self
+seaglass-core   fn Toast::sticky (mut self) -> Self
+seaglass-core   fn Toast::success (text : impl Into < String>) -> Self
+seaglass-core   fn Toast::tag (mut self, tag : impl Into < String>) -> Self
+seaglass-core   fn Toast::warning (text : impl Into < String>) -> Self
+seaglass-core   fn ToastSender::send (& self, toast : Toast)
+seaglass-core   fn Track::repeat (count : u16, tracks : Vec < Track>) -> Self
+seaglass-core   fn Transform::is_identity (& self) -> bool
+seaglass-core   fn Transform::rotate (degrees : f32) -> Self
+seaglass-core   fn Transform::scale (factor : f32) -> Self
+seaglass-core   fn Transform::translate (x : f32, y : f32) -> Self
+seaglass-core   fn Transition::delay (mut self, milliseconds : u64) -> Self
+seaglass-core   fn Transition::easing (mut self, easing : Easing) -> Self
+seaglass-core   fn Transition::new (milliseconds : u64) -> Self
+seaglass-core   fn Tray::new (tooltip : impl Into < String>) -> Self
+seaglass-core   fn Tray::with_icon (mut self, icon : Image) -> Self
+seaglass-core   fn Tray::with_menu (mut self, menu : Menu) -> Self
+seaglass-core   fn TreeModel::item (& self, id : ItemId) -> Option < & TreeItem>
+seaglass-core   fn TreeModel::new (items : Vec < TreeItem>) -> Result < Self, ModelError>
+seaglass-core   fn Ui < '_, M>::component < C : Component> (& mut self, style : Style, component : & C, f : impl Fn (C :: Message) -> M + 'static,)
+seaglass-core   fn Ui < 'a, M>::autocomplete < S : AsRef < str>> (& mut self, label : impl Into < String>, value : & str, suggestions : & [S], on_change : impl Fn (String) -> M + 'static,) -> Response < 'a>
+seaglass-core   fn Ui < 'a, M>::autocomplete_with < S : AsRef < str>> (& mut self, label : impl Into < String>, value : & str, suggestions : & [S], on_change : impl Fn (String) -> M + 'static, extra : Autocomplete < M>,) -> Response < 'a>
+seaglass-core   fn Ui < 'a, M>::button (& mut self, button : impl Into < Button < M>>) -> Response < 'a>
+seaglass-core   fn Ui < 'a, M>::checkbox (& mut self, label : impl Into < String>, checked : bool, on_toggle : impl Fn (bool) -> M,) -> Response < 'a>
+seaglass-core   fn Ui < 'a, M>::class (& mut self, name : & str) -> Style
+seaglass-core   fn Ui < 'a, M>::code_editor (& mut self, document : & TextDocument, options : CodeEditorOptions < '_>, on : impl Fn (TextOp) -> M + 'static,)
+seaglass-core   fn Ui < 'a, M>::column (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+seaglass-core   fn Ui < 'a, M>::combo_box (& mut self, combo : impl Into < ComboBox>, selected : usize, items : & [& str], on_choose : impl Fn (usize) -> M + 'static,) -> Response < 'a>
+seaglass-core   fn Ui < 'a, M>::command (& self, command : & crate :: Command) -> crate :: Command
+seaglass-core   fn Ui < 'a, M>::command_button (& mut self, command : & crate :: Command, message : M) -> Response < 'a>
+seaglass-core   fn Ui < 'a, M>::command_palette (& mut self, open : bool, query : & str, commands : & [crate :: Command], palette : CommandPalette < M>,)
+seaglass-core   fn Ui < 'a, M>::container (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+seaglass-core   fn Ui < 'a, M>::context_menu (& mut self, items : & [MenuItem], style : Style, on_pick : impl Fn (usize) -> M + 'static, content : impl FnOnce (& mut Ui < '_, M>),)
+seaglass-core   fn Ui < 'a, M>::custom (& mut self, style : Style, widget : CustomWidget, on_click : M) -> Response < 'a>
+seaglass-core   fn Ui < 'a, M>::dialog (& mut self, key : impl Into < String>, open : bool, options : crate :: DialogOptions, on_open : impl Fn (bool) -> M + 'static, content : impl FnOnce (& mut Ui < '_, M>),)
+seaglass-core   fn Ui < 'a, M>::dock (& mut self, layout : & DockLayout, panels : & [DockPanel], options : DockOptions, on : impl Fn (DockAction) -> M + 'static, content : impl FnMut (& mut Ui < '_, M>, & str),)
+seaglass-core   fn Ui < 'a, M>::dock_window (& mut self, layout : & DockLayout, window : DockWindowId, panels : & [DockPanel], options : DockOptions, on : impl Fn (DockAction) -> M + 'static, content : impl FnMut (& mut Ui < '_, M>, & str),)
+seaglass-core   fn Ui < 'a, M>::drag_source (& mut self, style : Style, source : DragSourceBuilder < M>, content : impl FnOnce (& mut Ui < '_, M>),)
+seaglass-core   fn Ui < 'a, M>::drop_target (& mut self, style : Style, target : DropTargetBuilder < M>, content : impl FnOnce (& mut Ui < '_, M>),)
+seaglass-core   fn Ui < 'a, M>::enabled (& mut self, enabled : bool, content : impl FnOnce (& mut Ui < '_, M>))
+seaglass-core   fn Ui < 'a, M>::event_area (& mut self, style : Style, area : AreaBuilder < M>, content : impl FnOnce (& mut Ui < '_, M>),)
+seaglass-core   fn Ui < 'a, M>::focus_scope (& mut self, scope : crate :: FocusScope, style : Style, content : impl FnOnce (& mut Ui < '_, M>),)
+seaglass-core   fn Ui < 'a, M>::gesture_area (& mut self, style : Style, gesture : GestureBuilder < M>, content : impl FnOnce (& mut Ui < '_, M>),)
+seaglass-core   fn Ui < 'a, M>::grid (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+seaglass-core   fn Ui < 'a, M>::image (& mut self, image : & Image, options : ImageOptions)
+seaglass-core   fn Ui < 'a, M>::image_file (& mut self, path : impl AsRef < std :: path :: Path>, options : ImageOptions)
+seaglass-core   fn Ui < 'a, M>::keyed < R> (& mut self, key : impl Into < String>, content : impl FnOnce (& mut Ui < 'a, M>) -> R,) -> R
+seaglass-core   fn Ui < 'a, M>::label (& mut self, label : impl Into < Label>)
+seaglass-core   fn Ui < 'a, M>::map < N : Clone + 'static> (& mut self, f : impl Fn (N) -> M + 'static, content : impl FnOnce (& mut Ui < '_, N>),)
+seaglass-core   fn Ui < 'a, M>::memo < S : std :: hash :: Hash> (& mut self, state : & S, style : Style, content : impl FnOnce (& mut Ui < '_, M>),) -> bool
+seaglass-core   fn Ui < 'a, M>::menu (& mut self, label : impl Into < String>, items : & [MenuItem], on_pick : impl Fn (usize) -> M + 'static,) -> Response < 'a>
+seaglass-core   fn Ui < 'a, M>::menu_bar (& mut self, menu : & crate :: Menu)
+seaglass-core   fn Ui < 'a, M>::number_input (& mut self, label : impl Into < String>, value : f64, options : NumberOptions, on : impl Fn (f64) -> M + 'static,) -> Response < 'a>
+seaglass-core   fn Ui < 'a, M>::observe (& mut self, store : & crate :: Store)
+seaglass-core   fn Ui < 'a, M>::opened_files (& self) -> & [std :: path :: PathBuf]
+seaglass-core   fn Ui < 'a, M>::popover (& mut self, open : bool, options : PopoverOptions, on_open : impl Fn (bool) -> M + 'static, content : impl FnOnce (& mut Ui < '_, M>),)
+seaglass-core   fn Ui < 'a, M>::property_grid (& mut self, state : & PropertyGridState, options : PropertyGridOptions, on : impl Fn (PropertyMsg) -> M + 'static, content : impl FnOnce (& mut PropertyGrid < '_, '_, M>),)
+seaglass-core   fn Ui < 'a, M>::radio (& mut self, label : impl Into < String>, selected : usize, option : usize, on_select : impl Fn (usize) -> M,) -> Response < 'a>
+seaglass-core   fn Ui < 'a, M>::request_redraw (& mut self)
+seaglass-core   fn Ui < 'a, M>::resize_frame (& mut self, thickness : f32)
+seaglass-core   fn Ui < 'a, M>::responsive (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>, f32)) -> f32
+seaglass-core   fn Ui < 'a, M>::rich_editor (& mut self, document : & RichDocument, options : RichEditorOptions, on : impl Fn (RichOp) -> M + 'static,) -> RichEditorResponse
+seaglass-core   fn Ui < 'a, M>::rich_text (& mut self, text : & RichText, style : Style, on_link : impl Fn (String) -> M + 'static,) -> Response < 'a>
+seaglass-core   fn Ui < 'a, M>::row (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+seaglass-core   fn Ui < 'a, M>::scroll (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+seaglass-core   fn Ui < 'a, M>::set_menu (& mut self, menu : crate :: Menu)
+seaglass-core   fn Ui < 'a, M>::set_tray (& mut self, tray : Option < crate :: Tray>)
+seaglass-core   fn Ui < 'a, M>::slider (& mut self, label : impl Into < String>, value : f64, range : RangeInclusive < f64>, step : f64, on_change : impl Fn (f64) -> M + 'static,) -> Response < 'a>
+seaglass-core   fn Ui < 'a, M>::split (& mut self, ratio : f32, axis : Axis, options : SplitOptions, on : impl Fn (f32) -> M + 'static, first : impl FnOnce (& mut Ui < '_, M>), second : impl FnOnce (& mut Ui < '_, M>),)
+seaglass-core   fn Ui < 'a, M>::tabs (& mut self, selected : usize, tabs : & [Tab], on_select : impl Fn (usize) -> M + 'static, content : impl FnOnce (& mut Ui < '_, M>, usize),)
+seaglass-core   fn Ui < 'a, M>::tabs_close (& mut self, selected : usize, tabs : & [Tab], on_select : impl Fn (usize) -> M + 'static, on_close : impl Fn (usize) -> M, content : impl FnOnce (& mut Ui < '_, M>, usize),)
+seaglass-core   fn Ui < 'a, M>::text_area (& mut self, document : & TextDocument, options : CodeEditorOptions < '_>, on : impl Fn (TextOp) -> M + 'static,)
+seaglass-core   fn Ui < 'a, M>::text_input (& mut self, input : impl Into < TextInput < M>>, value : & str, on_change : impl Fn (String) -> M + 'static,) -> Response < 'a>
+seaglass-core   fn Ui < 'a, M>::theme (& self) -> & crate :: Theme
+seaglass-core   fn Ui < 'a, M>::title_bar (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+seaglass-core   fn Ui < 'a, M>::toast_sender (& self) -> ToastSender
+seaglass-core   fn Ui < 'a, M>::tooltip (& mut self, text : impl Into < String>)
+seaglass-core   fn Ui < 'a, M>::watched_bytes (& mut self, path : impl AsRef < std :: path :: Path>) -> Option < Arc < [u8]>>
+seaglass-core   fn Ui < 'a, M>::watched_text (& mut self, path : impl AsRef < std :: path :: Path>) -> Option < Arc < str>>
+seaglass-core   fn Ui < 'a, M>::widget < F> (& mut self, style : Style, widget : crate :: WidgetBuilder < F, M>) -> Response < 'a> where F : FnOnce (& crate :: WidgetInput) -> CustomWidget,
+seaglass-core   fn Ui < 'a, M>::window (& self) -> crate :: WindowInfo
+seaglass-core   fn Ui < 'a, M>::window_buttons (& mut self, on_command : impl Fn (crate :: WindowCommand) -> M)
+seaglass-core   fn Ui < 'a, M>::window_size (& self) -> seaglass_scene :: Size
+seaglass-core   fn Ui < 'a, Msg>::data_grid (& mut self, model : & impl GridModel, state : & GridState, options : VirtualListOptions, on : impl Fn (GridMsg) -> Msg + 'static,)
+seaglass-core   fn Ui < 'a, Msg>::tree_view (& mut self, model : & impl ListModel, state : & ListState, options : VirtualListOptions, on : impl Fn (GridMsg) -> Msg + 'static,)
+seaglass-core   fn Ui < 'a, Msg>::tree_view_with < M : ListModel> (& mut self, model : & M, state : & ListState, options : VirtualListOptions, on : impl Fn (GridMsg) -> Msg + 'static, row : impl FnMut (& mut Ui < '_, Msg>, & M, usize, bool),)
+seaglass-core   fn Ui < 'a, Msg>::virtual_list (& mut self, model : & impl ListModel, state : & ListState, options : VirtualListOptions, on : impl Fn (GridMsg) -> Msg + 'static,)
+seaglass-core   fn Ui < 'a, Msg>::virtual_list_with < M : ListModel> (& mut self, model : & M, state : & ListState, options : VirtualListOptions, on : impl Fn (GridMsg) -> Msg + 'static, row : impl FnMut (& mut Ui < '_, Msg>, & M, usize, bool),)
+seaglass-core   fn WidgetBuilder < F, M>::new (build : F) -> Self where F : FnOnce (& WidgetInput) -> CustomWidget,
+seaglass-core   fn WidgetBuilder < F, M>::on_event (mut self, on_event : impl Fn (crate :: UiEvent) -> Option < M> + 'static) -> Self
+seaglass-core   fn crate :: Context::format_date (& self, date : Date, style : DateStyle) -> String
+seaglass-core   fn crate :: Context::format_number (& self, value : f64, decimals : usize) -> String
+seaglass-core   fn crate :: Context::format_time (& self, time : Time, seconds : bool) -> String
+seaglass-core   fn crate :: Context::locale (& self) -> & str
+seaglass-core   fn crate :: Context::missing_messages (& self) -> Vec < String>
+seaglass-core   fn crate :: Context::parse_number (& self, text : & str) -> Option < f64>
+seaglass-core   fn crate :: Context::set_format (& mut self, format : Option < Box < dyn LocaleFormat>>)
+seaglass-core   fn crate :: Context::set_messages (& mut self, messages : Option < Box < dyn Messages>>)
+seaglass-core   fn crate :: Context::tr (& self, key : & str, args : & [(& str, MessageArg)]) -> String
+seaglass-core   fn crate :: Ui < 'a, M>::format_date (& self, date : Date, style : DateStyle) -> String
+seaglass-core   fn crate :: Ui < 'a, M>::format_number (& self, value : f64, decimals : usize) -> String
+seaglass-core   fn crate :: Ui < 'a, M>::format_time (& self, time : Time, seconds : bool) -> String
+seaglass-core   fn crate :: Ui < 'a, M>::locale (& self) -> & str
+seaglass-core   fn crate :: Ui < 'a, M>::tr (& self, key : & str) -> String
+seaglass-core   fn crate :: Ui < 'a, M>::tr_args (& self, key : & str, args : & [(& str, MessageArg)]) -> String
+seaglass-core   variant Action::Activate
+seaglass-core   variant Action::Collapse
+seaglass-core   variant Action::Decrement
+seaglass-core   variant Action::Drop
+seaglass-core   variant Action::Expand
+seaglass-core   variant Action::Focus
+seaglass-core   variant Action::Increment
+seaglass-core   variant Action::ScrollBy
+seaglass-core   variant Action::ScrollByX
+seaglass-core   variant Action::ScrollIntoView
+seaglass-core   variant Action::ScrollTo
+seaglass-core   variant Action::ScrollToX
+seaglass-core   variant Action::SetNumber
+seaglass-core   variant Action::SetText
+seaglass-core   variant Action::StartDrag
+seaglass-core   variant Align::Baseline
+seaglass-core   variant Align::Center
+seaglass-core   variant Align::End
+seaglass-core   variant Align::Start
+seaglass-core   variant Align::Stretch
+seaglass-core   variant Axis::Horizontal
+seaglass-core   variant Axis::Vertical
+seaglass-core   variant BlockKind::Bullet
+seaglass-core   variant BlockKind::Code
+seaglass-core   variant BlockKind::Heading
+seaglass-core   variant BlockKind::Numbered
+seaglass-core   variant BlockKind::Paragraph
+seaglass-core   variant BlockKind::Quote
+seaglass-core   variant CaretMovement::Logical
+seaglass-core   variant CaretMovement::Visual
+seaglass-core   variant CellEditor::Bool
+seaglass-core   variant CellEditor::Choice
+seaglass-core   variant CellEditor::Number
+seaglass-core   variant CellEditor::Text
+seaglass-core   variant CellValue::Bool
+seaglass-core   variant CellValue::Choice
+seaglass-core   variant CellValue::Number
+seaglass-core   variant CellValue::Text
+seaglass-core   variant DateStyle::Long
+seaglass-core   variant DateStyle::Medium
+seaglass-core   variant DateStyle::Short
+seaglass-core   variant DiagnosticKind::Font
+seaglass-core   variant DiagnosticKind::HugeCollection
+seaglass-core   variant DiagnosticKind::Inaccessible
+seaglass-core   variant DiagnosticKind::Misuse
+seaglass-core   variant DiagnosticKind::OversizedLayer
+seaglass-core   variant DiagnosticKind::Relayout
+seaglass-core   variant DiagnosticKind::Repaint
+seaglass-core   variant DiagnosticKind::Resource
+seaglass-core   variant DiagnosticKind::UnstableIds
+seaglass-core   variant Direction::Ltr
+seaglass-core   variant Direction::Rtl
+seaglass-core   variant DockAction::Close
+seaglass-core   variant DockAction::FloatRect
+seaglass-core   variant DockAction::Move
+seaglass-core   variant DockAction::Raise
+seaglass-core   variant DockAction::Ratio
+seaglass-core   variant DockAction::Select
+seaglass-core   variant DockArea::Main
+seaglass-core   variant DockArea::Window
+seaglass-core   variant DockNode::Split
+seaglass-core   variant DockNode::Tabs
+seaglass-core   variant DockPlace::Float
+seaglass-core   variant DockPlace::Main
+seaglass-core   variant DockPlace::Window
+seaglass-core   variant DockTarget::Edge
+seaglass-core   variant DockTarget::Float
+seaglass-core   variant DockTarget::Group
+seaglass-core   variant DockTarget::Tab
+seaglass-core   variant DockTarget::Window
+seaglass-core   variant DockZone::Bottom
+seaglass-core   variant DockZone::Center
+seaglass-core   variant DockZone::Left
+seaglass-core   variant DockZone::Right
+seaglass-core   variant DockZone::Top
+seaglass-core   variant DragOutcome::Cancelled
+seaglass-core   variant DragOutcome::Dropped
+seaglass-core   variant DragPayload::Files
+seaglass-core   variant DragPayload::Item
+seaglass-core   variant DragPayload::Text
+seaglass-core   variant DropKind::Files
+seaglass-core   variant DropKind::Item
+seaglass-core   variant DropKind::Text
+seaglass-core   variant Easing::CubicBezier
+seaglass-core   variant Easing::EaseIn
+seaglass-core   variant Easing::EaseInOut
+seaglass-core   variant Easing::EaseOut
+seaglass-core   variant Easing::Linear
+seaglass-core   variant EditorCommand::AddCursorAbove
+seaglass-core   variant EditorCommand::AddCursorAt
+seaglass-core   variant EditorCommand::AddCursorBelow
+seaglass-core   variant EditorCommand::CloseFind
+seaglass-core   variant EditorCommand::Find
+seaglass-core   variant EditorCommand::FindNext
+seaglass-core   variant EditorCommand::FindPrevious
+seaglass-core   variant EditorCommand::Replace
+seaglass-core   variant EditorCommand::SelectNextOccurrence
+seaglass-core   variant EditorCommand::ToggleBold
+seaglass-core   variant EditorCommand::ToggleCode
+seaglass-core   variant EditorCommand::ToggleItalic
+seaglass-core   variant EditorCommand::ToggleStrikethrough
+seaglass-core   variant EditorCommand::ToggleUnderline
+seaglass-core   variant Event::Command
+seaglass-core   variant Event::ContextMenu
+seaglass-core   variant Event::DropAt
+seaglass-core   variant Event::Editor
+seaglass-core   variant Event::FocusLost
+seaglass-core   variant Event::KeyDown
+seaglass-core   variant Event::KeyUp
+seaglass-core   variant Event::PointerDown
+seaglass-core   variant Event::PointerDownWithShift
+seaglass-core   variant Event::PointerLeft
+seaglass-core   variant Event::PointerMoved
+seaglass-core   variant Event::PointerUp
+seaglass-core   variant Event::Rotate
+seaglass-core   variant Event::Scroll
+seaglass-core   variant Event::Shortcut
+seaglass-core   variant Event::Text
+seaglass-core   variant Event::Touch
+seaglass-core   variant Event::Zoom
+seaglass-core   variant FileKind::Directory
+seaglass-core   variant FileKind::Open
+seaglass-core   variant FileKind::OpenMany
+seaglass-core   variant FileKind::Save
+seaglass-core   variant FindEdit::CaseSensitive
+seaglass-core   variant FindEdit::Query
+seaglass-core   variant FindEdit::Regex
+seaglass-core   variant FindEdit::ReplaceAll
+seaglass-core   variant FindEdit::ReplaceOne
+seaglass-core   variant FindEdit::Replacement
+seaglass-core   variant FindEdit::WholeWord
+seaglass-core   variant Granularity::Char
+seaglass-core   variant Granularity::Line
+seaglass-core   variant Granularity::Word
+seaglass-core   variant GridMsg::Activate
+seaglass-core   variant GridMsg::Deselect
+seaglass-core   variant GridMsg::Edit
+seaglass-core   variant GridMsg::Expand
+seaglass-core   variant GridMsg::Filter
+seaglass-core   variant GridMsg::FiltersApplied
+seaglass-core   variant GridMsg::FreezeColumns
+seaglass-core   variant GridMsg::HideColumn
+seaglass-core   variant GridMsg::MoveColumn
+seaglass-core   variant GridMsg::ResetColumns
+seaglass-core   variant GridMsg::ResizeColumn
+seaglass-core   variant GridMsg::Select
+seaglass-core   variant GridMsg::ShowAllColumns
+seaglass-core   variant GridMsg::Sort
+seaglass-core   variant ImageFit::Contain
+seaglass-core   variant ImageFit::Cover
+seaglass-core   variant ImageFit::Fill
+seaglass-core   variant ImageFit::None
+seaglass-core   variant ImageSource::File
+seaglass-core   variant ImageSource::Image
+seaglass-core   variant ImageTint::Color
+seaglass-core   variant ImageTint::Foreground
+seaglass-core   variant ImageTint::None
+seaglass-core   variant Justify::Center
+seaglass-core   variant Justify::End
+seaglass-core   variant Justify::SpaceAround
+seaglass-core   variant Justify::SpaceBetween
+seaglass-core   variant Justify::SpaceEvenly
+seaglass-core   variant Justify::Start
+seaglass-core   variant Justify::Stretch
+seaglass-core   variant Key::ArrowDown
+seaglass-core   variant Key::ArrowLeft
+seaglass-core   variant Key::ArrowRight
+seaglass-core   variant Key::ArrowUp
+seaglass-core   variant Key::Backspace
+seaglass-core   variant Key::ContextMenu
+seaglass-core   variant Key::Delete
+seaglass-core   variant Key::End
+seaglass-core   variant Key::Enter
+seaglass-core   variant Key::Escape
+seaglass-core   variant Key::F2
+seaglass-core   variant Key::Home
+seaglass-core   variant Key::PageDown
+seaglass-core   variant Key::PageUp
+seaglass-core   variant Key::Space
+seaglass-core   variant Key::Tab
+seaglass-core   variant Length::Auto
+seaglass-core   variant Length::Percent
+seaglass-core   variant Length::Px
+seaglass-core   variant Live::Assertive
+seaglass-core   variant Live::Polite
+seaglass-core   variant Mark::Bold
+seaglass-core   variant Mark::Code
+seaglass-core   variant Mark::Italic
+seaglass-core   variant Mark::Strikethrough
+seaglass-core   variant Mark::Underline
+seaglass-core   variant MenuEntry::Command
+seaglass-core   variant MenuEntry::Separator
+seaglass-core   variant MenuEntry::Submenu
+seaglass-core   variant MessageArg::Number
+seaglass-core   variant MessageArg::Text
+seaglass-core   variant ModelError::Cycle
+seaglass-core   variant ModelError::Duplicate
+seaglass-core   variant ModelError::MissingParent
+seaglass-core   variant Motion::DocumentEnd
+seaglass-core   variant Motion::DocumentStart
+seaglass-core   variant Motion::Down
+seaglass-core   variant Motion::Left
+seaglass-core   variant Motion::LineEnd
+seaglass-core   variant Motion::LineStart
+seaglass-core   variant Motion::Lines
+seaglass-core   variant Motion::Right
+seaglass-core   variant Motion::Up
+seaglass-core   variant Motion::WordLeft
+seaglass-core   variant Motion::WordRight
+seaglass-core   variant PropertyMsg::Bool
+seaglass-core   variant PropertyMsg::Choice
+seaglass-core   variant PropertyMsg::Color
+seaglass-core   variant PropertyMsg::Filter
+seaglass-core   variant PropertyMsg::Group
+seaglass-core   variant PropertyMsg::NameShare
+seaglass-core   variant PropertyMsg::Number
+seaglass-core   variant PropertyMsg::Text
+seaglass-core   variant Repeat::Count
+seaglass-core   variant Repeat::Forever
+seaglass-core   variant Repeat::Once
+seaglass-core   variant ResizeEdge::East
+seaglass-core   variant ResizeEdge::North
+seaglass-core   variant ResizeEdge::NorthEast
+seaglass-core   variant ResizeEdge::NorthWest
+seaglass-core   variant ResizeEdge::South
+seaglass-core   variant ResizeEdge::SouthEast
+seaglass-core   variant ResizeEdge::SouthWest
+seaglass-core   variant ResizeEdge::West
+seaglass-core   variant RichGranularity::Block
+seaglass-core   variant RichGranularity::Char
+seaglass-core   variant RichGranularity::Word
+seaglass-core   variant RichMotion::BlockEnd
+seaglass-core   variant RichMotion::BlockStart
+seaglass-core   variant RichMotion::DocumentEnd
+seaglass-core   variant RichMotion::DocumentStart
+seaglass-core   variant RichMotion::Left
+seaglass-core   variant RichMotion::Right
+seaglass-core   variant RichMotion::WordLeft
+seaglass-core   variant RichMotion::WordRight
+seaglass-core   variant RichOp::Backspace
+seaglass-core   variant RichOp::Clipboard
+seaglass-core   variant RichOp::Delete
+seaglass-core   variant RichOp::Insert
+seaglass-core   variant RichOp::Move
+seaglass-core   variant RichOp::Newline
+seaglass-core   variant RichOp::Redo
+seaglass-core   variant RichOp::SelectAll
+seaglass-core   variant RichOp::SetBlock
+seaglass-core   variant RichOp::SetCursor
+seaglass-core   variant RichOp::Toggle
+seaglass-core   variant RichOp::Undo
+seaglass-core   variant Role::Alert
+seaglass-core   variant Role::Button
+seaglass-core   variant Role::Cell
+seaglass-core   variant Role::Checkbox
+seaglass-core   variant Role::ColumnHeader
+seaglass-core   variant Role::ComboBox
+seaglass-core   variant Role::Dialog
+seaglass-core   variant Role::Grid
+seaglass-core   variant Role::Group
+seaglass-core   variant Role::Image
+seaglass-core   variant Role::Label
+seaglass-core   variant Role::ListBox
+seaglass-core   variant Role::Menu
+seaglass-core   variant Role::MenuButton
+seaglass-core   variant Role::MenuItem
+seaglass-core   variant Role::Option
+seaglass-core   variant Role::Radio
+seaglass-core   variant Role::Row
+seaglass-core   variant Role::RowGroup
+seaglass-core   variant Role::ScrollView
+seaglass-core   variant Role::Slider
+seaglass-core   variant Role::SpinButton
+seaglass-core   variant Role::Splitter
+seaglass-core   variant Role::Status
+seaglass-core   variant Role::Tab
+seaglass-core   variant Role::TabList
+seaglass-core   variant Role::TabPanel
+seaglass-core   variant Role::TextInput
+seaglass-core   variant Role::Tree
+seaglass-core   variant Role::TreeItem
+seaglass-core   variant Severity::Error
+seaglass-core   variant Severity::Hint
+seaglass-core   variant Severity::Info
+seaglass-core   variant Severity::Warning
+seaglass-core   variant ShortcutKey::Character
+seaglass-core   variant ShortcutKey::Named
+seaglass-core   variant SortDirection::Ascending
+seaglass-core   variant SortDirection::Descending
+seaglass-core   variant StateKind::Memo
+seaglass-core   variant StateKind::Signal
+seaglass-core   variant SwipeDirection::Down
+seaglass-core   variant SwipeDirection::Left
+seaglass-core   variant SwipeDirection::Right
+seaglass-core   variant SwipeDirection::Up
+seaglass-core   variant TextEdit::Backspace
+seaglass-core   variant TextEdit::CancelComposition
+seaglass-core   variant TextEdit::Commit
+seaglass-core   variant TextEdit::Delete
+seaglass-core   variant TextEdit::Insert
+seaglass-core   variant TextEdit::Move
+seaglass-core   variant TextEdit::Preedit
+seaglass-core   variant TextEdit::Redo
+seaglass-core   variant TextEdit::Select
+seaglass-core   variant TextEdit::SelectAll
+seaglass-core   variant TextEdit::Undo
+seaglass-core   variant TextMove::DocumentEnd
+seaglass-core   variant TextMove::DocumentStart
+seaglass-core   variant TextMove::End
+seaglass-core   variant TextMove::Left
+seaglass-core   variant TextMove::Right
+seaglass-core   variant TextMove::Start
+seaglass-core   variant TextOp::Backspace
+seaglass-core   variant TextOp::BackspacePaired
+seaglass-core   variant TextOp::Clipboard
+seaglass-core   variant TextOp::CollapseSelections
+seaglass-core   variant TextOp::Command
+seaglass-core   variant TextOp::Delete
+seaglass-core   variant TextOp::Find
+seaglass-core   variant TextOp::Indent
+seaglass-core   variant TextOp::Insert
+seaglass-core   variant TextOp::InsertPaired
+seaglass-core   variant TextOp::Move
+seaglass-core   variant TextOp::Newline
+seaglass-core   variant TextOp::Outdent
+seaglass-core   variant TextOp::Pointer
+seaglass-core   variant TextOp::Redo
+seaglass-core   variant TextOp::SelectAll
+seaglass-core   variant TextOp::Undo
+seaglass-core   variant ToastKind::Error
+seaglass-core   variant ToastKind::Info
+seaglass-core   variant ToastKind::Success
+seaglass-core   variant ToastKind::Warning
+seaglass-core   variant TouchPhase::Cancelled
+seaglass-core   variant TouchPhase::Ended
+seaglass-core   variant TouchPhase::Moved
+seaglass-core   variant TouchPhase::Started
+seaglass-core   variant Track::Auto
+seaglass-core   variant Track::Fr
+seaglass-core   variant Track::MinMax
+seaglass-core   variant Track::Percent
+seaglass-core   variant Track::Px
+seaglass-core   variant Track::Repeat
+seaglass-core   variant TrackSize::Auto
+seaglass-core   variant TrackSize::Fr
+seaglass-core   variant TrackSize::Percent
+seaglass-core   variant TrackSize::Px
+seaglass-core   variant UiEvent::Activate
+seaglass-core   variant UiEvent::Key
+seaglass-core   variant UiEvent::PointerDown
+seaglass-core   variant UiEvent::PointerMoved
+seaglass-core   variant UiEvent::PointerUp
+seaglass-core   variant UiEvent::Scroll
+seaglass-core   variant UiEvent::Text
+seaglass-core   variant WindowCommand::Close
+seaglass-core   variant WindowCommand::Drag
+seaglass-core   variant WindowCommand::Minimize
+seaglass-core   variant WindowCommand::Resize
+seaglass-core   variant WindowCommand::ToggleMaximize
+seaglass-core const BUILTIN_MESSAGES
+seaglass-core const FILTER_DELAY
+seaglass-core const HUGE_CHILDREN
+seaglass-core const LAYER_AREA
+seaglass-core const RELAYOUT_FRAMES
+seaglass-core const REPAINT_FRAMES
+seaglass-core const REPAINT_MIN_NODES
+seaglass-core const TOKENS
+seaglass-core const TOOLTIP_DELAY
+seaglass-core const UNSTABLE_ID_FRAMES
+seaglass-core enum Action
+seaglass-core enum Align
+seaglass-core enum Axis
+seaglass-core enum BlockKind
+seaglass-core enum CaretMovement
+seaglass-core enum CellEditor
+seaglass-core enum CellValue
+seaglass-core enum DateStyle
+seaglass-core enum DiagnosticKind
+seaglass-core enum Direction
+seaglass-core enum DockAction
+seaglass-core enum DockArea
+seaglass-core enum DockNode
+seaglass-core enum DockPlace
+seaglass-core enum DockTarget
+seaglass-core enum DockZone
+seaglass-core enum DragOutcome
+seaglass-core enum DragPayload
+seaglass-core enum DropKind
+seaglass-core enum Easing
+seaglass-core enum EditorCommand
+seaglass-core enum Event
+seaglass-core enum FileKind
+seaglass-core enum FindEdit
+seaglass-core enum Granularity
+seaglass-core enum GridMsg
+seaglass-core enum ImageFit
+seaglass-core enum ImageSource
+seaglass-core enum ImageTint
+seaglass-core enum Justify
+seaglass-core enum Key
+seaglass-core enum Length
+seaglass-core enum Live
+seaglass-core enum Mark
+seaglass-core enum MenuEntry
+seaglass-core enum MessageArg
+seaglass-core enum ModelError
+seaglass-core enum Motion
+seaglass-core enum PropertyMsg
+seaglass-core enum Repeat
+seaglass-core enum ResizeEdge
+seaglass-core enum RichGranularity
+seaglass-core enum RichMotion
+seaglass-core enum RichOp
+seaglass-core enum Role
+seaglass-core enum Severity
+seaglass-core enum ShortcutKey
+seaglass-core enum SortDirection
+seaglass-core enum StateKind
+seaglass-core enum SwipeDirection
+seaglass-core enum TextEdit
+seaglass-core enum TextMove
+seaglass-core enum TextOp
+seaglass-core enum ToastKind
+seaglass-core enum TouchPhase
+seaglass-core enum Track
+seaglass-core enum TrackSize
+seaglass-core enum UiEvent
+seaglass-core enum WindowCommand
+seaglass-core fn message_channel < T> (capacity : usize, wake : impl Fn () -> bool + Send + Sync + 'static,) -> (MessageSender < T>, Mailbox < T>)
+seaglass-core fn suggest < 'a> (typed : & str, candidates : & [& 'a str], limit : usize) -> Vec < & 'a str>
+seaglass-core fn text_matches (cell : & str, filter : & str) -> bool
+seaglass-core struct Animation
+seaglass-core struct AppDriver
+seaglass-core struct AreaBuilder
+seaglass-core struct Autocomplete
+seaglass-core struct BackgroundImage
+seaglass-core struct Block
+seaglass-core struct Button
+seaglass-core struct Cancel
+seaglass-core struct Clip
+seaglass-core struct CodeEditorOptions
+seaglass-core struct CollectionInfo
+seaglass-core struct ComboBox
+seaglass-core struct Command
+seaglass-core struct CommandPalette
+seaglass-core struct Context
+seaglass-core struct CustomWidget
+seaglass-core struct Date
+seaglass-core struct Diagnostic
+seaglass-core struct DialogOptions
+seaglass-core struct DockFloat
+seaglass-core struct DockLayout
+seaglass-core struct DockLayoutError
+seaglass-core struct DockOptions
+seaglass-core struct DockPanel
+seaglass-core struct DockTabs
+seaglass-core struct DockWindow
+seaglass-core struct DockWindowId
+seaglass-core struct DragInfo
+seaglass-core struct DragSourceBuilder
+seaglass-core struct DropTargetBuilder
+seaglass-core struct Effect
+seaglass-core struct Effects
+seaglass-core struct EventArea
+seaglass-core struct FileRequest
+seaglass-core struct FindState
+seaglass-core struct FocusScope
+seaglass-core struct FrameDiagnostic
+seaglass-core struct FrameStats
+seaglass-core struct GestureBuilder
+seaglass-core struct GestureResponse
+seaglass-core struct Gradient
+seaglass-core struct GraphNode
+seaglass-core struct GridArea
+seaglass-core struct GridColumn
+seaglass-core struct GridColumns
+seaglass-core struct GridState
+seaglass-core struct HighlightSpan
+seaglass-core struct ImageOptions
+seaglass-core struct Indentation
+seaglass-core struct InlineRun
+seaglass-core struct ItemId
+seaglass-core struct ItemOrder
+seaglass-core struct Keyframe
+seaglass-core struct Label
+seaglass-core struct ListState
+seaglass-core struct Mailbox
+seaglass-core struct Marks
+seaglass-core struct Memo
+seaglass-core struct MemoryReport
+seaglass-core struct Menu
+seaglass-core struct MenuItem
+seaglass-core struct MessageSender
+seaglass-core struct NodeDetails
+seaglass-core struct NodeId
+seaglass-core struct NodeSnapshot
+seaglass-core struct Notification
+seaglass-core struct NumberOptions
+seaglass-core struct NumericValue
+seaglass-core struct Pacing
+seaglass-core struct Paint
+seaglass-core struct Pen
+seaglass-core struct PopoverOptions
+seaglass-core struct PropertyGrid
+seaglass-core struct PropertyGridOptions
+seaglass-core struct PropertyGridState
+seaglass-core struct ResolvedText
+seaglass-core struct Response
+seaglass-core struct RichDocument
+seaglass-core struct RichEditorOptions
+seaglass-core struct RichEditorResponse
+seaglass-core struct RichPosition
+seaglass-core struct RichRun
+seaglass-core struct RichText
+seaglass-core struct ScrollState
+seaglass-core struct Selection
+seaglass-core struct Semantics
+seaglass-core struct Shadow
+seaglass-core struct Shortcut
+seaglass-core struct Signal
+seaglass-core struct SplitOptions
+seaglass-core struct StateStyles
+seaglass-core struct Store
+seaglass-core struct Style
+seaglass-core struct StyleSheet
+seaglass-core struct StyleSheetError
+seaglass-core struct Swipe
+seaglass-core struct Tab
+seaglass-core struct TaskSender
+seaglass-core struct Tasks
+seaglass-core struct TextDocument
+seaglass-core struct TextInput
+seaglass-core struct TextSelection
+seaglass-core struct Theme
+seaglass-core struct Time
+seaglass-core struct Toast
+seaglass-core struct ToastAction
+seaglass-core struct ToastId
+seaglass-core struct ToastSender
+seaglass-core struct Transform
+seaglass-core struct Transition
+seaglass-core struct Tray
+seaglass-core struct TreeItem
+seaglass-core struct TreeModel
+seaglass-core struct Ui
+seaglass-core struct VirtualListOptions
+seaglass-core struct WidgetBuilder
+seaglass-core struct WidgetInput
+seaglass-core struct WindowId
+seaglass-core struct WindowInfo
+seaglass-core struct WindowRequest
+seaglass-core trait App
+seaglass-core trait Component
+seaglass-core trait GridModel
+seaglass-core trait Highlighter
+seaglass-core trait ListModel
+seaglass-core trait LocaleFormat
+seaglass-core trait Messages
+seaglass-core type Action
+seaglass-core use animation :: { Animation, Easing, Effect, Keyframe, Repeat, Transform, Transition }
+seaglass-core use app :: { App, AppDriver, Component, Effects, Pacing }
+seaglass-core use areas :: { AreaBuilder, DragSourceBuilder, DropTargetBuilder, GestureBuilder }
+seaglass-core use builders :: { Button, ComboBox, Label, TextInput }
+seaglass-core use clipboard :: Clip
+seaglass-core use collection :: { CellEditor, CellValue, FILTER_DELAY, GridColumn, GridColumns, GridModel, GridMsg, GridState, ItemId, ItemOrder, ListModel, ListState, ModelError, SortDirection, TreeItem, TreeModel, VirtualListOptions, text_matches, }
+seaglass-core use command :: { Command, Shortcut, ShortcutKey }
+seaglass-core use controls :: { DockAction, MenuItem, NumberOptions }
+seaglass-core use dock :: { DockArea, DockFloat, DockLayout, DockLayoutError, DockNode, DockPlace, DockTabs, DockTarget, DockWindow, DockWindowId, DockZone, }
+seaglass-core use dock :: { DockOptions, DockPanel }
+seaglass-core use document :: { Indentation, Motion, Selection, TextDocument }
+seaglass-core use drag :: { DragInfo, DragOutcome, DragPayload, DropKind }
+seaglass-core use editor :: { CaretMovement, TextEdit, TextMove, TextSelection }
+seaglass-core use events :: { EventArea, UiEvent }
+seaglass-core use fields :: { Autocomplete, suggest }
+seaglass-core use focus :: { DialogOptions, FocusScope }
+seaglass-core use image :: { BackgroundImage, ImageFit, ImageOptions, ImageSource, ImageTint }
+seaglass-core use locale_format :: { Date, DateStyle, LocaleFormat, Time }
+seaglass-core use mailbox :: { Mailbox, MessageSender, message_channel }
+seaglass-core use messages :: { BUILTIN_MESSAGES, MessageArg, Messages }
+seaglass-core use overlays :: CommandPalette
+seaglass-core use panes :: { Axis, PopoverOptions, SplitOptions, TOOLTIP_DELAY, Tab }
+seaglass-core use platform :: { FileKind, FileRequest, Menu, MenuEntry, Notification, Tray }
+seaglass-core use property_grid :: PropertyGrid
+seaglass-core use property_grid :: { PropertyGridOptions, PropertyGridState, PropertyMsg }
+seaglass-core use reactive :: { GraphNode, Memo, Signal, StateKind, Store }
+seaglass-core use rich_document :: { Block, BlockKind, InlineRun, Mark, Marks, RichDocument, RichMotion, RichPosition, }
+seaglass-core use rich_editor :: { RichEditorOptions, RichEditorResponse, RichOp }
+seaglass-core use rich_text :: { RichRun, RichText }
+seaglass-core use seaglass_scene :: GradientStop
+seaglass-core use seaglass_scene :: { FontFamily, TextSpan, TextStyle, TextWrap }
+seaglass-core use seaglass_scene :: { MonospaceMeasurer, TextMeasurer }
+seaglass-core use style :: { Align, Direction, Gradient, GridArea, Justify, Length, Paint, ResolvedText, Shadow, StateStyles, Style, Track, TrackSize, }
+seaglass-core use stylesheet :: { StyleSheet, StyleSheetError }
+seaglass-core use task :: { Cancel, TaskSender, Tasks }
+seaglass-core use text_area :: { CodeEditorOptions, Diagnostic, EditorCommand, FindEdit, FindState, HighlightSpan, Highlighter, Severity, TextOp, }
+seaglass-core use theme :: { TOKENS, Theme }
+seaglass-core use toast :: { Toast, ToastAction, ToastId, ToastKind, ToastSender }
+seaglass-core use touch_input :: { GestureResponse, Pen, Swipe, SwipeDirection, TouchPhase }
+seaglass-core use tree :: diagnostics :: { DiagnosticKind, FrameDiagnostic, HUGE_CHILDREN, LAYER_AREA, RELAYOUT_FRAMES, REPAINT_FRAMES, REPAINT_MIN_NODES, UNSTABLE_ID_FRAMES, }
+seaglass-core use tree :: { Action, CollectionInfo, Context, Dirty, Event, FrameStats, GestureResponse, Key, Live, MemoryReport, NodeDetails, NodeId, NodeSnapshot, NumericValue, Pen, Role, ScrollState, Semantics, Swipe, SwipeDirection, TouchPhase, }
+seaglass-core use types :: *
+seaglass-core use ui :: { AreaBuilder, Autocomplete, Button, ComboBox, CommandPalette, DockOptions, DockPanel, DragSourceBuilder, DropTargetBuilder, GestureBuilder, Label, PropertyGrid, Response, TextInput, Ui, suggest, }
+seaglass-core use widget :: { CustomWidget, WidgetBuilder, WidgetInput }
+seaglass-core use window :: { ResizeEdge, WindowCommand, WindowId, WindowInfo, WindowRequest }
+seaglass-scene   field Affine::a
+seaglass-scene   field Affine::b
+seaglass-scene   field Affine::c
+seaglass-scene   field Affine::d
+seaglass-scene   field Affine::e
+seaglass-scene   field Affine::f
+seaglass-scene   field CaretStop::byte
+seaglass-scene   field CaretStop::rect
+seaglass-scene   field GradientStop::at
+seaglass-scene   field GradientStop::color
+seaglass-scene   field Point::x
+seaglass-scene   field Point::y
+seaglass-scene   field Rect::height
+seaglass-scene   field Rect::width
+seaglass-scene   field Rect::x
+seaglass-scene   field Rect::y
+seaglass-scene   field Scene::primitives
+seaglass-scene   field Scene::size
+seaglass-scene   field Size::height
+seaglass-scene   field Size::width
+seaglass-scene   field TextCluster::bytes
+seaglass-scene   field TextCluster::rect
+seaglass-scene   field TextCluster::rtl
+seaglass-scene   field TextGeometry::carets
+seaglass-scene   field TextGeometry::clusters
+seaglass-scene   field TextGeometry::lines
+seaglass-scene   field TextGeometry::size
+seaglass-scene   field TextLine::bytes
+seaglass-scene   field TextLine::height
+seaglass-scene   field TextLine::rtl
+seaglass-scene   field TextLine::y
+seaglass-scene   field TextSpan::color
+seaglass-scene   field TextSpan::family
+seaglass-scene   field TextSpan::italic
+seaglass-scene   field TextSpan::text
+seaglass-scene   field TextSpan::weight
+seaglass-scene   field TextStyle::base
+seaglass-scene   field TextStyle::family
+seaglass-scene   field TextStyle::font_size
+seaglass-scene   field TextStyle::italic
+seaglass-scene   field TextStyle::rtl
+seaglass-scene   field TextStyle::weight
+seaglass-scene   field TextStyle::wrap
+seaglass-scene   fn Affine::about (self, pivot : Point) -> Self
+seaglass-scene   fn Affine::apply (self, point : Point) -> Point
+seaglass-scene   fn Affine::is_identity (self) -> bool
+seaglass-scene   fn Affine::rotate (degrees : f32) -> Self
+seaglass-scene   fn Affine::scale (x : f32, y : f32) -> Self
+seaglass-scene   fn Affine::then (self, next : Self) -> Self
+seaglass-scene   fn Affine::translate (x : f32, y : f32) -> Self
+seaglass-scene   fn Color::const rgb (r : u8, g : u8, b : u8) -> Self
+seaglass-scene   fn Color::linear (self) -> [f32; 4]
+seaglass-scene   fn Image::from_premultiplied (width : u32, height : u32, rgba : Vec < u8>) -> Option < Self>
+seaglass-scene   fn Image::from_rgba8 (width : u32, height : u32, mut rgba : Vec < u8>) -> Option < Self>
+seaglass-scene   fn Image::from_vector (vector : impl VectorImage + 'static) -> Self
+seaglass-scene   fn Image::id (& self) -> u64
+seaglass-scene   fn Image::is_vector (& self) -> bool
+seaglass-scene   fn Image::pixels (& self) -> Option < (u32, u32, & [u8])>
+seaglass-scene   fn Image::size (& self) -> Size
+seaglass-scene   fn Image::vector (& self) -> Option < & dyn VectorImage>
+seaglass-scene   fn Primitive::translated (& self, offset : Point) -> Self
+seaglass-scene   fn Rect::contains (self, p : Point) -> bool
+seaglass-scene   fn Rect::intersect (self, other : Self) -> Self
+seaglass-scene   fn Rect::translated (self, offset : Point) -> Self
+seaglass-scene   fn Rect::union (self, other : Self) -> Self
+seaglass-scene   fn Size::const new (width : f32, height : f32) -> Self
+seaglass-scene   fn TextGeometry::caret (& self, byte : usize) -> Rect
+seaglass-scene   fn TextGeometry::caret_at (& self, byte : usize, affinity : Affinity) -> Rect
+seaglass-scene   fn TextGeometry::hit (& self, point : Point) -> usize
+seaglass-scene   fn TextGeometry::hit_affinity (& self, point : Point) -> (usize, Affinity)
+seaglass-scene   fn TextGeometry::line_at (& self, byte : usize, affinity : Affinity) -> Option < & TextLine>
+seaglass-scene   fn TextGeometry::line_edge (& self, byte : usize, affinity : Affinity, end : bool) -> (usize, Affinity)
+seaglass-scene   fn TextGeometry::mixed_direction (& self, byte : usize, affinity : Affinity) -> Option < bool>
+seaglass-scene   fn TextGeometry::selection (& self, range : Range < usize>) -> Vec < Rect>
+seaglass-scene   fn TextGeometry::visual_step (& self, byte : usize, affinity : Affinity, right : bool,) -> Option < (usize, Affinity)>
+seaglass-scene   fn TextMeasurer::ascent (& mut self, style : & TextStyle) -> f32
+seaglass-scene   fn TextMeasurer::geometry (& mut self, text : & str, style : & TextStyle, width : Option < f32>) -> TextGeometry
+seaglass-scene   fn TextMeasurer::geometry_rich (& mut self, spans : & [TextSpan], style : & TextStyle, width : Option < f32>,) -> TextGeometry
+seaglass-scene   fn TextMeasurer::measure (& mut self, text : & str, font_size : f32) -> Size
+seaglass-scene   fn TextMeasurer::measure_styled (& mut self, text : & str, style : & TextStyle, width : Option < f32>) -> Size
+seaglass-scene   fn TextSpan::color (mut self, color : crate :: Color) -> Self
+seaglass-scene   fn TextSpan::family (mut self, family : FontFamily) -> Self
+seaglass-scene   fn TextSpan::italic (mut self, italic : bool) -> Self
+seaglass-scene   fn TextSpan::new (text : impl Into < String>) -> Self
+seaglass-scene   fn TextSpan::weight (mut self, weight : u16) -> Self
+seaglass-scene   fn VectorImage::rasterize (& self, width : u32, height : u32) -> Vec < u8>
+seaglass-scene   fn VectorImage::size (& self) -> Size
+seaglass-scene   variant Affinity::Downstream
+seaglass-scene   variant Affinity::Upstream
+seaglass-scene   variant FontFamily::Monospace
+seaglass-scene   variant FontFamily::Named
+seaglass-scene   variant FontFamily::SansSerif
+seaglass-scene   variant FontFamily::Serif
+seaglass-scene   variant Primitive::Custom
+seaglass-scene   variant Primitive::Gradient
+seaglass-scene   variant Primitive::Image
+seaglass-scene   variant Primitive::PopClip
+seaglass-scene   variant Primitive::PopLayer
+seaglass-scene   variant Primitive::PushClip
+seaglass-scene   variant Primitive::PushLayer
+seaglass-scene   variant Primitive::Quad
+seaglass-scene   variant Primitive::RichText
+seaglass-scene   variant Primitive::Shadow
+seaglass-scene   variant Primitive::StyledText
+seaglass-scene   variant Primitive::Text
+seaglass-scene   variant TextWrap::None
+seaglass-scene   variant TextWrap::Word
+seaglass-scene enum Affinity
+seaglass-scene enum FontFamily
+seaglass-scene enum Primitive
+seaglass-scene enum TextWrap
+seaglass-scene struct Affine
+seaglass-scene struct CaretStop
+seaglass-scene struct Color
+seaglass-scene struct GradientStop
+seaglass-scene struct Image
+seaglass-scene struct MonospaceMeasurer
+seaglass-scene struct Point
+seaglass-scene struct Rect
+seaglass-scene struct Scene
+seaglass-scene struct Size
+seaglass-scene struct TextCluster
+seaglass-scene struct TextGeometry
+seaglass-scene struct TextLine
+seaglass-scene struct TextSpan
+seaglass-scene struct TextStyle
+seaglass-scene trait TextMeasurer
+seaglass-scene trait VectorImage
+seaglass-scene use image :: { Image, VectorImage }
+seaglass-scene use text :: { Affinity, CaretStop, FontFamily, MonospaceMeasurer, TextCluster, TextGeometry, TextLine, TextMeasurer, TextSpan, TextStyle, TextWrap, }
+seaglass-text   field TextSystem::buffers
+seaglass-text   field TextSystem::fonts
+seaglass-text   fn TextSystem::ensure (& mut self, text : & str, font_size : f32) -> TextKey
+seaglass-text   fn TextSystem::ensure_rich (& mut self, spans : & [TextSpan], style : & TextStyle, width : Option < f32>,) -> TextKey
+seaglass-text   fn TextSystem::ensure_styled (& mut self, text : & str, style : & TextStyle, width : Option < f32>) -> TextKey
+seaglass-text   fn TextSystem::has_family (& self, name : & str) -> bool
+seaglass-text   fn TextSystem::retain (& mut self, active : & HashSet < TextKey>)
+seaglass-text   fn TextSystem::with_fonts (fonts : impl IntoIterator < Item = Vec < u8>>) -> Self
+seaglass-text struct TextKey
+seaglass-text struct TextSystem
+seaglass-text use cosmic_text
+seaglass-render-wgpu   field CustomDraw::device
+seaglass-render-wgpu   field CustomDraw::pass
+seaglass-render-wgpu   field CustomDraw::queue
+seaglass-render-wgpu   field CustomDraw::rect
+seaglass-render-wgpu   field CustomDraw::scale
+seaglass-render-wgpu   field CustomDraw::target_size
+seaglass-render-wgpu   field DriverMemory::allocated
+seaglass-render-wgpu   field DriverMemory::allocations
+seaglass-render-wgpu   field DriverMemory::reserved
+seaglass-render-wgpu   field GpuPassTime::duration
+seaglass-render-wgpu   field GpuPassTime::label
+seaglass-render-wgpu   field GpuProfile::frame
+seaglass-render-wgpu   field GpuProfile::passes
+seaglass-render-wgpu   field GpuProfile::total
+seaglass-render-wgpu   field MemoryStats::buffers
+seaglass-render-wgpu   field MemoryStats::canvas
+seaglass-render-wgpu   field MemoryStats::glyph_atlas
+seaglass-render-wgpu   field MemoryStats::image_atlas
+seaglass-render-wgpu   field MemoryStats::image_textures
+seaglass-render-wgpu   field MemoryStats::layers
+seaglass-render-wgpu   field MemoryStats::peak
+seaglass-render-wgpu   field MemoryStats::profiling
+seaglass-render-wgpu   field MemoryStats::total
+seaglass-render-wgpu   field RenderStats::atlas_pages
+seaglass-render-wgpu   field RenderStats::draw_calls
+seaglass-render-wgpu   field RenderStats::frames
+seaglass-render-wgpu   field RenderStats::gradients
+seaglass-render-wgpu   field RenderStats::image_bytes
+seaglass-render-wgpu   field RenderStats::image_draws
+seaglass-render-wgpu   field RenderStats::image_textures
+seaglass-render-wgpu   field RenderStats::image_uploads
+seaglass-render-wgpu   field RenderStats::layer_passes
+seaglass-render-wgpu   field RenderStats::layer_texture_bytes
+seaglass-render-wgpu   field RenderStats::layer_textures
+seaglass-render-wgpu   field RenderStats::memory
+seaglass-render-wgpu   field RenderStats::passes
+seaglass-render-wgpu   field RenderStats::preparations
+seaglass-render-wgpu   field RenderStats::quad_buffer_allocations
+seaglass-render-wgpu   field RenderStats::quad_buffer_bytes
+seaglass-render-wgpu   field RenderStats::quads
+seaglass-render-wgpu   field RenderStats::redrawn
+seaglass-render-wgpu   field RenderStats::shadows
+seaglass-render-wgpu   field RenderStats::text_batches
+seaglass-render-wgpu   field RenderStats::text_renderer_allocations
+seaglass-render-wgpu   fn ImageCache::begin (& mut self)
+seaglass-render-wgpu   fn ImageCache::bind_group (& self, texture : u32) -> & wgpu :: BindGroup
+seaglass-render-wgpu   fn ImageCache::bytes (& self) -> u64
+seaglass-render-wgpu   fn ImageCache::bytes_by_kind (& self) -> (u64, u64)
+seaglass-render-wgpu   fn ImageCache::counts (& self) -> (usize, usize)
+seaglass-render-wgpu   fn ImageCache::ensure (& mut self, device : & wgpu :: Device, queue : & wgpu :: Queue, image : & Image, raster : [u32; 2],) -> Option < Placement>
+seaglass-render-wgpu   fn ImageCache::new (device : & wgpu :: Device, layout : wgpu :: BindGroupLayout, sampler : wgpu :: Sampler,) -> Self
+seaglass-render-wgpu   fn ImageCache::raster_size (& self, image : & Image, rect : Rect, source : Rect, scale : f32) -> [u32; 2]
+seaglass-render-wgpu   fn Renderer::driver_memory (device : & wgpu :: Device) -> Option < DriverMemory>
+seaglass-render-wgpu   fn Renderer::gpu_profile (& self) -> Option < & GpuProfile>
+seaglass-render-wgpu   fn Renderer::new (device : & wgpu :: Device, queue : & wgpu :: Queue, format : wgpu :: TextureFormat) -> Self
+seaglass-render-wgpu   fn Renderer::profiling (& self) -> bool
+seaglass-render-wgpu   fn Renderer::render (& mut self, device : & wgpu :: Device, queue : & wgpu :: Queue, target : & wgpu :: TextureView, physical_size : [u32; 2], scale : f32, scene : & Scene, clear : Color,) -> RenderResult < ()>
+seaglass-render-wgpu   fn Renderer::render_cached (& mut self, device : & wgpu :: Device, queue : & wgpu :: Queue, target : & wgpu :: TextureView, physical_size : [u32; 2], scale : f32, scene : & Scene, clear : Color, scene_changed : bool, damage : & [Rect],) -> RenderResult < ()>
+seaglass-render-wgpu   fn Renderer::reset_peak (& mut self)
+seaglass-render-wgpu   fn Renderer::set_custom_draw (& mut self, id : u64, draw : Option < CustomDrawFn>)
+seaglass-render-wgpu   fn Renderer::set_image_budget (& mut self, bytes : u64)
+seaglass-render-wgpu   fn Renderer::set_profiling (& mut self, enabled : bool)
+seaglass-render-wgpu   fn Renderer::stats (& self) -> RenderStats
+seaglass-render-wgpu   fn Renderer::text_system (& mut self) -> & mut TextSystem
+seaglass-render-wgpu   fn Renderer::timestamps_supported (& self) -> bool
+seaglass-render-wgpu   fn Renderer::with_text_system (device : & wgpu :: Device, queue : & wgpu :: Queue, format : wgpu :: TextureFormat, text_system : TextSystem,) -> Self
+seaglass-render-wgpu   fn Timestamps::bytes (& self) -> u64
+seaglass-render-wgpu   fn Timestamps::collect (& mut self, device : & wgpu :: Device)
+seaglass-render-wgpu   fn Timestamps::new (device : & wgpu :: Device, queue : & wgpu :: Queue) -> Self
+seaglass-render-wgpu   fn Timestamps::resolve (& mut self, device : & wgpu :: Device, encoder : & mut wgpu :: CommandEncoder, frame : u64, labels : Vec < String>,) -> usize
+seaglass-render-wgpu   fn Timestamps::submitted (& mut self, slot : usize)
+seaglass-render-wgpu const MAX_GRADIENT_STOPS
+seaglass-render-wgpu const MAX_TIMED_PASSES
+seaglass-render-wgpu struct CustomDraw
+seaglass-render-wgpu struct DriverMemory
+seaglass-render-wgpu struct GpuPassTime
+seaglass-render-wgpu struct GpuProfile
+seaglass-render-wgpu struct MemoryStats
+seaglass-render-wgpu struct RenderStats
+seaglass-render-wgpu struct Renderer
+seaglass-render-wgpu type CustomDrawFn
+seaglass-render-wgpu type RenderResult
+seaglass-render-wgpu use profile :: { DriverMemory, GpuPassTime, GpuProfile, MAX_TIMED_PASSES, MemoryStats }
+seaglass-render-wgpu use seaglass_text :: TextSystem
+seaglass-render-wgpu use wgpu
+seaglass-render-cpu   field CpuStats::frames
+seaglass-render-cpu   field CpuStats::glyphs
+seaglass-render-cpu   field CpuStats::layers
+seaglass-render-cpu   field CpuStats::redrawn
+seaglass-render-cpu   field CpuStats::render
+seaglass-render-cpu   fn CpuRenderer::new () -> Self
+seaglass-render-cpu   fn CpuRenderer::render (& mut self, physical_size : [u32; 2], scale : f32, scene : & Scene, clear : Color,) -> & [u8]
+seaglass-render-cpu   fn CpuRenderer::render_damaged (& mut self, physical_size : [u32; 2], scale : f32, scene : & Scene, clear : Color, damage : & [Rect],) -> & [u8]
+seaglass-render-cpu   fn CpuRenderer::stats (& self) -> CpuStats
+seaglass-render-cpu   fn CpuRenderer::text_system (& mut self) -> & mut TextSystem
+seaglass-render-cpu   fn CpuRenderer::with_text_system (text : TextSystem) -> Self
+seaglass-render-cpu const MAX_GRADIENT_STOPS
+seaglass-render-cpu struct CpuRenderer
+seaglass-render-cpu struct CpuStats
+seaglass-winit   field AppOptions::background
+seaglass-winit   field AppOptions::caret_movement
+seaglass-winit   field AppOptions::decorations
+seaglass-winit   field AppOptions::devtools
+seaglass-winit   field AppOptions::direction
+seaglass-winit   field AppOptions::frame_limit
+seaglass-winit   field AppOptions::gpu
+seaglass-winit   field AppOptions::graphics
+seaglass-winit   field AppOptions::placement
+seaglass-winit   field AppOptions::reduced_motion
+seaglass-winit   field AppOptions::resizable
+seaglass-winit   field AppOptions::size
+seaglass-winit   field AppOptions::stylesheet
+seaglass-winit   field AppOptions::theme
+seaglass-winit   field AppOptions::title
+seaglass-winit   field GraphicsOptions::backend
+seaglass-winit   field GraphicsOptions::max_resource_bindings
+seaglass-winit   field GraphicsOptions::maximum_frame_latency
+seaglass-winit   field GraphicsOptions::memory_policy
+seaglass-winit   field SavedWindow::height
+seaglass-winit   field SavedWindow::width
+seaglass-winit   field SavedWindow::x
+seaglass-winit   field SavedWindow::y
+seaglass-winit   fn DirectionChoice::resolve (self) -> seaglass_core :: Direction
+seaglass-winit   fn GpuSetup::new (setup : impl FnMut (& mut Renderer) + Send + 'static) -> Self
+seaglass-winit   fn ImageFiles::deliver (& mut self, context : & mut Context)
+seaglass-winit   fn ImageFiles::new (wake : WakeHandle) -> Self
+seaglass-winit   fn ImageFiles::request (& mut self, context : & mut Context, changed : bool)
+seaglass-winit   fn Poller::changed (& mut self, path : & std :: path :: Path) -> Option < Result < Vec < u8>, String>>
+seaglass-winit   fn Poller::stamp_changed (& mut self, path : & std :: path :: Path) -> bool
+seaglass-winit   variant DirectionChoice::Auto
+seaglass-winit   variant DirectionChoice::Ltr
+seaglass-winit   variant DirectionChoice::Rtl
+seaglass-winit   variant GpuMemoryPolicy::Balanced
+seaglass-winit   variant GpuMemoryPolicy::Compact
+seaglass-winit   variant GraphicsBackend::Auto
+seaglass-winit   variant GraphicsBackend::Cpu
+seaglass-winit   variant GraphicsBackend::Direct3D12
+seaglass-winit   variant GraphicsBackend::Metal
+seaglass-winit   variant GraphicsBackend::OpenGl
+seaglass-winit   variant GraphicsBackend::Vulkan
+seaglass-winit   variant Placement::Centered
+seaglass-winit   variant Placement::Named
+seaglass-winit   variant Placement::System
+seaglass-winit   variant Placement::WithOwner
+seaglass-winit   variant ThemeChoice::Fixed
+seaglass-winit   variant ThemeChoice::System
+seaglass-winit const STATE_ENV
+seaglass-winit const STOP_ENV
+seaglass-winit enum DirectionChoice
+seaglass-winit enum GpuMemoryPolicy
+seaglass-winit enum GraphicsBackend
+seaglass-winit enum Placement
+seaglass-winit enum ThemeChoice
+seaglass-winit fn active () -> bool
+seaglass-winit fn locale_direction (locale : & str) -> seaglass_core :: Direction
+seaglass-winit fn run < A : App> (options : AppOptions, app : A) -> Result < ()>
+seaglass-winit fn run_with < S : 'static> (options : AppOptions, state : S, view : impl Fn (& S, & mut Ui < '_, Action < S>>) + 'static,) -> Result < ()>
+seaglass-winit fn saved_state () -> Option < String>
+seaglass-winit struct AppOptions
+seaglass-winit struct GpuSetup
+seaglass-winit struct GraphicsOptions
+seaglass-winit struct SavedWindow
+seaglass-winit use graphics :: { GpuMemoryPolicy, GraphicsBackend, GraphicsOptions }
+seaglass-winit use seaglass_core :: { Mailbox, MessageSender }
+seaglass-testing   fn Harness < A>::app (size : Size, app : A) -> Self
+seaglass-testing   fn Harness < A>::app_mut (& mut self) -> & mut A
+seaglass-testing   fn Harness < A>::send (& mut self, message : A :: Message) -> FrameStats
+seaglass-testing   fn Harness < A>::state_mut (& mut self) -> & mut A
+seaglass-testing   fn Harness < S>::action (& mut self, id : NodeId, action : Action) -> bool
+seaglass-testing   fn Harness < S>::by_label (& self, label : & str) -> NodeId
+seaglass-testing   fn Harness < S>::click (& mut self, id : NodeId) -> FrameStats
+seaglass-testing   fn Harness < S>::context (& self) -> & Context
+seaglass-testing   fn Harness < S>::event (& mut self, event : Event) -> bool
+seaglass-testing   fn Harness < S>::find (& self, path : & [& str]) -> NodeId
+seaglass-testing   fn Harness < S>::focus (& mut self, id : NodeId) -> FrameStats
+seaglass-testing   fn Harness < S>::hover (& mut self, id : NodeId) -> FrameStats
+seaglass-testing   fn Harness < S>::path (& self, id : NodeId) -> String
+seaglass-testing   fn Harness < S>::press (& mut self, key : Key) -> FrameStats
+seaglass-testing   fn Harness < S>::press_shift (& mut self, key : Key) -> FrameStats
+seaglass-testing   fn Harness < S>::query_label (& self, label : & str) -> Option < NodeId>
+seaglass-testing   fn Harness < S>::resize (& mut self, size : Size) -> FrameStats
+seaglass-testing   fn Harness < S>::run (& mut self) -> FrameStats
+seaglass-testing   fn Harness < S>::set_now (& mut self, now : std :: time :: Duration)
+seaglass-testing   fn Harness < S>::snapshot_accessibility (& self) -> String
+seaglass-testing   fn Harness < S>::snapshot_layout (& self) -> String
+seaglass-testing   fn Harness < S>::snapshot_scene (& self) -> String
+seaglass-testing   fn Harness < S>::snapshot_tree (& self) -> String
+seaglass-testing   fn Harness < S>::state (& self) -> & S
+seaglass-testing   fn Harness < S>::stats (& self) -> FrameStats
+seaglass-testing   fn Harness < S>::type_text (& mut self, text : & str) -> FrameStats
+seaglass-testing fn assert_snapshot (dir : impl AsRef < Path>, name : & str, actual : & str)
+seaglass-testing struct Harness
+seaglass-devtools   field EventRecord::description
+seaglass-devtools   field EventRecord::frame
+seaglass-devtools   field EventRecord::handled
+seaglass-devtools   field EventRecord::sequence
+seaglass-devtools   field FrameRecord::draw_calls
+seaglass-devtools   field FrameRecord::gpu
+seaglass-devtools   field FrameRecord::gpu_memory
+seaglass-devtools   field FrameRecord::render
+seaglass-devtools   field FrameRecord::stats
+seaglass-devtools   field FrameRecord::total
+seaglass-devtools   field GpuSnapshot::adapter
+seaglass-devtools   field GpuSnapshot::draw_calls
+seaglass-devtools   field GpuSnapshot::driver
+seaglass-devtools   field GpuSnapshot::memory
+seaglass-devtools   field GpuSnapshot::memory_peak
+seaglass-devtools   field GpuSnapshot::passes
+seaglass-devtools   field GpuSnapshot::quads
+seaglass-devtools   field GpuSnapshot::render_passes
+seaglass-devtools   field GpuSnapshot::software
+seaglass-devtools   field GpuSnapshot::text_batches
+seaglass-devtools   field GpuSnapshot::timestamps
+seaglass-devtools   field InspectedNode::depth
+seaglass-devtools   field InspectedNode::details
+seaglass-devtools   field InspectedNode::snapshot
+seaglass-devtools   field Inspector::show_damage
+seaglass-devtools   field Inspector::show_repaints
+seaglass-devtools   field Inspector::tab
+seaglass-devtools   field InspectorModel::damage
+seaglass-devtools   field InspectorModel::diagnostics
+seaglass-devtools   field InspectorModel::events
+seaglass-devtools   field InspectorModel::export_path
+seaglass-devtools   field InspectorModel::focused
+seaglass-devtools   field InspectorModel::frames
+seaglass-devtools   field InspectorModel::gpu
+seaglass-devtools   field InspectorModel::hovered
+seaglass-devtools   field InspectorModel::layers
+seaglass-devtools   field InspectorModel::memory
+seaglass-devtools   field InspectorModel::nodes
+seaglass-devtools   field InspectorModel::root
+seaglass-devtools   field InspectorModel::size
+seaglass-devtools   field InspectorModel::state
+seaglass-devtools   field InspectorModel::title
+seaglass-devtools   field InspectorModel::viewport
+seaglass-devtools   field InspectorModel::warnings
+seaglass-devtools   field InspectorResponse::export_csv
+seaglass-devtools   field InspectorResponse::focus
+seaglass-devtools   field LayerRow::bounds
+seaglass-devtools   field LayerRow::depth
+seaglass-devtools   field LayerRow::opacity
+seaglass-devtools   field LayerRow::primitives
+seaglass-devtools   field LayerRow::transform
+seaglass-devtools   fn FrameRecord::csv_row (& self) -> String
+seaglass-devtools   fn GpuSnapshot::memory_total (& self) -> u64
+seaglass-devtools   fn Inspector::overlay (& self, model : & InspectorModel) -> Vec < Primitive>
+seaglass-devtools   fn Inspector::selected (& self) -> Option < NodeId>
+seaglass-devtools   fn Inspector::showing (tab : Tab) -> Self
+seaglass-devtools   fn Inspector::sync (& mut self, model : & InspectorModel)
+seaglass-devtools   fn Inspector::update (& mut self, message : InspectorMsg, model : & InspectorModel) -> InspectorResponse
+seaglass-devtools   fn Inspector::view (& self, ui : & mut Ui < '_, InspectorMsg>, model : & InspectorModel)
+seaglass-devtools   fn InspectorModel::capture (context : & Context, title : & str, size : Size, recorder : & Recorder) -> Self
+seaglass-devtools   fn InspectorModel::node (& self, id : NodeId) -> Option < & InspectedNode>
+seaglass-devtools   fn InspectorModel::path (& self, id : NodeId) -> String
+seaglass-devtools   fn Recorder::csv (& self) -> String
+seaglass-devtools   fn Recorder::event (& mut self, frame : u64, description : String, handled : bool)
+seaglass-devtools   fn Recorder::events (& self) -> & VecDeque < EventRecord>
+seaglass-devtools   fn Recorder::frame (& mut self, stats : FrameStats, render : Duration, total : Duration)
+seaglass-devtools   fn Recorder::frames (& self) -> & VecDeque < FrameRecord>
+seaglass-devtools   fn Recorder::gpu (& mut self, snapshot : GpuSnapshot, completed : Option < (u64, Duration)>)
+seaglass-devtools   fn Recorder::gpu_snapshot (& self) -> Option < & GpuSnapshot>
+seaglass-devtools   fn Recorder::new (capacity : usize) -> Self
+seaglass-devtools   variant InspectorMsg::Damage
+seaglass-devtools   variant InspectorMsg::Events
+seaglass-devtools   variant InspectorMsg::ExportCsv
+seaglass-devtools   variant InspectorMsg::Focus
+seaglass-devtools   variant InspectorMsg::Frames
+seaglass-devtools   variant InspectorMsg::Repaints
+seaglass-devtools   variant InspectorMsg::ShowNode
+seaglass-devtools   variant InspectorMsg::Tab
+seaglass-devtools   variant InspectorMsg::Tree
+seaglass-devtools   variant Tab::Accessibility
+seaglass-devtools   variant Tab::Diagnostics
+seaglass-devtools   variant Tab::Events
+seaglass-devtools   variant Tab::Frames
+seaglass-devtools   variant Tab::Gpu
+seaglass-devtools   variant Tab::Scene
+seaglass-devtools   variant Tab::State
+seaglass-devtools   variant Tab::Tree
+seaglass-devtools enum InspectorMsg
+seaglass-devtools enum Tab
+seaglass-devtools struct EventRecord
+seaglass-devtools struct FrameRecord
+seaglass-devtools struct GpuSnapshot
+seaglass-devtools struct InspectedNode
+seaglass-devtools struct Inspector
+seaglass-devtools struct InspectorModel
+seaglass-devtools struct InspectorResponse
+seaglass-devtools struct LayerRow
+seaglass-devtools struct Recorder
+seaglass-image   fn Loader::finished (& self) -> impl Iterator < Item = (PathBuf, Result < Image, String>)> + '_
+seaglass-image   fn Loader::new (done : impl Fn () + Send + 'static) -> Self
+seaglass-image   fn Loader::request (& self, path : PathBuf)
+seaglass-image fn decode (bytes : & [u8]) -> Result < Image, String>
+seaglass-image fn load (path : & Path) -> Result < Image, String>
+seaglass-image struct Loader
+seaglass-win32   fn Caption::set_maximize (& self, button : Option < (i32, i32, i32, i32)>)
+seaglass-win32   fn Caption::take (& self) -> Vec < CaptionEvent>
+seaglass-win32   variant CaptionEvent::Hover
+seaglass-win32   variant CaptionEvent::Left
+seaglass-win32 enum CaptionEvent
+seaglass-win32 fn attach (window : isize) -> Option < Caption>
+seaglass-win32 struct Caption

@@ -37,7 +37,7 @@ The complication is that the window a drag starts in keeps the pointer while the
 ## Validation
 
 - Three clipboard tests in the core: a copy reaches the host and what the host reads reaches the view, a clip carries every form at once, and copying from inside a container disturbs nothing.
-- One opt-in test takes over the real system clipboard: `cargo test -p rust-gui-winit --features images -- --ignored` writes a half-transparent image and reads it back with its premultiplication restored, then shows private bytes surviving while the clipboard is still ours and vanishing when something else copies.
+- One opt-in test takes over the real system clipboard: `cargo test -p seaglass-winit --features images -- --ignored` writes a half-transparent image and reads it back with its premultiplication restored, then shows private bytes surviving while the clipboard is still ours and vanishing when something else copies.
 - Two core tests for the drag: one carries a payload from one context to another, drops it, and hears the outcome once in the window it came from; the other takes an adopted drag back without ending it.
 - `scripts/test-cross-window-drag.ps1` does it for real. It opens the application workbench and its details window, puts them side by side, selects a ticket and drags it across with synthetic mouse input:
 

@@ -9,16 +9,16 @@ Implemented on 2026-09-21. The core knows how to ask for text and nothing about 
 ## Run
 
 ```powershell
-cargo run -p rust-gui --example localization --release
-cargo run -p rust-gui --example localization --release -- --locale cs-CZ
+cargo run -p seaglass --example localization --release
+cargo run -p seaglass --example localization --release -- --locale cs-CZ
 ```
 
-Three catalogs under `crates/rust-gui/examples/locales`, a language switch, plurals, and framework controls that follow the language. German leaves one key untranslated to show the fallback.
+Three catalogs under `crates/seaglass/examples/locales`, a language switch, plurals, and framework controls that follow the language. German leaves one key untranslated to show the fallback.
 
 ## Use
 
 ```rust
-let mut messages = rust_gui::fluent::FluentMessages::new("cs-CZ", "en")?;   // tries cs-CZ, cs, en
+let mut messages = seaglass::fluent::FluentMessages::new("cs-CZ", "en")?;   // tries cs-CZ, cs, en
 messages.load_dir("locales")?;                         // locales/cs.ftl, locales/en/*.ftl, ...
 ui.set_messages(Some(Box::new(messages)));             // at start, or later to switch language
 
@@ -34,7 +34,7 @@ ui.label(ui.tr_args("files", &[("count", 3.into())])); // "Vybrány 3 soubory"
 | Lookup | `Ui::tr(key)`, `Ui::tr_args(key, args)`, `Context::tr`. The installed messages answer first, then the framework's built-in English, and otherwise the key itself is shown, which makes a missing text visible without breaking the app. |
 | Missing keys | `Context::missing_messages()` lists each key that had no text anywhere, in first-seen order, at most 256, since the messages were last installed. |
 | Installing and switching | `Ui::set_messages(Some(..))` from the view, or `Context::set_messages` from a host. The change applies after the declaration that asked, everything repaints, and the host declares again before presenting. `Ui::locale()` and `Context::locale()` give the tag, `en` without messages. |
-| `rust-gui-fluent` (`rust_gui::fluent`, feature `fluent`, on by default) | `FluentMessages::new(locale, fallback)` builds the chain: the locale, its bare language, the fallback. `add(locale, source)` adds a catalog to one locale of the chain, later ones overriding earlier ones key by key, and returns false for a locale outside the chain so a loader can offer every file it has. `load_dir(dir)` reads `<dir>/<locale>.ftl` and `<dir>/<locale>/*.ftl` in name order for each locale of the chain. |
+| `seaglass-fluent` (`seaglass::fluent`, feature `fluent`, on by default) | `FluentMessages::new(locale, fallback)` builds the chain: the locale, its bare language, the fallback. `add(locale, source)` adds a catalog to one locale of the chain, later ones overriding earlier ones key by key, and returns false for a locale outside the chain so a loader can offer every file it has. `load_dir(dir)` reads `<dir>/<locale>.ftl` and `<dir>/<locale>/*.ftl` in name order for each locale of the chain. |
 | Errors | `FluentError` has the locale, the file, the line where the broken entry starts and the parser's message, and prints as `file:line: message`. A tag that is not a language tag is refused. |
 | Plurals | Fluent's CLDR plural rules: Czech one, few and other are tested. |
 | Isolation marks | Off by default. Fluent normally wraps arguments in Unicode directional isolates, which are right for mixed-direction text but show as boxes in fonts that lack them; `FluentMessages::isolating(true)` turns them on. |
@@ -48,9 +48,9 @@ Implemented on 2026-09-21. Every text the framework itself shows or announces is
 
 | Piece | Contract |
 | --- | --- |
-| `BUILTIN_MESSAGES` (core) | Twenty-seven keys, all starting with `rust-gui-`: toast dismiss, the number input's buttons and "Enter a number.", the grid's header menu, resize and filter names, the property grid's columns, group and reset tooltips, the splitter and floating panel names, tab close and the find bar. Arguments are written `{ $name }` as in Fluent; the core substitutes them itself for the built-in English. |
+| `BUILTIN_MESSAGES` (core) | Twenty-seven keys, all starting with `seaglass-`: toast dismiss, the number input's buttons and "Enter a number.", the grid's header menu, resize and filter names, the property grid's columns, group and reset tooltips, the splitter and floating panel names, tab close and the find bar. Arguments are written `{ $name }` as in Fluent; the core substitutes them itself for the built-in English. |
 | Overriding | A catalog that defines one of these keys wins, in any language including English. |
-| Shipped translations | `rust_gui_fluent::FRAMEWORK_CATALOGS` holds Czech and German. `FluentMessages::new` adds them first when the chain contains that language, so app catalogs still override them. Other languages fall back to English until someone writes the file. |
+| Shipped translations | `seaglass_fluent::FRAMEWORK_CATALOGS` holds Czech and German. `FluentMessages::new` adds them first when the chain contains that language, so app catalogs still override them. Other languages fall back to English until someone writes the file. |
 | Accessible names made by the engine | "Splitter", "Floating panel" and the two floating panel handles are translated where node snapshots are built, because a node alone cannot reach the messages. |
 
 Not localizable: the default `GridModel::set_cell` error, "This grid is read-only.", which a trait default cannot look up; a model that is read-only by accident shows it in English.
@@ -79,7 +79,7 @@ ui.label(tr!(ui, "files", count = files.len()));       // expands to ui.tr_args(
 ```
 
 ```toml
-[package.metadata.rust-gui]
+[package.metadata.seaglass]
 messages = "locales/en.ftl"          # the default-locale catalog, relative to this Cargo.toml
 ```
 
@@ -88,8 +88,8 @@ messages = "locales/en.ftl"          # the default-locale catalog, relative to t
 | The check | The macro reads the catalog named in the manifest of the crate being compiled and parses it with `fluent-syntax`. An unknown key, an argument the message does not use and a variable the call does not pass are errors, each reported on the offending token. Variables of messages that a message refers to count as its own. |
 | Rebuilds | The expansion includes the catalog by path, so editing it recompiles the crate; verified by touching the file. |
 | Without the manifest entry | Nothing is checked and the macro is just the shorter spelling, so it is safe in crates that have no catalog. |
-| The framework's keys | Keys starting with `rust-gui-` are accepted unchecked: they live in the core, not in an app's catalog. |
-| Where it lives | In `rust-gui-derive`, re-exported as `rust_gui::tr` behind the default `derive` feature. It adds `fluent-syntax`, which the Fluent crate already built. |
+| The framework's keys | Keys starting with `seaglass-` are accepted unchecked: they live in the core, not in an app's catalog. |
+| Where it lives | In `seaglass-derive`, re-exported as `seaglass::tr` behind the default `derive` feature. It adds `fluent-syntax`, which the Fluent crate already built. |
 
 One new test in the facade crate, whose own manifest names the example's English catalog: a plain key, an argument from an expression, a trailing comma and a framework key, all resolving in Czech at run time. The four kinds of compile error were checked by compiling a throwaway file and reading the messages; there is no compile-fail test suite. The localization example uses the macro for its plural line and its toast.
 
@@ -100,7 +100,7 @@ Limits: only the default-locale catalog is checked, so another language can stil
 Implemented on 2026-09-21. The core asks a `LocaleFormat` for numbers, dates and times, and a new opt-in crate answers with CLDR data. This completes milestone 11.
 
 ```rust
-ui.set_format(rust_gui::icu::IcuFormat::new("cs-CZ").ok().map(|format| Box::new(format) as _));
+ui.set_format(seaglass::icu::IcuFormat::new("cs-CZ").ok().map(|format| Box::new(format) as _));
 ui.format_number(1_234_567.891, 2);                                        // 1 234 567,89
 ui.format_date(Date { year: 2026, month: 9, day: 21 }, DateStyle::Long);   // 21. září 2026
 ```
@@ -111,7 +111,7 @@ ui.format_date(Date { year: 2026, month: 9, day: 21 }, DateStyle::Long);   // 21
 | Installing | `Ui::set_format` and `Context::set_format`, exactly like messages: applied after the declaration, everything repaints, the host declares again. The two usually change together. |
 | Without one | Plain numbers without grouping, a decimal comma accepted when typing, `2026-09-21` and `14:05`. Nothing changes for apps that do not opt in. |
 | Widgets | `Ui::number_input` and the grid's number cells show and read numbers in the installed locale. `NumberOptions::format_in` and `parse_in` take the context; `format` and `parse` stay plain. |
-| `rust-gui-icu` (`rust_gui::icu`, feature `icu`, off by default) | `IcuFormat::new(tag)`, also with extensions such as `th-u-nu-thai`. Numbers group and use native digits as CLDR says; dates in three lengths; times with or without seconds in the locale's 12 or 24 hour convention. |
+| `seaglass-icu` (`seaglass::icu`, feature `icu`, off by default) | `IcuFormat::new(tag)`, also with extensions such as `th-u-nu-thai`. Numbers group and use native digits as CLDR says; dates in three lengths; times with or without seconds in the locale's 12 or 24 hour convention. |
 | Parsing | ICU4X has no number parser, so the crate learns the locale's decimal and grouping separators from its own output and accepts what it prints, plus what people type: an ordinary space or no grouping, a typographic minus, native digits, invisible direction marks, exponents. Anything else is `None`. |
 | Cost | About one megabyte in the localization example (16.3 MB against 15.3 MB), because only the patterns used are linked. The dependency tree is large, which is why the feature is off by default. |
 

@@ -9,10 +9,10 @@ Implemented on 2026-09-21. Images are a scene-level value that any widget can dr
 ## Run
 
 ```powershell
-cargo run -p rust-gui --example images --release
+cargo run -p seaglass --example images --release
 ```
 
-The example shows one PNG in the four fit modes, SVG icons that take the text colour, one SVG badge at three sizes (each rasterized sharp), pixels made in code blending over a panel, and the placeholder of a missing file. Edit or replace a file under `crates/rust-gui/examples/assets` while it runs and it reloads within half a second.
+The example shows one PNG in the four fit modes, SVG icons that take the text colour, one SVG badge at three sizes (each rasterized sharp), pixels made in code blending over a panel, and the placeholder of a missing file. Edit or replace a file under `crates/seaglass/examples/assets` while it runs and it reloads within half a second.
 
 ## Use
 
@@ -30,7 +30,7 @@ ui.image_file(
 ui.image_file("search", "assets/search.svg", ImageOptions::default().tint(ImageTint::Foreground));
 
 // Pixels or a decoded value the app owns.
-let logo = rust_gui::image::decode(include_bytes!("logo.png"))?;   // once, not per frame
+let logo = seaglass::image::decode(include_bytes!("logo.png"))?;   // once, not per frame
 ui.image("logo", &logo, ImageOptions::new("Acme"));
 ```
 
@@ -47,7 +47,7 @@ ui.image("logo", &logo, ImageOptions::new("Acme"));
 | `Ui::image_file(key, path, options)` | Asks the host for the file. Until it arrives the node paints a placeholder box (give the style a size to keep the layout still); once it arrives the node sizes like `Ui::image`. If the first load fails the placeholder stays and shows `alt`; if a reload fails the last good image stays. `Context::image_error(path)` holds the reason. |
 | Host protocol | `Context::image_paths()` lists what the last declaration asked for, `image_known(path)` whether it was delivered, `set_image_file(path, Result<Image, String>)` delivers. Test harnesses and other hosts call these directly. Decoded files that no declaration asks for any more are kept until they exceed 64 MiB, then dropped together. |
 | Desktop host | One background thread per window, started by the first image file, reads and decodes; the event loop is woken when a file is done and the next frame shows it. Files are checked for a new modification time on the same 500 ms tick as stylesheets and watched files. Without the `images` feature every image file reports an error. |
-| `rust-gui-image` (`rust_gui::image`, feature `images`, on by default) | `decode(bytes)`, `load(path)`, `Loader`. PNG, JPEG, WebP and GIF (first frame) through the `image` crate with its default allocation limits and EXIF orientation applied; anything else is tried as SVG (also `.svgz`) through `resvg`. System fonts are scanned once and only for SVGs that contain text. |
+| `seaglass-image` (`seaglass::image`, feature `images`, on by default) | `decode(bytes)`, `load(path)`, `Loader`. PNG, JPEG, WebP and GIF (first frame) through the `image` crate with its default allocation limits and EXIF orientation applied; anything else is tried as SVG (also `.svgz`) through `resvg`. System fonts are scanned once and only for SVGs that contain text. |
 
 ## Renderer
 

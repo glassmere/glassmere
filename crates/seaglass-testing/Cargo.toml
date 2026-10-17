@@ -1,0 +1,18 @@
+[package]
+name = "seaglass-testing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+readme.workspace = true
+description = "Headless harness, semantic finders and text snapshots for seaglass UI tests."
+keywords = ["gui", "testing", "accessibility", "snapshot", "ui"]
+categories = ["development-tools::testing", "gui"]
+
+[dependencies]
+seaglass-core.workspace = true
+seaglass-scene.workspace = true
+
+[lints]
+workspace = true

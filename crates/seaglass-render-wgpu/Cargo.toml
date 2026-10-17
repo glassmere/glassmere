@@ -1,0 +1,22 @@
+[package]
+name = "seaglass-render-wgpu"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "GPU renderer for seaglass scenes, on wgpu."
+
+[dependencies]
+seaglass-scene.workspace = true
+seaglass-text.workspace = true
+wgpu.workspace = true
+glyphon.workspace = true
+bytemuck.workspace = true
+
+[dev-dependencies]
+pollster.workspace = true
+
+[lints]
+workspace = true
+

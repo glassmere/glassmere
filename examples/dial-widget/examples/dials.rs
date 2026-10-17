@@ -2,7 +2,7 @@
 //! framework beyond its published API. Drag one, turn the wheel over one, or
 //! tab to one and use the arrow keys.
 use dial_widget::{Dial, DialMsg};
-use rust_gui::{App, AppOptions, Color, Effects, Label, Length, Size, Style, TextWrap, Ui, run};
+use seaglass::{App, AppOptions, Color, Effects, Label, Length, Size, Style, TextWrap, Ui, run};
 
 #[derive(Clone, Debug)]
 enum Msg {

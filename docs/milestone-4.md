@@ -5,8 +5,8 @@ Implemented on 2026-09-20. The application workbench combines virtualized lists,
 ## Run
 
 ```sh
-cargo run -p rust-gui --example application --release
-cargo run -p rust-gui --example application -- --smoke
+cargo run -p seaglass --example application --release
+cargo run -p seaglass --example application -- --smoke
 ```
 
 The workbench shows 50,000 tickets in a list and a sortable grid, a tree of areas, four commands, a drag source with two drop targets and a details window. A worker thread creates a ticket every two seconds through the mailbox. `--smoke` opens both windows, lets them present a few frames and exits when the last one closes.
@@ -52,8 +52,8 @@ Lists, trees and grids publish `ListBox`/`Option`, `Tree`/`TreeItem` and `Grid`/
 cargo fmt --all -- --check
 cargo test --workspace --all-targets --all-features --locked
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo check -p rust-gui --no-default-features --locked
-cargo run -p rust-gui --example application -- --smoke
+cargo check -p seaglass --no-default-features --locked
+cargo run -p seaglass --example application -- --smoke
 ```
 
 Locally verified with Rust 1.98.0 on Windows:

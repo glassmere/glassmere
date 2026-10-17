@@ -12,7 +12,7 @@ Implemented on 2026-09-22. Six coverage rows were waiting on numbers rather than
 | `Context::memory` | What the window holds on the CPU: nodes and their flat size, text and keys, scene primitives, paint caches and decoded images. It walks the tree, so it is for an open inspector rather than for every frame. It says what it cannot see: the layout engine's arena, the allocator's overhead, and the glyph atlas, which lives on the GPU behind glyphon. |
 | Inspector, Scene tab | Those numbers, and the layers of the last frame with their bounds, opacity, transform and primitive count. A layer costs a texture and a pass, so a view that makes many of them is worth seeing. |
 | Profiler columns | Shaping joins declare, layout, paint, render and GPU in the Frames tab and the summary, and the CSV export gained shaping, elements and element bytes. |
-| `RUST_GUI_STARTUP` | Prints how far into startup each step was reached, and how long the first window took to show something. |
+| `SEAGLASS_STARTUP` | Prints how far into startup each step was reached, and how long the first window took to show something. |
 | `bench` example | The four cases the feature list names, headless. |
 
 The overlay checkboxes moved to a row of their own: with seven tabs there was no width left beside the strip, and they were being pushed off the edge.

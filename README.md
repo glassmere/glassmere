@@ -1,4 +1,4 @@
-# Rust GUI framework
+# Seaglass
 
 A native Rust GUI framework prototype: immediate-style declarations over a retained tree, with stable widget identities, selective invalidation, text editing and standard controls.
 
@@ -21,7 +21,7 @@ Based on the [shared architecture discussion](https://chatgpt.com/share/6aaf8bcf
 Install a current stable Rust toolchain and the native build prerequisites for your OS, then:
 
 ```sh
-cargo run -p rust-gui --example counter
+cargo run -p seaglass --example counter
 ```
 
 The playground includes a counter, disabled reset button, conditional content, and keyed reordering. Click buttons or use Tab / Shift+Tab followed by Enter or Space. The host sleeps between events.
@@ -29,13 +29,13 @@ The playground includes a counter, disabled reset button, conditional content, a
 The second milestone has its own workbench with 250 scrollable rows, independent components, a custom control and worker-thread updates:
 
 ```sh
-cargo run -p rust-gui --example workbench --release
+cargo run -p seaglass --example workbench --release
 ```
 
 The third milestone adds a text and controls gallery:
 
 ```sh
-cargo run -p rust-gui --example controls --release
+cargo run -p seaglass --example controls --release
 ```
 
 It demonstrates single-line Unicode editing, selection, clipboard shortcuts, undo/redo, font styles, wrapping, checkboxes, radio buttons, sliders, combo boxes and menus. See [milestone 3](docs/milestone-3.md) for API contracts and current platform limits.
@@ -43,17 +43,17 @@ It demonstrates single-line Unicode editing, selection, clipboard shortcuts, und
 The fourth milestone adds an application workbench with two windows:
 
 ```sh
-cargo run -p rust-gui --example application --release
+cargo run -p seaglass --example application --release
 ```
 
 It shows a virtualized list, tree and sortable grid over 50,000 application-owned rows, commands with shortcuts, drag and drop, a worker mailbox and a details window sharing the main window's GPU device. See [milestone 4](docs/milestone-4.md).
 
-Press F12 in any window to open its inspector: node tree, computed style, accessibility view, event log, frame timings, GPU pass times and memory, and selection/damage/repaint overlays. `RUST_GUI_INSPECT=1` opens it at start. Headless tests use the `rust-gui-testing` harness with semantic finders and text snapshots. See [milestone 5](docs/milestone-5.md) and the [feature coverage](docs/feature-coverage.md) table.
+Press F12 in any window to open its inspector: node tree, computed style, accessibility view, event log, frame timings, GPU pass times and memory, and selection/damage/repaint overlays. `SEAGLASS_INSPECT=1` opens it at start. Headless tests use the `seaglass-testing` harness with semantic finders and text snapshots. See [milestone 5](docs/milestone-5.md) and the [feature coverage](docs/feature-coverage.md) table.
 
 Theming and stylesheets have their own example:
 
 ```sh
-cargo run -p rust-gui --example theming --release
+cargo run -p seaglass --example theming --release
 ```
 
 It follows the OS light/dark preference, switches themes at runtime, inherits text properties, applies per-state overrides, and hot-reloads `examples/theming.style` while running. See [milestone 6a](docs/milestone-6.md).
@@ -61,7 +61,7 @@ It follows the OS light/dark preference, switches themes at runtime, inherits te
 Layout depth has its own example too:
 
 ```sh
-cargo run -p rust-gui --example layout --release
+cargo run -p seaglass --example layout --release
 ```
 
 It shows grid tracks with `repeat` and explicit areas, a form on `[auto, 1fr]` columns, alignment and distribution, aspect-ratio cards bounded by min/max widths and opt-in shrinking. See [milestone 6b](docs/milestone-6.md#milestone-6b-layout-depth).
@@ -69,7 +69,7 @@ It shows grid tracks with `repeat` and explicit areas, a form on `[auto, 1fr]` c
 Dialogs and focus scopes:
 
 ```sh
-cargo run -p rust-gui --example dialogs --release
+cargo run -p seaglass --example dialogs --release
 ```
 
 Modal dialogs with a scrim, nested dialogs, a non-modal panel, arrow-key and remembered focus scopes, and a native modal window that blocks its owner. See [milestone 6c](docs/milestone-6.md#milestone-6c-focus-scopes-and-dialogs).
@@ -77,7 +77,7 @@ Modal dialogs with a scrim, nested dialogs, a non-modal panel, arrow-key and rem
 Tabs, split panes and overlays:
 
 ```sh
-cargo run -p rust-gui --example panes --release
+cargo run -p seaglass --example panes --release
 ```
 
 Closable tabs, nested draggable split panes, tooltips after a hover dwell, a right-click context menu and an anchored popover. See [milestone 6d](docs/milestone-6.md#milestone-6d-tooltips-tabs-split-panes-context-menus-and-popovers).
@@ -85,7 +85,7 @@ Closable tabs, nested draggable split panes, tooltips after a hover dwell, a rig
 Animations:
 
 ```powershell
-cargo run -p rust-gui --example animations --release
+cargo run -p seaglass --example animations --release
 ```
 
 Eased state transitions, enter and exit effects, layout animations and looping keyframes, composited as GPU layers with group opacity and transforms. See [milestone 6e](docs/milestone-6.md#milestone-6e-animations).
@@ -93,7 +93,7 @@ Eased state transitions, enter and exit effects, layout animations and looping k
 Rich text and code editing:
 
 ```powershell
-cargo run -p rust-gui --example editor --release
+cargo run -p seaglass --example editor --release
 ```
 
 Styled rich text with links, and a virtualized code editor over an app-owned rope document with syntect highlighting, find and replace, bracket features, multiple cursors and diagnostics. See milestones [7b](docs/milestone-7.md#milestone-7b-rich-text-and-the-code-editor-foundation) and [7c](docs/milestone-7.md#milestone-7c-code-intelligence).
@@ -101,7 +101,7 @@ Styled rich text with links, and a virtualized code editor over an app-owned rop
 WYSIWYG rich text:
 
 ```powershell
-cargo run -p rust-gui --example richtext --release
+cargo run -p seaglass --example richtext --release
 ```
 
 An editable document of headings, lists, quotes, code blocks and marked text with a toolbar, saved as Markdown. See [milestone 7d](docs/milestone-7.md#milestone-7d-the-wysiwyg-rich-text-editor).
@@ -109,7 +109,7 @@ An editable document of headings, lists, quotes, code blocks and marked text wit
 Hot reload while developing:
 
 ```powershell
-cargo run -p rust-gui-dev -- -p rust-gui --example counter
+cargo run -p seaglass-dev -- -p seaglass --example counter
 ```
 
 Rebuilds and restarts the app when sources change, with its state and window kept; watched files and stylesheets update in place. See [milestone 7g](docs/milestone-7.md#milestone-7g-hot-reload).
@@ -117,7 +117,7 @@ Rebuilds and restarts the app when sources change, with its state and window kep
 Localization:
 
 ```powershell
-cargo run -p rust-gui --example localization --release
+cargo run -p seaglass --example localization --release
 ```
 
 Fluent catalogs, plurals, a language switch while running, framework controls that follow the language, and `tr!` checked at compile time. Add `--features icu` for CLDR numbers and dates. See [milestone 11](docs/milestone-11.md).
@@ -125,7 +125,7 @@ Fluent catalogs, plurals, a language switch while running, framework controls th
 Data grid:
 
 ```powershell
-cargo run -p rust-gui --example grid --release
+cargo run -p seaglass --example grid --release
 ```
 
 Two thousand rows with typed in-place editing, a cell cursor, a filter row, columns the user resizes, reorders, hides and freezes, and sideways scrolling that only creates the columns in view. See [milestone 10](docs/milestone-10.md).
@@ -133,7 +133,7 @@ Two thousand rows with typed in-place editing, a cell cursor, a filter row, colu
 Property grid:
 
 ```powershell
-cargo run -p rust-gui --example properties --release
+cargo run -p seaglass --example properties --release
 ```
 
 A card edited by the grid beside it. See [milestone 9c](docs/milestone-9.md#milestone-9c-property-grid).
@@ -141,7 +141,7 @@ A card edited by the grid beside it. See [milestone 9c](docs/milestone-9.md#mile
 Images:
 
 ```powershell
-cargo run -p rust-gui --example images --release
+cargo run -p seaglass --example images --release
 ```
 
 PNG, JPEG, WebP, GIF and SVG files decoded in the background and reloaded when they change, fit modes, icons tinted with the text colour, and one SVG sharp at every size. See [milestone 8a](docs/milestone-8.md#milestone-8a-images). The file card at the bottom can be dragged out of the window, see [milestone 13a](docs/milestone-13.md).
@@ -149,7 +149,7 @@ PNG, JPEG, WebP, GIF and SVG files decoded in the background and reloaded when t
 Gestures:
 
 ```powershell
-cargo run -p rust-gui --example gestures --release
+cargo run -p seaglass --example gestures --release
 ```
 
 A photo that one finger pans and two fingers pinch and turn; Ctrl with the wheel zooms about the pointer; the two sliders can be dragged at once. `scripts/test-touch.ps1` drives it with injected touch input. See [milestone 13](docs/milestone-13.md).
@@ -157,13 +157,13 @@ A photo that one finger pans and two fingers pinch and turn; Ctrl with the wheel
 Docking:
 
 ```powershell
-cargo run -p rust-gui --example docking --release
+cargo run -p seaglass --example docking --release
 ```
 
 Dockable tab groups in a split tree, drop indicators, floating groups, detached OS windows, a keyboard panel menu and a saved workspace layout. See [milestone 7a](docs/milestone-7.md#milestone-7a-docking).
 
 ```rust
-use rust_gui::{run, App, AppOptions, Button, Effects, Ui};
+use seaglass::{run, App, AppOptions, Button, Effects, Ui};
 
 #[derive(Clone)]
 enum Msg {
@@ -252,19 +252,19 @@ Widgets send messages; `update` changes the state and `view` only reads it. Inpu
 
 | Crate | Responsibility |
 | --- | --- |
-| `rust-gui` | Public facade and runnable example; `desktop` is an optional default feature |
-| `rust-gui-core` | UI builder, components/custom leaves, retained tree, scroll/layout/input, collections, commands, drag/drop, paint caches and semantics |
-| `rust-gui-scene` | Geometry, colors, measurement interface and display list; no platform dependencies |
-| `rust-gui-text` | Fonts, shaping, measuring and text geometry on cosmic-text, shared by the renderers |
-| `rust-gui-render-wgpu` | Ordered GPU rendering, glyph atlas and image atlas |
-| `rust-gui-render-cpu` | The same display list rasterized without a GPU, for screenshots, export and as the host's fallback |
-| `rust-gui-winit` | Native windows, input, worker wakeups and mailboxes, AccessKit mapping, inspector hosting and presentation |
-| `rust-gui-image` | PNG, JPEG, WebP, GIF and SVG decoding and the background loader; `rust_gui::image` behind the default `images` feature |
-| `rust-gui-fluent` | Fluent catalogs for `Ui::tr`, with Czech and German for the framework's own texts; `rust_gui::fluent` behind the default `fluent` feature |
-| `rust-gui-icu` | CLDR numbers, dates and times through ICU4X; `rust_gui::icu` behind the opt-in `icu` feature |
-| `rust-gui-derive` | `#[derive(Properties)]`; `rust_gui::Properties` behind the default `derive` feature |
-| `rust-gui-devtools` | Frame/event recorder, inspector model, views and overlays; no platform dependencies |
-| `rust-gui-testing` | Headless harness, semantic finders and text snapshot assertions for application tests |
+| `seaglass` | Public facade and runnable example; `desktop` is an optional default feature |
+| `seaglass-core` | UI builder, components/custom leaves, retained tree, scroll/layout/input, collections, commands, drag/drop, paint caches and semantics |
+| `seaglass-scene` | Geometry, colors, measurement interface and display list; no platform dependencies |
+| `seaglass-text` | Fonts, shaping, measuring and text geometry on cosmic-text, shared by the renderers |
+| `seaglass-render-wgpu` | Ordered GPU rendering, glyph atlas and image atlas |
+| `seaglass-render-cpu` | The same display list rasterized without a GPU, for screenshots, export and as the host's fallback |
+| `seaglass-winit` | Native windows, input, worker wakeups and mailboxes, AccessKit mapping, inspector hosting and presentation |
+| `seaglass-image` | PNG, JPEG, WebP, GIF and SVG decoding and the background loader; `seaglass::image` behind the default `images` feature |
+| `seaglass-fluent` | Fluent catalogs for `Ui::tr`, with Czech and German for the framework's own texts; `seaglass::fluent` behind the default `fluent` feature |
+| `seaglass-icu` | CLDR numbers, dates and times through ICU4X; `seaglass::icu` behind the opt-in `icu` feature |
+| `seaglass-derive` | `#[derive(Properties)]`; `seaglass::Properties` behind the default `derive` feature |
+| `seaglass-devtools` | Frame/event recorder, inspector model, views and overlays; no platform dependencies |
+| `seaglass-testing` | Headless harness, semantic finders and text snapshot assertions for application tests |
 
 ## Identity and performance
 
@@ -281,7 +281,7 @@ The desktop host probes one graphics backend at a time: Direct3D 12 first on Win
 `AppOptions::graphics` exposes `GraphicsOptions`. Defaults use compact allocation blocks, 4,096 live non-sampler resource bindings and a maximum frame latency of one. Binding count is not widget count; applications with many GPU resources can raise the limit. `GpuMemoryPolicy::Balanced` selects wgpu's general-purpose memory-saving preset. Explicit backend selection overrides `WGPU_BACKEND` and returns an error if unavailable:
 
 ```rust
-use rust_gui::{AppOptions, GraphicsBackend, GraphicsOptions};
+use seaglass::{AppOptions, GraphicsBackend, GraphicsOptions};
 
 let options = AppOptions {
     graphics: GraphicsOptions {
@@ -292,7 +292,7 @@ let options = AppOptions {
 };
 ```
 
-When no adapter can be used at all, the host says so and paints the window with the CPU renderer instead, so the application still runs. `GraphicsBackend::Cpu` or `RUST_GUI_RENDERER=cpu` asks for that path on a working machine. See [milestone 14](docs/milestone-14.md).
+When no adapter can be used at all, the host says so and paints the window with the CPU renderer instead, so the application still runs. `GraphicsBackend::Cpu` or `SEAGLASS_RENDERER=cpu` asks for that path on a working machine. See [milestone 14](docs/milestone-14.md).
 
 On the local RTX 3070, the optimized counter now uses about 67 MiB of private resident RAM versus the original 115 MiB, with 122 MiB of private commit versus 385 MiB. This remains a substantial graphics/driver baseline. See [memory measurements](docs/memory.md) for startup attribution, the 6,000-frame stress run and reproduction steps.
 
@@ -302,26 +302,26 @@ On the local RTX 3070, the optimized counter now uses about 67 MiB of private re
 cargo fmt --all -- --check
 cargo test --workspace --all-targets --all-features --locked
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo check -p rust-gui --no-default-features --locked
-cargo test -p rust-gui-render-wgpu --test gpu -- --ignored --nocapture
-cargo run -p rust-gui --example counter -- --smoke
-cargo run -p rust-gui --example workbench -- --smoke
-cargo run -p rust-gui --example controls -- --smoke
-cargo run -p rust-gui --example application -- --smoke
-RUST_GUI_INSPECT=1 cargo run -p rust-gui --example application -- --smoke
-cargo run -p rust-gui --example theming -- --smoke
-cargo run -p rust-gui --example layout -- --smoke
-cargo run -p rust-gui --example dialogs -- --smoke
-cargo run -p rust-gui --example panes -- --smoke
-cargo run -p rust-gui --example animations -- --smoke
-cargo run -p rust-gui --example docking -- --smoke
-cargo run -p rust-gui --example editor -- --smoke
-cargo run -p rust-gui --example richtext -- --smoke
-cargo run -p rust-gui --example images -- --smoke
-cargo run -p rust-gui --example properties -- --smoke
-cargo run -p rust-gui --example grid -- --smoke
-cargo run -p rust-gui --example localization -- --smoke
-cargo run -p rust-gui-core --example tree_bench --release
+cargo check -p seaglass --no-default-features --locked
+cargo test -p seaglass-render-wgpu --test gpu -- --ignored --nocapture
+cargo run -p seaglass --example counter -- --smoke
+cargo run -p seaglass --example workbench -- --smoke
+cargo run -p seaglass --example controls -- --smoke
+cargo run -p seaglass --example application -- --smoke
+SEAGLASS_INSPECT=1 cargo run -p seaglass --example application -- --smoke
+cargo run -p seaglass --example theming -- --smoke
+cargo run -p seaglass --example layout -- --smoke
+cargo run -p seaglass --example dialogs -- --smoke
+cargo run -p seaglass --example panes -- --smoke
+cargo run -p seaglass --example animations -- --smoke
+cargo run -p seaglass --example docking -- --smoke
+cargo run -p seaglass --example editor -- --smoke
+cargo run -p seaglass --example richtext -- --smoke
+cargo run -p seaglass --example images -- --smoke
+cargo run -p seaglass --example properties -- --smoke
+cargo run -p seaglass --example grid -- --smoke
+cargo run -p seaglass --example localization -- --smoke
+cargo run -p seaglass-core --example tree_bench --release
 ```
 
 The GPU test checks actual pixels for clipping, paint order, text and 2x scaling, plus buffer reuse and DPI invalidation. `--smoke` opens a native window and exits after two presented frames. `--stress --frames 6000` continuously changes the counter, toggles content and reorders keyed labels. Neither requires the optional `diagnostics` feature; memory checkpoints and allocation-policy overrides do. Desktop execution requires a graphical session and system fonts. Linux builds also need the platform development packages required by winit (X11/Wayland and xkbcommon).

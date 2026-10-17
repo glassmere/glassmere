@@ -31,11 +31,11 @@ for (key, message) in tasks.drain(128) { .. }
 | Streams | Many sends per job is the whole of it. A job sending progress and results is two variants of one message type. |
 | Async commands | A command handler calls `tasks.spawn`; there is no separate async command type, because a command that starts a job is a command that calls one function. |
 
-`Mailbox`, `MessageSender` and the new `message_channel` moved from `rust-gui-winit` to `rust-gui-core`, so background work can be tested without a window and `Tasks` can be built on them. `WakeHandle::channel` is unchanged and `WakeHandle::tasks` is its companion; the paths through the facade are the same as before.
+`Mailbox`, `MessageSender` and the new `message_channel` moved from `seaglass-winit` to `seaglass-core`, so background work can be tested without a window and `Tasks` can be built on them. `WakeHandle::channel` is unchanged and `WakeHandle::tasks` is its companion; the paths through the facade are the same as before.
 
 ## Validation
 
-Six tests in `rust-gui-core`:
+Six tests in `seaglass-core`:
 
 - a superseded job cannot reach the view, including with a result already sent and waiting;
 - cancelling stops the job, drops what it had sent, and is visible to the job at its next look;

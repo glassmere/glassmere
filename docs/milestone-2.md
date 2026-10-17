@@ -5,17 +5,17 @@ Implemented on 2026-09-20. The workbench exercises scrolling, application-owned 
 ## Run and verify
 
 ```sh
-cargo run -p rust-gui --example workbench --release
-cargo run -p rust-gui --example workbench --release -- --smoke
+cargo run -p seaglass --example workbench --release
+cargo run -p seaglass --example workbench --release -- --smoke
 cargo test --workspace --all-targets --all-features --locked
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo run -p rust-gui-core --example tree_bench --release --locked
+cargo run -p seaglass-core --example tree_bench --release --locked
 ```
 
 On Windows, build first and then run the native checks:
 
 ```powershell
-cargo build -p rust-gui --examples --release --locked
+cargo build -p seaglass --examples --release --locked
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-desktop.ps1
 ```
 

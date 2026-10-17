@@ -9,10 +9,10 @@ Implemented on 2026-09-21. Every built-in control now paints from a `Theme` of d
 ## Run
 
 ```sh
-cargo run -p rust-gui --example theming --release
+cargo run -p seaglass --example theming --release
 ```
 
-Edit `crates/rust-gui/examples/theming.style` while the window is open; classes and tokens reload within half a second. The Dark/Light buttons switch themes from the view. Start with `RUST_GUI_INSPECT=1` to see resolved fonts, inherited colors, state overrides and unknown-class warnings in the inspector.
+Edit `crates/seaglass/examples/theming.style` while the window is open; classes and tokens reload within half a second. The Dark/Light buttons switch themes from the view. Start with `SEAGLASS_INSPECT=1` to see resolved fonts, inherited colors, state overrides and unknown-class warnings in the inspector.
 
 ```rust
 // Typed classes are plain Rust.
@@ -65,11 +65,11 @@ class danger extends primary { background: #dc2626; foreground: #ffffff }
 cargo fmt --all -- --check
 cargo test --workspace --all-targets --all-features --locked
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo check -p rust-gui --no-default-features --locked
-cargo run -p rust-gui --example theming -- --smoke
+cargo check -p seaglass --no-default-features --locked
+cargo run -p seaglass --example theming -- --smoke
 ```
 
-Windows integration check, after `cargo build -p rust-gui --examples --release --locked`:
+Windows integration check, after `cargo build -p seaglass --examples --release --locked`:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-theming.ps1
@@ -98,7 +98,7 @@ Implemented on 2026-09-21. Containers gain CSS-style grid layout with auto-place
 ## Run
 
 ```sh
-cargo run -p rust-gui --example layout --release
+cargo run -p seaglass --example layout --release
 ```
 
 The example shows a `repeat(3, 1fr)` gallery with a two-column span, a form on `[auto, 1fr]` columns, space-between and baseline rows, 16:9 cards bounded by min/max widths and a row whose children shrink only while a checkbox is on.
@@ -150,8 +150,8 @@ Implemented on 2026-09-21. Focus gains scopes that trap Tab, remember their last
 ## Run
 
 ```sh
-cargo run -p rust-gui --example dialogs --release
-cargo run -p rust-gui --example dialogs --release -- --open   # starts with the confirm dialog open
+cargo run -p seaglass --example dialogs --release
+cargo run -p seaglass --example dialogs --release -- --open   # starts with the confirm dialog open
 ```
 
 The example has a modal confirm dialog with a nested "More options" dialog, a non-modal preferences panel, an arrow-key toolbar scope, a remembered scope and a native modal window.
@@ -196,8 +196,8 @@ Implemented on 2026-09-21. The core gains a clock and wake requests so hosts can
 ## Run
 
 ```sh
-cargo run -p rust-gui --example panes --release
-cargo run -p rust-gui --example panes --release -- --open   # starts with the share popover open
+cargo run -p seaglass --example panes --release
+cargo run -p seaglass --example panes --release -- --open   # starts with the share popover open
 ```
 
 Hover the toolbar for tooltips, right-click the editor (or press Shift+F10 while a control inside it has focus) for a context menu, drag or arrow-key the dividers, and close the closable tabs.
@@ -249,9 +249,9 @@ Implemented on 2026-09-21. Styles gain transitions, enter and exit effects, layo
 ## Run
 
 ```powershell
-cargo run -p rust-gui --example animations --release
-cargo run -p rust-gui --example animations --release -- --open             # starts expanded with three toasts
-cargo run -p rust-gui --example animations --release -- --reduced-motion   # everything jumps to its end state
+cargo run -p seaglass --example animations --release
+cargo run -p seaglass --example animations --release -- --open             # starts expanded with three toasts
+cargo run -p seaglass --example animations --release -- --reduced-motion   # everything jumps to its end state
 ```
 
 ```rust

@@ -18,7 +18,7 @@ Text shaping happens inside declare, layout and paint rather than beside them, a
 
 ## What a frame costs
 
-From `cargo run -p rust-gui-core --example bench --release`, which runs the four hardest cases headlessly, without a GPU or a font stack:
+From `cargo run -p seaglass-core --example bench --release`, which runs the four hardest cases headlessly, without a GPU or a font stack:
 
 | Case | Frame | Declared |
 | --- | --- | --- |
@@ -36,7 +36,7 @@ Two things to read out of that table. First, size costs nothing that is not on s
 
 ## Startup
 
-`RUST_GUI_STARTUP=1` prints how far into startup each step was reached. A release build of the counter example on this machine:
+`SEAGLASS_STARTUP=1` prints how far into startup each step was reached. A release build of the counter example on this machine:
 
 | Step | Reached at |
 | --- | --- |
@@ -47,7 +47,7 @@ Two things to read out of that table. First, size costs nothing that is not on s
 | Renderer, pipelines and fonts | 444 ms |
 | First frame on screen | 491 ms |
 
-The framework's own share is small: the same example with `RUST_GUI_RENDERER=cpu`, which skips the graphics stack entirely, shows its first frame at 56 ms. The 278 ms between the instance and the adapter is the driver enumerating adapters, which nothing here can shorten. An application that wants to start faster than its driver allows can paint with the CPU renderer.
+The framework's own share is small: the same example with `SEAGLASS_RENDERER=cpu`, which skips the graphics stack entirely, shows its first frame at 56 ms. The 278 ms between the instance and the adapter is the driver enumerating adapters, which nothing here can shorten. An application that wants to start faster than its driver allows can paint with the CPU renderer.
 
 ## Footprint
 

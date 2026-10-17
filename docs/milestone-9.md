@@ -9,7 +9,7 @@ Implemented on 2026-09-21. Both are the existing single-line text field with one
 ## Run
 
 ```powershell
-cargo run -p rust-gui --example controls --release
+cargo run -p seaglass --example controls --release
 ```
 
 The right column has a Quantity field (0 to 20 in steps of 0.5, shown as kilograms) and a City field that suggests from ten names.
@@ -112,7 +112,7 @@ Implemented on 2026-09-21. A two-column editor for named values, declared throug
 ## Run
 
 ```powershell
-cargo run -p rust-gui --example properties --release
+cargo run -p seaglass --example properties --release
 ```
 
 A card next to the grid that edits it: text, a checkbox, a choice, numbers with units and ranges, two colours, nested groups, reset buttons, a read-only row and a custom row.
@@ -206,7 +206,7 @@ ui.property_grid("inspector", &mut state, options, |grid| {
 | Piece | Contract |
 | --- | --- |
 | `Properties` (core) | `fn properties(&mut self, grid: &mut PropertyGrid)`. The derive implements it; it can be written by hand. |
-| `rust-gui-derive` | A proc-macro crate, re-exported as `rust_gui::Properties` behind the default `derive` feature. It depends on `syn` 2 with only its derive features, `quote` and `proc-macro2`, all of which the workspace already built. Generated code names `::rust_gui::...`, so it needs the facade crate. |
+| `seaglass-derive` | A proc-macro crate, re-exported as `seaglass::Properties` behind the default `derive` feature. It depends on `syn` 2 with only its derive features, `quote` and `proc-macro2`, all of which the workspace already built. Generated code names `::seaglass::...`, so it needs the facade crate. |
 | Editors by type | `bool`, `String`, `Color`; `f64` and `f32`; every integer type, which steps by one, shows no decimals and keeps its own range unless `min` or `max` narrow it; `usize` with `choices(...)` is a choice. All numbers travel through the grid as `f64`. |
 | Options | `name` (default: the field name with spaces and a capital), `group`, `default`, `min`, `max`, `step`, `decimals`, `suffix`, `choices("...")`, `readonly` (uses `Display`), `flatten`, `with = function`, `skip`. |
 | Groups | `group = "Name"` stays in force for the fields that follow until another is given; `group = ""` returns to the top level. Consecutive fields of one group share one `grid.group`. `flatten` nests the other struct's rows in a group named after the field, inside the current group. |
@@ -226,7 +226,7 @@ The full suite is 196 tests plus 18 GPU tests; formatting and clippy (all featur
 - No enums as choices yet: a `usize` index with `choices(...)`, or `with`, covers them for now.
 - No `Option<T>` or collection fields.
 - `readonly` needs `Display`.
-- The derive needs the `rust-gui` facade crate; a project depending only on `rust-gui-core` writes `Properties` by hand.
+- The derive needs the `seaglass` facade crate; a project depending only on `seaglass-core` writes `Properties` by hand.
 
 # Fix after milestone 9: focus rings flooding transparent nodes
 

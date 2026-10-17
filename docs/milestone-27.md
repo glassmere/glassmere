@@ -21,7 +21,7 @@ let sheet: StyleSheet = style_sheet!("styles/app.style");
 
 ```
 error: examples/theming.style:33: unknown property `colour`
-  --> crates\rust-gui\tests\compile_time.rs:13:29
+  --> crates\seaglass\tests\compile_time.rs:13:29
    |
 13 |     let sheet: StyleSheet = style_sheet!("examples/theming.style");
 ```
@@ -32,7 +32,7 @@ That joins what was already checked while compiling: `tr!` for a message key and
 
 ## The API, written down
 
-`crates/rust-gui/tests/snapshots/public-api.snap` records every public item and every public method of the ten crates an application depends on, with its signature: 1,800 lines read out of the sources themselves. A test compares the sources with that file, so a rename, a removal or an added parameter cannot pass unnoticed; accepting one is a deliberate `UPDATE_SNAPSHOTS=1` and a diff to read.
+`crates/seaglass/tests/snapshots/public-api.snap` records every public item and every public method of the ten crates an application depends on, with its signature: 1,800 lines read out of the sources themselves. A test compares the sources with that file, so a rename, a removal or an added parameter cannot pass unnoticed; accepting one is a deliberate `UPDATE_SNAPSHOTS=1` and a diff to read.
 
 [The stability note](api-stability.md) says what the tiers are, what a version number means before and after 1.0, and how something is deprecated before it is taken away.
 

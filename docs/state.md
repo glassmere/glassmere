@@ -97,4 +97,4 @@ The retained subtree stays exactly as it was, so it still paints, scrolls and an
 
 ## State that outlives the process
 
-`App::save_state` hands the development runner a string to keep across a rebuild, and `rust_gui::hot::saved_state` reads it back on the next start. It is for the edit-and-see loop, not for saving documents: an application saves its own files.
+`App::save_state` hands the development runner a string to keep across a rebuild, and `seaglass::hot::saved_state` reads it back on the next start. It is for the edit-and-see loop, not for saving documents: an application saves its own files.

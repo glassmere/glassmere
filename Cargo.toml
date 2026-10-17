@@ -1,23 +1,23 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/rust-gui",
-    "crates/rust-gui-core",
-    "crates/rust-gui-scene",
-    "crates/rust-gui-text",
-    "crates/rust-gui-render-wgpu",
-    "crates/rust-gui-render-cpu",
-    "crates/rust-gui-winit",
-    "crates/rust-gui-testing",
-    "crates/rust-gui-devtools",
-    "crates/rust-gui-syntax",
-    "crates/rust-gui-image",
-    "crates/rust-gui-derive",
-    "crates/rust-gui-fluent",
-    "crates/rust-gui-icu",
-    "crates/rust-gui-dev",
-    "crates/rust-gui-win32",
-    "crates/rust-gui-allocations",
+    "crates/seaglass",
+    "crates/seaglass-core",
+    "crates/seaglass-scene",
+    "crates/seaglass-text",
+    "crates/seaglass-render-wgpu",
+    "crates/seaglass-render-cpu",
+    "crates/seaglass-winit",
+    "crates/seaglass-testing",
+    "crates/seaglass-devtools",
+    "crates/seaglass-syntax",
+    "crates/seaglass-image",
+    "crates/seaglass-derive",
+    "crates/seaglass-fluent",
+    "crates/seaglass-icu",
+    "crates/seaglass-dev",
+    "crates/seaglass-win32",
+    "crates/seaglass-allocations",
     # A widget built the way a third party would build one.
     "examples/dial-widget",
 ]
@@ -31,20 +31,20 @@ readme = "README.md"
 publish = false
 
 [workspace.dependencies]
-rust-gui-core = { path = "crates/rust-gui-core" }
-rust-gui-scene = { path = "crates/rust-gui-scene" }
-rust-gui-text = { path = "crates/rust-gui-text" }
-rust-gui-render-cpu = { path = "crates/rust-gui-render-cpu" }
-rust-gui-render-wgpu = { path = "crates/rust-gui-render-wgpu" }
-rust-gui-winit = { path = "crates/rust-gui-winit" }
-rust-gui-testing = { path = "crates/rust-gui-testing" }
-rust-gui-devtools = { path = "crates/rust-gui-devtools" }
-rust-gui-syntax = { path = "crates/rust-gui-syntax" }
-rust-gui-image = { path = "crates/rust-gui-image" }
-rust-gui-derive = { path = "crates/rust-gui-derive" }
-rust-gui-fluent = { path = "crates/rust-gui-fluent" }
-rust-gui-icu = { path = "crates/rust-gui-icu" }
-rust-gui-win32 = { path = "crates/rust-gui-win32" }
+seaglass-core = { path = "crates/seaglass-core" }
+seaglass-scene = { path = "crates/seaglass-scene" }
+seaglass-text = { path = "crates/seaglass-text" }
+seaglass-render-cpu = { path = "crates/seaglass-render-cpu" }
+seaglass-render-wgpu = { path = "crates/seaglass-render-wgpu" }
+seaglass-winit = { path = "crates/seaglass-winit" }
+seaglass-testing = { path = "crates/seaglass-testing" }
+seaglass-devtools = { path = "crates/seaglass-devtools" }
+seaglass-syntax = { path = "crates/seaglass-syntax" }
+seaglass-image = { path = "crates/seaglass-image" }
+seaglass-derive = { path = "crates/seaglass-derive" }
+seaglass-fluent = { path = "crates/seaglass-fluent" }
+seaglass-icu = { path = "crates/seaglass-icu" }
+seaglass-win32 = { path = "crates/seaglass-win32" }
 bitflags = "2.13"
 ropey = "1.6"
 serde = { version = "1.0.229", features = ["derive"] }

@@ -16,7 +16,7 @@ A tooltip disappearing left 6,271 stale pixels of a 320 by 360 window. It affect
 
 ## Validation
 
-`crates/rust-gui-render-cpu/tests/damage.rs` gained a sweep of every overlay a window can have, each painted once with damage and once in full and compared pixel for pixel: a tooltip on a dwell and after the pointer leaves, a context menu opened and dismissed with Escape, a popover, a modal dialog with its scrim, and a toast that expires on its own clock. It is the test that found the tooltip.
+`crates/seaglass-render-cpu/tests/damage.rs` gained a sweep of every overlay a window can have, each painted once with damage and once in full and compared pixel for pixel: a tooltip on a dwell and after the pointer leaves, a context menu opened and dismissed with Escape, a popover, a modal dialog with its scrim, and a toast that expires on its own clock. It is the test that found the tooltip.
 
 In a real window, the panes example was hovered until its tooltip appeared and then left: `target/tip-hovering.png` and `target/tip-after.png`, the second of which is the window exactly as it was before.
 

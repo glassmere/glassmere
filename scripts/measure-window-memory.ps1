@@ -64,16 +64,16 @@ $probeInfo.CreateNoWindow = $true
 $probeInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
 if ($Backend -eq 'auto') { $probeInfo.EnvironmentVariables.Remove('WGPU_BACKEND') }
 else { $probeInfo.EnvironmentVariables['WGPU_BACKEND'] = $Backend }
-if ($MemoryProfile -eq 'default') { $probeInfo.EnvironmentVariables.Remove('RUST_GUI_MEMORY_PROFILE') }
-else { $probeInfo.EnvironmentVariables['RUST_GUI_MEMORY_PROFILE'] = $MemoryProfile }
-$probeInfo.EnvironmentVariables['RUST_GUI_FRAME_LATENCY'] = [string]$FrameLatency
-$probeInfo.EnvironmentVariables['RUST_GUI_BINDING_LIMIT'] = [string]$BindingLimit
+if ($MemoryProfile -eq 'default') { $probeInfo.EnvironmentVariables.Remove('SEAGLASS_MEMORY_PROFILE') }
+else { $probeInfo.EnvironmentVariables['SEAGLASS_MEMORY_PROFILE'] = $MemoryProfile }
+$probeInfo.EnvironmentVariables['SEAGLASS_FRAME_LATENCY'] = [string]$FrameLatency
+$probeInfo.EnvironmentVariables['SEAGLASS_BINDING_LIMIT'] = [string]$BindingLimit
 if ($TraceStages) {
-    $probeInfo.EnvironmentVariables['RUST_GUI_MEMORY_TRACE'] = '1'
+    $probeInfo.EnvironmentVariables['SEAGLASS_MEMORY_TRACE'] = '1'
     $probeInfo.RedirectStandardInput = $true
     $probeInfo.RedirectStandardOutput = $true
     $probeInfo.Arguments = if ($Stress) { "--stress --frames $StressFrames" } else { '--smoke' }
-} else { $probeInfo.EnvironmentVariables.Remove('RUST_GUI_MEMORY_TRACE') }
+} else { $probeInfo.EnvironmentVariables.Remove('SEAGLASS_MEMORY_TRACE') }
 $windowProbe = [System.Diagnostics.Process]::Start($probeInfo)
 try {
     if ($TraceStages) {

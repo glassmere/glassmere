@@ -38,17 +38,17 @@ The CPU renderer does it by hand through a twelve-bit gamma table, which round-t
 
 `Context::damage_regions` gives the rectangles that changed. A renderer that can, paints only those: the wgpu one keeps a canvas texture, loads it, scissors to the damage and blits; the CPU one seeds its clip stack with the damage union and clears only those pixels. Both fall back to the whole surface when the window is resized or the scene is new.
 
-The way to be sure damage is complete is not to reason about it. `rust-gui-render-cpu/tests/damage.rs` paints every frame twice, once incrementally and once in full, and compares byte for byte.
+The way to be sure damage is complete is not to reason about it. `seaglass-render-cpu/tests/damage.rs` paints every frame twice, once incrementally and once in full, and compares byte for byte.
 
 ## Two renderers, held to each other
 
-`rust-gui-render-cpu/tests/compare_gpu.rs` renders one scene containing every primitive with both renderers at three scale factors and asserts a mean and a percentile bound. It has caught two real defects, including a gradient that sampled `origin + index + 0.5/scale` instead of `origin + (index + 0.5)/scale`, which is identical at a scale of one.
+`seaglass-render-cpu/tests/compare_gpu.rs` renders one scene containing every primitive with both renderers at three scale factors and asserts a mean and a percentile bound. It has caught two real defects, including a gradient that sampled `origin + index + 0.5/scale` instead of `origin + (index + 0.5)/scale`, which is identical at a scale of one.
 
 A new renderer should be held to the same scene.
 
 ## Text
 
-Shaping belongs to `rust-gui-text`, which both renderers share: a `TextSystem` over cosmic-text, with the shaped buffers kept between frames. A renderer that shapes text differently from the measurer the framework used will draw text that does not match its own layout, so use the same `TextMeasurer`.
+Shaping belongs to `seaglass-text`, which both renderers share: a `TextSystem` over cosmic-text, with the shaped buffers kept between frames. A renderer that shapes text differently from the measurer the framework used will draw text that does not match its own layout, so use the same `TextMeasurer`.
 
 ## An application's own drawing
 
@@ -56,4 +56,4 @@ Shaping belongs to `rust-gui-text`, which both renderers share: a `TextSystem` o
 
 ## Plugging one in
 
-The desktop host owns the two renderers it has, and chooses between them: `GraphicsBackend::Cpu`, `RUST_GUI_RENDERER=cpu`, or automatically when no adapter works. An application with a renderer of its own drives the loop itself: hold a `Context`, call `run` with a measurer and a view, take `context.scene()`, and present it however it likes. That is what `CpuRenderer` does in the headless tests, and it needs nothing from the windowing crate.
+The desktop host owns the two renderers it has, and chooses between them: `GraphicsBackend::Cpu`, `SEAGLASS_RENDERER=cpu`, or automatically when no adapter works. An application with a renderer of its own drives the loop itself: hold a `Context`, call `run` with a measurer and a view, take `context.scene()`, and present it however it likes. That is what `CpuRenderer` does in the headless tests, and it needs nothing from the windowing crate.

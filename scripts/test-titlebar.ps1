@@ -45,7 +45,7 @@ function Get-State($Window) {
 
 $process = [System.Diagnostics.Process]::Start((Resolve-Path -LiteralPath $Executable).Path)
 try {
-    $window = Wait-Window 'Rust GUI / Title bar'
+    $window = Wait-Window 'Seaglass / Title bar'
     Start-Sleep -Seconds 2
     $start = Get-Rect $window
 

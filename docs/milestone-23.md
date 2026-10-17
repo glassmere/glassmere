@@ -2,7 +2,7 @@
 
 Implemented on 2026-09-22. A custom leaf could already say how big it was, what it painted and what it was for. What it could not do was hear anything: the only input a custom widget received was the button activation path, so a knob, a canvas or a ruler had to be assembled out of built-in controls or go without.
 
-The test of an extension point is whether someone outside can use it, so this milestone ends in a crate outside the framework. `examples/dial-widget` is a rotary dial that depends on `rust-gui` and on nothing private to it. It has its own state, hears the pointer, the keyboard and the wheel, reads the theme's colours, sits in the tab order, tells assistive technology what it holds, and is tested headlessly with the same harness the built-in controls use. If any of that needed an internal type, it would not compile.
+The test of an extension point is whether someone outside can use it, so this milestone ends in a crate outside the framework. `examples/dial-widget` is a rotary dial that depends on `seaglass` and on nothing private to it. It has its own state, hears the pointer, the keyboard and the wheel, reads the theme's colours, sits in the tab order, tells assistive technology what it holds, and is tested headlessly with the same harness the built-in controls use. If any of that needed an internal type, it would not compile.
 
 ```rust
 ui.widget("dial", Style::default(), |input| {
@@ -23,7 +23,7 @@ ui.widget("dial", Style::default(), |input| {
 | Keeping an event | A widget that captures and consumes keeps its keys and the wheel from the containers above it, which is why an arrow key turns the dial without also scrolling the page it sits on. |
 | State | Where the rest of the application's state is: in a struct of the author's own, passed in. There is no widget-state registry, because the framework has nowhere better to keep it than the caller does. |
 | Style | `ui.theme()` for the tokens, `ui.class(..)` for a stylesheet class, and the `style` argument for the node itself, so padding, size and background work as on any container. |
-| Testing | `rust-gui-testing`'s `Harness`, which drives events, reads the accessibility snapshot and finds nodes by label, with no window. |
+| Testing | `seaglass-testing`'s `Harness`, which drives events, reads the accessibility snapshot and finds nodes by label, with no window. |
 
 ## Two rules the frame keeps
 

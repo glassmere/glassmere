@@ -4,7 +4,7 @@ Planned on 2026-10-15. Release blocker 2: the view may run more than once per in
 
 ## The problem
 
-An action runs inside the view today. `Response::clicked()` is true during the declaration that consumes the click, so whatever the click changes is visible only to what is declared after the button; a label declared above it is stale. The hosts cover that by declaring again while `FrameStats::activations > 0`, up to three more times (`rust-gui-winit/src/lib.rs`, the settle loop after `Context::run`; `rust-gui-testing/src/lib.rs`, `Harness::run`). A theme request adds an activation in `Context::run` (`tree/run.rs:91-97`), format and messages in `apply_outbox` (`run.rs:184-193`), and `Context::set_binding` (`tree.rs:950-959`) another, for the same reason.
+An action runs inside the view today. `Response::clicked()` is true during the declaration that consumes the click, so whatever the click changes is visible only to what is declared after the button; a label declared above it is stale. The hosts cover that by declaring again while `FrameStats::activations > 0`, up to three more times (`seaglass-winit/src/lib.rs`, the settle loop after `Context::run`; `seaglass-testing/src/lib.rs`, `Harness::run`). A theme request adds an activation in `Context::run` (`tree/run.rs:91-97`), format and messages in `apply_outbox` (`run.rs:184-193`), and `Context::set_binding` (`tree.rs:950-959`) another, for the same reason.
 
 So a click costs up to four declarations, and a view is never sure it is looking at the state it will be presented with.
 
@@ -27,14 +27,14 @@ The target is applications that render well above 360 frames per second, where a
 
 ### Gates
 
-- A new test file `crates/rust-gui-core/tests/allocations.rs` with a counting `#[global_allocator]` (its own test binary, so other tests are unaffected): after a warm-up frame, a batch with no events and nothing dirty performs zero allocations and `stats.declared == false`.
+- A new test file `crates/seaglass-core/tests/allocations.rs` with a counting `#[global_allocator]` (its own test binary, so other tests are unaffected): after a warm-up frame, a batch with no events and nothing dirty performs zero allocations and `stats.declared == false`.
 - In the same file: a batch that only moves the pointer over an unobserved button has `declared == false`; one with one click has `declared == true` and `messages == 1`.
 - `examples/bench.rs` keeps its timing output and adds both cases to it; timing is reported, not gated.
 
 ## The shape
 
 ```rust
-use rust_gui::{App, AppOptions, Button, Effects, Ui, run_app};
+use seaglass::{App, AppOptions, Button, Effects, Ui, run_app};
 
 #[derive(Clone)]
 enum Msg { Increment, Name(String) }
@@ -58,12 +58,12 @@ impl App for Counter {
     }
 }
 
-fn main() -> rust_gui::Result<()> {
+fn main() -> seaglass::Result<()> {
     run_app(AppOptions::default(), Counter { count: 0, name: String::new() })
 }
 ```
 
-`App` lives in `rust-gui-core` (`src/app.rs`), with `Effects` and `Handler`, because `Harness` needs them:
+`App` lives in `seaglass-core` (`src/app.rs`), with `Effects` and `Handler`, because `Harness` needs them:
 
 ```rust
 pub trait App: 'static {
@@ -72,7 +72,7 @@ pub trait App: 'static {
     fn init(&mut self, _effects: &mut Effects<'_, Self::Message>) {}
     fn update(&mut self, message: Self::Message, effects: &mut Effects<'_, Self::Message>);
     fn view(&self, ui: &mut Ui<'_, Self::Message>);
-    /// What `rust-gui-dev` keeps across a rebuild; replaces `Ui::hot_state`.
+    /// What `seaglass-dev` keeps across a rebuild; replaces `Ui::hot_state`.
     fn save_state(&self) -> Option<String> { None }
     /// A window opened with `Effects::open_window`; the main window uses `view`.
     fn view_window(&self, _window: WindowId, ui: &mut Ui<'_, Self::Message>) { self.view(ui) }
@@ -284,9 +284,9 @@ The milestone lands in phases. Within a phase, packages own disjoint files; a fi
 1. Split `ui.rs` first, behaviour unchanged: window and title-bar methods to `ui/window.rs`, event areas, gestures, drag and drop and `widget` to `ui/areas.rs`, `dialog` to `ui/dialog.rs`, the `*_at` helpers (`ui.rs:1309-1360`) to the existing `ui/fields.rs`. Verify the workspace builds and tests pass before going on.
 2. `Ui<'_, M>` with `impl<M> Ui<'_, M>` over every existing method, so the old signatures compile unchanged.
 3. `app.rs`: `App`, `Effects`, `Handler`, the slab and its one `Box<dyn Any>`, `Ui::map`, the new `Component`, the observed bits, the view rule. `Context` stays non-generic: it resolves a batch to node activations and control updates; the generic driver in `app.rs` turns those into `Vec<M>` through the slab, runs `update`, then calls `Context`'s declaration.
-4. `run_app` in the winit host, `run_with`/`Action<S>`, `Harness::app`, and `App::save_state` wired into `rust-gui-dev`'s hot reload; all run update then at most one view. Migrate `tests/architecture.rs:247` and `examples/workbench.rs` (via `run_app`) to the new `Component`. The old `clicks`/`updates`/`submitted` path and the closure `run` keep working until phase 3.
+4. `run_app` in the winit host, `run_with`/`Action<S>`, `Harness::app`, and `App::save_state` wired into `seaglass-dev`'s hot reload; all run update then at most one view. Migrate `tests/architecture.rs:247` and `examples/workbench.rs` (via `run_app`) to the new `Component`. The old `clicks`/`updates`/`submitted` path and the closure `run` keep working until phase 3.
 5. `button`, `text_input`, `checkbox` and `slider` gain their new form as the reference for everyone else. Until phase 3 the old form keeps its name and the new one is added beside it with a `_msg` suffix (`button_msg`, `text_input_msg`, `checkbox_msg`, `slider_msg`); phase 3 renames them over the old ones. Builders that carry a handler become generic with a default, `Button<M = ()>`, `TextInput<M = ()>`, so `Button::on_click` needs no suffix and `ui.button` (which takes `impl Into<Button<M>>`) needs no `button_msg`. Every phase 2 package follows the same two rules: builder methods for handlers, `_msg` only where a positional signature collides.
-6. Pre-declare in `lib.rs` every public name phase 2 adds (`GridMsg`, `TextOp`, `RichOp`, `PropertyMsg`, `DockAction`, `Effects`, `App`, `Action`, `WindowId`, `WindowRequest`), as stubs where the package fills them, so no package edits `lib.rs`. `TextOp` and `RichOp` are re-exports of `AreaOp`/`RichOp` made `pub` in `controls.rs` (package E does not touch `controls.rs`); a message carries one op. Add `WindowId(u64)` and a core `WindowRequest` (title, size, modal owner) in `window.rs`, and `Effects::open_window(WindowRequest) -> WindowId` and `close_window(WindowId)` as stubs that package H implements. Mark `crates/rust-gui/tests/api.rs` `#[ignore]` until phase 3.
+6. Pre-declare in `lib.rs` every public name phase 2 adds (`GridMsg`, `TextOp`, `RichOp`, `PropertyMsg`, `DockAction`, `Effects`, `App`, `Action`, `WindowId`, `WindowRequest`), as stubs where the package fills them, so no package edits `lib.rs`. `TextOp` and `RichOp` are re-exports of `AreaOp`/`RichOp` made `pub` in `controls.rs` (package E does not touch `controls.rs`); a message carries one op. Add `WindowId(u64)` and a core `WindowRequest` (title, size, modal owner) in `window.rs`, and `Effects::open_window(WindowRequest) -> WindowId` and `close_window(WindowId)` as stubs that package H implements. Mark `crates/seaglass/tests/api.rs` `#[ignore]` until phase 3.
 7. `Effects::spawn`/`channel` and the task tables (`task.rs`, `mailbox.rs`).
 
 Gate: workspace builds; all existing tests pass; new tests for message order within a batch, one view per batch, a memo-skipped subtree's handler still firing, `Ui::map`, and the allocation tests above.
@@ -297,16 +297,16 @@ Gate: workspace builds; all existing tests pass; new tests for message order wit
 | --- | --- | --- |
 | A. Remaining controls and fields, commands, menus | `ui/controls.rs`, `ui/fields.rs`, `ui/builders.rs`, `command.rs`, `ui/window.rs` | |
 | B. Collections and grids, `GridMsg` | `ui/collections.rs`, `collection.rs`, `tree/collection_input.rs` | |
-| C. Dock, panes, split, `DockAction` | `ui/dock.rs`, `dock.rs`, `panes.rs`, `tree/dock_input.rs`, `rust-gui-winit/src/dock.rs` | |
+| C. Dock, panes, split, `DockAction` | `ui/dock.rs`, `dock.rs`, `panes.rs`, `tree/dock_input.rs`, `seaglass-winit/src/dock.rs` | |
 | D. Overlays, dialogs, popovers, toasts | `ui/overlays.rs`, `ui/dialog.rs`, `ui/toasts.rs`, `toast.rs`, `tree/overlay_input.rs`, `tree/toasts.rs` | |
 | E. Text editors, `TextOp`, `RichOp`, rich text links | `ui/text_area.rs`, `ui/rich_editor.rs`, `ui/rich_text.rs`, `text_area.rs`, `rich_editor.rs`, `document.rs`, `rich_document.rs`, `tree/text_area_input.rs`, `tree/rich_editor.rs`, `tree/rich_text.rs` | |
-| F. Property grid and the derive | `ui/property_grid.rs`, `property_grid.rs`, `rust-gui-derive` | A |
+| F. Property grid and the derive | `ui/property_grid.rs`, `property_grid.rs`, `seaglass-derive` | A |
 | G. Custom widgets, event areas, gestures, drag and drop, `dial-widget` | `widget.rs`, `ui/areas.rs`, `drag.rs`, `tree/drag_input.rs`, `tree/touch_input.rs`, `examples/dial-widget` | |
-| H. Multi-window, hot state | `rust-gui-winit/src/desktop.rs`, `rust-gui-winit/src/hot.rs`, `rust-gui-winit/src/wakeup.rs` | |
+| H. Multi-window, hot state | `seaglass-winit/src/desktop.rs`, `seaglass-winit/src/hot.rs`, `seaglass-winit/src/wakeup.rs` | |
 
 Each package converts the tests in its files, and adds a test per converted widget through `Harness::app`. Gate per package: `cargo check --workspace --all-targets` and its own tests. Packages work in separate worktrees off the phase 1 commit and are merged one at a time.
 
-**Phase 3, migration and removal.** In parallel by file: the 22 examples in `crates/rust-gui/examples`, `examples/application.rs:187`'s mailbox, `rust-gui-fluent/tests/messages.rs`, `rust-gui-render-cpu/tests/damage.rs`, `rust-gui-winit/src/accessibility.rs` tests, the devtools inspector (`devtools/src/lib.rs:477-697`, gets an `InspectorMsg`), and the remaining kernel tests (via `Action<S>` where mechanical). Then one implementer, serially: removes the old forms and renames the `_msg` ones; removes `Response::clicked/changed/submitted`, `Ui::emit`, the one-shot `Ui` calls, the `clicks`/`updates`/`submitted` maps, `awaiting`, `FrameStats::activations` and the settle loops; renames `run_app` to `run`; un-ignores `api.rs` and regenerates `public-api.snap`; updates `state.md`, `architecture.md`, `widgets.md` and `README.md`.
+**Phase 3, migration and removal.** In parallel by file: the 22 examples in `crates/seaglass/examples`, `examples/application.rs:187`'s mailbox, `seaglass-fluent/tests/messages.rs`, `seaglass-render-cpu/tests/damage.rs`, `seaglass-winit/src/accessibility.rs` tests, the devtools inspector (`devtools/src/lib.rs:477-697`, gets an `InspectorMsg`), and the remaining kernel tests (via `Action<S>` where mechanical). Then one implementer, serially: removes the old forms and renames the `_msg` ones; removes `Response::clicked/changed/submitted`, `Ui::emit`, the one-shot `Ui` calls, the `clicks`/`updates`/`submitted` maps, `awaiting`, `FrameStats::activations` and the settle loops; renames `run_app` to `run`; un-ignores `api.rs` and regenerates `public-api.snap`; updates `state.md`, `architecture.md`, `widgets.md` and `README.md`.
 
 ## Validation
 

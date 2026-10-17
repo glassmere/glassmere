@@ -72,7 +72,7 @@ Remaining work includes a lightweight CPU-rendering path to avoid this GPU/drive
 Build an optimized counter separately from any running release executable:
 
 ```powershell
-cargo build -p rust-gui --example counter --profile profiling --locked
+cargo build -p seaglass --example counter --profile profiling --locked
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/measure-window-memory.ps1 -Executable target/profiling/examples/counter.exe
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/measure-window-memory.ps1 -Executable target/profiling/examples/counter.exe -Backend vulkan
 ```
@@ -82,7 +82,7 @@ The execution-policy option applies only to that PowerShell invocation. It does 
 For startup checkpoints, allocation-policy comparisons and changing-scene stress, build with diagnostics:
 
 ```powershell
-cargo build -p rust-gui --example counter --profile profiling --features diagnostics --locked
+cargo build -p seaglass --example counter --profile profiling --features diagnostics --locked
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/measure-window-memory.ps1 -Executable target/profiling/examples/counter.exe -TraceStages
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/measure-window-memory.ps1 -Executable target/profiling/examples/counter.exe -TraceStages -Stress -StressFrames 6000
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/measure-window-memory.ps1 -Executable target/profiling/examples/counter.exe -TraceStages -MemoryProfile memory -FrameLatency 2 -BindingLimit 1000000
@@ -93,7 +93,7 @@ The last command restores the earlier allocation settings for comparison, keepin
 To isolate graphics/font initialization without a window:
 
 ```powershell
-cargo build -p rust-gui-render-wgpu --example memory_probe --release --locked
+cargo build -p seaglass-render-wgpu --example memory_probe --release --locked
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/measure-memory.ps1 -Mode fonts
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/measure-memory.ps1 -Mode all
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/measure-memory.ps1 -Mode vulkan -MemoryHint memory

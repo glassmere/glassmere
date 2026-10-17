@@ -26,7 +26,7 @@ function Start-Probe([string]$Arguments) {
     $info.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
     $info.RedirectStandardOutput = $true
     $info.RedirectStandardError = $true
-    $info.EnvironmentVariables.Remove('RUST_GUI_MEMORY_TRACE')
+    $info.EnvironmentVariables.Remove('SEAGLASS_MEMORY_TRACE')
     [System.Diagnostics.Process]::Start($info)
 }
 
@@ -75,7 +75,7 @@ try {
     $processCondition = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(
         [System.Windows.Automation.AutomationElement]::ProcessIdProperty, [int]$accessibilityProbe.Id)
     $titleCondition = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(
-        [System.Windows.Automation.AutomationElement]::NameProperty, 'Rust GUI / Architecture workbench')
+        [System.Windows.Automation.AutomationElement]::NameProperty, 'Seaglass / Architecture workbench')
     $windowCondition = New-Object System.Windows.Automation.AndCondition -ArgumentList @($processCondition, $titleCondition)
     $window = $null
     for ($attempt = 0; $attempt -lt 100 -and $null -eq $window; $attempt++) {

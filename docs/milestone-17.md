@@ -31,7 +31,7 @@ let arrived = ui.event_area("canvas", EventArea::pointer().capturing().consuming
 
 ## Validation
 
-Six tests in `rust-gui-core/tests/event_areas.rs`: an area told what reached the widgets, once, with the widgets still working; a capturing area that consumes taking the event from an inner area and the button, leaving nothing hovered; an inner area answering first on the way up and keeping the event from the outer one; keys and text following the focus while scrolling follows the pointer; a widget emitting to the area above it, arriving on the next declaration and only once; and a view with no areas dispatching exactly as before.
+Six tests in `seaglass-core/tests/event_areas.rs`: an area told what reached the widgets, once, with the widgets still working; a capturing area that consumes taking the event from an inner area and the button, leaving nothing hovered; an inner area answering first on the way up and keeping the event from the outer one; keys and text following the focus while scrolling follows the pointer; a widget emitting to the area above it, arriving on the next declaration and only once; and a view with no areas dispatching exactly as before.
 
 Touch has two new tests: a second tap told apart from a first and from a third, a flick told apart from a slow pan, with the direction and speed; and a rest in a text field selecting a word, the drag extending it, a second tap selecting again, and typing replacing what was selected.
 

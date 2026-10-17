@@ -5,7 +5,7 @@ Implemented on 2026-09-20. The controls gallery adds a single-line editor, check
 ## Run
 
 ```sh
-cargo run -p rust-gui --example controls --release
+cargo run -p seaglass --example controls --release
 ```
 
 The gallery demonstrates Unicode input, selection, clipboard shortcuts, undo/redo, submission, font families, wrapped paragraphs, disabled fields and each control. `--smoke` exits after three frames. Like the counter, it sleeps between events; the caret is steady rather than timer-driven.
@@ -55,14 +55,14 @@ Clipboard construction is lazy and its handle lives with the application. Failed
 cargo fmt --all -- --check
 cargo test --workspace --all-targets --all-features --locked
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo check -p rust-gui --no-default-features --locked
-cargo test -p rust-gui-render-wgpu --test gpu -- --ignored --nocapture
+cargo check -p seaglass --no-default-features --locked
+cargo test -p seaglass-render-wgpu --test gpu -- --ignored --nocapture
 ```
 
 Windows integration checks, after building:
 
 ```powershell
-cargo build -p rust-gui --examples --release --locked
+cargo build -p seaglass --examples --release --locked
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-controls.ps1 -Screenshot
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-desktop.ps1
 ```

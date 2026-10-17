@@ -52,14 +52,14 @@ function Save-Window($Window, [string]$Name) {
     } finally { $bitmap.Dispose() }
 }
 
-$stylesheet = Join-Path (Get-Location) 'crates/rust-gui/examples/theming.style'
+$stylesheet = Join-Path (Get-Location) 'crates/seaglass/examples/theming.style'
 $original = [System.IO.File]::ReadAllText($stylesheet)
 $info = New-Object System.Diagnostics.ProcessStartInfo
 $info.FileName = (Resolve-Path -LiteralPath $Executable).Path
 $info.UseShellExecute = $false
 $process = [System.Diagnostics.Process]::Start($info)
 try {
-    $window = Wait-Window 'Rust GUI / Theming'
+    $window = Wait-Window 'Seaglass / Theming'
     Start-Sleep -Seconds 2
     Save-Window $window 'theming-initial'
     Invoke-Element (Wait-Element $window 'Light theme')

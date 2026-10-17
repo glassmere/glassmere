@@ -6,7 +6,7 @@ That message is *sent*, not posted, so no message loop can answer it: it reaches
 
 ## One crate with unsafe in it
 
-`rust-gui-win32` is that crate and the only one: about a hundred lines, one window procedure, a rectangle it reads and a list of what it saw. It is the only crate in the workspace that does not take the workspace lints, and what it does instead is spelled out in its manifest. Every other crate still forbids unsafe.
+`seaglass-win32` is that crate and the only one: about a hundred lines, one window procedure, a rectangle it reads and a list of what it saw. It is the only crate in the workspace that does not take the workspace lints, and what it does instead is spelled out in its manifest. Every other crate still forbids unsafe.
 
 | Piece | Contract |
 | --- | --- |

@@ -20,9 +20,9 @@ The clear colour now goes down first, over the damaged rectangle, with a pipelin
 
 ## Validation
 
-- `crates/rust-gui-render-wgpu/tests/gpu.rs` gained a test that establishes a canvas, removes a popup and names only its rectangle as damage, and checks both what replaces it and what is left when nothing does. Removing the clear makes it fail on the second: `pixel (40, 30) is [0, 0, 255], expected [255, 255, 255]`.
-- `crates/rust-gui-core/tests/layout.rs` gained one for the text placement: the same box with `Start`, `Center` and `End`, where the end moves the text by twice what centring does, and padding comes first either way.
-- `crates/rust-gui-render-cpu/tests/damage.rs` gained the menu sequence itself, opened and closed by its own button, declared twice per frame as a host does.
+- `crates/seaglass-render-wgpu/tests/gpu.rs` gained a test that establishes a canvas, removes a popup and names only its rectangle as damage, and checks both what replaces it and what is left when nothing does. Removing the clear makes it fail on the second: `pixel (40, 30) is [0, 0, 255], expected [255, 255, 255]`.
+- `crates/seaglass-core/tests/layout.rs` gained one for the text placement: the same box with `Start`, `Center` and `End`, where the end moves the text by twice what centring does, and padding comes first either way.
+- `crates/seaglass-render-cpu/tests/damage.rs` gained the menu sequence itself, opened and closed by its own button, declared twice per frame as a host does.
 - Photographed: `target/caption-*.png` for the buttons at rest, hovered and held, and `target/menu-closed-again.png` for the window after the menu closes, which is now clean.
 
 The workspace suite is 328 tests plus 31 opt-in GPU tests, all passing; formatting and clippy with all features are clean; all 20 default examples pass their smoke run, and `scripts/test-titlebar.ps1` still drives a real window end to end.

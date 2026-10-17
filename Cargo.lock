@@ -873,8 +873,8 @@ checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
 name = "dial-widget"
 version = "0.1.0"
 dependencies = [
- "rust-gui",
- "rust-gui-testing",
+ "seaglass",
+ "seaglass-testing",
 ]
 
 [[package]]
@@ -3845,191 +3845,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-gui"
-version = "0.1.0"
-dependencies = [
- "quote",
- "rust-gui-core",
- "rust-gui-derive",
- "rust-gui-devtools",
- "rust-gui-fluent",
- "rust-gui-icu",
- "rust-gui-image",
- "rust-gui-render-cpu",
- "rust-gui-render-wgpu",
- "rust-gui-scene",
- "rust-gui-syntax",
- "rust-gui-testing",
- "rust-gui-winit",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "rust-gui-allocations"
-version = "0.1.0"
-dependencies = [
- "rust-gui-core",
- "rust-gui-scene",
-]
-
-[[package]]
-name = "rust-gui-core"
-version = "0.1.0"
-dependencies = [
- "bitflags 2.13.2",
- "regex",
- "ropey",
- "rust-gui-scene",
- "serde",
- "taffy",
- "tracing",
- "unicode-segmentation",
-]
-
-[[package]]
-name = "rust-gui-derive"
-version = "0.1.0"
-dependencies = [
- "fluent-syntax",
- "proc-macro2",
- "quote",
- "rust-gui-core",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "rust-gui-dev"
-version = "0.1.0"
-
-[[package]]
-name = "rust-gui-devtools"
-version = "0.1.0"
-dependencies = [
- "rust-gui-core",
- "rust-gui-scene",
-]
-
-[[package]]
-name = "rust-gui-fluent"
-version = "0.1.0"
-dependencies = [
- "fluent-bundle",
- "rust-gui-core",
- "rust-gui-scene",
- "unic-langid",
-]
-
-[[package]]
-name = "rust-gui-icu"
-version = "0.1.0"
-dependencies = [
- "icu",
- "rust-gui-core",
- "rust-gui-scene",
-]
-
-[[package]]
-name = "rust-gui-image"
-version = "0.1.0"
-dependencies = [
- "image",
- "resvg",
- "rust-gui-scene",
-]
-
-[[package]]
-name = "rust-gui-render-cpu"
-version = "0.1.0"
-dependencies = [
- "pollster",
- "rust-gui-core",
- "rust-gui-render-wgpu",
- "rust-gui-scene",
- "rust-gui-text",
- "tiny-skia 0.12.0",
- "wgpu",
-]
-
-[[package]]
-name = "rust-gui-render-wgpu"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "glyphon",
- "pollster",
- "rust-gui-scene",
- "rust-gui-text",
- "wgpu",
-]
-
-[[package]]
-name = "rust-gui-scene"
-version = "0.1.0"
-dependencies = [
- "unicode-segmentation",
-]
-
-[[package]]
-name = "rust-gui-syntax"
-version = "0.1.0"
-dependencies = [
- "rust-gui-core",
- "rust-gui-scene",
- "syntect",
-]
-
-[[package]]
-name = "rust-gui-testing"
-version = "0.1.0"
-dependencies = [
- "rust-gui-core",
- "rust-gui-scene",
-]
-
-[[package]]
-name = "rust-gui-text"
-version = "0.1.0"
-dependencies = [
- "cosmic-text",
- "rust-gui-scene",
- "unicode-segmentation",
-]
-
-[[package]]
-name = "rust-gui-win32"
-version = "0.1.0"
-dependencies = [
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "rust-gui-winit"
-version = "0.1.0"
-dependencies = [
- "accesskit",
- "accesskit_winit",
- "arboard",
- "drag",
- "muda",
- "notify-rust",
- "pollster",
- "rfd",
- "rust-gui-core",
- "rust-gui-devtools",
- "rust-gui-image",
- "rust-gui-render-cpu",
- "rust-gui-render-wgpu",
- "rust-gui-scene",
- "rust-gui-win32",
- "softbuffer",
- "sys-locale",
- "tracing",
- "tray-icon",
- "wgpu",
- "winit",
-]
-
-[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4114,6 +3929,191 @@ dependencies = [
  "memmap2",
  "smithay-client-toolkit",
  "tiny-skia 0.11.4",
+]
+
+[[package]]
+name = "seaglass"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "seaglass-core",
+ "seaglass-derive",
+ "seaglass-devtools",
+ "seaglass-fluent",
+ "seaglass-icu",
+ "seaglass-image",
+ "seaglass-render-cpu",
+ "seaglass-render-wgpu",
+ "seaglass-scene",
+ "seaglass-syntax",
+ "seaglass-testing",
+ "seaglass-winit",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "seaglass-allocations"
+version = "0.1.0"
+dependencies = [
+ "seaglass-core",
+ "seaglass-scene",
+]
+
+[[package]]
+name = "seaglass-core"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.13.2",
+ "regex",
+ "ropey",
+ "seaglass-scene",
+ "serde",
+ "taffy",
+ "tracing",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "seaglass-derive"
+version = "0.1.0"
+dependencies = [
+ "fluent-syntax",
+ "proc-macro2",
+ "quote",
+ "seaglass-core",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "seaglass-dev"
+version = "0.1.0"
+
+[[package]]
+name = "seaglass-devtools"
+version = "0.1.0"
+dependencies = [
+ "seaglass-core",
+ "seaglass-scene",
+]
+
+[[package]]
+name = "seaglass-fluent"
+version = "0.1.0"
+dependencies = [
+ "fluent-bundle",
+ "seaglass-core",
+ "seaglass-scene",
+ "unic-langid",
+]
+
+[[package]]
+name = "seaglass-icu"
+version = "0.1.0"
+dependencies = [
+ "icu",
+ "seaglass-core",
+ "seaglass-scene",
+]
+
+[[package]]
+name = "seaglass-image"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "resvg",
+ "seaglass-scene",
+]
+
+[[package]]
+name = "seaglass-render-cpu"
+version = "0.1.0"
+dependencies = [
+ "pollster",
+ "seaglass-core",
+ "seaglass-render-wgpu",
+ "seaglass-scene",
+ "seaglass-text",
+ "tiny-skia 0.12.0",
+ "wgpu",
+]
+
+[[package]]
+name = "seaglass-render-wgpu"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glyphon",
+ "pollster",
+ "seaglass-scene",
+ "seaglass-text",
+ "wgpu",
+]
+
+[[package]]
+name = "seaglass-scene"
+version = "0.1.0"
+dependencies = [
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "seaglass-syntax"
+version = "0.1.0"
+dependencies = [
+ "seaglass-core",
+ "seaglass-scene",
+ "syntect",
+]
+
+[[package]]
+name = "seaglass-testing"
+version = "0.1.0"
+dependencies = [
+ "seaglass-core",
+ "seaglass-scene",
+]
+
+[[package]]
+name = "seaglass-text"
+version = "0.1.0"
+dependencies = [
+ "cosmic-text",
+ "seaglass-scene",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "seaglass-win32"
+version = "0.1.0"
+dependencies = [
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "seaglass-winit"
+version = "0.1.0"
+dependencies = [
+ "accesskit",
+ "accesskit_winit",
+ "arboard",
+ "drag",
+ "muda",
+ "notify-rust",
+ "pollster",
+ "rfd",
+ "seaglass-core",
+ "seaglass-devtools",
+ "seaglass-image",
+ "seaglass-render-cpu",
+ "seaglass-render-wgpu",
+ "seaglass-scene",
+ "seaglass-win32",
+ "softbuffer",
+ "sys-locale",
+ "tracing",
+ "tray-icon",
+ "wgpu",
+ "winit",
 ]
 
 [[package]]

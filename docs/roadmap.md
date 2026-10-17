@@ -52,7 +52,7 @@ The [milestone report](milestone-4.md) records the contracts, validation and lim
 
 ## 5. Tools — implementation delivered
 
-- [x] `rust-gui-testing`: headless harness, semantic finders, real input paths and text snapshots of tree, layout, accessibility and scene.
+- [x] `seaglass-testing`: headless harness, semantic finders, real input paths and text snapshots of tree, layout, accessibility and scene.
 - [x] Deterministic pixel snapshots with a bundled font in the opt-in GPU test.
 - [x] Per-node change and repaint flags, declare/layout/paint/render timings, `tracing` spans and CSV export.
 - [x] F12 inspector window: tree, node details with computed style, accessibility view, event log, frame timeline, selection/damage/repaint overlays.

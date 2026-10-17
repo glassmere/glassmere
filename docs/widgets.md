@@ -108,7 +108,7 @@ assert_eq!(harness.state().dial.value(), 0.55);
 assert!(harness.snapshot_accessibility().contains("value=\"55%\""));
 ```
 
-`examples/dial-widget` is a whole crate that does this from outside the framework: a rotary dial with its own state, input, painting, semantics and tests, depending on `rust-gui` and nothing private to it.
+`examples/dial-widget` is a whole crate that does this from outside the framework: a rotary dial with its own state, input, painting, semantics and tests, depending on `seaglass` and nothing private to it.
 
 ## What a widget cannot do
 

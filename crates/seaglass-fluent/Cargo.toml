@@ -1,0 +1,19 @@
+[package]
+name = "seaglass-fluent"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Fluent message catalogs for seaglass's Ui::tr."
+
+[dependencies]
+seaglass-core.workspace = true
+fluent-bundle = "0.16.0"
+unic-langid = "0.9.6"
+
+[dev-dependencies]
+seaglass-scene.workspace = true
+
+[lints]
+workspace = true

@@ -9,7 +9,7 @@ Implemented on 2026-09-21. Every scroll view and virtual collection now scrolls 
 ## Run
 
 ```powershell
-cargo run -p rust-gui --example layout --release
+cargo run -p seaglass --example layout --release
 ```
 
 The last section is a strip of sixteen cards in a full-width view. Shift+wheel or a touchpad scrolls it; so do Left and Right once Tab has reached it.
@@ -89,7 +89,7 @@ Implemented on 2026-09-21. A grid now has a current cell as well as a selected r
 ## Run
 
 ```powershell
-cargo run -p rust-gui --example grid --release
+cargo run -p seaglass --example grid --release
 ```
 
 Two thousand people with a text, a choice, two number and a bool column.

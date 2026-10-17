@@ -49,7 +49,7 @@ A key built from data that changes every frame throws away focus, scroll offset,
 It now also prints once, to stderr, in debug builds:
 
 ```
-rust-gui: unstable ids under page/list
+seaglass: unstable ids under page/list
   12 children were recreated in each of the last 12 frames; their keys change
   every frame, so they lose focus, scroll and editing state.
   Give each one a stable key: ui.keyed(item.id, |ui| ..)
@@ -89,7 +89,7 @@ Every call was rewritten by one rule. Tests, the devtools and the host's own tes
 
 ## The public-API snapshot missed most of the widgets
 
-`crates/rust-gui/tests/api.rs` looked for the modules `ui.rs` declares beside it, in `src/`, rather than in `src/ui/`, so no method declared in `src/ui/*.rs` or `src/tree/*.rs` was ever recorded: `checkbox`, `slider`, `data_grid`, the builders. That is how the signature changes in those files passed the guard. Modules of any file other than `lib.rs`, `mod.rs` and `main.rs` are now read from its own directory, and the snapshot grew by 158 lines.
+`crates/seaglass/tests/api.rs` looked for the modules `ui.rs` declares beside it, in `src/`, rather than in `src/ui/`, so no method declared in `src/ui/*.rs` or `src/tree/*.rs` was ever recorded: `checkbox`, `slider`, `data_grid`, the builders. That is how the signature changes in those files passed the guard. Modules of any file other than `lib.rs`, `mod.rs` and `main.rs` are now read from its own directory, and the snapshot grew by 158 lines.
 
 ## Validation
 

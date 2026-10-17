@@ -8,10 +8,10 @@ publish.workspace = true
 license.workspace = true
 
 [dependencies]
-rust-gui = { path = "../../crates/rust-gui" }
+seaglass = { path = "../../crates/seaglass" }
 
 [dev-dependencies]
-rust-gui-testing = { path = "../../crates/rust-gui-testing" }
+seaglass-testing = { path = "../../crates/seaglass-testing" }
 
 [lints]
 workspace = true

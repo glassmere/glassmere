@@ -1,8 +1,8 @@
 //! Driving a third-party widget headlessly, with the same harness the
 //! framework's own controls are tested with.
 use dial_widget::{Dial, DialMsg};
-use rust_gui::{App, Effects, Event, Key, Length, Point, Size, Style, Ui};
-use rust_gui_testing::Harness;
+use seaglass::{App, Effects, Event, Key, Length, Point, Size, Style, Ui};
+use seaglass_testing::Harness;
 
 const ROOT: Size = Size::new(320.0, 240.0);
 const DIAMETER: f32 = 120.0;

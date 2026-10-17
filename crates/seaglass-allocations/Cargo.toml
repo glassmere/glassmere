@@ -1,0 +1,20 @@
+[package]
+name = "seaglass-allocations"
+description = "Counts what the kernel allocates per batch, with a global allocator of its own."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dev-dependencies]
+seaglass-core.workspace = true
+seaglass-scene.workspace = true
+
+# Deliberately not `workspace = true`: a counting global allocator needs the
+# unsafe the rest of the workspace forbids, and only its test has it.
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+all = "warn"

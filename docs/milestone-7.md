@@ -9,9 +9,9 @@ Implemented on 2026-09-21. An app-owned `DockLayout` describes a tree of splits 
 ## Run
 
 ```powershell
-cargo run -p rust-gui --example docking --release
-cargo run -p rust-gui --example docking --release -- --open    # starts with a floating panel, saves nothing
-cargo run -p rust-gui --example docking --release -- --reset   # ignores the saved layout
+cargo run -p seaglass --example docking --release
+cargo run -p seaglass --example docking --release -- --open    # starts with a floating panel, saves nothing
+cargo run -p seaglass --example docking --release -- --reset   # ignores the saved layout
 ```
 
 The example saves its layout to the temp directory on every change and restores it at start, detached windows included.
@@ -62,7 +62,7 @@ window 1 640 480 {
 | `DockLayout::move_panel(panel, DockTarget) -> bool` | Targets: `Group { anchor, zone }` (beside or into the group holding `anchor`), `Tab { anchor, index }` (position in the visible strip), `Edge { area, zone }` (a quarter along a whole edge, `Center` joins the first group), `Float { .. }` and `Window { .. }`. Unknown panels or anchors and moves that change nothing return false and leave the layout untouched. Emptied groups, floats and windows disappear and one-sided splits collapse. Floating groups take tabs but never split. |
 | `show`, `activate`, `close`, `contains`, `panels`, `group_of`, `groups_in`, `place_of`, `retain_panels`, `redock`, `remove_window`, `normalize` | Query and edit helpers. `normalize` drops duplicates and empty containers and repairs non-finite or out-of-range numbers; `Ui::dock` calls it, so hand-edited or deserialized layouts are safe. |
 | `to_text`, `DockLayout::parse` | The `dock v1` format above with `//` comments, `\"` and `\\` escapes and `DockLayoutError { line, message }`. Parsing normalizes. |
-| `serde` feature (`rust-gui/serde`, `rust-gui-core/serde`) | `Serialize` and `Deserialize` on the layout types and `Axis`. |
+| `serde` feature (`seaglass/serde`, `seaglass-core/serde`) | `Serialize` and `Deserialize` on the layout types and `Axis`. |
 | `Ui::dock(key, &mut layout, &[DockPanel], DockOptions, content) -> DockResponse` | Declares the main tree with draggable dividers, tab groups and floating groups. `content(ui, id)` runs for each visible panel. Layout ids without a declared `DockPanel` are skipped, so old files survive app changes; declared panels missing from the layout stay hidden until `show`. `DockPanel::pinned` has no close button. The response reports `changed`, `closed` panel ids and newly `detached` window ids. |
 | Tab dragging | After six pixels a tab drag shows a compass on the group under the pointer (left, right, top, bottom, centre), four whole-dock edge indicators, a translucent preview and the tab title. Tab strips accept insertion and reordering. A release over no indicator floats the panel there; outside the window it detaches when `native_windows` is set and otherwise changes nothing. Escape or focus loss cancels. |
 | Panel menu | Each group has a `▾` menu button acting on its active panel: Float, Move to new window, Move to main window, Dock left/right/top/bottom, Move to next group, Close. Items that would change nothing are disabled. Right-clicking a tab (which also activates it) or Shift+F10 / the Menu key on a focused tab opens the same menu. |
@@ -95,7 +95,7 @@ Implemented on 2026-09-21. Text can now be a block of differently styled runs, a
 ## Run
 
 ```powershell
-cargo run -p rust-gui --example editor --release
+cargo run -p seaglass --example editor --release
 ```
 
 ```rust
@@ -151,12 +151,12 @@ Implemented on 2026-09-21. The code editor gains syntect highlighting, find and 
 ## Run
 
 ```powershell
-cargo run -p rust-gui --example editor --release
-cargo run -p rust-gui --example editor --release -- --open   # starts with the find bar searching "counts"
+cargo run -p seaglass --example editor --release
+cargo run -p seaglass --example editor --release -- --open   # starts with the find bar searching "counts"
 ```
 
 ```rust
-use rust_gui::syntax::SyntectHighlighter;
+use seaglass::syntax::SyntectHighlighter;
 
 let mut highlighter = SyntectHighlighter::new("rs", dark);   // extension, token or syntax name
 let mut find = FindState::default();                         // app state
@@ -174,7 +174,7 @@ ui.code_editor("code", &mut document, CodeEditorOptions {
 
 | API | Behavior |
 | --- | --- |
-| `rust-gui-syntax`, `rust_gui::syntax::SyntectHighlighter` (facade feature `syntax`, on by default) | syntect's bundled Sublime grammars and themes through the pure-Rust `fancy-regex` engine, so no C toolchain is needed. `new(language, dark)` picks `base16-ocean.dark` or `InspiredGitHub`; `with_theme`, `languages()`, `themes()` and `set_language` cover the rest. Unknown languages highlight as plain text. |
+| `seaglass-syntax`, `seaglass::syntax::SyntectHighlighter` (facade feature `syntax`, on by default) | syntect's bundled Sublime grammars and themes through the pure-Rust `fancy-regex` engine, so no C toolchain is needed. `new(language, dark)` picks `base16-ocean.dark` or `InspiredGitHub`; `with_theme`, `languages()`, `themes()` and `set_language` cover the rest. Unknown languages highlight as plain text. |
 | Incremental highlighting | Parser state is checkpointed every 32 lines and spans are cached per line. An edit re-parses from its first changed line (`TextDocument::changed_since`). Jumping far into a large file parses at most 1,500 catch-up lines per declaration: lines stay plain meanwhile, `Highlighter::pending` is true and the editor keeps requesting frames until colours arrive. |
 | `Highlighter::begin`, `pending`; `Ui::request_redraw` | New optional trait hooks for per-declaration budgets, and a general way for a view to ask for another frame; `Context::animating` reports it to hosts. |
 | `FindState`, `CodeEditorOptions::find` | With a find state, Ctrl+F opens a find bar above the text (Ctrl+H adds the replace row), seeded from a single-line selection. The query field takes focus; Enter, F3 and Shift+F3 step through matches with wrap-around; "Match case" and "Whole word" narrow them; the count reads "3 of 17". Replace acts on the selected match and moves on; Replace all is one undo step. Escape closes the bar and returns focus to the text. All matches in view are marked, the selected one in the accent colour. Searches re-run only when the document or the query changes. |
@@ -210,7 +210,7 @@ Implemented on 2026-09-21. An app-owned `RichDocument` of blocks and marked runs
 ## Run
 
 ```powershell
-cargo run -p rust-gui --example richtext --release
+cargo run -p seaglass --example richtext --release
 ```
 
 The example edits a document on the left and shows its Markdown, highlighted by syntect, on the right.
@@ -268,7 +268,7 @@ Implemented on 2026-09-21. Left and Right now move the caret on screen through m
 ## Run
 
 ```powershell
-cargo run -p rust-gui --example editor --release   # the field above the code mixes Latin, Hebrew and Arabic
+cargo run -p seaglass --example editor --release   # the field above the code mixes Latin, Hebrew and Arabic
 ```
 
 ```rust
@@ -311,9 +311,9 @@ Implemented on 2026-09-21. A window, or any subtree, can run right to left: layo
 ## Run
 
 ```powershell
-cargo run -p rust-gui --example controls --release -- --rtl
-cargo run -p rust-gui --example richtext --release -- --rtl
-cargo run -p rust-gui --example panes --release -- --rtl
+cargo run -p seaglass --example controls --release -- --rtl
+cargo run -p seaglass --example richtext --release -- --rtl
+cargo run -p seaglass --example panes --release -- --rtl
 ```
 
 ```rust
@@ -362,10 +362,10 @@ Implemented on 2026-09-21. Stylesheets and themes already reloaded from disk. Th
 ## Run
 
 ```powershell
-cargo run -p rust-gui-dev -- -p rust-gui --example counter
+cargo run -p seaglass-dev -- -p seaglass --example counter
 ```
 
-Click the counter a few times, then edit `crates/rust-gui/examples/counter.rs` (or any `.rs` or `.toml` under the current directory): the runner rebuilds, the window closes and reopens in the same place with the same count. Edit `crates/rust-gui/examples/counter-motd.txt` and the line under the title changes without any restart. A build error leaves the running app untouched.
+Click the counter a few times, then edit `crates/seaglass/examples/counter.rs` (or any `.rs` or `.toml` under the current directory): the runner rebuilds, the window closes and reopens in the same place with the same count. Edit `crates/seaglass/examples/counter-motd.txt` and the line under the title changes without any restart. A build error leaves the running app untouched.
 
 ```rust
 // Files: current content, reloaded on change, redraw on reload.
@@ -373,7 +373,7 @@ let message = ui.watched_text("assets/motd.txt");            // Option<Arc<str>>
 let bytes = ui.watched_bytes("assets/palette.bin");          // Option<Arc<[u8]>>
 
 // State across development restarts.
-let mut state: AppState = rust_gui::hot::saved_state()
+let mut state: AppState = seaglass::hot::saved_state()
     .and_then(|text| AppState::parse(&text))
     .unwrap_or_default();
 run(options, move |ui| {
@@ -389,15 +389,15 @@ run(options, move |ui| {
 | `Ui::watched_bytes(path)`, `Ui::watched_text(path)` | The content of a file the host keeps current. `None` until the first load, which happens right after the declaration that first asks; each change on disk delivers new content and a redraw. A failed reload keeps the last good content. A view that stops asking stops the watching. `watched_text` is `None` for bytes that are not UTF-8. |
 | `Context::watched_paths`, `watched_known`, `set_watched_file`, `watch_error` | The host side of the same contract, so other hosts and headless tests can deliver files themselves. The core does no file IO. |
 | Desktop host | One modification-time poller per window serves the stylesheet and the watched files, on a 500 ms tick. The tick now runs by the clock rather than by timer wakeups, so it also fires while a window redraws every frame; before, a running animation starved stylesheet reloads. |
-| `rust-gui-dev [--watch PATH]... [--poll MS] [cargo build args]... [-- app args]` | Builds with `cargo build`, takes the executable from cargo's JSON messages and runs it directly. `.rs` and `.toml` files under the watch roots (default: the current directory; `target` and dot directories are skipped) are polled; a change rebuilds. After a successful build the app is asked to stop, given five seconds, and the new build is started. A failed build leaves the running app alone. Closing the app ends the session with its exit code. |
-| Stop protocol | The runner passes two paths in `RUST_GUI_HOT_STATE` and `RUST_GUI_HOT_STOP`. When the stop file appears the host runs one more declaration with `Context::request_hot_save`, writes the text from `Ui::hot_state` plus the window's outer position and logical size to the state file, and closes. No signals and no unsafe code. |
-| `Ui::hot_state(save)`, `rust_gui::hot::saved_state()`, `hot::active()` | The app chooses its own state format. The closure runs only for a restart. On the next start `saved_state` returns the text and the first window reopens with the saved position and size. Outside the runner all of it is inert. |
+| `seaglass-dev [--watch PATH]... [--poll MS] [cargo build args]... [-- app args]` | Builds with `cargo build`, takes the executable from cargo's JSON messages and runs it directly. `.rs` and `.toml` files under the watch roots (default: the current directory; `target` and dot directories are skipped) are polled; a change rebuilds. After a successful build the app is asked to stop, given five seconds, and the new build is started. A failed build leaves the running app alone. Closing the app ends the session with its exit code. |
+| Stop protocol | The runner passes two paths in `SEAGLASS_HOT_STATE` and `SEAGLASS_HOT_STOP`. When the stop file appears the host runs one more declaration with `Context::request_hot_save`, writes the text from `Ui::hot_state` plus the window's outer position and logical size to the state file, and closes. No signals and no unsafe code. |
+| `Ui::hot_state(save)`, `seaglass::hot::saved_state()`, `hot::active()` | The app chooses its own state format. The closure runs only for a restart. On the next start `saved_state` returns the text and the first window reopens with the saved position and size. Outside the runner all of it is inert. |
 
 ## Validation
 
 Seven new tests. Two core tests cover watched files (request, delivery, change, identical content, an error that keeps the last good content and reports once, non-UTF-8 bytes, a view that stops asking) and the hot state hook (the closure runs only on request, the text is taken once). Two host tests cover the state file format, including state text that contains the format's own keywords, and the poller for new, changed and missing files. Three runner tests cover argument splitting, extracting the executable from cargo's messages with escaped Windows paths, and source snapshots that ignore `target`, dot directories and other file types. The full suite is 155 tests plus 11 GPU tests; clippy is clean.
 
-Run for real on this machine: the counter example under the stop protocol stopped within one second of the stop file appearing, wrote `window 64 64 900 650.4` and `387 true true`, and a second start resumed from 387 and later saved 863. The `rust-gui-dev` binary built the example, started it, detected a change in a watched directory, rebuilt, stopped the app without hitting the timeout, started the new build and exited 0 when that one closed. The first attempt exposed the starved tick described above, which is fixed. The existing `scripts/test-theming.ps1` stylesheet reload check still passes through the shared poller.
+Run for real on this machine: the counter example under the stop protocol stopped within one second of the stop file appearing, wrote `window 64 64 900 650.4` and `387 true true`, and a second start resumed from 387 and later saved 863. The `seaglass-dev` binary built the example, started it, detected a change in a watched directory, rebuilt, stopped the app without hitting the timeout, started the new build and exited 0 when that one closed. The first attempt exposed the starved tick described above, which is fixed. The existing `scripts/test-theming.ps1` stylesheet reload check still passes through the shared poller.
 
 Not verified: that the restored window position looks right on a second monitor or a different scale factor, and editing `counter-motd.txt` while watching the window (the delivery path is tested headlessly and the poller in isolation).
 
@@ -423,7 +423,7 @@ context.set_diagnostics(true);      // on in debug builds, off in release builds
 context.clear_diagnostics();
 ```
 
-In a desktop app, each new diagnostic is printed once to stderr as `rust-gui diagnostic: <Kind> at `<path>`: <message>`, emitted as a `tracing` warn event with target `rust_gui::diagnostics`, and listed in the inspector's Diagnostics tab, where selecting an entry shows its node in the tree.
+In a desktop app, each new diagnostic is printed once to stderr as `seaglass diagnostic: <Kind> at `<path>`: <message>`, emitted as a `tracing` warn event with target `seaglass::diagnostics`, and listed in the inspector's Diagnostics tab, where selecting an entry shows its node in the tree.
 
 ## Contracts
 

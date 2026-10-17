@@ -4,10 +4,10 @@ An application is written against these crates' signatures. This says which of t
 
 ## The surface
 
-`crates/rust-gui/tests/snapshots/public-api.snap` is the record: every public item and every public method of the crates an application depends on, with its signature. A test reads the sources and compares them with that file, so a rename, a removal or an added parameter cannot slip through unnoticed. Accepting a change is deliberate:
+`crates/seaglass/tests/snapshots/public-api.snap` is the record: every public item and every public method of the crates an application depends on, with its signature. A test reads the sources and compares them with that file, so a rename, a removal or an added parameter cannot slip through unnoticed. Accepting a change is deliberate:
 
 ```sh
-UPDATE_SNAPSHOTS=1 cargo test -p rust-gui --test api
+UPDATE_SNAPSHOTS=1 cargo test -p seaglass --test api
 ```
 
 The diff is then part of the change, to be read and explained. Anything that appears there is public; anything else is not, whatever its visibility says.
@@ -16,13 +16,13 @@ The diff is then part of the change, to be read and explained. Anything that app
 
 | Tier | What it covers | What may happen to it |
 | --- | --- | --- |
-| Application surface | `rust_gui`: `Ui`, `Style`, `AppOptions`, the controls, the models, `Command`, `Clip`, `Tasks`, `Store`, `CustomWidget` and the types they take. | Additive changes at any time. A breaking one needs a minor version and an entry in the release notes, after a release that deprecates it. |
-| Host surface | `Context`, `Event`, `FrameStats`, the renderers, `rust-gui-winit`. What a host or a test harness calls, not an application. | The same promise, but it moves more often: this is where new platform work lands. |
+| Application surface | `seaglass`: `Ui`, `Style`, `AppOptions`, the controls, the models, `Command`, `Clip`, `Tasks`, `Store`, `CustomWidget` and the types they take. | Additive changes at any time. A breaking one needs a minor version and an entry in the release notes, after a release that deprecates it. |
+| Host surface | `Context`, `Event`, `FrameStats`, the renderers, `seaglass-winit`. What a host or a test harness calls, not an application. | The same promise, but it moves more often: this is where new platform work lands. |
 | Internals | Anything not in the snapshot. Module paths, field order, private types. | Change without notice. An application that reaches one is not supported. |
 
 ## Versioning
 
-The workspace is at `0.1`. Before `1.0` a breaking change raises the minor version, which is what Cargo treats as incompatible for a `0.x` crate, so `rust-gui = "0.1"` will not pick one up. After `1.0` the usual semantic versioning applies.
+The workspace is at `0.1`. Before `1.0` a breaking change raises the minor version, which is what Cargo treats as incompatible for a `0.x` crate, so `seaglass = "0.1"` will not pick one up. After `1.0` the usual semantic versioning applies.
 
 Features are additive: turning one on adds items and never changes what the others do. The default set can gain a feature in a minor release; taking one out of the defaults is a breaking change.
 

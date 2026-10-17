@@ -1,5 +1,5 @@
 //! A rotary dial, built the way a third party would build one: a normal
-//! crate, depending on `rust-gui` and on nothing private to it.
+//! crate, depending on `seaglass` and on nothing private to it.
 //!
 //! It is here to hold the framework to its promise. Everything a built-in
 //! control has, this has through the public API: its own state, the pointer
@@ -8,7 +8,7 @@
 //! headlessly. If any of that needed an internal type, the promise would be
 //! broken and this crate would not compile.
 
-use rust_gui::{
+use seaglass::{
     Color, CustomWidget, EventArea, Key, NumericValue, Primitive, Rect, Role, Semantics, Size,
     Style, Ui, UiEvent, WidgetBuilder, WidgetInput,
 };
@@ -127,7 +127,7 @@ impl Dial {
     #[allow(clippy::too_many_arguments)]
     fn paint(
         &self,
-        input: &rust_gui::WidgetInput,
+        input: &seaglass::WidgetInput,
         size: f32,
         face: Color,
         ring: Color,

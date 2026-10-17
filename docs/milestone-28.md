@@ -37,5 +37,5 @@ With this, every row of [the coverage table](feature-coverage.md) reads Done: 62
 ## Remaining limits
 
 - The guides are written against this machine's experience. The Linux and macOS notes come from the code and the build, not from use.
-- There is no API reference site: the signatures are in the sources and in [the surface snapshot](../crates/rust-gui/tests/snapshots/public-api.snap), and `cargo doc` renders the rest.
+- There is no API reference site: the signatures are in the sources and in [the surface snapshot](../crates/seaglass/tests/snapshots/public-api.snap), and `cargo doc` renders the rest.
 - Being finished against a list is not the same as being finished. Each row names what it does not do, and those notes are the honest map of what is left.
