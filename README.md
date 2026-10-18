@@ -1,5 +1,6 @@
 # Glassmere
 
+[![CI](https://github.com/glassmere/glassmere/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/glassmere/glassmere/actions/workflows/ci.yml)
 ![MSRV](https://img.shields.io/badge/rust-1.90%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Status](https://img.shields.io/badge/status-0.1%2C%20API%20may%20change-yellow)
