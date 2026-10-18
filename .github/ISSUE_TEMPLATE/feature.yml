@@ -1,0 +1,10 @@
+name: Feature request
+description: Something Glassmere cannot do yet.
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes:
+      label: What you want to build
+      description: The app or widget you are making, and where Glassmere gets in the way. Check docs/limitations.md first.
+    validations:
+      required: true

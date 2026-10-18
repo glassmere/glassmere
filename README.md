@@ -1,11 +1,17 @@
 # Glassmere
 
 [![CI](https://github.com/glassmere/glassmere/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/glassmere/glassmere/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/glassmere)](https://crates.io/crates/glassmere)
+[![docs.rs](https://img.shields.io/docsrs/glassmere)](https://docs.rs/glassmere)
 ![MSRV](https://img.shields.io/badge/rust-1.90%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Status](https://img.shields.io/badge/status-0.1%2C%20API%20may%20change-yellow)
 
 A native GUI framework for Rust. You write the view as plain function calls every frame; underneath, a retained tree keeps widget identity, layout and paint between frames and only redoes the parts that changed.
+
+```sh
+cargo add glassmere
+```
 
 ```rust
 use glassmere::{run, App, AppOptions, Button, Effects, Ui};

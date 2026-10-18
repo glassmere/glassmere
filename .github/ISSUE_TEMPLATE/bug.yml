@@ -1,0 +1,27 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Code
+      description: The smallest app that shows it.
+      render: rust
+  - type: input
+    attributes:
+      label: Glassmere version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Platform
+      description: Operating system, Wayland or X11 on Linux, GPU and wgpu backend if it is a rendering problem.
+    validations:
+      required: true
