@@ -40,8 +40,8 @@ arboard.workspace = true
 sys-locale.workspace = true
 rfd = { version = "0.17.2", optional = true }
 notify-rust = { version = "4.18.0", optional = true }
-muda = { version = "0.20.0", optional = true }
-tray-icon = { version = "0.25.1", optional = true }
+muda = { version = "0.21.2", optional = true }
+tray-icon = { version = "0.26.1", optional = true }
 
 # Outgoing file drags. On Linux the crate wants a GTK window, which winit is not.
 [target.'cfg(any(windows, target_os = "macos"))'.dependencies]
