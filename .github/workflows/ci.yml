@@ -30,12 +30,12 @@ jobs:
       # into it; the point is that the whole host path runs.
       - name: Windowed smoke run
         if: runner.os == 'Linux'
-        run: xvfb-run -a cargo run -p seaglass --example counter --locked -- --smoke
+        run: xvfb-run -a cargo run --example counter --locked -- --smoke
         env:
           SEAGLASS_RENDERER: cpu
       - name: Windowed smoke run
         if: runner.os != 'Linux'
-        run: cargo run -p seaglass --example counter --locked -- --smoke
+        run: cargo run --example counter --locked -- --smoke
 
   docs:
     runs-on: ubuntu-latest

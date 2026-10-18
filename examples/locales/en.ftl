@@ -1,4 +1,4 @@
-# English texts of `cargo run -p seaglass --example localization`.
+# English texts of `cargo run --example localization`.
 title = Localization
 intro = Texts come from Fluent catalogs in examples/locales. Plurals follow each language's rules.
 language = Language

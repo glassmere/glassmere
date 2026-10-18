@@ -10,9 +10,9 @@ description = "Immediate-style GUI framework over a retained, incremental UI ker
 keywords = ["gui", "ui", "immediate-mode", "widgets", "wgpu"]
 categories = ["gui", "graphics"]
 
-# `tr!` checks keys and arguments against this catalog while compiling.
+# `tr!` in this crate's tests checks keys and arguments against this catalog.
 [package.metadata.seaglass]
-messages = "examples/locales/en.ftl"
+messages = "../../examples/locales/en.ftl"
 
 [features]
 default = ["desktop", "syntax", "images", "derive", "fluent", "regex"]
@@ -49,74 +49,6 @@ seaglass-image = { workspace = true, optional = true }
 seaglass-derive = { workspace = true, optional = true }
 seaglass-fluent = { workspace = true, optional = true }
 seaglass-icu = { workspace = true, optional = true }
-
-[[example]]
-name = "counter"
-required-features = ["desktop"]
-
-[[example]]
-name = "platform"
-required-features = ["platform"]
-
-[[example]]
-name = "workbench"
-required-features = ["desktop"]
-
-[[example]]
-name = "controls"
-required-features = ["desktop"]
-
-[[example]]
-name = "application"
-required-features = ["desktop"]
-
-[[example]]
-name = "theming"
-required-features = ["desktop"]
-
-[[example]]
-name = "layout"
-required-features = ["desktop"]
-
-[[example]]
-name = "dialogs"
-required-features = ["desktop"]
-
-[[example]]
-name = "panes"
-required-features = ["desktop"]
-
-[[example]]
-name = "animations"
-required-features = ["desktop"]
-
-[[example]]
-name = "docking"
-required-features = ["desktop"]
-
-[[example]]
-name = "editor"
-required-features = ["desktop", "syntax"]
-
-[[example]]
-name = "richtext"
-required-features = ["desktop", "syntax"]
-
-[[example]]
-name = "localization"
-required-features = ["desktop", "fluent"]
-
-[[example]]
-name = "grid"
-required-features = ["desktop"]
-
-[[example]]
-name = "properties"
-required-features = ["desktop", "derive"]
-
-[[example]]
-name = "images"
-required-features = ["desktop", "images"]
 
 [dev-dependencies]
 seaglass-testing.workspace = true

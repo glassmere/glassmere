@@ -8,7 +8,7 @@ use seaglass::{Context, MonospaceMeasurer, Size, tr};
 fn checked_lookups_expand_to_ordinary_ones() {
     let mut context = Context::new();
     let mut messages = FluentMessages::new("cs", "en").unwrap();
-    let locales = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/locales");
+    let locales = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/locales");
     assert_eq!(messages.load_dir(locales).unwrap(), 2);
     context.set_messages(Some(Box::new(messages)));
     let mut shown = Vec::new();

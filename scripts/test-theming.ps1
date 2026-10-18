@@ -52,7 +52,7 @@ function Save-Window($Window, [string]$Name) {
     } finally { $bitmap.Dispose() }
 }
 
-$stylesheet = Join-Path (Get-Location) 'crates/seaglass/examples/theming.style'
+$stylesheet = Join-Path (Get-Location) 'examples/theming.style'
 $original = [System.IO.File]::ReadAllText($stylesheet)
 $info = New-Object System.Diagnostics.ProcessStartInfo
 $info.FileName = (Resolve-Path -LiteralPath $Executable).Path

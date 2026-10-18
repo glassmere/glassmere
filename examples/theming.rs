@@ -205,10 +205,7 @@ impl App for Theming {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
-    let stylesheet = PathBuf::from(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/examples/theming.style"
-    ));
+    let stylesheet = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/theming.style"));
     run(
         AppOptions {
             title: "Seaglass / Theming".into(),

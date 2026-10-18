@@ -1,4 +1,4 @@
-// Live stylesheet for `cargo run -p seaglass --example theming`.
+// Live stylesheet for `cargo run --example theming`.
 // Save this file while the example runs: classes and tokens reload within half a second.
 // Tokens overlay whichever theme is active (OS preference or the Dark/Light buttons).
 // Uncomment the next line to pin a base theme instead:

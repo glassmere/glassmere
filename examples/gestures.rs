@@ -7,7 +7,7 @@ use seaglass::{
     ImageOptions, Justify, Length, Size, Style, Transform, Ui, run,
 };
 
-const PHOTO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/assets/dusk.png");
+const PHOTO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/dusk.png");
 const CANVAS: Size = Size::new(720.0, 440.0);
 
 #[derive(Clone)]

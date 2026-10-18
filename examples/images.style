@@ -1,4 +1,4 @@
-// Stylesheet for `cargo run -p seaglass --example images`.
+// Stylesheet for `cargo run --example images`.
 // `url(...)` is relative to this file. Save while the example runs to reload.
 class hero {
     background-image: url(assets/dusk.png)

@@ -1,0 +1,111 @@
+[package]
+name = "seaglass-examples"
+description = "Runnable examples of the seaglass GUI framework."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+license.workspace = true
+
+# `tr!` in the localization example checks keys against this catalog.
+[package.metadata.seaglass]
+messages = "locales/en.ftl"
+
+[features]
+icu = ["seaglass/icu"]
+platform = ["seaglass/platform"]
+
+[dependencies]
+seaglass = { path = "../crates/seaglass" }
+
+[lints]
+workspace = true
+
+[[example]]
+name = "animations"
+path = "animations.rs"
+
+[[example]]
+name = "application"
+path = "application.rs"
+
+[[example]]
+name = "controls"
+path = "controls.rs"
+
+[[example]]
+name = "counter"
+path = "counter.rs"
+
+[[example]]
+name = "dialogs"
+path = "dialogs.rs"
+
+[[example]]
+name = "docking"
+path = "docking.rs"
+
+[[example]]
+name = "editor"
+path = "editor.rs"
+
+[[example]]
+name = "gestures"
+path = "gestures.rs"
+
+[[example]]
+name = "grid"
+path = "grid.rs"
+
+[[example]]
+name = "images"
+path = "images.rs"
+
+[[example]]
+name = "layout"
+path = "layout.rs"
+
+[[example]]
+name = "localization"
+path = "localization.rs"
+
+[[example]]
+name = "panes"
+path = "panes.rs"
+
+[[example]]
+name = "platform"
+path = "platform.rs"
+required-features = ["platform"]
+
+[[example]]
+name = "properties"
+path = "properties.rs"
+
+[[example]]
+name = "reactive"
+path = "reactive.rs"
+
+[[example]]
+name = "richtext"
+path = "richtext.rs"
+
+[[example]]
+name = "tasks"
+path = "tasks.rs"
+
+[[example]]
+name = "theming"
+path = "theming.rs"
+
+[[example]]
+name = "titlebar"
+path = "titlebar.rs"
+
+[[example]]
+name = "windows"
+path = "windows.rs"
+
+[[example]]
+name = "workbench"
+path = "workbench.rs"

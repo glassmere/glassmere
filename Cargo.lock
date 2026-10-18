@@ -3997,6 +3997,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "seaglass-examples"
+version = "0.1.0"
+dependencies = [
+ "seaglass",
+]
+
+[[package]]
 name = "seaglass-fluent"
 version = "0.1.0"
 dependencies = [

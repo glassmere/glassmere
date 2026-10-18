@@ -84,8 +84,11 @@ Green is used and tested by hand, yellow builds and passes tests but has gaps or
 
 ## Examples
 
+Each file in [`examples/`](examples) is one runnable app:
+
 ```sh
-cargo run -p seaglass --example counter
+cargo run --example counter
+cargo run -p seaglass-examples --example platform --features platform
 ```
 
 | Example | Shows |
@@ -106,19 +109,18 @@ cargo run -p seaglass --example counter
 | `properties` | A property grid editing a card. |
 | `images` | Image formats, fit modes, tinted icons, dragging a file out. |
 | `gestures` | Pan, pinch and rotate. |
-| `localization` | Fluent catalogs and switching language at run time. Add `--features icu` for CLDR formatting. |
+| `localization` | Fluent catalogs and switching language at run time. Add `-p seaglass-examples --features icu` for CLDR formatting. |
 | `tasks` | Cancellable background jobs. |
 | `reactive` | The optional signal store. |
 | `titlebar` | A window that draws its own title bar. |
 | `windows` | Several windows sharing one app. |
-| `platform` | File dialogs, notifications, tray and menu. Needs `--features platform`. |
-
-`examples/dial-widget` is a separate crate that builds a custom widget using only the public API.
+| `platform` | File dialogs, notifications, tray and menu. Needs the `platform` feature, as above. |
+| `dials` | [`examples/dial-widget`](examples/dial-widget): a custom widget crate built only on the public API. |
 
 To work on an app with hot restart:
 
 ```sh
-cargo run -p seaglass-dev -- -p seaglass --example counter
+cargo run -p seaglass-dev -- -p seaglass-examples --example counter
 ```
 
 ## Guides

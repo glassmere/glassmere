@@ -2,7 +2,7 @@
 //! notifications, and the files the system started the application with.
 //!
 //! ```sh
-//! cargo run -p seaglass --example platform --features platform
+//! cargo run -p seaglass-examples --example platform --features platform
 //! ```
 use seaglass::{
     App, AppOptions, Color, Command, Effects, FileRequest, Label, Length, Menu, MenuEntry,

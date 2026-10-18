@@ -8,7 +8,7 @@ use seaglass::{
     NumberOptions, Size, Style, TextWrap, Toast, Ui, run, tr,
 };
 
-const LOCALES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/locales");
+const LOCALES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/locales");
 
 fn messages(locale: &str) -> Option<Box<dyn Messages>> {
     let mut messages = FluentMessages::new(locale, "en").ok()?;

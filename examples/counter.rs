@@ -3,7 +3,7 @@ use seaglass::{
     Primitive, Rect, Semantics, Size, Style, Ui, WidgetBuilder, run,
 };
 
-const MOTD: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/counter-motd.txt");
+const MOTD: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/counter-motd.txt");
 
 #[derive(Clone)]
 enum Msg {

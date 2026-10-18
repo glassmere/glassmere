@@ -10,7 +10,7 @@ use seaglass::{
     Size, Style, Ui, run,
 };
 
-const ASSETS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/assets");
+const ASSETS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets");
 
 /// A checkerboard with a transparent half, to show that alpha blends.
 fn checker() -> Image {
