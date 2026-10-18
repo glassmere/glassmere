@@ -206,8 +206,20 @@ impl<K: Clone + Eq + Hash, T> Tasks<K, T> {
             .collect();
         // A finished job is forgotten once nothing from it is still waiting,
         // because forgetting it earlier would drop those results as stale.
-        if self.mailbox.pending() == 0 {
-            self.live.retain(|_, live| !live.finished());
+        // Which jobs ended is read before the count: a job marks itself
+        // finished only after its last send, so a zero count read afterwards
+        // covers everything those jobs sent. Read the other way round, a job
+        // could send and finish in between and lose its result.
+        let ended: Vec<K> = self
+            .live
+            .iter()
+            .filter(|(_, live)| live.finished())
+            .map(|(key, _)| key.clone())
+            .collect();
+        if !ended.is_empty() && self.mailbox.pending() == 0 {
+            for key in &ended {
+                self.live.remove(key);
+            }
         }
         results
     }
