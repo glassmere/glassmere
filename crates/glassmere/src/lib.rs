@@ -19,7 +19,8 @@ pub use glassmere_render_cpu::{CpuRenderer, CpuStats};
 #[cfg(feature = "desktop")]
 pub use glassmere_render_wgpu as render;
 pub use glassmere_scene::{
-    Affine, Affinity, Color, Image, Point, Primitive, Rect, Scene, Size, VectorImage,
+    Affine, Affinity, Color, Image, Path, Point, Primitive, Rect, Scene, Segment, Size, Stroke,
+    VectorImage,
 };
 #[cfg(feature = "syntax")]
 pub use glassmere_syntax as syntax;

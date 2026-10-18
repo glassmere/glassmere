@@ -550,10 +550,15 @@ impl Context {
             node.scroll.offset = offset;
             self.geometry_dirty = true;
         }
-        if let Control::TextInput { value, .. } = &element.control {
-            node.editor
-                .get_or_insert_with(|| Box::new(Editor::new(value)))
-                .synchronize(value);
+        if let Control::TextInput {
+            value, password, ..
+        } = &element.control
+        {
+            let editor = node
+                .editor
+                .get_or_insert_with(|| Box::new(Editor::new(value)));
+            editor.synchronize(value);
+            editor.masked = *password;
         }
         node.control = element.control;
         if paint_changed {
@@ -629,7 +634,13 @@ impl Context {
                 custom: element.custom,
                 paint_cache: None,
                 editor: match &element.control {
-                    Control::TextInput { value, .. } => Some(Box::new(Editor::new(value))),
+                    Control::TextInput {
+                        value, password, ..
+                    } => {
+                        let mut editor = Editor::new(value);
+                        editor.masked = *password;
+                        Some(Box::new(editor))
+                    }
                     _ => None,
                 },
                 control: element.control,

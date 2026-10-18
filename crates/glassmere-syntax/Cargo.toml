@@ -3,9 +3,12 @@ name = "glassmere-syntax"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
 license.workspace = true
+repository.workspace = true
+readme.workspace = true
 description = "Syntax highlighting for glassmere's code editor, using syntect's bundled grammars and themes."
+keywords = ["gui", "syntax-highlighting", "syntect", "editor"]
+categories = ["text-editors", "gui"]
 
 [dependencies]
 glassmere-core.workspace = true

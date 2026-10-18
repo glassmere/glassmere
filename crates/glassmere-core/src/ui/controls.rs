@@ -11,6 +11,7 @@ pub(super) struct FieldExtra {
     pub children: Vec<Element>,
     /// See `Control::TextInput::draft`.
     pub draft: bool,
+    pub password: bool,
 }
 
 impl<'a, M: 'static> Ui<'a, M> {
@@ -60,7 +61,10 @@ impl<'a, M: 'static> Ui<'a, M> {
             value,
             &input.placeholder,
             style,
-            FieldExtra::default(),
+            FieldExtra {
+                password: input.password,
+                ..FieldExtra::default()
+            },
         );
         self.set_handler(Handler::Field {
             change: Some(Box::new(move |update| match update {
@@ -106,6 +110,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                 number: extra.number,
                 suggestions: extra.suggestions,
                 draft: extra.draft,
+                password: extra.password,
             },
             ..Element::new(key, Kind::TextInput)
         })

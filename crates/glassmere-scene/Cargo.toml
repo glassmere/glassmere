@@ -3,9 +3,12 @@ name = "glassmere-scene"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
 license.workspace = true
+repository.workspace = true
+readme.workspace = true
 description = "Renderer-independent geometry, text measurement and ordered paint commands for glassmere."
+keywords = ["gui", "scene", "display-list", "geometry"]
+categories = ["rendering", "gui"]
 
 [lints]
 workspace = true

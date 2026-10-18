@@ -326,6 +326,17 @@ impl<S> Harness<S> {
                     if *inset { " inset" } else { "" }
                 ),
                 Primitive::Custom { rect: r, id } => format!("Custom {} #{id}", rect(*r)),
+                Primitive::Path { path, fill, stroke } => format!(
+                    "Path {} segments={}{}{}",
+                    rect(path.bounds()),
+                    path.segments().len(),
+                    fill.map_or_else(String::new, |fill| format!(" fill={}", hex(fill))),
+                    stroke.map_or_else(String::new, |stroke| format!(
+                        " stroke={:.1} {}",
+                        stroke.width,
+                        hex(stroke.color)
+                    ))
+                ),
                 Primitive::Text {
                     rect: r,
                     text,

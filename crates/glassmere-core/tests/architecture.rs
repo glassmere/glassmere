@@ -6,7 +6,7 @@ mod support;
 
 use glassmere_core::app::Action as Message;
 use glassmere_core::{Button, Label};
-use glassmere_scene::{Color, Point, Primitive, Rect, Size};
+use glassmere_scene::{Color, Path, Point, Primitive, Rect, Size};
 use support::{Driven, act};
 
 const ROOT: Size = Size::new(400.0, 400.0);
@@ -459,4 +459,49 @@ fn a_nonfocusable_custom_button_remains_pointer_activatable() {
     driven.context.event(Event::PointerUp);
     driven.frame();
     assert_eq!(driven.state().count, 1);
+}
+
+#[test]
+fn a_custom_widget_draws_paths_where_it_is_laid_out() {
+    let mut triangle = Path::new();
+    triangle
+        .move_to(Point { x: 0.0, y: 0.0 })
+        .line_to(Point { x: 40.0, y: 0.0 })
+        .line_to(Point { x: 20.0, y: 30.0 })
+        .close();
+    let widget = CustomWidget {
+        size: Size::new(40.0, 30.0),
+        primitives: vec![Primitive::Path {
+            path: triangle,
+            fill: Some(Color::WHITE),
+            stroke: None,
+        }],
+        ..CustomWidget::default()
+    };
+    let mut context = Context::new();
+    frame(&mut context, |ui| {
+        ui.keyed("padded", |ui| {
+            ui.row(Style::default().padding(10.0), |ui| {
+                ui.keyed("shape", |ui| {
+                    ui.custom(Style::default(), widget, ());
+                })
+            })
+        })
+    });
+    let at = context
+        .node(context.find(&["padded", "shape"]).unwrap())
+        .unwrap()
+        .bounds;
+    let bounds = context
+        .scene()
+        .primitives
+        .iter()
+        .find_map(|primitive| match primitive {
+            Primitive::Path { path, .. } => Some(path.bounds()),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!((at.x, at.y), (10.0, 10.0));
+    assert_eq!((bounds.x, bounds.y), (at.x, at.y));
+    assert_eq!((bounds.width, bounds.height), (40.0, 30.0));
 }

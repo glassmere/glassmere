@@ -251,6 +251,7 @@ impl Context {
                     semantics.role,
                     Role::Button
                         | Role::TextInput
+                        | Role::PasswordInput
                         | Role::Checkbox
                         | Role::Radio
                         | Role::Slider

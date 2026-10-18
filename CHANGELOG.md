@@ -18,7 +18,7 @@ First release. What does not work yet is listed in [docs/limitations.md](docs/li
 
 #### Widgets
 
-- Controls: label, button, checkbox, radio, slider, text input, number input, autocomplete, combo box, menus, context menus, tooltips, popovers, tabs, split panes, dialogs, toasts and images.
+- Controls: label, button, checkbox, radio, slider, text input, password input, number input, autocomplete, combo box, menus, context menus, tooltips, popovers, tabs, split panes, dialogs, toasts and images.
 - Virtualized lists, trees and a data grid with sorting, filtering, column resize, reorder, hide and freeze, and typed in-place cell editing, over models with stable `ItemId`s.
 - Property grid with `#[derive(Properties)]`, a code editor, rich text blocks and a WYSIWYG rich text editor with Markdown persistence.
 - Docking with split trees, tab groups, floating groups, detached windows and a persistable layout.
@@ -28,6 +28,7 @@ First release. What does not work yet is listed in [docs/limitations.md](docs/li
 - Retained tree with parent-scoped keys, call-site identity, keyed reconciliation, and cached flex and grid layout (tracks, areas, min/max, aspect ratio, alignment, opt-in shrinking).
 - Typed `Style`, dark and light themes that follow the OS, inherited text properties, per-state overrides, stylesheets with classes and hot reload, and a compile-time checked `style_sheet!`.
 - Transitions, enter and exit effects, layout animations and keyframes, composited as layers; gradients, shadows and background images with nine-slice frames.
+- Scrollbars that can be dragged and whose tracks page when pressed, on both axes and in the data grid.
 
 #### Text and localization
 
@@ -54,3 +55,4 @@ First release. What does not work yet is listed in [docs/limitations.md](docs/li
 
 - Renderer-independent `Scene` display list, a wgpu renderer (Direct3D 12, Vulkan, Metal, OpenGL) with a glyph and image atlas, and `CpuRenderer`, which rasterizes the same scene without a GPU and is the host's fallback when no adapter works. Both redraw only damaged pixels.
 - `AppOptions::gpu` and `Primitive::Custom` hand a rectangle to an application's own wgpu drawing.
+- `Primitive::Path`: filled and stroked shapes of lines and curves, tessellated by lyon on the GPU and rasterized by tiny-skia on the CPU.

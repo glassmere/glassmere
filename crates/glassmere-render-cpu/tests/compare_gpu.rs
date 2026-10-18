@@ -6,7 +6,8 @@
 use glassmere_render_cpu::CpuRenderer;
 use glassmere_render_wgpu::Renderer;
 use glassmere_scene::{
-    Affine, Color, GradientStop, Image, Point, Primitive, Rect, Scene, Size, TextStyle, VectorImage,
+    Affine, Color, GradientStop, Image, Path, Point, Primitive, Rect, Scene, Size, Stroke,
+    TextStyle, VectorImage,
 };
 use glassmere_text::TextSystem;
 
@@ -293,43 +294,151 @@ fn the_cpu_and_the_gpu_draw_the_same_picture_within_a_stated_tolerance() {
             std::fs::write(directory.join(format!("gpu-{scale}.rgba")), &reference).unwrap();
         }
 
-        let count = (SIDE * SIDE) as f64;
-        let worst = |at: usize| {
-            (0..3)
-                .map(|channel| pixels[at * 4 + channel].abs_diff(reference[at * 4 + channel]))
-                .max()
-                .unwrap()
-        };
-        let differences: Vec<u8> = (0..(SIDE * SIDE) as usize).map(worst).collect();
-        let mean = differences.iter().map(|d| f64::from(*d)).sum::<f64>() / count;
-        let share = |over: u8| differences.iter().filter(|d| **d > over).count() as f64 / count;
-        println!(
-            "scale {scale}: mean {mean:.3}, over 8: {:.2}%, over 32: {:.2}%, over 96: {:.3}%, max {}",
-            share(8) * 100.0,
-            share(32) * 100.0,
-            share(96) * 100.0,
-            differences.iter().max().unwrap()
-        );
-        // What differs is edges: a line of pixels around shapes and glyphs.
-        // Flat areas agree, large errors are rare, and nothing is misplaced,
-        // which would show as whole regions far apart. Measured on this
-        // machine: a mean of 0.16 to 0.60, at most 0.44% of pixels over 32.
-        // The bounds leave room for another adapter's filtering.
-        assert!(mean < 1.2, "mean difference {mean}");
-        assert!(
-            share(8) < 0.04,
-            "{:.2}% of pixels differ by more than 8",
-            share(8) * 100.0
-        );
-        assert!(
-            share(32) < 0.015,
-            "{:.2}% of pixels differ by more than 32",
-            share(32) * 100.0
-        );
-        assert!(
-            share(96) < 0.004,
-            "{:.3}% of pixels differ by more than 96",
-            share(96) * 100.0
-        );
+        agree(pixels, &reference, scale);
+    }
+}
+
+fn agree(pixels: &[u8], reference: &[u8], scale: f32) {
+    let count = (SIDE * SIDE) as f64;
+    let worst = |at: usize| {
+        (0..3)
+            .map(|channel| pixels[at * 4 + channel].abs_diff(reference[at * 4 + channel]))
+            .max()
+            .unwrap()
+    };
+    let differences: Vec<u8> = (0..(SIDE * SIDE) as usize).map(worst).collect();
+    let mean = differences.iter().map(|d| f64::from(*d)).sum::<f64>() / count;
+    let share = |over: u8| differences.iter().filter(|d| **d > over).count() as f64 / count;
+    println!(
+        "scale {scale}: mean {mean:.3}, over 8: {:.2}%, over 32: {:.2}%, over 96: {:.3}%, max {}",
+        share(8) * 100.0,
+        share(32) * 100.0,
+        share(96) * 100.0,
+        differences.iter().max().unwrap()
+    );
+    // What differs is edges: a line of pixels around shapes and glyphs.
+    // Flat areas agree, large errors are rare, and nothing is misplaced,
+    // which would show as whole regions far apart. Measured on this
+    // machine: a mean of 0.16 to 0.60, at most 0.44% of pixels over 32.
+    // The bounds leave room for another adapter's filtering.
+    assert!(mean < 1.2, "mean difference {mean}");
+    assert!(
+        share(8) < 0.04,
+        "{:.2}% of pixels differ by more than 8",
+        share(8) * 100.0
+    );
+    assert!(
+        share(32) < 0.015,
+        "{:.2}% of pixels differ by more than 32",
+        share(32) * 100.0
+    );
+    assert!(
+        share(96) < 0.004,
+        "{:.3}% of pixels differ by more than 96",
+        share(96) * 100.0
+    );
+}
+
+/// Fills with curves, a hole and sharp corners; strokes open and closed,
+/// mitred and bevelled, translucent and thinner than a pixel.
+fn paths() -> Scene {
+    let at = |x: f32, y: f32| Point { x, y };
+    let mut star = Path::new();
+    for index in 0..10 {
+        let angle = std::f32::consts::PI * index as f32 / 5.0;
+        let reach = if index % 2 == 0 { 50.0 } else { 20.0 };
+        let point = at(64.0 + reach * angle.sin(), 64.0 - reach * angle.cos());
+        if index == 0 {
+            star.move_to(point);
+        } else {
+            star.line_to(point);
+        }
+    }
+    star.close();
+    let mut ring = Path::new();
+    ring.move_to(at(140.0, 64.0))
+        .cubic_to(at(140.0, 30.0), at(240.0, 30.0), at(240.0, 64.0))
+        .cubic_to(at(240.0, 98.0), at(140.0, 98.0), at(140.0, 64.0))
+        .close()
+        .move_to(at(170.0, 64.0))
+        .quad_to(at(190.0, 84.0), at(210.0, 64.0))
+        .quad_to(at(190.0, 44.0), at(170.0, 64.0))
+        .close();
+    let mut wave = Path::new();
+    wave.move_to(at(20.0, 160.0))
+        .cubic_to(at(60.0, 110.0), at(100.0, 210.0), at(140.0, 160.0))
+        .quad_to(at(180.0, 120.0), at(236.0, 150.0));
+    let mut zigzag = Path::new();
+    zigzag
+        .move_to(at(20.0, 240.0))
+        .line_to(at(60.0, 200.0))
+        .line_to(at(70.0, 240.0))
+        .line_to(at(80.0, 200.0))
+        .close();
+    let mut hair = Path::new();
+    hair.move_to(at(100.0, 205.0)).line_to(at(236.0, 245.0));
+    Scene {
+        size: Size::new(SIDE as f32, SIDE as f32),
+        primitives: vec![
+            Primitive::Path {
+                path: star,
+                fill: Some(Color::rgb(250, 204, 21)),
+                stroke: Some(Stroke {
+                    width: 3.0,
+                    color: Color::rgb(180, 83, 9),
+                }),
+            },
+            Primitive::Path {
+                path: ring,
+                fill: Some(Color(56, 189, 248, 200)),
+                stroke: None,
+            },
+            Primitive::Path {
+                path: wave,
+                fill: None,
+                stroke: Some(Stroke {
+                    width: 6.0,
+                    color: Color(244, 114, 182, 180),
+                }),
+            },
+            Primitive::Path {
+                path: zigzag,
+                fill: None,
+                stroke: Some(Stroke {
+                    width: 4.0,
+                    color: Color::rgb(255, 255, 255),
+                }),
+            },
+            Primitive::Path {
+                path: hair,
+                fill: None,
+                stroke: Some(Stroke {
+                    width: 0.5,
+                    color: Color::rgb(255, 255, 255),
+                }),
+            },
+        ],
+    }
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn paths_look_the_same_on_both_renderers() {
+    let clear = Color::rgb(16, 23, 34);
+    for scale in [1.0, 1.25, 2.0] {
+        let scene = paths();
+        let reference = gpu(&scene, scale, clear);
+        let mut renderer = CpuRenderer::new();
+        let pixels = renderer.render([SIDE; 2], scale, &scene, clear).to_vec();
+        if let Some(directory) = std::env::var_os("COMPARE_DUMP") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::write(directory.join(format!("cpu-paths-{scale}.rgba")), &pixels).unwrap();
+            std::fs::write(
+                directory.join(format!("gpu-paths-{scale}.rgba")),
+                &reference,
+            )
+            .unwrap();
+        }
+        agree(&pixels, &reference, scale);
     }
 }

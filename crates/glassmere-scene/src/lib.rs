@@ -1,7 +1,9 @@
 //! Renderer-independent geometry, text measurement, and ordered paint commands.
 mod image;
+mod path;
 mod text;
 pub use image::{Image, VectorImage};
+pub use path::{Path, Segment, Stroke};
 pub use text::{
     Affinity, CaretStop, FontFamily, MonospaceMeasurer, TextCluster, TextGeometry, TextLine,
     TextMeasurer, TextSpan, TextStyle, TextWrap,
@@ -283,6 +285,12 @@ pub enum Primitive {
         id: u64,
     },
     PopLayer,
+    /// A shape filled, outlined, or both; the outline is drawn over the fill.
+    Path {
+        path: Path,
+        fill: Option<Color>,
+        stroke: Option<Stroke>,
+    },
 }
 
 /// One colour of a gradient, and where it sits along it.
@@ -402,6 +410,11 @@ impl Primitive {
                 id: *id,
             },
             Self::PopLayer => Self::PopLayer,
+            Self::Path { path, fill, stroke } => Self::Path {
+                path: path.translated(offset),
+                fill: *fill,
+                stroke: *stroke,
+            },
         }
     }
 }

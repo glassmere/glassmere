@@ -3,9 +3,12 @@ name = "glassmere-devtools"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
 license.workspace = true
+repository.workspace = true
+readme.workspace = true
 description = "Frame and event recorder, inspector model and views for glassmere hosts; no platform dependencies."
+keywords = ["gui", "inspector", "profiling", "devtools"]
+categories = ["development-tools::debugging", "gui"]
 
 [dependencies]
 glassmere-core.workspace = true

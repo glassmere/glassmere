@@ -3,9 +3,12 @@ name = "glassmere-dev"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
 license.workspace = true
+repository.workspace = true
+readme.workspace = true
 description = "Development runner: rebuilds and restarts a glassmere app when its sources change, keeping its state."
+keywords = ["gui", "hot-reload", "development", "cli"]
+categories = ["development-tools", "gui"]
 
 [lints]
 workspace = true

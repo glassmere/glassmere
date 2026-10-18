@@ -3,9 +3,12 @@ name = "glassmere-fluent"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
 license.workspace = true
+repository.workspace = true
+readme.workspace = true
 description = "Fluent message catalogs for glassmere's Ui::tr."
+keywords = ["gui", "fluent", "localization", "i18n"]
+categories = ["localization", "gui"]
 
 [dependencies]
 glassmere-core.workspace = true

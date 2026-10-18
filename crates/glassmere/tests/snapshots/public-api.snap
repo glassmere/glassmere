@@ -6,7 +6,7 @@ glassmere use glassmere_icu as icu
 glassmere use glassmere_image as image
 glassmere use glassmere_render_cpu :: { CpuRenderer, CpuStats }
 glassmere use glassmere_render_wgpu as render
-glassmere use glassmere_scene :: { Affine, Affinity, Color, Image, Point, Primitive, Rect, Scene, Size, VectorImage, }
+glassmere use glassmere_scene :: { Affine, Affinity, Color, Image, Path, Point, Primitive, Rect, Scene, Segment, Size, Stroke, VectorImage, }
 glassmere use glassmere_syntax as syntax
 glassmere use glassmere_winit :: hot
 glassmere use glassmere_winit :: { AppOptions, DirectionChoice, GpuMemoryPolicy, GpuSetup, GraphicsBackend, GraphicsOptions, Placement, ThemeChoice, run, run_with, }
@@ -634,7 +634,7 @@ glassmere-core   fn Editor::display (& self) -> String
 glassmere-core   fn Editor::display_cursor (& self) -> Option < usize>
 glassmere-core   fn Editor::new (text : & str) -> Self
 glassmere-core   fn Editor::prepare (& mut self, measurer : & mut impl TextMeasurer, mut style : TextStyle, width : f32, rtl : bool,) -> bool
-glassmere-core   fn Editor::selected_text (& self) -> & str
+glassmere-core   fn Editor::selected_text (& self) -> Option < & str>
 glassmere-core   fn Editor::synchronize (& mut self, text : & str)
 glassmere-core   fn Effect::fade (milliseconds : u64) -> Self
 glassmere-core   fn Effect::slide (x : f32, y : f32, milliseconds : u64) -> Self
@@ -949,6 +949,7 @@ glassmere-core   fn TextDocument::undo (& mut self) -> bool
 glassmere-core   fn TextDocument::word_at (& self, offset : usize) -> Range < usize>
 glassmere-core   fn TextInput < M>::new (label : impl Into < String>) -> Self
 glassmere-core   fn TextInput < M>::on_submit (mut self, message : M) -> Self
+glassmere-core   fn TextInput < M>::password (mut self) -> Self
 glassmere-core   fn TextInput < M>::placeholder (mut self, placeholder : impl Into < String>) -> Self
 glassmere-core   fn TextInput < M>::style (mut self, style : Style) -> Self
 glassmere-core   fn TextSelection::range (self) -> Range < usize>
@@ -1332,6 +1333,7 @@ glassmere-core   variant Role::Menu
 glassmere-core   variant Role::MenuButton
 glassmere-core   variant Role::MenuItem
 glassmere-core   variant Role::Option
+glassmere-core   variant Role::PasswordInput
 glassmere-core   variant Role::Radio
 glassmere-core   variant Role::Row
 glassmere-core   variant Role::RowGroup
@@ -1689,6 +1691,8 @@ glassmere-scene   field Scene::primitives
 glassmere-scene   field Scene::size
 glassmere-scene   field Size::height
 glassmere-scene   field Size::width
+glassmere-scene   field Stroke::color
+glassmere-scene   field Stroke::width
 glassmere-scene   field TextCluster::bytes
 glassmere-scene   field TextCluster::rect
 glassmere-scene   field TextCluster::rtl
@@ -1729,6 +1733,15 @@ glassmere-scene   fn Image::is_vector (& self) -> bool
 glassmere-scene   fn Image::pixels (& self) -> Option < (u32, u32, & [u8])>
 glassmere-scene   fn Image::size (& self) -> Size
 glassmere-scene   fn Image::vector (& self) -> Option < & dyn VectorImage>
+glassmere-scene   fn Path::bounds (& self) -> Rect
+glassmere-scene   fn Path::close (& mut self) -> & mut Self
+glassmere-scene   fn Path::cubic_to (& mut self, first : Point, second : Point, to : Point) -> & mut Self
+glassmere-scene   fn Path::line_to (& mut self, to : Point) -> & mut Self
+glassmere-scene   fn Path::move_to (& mut self, to : Point) -> & mut Self
+glassmere-scene   fn Path::new () -> Self
+glassmere-scene   fn Path::quad_to (& mut self, control : Point, to : Point) -> & mut Self
+glassmere-scene   fn Path::segments (& self) -> & [Segment]
+glassmere-scene   fn Path::translated (& self, offset : Point) -> Self
 glassmere-scene   fn Primitive::translated (& self, offset : Point) -> Self
 glassmere-scene   fn Rect::contains (self, p : Point) -> bool
 glassmere-scene   fn Rect::intersect (self, other : Self) -> Self
@@ -1765,6 +1778,7 @@ glassmere-scene   variant FontFamily::Serif
 glassmere-scene   variant Primitive::Custom
 glassmere-scene   variant Primitive::Gradient
 glassmere-scene   variant Primitive::Image
+glassmere-scene   variant Primitive::Path
 glassmere-scene   variant Primitive::PopClip
 glassmere-scene   variant Primitive::PopLayer
 glassmere-scene   variant Primitive::PushClip
@@ -1774,11 +1788,17 @@ glassmere-scene   variant Primitive::RichText
 glassmere-scene   variant Primitive::Shadow
 glassmere-scene   variant Primitive::StyledText
 glassmere-scene   variant Primitive::Text
+glassmere-scene   variant Segment::Close
+glassmere-scene   variant Segment::Cubic
+glassmere-scene   variant Segment::Line
+glassmere-scene   variant Segment::Move
+glassmere-scene   variant Segment::Quad
 glassmere-scene   variant TextWrap::None
 glassmere-scene   variant TextWrap::Word
 glassmere-scene enum Affinity
 glassmere-scene enum FontFamily
 glassmere-scene enum Primitive
+glassmere-scene enum Segment
 glassmere-scene enum TextWrap
 glassmere-scene struct Affine
 glassmere-scene struct CaretStop
@@ -1786,10 +1806,12 @@ glassmere-scene struct Color
 glassmere-scene struct GradientStop
 glassmere-scene struct Image
 glassmere-scene struct MonospaceMeasurer
+glassmere-scene struct Path
 glassmere-scene struct Point
 glassmere-scene struct Rect
 glassmere-scene struct Scene
 glassmere-scene struct Size
+glassmere-scene struct Stroke
 glassmere-scene struct TextCluster
 glassmere-scene struct TextGeometry
 glassmere-scene struct TextLine
@@ -1798,6 +1820,7 @@ glassmere-scene struct TextStyle
 glassmere-scene trait TextMeasurer
 glassmere-scene trait VectorImage
 glassmere-scene use image :: { Image, VectorImage }
+glassmere-scene use path :: { Path, Segment, Stroke }
 glassmere-scene use text :: { Affinity, CaretStop, FontFamily, MonospaceMeasurer, TextCluster, TextGeometry, TextLine, TextMeasurer, TextSpan, TextStyle, TextWrap, }
 glassmere-text   field TextSystem::buffers
 glassmere-text   field TextSystem::fonts
@@ -1846,6 +1869,7 @@ glassmere-render-wgpu   field RenderStats::layer_texture_bytes
 glassmere-render-wgpu   field RenderStats::layer_textures
 glassmere-render-wgpu   field RenderStats::memory
 glassmere-render-wgpu   field RenderStats::passes
+glassmere-render-wgpu   field RenderStats::paths
 glassmere-render-wgpu   field RenderStats::preparations
 glassmere-render-wgpu   field RenderStats::quad_buffer_allocations
 glassmere-render-wgpu   field RenderStats::quad_buffer_bytes

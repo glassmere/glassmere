@@ -180,7 +180,10 @@ impl Context {
             };
             scene.primitives.push(Primitive::PushClip(content));
             if !editor.composing() {
-                for rect in editor.geometry.selection(editor.selection.range()) {
+                for rect in editor
+                    .geometry
+                    .selection(editor.shown_range(editor.selection.range()))
+                {
                     scene.primitives.push(Primitive::Quad {
                         rect: rect.translated(origin),
                         color: if self.focused == Some(id) {
@@ -192,7 +195,7 @@ impl Context {
                     });
                 }
             }
-            let display = editor.display();
+            let display = editor.shown();
             let placeholder = if let Control::TextInput { placeholder, .. } = &node.control {
                 placeholder.as_str()
             } else {
@@ -221,7 +224,7 @@ impl Context {
                 },
             });
             if let Some(range) = editor.composition_range() {
-                for rect in editor.geometry.selection(range) {
+                for rect in editor.geometry.selection(editor.shown_range(range)) {
                     scene.primitives.push(Primitive::Quad {
                         rect: Rect {
                             y: rect.y + rect.height - 2.0,
@@ -343,6 +346,6 @@ impl Context {
             .get(&self.focused?)?
             .editor
             .as_ref()
-            .map(|editor| editor.selected_text())
+            .and_then(|editor| editor.selected_text())
     }
 }

@@ -20,7 +20,9 @@
 //! its exact area here and feathered by the shader there, and what is resampled
 //! is filtered on sRGB-encoded values here and in linear light there. Both show
 //! at edges, never across a flat area.
-use glassmere_scene::{Affine, Color, GradientStop, Image, Point, Primitive, Rect, Scene};
+use glassmere_scene::{
+    Affine, Color, GradientStop, Image, Path, Point, Primitive, Rect, Scene, Segment,
+};
 use glassmere_text::cosmic_text::{SwashCache, SwashContent};
 use glassmere_text::{TextKey, TextSystem};
 use std::collections::{HashMap, HashSet};
@@ -226,6 +228,20 @@ fn rounded(rect: Rect, radius: f32) -> Option<tiny_skia::Path> {
     path.cubic_to(left, top + bend, left + bend, top, left + radius, top);
     path.close();
     path.finish()
+}
+
+fn skia_path(path: &Path) -> Option<tiny_skia::Path> {
+    let mut builder = PathBuilder::new();
+    for segment in path.segments() {
+        match *segment {
+            Segment::Move(a) => builder.move_to(a.x, a.y),
+            Segment::Line(a) => builder.line_to(a.x, a.y),
+            Segment::Quad(a, b) => builder.quad_to(a.x, a.y, b.x, b.y),
+            Segment::Cubic(a, b, c) => builder.cubic_to(a.x, a.y, b.x, b.y, c.x, c.y),
+            Segment::Close => builder.close(),
+        }
+    }
+    builder.finish()
 }
 
 /// Abramowitz and Stegun 7.1.26, the approximation shader code uses.
@@ -636,6 +652,34 @@ impl CpuRenderer {
                 // Whatever draws these knows its own renderer; this one does
                 // not, and leaves the rectangle as it is.
                 Primitive::Custom { .. } => {}
+                Primitive::Path { path, fill, stroke } => {
+                    let Some(shape) = skia_path(path) else {
+                        continue;
+                    };
+                    if let Some(color) = fill {
+                        let visible = surface.pixels(clip.intersect(path.bounds()));
+                        self.cover(surface, visible, &shape, *color);
+                    }
+                    if let Some(stroke) = stroke
+                        && let Some(outline) = shape.stroke(
+                            &tiny_skia::Stroke {
+                                width: stroke.width,
+                                miter_limit: 4.0,
+                                ..tiny_skia::Stroke::default()
+                            },
+                            surface.scale,
+                        )
+                    {
+                        let bounds = outline.bounds();
+                        let visible = surface.pixels(clip.intersect(Rect {
+                            x: bounds.x(),
+                            y: bounds.y(),
+                            width: bounds.width(),
+                            height: bounds.height(),
+                        }));
+                        self.cover(surface, visible, &outline, stroke.color);
+                    }
+                }
                 Primitive::Text { rect, color, .. }
                 | Primitive::StyledText { rect, color, .. }
                 | Primitive::RichText { rect, color, .. } => {
@@ -710,16 +754,34 @@ impl CpuRenderer {
             }
             return;
         }
-        // Rounded: tiny-skia says how much of each visible pixel is covered.
-        // A mask per rounded quad. Reuse one buffer if a profile of
-        // a real page ever shows the allocations.
-        let (Some(path), Some(mut mask)) =
-            (rounded(rect, radius), Mask::new(visible[2], visible[3]))
-        else {
+        if let Some(path) = rounded(rect, radius) {
+            self.cover(surface, visible, &path, color);
+        }
+    }
+
+    /// Fills a shape in logical coordinates over the `visible` pixels.
+    /// tiny-skia says how much of each one is covered.
+    fn cover(
+        &self,
+        surface: &mut Surface,
+        visible: [u32; 4],
+        path: &tiny_skia::Path,
+        color: Color,
+    ) {
+        // A mask per shape. Reuse one buffer if a profile of a real page
+        // ever shows the allocations.
+        if color.3 == 0 {
+            return;
+        }
+        let Some(mut mask) = Mask::new(visible[2], visible[3]) else {
             return;
         };
+        let stride = surface.pixmap.width() as usize * 4;
+        let start = |row: u32| (visible[1] + row) as usize * stride + visible[0] as usize * 4;
+        let opaque = [color.0, color.1, color.2, 255];
+        let rgb = [color.0, color.1, color.2];
         mask.fill_path(
-            &path,
+            path,
             FillRule::Winding,
             true,
             toward(surface.transform(), visible),

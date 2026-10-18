@@ -27,6 +27,7 @@ pub enum Role {
     Button,
     ScrollView,
     TextInput,
+    PasswordInput,
     Checkbox,
     Radio,
     Slider,

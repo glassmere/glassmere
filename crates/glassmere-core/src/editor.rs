@@ -92,7 +92,13 @@ pub(crate) struct Editor {
     pub visual: bool,
     /// Shift that right-aligns text shorter than a right-to-left field.
     pub align_x: f32,
+    /// A password field: every character is drawn as a bullet, and the
+    /// geometry, so every offset into it, is of the bullets.
+    pub masked: bool,
 }
+
+/// What a password field draws for each character of its text.
+const BULLET: char = '\u{2022}';
 
 pub(crate) fn single_line(text: &str) -> String {
     text.chars()
@@ -132,6 +138,7 @@ impl Editor {
             affinity: Affinity::Downstream,
             visual: true,
             align_x: 0.0,
+            masked: false,
         }
     }
 
@@ -149,8 +156,9 @@ impl Editor {
         }
     }
 
-    pub fn selected_text(&self) -> &str {
-        &self.text[self.selection.range()]
+    /// What a copy takes, which a password field never gives.
+    pub fn selected_text(&self) -> Option<&str> {
+        (!self.masked).then(|| &self.text[self.selection.range()])
     }
     pub fn composing(&self) -> bool {
         self.composition.is_some()
@@ -167,6 +175,42 @@ impl Editor {
             composition.text,
             &self.text[range.end..]
         )
+    }
+
+    /// The text as drawn and shaped: `display`, or its bullets.
+    pub(crate) fn shown(&self) -> String {
+        let display = self.display();
+        if self.masked {
+            display.graphemes(true).map(|_| BULLET).collect()
+        } else {
+            display
+        }
+    }
+
+    /// Where an offset into `display` falls in what is shown.
+    pub(crate) fn shown_offset(&self, byte: usize) -> usize {
+        if self.masked {
+            self.display()[..byte].graphemes(true).count() * BULLET.len_utf8()
+        } else {
+            byte
+        }
+    }
+
+    pub(crate) fn shown_range(&self, range: Range<usize>) -> Range<usize> {
+        self.shown_offset(range.start)..self.shown_offset(range.end)
+    }
+
+    /// The offset into `display` of an offset into what is shown.
+    pub(crate) fn display_offset(&self, byte: usize) -> usize {
+        if !self.masked {
+            return byte;
+        }
+        let display = self.display();
+        display
+            .grapheme_indices(true)
+            .map(|(index, _)| index)
+            .nth(byte / BULLET.len_utf8())
+            .unwrap_or(display.len())
     }
 
     pub fn composition_range(&self) -> Option<Range<usize>> {
@@ -222,6 +266,10 @@ impl Editor {
 
     fn adjacent(&self, right: bool, word: bool) -> usize {
         let cursor = self.selection.cursor;
+        // Word steps in a password would tell where its spaces are.
+        if word && self.masked {
+            return if right { self.text.len() } else { 0 };
+        }
         if word {
             let indices: Vec<_> = self
                 .text
@@ -405,7 +453,7 @@ impl Editor {
         rtl: bool,
     ) -> bool {
         style.wrap = TextWrap::None;
-        let text = self.display();
+        let text = self.shown();
         let key = (text, style);
         let changed = self.geometry_key.as_ref() != Some(&key);
         if changed {
@@ -441,12 +489,12 @@ impl Editor {
             self.affinity
         };
         self.display_cursor()
-            .map(|cursor| self.geometry.caret_at(cursor, affinity))
+            .map(|cursor| self.geometry.caret_at(self.shown_offset(cursor), affinity))
     }
 
     /// Direction to flag on the caret, when its line mixes directions.
     pub fn caret_direction(&self) -> Option<bool> {
-        let cursor = self.display_cursor()?;
+        let cursor = self.shown_offset(self.display_cursor()?);
         self.geometry.mixed_direction(cursor, self.affinity)
     }
 }
@@ -489,6 +537,6 @@ mod tests {
         assert_eq!(editor.text, "日本");
         editor.apply(TextEdit::Undo);
         assert_eq!(editor.text, "hello");
-        assert_eq!(editor.selected_text(), "hello");
+        assert_eq!(editor.selected_text(), Some("hello"));
     }
 }

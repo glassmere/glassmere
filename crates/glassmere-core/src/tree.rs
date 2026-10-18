@@ -32,6 +32,7 @@ mod paint;
 mod rich_editor;
 mod rich_text;
 mod run;
+mod scrollbar_input;
 mod scrolling;
 mod snapshot;
 mod text_area_input;
@@ -192,7 +193,10 @@ impl Node {
             || (self.enabled
                 && matches!(
                     self.control,
-                    Control::Sizer { .. } | Control::TitleBar | Control::ResizeGrip(_)
+                    Control::Sizer { .. }
+                        | Control::TitleBar
+                        | Control::ResizeGrip(_)
+                        | Control::GridScrollbar { .. }
                 ))
     }
 
@@ -253,6 +257,7 @@ impl Node {
                 Control::Tab { .. } => Role::Tab,
                 Control::TabPanel => Role::TabPanel,
                 Control::Divider { .. } | Control::Sizer { .. } => Role::Splitter,
+                Control::TextInput { password: true, .. } => Role::PasswordInput,
                 Control::TextInput {
                     number: Some(_), ..
                 } => Role::SpinButton,
@@ -383,6 +388,9 @@ pub struct Context {
     exported_drag: Option<NodeId>,
     dock_drag: Option<Box<dock_input::DockDrag>>,
     dock_grab: Option<dock_input::DockGrab>,
+    scrollbar_grab: Option<scrollbar_input::ScrollbarGrab>,
+    /// The node whose scrollbar the pointer is on, drawn wider.
+    bar_hovered: Option<NodeId>,
     /// What `Effects::copy` left for the host, what `Effects::paste` asked
     /// for, and what the host last read back.
     clip_out: Option<crate::Clip>,
@@ -582,6 +590,8 @@ impl Default for Context {
             exported_drag: None,
             dock_drag: None,
             dock_grab: None,
+            scrollbar_grab: None,
+            bar_hovered: None,
             clip_out: None,
             paste_requested: false,
             clip_in: None,

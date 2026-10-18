@@ -3,9 +3,12 @@ name = "glassmere-render-cpu"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
 license.workspace = true
+repository.workspace = true
+readme.workspace = true
 description = "CPU renderer for glassmere scenes: screenshots, export, and a desktop fallback without a GPU."
+keywords = ["gui", "renderer", "software", "rasterizer"]
+categories = ["rendering", "gui"]
 
 [dependencies]
 glassmere-scene.workspace = true

@@ -9,8 +9,8 @@
 //! broken and this crate would not compile.
 
 use glassmere::{
-    Color, CustomWidget, EventArea, Key, NumericValue, Primitive, Rect, Role, Semantics, Size,
-    Style, Ui, UiEvent, WidgetBuilder, WidgetInput,
+    Color, CustomWidget, EventArea, Key, NumericValue, Path, Point, Primitive, Rect, Role,
+    Semantics, Size, Stroke, Style, Ui, UiEvent, WidgetBuilder, WidgetInput,
 };
 
 /// How far the dial turns, in radians, and where it starts. Measured
@@ -173,13 +173,24 @@ impl Dial {
                 color,
             ));
         }
-        // The needle, as dots from the middle outward.
+        // The needle, from the middle outward.
         let angle = START + SWEEP * self.value;
-        let needle = if input.enabled { mark } else { dim };
-        for step in 1..=5 {
-            let distance = centre * 0.12 * f64::from(step);
-            primitives.push(dot(around(angle, distance), 2.5, needle));
-        }
+        let point = |(x, y): (f64, f64)| Point {
+            x: x as f32,
+            y: y as f32,
+        };
+        let mut needle = Path::new();
+        needle
+            .move_to(point(around(angle, centre * 0.12)))
+            .line_to(point(around(angle, centre * 0.6)));
+        primitives.push(Primitive::Path {
+            path: needle,
+            fill: None,
+            stroke: Some(Stroke {
+                width: 4.0,
+                color: if input.enabled { mark } else { dim },
+            }),
+        });
         if input.hovered || input.pressed {
             primitives.push(dot((centre, centre), centre * 0.1, ring));
         }

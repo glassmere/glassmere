@@ -20,6 +20,7 @@ const CITIES: [&str; 10] = [
 #[derive(Clone)]
 enum Msg {
     Name(String),
+    Password(String),
     Submitted,
     Notify(bool),
     Mode(usize),
@@ -36,6 +37,7 @@ enum Msg {
 
 struct Controls {
     name: String,
+    password: String,
     notifications: bool,
     mode: usize,
     volume: f64,
@@ -61,6 +63,7 @@ impl App for Controls {
     fn update(&mut self, message: Msg, effects: &mut Effects<'_, Msg>) {
         match message {
             Msg::Name(name) => self.name = name,
+            Msg::Password(password) => self.password = password,
             Msg::Submitted => self.submissions += 1,
             Msg::Notify(on) => self.notifications = on,
             Msg::Mode(mode) => self.mode = mode,
@@ -197,6 +200,14 @@ impl App for Controls {
                     );
                     ui.label(Label::new(format!("Text: {}", self.name)).style(wrapped.clone()));
                     ui.label(format!("Submissions: {}", self.submissions));
+                    ui.label("Password");
+                    ui.text_input(
+                        TextInput::new("Password")
+                            .password()
+                            .placeholder("Never shown or copied"),
+                        &self.password,
+                        Msg::Password,
+                    );
                     ui.label(
                         Label::new(
                             "Select with Shift + arrows or drag. Ctrl/Cmd + A, C, X, V and Z \
@@ -269,6 +280,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         Controls {
             name: String::from("Hello, 世界 👩‍💻"),
+            password: String::new(),
             notifications: false,
             mode: 0,
             volume: 50.0,

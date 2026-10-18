@@ -105,7 +105,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                 number: None,
                 suggestions: Some(entries),
                 children,
-                draft: false,
+                ..FieldExtra::default()
             },
         );
         // Picking a suggestion edits the field to it, and the kernel reports

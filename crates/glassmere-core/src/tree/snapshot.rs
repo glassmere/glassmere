@@ -37,11 +37,17 @@ impl Context {
             value: match &node.control {
                 // What the field shows, so a draft typed since the last
                 // declaration is read as it is typed.
-                Control::TextInput { value, .. } => Some(
-                    node.editor
-                        .as_ref()
-                        .map_or_else(|| value.clone(), |editor| editor.text.clone()),
-                ),
+                // A password is read as its bullets.
+                Control::TextInput { value, .. } => Some(node.editor.as_ref().map_or_else(
+                    || value.clone(),
+                    |editor| {
+                        if editor.masked {
+                            editor.shown()
+                        } else {
+                            editor.text.clone()
+                        }
+                    },
+                )),
                 // Assistive technology reads the caret's line.
                 Control::TextArea {
                     lines,

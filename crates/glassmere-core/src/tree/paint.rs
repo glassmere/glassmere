@@ -315,7 +315,7 @@ impl Context {
             .filter(|child| !matches!(self.nodes[child].kind, Kind::Popup | Kind::Popover))
             .collect::<Vec<_>>();
         let before = std::mem::take(&mut scene.primitives);
-        self.paint_scrollbars(node, &mut scene);
+        self.paint_scrollbars(id, &mut scene);
         scene.primitives.push(Primitive::PopClip);
         if layer.is_some() {
             scene.primitives.push(Primitive::PopLayer);
@@ -548,47 +548,13 @@ impl Context {
     }
 
     /// Thumbs for the axes a node scrolls on.
-    fn paint_scrollbars(&self, node: &Node, scene: &mut Scene) {
-        if node.scroll.maximum_x > 0.0 {
-            let track = node.bounds.width;
-            let width = (track * track / (track + node.scroll.maximum_x))
-                .max(12.0)
-                .min(track);
-            let travelled = (track - width) * node.scroll.offset_x / node.scroll.maximum_x;
+    fn paint_scrollbars(&self, id: NodeId, scene: &mut Scene) {
+        let width = self.bar_width(id);
+        for bar in self.bars(id, width).into_iter().flatten() {
             scene.primitives.push(Primitive::Quad {
-                rect: Rect {
-                    // The thumb starts at the start side, like the content.
-                    x: if node.resolved.rtl() {
-                        node.bounds.x + track - width - travelled
-                    } else {
-                        node.bounds.x + travelled
-                    },
-                    y: node.bounds.y + node.bounds.height - 4.0,
-                    width,
-                    height: 4.0,
-                },
+                rect: bar.thumb,
                 color: self.theme.scrollbar,
-                radius: 2.0,
-            });
-        }
-        if node.scroll.maximum > 0.0 {
-            let track = node.bounds.height;
-            let height = (track * track / (track + node.scroll.maximum))
-                .max(12.0)
-                .min(track);
-            scene.primitives.push(Primitive::Quad {
-                rect: Rect {
-                    x: if node.resolved.rtl() {
-                        node.bounds.x
-                    } else {
-                        node.bounds.x + node.bounds.width - 4.0
-                    },
-                    y: node.bounds.y + (track - height) * node.scroll.offset / node.scroll.maximum,
-                    width: 4.0,
-                    height,
-                },
-                color: self.theme.scrollbar,
-                radius: 2.0,
+                radius: width / 2.0,
             });
         }
     }

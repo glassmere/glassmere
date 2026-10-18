@@ -271,3 +271,104 @@ fn right_to_left_views_overflow_and_scroll_from_the_right() {
         view_bounds.x
     );
 }
+
+fn offsets(context: &Context) -> (f32, f32) {
+    let scroll = context
+        .node(find(context, &["view"]))
+        .unwrap()
+        .scroll
+        .unwrap();
+    (scroll.offset_x, scroll.offset)
+}
+
+fn press(context: &mut Context, at: Point) {
+    context.event(Event::PointerMoved(at));
+    context.event(Event::PointerDown);
+}
+
+#[test]
+fn a_scrollbar_thumb_drags_and_its_track_pages() {
+    let mut context = Context::new();
+    frame(&mut context, wide);
+    let maximum = context
+        .node(find(&context, &["view"]))
+        .unwrap()
+        .scroll
+        .unwrap()
+        .maximum;
+
+    // On the bar, it widens to show it can be taken.
+    context.event(Event::PointerMoved(Point { x: 297.0, y: 5.0 }));
+    frame(&mut context, wide);
+    let down = thumbs(&context)
+        .into_iter()
+        .find(|bar| bar.x > 280.0)
+        .unwrap();
+    assert_eq!((down.x, down.width), (292.0, 8.0));
+
+    // Taken in the middle, the thumb follows the pointer and stops at the end.
+    press(
+        &mut context,
+        Point {
+            x: 297.0,
+            y: down.height / 2.0,
+        },
+    );
+    context.event(Event::PointerMoved(Point { x: 0.0, y: 1000.0 }));
+    context.event(Event::PointerUp);
+    frame(&mut context, wide);
+    assert_eq!(offsets(&context), (0.0, maximum));
+    assert_eq!(
+        context.hovered(),
+        None,
+        "nothing under the thumb was pressed"
+    );
+
+    // A press on the track before the thumb goes back a view.
+    press(&mut context, Point { x: 297.0, y: 2.0 });
+    context.event(Event::PointerUp);
+    assert_eq!(offsets(&context), (0.0, maximum - 200.0));
+
+    // Sideways: a third of the track is the thumb, so dragging it 100 px is a
+    // third of the way along the content.
+    press(&mut context, Point { x: 50.0, y: 198.0 });
+    context.event(Event::PointerMoved(Point { x: 150.0, y: 150.0 }));
+    context.event(Event::PointerUp);
+    assert_eq!(offsets(&context).0, 300.0);
+    press(&mut context, Point { x: 280.0, y: 198.0 });
+    context.event(Event::PointerUp);
+    assert_eq!(offsets(&context).0, 600.0);
+}
+
+#[test]
+fn a_right_to_left_scrollbar_drags_toward_the_start() {
+    let mut context = Context::new();
+    context.set_direction(Direction::Rtl);
+    frame(&mut context, wide);
+    let view = context.node(find(&context, &["view"])).unwrap().bounds;
+    let right = view.x + view.width;
+    // The thumb starts at the right; dragging it left goes toward the end.
+    press(
+        &mut context,
+        Point {
+            x: right - 50.0,
+            y: 198.0,
+        },
+    );
+    context.event(Event::PointerMoved(Point {
+        x: right - 150.0,
+        y: 198.0,
+    }));
+    context.event(Event::PointerUp);
+    assert_eq!(offsets(&context).0, 300.0);
+    // The vertical bar is on the left edge.
+    press(
+        &mut context,
+        Point {
+            x: view.x + 2.0,
+            y: 190.0,
+        },
+    );
+    context.event(Event::PointerUp);
+    assert_eq!(offsets(&context).1, 200.0);
+}

@@ -4,7 +4,7 @@ description = "Counts what the kernel allocates per batch, with a global allocat
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
+publish = false
 license.workspace = true
 
 [dev-dependencies]

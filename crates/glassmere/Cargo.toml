@@ -3,8 +3,8 @@ name = "glassmere"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
 license.workspace = true
+repository.workspace = true
 readme.workspace = true
 description = "Immediate-style GUI framework over a retained, incremental UI kernel, with widgets, layout, text, theming and accessibility."
 keywords = ["gui", "ui", "immediate-mode", "widgets", "wgpu"]
@@ -13,6 +13,9 @@ categories = ["gui", "graphics"]
 # `tr!` in this crate's tests checks keys and arguments against this catalog.
 [package.metadata.glassmere]
 messages = "../../examples/locales/en.ftl"
+
+[package.metadata.docs.rs]
+features = ["diagnostics", "icu", "serde"]
 
 [features]
 default = ["desktop", "syntax", "images", "derive", "fluent", "regex"]

@@ -1397,6 +1397,9 @@ impl ColumnPlan {
                     .background(color);
                 ui.container_at("$thumb", thumb, |_| {});
             });
+            ui.set_control(Control::GridScrollbar {
+                ratio: (self.scrolling - self.view) / (self.view - thumb).max(1.0),
+            });
         });
     }
 }

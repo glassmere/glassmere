@@ -3,9 +3,12 @@ name = "glassmere-image"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
 license.workspace = true
+repository.workspace = true
+readme.workspace = true
 description = "PNG, JPEG, WebP, GIF and SVG decoding with a background loader, for glassmere."
+keywords = ["gui", "image", "svg", "decoding"]
+categories = ["multimedia::images", "gui"]
 
 [dependencies]
 glassmere-scene.workspace = true

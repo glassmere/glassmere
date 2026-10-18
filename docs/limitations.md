@@ -20,7 +20,8 @@ What does not work, is partial, or has not been tried. Grouped by area.
 
 ## Rendering
 
-- No path primitive: shapes are rounded rectangles, gradients (linear and radial, the radial one elliptical) and shadows. There are no conic gradients and no gradient or shadow animation.
+- Paths fill by the non-zero rule only. Strokes have mitred corners (bevelled past four widths) and square-cut ends: no round joins or caps, no dashes, no gradient fills. There are no conic gradients and no gradient or shadow animation.
+- The GPU anti-aliases a path's edges with a fringe one pixel wide. Where outlines cross or pass within a pixel of each other, it can differ from the CPU renderer by a few pixels.
 - The CPU renderer and the wgpu renderer differ at edges: a quad edge is covered by its exact area in one and feathered by the shader in the other. Resampled images and transformed layers are filtered in sRGB in one and in linear light in the other.
 - `Primitive::Custom` is a wgpu callback. A window painted by the CPU renderer leaves it empty.
 - Damage is the union of the changed rectangles, so two changes far apart redraw the box between them. A window with an exiting animation repaints entirely for its length.
@@ -36,12 +37,12 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - Stylesheets have no variables or nesting and reload by polling every half second.
 - One transition covers all animated properties of a node, with no spring physics. Control internals (slider thumbs, caret) do not ease.
 - Ancestors clip to their bounds; there is no unclipped container.
-- Scrollbars cannot be dragged or clicked, on either axis. Only direct children extend a scroll view's width, and popups scroll vertically only.
+- Holding a press on a scrollbar's track pages once; it does not repeat. Only direct children extend a scroll view's width, and popups scroll vertically only.
 - Reduced motion is an application option. The OS preference is not read.
 
 ## Text
 
-- No password field.
+- A password field has no button that shows the text. Input methods stay on in it, and macOS secure input is not turned on.
 - Visual-line and visual-caret moves in the document editors resolve against the last shaped frame, so several arrow presses between two frames move one step. Several cursors in the code editor move logically.
 - Rich documents have one font size per block, no images, tables, nested lists, alignment or colours, are shaped in full on each change, and paste as plain text.
 - Dragging a selection past the edge of an editor does not scroll it, and the code editor has no horizontal scrollbar or wheel.

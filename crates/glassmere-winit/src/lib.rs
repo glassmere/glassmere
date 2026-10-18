@@ -1232,7 +1232,12 @@ impl Application {
             resize_cursor(edge)
         } else {
             match self.context.hovered().and_then(|id| self.context.node(id)) {
-                Some(node) if node.semantics.role == glassmere_core::Role::TextInput => {
+                Some(node)
+                    if matches!(
+                        node.semantics.role,
+                        glassmere_core::Role::TextInput | glassmere_core::Role::PasswordInput
+                    ) =>
+                {
                     CursorIcon::Text
                 }
                 Some(node) if node.semantics.role == glassmere_core::Role::Splitter => {

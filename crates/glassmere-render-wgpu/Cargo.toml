@@ -3,9 +3,12 @@ name = "glassmere-render-wgpu"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
 license.workspace = true
+repository.workspace = true
+readme.workspace = true
 description = "GPU renderer for glassmere scenes, on wgpu."
+keywords = ["gui", "renderer", "wgpu", "gpu"]
+categories = ["rendering", "gui"]
 
 [dependencies]
 glassmere-scene.workspace = true
@@ -13,6 +16,7 @@ glassmere-text.workspace = true
 wgpu.workspace = true
 glyphon.workspace = true
 bytemuck.workspace = true
+lyon_tessellation = "1.0.22"
 
 [dev-dependencies]
 pollster.workspace = true

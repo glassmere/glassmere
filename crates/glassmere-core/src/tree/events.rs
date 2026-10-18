@@ -260,6 +260,7 @@ impl Context {
         let moved = matches!(event, Event::PointerMoved(_) | Event::PointerLeft)
             && self.queued.len() == queued
             && self.captured.is_none()
+            && self.scrollbar_grab.is_none()
             && self.drag.is_none()
             && self.dock_drag.is_none();
         // Typing a draft into a number field that sends messages is not a
@@ -271,6 +272,9 @@ impl Context {
     }
 
     pub(super) fn handle_event(&mut self, event: Event) -> bool {
+        if let Some(handled) = self.scrollbar_event(&event) {
+            return handled;
+        }
         if let Some(handled) = self.drag_event(&event) {
             return handled;
         }

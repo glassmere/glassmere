@@ -119,6 +119,7 @@ impl Context {
             y: position.y - node.bounds.y - node.style.padding,
         };
         let (cursor, affinity) = editor.geometry.hit_affinity(local);
+        let cursor = editor.display_offset(cursor);
         let anchor = if extend {
             editor.selection.anchor
         } else {

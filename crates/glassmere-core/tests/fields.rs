@@ -1,10 +1,12 @@
 mod support;
 
+use glassmere_core::MonospaceMeasurer;
 use glassmere_core::app::Action as Msg;
 use glassmere_core::{
-    Action, Autocomplete, Context, Event, Key, NodeId, NumberOptions, Role, TextEdit, Ui, suggest,
+    Action, Autocomplete, Context, Event, Key, NodeId, NumberOptions, Role, TextEdit, TextInput,
+    TextMove, Ui, suggest,
 };
-use glassmere_scene::{Point, Primitive, Size};
+use glassmere_scene::{Point, Primitive, Size, TextMeasurer};
 use support::{Driven, act, on};
 
 const ROOT: Size = Size::new(600.0, 400.0);
@@ -409,4 +411,105 @@ fn the_typed_part_of_a_suggestion_is_drawn_bold_whatever_its_case() {
         })
         .collect();
     assert_eq!(bold, ["zm"]);
+}
+
+#[derive(Default)]
+struct Login {
+    password: String,
+}
+
+fn login() -> Driven<Login> {
+    Driven::new(
+        ROOT,
+        Login::default(),
+        |state: &Login, ui: &mut Ui<'_, Msg<Login>>| {
+            ui.keyed("password", |ui| {
+                ui.text_input(
+                    TextInput::new("Password").password(),
+                    &state.password,
+                    on(|s: &mut Login, text: String| s.password = text),
+                );
+            });
+        },
+    )
+}
+
+fn drawn(context: &Context) -> Vec<String> {
+    context
+        .scene()
+        .primitives
+        .iter()
+        .filter_map(|primitive| match primitive {
+            Primitive::StyledText { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_password_field_draws_bullets_and_gives_its_text_to_no_one_but_the_app() {
+    let mut app = login();
+    let field = app.context.find(&["password"]).unwrap();
+    app.context.action(field, Action::Focus);
+    app.context
+        .event(Event::Text(TextEdit::Insert("hunter 2é".into())));
+    app.frame();
+    assert_eq!(app.state().password, "hunter 2é");
+    let bullets = "\u{2022}".repeat(9);
+    assert_eq!(drawn(&app.context), std::slice::from_ref(&bullets));
+
+    let node = app.context.node(field).unwrap();
+    assert_eq!(node.semantics.role, Role::PasswordInput);
+    assert_eq!(node.value.as_deref(), Some(bullets.as_str()));
+
+    app.context.event(Event::Text(TextEdit::SelectAll));
+    assert_eq!(app.context.selected_text(), None);
+
+    // A word step goes to the end rather than to the space it would reveal.
+    for (direction, select, word) in [
+        (TextMove::Start, false, false),
+        (TextMove::Right, true, true),
+    ] {
+        app.context.event(Event::Text(TextEdit::Move {
+            direction,
+            select,
+            word,
+        }));
+    }
+    app.context.event(Event::Text(TextEdit::Insert("x".into())));
+    app.frame();
+    assert_eq!(app.state().password, "x");
+}
+
+#[test]
+fn a_click_in_a_password_field_lands_between_the_bullets() {
+    let mut app = login();
+    let field = app.context.find(&["password"]).unwrap();
+    app.context.action(field, Action::Focus);
+    app.context
+        .event(Event::Text(TextEdit::Insert("añb".into())));
+    app.frame();
+    // Bullets are equally wide, so a third of the text's width is after one.
+    let (rect, style) = app
+        .context
+        .scene()
+        .primitives
+        .iter()
+        .find_map(|primitive| match primitive {
+            Primitive::StyledText { rect, style, .. } => Some((*rect, style.clone())),
+            _ => None,
+        })
+        .unwrap();
+    let width = MonospaceMeasurer
+        .measure_styled(&"\u{2022}".repeat(3), &style, None)
+        .width;
+    app.context.event(Event::PointerMoved(Point {
+        x: rect.x + width / 3.0 + 1.0,
+        y: rect.y + rect.height / 2.0,
+    }));
+    app.context.event(Event::PointerDown);
+    app.context.event(Event::PointerUp);
+    app.context.event(Event::Text(TextEdit::Insert("_".into())));
+    app.frame();
+    assert_eq!(app.state().password, "a_ñb");
 }

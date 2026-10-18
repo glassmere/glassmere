@@ -56,7 +56,6 @@ Green is used and tested by hand, yellow builds and passes tests but has gaps or
 ![wgpu tested](https://img.shields.io/badge/GPU-D3D12%20%7C%20Vulkan%20%7C%20OpenGL-brightgreen)
 ![wgpu untested](https://img.shields.io/badge/GPU-Metal%20untested-yellow)
 ![CPU](https://img.shields.io/badge/CPU%20fallback-supported-brightgreen)
-![Vector paths](https://img.shields.io/badge/vector%20paths-not%20yet-red)
 
 **Features**
 
@@ -66,18 +65,16 @@ Green is used and tested by hand, yellow builds and passes tests but has gaps or
 ![Native menu bar](https://img.shields.io/badge/native%20menu%20bar-macOS%20only-yellow)
 ![OS drag out](https://img.shields.io/badge/drag%20to%20OS-Windows%20%7C%20macOS-yellow)
 ![Snap layouts](https://img.shields.io/badge/snap%20layouts-Windows%2011-yellow)
-![Password field](https://img.shields.io/badge/password%20field-not%20yet-red)
-![Scrollbar drag](https://img.shields.io/badge/scrollbar%20drag-not%20yet-red)
 
 ## What is in it
 
 - **Layout:** flex and grid through Taffy, with tracks, explicit placement and spans, min/max, aspect ratio and full alignment. Right-to-left windows mirror layout and widgets.
-- **Controls:** buttons, checkboxes, radios, sliders, combo boxes, menus, number fields, autocomplete, tabs, split panes, tooltips, popovers, context menus, dialogs, toasts and a command palette.
+- **Controls:** buttons, checkboxes, radios, sliders, combo boxes, menus, password fields, number fields, autocomplete, tabs, split panes, tooltips, popovers, context menus, dialogs, toasts and a command palette.
 - **Collections:** virtualized lists, trees and a data grid with sorting, filtering, frozen columns, a cell cursor and typed in-place editing. Also a property grid with `#[derive(Properties)]`.
 - **Text:** a single-line field, a virtualized code editor over a rope with syntect highlighting, find and replace, multiple cursors and diagnostics, and a WYSIWYG rich text editor that saves Markdown. BiDi caret movement and IME composition.
 - **Docking:** tab groups in a split tree, floating groups, detached OS windows and a layout the application owns and can save.
 - **Styling:** theme tokens with dark and light themes that follow the OS, inherited text properties, per-state overrides and stylesheets that reload while the app runs. Transitions, enter and exit effects, layout animation and keyframes on GPU layers.
-- **Images:** PNG, JPEG, WebP, GIF and SVG decoded off the UI thread, with nine-slice backgrounds.
+- **Images and shapes:** PNG, JPEG, WebP, GIF and SVG decoded off the UI thread, with nine-slice backgrounds, and filled and stroked vector paths for widgets of your own.
 - **Localization:** Fluent catalogs, a compile-time checked `tr!`, and CLDR number and date formatting through ICU4X behind the `icu` feature.
 - **Input:** keyboard focus scopes, multi-touch with inertia and gestures, drag and drop within and between windows, and files dragged out to the OS.
 - **Tooling:** an F12 inspector window (tree, styles, accessibility, events, frame and GPU timings, diagnostics), a headless test harness with semantic finders and snapshots, and `glassmere-dev`, which rebuilds and restarts the app and keeps its state.

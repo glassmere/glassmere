@@ -1,11 +1,14 @@
 [package]
 name = "glassmere-win32"
 description = "The one crate with unsafe code: what Windows will only tell a window procedure."
+keywords = ["gui", "windows", "win32", "snap-layouts"]
+categories = ["os::windows-apis", "gui"]
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
 license.workspace = true
+repository.workspace = true
+readme.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
@@ -14,6 +17,11 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+# Windows only: elsewhere the crate is empty.
+[package.metadata.docs.rs]
+default-target = "x86_64-pc-windows-msvc"
+targets = ["x86_64-pc-windows-msvc"]
 
 # Deliberately not `workspace = true`: this crate exists to hold the unsafe
 # the rest of the workspace forbids. Everything here is one window procedure.

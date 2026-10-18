@@ -307,3 +307,40 @@ fn a_right_to_left_grid_scrolls_from_the_right() {
     let second = app.column(2, false)[2].unwrap();
     assert_eq!(second.x + second.width, right - 100.0 + 50.0);
 }
+
+#[test]
+fn the_grid_scrollbar_drags_and_pages_its_columns() {
+    let mut app = App::new(Direction::Ltr);
+    let rows = app.driven.context.node(app.rows()).unwrap().bounds;
+    let thumb = app
+        .driven
+        .context
+        .find(&["grid", "$hbar", "$track", "$thumb"])
+        .unwrap();
+    let thumb = app.driven.context.node(thumb).unwrap().bounds;
+    // 450 px of 3000 show: the thumb is 67.5 px, and each pixel it moves is
+    // 2550 / 382.5 of the content.
+    let middle = Point {
+        x: thumb.x + thumb.width / 2.0,
+        y: thumb.y + thumb.height / 2.0,
+    };
+    app.driven.context.event(Event::PointerMoved(middle));
+    app.driven.context.event(Event::PointerDown);
+    app.driven.context.event(Event::PointerMoved(Point {
+        x: middle.x + 30.0,
+        ..middle
+    }));
+    app.driven.context.event(Event::PointerUp);
+    app.frame();
+    assert_eq!(app.xs(2, false), [rows.x; 3]);
+
+    // Past the thumb, the track goes on by a view.
+    app.driven.context.event(Event::PointerMoved(Point {
+        x: rows.x + 440.0,
+        ..middle
+    }));
+    app.driven.context.event(Event::PointerDown);
+    app.driven.context.event(Event::PointerUp);
+    app.frame();
+    assert_eq!(app.xs(6, false), [rows.x - 50.0; 3]);
+}

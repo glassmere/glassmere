@@ -1,5 +1,6 @@
 //! GPU scene backend. This crate knows paint primitives, never widgets.
 mod image;
+mod path;
 mod profile;
 pub use glassmere_text::TextSystem;
 pub use profile::{DriverMemory, GpuPassTime, GpuProfile, MAX_TIMED_PASSES, MemoryStats};
@@ -54,6 +55,20 @@ impl GradientVertex {
         5 => Float32x2, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4, 9 => Float32x4,
         10 => Float32x4, 11 => Float32x4, 12 => Float32x4, 13 => Float32x4
     ];
+}
+
+/// A corner of a path's triangles; the alpha is the colour's times how much
+/// of the pixel the shape covers there.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct PathVertex {
+    position: [f32; 2],
+    color: [f32; 4],
+}
+
+impl PathVertex {
+    const ATTRIBUTES: [wgpu::VertexAttribute; 2] =
+        wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x4];
 }
 
 #[repr(C)]
@@ -122,6 +137,12 @@ enum Draw {
     },
     Shadow {
         start: u32,
+        clip: [u32; 4],
+    },
+    /// One path's triangles, as a vertex range of the path buffer.
+    Path {
+        start: u32,
+        count: u32,
         clip: [u32; 4],
     },
     /// The application's own drawing. Nothing happens while no callback is
@@ -195,6 +216,9 @@ struct Recording {
     image_vertices: Vec<image::ImageVertex>,
     gradient_vertices: Vec<GradientVertex>,
     shadow_vertices: Vec<ShadowVertex>,
+    path_vertices: Vec<PathVertex>,
+    /// Tessellation output, kept between paths.
+    corners: Vec<path::Corner>,
     text_items: Vec<PreparedText>,
     /// Per text batch: its surface and its span of `text_items`.
     text_ranges: Vec<(usize, std::ops::Range<usize>)>,
@@ -224,6 +248,66 @@ impl Recording {
         }
         surface.draws.push(Draw::Quad {
             start,
+            clip: scissor,
+        });
+    }
+
+    fn path(&mut self, clip: Rect, primitive: &Primitive) {
+        let Primitive::Path { path, fill, stroke } = primitive else {
+            return;
+        };
+        let surface = &mut self.surfaces[self.current];
+        let reach =
+            stroke.map_or(0.0, |stroke| stroke.width * path::MITER_LIMIT) + 1.0 / surface.scale;
+        let bounds = path.bounds();
+        let bounds = Rect {
+            x: bounds.x - reach,
+            y: bounds.y - reach,
+            width: bounds.width + reach * 2.0,
+            height: bounds.height + reach * 2.0,
+        };
+        let scissor = scissor(clip.intersect(bounds), surface);
+        if scissor[2] == 0 || scissor[3] == 0 {
+            return;
+        }
+        let pixel = 1.0 / surface.scale;
+        if let Some(color) = fill.filter(|color| color.3 > 0) {
+            self.corners.clear();
+            path::fill(path, pixel, &mut self.corners);
+            self.push_path(color, 1.0, scissor);
+        }
+        if let Some(line) = stroke.filter(|line| line.color.3 > 0 && line.width > 0.0) {
+            self.corners.clear();
+            let faint = path::stroke(path, line.width, pixel, &mut self.corners);
+            self.push_path(line.color, faint, scissor);
+        }
+    }
+
+    /// Draws the triangles in `corners`.
+    fn push_path(&mut self, color: Color, faint: f32, scissor: [u32; 4]) {
+        if self.corners.is_empty() {
+            return;
+        }
+        let surface = &mut self.surfaces[self.current];
+        let (origin, scale, size) = (surface.origin, surface.scale, surface.size);
+        let linear = color.linear();
+        let start = self.path_vertices.len() as u32;
+        self.path_vertices
+            .extend(self.corners.iter().map(|(point, coverage)| PathVertex {
+                position: [
+                    (point.x - origin[0]) * scale / size[0] as f32 * 2.0 - 1.0,
+                    1.0 - (point.y - origin[1]) * scale / size[1] as f32 * 2.0,
+                ],
+                color: [
+                    linear[0],
+                    linear[1],
+                    linear[2],
+                    linear[3] * coverage * faint,
+                ],
+            }));
+        surface.draws.push(Draw::Path {
+            start,
+            count: self.corners.len() as u32,
             clip: scissor,
         });
     }
@@ -365,6 +449,8 @@ pub struct RenderStats {
     /// Gradient and shadow draw calls in the prepared frame, one each.
     pub gradients: usize,
     pub shadows: usize,
+    /// Path draw calls in the prepared frame: one for a fill, one for a stroke.
+    pub paths: usize,
     /// Image uploads so far; a cached image does not upload again.
     pub image_uploads: u64,
     /// Shared atlas pages, standalone textures for large images, and the size
@@ -396,6 +482,11 @@ pub struct Renderer {
     image_pipeline: wgpu::RenderPipeline,
     gradient_pipeline: wgpu::RenderPipeline,
     shadow_pipeline: wgpu::RenderPipeline,
+    path_pipeline: wgpu::RenderPipeline,
+    path_buffer: Option<wgpu::Buffer>,
+    path_buffer_bytes: u64,
+    path_vertices: Vec<PathVertex>,
+    corners: Vec<path::Corner>,
     gradient_buffer: Option<wgpu::Buffer>,
     gradient_buffer_bytes: u64,
     gradient_vertices: Vec<GradientVertex>,
@@ -546,6 +637,18 @@ impl Renderer {
                 std::mem::size_of::<ShadowVertex>(),
                 &ShadowVertex::ATTRIBUTES,
             ),
+            // Coverage rides in the alpha, which stays straight as quads' does.
+            path_pipeline: pipeline(
+                "glassmere paths",
+                include_str!("path.wgsl"),
+                wgpu::BlendState::ALPHA_BLENDING,
+                std::mem::size_of::<PathVertex>(),
+                &PathVertex::ATTRIBUTES,
+            ),
+            path_buffer: None,
+            path_buffer_bytes: 0,
+            path_vertices: Vec::new(),
+            corners: Vec::new(),
             gradient_buffer: None,
             gradient_buffer_bytes: 0,
             gradient_vertices: Vec::new(),
@@ -759,6 +862,8 @@ impl Renderer {
         gradient_vertices.clear();
         let mut shadow_vertices = std::mem::take(&mut self.shadow_vertices);
         shadow_vertices.clear();
+        let mut path_vertices = std::mem::take(&mut self.path_vertices);
+        path_vertices.clear();
         self.images.begin();
         let mut draws = self
             .surfaces
@@ -788,6 +893,8 @@ impl Renderer {
             image_vertices,
             gradient_vertices,
             shadow_vertices,
+            path_vertices,
+            corners: std::mem::take(&mut self.corners),
             text_items: Vec::new(),
             text_ranges: Vec::new(),
             active_text: HashSet::new(),
@@ -837,6 +944,7 @@ impl Renderer {
                 Primitive::Image { .. } => self.record_image(device, queue, rec, clip, primitive),
                 Primitive::Gradient { .. } => rec.gradient(clip, primitive),
                 Primitive::Shadow { .. } => rec.shadow(clip, primitive),
+                Primitive::Path { .. } => rec.path(clip, primitive),
                 Primitive::Custom { rect, id } => {
                     let surface = &mut rec.surfaces[rec.current];
                     let scissor = scissor(clip.intersect(*rect), surface);
@@ -1230,10 +1338,20 @@ impl Renderer {
             &mut self.shadow_buffer_bytes,
             bytemuck::cast_slice(&rec.shadow_vertices),
         );
+        upload(
+            device,
+            queue,
+            "glassmere retained path vertices",
+            &mut self.path_buffer,
+            &mut self.path_buffer_bytes,
+            bytemuck::cast_slice(&rec.path_vertices),
+        );
         self.vertices = std::mem::take(&mut rec.vertices);
         self.image_vertices = std::mem::take(&mut rec.image_vertices);
         self.gradient_vertices = std::mem::take(&mut rec.gradient_vertices);
         self.shadow_vertices = std::mem::take(&mut rec.shadow_vertices);
+        self.path_vertices = std::mem::take(&mut rec.path_vertices);
+        self.corners = std::mem::take(&mut rec.corners);
     }
 
     /// Keeps the recorded surfaces for drawing and refreshes the statistics.
@@ -1249,6 +1367,7 @@ impl Renderer {
         self.stats.image_draws = count(|draw| matches!(draw, Draw::Image { .. }));
         self.stats.gradients = count(|draw| matches!(draw, Draw::Gradient { .. }));
         self.stats.shadows = count(|draw| matches!(draw, Draw::Shadow { .. }));
+        self.stats.paths = count(|draw| matches!(draw, Draw::Path { .. }));
         self.stats.quads = count(|draw| matches!(draw, Draw::Quad { .. }));
         self.stats.draw_calls = count(|_| true);
         self.stats.passes = surfaces.len();
@@ -1270,7 +1389,8 @@ impl Renderer {
         memory.buffers = self.stats.quad_buffer_bytes
             + self.image_buffer_bytes
             + self.gradient_buffer_bytes
-            + self.shadow_buffer_bytes;
+            + self.shadow_buffer_bytes
+            + self.path_buffer_bytes;
         (memory.image_atlas, memory.image_textures) = self.images.bytes_by_kind();
         memory.layers = self.stats.layer_texture_bytes;
         memory.settle();
@@ -1510,6 +1630,7 @@ impl Renderer {
                     | Draw::Layer { clip, .. }
                     | Draw::Gradient { clip, .. }
                     | Draw::Shadow { clip, .. }
+                    | Draw::Path { clip, .. }
                     | Draw::Custom { clip, .. } => *clip,
                     // Each text area carries its own bounds into glyphon.
                     Draw::Text(_) => [0, 0, surface.size[0], surface.size[1]],
@@ -1559,6 +1680,11 @@ impl Renderer {
                         pass.set_pipeline(&self.shadow_pipeline);
                         pass.set_vertex_buffer(0, self.shadow_buffer.as_ref().unwrap().slice(..));
                         pass.draw(*start..*start + 6, 0..1);
+                    }
+                    Draw::Path { start, count, .. } => {
+                        pass.set_pipeline(&self.path_pipeline);
+                        pass.set_vertex_buffer(0, self.path_buffer.as_ref().unwrap().slice(..));
+                        pass.draw(*start..*start + *count, 0..1);
                     }
                     Draw::Custom { id, rect, .. } => {
                         if let Some(draw) = self.custom.get_mut(id) {

@@ -33,6 +33,7 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     CoreRole::Button | CoreRole::MenuButton => Role::Button,
                     CoreRole::ScrollView => Role::ScrollView,
                     CoreRole::TextInput => Role::TextInput,
+                    CoreRole::PasswordInput => Role::PasswordInput,
                     CoreRole::Checkbox => Role::CheckBox,
                     CoreRole::Radio => Role::RadioButton,
                     CoreRole::Slider => Role::Slider,
@@ -248,7 +249,11 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                 }
                 if matches!(
                     role,
-                    Role::TextInput | Role::Slider | Role::Splitter | Role::SpinButton
+                    Role::TextInput
+                        | Role::PasswordInput
+                        | Role::Slider
+                        | Role::Splitter
+                        | Role::SpinButton
                 ) {
                     node.add_action(Action::SetValue);
                 }

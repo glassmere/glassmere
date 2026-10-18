@@ -97,6 +97,7 @@ pub struct TextInput<M = ()> {
     pub(crate) placeholder: String,
     pub(crate) style: Option<Style>,
     pub(crate) on_submit: Option<M>,
+    pub(crate) password: bool,
 }
 
 impl<M> Default for TextInput<M> {
@@ -113,7 +114,16 @@ impl<M> TextInput<M> {
             placeholder: String::new(),
             style: None,
             on_submit: None,
+            password: false,
         }
+    }
+
+    /// A password field: it draws a bullet for each character, will not copy
+    /// or cut, and tells assistive technology it holds a password, which
+    /// then reads neither the text nor where its words are.
+    pub fn password(mut self) -> Self {
+        self.password = true;
+        self
     }
 
     /// The message Enter sends.

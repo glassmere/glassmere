@@ -1,6 +1,7 @@
 use glassmere_render_cpu::CpuRenderer;
 use glassmere_scene::{
-    Affine, Color, Image, Point, Primitive, Rect, Scene, Size, TextMeasurer, TextStyle, VectorImage,
+    Affine, Color, Image, Path, Point, Primitive, Rect, Scene, Size, Stroke, TextMeasurer,
+    TextStyle, VectorImage,
 };
 use glassmere_text::TextSystem;
 
@@ -562,4 +563,44 @@ fn a_shadow_falls_around_its_rectangle_and_an_inset_one_stays_inside() {
     );
     assert_eq!(pixel(&inside, 32, 32), WHITE, "the middle is left alone");
     assert_eq!(pixel(&inside, 2, 32), WHITE, "and nothing spills out");
+}
+
+#[test]
+fn paths_fill_by_the_non_zero_rule_and_stroke_over_the_fill() {
+    let at = |x: f32, y: f32| Point { x, y };
+    let mut square = Path::new();
+    square
+        .move_to(at(8.0, 8.0))
+        .line_to(at(56.0, 8.0))
+        .line_to(at(56.0, 56.0))
+        .line_to(at(8.0, 56.0))
+        .close()
+        // Wound the other way: a hole.
+        .move_to(at(24.0, 24.0))
+        .line_to(at(24.0, 40.0))
+        .line_to(at(40.0, 40.0))
+        .line_to(at(40.0, 24.0))
+        .close();
+    let mut renderer = renderer();
+    let pixels = render(
+        &mut renderer,
+        1.0,
+        vec![Primitive::Path {
+            path: square,
+            fill: Some(RED),
+            stroke: Some(Stroke {
+                width: 4.0,
+                color: BLUE,
+            }),
+        }],
+    );
+    assert_near(pixel(&pixels, 16, 16), [255, 0, 0, 255]);
+    assert_near(pixel(&pixels, 32, 32), WHITE);
+    assert_near(pixel(&pixels, 2, 2), WHITE);
+    // The outline is centred on the edges, outside and around the hole.
+    assert_near(pixel(&pixels, 7, 32), [0, 0, 255, 255]);
+    assert_near(pixel(&pixels, 9, 32), [0, 0, 255, 255]);
+    assert_near(pixel(&pixels, 25, 32), [0, 0, 255, 255]);
+    // Mitred: the corner is square, not cut.
+    assert_near(pixel(&pixels, 6, 6), [0, 0, 255, 255]);
 }

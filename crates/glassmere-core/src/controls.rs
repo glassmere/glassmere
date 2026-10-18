@@ -186,6 +186,12 @@ pub(crate) enum Control {
     MaximizeButton,
     /// An edge or a corner that resizes the window.
     ResizeGrip(crate::ResizeEdge),
+    /// The track of a grid's sideways scrollbar. The grid scrolls its own
+    /// columns, so a drag is passed on as how far the content moves for
+    /// each pixel the thumb does.
+    GridScrollbar {
+        ratio: f32,
+    },
     TextInput {
         label: String,
         value: String,
@@ -198,6 +204,7 @@ pub(crate) enum Control {
         /// Number fields: the text is what the user is typing, not a value
         /// the field formatted. Only such text is ever parsed back.
         draft: bool,
+        password: bool,
     },
     /// A button the keyboard skips because the field beside it has the keys.
     Stepper,
