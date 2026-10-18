@@ -4,7 +4,7 @@
 //! cancels. Right-click a header, or press Shift+F10 on it, for its menu,
 //! which also freezes columns. Name and City can be filtered. The grid is wider
 //! than its window: Id and Name stay while the rest scrolls sideways.
-use seaglass::{
+use glassmere::{
     App, AppOptions, CellEditor, CellValue, Effects, GridColumn, GridModel, GridMsg, GridState,
     ItemId, Label, Length, ListModel, NumberOptions, Size, SortDirection, Style, Ui,
     VirtualListOptions, run, text_matches,
@@ -285,7 +285,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     grid.columns.frozen = 2;
     run(
         AppOptions {
-            title: "Seaglass / Data grid".into(),
+            title: "Glassmere / Data grid".into(),
             size: Size::new(860.0, 640.0),
             frame_limit: smoke.then_some(3),
             ..AppOptions::default()

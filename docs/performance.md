@@ -18,7 +18,7 @@ Text shaping happens inside declare, layout and paint rather than beside them, a
 
 ## What a frame costs
 
-From `cargo run -p seaglass-core --example bench --release`, which runs the four hardest cases headlessly, without a GPU or a font stack:
+From `cargo run -p glassmere-core --example bench --release`, which runs the four hardest cases headlessly, without a GPU or a font stack:
 
 | Case | Frame | Declared |
 | --- | --- | --- |
@@ -36,7 +36,7 @@ Two things to read out of that table. First, size costs nothing that is not on s
 
 ## Startup
 
-`SEAGLASS_STARTUP=1` prints how far into startup each step was reached. A release build of the counter example on that machine:
+`GLASSMERE_STARTUP=1` prints how far into startup each step was reached. A release build of the counter example on that machine:
 
 | Step | Reached at |
 | --- | --- |
@@ -47,7 +47,7 @@ Two things to read out of that table. First, size costs nothing that is not on s
 | Renderer, pipelines and fonts | 444 ms |
 | First frame on screen | 491 ms |
 
-The framework's own share is small: the same example with `SEAGLASS_RENDERER=cpu`, which skips the graphics stack entirely, shows its first frame at 56 ms. The 278 ms between the instance and the adapter is the driver enumerating adapters, which nothing here can shorten. An application that wants to start faster than its driver allows can paint with the CPU renderer.
+The framework's own share is small: the same example with `GLASSMERE_RENDERER=cpu`, which skips the graphics stack entirely, shows its first frame at 56 ms. The 278 ms between the instance and the adapter is the driver enumerating adapters, which nothing here can shorten. An application that wants to start faster than its driver allows can paint with the CPU renderer.
 
 ## Footprint
 
@@ -62,7 +62,7 @@ There is nothing to install beside it and no runtime to ship. On Windows the deb
 
 ## Memory
 
-The counter example in a release build, Direct3D 12 on the same machine, four seconds after launch: about 67 MiB private resident, 109 MiB total resident and 122 MiB private commit, and no measurable CPU while idle. Most of that is the graphics driver and device, which exist before any widget does; the retained tree and the renderer are a small part. The defaults are chosen for it: one backend is initialised rather than all of them, allocations use compact 4 to 16 MiB blocks, the Direct3D descriptor heap is limited to 4,096 bindings, and the frame queue is one deep. `GraphicsOptions` changes each, and the `diagnostics` feature adds startup checkpoints and the `SEAGLASS_MEMORY_*` variables described in [platform](platform.md). The CPU renderer avoids the graphics stack altogether.
+The counter example in a release build, Direct3D 12 on the same machine, four seconds after launch: about 67 MiB private resident, 109 MiB total resident and 122 MiB private commit, and no measurable CPU while idle. Most of that is the graphics driver and device, which exist before any widget does; the retained tree and the renderer are a small part. The defaults are chosen for it: one backend is initialised rather than all of them, allocations use compact 4 to 16 MiB blocks, the Direct3D descriptor heap is limited to 4,096 bindings, and the frame queue is one deep. `GraphicsOptions` changes each, and the `diagnostics` feature adds startup checkpoints and the `GLASSMERE_MEMORY_*` variables described in [platform](platform.md). The CPU renderer avoids the graphics stack altogether.
 
 ## Allocation
 

@@ -144,7 +144,7 @@ function Find-Label($Root, [string]$Pattern) {
     return ''
 }
 
-$probe, $window, $handle = Open-Example $Executable 'Seaglass / Text and controls'
+$probe, $window, $handle = Open-Example $Executable 'Glassmere / Text and controls'
 try {
     $check = Wait-Element $window 'Notifications'
     $x, $y, $null = Center $check
@@ -189,7 +189,7 @@ try {
     if (-not $probe.HasExited) { $probe.Kill() }
 }
 
-$probe, $window, $handle = Open-Example $Gestures 'Seaglass / Gestures'
+$probe, $window, $handle = Open-Example $Gestures 'Glassmere / Gestures'
 try {
     $photo = Wait-Element $window 'Hills at dusk'
     $x, $y, $null = Center $photo

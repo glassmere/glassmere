@@ -26,7 +26,7 @@ ui.code_editor(&self.document, CodeEditorOptions::default(), Msg::Edit);
 `CodeEditorOptions` carries `label`, `style`, `font_size`, `line_numbers`, `read_only`, `auto_close`, `match_brackets`, `highlighter`, `diagnostics` and `find`. `text_area` is the same editor without the frame, and has no find bar.
 
 - **Find and replace.** Give `CodeEditorOptions::find` a `FindState` the application owns and apply every `TextOp` with `FindState::apply` instead. Ctrl+F opens the bar and Ctrl+H adds replace. `FindState::matches` and `error` are read by the view. Searching is by line; with the `regex` feature (on by default) a pattern cannot match across a newline.
-- **Highlighting.** `seaglass::syntax::SyntectHighlighter::new("rs", dark)` implements `Highlighter`. The grammars load on the first highlight.
+- **Highlighting.** `glassmere::syntax::SyntectHighlighter::new("rs", dark)` implements `Highlighter`. The grammars load on the first highlight.
 - **Diagnostics.** `CodeEditorOptions::diagnostics` takes `Diagnostic`s the application computed; the severity colours are fixed.
 - **Keys.** Tab indents and Escape followed by Tab leaves the editor. Ctrl+D selects the next occurrence, Alt+click adds a cursor, Ctrl+Alt+Up and Down add cursors by line, F3 finds the next match.
 
@@ -44,7 +44,7 @@ IME preedit is shown inline and committed as one undo step; the host tells the p
 
 Texts come from a `Messages` source the application installs with `Effects::set_messages(Some(Box::new(..)))`; installing `None` goes back to the built-in English. Lookup order for `ui.tr(key)` and `ui.tr_args(key, &[("count", 3.into())])` is the installed messages, then the framework's own English, then the key itself, which `Context::missing_messages` then lists.
 
-`seaglass::fluent::FluentMessages` reads Fluent catalogs:
+`glassmere::fluent::FluentMessages` reads Fluent catalogs:
 
 ```rust
 let mut messages = FluentMessages::new("cs", "en")?; // locale, fallback
@@ -57,16 +57,16 @@ effects.set_messages(Some(Box::new(messages)));
 `tr!(ui, "files", count = n)` is `tr_args` checked at compile time. Name the default catalog in the crate's manifest:
 
 ```toml
-[package.metadata.seaglass]
+[package.metadata.glassmere]
 messages = "locales/en.ftl"
 ```
 
-An unknown key, an argument the message does not use and a variable the call does not pass are build errors. Only the default catalog is checked, keys starting with `seaglass-` are accepted unchecked, and without the manifest entry the macro checks nothing.
+An unknown key, an argument the message does not use and a variable the call does not pass are build errors. Only the default catalog is checked, keys starting with `glassmere-` are accepted unchecked, and without the manifest entry the macro checks nothing.
 
 ### Numbers, dates and times
 
 `Effects::set_format(Some(Box::new(format)))` installs a `LocaleFormat`; `ui.format_number`, `format_date` and `format_time` use it, and so do `number_input` and the grid's number cells. Without one, numbers are plain, a decimal comma is accepted when typing, dates read `2026-09-21` and times `14:05`. A model's own cell text is the application's, so a grid shows numbers the way the model wrote them.
 
-With the `icu` feature, `seaglass::icu::IcuFormat::new("cs-CZ")` answers from CLDR data: grouping and native digits, dates in `DateStyle::Short`, `Medium` and `Long`, and times in the locale's 12 or 24 hour convention. Locale tags may carry extensions such as `th-u-nu-thai`. It adds about a megabyte and a large dependency tree. There are no relative times, lists, currencies, units, time zones or calendars other than Gregorian.
+With the `icu` feature, `glassmere::icu::IcuFormat::new("cs-CZ")` answers from CLDR data: grouping and native digits, dates in `DateStyle::Short`, `Medium` and `Long`, and times in the locale's 12 or 24 hour convention. Locale tags may carry extensions such as `th-u-nu-thai`. It adds about a megabyte and a large dependency tree. There are no relative times, lists, currencies, units, time zones or calendars other than Gregorian.
 
 Installing messages or a format takes effect from the next declaration, and everything repaints.

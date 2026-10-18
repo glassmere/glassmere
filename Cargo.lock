@@ -873,8 +873,8 @@ checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
 name = "dial-widget"
 version = "0.1.0"
 dependencies = [
- "seaglass",
- "seaglass-testing",
+ "glassmere",
+ "glassmere-testing",
 ]
 
 [[package]]
@@ -1576,6 +1576,198 @@ dependencies = [
  "khronos_api",
  "log",
  "xml-rs",
+]
+
+[[package]]
+name = "glassmere"
+version = "0.1.0"
+dependencies = [
+ "glassmere-core",
+ "glassmere-derive",
+ "glassmere-devtools",
+ "glassmere-fluent",
+ "glassmere-icu",
+ "glassmere-image",
+ "glassmere-render-cpu",
+ "glassmere-render-wgpu",
+ "glassmere-scene",
+ "glassmere-syntax",
+ "glassmere-testing",
+ "glassmere-winit",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "glassmere-allocations"
+version = "0.1.0"
+dependencies = [
+ "glassmere-core",
+ "glassmere-scene",
+]
+
+[[package]]
+name = "glassmere-core"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.13.2",
+ "glassmere-scene",
+ "regex",
+ "ropey",
+ "serde",
+ "taffy",
+ "tracing",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "glassmere-derive"
+version = "0.1.0"
+dependencies = [
+ "fluent-syntax",
+ "glassmere-core",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "glassmere-dev"
+version = "0.1.0"
+
+[[package]]
+name = "glassmere-devtools"
+version = "0.1.0"
+dependencies = [
+ "glassmere-core",
+ "glassmere-scene",
+]
+
+[[package]]
+name = "glassmere-examples"
+version = "0.1.0"
+dependencies = [
+ "glassmere",
+]
+
+[[package]]
+name = "glassmere-fluent"
+version = "0.1.0"
+dependencies = [
+ "fluent-bundle",
+ "glassmere-core",
+ "glassmere-scene",
+ "unic-langid",
+]
+
+[[package]]
+name = "glassmere-icu"
+version = "0.1.0"
+dependencies = [
+ "glassmere-core",
+ "glassmere-scene",
+ "icu",
+]
+
+[[package]]
+name = "glassmere-image"
+version = "0.1.0"
+dependencies = [
+ "glassmere-scene",
+ "image",
+ "resvg",
+]
+
+[[package]]
+name = "glassmere-render-cpu"
+version = "0.1.0"
+dependencies = [
+ "glassmere-core",
+ "glassmere-render-wgpu",
+ "glassmere-scene",
+ "glassmere-text",
+ "pollster",
+ "tiny-skia 0.12.0",
+ "wgpu",
+]
+
+[[package]]
+name = "glassmere-render-wgpu"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glassmere-scene",
+ "glassmere-text",
+ "glyphon",
+ "pollster",
+ "wgpu",
+]
+
+[[package]]
+name = "glassmere-scene"
+version = "0.1.0"
+dependencies = [
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "glassmere-syntax"
+version = "0.1.0"
+dependencies = [
+ "glassmere-core",
+ "glassmere-scene",
+ "syntect",
+]
+
+[[package]]
+name = "glassmere-testing"
+version = "0.1.0"
+dependencies = [
+ "glassmere-core",
+ "glassmere-scene",
+]
+
+[[package]]
+name = "glassmere-text"
+version = "0.1.0"
+dependencies = [
+ "cosmic-text",
+ "glassmere-scene",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "glassmere-win32"
+version = "0.1.0"
+dependencies = [
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "glassmere-winit"
+version = "0.1.0"
+dependencies = [
+ "accesskit",
+ "accesskit_winit",
+ "arboard",
+ "drag",
+ "glassmere-core",
+ "glassmere-devtools",
+ "glassmere-image",
+ "glassmere-render-cpu",
+ "glassmere-render-wgpu",
+ "glassmere-scene",
+ "glassmere-win32",
+ "muda",
+ "notify-rust",
+ "pollster",
+ "rfd",
+ "softbuffer",
+ "sys-locale",
+ "tracing",
+ "tray-icon",
+ "wgpu",
+ "winit",
 ]
 
 [[package]]
@@ -3929,198 +4121,6 @@ dependencies = [
  "memmap2",
  "smithay-client-toolkit",
  "tiny-skia 0.11.4",
-]
-
-[[package]]
-name = "seaglass"
-version = "0.1.0"
-dependencies = [
- "quote",
- "seaglass-core",
- "seaglass-derive",
- "seaglass-devtools",
- "seaglass-fluent",
- "seaglass-icu",
- "seaglass-image",
- "seaglass-render-cpu",
- "seaglass-render-wgpu",
- "seaglass-scene",
- "seaglass-syntax",
- "seaglass-testing",
- "seaglass-winit",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "seaglass-allocations"
-version = "0.1.0"
-dependencies = [
- "seaglass-core",
- "seaglass-scene",
-]
-
-[[package]]
-name = "seaglass-core"
-version = "0.1.0"
-dependencies = [
- "bitflags 2.13.2",
- "regex",
- "ropey",
- "seaglass-scene",
- "serde",
- "taffy",
- "tracing",
- "unicode-segmentation",
-]
-
-[[package]]
-name = "seaglass-derive"
-version = "0.1.0"
-dependencies = [
- "fluent-syntax",
- "proc-macro2",
- "quote",
- "seaglass-core",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "seaglass-dev"
-version = "0.1.0"
-
-[[package]]
-name = "seaglass-devtools"
-version = "0.1.0"
-dependencies = [
- "seaglass-core",
- "seaglass-scene",
-]
-
-[[package]]
-name = "seaglass-examples"
-version = "0.1.0"
-dependencies = [
- "seaglass",
-]
-
-[[package]]
-name = "seaglass-fluent"
-version = "0.1.0"
-dependencies = [
- "fluent-bundle",
- "seaglass-core",
- "seaglass-scene",
- "unic-langid",
-]
-
-[[package]]
-name = "seaglass-icu"
-version = "0.1.0"
-dependencies = [
- "icu",
- "seaglass-core",
- "seaglass-scene",
-]
-
-[[package]]
-name = "seaglass-image"
-version = "0.1.0"
-dependencies = [
- "image",
- "resvg",
- "seaglass-scene",
-]
-
-[[package]]
-name = "seaglass-render-cpu"
-version = "0.1.0"
-dependencies = [
- "pollster",
- "seaglass-core",
- "seaglass-render-wgpu",
- "seaglass-scene",
- "seaglass-text",
- "tiny-skia 0.12.0",
- "wgpu",
-]
-
-[[package]]
-name = "seaglass-render-wgpu"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "glyphon",
- "pollster",
- "seaglass-scene",
- "seaglass-text",
- "wgpu",
-]
-
-[[package]]
-name = "seaglass-scene"
-version = "0.1.0"
-dependencies = [
- "unicode-segmentation",
-]
-
-[[package]]
-name = "seaglass-syntax"
-version = "0.1.0"
-dependencies = [
- "seaglass-core",
- "seaglass-scene",
- "syntect",
-]
-
-[[package]]
-name = "seaglass-testing"
-version = "0.1.0"
-dependencies = [
- "seaglass-core",
- "seaglass-scene",
-]
-
-[[package]]
-name = "seaglass-text"
-version = "0.1.0"
-dependencies = [
- "cosmic-text",
- "seaglass-scene",
- "unicode-segmentation",
-]
-
-[[package]]
-name = "seaglass-win32"
-version = "0.1.0"
-dependencies = [
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "seaglass-winit"
-version = "0.1.0"
-dependencies = [
- "accesskit",
- "accesskit_winit",
- "arboard",
- "drag",
- "muda",
- "notify-rust",
- "pollster",
- "rfd",
- "seaglass-core",
- "seaglass-devtools",
- "seaglass-image",
- "seaglass-render-cpu",
- "seaglass-render-wgpu",
- "seaglass-scene",
- "seaglass-win32",
- "softbuffer",
- "sys-locale",
- "tracing",
- "tray-icon",
- "wgpu",
- "winit",
 ]
 
 [[package]]

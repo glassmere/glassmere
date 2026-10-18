@@ -1,4 +1,4 @@
-use seaglass::{
+use glassmere::{
     App, AppOptions, Color, Command, DragPayload, DragSourceBuilder, DropKind, DropTargetBuilder,
     Effects, GridColumn, GridModel, GridMsg, GridState, ItemId, ItemOrder, Key, Label, Length,
     ListModel, ListState, Shortcut, ShortcutKey, Size, SortDirection, Style, TextWrap, TreeItem,
@@ -147,7 +147,7 @@ impl Application {
             return;
         }
         self.details = Some(effects.open_window(WindowRequest {
-            title: "Seaglass / Ticket details".into(),
+            title: "Glassmere / Ticket details".into(),
             size: Some(Size::new(440.0, 460.0)),
             modal_owner: None,
         }));
@@ -497,7 +497,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ])?;
     run(
         AppOptions {
-            title: "Seaglass / Application workbench".into(),
+            title: "Glassmere / Application workbench".into(),
             size: Size::new(1080.0, 840.0),
             frame_limit: smoke.then_some(4),
             ..AppOptions::default()

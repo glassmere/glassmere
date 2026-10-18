@@ -1,5 +1,5 @@
-use seaglass::syntax::SyntectHighlighter;
-use seaglass::{
+use glassmere::syntax::SyntectHighlighter;
+use glassmere::{
     App, AppOptions, Axis, CodeEditorOptions, DirectionChoice, Effects, Label, Length,
     RichDocument, RichEditorOptions, RichOp, Size, SplitOptions, Style, TextDocument, TextOp, Ui,
     run,
@@ -152,7 +152,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let markdown = TextDocument::from_text(&document.to_markdown());
     run(
         AppOptions {
-            title: "Seaglass / Rich text".into(),
+            title: "Glassmere / Rich text".into(),
             size: Size::new(1100.0, 720.0),
             frame_limit: smoke.then_some(3),
             direction,

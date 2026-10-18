@@ -1,4 +1,4 @@
-use seaglass::{
+use glassmere::{
     App, AppOptions, Button, Color, Effects, FontFamily, Gradient, Label, Length, Paint, Shadow,
     Size, Style, TextWrap, Theme, Ui, run,
 };
@@ -208,7 +208,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stylesheet = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/theming.style"));
     run(
         AppOptions {
-            title: "Seaglass / Theming".into(),
+            title: "Glassmere / Theming".into(),
             size: Size::new(860.0, 720.0),
             frame_limit: smoke.then_some(3),
             stylesheet: Some(stylesheet.clone()),

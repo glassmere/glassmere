@@ -78,7 +78,7 @@ Ancestors clip to their bounds, so a node that slides or scales needs room insid
 
 ## Images and backgrounds
 
-`Ui::image(&Image, ImageOptions)` and `Ui::image_file(path, options)` show an image; `ImageFit` is `Contain`, `Cover`, `Fill` or `None`, and `ImageTint` is `None`, `Foreground` or `Color`. `seaglass::image::decode` and `load` produce an `Image` from PNG, JPEG, WebP, GIF (first frame) and SVG; EXIF orientation is applied, colour profiles are ignored and pixels are taken as sRGB. `image_file` loads on a background thread and polls the file's modification time, so replacing the file updates the window.
+`Ui::image(&Image, ImageOptions)` and `Ui::image_file(path, options)` show an image; `ImageFit` is `Contain`, `Cover`, `Fill` or `None`, and `ImageTint` is `None`, `Foreground` or `Color`. `glassmere::image::decode` and `load` produce an `Image` from PNG, JPEG, WebP, GIF (first frame) and SVG; EXIF orientation is applied, colour profiles are ignored and pixels are taken as sRGB. `image_file` loads on a background thread and polls the file's modification time, so replacing the file updates the window.
 
 `Style::background_image(BackgroundImage)` paints an image over the background colour and under the content, fitted like an image widget or nine-sliced with `BackgroundImage::slice` so one small frame skins boxes of any size. One background image per node; no tiling, and no position other than centred.
 

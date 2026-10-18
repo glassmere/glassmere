@@ -2,7 +2,7 @@
 //! application; a store earns its place when a value is derived from
 //! several others and read in several places. Press F12 and open the State
 //! tab to see what each derived value read and which one moved last.
-use seaglass::{
+use glassmere::{
     App, AppOptions, Color, Effects, Label, Length, Memo, Signal, Size, Store, Style, TextWrap, Ui,
     run,
 };
@@ -137,7 +137,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     run(
         AppOptions {
-            title: "Seaglass / Reactive state".into(),
+            title: "Glassmere / Reactive state".into(),
             size: Size::new(620.0, 460.0),
             frame_limit: smoke.then_some(20),
             ..AppOptions::default()

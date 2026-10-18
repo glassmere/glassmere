@@ -1,0 +1,335 @@
+//! The two renderers on the same scene. They are not meant to agree to the
+//! bit: the GPU feathers the edges of quads and filters resampled images in
+//! linear light, the CPU covers edges exactly and filters on sRGB-encoded
+//! values. They are meant to draw the same picture, and this states how close
+//! that is.
+use glassmere_render_cpu::CpuRenderer;
+use glassmere_render_wgpu::Renderer;
+use glassmere_scene::{
+    Affine, Color, GradientStop, Image, Point, Primitive, Rect, Scene, Size, TextStyle, VectorImage,
+};
+use glassmere_text::TextSystem;
+
+const SIDE: u32 = 256;
+
+fn fonts() -> TextSystem {
+    TextSystem::with_fonts([include_bytes!(
+        "../../glassmere-render-wgpu/fonts/FiraMono-Regular.ttf"
+    )
+    .to_vec()])
+}
+
+fn rect(x: f32, y: f32, width: f32, height: f32) -> Rect {
+    Rect {
+        x,
+        y,
+        width,
+        height,
+    }
+}
+
+struct Rings;
+impl VectorImage for Rings {
+    fn size(&self) -> Size {
+        Size::new(32.0, 32.0)
+    }
+    fn rasterize(&self, width: u32, height: u32) -> Vec<u8> {
+        let mut pixels = Vec::with_capacity((width * height * 4) as usize);
+        for y in 0..height {
+            for x in 0..width {
+                let (dx, dy) = (
+                    x as f32 / width as f32 - 0.5,
+                    y as f32 / height as f32 - 0.5,
+                );
+                let ring = ((dx.hypot(dy) * 16.0) as u32).is_multiple_of(2);
+                pixels.extend(if ring { [200, 60, 20, 255] } else { [0; 4] });
+            }
+        }
+        pixels
+    }
+}
+
+/// A dark page with everything a scene can hold.
+fn scene(scale: f32) -> Scene {
+    // Opaque at the top and nearly clear at the bottom, so that translucent
+    // pixels are laid over the page as well as over the card.
+    let mut gradient = Vec::new();
+    for y in 0..16u32 {
+        for x in 0..16u32 {
+            gradient.extend([(x * 16) as u8, (y * 16) as u8, 160, (255 - y * 16) as u8]);
+        }
+    }
+    let photo = Image::from_rgba8(16, 16, gradient).unwrap();
+    let style = TextStyle {
+        font_size: 15.0,
+        ..TextStyle::default()
+    };
+    let side = SIDE as f32 / scale;
+    Scene {
+        size: Size::new(side, side),
+        primitives: vec![
+            Primitive::Quad {
+                rect: rect(8.0, 8.0, 120.0, 60.0),
+                color: Color::rgb(24, 35, 49),
+                radius: 10.0,
+            },
+            Primitive::StyledText {
+                rect: rect(16.0, 14.0, 110.0, 20.0),
+                text: "Renderers".into(),
+                style: style.clone(),
+                color: Color::rgb(230, 237, 243),
+            },
+            Primitive::Text {
+                rect: rect(16.0, 38.0, 110.0, 20.0),
+                text: "agree 0123".into(),
+                font_size: 13.0,
+                color: Color::rgb(103, 232, 206),
+            },
+            Primitive::Quad {
+                rect: rect(100.0, 40.0, 60.0, 60.0),
+                color: Color(103, 232, 206, 140),
+                radius: 30.0,
+            },
+            Primitive::Image {
+                rect: rect(140.0, 8.0, 56.0, 40.0),
+                image: photo.clone(),
+                source: rect(0.0, 0.0, 16.0, 16.0),
+                tint: None,
+                radius: 8.0,
+            },
+            Primitive::Image {
+                rect: rect(8.0, 80.0, 48.0, 48.0),
+                image: Image::from_vector(Rings),
+                source: rect(0.0, 0.0, 32.0, 32.0),
+                tint: None,
+                radius: 0.0,
+            },
+            Primitive::PushClip(rect(64.0, 110.0, 80.0, 50.0)),
+            Primitive::Quad {
+                rect: rect(50.0, 100.0, 140.0, 40.0),
+                color: Color::rgb(22, 105, 99),
+                radius: 12.0,
+            },
+            Primitive::StyledText {
+                rect: rect(70.0, 112.0, 200.0, 20.0),
+                text: "clipped text runs off".into(),
+                style,
+                color: Color::WHITE,
+            },
+            Primitive::PopClip,
+            Primitive::PushLayer {
+                bounds: rect(110.0, 110.0, 70.0, 50.0),
+                opacity: 0.6,
+                transform: Affine::translate(-145.0, -135.0)
+                    .then(Affine::rotate(17.0))
+                    .then(Affine::translate(150.0, 150.0)),
+            },
+            Primitive::Quad {
+                rect: rect(110.0, 110.0, 70.0, 50.0),
+                color: Color::rgb(200, 80, 60),
+                radius: 6.0,
+            },
+            Primitive::Image {
+                rect: rect(118.0, 118.0, 30.0, 30.0),
+                image: photo,
+                source: rect(4.0, 4.0, 8.0, 8.0),
+                tint: Some(Color::WHITE),
+                radius: 0.0,
+            },
+            Primitive::PopLayer,
+            // A ramp and a shadow, which both renderers approximate the same
+            // way and which are the easiest thing to get subtly wrong.
+            Primitive::Shadow {
+                rect: rect(196.0, 24.0, 40.0, 30.0),
+                radius: 8.0,
+                color: Color(0, 0, 0, 200),
+                blur: 6.0,
+                spread: 2.0,
+                offset: Point { x: 3.0, y: 4.0 },
+                inset: false,
+            },
+            Primitive::Gradient {
+                rect: rect(196.0, 24.0, 40.0, 30.0),
+                radius: 8.0,
+                from: Point { x: 0.0, y: 0.0 },
+                to: Point { x: 1.0, y: 1.0 },
+                stops: vec![
+                    GradientStop {
+                        at: 0.0,
+                        color: Color::rgb(240, 200, 90),
+                    },
+                    GradientStop {
+                        at: 0.45,
+                        color: Color(120, 40, 200, 180),
+                    },
+                    GradientStop {
+                        at: 1.0,
+                        color: Color::rgb(30, 160, 210),
+                    },
+                ],
+                radial: false,
+            },
+            Primitive::Gradient {
+                rect: rect(196.0, 150.0, 48.0, 48.0),
+                radius: 24.0,
+                from: Point { x: 0.5, y: 0.5 },
+                to: Point { x: 1.0, y: 0.5 },
+                stops: vec![
+                    GradientStop {
+                        at: 0.0,
+                        color: Color::rgb(255, 255, 255),
+                    },
+                    GradientStop {
+                        at: 1.0,
+                        color: Color(0, 0, 0, 0),
+                    },
+                ],
+                radial: true,
+            },
+            Primitive::Shadow {
+                rect: rect(20.0, 190.0, 60.0, 40.0),
+                radius: 10.0,
+                color: Color(0, 0, 0, 160),
+                blur: 5.0,
+                spread: 0.0,
+                offset: Point { x: 0.0, y: 0.0 },
+                inset: true,
+            },
+        ],
+    }
+}
+
+fn gpu(scene: &Scene, scale: f32, clear: Color) -> Vec<u8> {
+    pollster::block_on(async {
+        let instance =
+            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions::default())
+            .await
+            .expect("graphics adapter");
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor::default())
+            .await
+            .unwrap();
+        let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("comparison target"),
+            size: wgpu::Extent3d {
+                width: SIDE,
+                height: SIDE,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let mut renderer = Renderer::with_text_system(&device, &queue, format, fonts());
+        renderer
+            .render(
+                &device,
+                &queue,
+                &texture.create_view(&Default::default()),
+                [SIDE; 2],
+                scale,
+                scene,
+                clear,
+            )
+            .unwrap();
+        // SIDE * 4 is a multiple of 256, so rows need no padding.
+        let output = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("comparison readback"),
+            size: u64::from(SIDE * SIDE * 4),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(&Default::default());
+        encoder.copy_texture_to_buffer(
+            texture.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &output,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(SIDE * 4),
+                    rows_per_image: Some(SIDE),
+                },
+            },
+            texture.size(),
+        );
+        queue.submit(Some(encoder.finish()));
+        let (sender, receiver) = std::sync::mpsc::channel();
+        output
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                sender.send(result).unwrap()
+            });
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        receiver.recv().unwrap().unwrap();
+        let pixels = output.slice(..).get_mapped_range().to_vec();
+        output.unmap();
+        pixels
+    })
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn the_cpu_and_the_gpu_draw_the_same_picture_within_a_stated_tolerance() {
+    let clear = Color::rgb(16, 23, 34);
+    for scale in [1.0, 1.25, 2.0] {
+        let scene = scene(scale);
+        let reference = gpu(&scene, scale, clear);
+        let mut renderer = CpuRenderer::with_text_system(fonts());
+        let first = renderer.render([SIDE; 2], scale, &scene, clear).to_vec();
+        // The same scene into the same reused target gives the same bytes.
+        let pixels = renderer.render([SIDE; 2], scale, &scene, clear);
+        assert_eq!(pixels, first, "not deterministic");
+        assert_eq!(pixels.len(), reference.len());
+        // COMPARE_DUMP=<directory> keeps both pictures as raw RGBA for a look.
+        if let Some(directory) = std::env::var_os("COMPARE_DUMP") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::write(directory.join(format!("cpu-{scale}.rgba")), pixels).unwrap();
+            std::fs::write(directory.join(format!("gpu-{scale}.rgba")), &reference).unwrap();
+        }
+
+        let count = (SIDE * SIDE) as f64;
+        let worst = |at: usize| {
+            (0..3)
+                .map(|channel| pixels[at * 4 + channel].abs_diff(reference[at * 4 + channel]))
+                .max()
+                .unwrap()
+        };
+        let differences: Vec<u8> = (0..(SIDE * SIDE) as usize).map(worst).collect();
+        let mean = differences.iter().map(|d| f64::from(*d)).sum::<f64>() / count;
+        let share = |over: u8| differences.iter().filter(|d| **d > over).count() as f64 / count;
+        println!(
+            "scale {scale}: mean {mean:.3}, over 8: {:.2}%, over 32: {:.2}%, over 96: {:.3}%, max {}",
+            share(8) * 100.0,
+            share(32) * 100.0,
+            share(96) * 100.0,
+            differences.iter().max().unwrap()
+        );
+        // What differs is edges: a line of pixels around shapes and glyphs.
+        // Flat areas agree, large errors are rare, and nothing is misplaced,
+        // which would show as whole regions far apart. Measured on this
+        // machine: a mean of 0.16 to 0.60, at most 0.44% of pixels over 32.
+        // The bounds leave room for another adapter's filtering.
+        assert!(mean < 1.2, "mean difference {mean}");
+        assert!(
+            share(8) < 0.04,
+            "{:.2}% of pixels differ by more than 8",
+            share(8) * 100.0
+        );
+        assert!(
+            share(32) < 0.015,
+            "{:.2}% of pixels differ by more than 32",
+            share(32) * 100.0
+        );
+        assert!(
+            share(96) < 0.004,
+            "{:.3}% of pixels differ by more than 96",
+            share(96) * 100.0
+        );
+    }
+}

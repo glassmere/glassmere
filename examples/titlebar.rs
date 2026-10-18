@@ -4,7 +4,7 @@
 //!
 //! Press the strip to move the window, press it twice to maximize it, and
 //! pull any edge or corner to resize.
-use seaglass::{
+use glassmere::{
     App, AppOptions, Color, Command, Effects, Label, Length, Menu, MenuEntry, Shortcut, Size,
     Style, TextWrap, Ui, WindowCommand, run,
 };
@@ -123,7 +123,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     run(
         AppOptions {
-            title: "Seaglass / Title bar".into(),
+            title: "Glassmere / Title bar".into(),
             size: Size::new(720.0, 480.0),
             // Without the system's frame the window has nothing but what the
             // view draws, which is the point of this example.

@@ -1,0 +1,16 @@
+[package]
+name = "glassmere-text"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Fonts, shaping and measuring shared by glassmere's renderers, built on cosmic-text."
+
+[dependencies]
+glassmere-scene.workspace = true
+cosmic-text.workspace = true
+unicode-segmentation.workspace = true
+
+[lints]
+workspace = true

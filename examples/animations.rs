@@ -1,4 +1,4 @@
-use seaglass::{
+use glassmere::{
     Align, Animation, App, AppOptions, Button, Color, DialogOptions, Easing, Effect, Effects,
     Keyframe, Label, Length, Paint, Repeat, Size, Style, TextWrap, Transform, Transition, Ui, run,
 };
@@ -243,7 +243,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let reduced_motion = std::env::args().any(|arg| arg == "--reduced-motion");
     run(
         AppOptions {
-            title: "Seaglass / Animations".into(),
+            title: "Glassmere / Animations".into(),
             size: Size::new(900.0, 760.0),
             frame_limit: smoke.then_some(3),
             reduced_motion,

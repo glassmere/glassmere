@@ -1,6 +1,6 @@
 [package]
-name = "seaglass-examples"
-description = "Runnable examples of the seaglass GUI framework."
+name = "glassmere-examples"
+description = "Runnable examples of the glassmere GUI framework."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,15 +8,15 @@ publish = false
 license.workspace = true
 
 # `tr!` in the localization example checks keys against this catalog.
-[package.metadata.seaglass]
+[package.metadata.glassmere]
 messages = "locales/en.ftl"
 
 [features]
-icu = ["seaglass/icu"]
-platform = ["seaglass/platform"]
+icu = ["glassmere/icu"]
+platform = ["glassmere/platform"]
 
 [dependencies]
-seaglass = { path = "../crates/seaglass" }
+glassmere = { path = "../crates/glassmere" }
 
 [lints]
 workspace = true

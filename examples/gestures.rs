@@ -2,7 +2,7 @@
 //! pinch and rotate about the point between them, and a pinch on a trackpad
 //! or Ctrl with the wheel zooms about the pointer. The two sliders above the
 //! photo can be dragged at the same time, one finger each.
-use seaglass::{
+use glassmere::{
     Align, App, AppOptions, Button, Color, Effects, GestureBuilder, GestureResponse, ImageFit,
     ImageOptions, Justify, Length, Size, Style, Transform, Ui, run,
 };
@@ -143,7 +143,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     run(
         AppOptions {
-            title: "Seaglass / Gestures".into(),
+            title: "Glassmere / Gestures".into(),
             size: Size::new(780.0, 640.0),
             frame_limit: smoke.then_some(20),
             ..AppOptions::default()

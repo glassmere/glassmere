@@ -1,0 +1,2115 @@
+glassmere use glassmere_core :: *
+glassmere use glassmere_derive :: { Properties, style_sheet, tr }
+glassmere use glassmere_devtools as devtools
+glassmere use glassmere_fluent as fluent
+glassmere use glassmere_icu as icu
+glassmere use glassmere_image as image
+glassmere use glassmere_render_cpu :: { CpuRenderer, CpuStats }
+glassmere use glassmere_render_wgpu as render
+glassmere use glassmere_scene :: { Affine, Affinity, Color, Image, Point, Primitive, Rect, Scene, Size, VectorImage, }
+glassmere use glassmere_syntax as syntax
+glassmere use glassmere_winit :: hot
+glassmere use glassmere_winit :: { AppOptions, DirectionChoice, GpuMemoryPolicy, GpuSetup, GraphicsBackend, GraphicsOptions, Placement, ThemeChoice, run, run_with, }
+glassmere-core   field Animation::alternate
+glassmere-core   field Animation::duration
+glassmere-core   field Animation::easing
+glassmere-core   field Animation::keyframes
+glassmere-core   field Animation::repeat
+glassmere-core   field BackgroundImage::fit
+glassmere-core   field BackgroundImage::slice
+glassmere-core   field BackgroundImage::source
+glassmere-core   field BackgroundImage::tint
+glassmere-core   field Block::kind
+glassmere-core   field Block::runs
+glassmere-core   field Clip::custom
+glassmere-core   field Clip::image
+glassmere-core   field Clip::text
+glassmere-core   field CodeEditorOptions::auto_close
+glassmere-core   field CodeEditorOptions::diagnostics
+glassmere-core   field CodeEditorOptions::find
+glassmere-core   field CodeEditorOptions::font_size
+glassmere-core   field CodeEditorOptions::highlighter
+glassmere-core   field CodeEditorOptions::label
+glassmere-core   field CodeEditorOptions::line_numbers
+glassmere-core   field CodeEditorOptions::match_brackets
+glassmere-core   field CodeEditorOptions::read_only
+glassmere-core   field CodeEditorOptions::style
+glassmere-core   field CollectionInfo::column
+glassmere-core   field CollectionInfo::columns
+glassmere-core   field CollectionInfo::index
+glassmere-core   field CollectionInfo::item
+glassmere-core   field CollectionInfo::level
+glassmere-core   field CollectionInfo::sort
+glassmere-core   field CollectionInfo::total
+glassmere-core   field Command::enabled
+glassmere-core   field Command::id
+glassmere-core   field Command::label
+glassmere-core   field Command::scoped
+glassmere-core   field Command::shortcut
+glassmere-core   field Command::while_editing
+glassmere-core   field CustomWidget::input
+glassmere-core   field CustomWidget::primitives
+glassmere-core   field CustomWidget::semantics
+glassmere-core   field CustomWidget::size
+glassmere-core   field Date::day
+glassmere-core   field Date::month
+glassmere-core   field Date::year
+glassmere-core   field Diagnostic::message
+glassmere-core   field Diagnostic::range
+glassmere-core   field Diagnostic::severity
+glassmere-core   field DialogOptions::dismissible
+glassmere-core   field DialogOptions::modal
+glassmere-core   field DialogOptions::style
+glassmere-core   field DialogOptions::title
+glassmere-core   field DialogOptions::width
+glassmere-core   field DockFloat::height
+glassmere-core   field DockFloat::tabs
+glassmere-core   field DockFloat::width
+glassmere-core   field DockFloat::x
+glassmere-core   field DockFloat::y
+glassmere-core   field DockLayout::floating
+glassmere-core   field DockLayout::root
+glassmere-core   field DockLayout::windows
+glassmere-core   field DockLayoutError::line
+glassmere-core   field DockLayoutError::message
+glassmere-core   field DockOptions::min_pane
+glassmere-core   field DockOptions::native_windows
+glassmere-core   field DockOptions::style
+glassmere-core   field DockPanel::closable
+glassmere-core   field DockPanel::id
+glassmere-core   field DockPanel::title
+glassmere-core   field DockTabs::active
+glassmere-core   field DockTabs::panels
+glassmere-core   field DockWindow::height
+glassmere-core   field DockWindow::id
+glassmere-core   field DockWindow::root
+glassmere-core   field DockWindow::width
+glassmere-core   field DragInfo::can_drop
+glassmere-core   field DragInfo::dragging
+glassmere-core   field DragInfo::source
+glassmere-core   field Effect::opacity
+glassmere-core   field Effect::transform
+glassmere-core   field Effect::transition
+glassmere-core   field EventArea::capture
+glassmere-core   field EventArea::consume
+glassmere-core   field EventArea::keyboard
+glassmere-core   field EventArea::pointer
+glassmere-core   field EventArea::scroll
+glassmere-core   field FileRequest::directory
+glassmere-core   field FileRequest::file_name
+glassmere-core   field FileRequest::filters
+glassmere-core   field FileRequest::kind
+glassmere-core   field FileRequest::title
+glassmere-core   field FindState::case_sensitive
+glassmere-core   field FindState::open
+glassmere-core   field FindState::query
+glassmere-core   field FindState::regex
+glassmere-core   field FindState::replace
+glassmere-core   field FindState::replacement
+glassmere-core   field FindState::whole_word
+glassmere-core   field FocusScope::arrows
+glassmere-core   field FocusScope::autofocus
+glassmere-core   field FocusScope::restore
+glassmere-core   field FocusScope::trap
+glassmere-core   field FrameDiagnostic::count
+glassmere-core   field FrameDiagnostic::frame
+glassmere-core   field FrameDiagnostic::kind
+glassmere-core   field FrameDiagnostic::message
+glassmere-core   field FrameDiagnostic::node
+glassmere-core   field FrameDiagnostic::path
+glassmere-core   field FrameStats::created
+glassmere-core   field FrameStats::declare
+glassmere-core   field FrameStats::declared
+glassmere-core   field FrameStats::dirty
+glassmere-core   field FrameStats::element_bytes
+glassmere-core   field FrameStats::elements
+glassmere-core   field FrameStats::frame
+glassmere-core   field FrameStats::layout
+glassmere-core   field FrameStats::layout_passes
+glassmere-core   field FrameStats::messages
+glassmere-core   field FrameStats::paint
+glassmere-core   field FrameStats::paint_cache_hits
+glassmere-core   field FrameStats::paint_nodes
+glassmere-core   field FrameStats::removed
+glassmere-core   field FrameStats::reused
+glassmere-core   field FrameStats::scene_rebuilt
+glassmere-core   field FrameStats::shaping
+glassmere-core   field FrameStats::skipped
+glassmere-core   field FrameStats::text_measures
+glassmere-core   field GestureResponse::active
+glassmere-core   field GestureResponse::center
+glassmere-core   field GestureResponse::double_tapped
+glassmere-core   field GestureResponse::pan_x
+glassmere-core   field GestureResponse::pan_y
+glassmere-core   field GestureResponse::pressure
+glassmere-core   field GestureResponse::rotation
+glassmere-core   field GestureResponse::scale
+glassmere-core   field GestureResponse::swipe
+glassmere-core   field GestureResponse::tapped
+glassmere-core   field Gradient::from
+glassmere-core   field Gradient::radial
+glassmere-core   field Gradient::stops
+glassmere-core   field Gradient::to
+glassmere-core   field GraphNode::changed_at
+glassmere-core   field GraphNode::dirty
+glassmere-core   field GraphNode::inputs
+glassmere-core   field GraphNode::kind
+glassmere-core   field GraphNode::name
+glassmere-core   field GraphNode::version
+glassmere-core   field GridArea::column
+glassmere-core   field GridArea::column_span
+glassmere-core   field GridArea::row
+glassmere-core   field GridArea::row_span
+glassmere-core   field GridColumn::editor
+glassmere-core   field GridColumn::filterable
+glassmere-core   field GridColumn::label
+glassmere-core   field GridColumn::sortable
+glassmere-core   field GridColumn::width
+glassmere-core   field GridColumns::frozen
+glassmere-core   field GridColumns::hidden
+glassmere-core   field GridColumns::order
+glassmere-core   field GridColumns::widths
+glassmere-core   field GridState::columns
+glassmere-core   field GridState::cursor
+glassmere-core   field GridState::filters
+glassmere-core   field GridState::rows
+glassmere-core   field GridState::scroll_x
+glassmere-core   field GridState::sort
+glassmere-core   field HighlightSpan::color
+glassmere-core   field HighlightSpan::italic
+glassmere-core   field HighlightSpan::range
+glassmere-core   field HighlightSpan::weight
+glassmere-core   field ImageOptions::alt
+glassmere-core   field ImageOptions::fit
+glassmere-core   field ImageOptions::style
+glassmere-core   field ImageOptions::tint
+glassmere-core   field Indentation::tab_width
+glassmere-core   field Indentation::unit
+glassmere-core   field InlineRun::marks
+glassmere-core   field InlineRun::text
+glassmere-core   field Keyframe::at
+glassmere-core   field Keyframe::background
+glassmere-core   field Keyframe::foreground
+glassmere-core   field Keyframe::opacity
+glassmere-core   field Keyframe::transform
+glassmere-core   field Marks::bold
+glassmere-core   field Marks::code
+glassmere-core   field Marks::italic
+glassmere-core   field Marks::link
+glassmere-core   field Marks::strikethrough
+glassmere-core   field Marks::underline
+glassmere-core   field MemoryReport::cached_nodes
+glassmere-core   field MemoryReport::cached_primitives
+glassmere-core   field MemoryReport::image_bytes
+glassmere-core   field MemoryReport::images
+glassmere-core   field MemoryReport::node_bytes
+glassmere-core   field MemoryReport::nodes
+glassmere-core   field MemoryReport::scene_bytes
+glassmere-core   field MemoryReport::scene_primitives
+glassmere-core   field MemoryReport::text_bytes
+glassmere-core   field Menu::entries
+glassmere-core   field MenuItem::enabled
+glassmere-core   field MenuItem::hint
+glassmere-core   field MenuItem::label
+glassmere-core   field NodeDetails::changed
+glassmere-core   field NodeDetails::explicit
+glassmere-core   field NodeDetails::key
+glassmere-core   field NodeDetails::kind
+glassmere-core   field NodeDetails::painted
+glassmere-core   field NodeDetails::resolved
+glassmere-core   field NodeDetails::style
+glassmere-core   field NodeDetails::text
+glassmere-core   field NodeSnapshot::active_descendant
+glassmere-core   field NodeSnapshot::bounds
+glassmere-core   field NodeSnapshot::checked
+glassmere-core   field NodeSnapshot::children
+glassmere-core   field NodeSnapshot::clip
+glassmere-core   field NodeSnapshot::collection
+glassmere-core   field NodeSnapshot::description
+glassmere-core   field NodeSnapshot::drag
+glassmere-core   field NodeSnapshot::expanded
+glassmere-core   field NodeSnapshot::focused
+glassmere-core   field NodeSnapshot::id
+glassmere-core   field NodeSnapshot::is_popup
+glassmere-core   field NodeSnapshot::live
+glassmere-core   field NodeSnapshot::modal
+glassmere-core   field NodeSnapshot::numeric
+glassmere-core   field NodeSnapshot::orientation
+glassmere-core   field NodeSnapshot::parent
+glassmere-core   field NodeSnapshot::scroll
+glassmere-core   field NodeSnapshot::selected
+glassmere-core   field NodeSnapshot::semantics
+glassmere-core   field NodeSnapshot::text_selection
+glassmere-core   field NodeSnapshot::value
+glassmere-core   field Notification::body
+glassmere-core   field Notification::title
+glassmere-core   field Notification::urgent
+glassmere-core   field NumberOptions::decimals
+glassmere-core   field NumberOptions::max
+glassmere-core   field NumberOptions::min
+glassmere-core   field NumberOptions::step
+glassmere-core   field NumberOptions::style
+glassmere-core   field NumberOptions::suffix
+glassmere-core   field NumericValue::max
+glassmere-core   field NumericValue::min
+glassmere-core   field NumericValue::step
+glassmere-core   field NumericValue::value
+glassmere-core   field Paint::background
+glassmere-core   field Paint::foreground
+glassmere-core   field Paint::opacity
+glassmere-core   field Paint::radius
+glassmere-core   field Paint::transform
+glassmere-core   field Pen::barrel
+glassmere-core   field Pen::eraser
+glassmere-core   field Pen::tilt_x
+glassmere-core   field Pen::tilt_y
+glassmere-core   field PopoverOptions::style
+glassmere-core   field PopoverOptions::width
+glassmere-core   field PropertyGridOptions::filter
+glassmere-core   field PropertyGridOptions::height
+glassmere-core   field PropertyGridOptions::label
+glassmere-core   field PropertyGridOptions::style
+glassmere-core   field PropertyGridState::collapsed
+glassmere-core   field PropertyGridState::filter
+glassmere-core   field PropertyGridState::name_share
+glassmere-core   field ResolvedText::base_direction
+glassmere-core   field ResolvedText::direction
+glassmere-core   field ResolvedText::font_family
+glassmere-core   field ResolvedText::font_size
+glassmere-core   field ResolvedText::font_weight
+glassmere-core   field ResolvedText::foreground
+glassmere-core   field ResolvedText::italic
+glassmere-core   field RichEditorOptions::font_size
+glassmere-core   field RichEditorOptions::label
+glassmere-core   field RichEditorOptions::read_only
+glassmere-core   field RichEditorOptions::style
+glassmere-core   field RichEditorOptions::toolbar
+glassmere-core   field RichEditorResponse::changed
+glassmere-core   field RichEditorResponse::link_at_cursor
+glassmere-core   field RichEditorResponse::selection_changed
+glassmere-core   field RichPosition::block
+glassmere-core   field RichPosition::offset
+glassmere-core   field RichRun::background
+glassmere-core   field RichRun::bold
+glassmere-core   field RichRun::code
+glassmere-core   field RichRun::color
+glassmere-core   field RichRun::italic
+glassmere-core   field RichRun::link
+glassmere-core   field RichRun::strikethrough
+glassmere-core   field RichRun::text
+glassmere-core   field RichRun::underline
+glassmere-core   field RichText::runs
+glassmere-core   field ScrollState::maximum
+glassmere-core   field ScrollState::maximum_x
+glassmere-core   field ScrollState::offset
+glassmere-core   field ScrollState::offset_x
+glassmere-core   field Selection::anchor
+glassmere-core   field Selection::cursor
+glassmere-core   field Semantics::disabled
+glassmere-core   field Semantics::focusable
+glassmere-core   field Semantics::label
+glassmere-core   field Semantics::numeric
+glassmere-core   field Semantics::role
+glassmere-core   field Semantics::value
+glassmere-core   field Shadow::blur
+glassmere-core   field Shadow::color
+glassmere-core   field Shadow::inset
+glassmere-core   field Shadow::offset
+glassmere-core   field Shadow::spread
+glassmere-core   field Shortcut::alt
+glassmere-core   field Shortcut::control
+glassmere-core   field Shortcut::key
+glassmere-core   field Shortcut::shift
+glassmere-core   field Shortcut::super_key
+glassmere-core   field SplitOptions::divider
+glassmere-core   field SplitOptions::min_first
+glassmere-core   field SplitOptions::min_second
+glassmere-core   field SplitOptions::style
+glassmere-core   field StateStyles::disabled
+glassmere-core   field StateStyles::focused
+glassmere-core   field StateStyles::hover
+glassmere-core   field StateStyles::pressed
+glassmere-core   field Style::align_items
+glassmere-core   field Style::align_self
+glassmere-core   field Style::animation
+glassmere-core   field Style::area
+glassmere-core   field Style::aspect_ratio
+glassmere-core   field Style::auto_columns
+glassmere-core   field Style::auto_rows
+glassmere-core   field Style::background
+glassmere-core   field Style::background_image
+glassmere-core   field Style::base_direction
+glassmere-core   field Style::columns
+glassmere-core   field Style::direction
+glassmere-core   field Style::enter
+glassmere-core   field Style::exit
+glassmere-core   field Style::font_family
+glassmere-core   field Style::font_size
+glassmere-core   field Style::font_weight
+glassmere-core   field Style::foreground
+glassmere-core   field Style::gap
+glassmere-core   field Style::gradient
+glassmere-core   field Style::grow
+glassmere-core   field Style::height
+glassmere-core   field Style::italic
+glassmere-core   field Style::justify_content
+glassmere-core   field Style::justify_self
+glassmere-core   field Style::layout_transition
+glassmere-core   field Style::max_height
+glassmere-core   field Style::max_width
+glassmere-core   field Style::min_height
+glassmere-core   field Style::min_width
+glassmere-core   field Style::offset
+glassmere-core   field Style::opacity
+glassmere-core   field Style::padding
+glassmere-core   field Style::radius
+glassmere-core   field Style::rows
+glassmere-core   field Style::shadow
+glassmere-core   field Style::shrink
+glassmere-core   field Style::states
+glassmere-core   field Style::transform
+glassmere-core   field Style::transition
+glassmere-core   field Style::width
+glassmere-core   field Style::wrap
+glassmere-core   field StyleSheet::theme
+glassmere-core   field StyleSheet::tokens
+glassmere-core   field StyleSheetError::line
+glassmere-core   field StyleSheetError::message
+glassmere-core   field Swipe::direction
+glassmere-core   field Swipe::speed
+glassmere-core   field Tab::closable
+glassmere-core   field Tab::label
+glassmere-core   field TextDocument::indentation
+glassmere-core   field TextSelection::anchor
+glassmere-core   field TextSelection::cursor
+glassmere-core   field Theme::accent
+glassmere-core   field Theme::control
+glassmere-core   field Theme::control_disabled
+glassmere-core   field Theme::control_hover
+glassmere-core   field Theme::control_pressed
+glassmere-core   field Theme::focus
+glassmere-core   field Theme::font_family
+glassmere-core   field Theme::font_size
+glassmere-core   field Theme::highlight
+glassmere-core   field Theme::name
+glassmere-core   field Theme::popup
+glassmere-core   field Theme::row
+glassmere-core   field Theme::row_alternate
+glassmere-core   field Theme::scrim
+glassmere-core   field Theme::scrollbar
+glassmere-core   field Theme::selection
+glassmere-core   field Theme::selection_inactive
+glassmere-core   field Theme::surface
+glassmere-core   field Theme::text
+glassmere-core   field Theme::text_disabled
+glassmere-core   field Theme::text_muted
+glassmere-core   field Theme::thumb
+glassmere-core   field Theme::track
+glassmere-core   field Theme::window
+glassmere-core   field Time::hour
+glassmere-core   field Time::minute
+glassmere-core   field Time::second
+glassmere-core   field Toast::action
+glassmere-core   field Toast::duration
+glassmere-core   field Toast::kind
+glassmere-core   field Toast::tag
+glassmere-core   field Toast::text
+glassmere-core   field ToastAction::id
+glassmere-core   field ToastAction::tag
+glassmere-core   field Transform::rotate
+glassmere-core   field Transform::scale
+glassmere-core   field Transform::translate
+glassmere-core   field Transition::delay
+glassmere-core   field Transition::duration
+glassmere-core   field Transition::easing
+glassmere-core   field Tray::icon
+glassmere-core   field Tray::menu
+glassmere-core   field Tray::tooltip
+glassmere-core   field TreeItem::id
+glassmere-core   field TreeItem::label
+glassmere-core   field TreeItem::parent
+glassmere-core   field VirtualListOptions::height
+glassmere-core   field VirtualListOptions::label
+glassmere-core   field VirtualListOptions::overscan
+glassmere-core   field VirtualListOptions::row_height
+glassmere-core   field VirtualListOptions::style
+glassmere-core   field WidgetInput::enabled
+glassmere-core   field WidgetInput::focused
+glassmere-core   field WidgetInput::hovered
+glassmere-core   field WidgetInput::pressed
+glassmere-core   field WidgetInput::size
+glassmere-core   field WindowInfo::focused
+glassmere-core   field WindowInfo::maximized
+glassmere-core   field WindowRequest::modal_owner
+glassmere-core   field WindowRequest::size
+glassmere-core   field WindowRequest::title
+glassmere-core   fn Animation::alternate (mut self, alternate : bool) -> Self
+glassmere-core   fn Animation::easing (mut self, easing : Easing) -> Self
+glassmere-core   fn Animation::new (keyframes : Vec < Keyframe>, milliseconds : u64) -> Self
+glassmere-core   fn Animation::pulse (low : f32, milliseconds : u64) -> Self
+glassmere-core   fn Animation::repeat (mut self, repeat : Repeat) -> Self
+glassmere-core   fn Animation::spin (milliseconds : u64) -> Self
+glassmere-core   fn App::init (& mut self, _effects : & mut Effects < '_, Self :: Message>)
+glassmere-core   fn App::save_state (& self) -> Option < String>
+glassmere-core   fn App::update (& mut self, message : Self :: Message, effects : & mut Effects < '_, Self :: Message>)
+glassmere-core   fn App::view (& self, ui : & mut Ui < '_, Self :: Message>)
+glassmere-core   fn App::view_window (& self, _window : WindowId, ui : & mut Ui < '_, Self :: Message>)
+glassmere-core   fn App::window_closed (& mut self, _window : WindowId, _effects : & mut Effects < '_, Self :: Message>)
+glassmere-core   fn AppDriver < M>::awaiting (& self) -> Vec < WindowId>
+glassmere-core   fn AppDriver < M>::batch < A : App < Message = M>> (& mut self, app : & mut A, context : & mut Context,) -> (usize, bool)
+glassmere-core   fn AppDriver < M>::batch_in < A : App < Message = M>> (& mut self, window : WindowId, app : & mut A, context : & mut Context,) -> (usize, bool)
+glassmere-core   fn AppDriver < M>::declare < A : App < Message = M>> (& mut self, app : & A, context : & mut Context, size : Size, measurer : & mut impl TextMeasurer, window : Option < WindowId>, pacing : & mut Pacing, messages : usize,) -> FrameStats
+glassmere-core   fn AppDriver < M>::frame < A : App < Message = M>> (& mut self, app : & mut A, context : & mut Context, size : Size, measurer : & mut impl TextMeasurer,) -> FrameStats
+glassmere-core   fn AppDriver < M>::has_messages (& self) -> bool
+glassmere-core   fn AppDriver < M>::invalidate (& mut self)
+glassmere-core   fn AppDriver < M>::new (wake : impl Fn () -> bool + Send + Sync + 'static) -> Self
+glassmere-core   fn AppDriver < M>::send (& mut self, message : M)
+glassmere-core   fn AppDriver < M>::take_windows (& mut self) -> (Vec < (WindowId, WindowRequest)>, Vec < WindowId>)
+glassmere-core   fn AppDriver < M>::window_closed < A : App < Message = M>> (& mut self, app : & mut A, window : WindowId)
+glassmere-core   fn AreaBuilder < M>::new (area : crate :: EventArea) -> Self
+glassmere-core   fn AreaBuilder < M>::on_event (mut self, on_event : impl Fn (crate :: UiEvent) -> Option < M> + 'static) -> Self
+glassmere-core   fn Autocomplete < M>::new () -> Self
+glassmere-core   fn Autocomplete < M>::on_pick (mut self, message : impl Fn (usize) -> M + 'static) -> Self
+glassmere-core   fn Autocomplete < M>::on_submit (mut self, message : M) -> Self
+glassmere-core   fn BackgroundImage::file (path : impl Into < PathBuf>) -> Self
+glassmere-core   fn BackgroundImage::fit (mut self, fit : ImageFit) -> Self
+glassmere-core   fn BackgroundImage::new (image : & Image) -> Self
+glassmere-core   fn BackgroundImage::slice (mut self, top : f32, right : f32, bottom : f32, left : f32) -> Self
+glassmere-core   fn BackgroundImage::tint (mut self, tint : ImageTint) -> Self
+glassmere-core   fn Block::is_empty (& self) -> bool
+glassmere-core   fn Block::len (& self) -> usize
+glassmere-core   fn Block::new (kind : BlockKind, text : & str) -> Self
+glassmere-core   fn Block::text (& self) -> String
+glassmere-core   fn Button < M>::enabled (mut self, enabled : bool) -> Self
+glassmere-core   fn Button < M>::new (text : impl Into < String>) -> Self
+glassmere-core   fn Button < M>::on_click (mut self, message : M) -> Self
+glassmere-core   fn Button < M>::style (mut self, style : Style) -> Self
+glassmere-core   fn Cancel::cancel (& self)
+glassmere-core   fn Cancel::cancelled (& self) -> bool
+glassmere-core   fn Cancel::new () -> Self
+glassmere-core   fn CellEditor::number (options : crate :: NumberOptions) -> Self
+glassmere-core   fn Clip::bytes (& self, format : & str) -> Option < & [u8]>
+glassmere-core   fn Clip::custom (format : impl Into < String>, bytes : Vec < u8>) -> Self
+glassmere-core   fn Clip::image (image : Image) -> Self
+glassmere-core   fn Clip::is_empty (& self) -> bool
+glassmere-core   fn Clip::text (text : impl Into < String>) -> Self
+glassmere-core   fn Clip::with_image (mut self, image : Image) -> Self
+glassmere-core   fn Clip::with_text (mut self, text : impl Into < String>) -> Self
+glassmere-core   fn ComboBox::new (label : impl Into < String>) -> Self
+glassmere-core   fn ComboBox::style (mut self, style : Style) -> Self
+glassmere-core   fn Command::new (label : impl Into < String>, shortcut : Option < Shortcut>) -> Self
+glassmere-core   fn Command::scoped (mut self) -> Self
+glassmere-core   fn Command::with_id (id : impl Into < String>, label : impl Into < String>, shortcut : Option < Shortcut>,) -> Self
+glassmere-core   fn CommandPalette < M>::new (on_query : impl Fn (String) -> M + 'static) -> Self
+glassmere-core   fn CommandPalette < M>::on_open (mut self, message : impl Fn (bool) -> M + 'static) -> Self
+glassmere-core   fn CommandPalette < M>::on_pick (mut self, message : impl Fn (usize) -> M + 'static) -> Self
+glassmere-core   fn Component::update (& mut self, message : Self :: Message, effects : & mut Effects < '_, Self :: Message>)
+glassmere-core   fn Component::view (& self, ui : & mut Ui < '_, Self :: Message>)
+glassmere-core   fn Context::accepts_drop (& self, at : Point, payload : & DragPayload) -> bool
+glassmere-core   fn Context::accepts_text (& self) -> bool
+glassmere-core   fn Context::action (& mut self, target : NodeId, action : Action) -> bool
+glassmere-core   fn Context::adopt_drag (& mut self, payload : DragPayload, at : Point) -> bool
+glassmere-core   fn Context::animating (& self) -> bool
+glassmere-core   fn Context::binding (& self, id : & str) -> Option < & Option < Shortcut>>
+glassmere-core   fn Context::captured (& self) -> Option < NodeId>
+glassmere-core   fn Context::caret_movement (& self) -> crate :: CaretMovement
+glassmere-core   fn Context::clear_bindings (& mut self)
+glassmere-core   fn Context::clear_diagnostics (& mut self)
+glassmere-core   fn Context::composing_text (& self) -> bool
+glassmere-core   fn Context::damage_regions (& self) -> & [Rect]
+glassmere-core   fn Context::details (& self, id : NodeId) -> Option < NodeDetails>
+glassmere-core   fn Context::diagnostics (& self) -> & [FrameDiagnostic]
+glassmere-core   fn Context::diagnostics_enabled (& self) -> bool
+glassmere-core   fn Context::direction (& self) -> crate :: Direction
+glassmere-core   fn Context::dismiss_toast (& mut self, id : ToastId)
+glassmere-core   fn Context::dock_dragging (& self) -> bool
+glassmere-core   fn Context::dragging (& self) -> Option < & DragPayload>
+glassmere-core   fn Context::editor_focused (& self) -> bool
+glassmere-core   fn Context::event (& mut self, event : Event) -> bool
+glassmere-core   fn Context::export_drag (& mut self) -> Option < DragPayload>
+glassmere-core   fn Context::find (& self, path : & [& str]) -> Option < NodeId>
+glassmere-core   fn Context::finish_exported_drag (& mut self, outcome : crate :: DragOutcome)
+glassmere-core   fn Context::focused (& self) -> Option < NodeId>
+glassmere-core   fn Context::hit_test (& self, position : Point) -> Option < NodeId>
+glassmere-core   fn Context::hovered (& self) -> Option < NodeId>
+glassmere-core   fn Context::image_error (& self, path : & Path) -> Option < & str>
+glassmere-core   fn Context::image_known (& self, path : & Path) -> bool
+glassmere-core   fn Context::image_paths (& self) -> & [PathBuf]
+glassmere-core   fn Context::ime_cursor_rect (& self) -> Option < Rect>
+glassmere-core   fn Context::maximize_button (& self) -> Option < Rect>
+glassmere-core   fn Context::memory (& self) -> MemoryReport
+glassmere-core   fn Context::new () -> Self
+glassmere-core   fn Context::next_wake (& self) -> Option < Duration>
+glassmere-core   fn Context::node (& self, id : NodeId) -> Option < NodeSnapshot>
+glassmere-core   fn Context::node_count (& self) -> usize
+glassmere-core   fn Context::now (& self) -> Duration
+glassmere-core   fn Context::pressed (& self, id : NodeId) -> bool
+glassmere-core   fn Context::push_toast (& mut self, toast : Toast) -> ToastId
+glassmere-core   fn Context::report_font (& mut self, message : impl Into < String>)
+glassmere-core   fn Context::request_clipboard (& mut self, cut : bool) -> bool
+glassmere-core   fn Context::request_hot_save (& mut self)
+glassmere-core   fn Context::requested_families (& self) -> Vec < String>
+glassmere-core   fn Context::resize_grip (& self, id : NodeId) -> Option < crate :: ResizeEdge>
+glassmere-core   fn Context::root (& self) -> NodeId
+glassmere-core   fn Context::run (& mut self, size : Size, measurer : & mut impl TextMeasurer, view : impl FnOnce (& mut Ui < '_>),) -> FrameStats
+glassmere-core   fn Context::scene (& self) -> & Scene
+glassmere-core   fn Context::selected_text (& self) -> Option < & str>
+glassmere-core   fn Context::set_binding (& mut self, id : impl Into < String>, shortcut : Option < Shortcut>)
+glassmere-core   fn Context::set_caret_movement (& mut self, movement : crate :: CaretMovement)
+glassmere-core   fn Context::set_chosen_files (& mut self, paths : Vec < std :: path :: PathBuf>)
+glassmere-core   fn Context::set_clip (& mut self, clip : crate :: Clip)
+glassmere-core   fn Context::set_diagnostics (& mut self, enabled : bool)
+glassmere-core   fn Context::set_direction (& mut self, direction : crate :: Direction)
+glassmere-core   fn Context::set_image_file (& mut self, path : & Path, image : std :: result :: Result < Image, String>,) -> bool
+glassmere-core   fn Context::set_now (& mut self, now : Duration)
+glassmere-core   fn Context::set_opened_files (& mut self, paths : Vec < std :: path :: PathBuf>)
+glassmere-core   fn Context::set_reduced_motion (& mut self, reduced : bool)
+glassmere-core   fn Context::set_stylesheet (& mut self, sheet : StyleSheet)
+glassmere-core   fn Context::set_theme (& mut self, theme : Theme)
+glassmere-core   fn Context::set_toast_wake (& mut self, wake : impl Fn () + Send + 'static)
+glassmere-core   fn Context::set_watched_file (& mut self, path : & std :: path :: Path, content : std :: result :: Result < Vec < u8>, String>,) -> bool
+glassmere-core   fn Context::set_window_info (& mut self, info : crate :: WindowInfo)
+glassmere-core   fn Context::size (& self) -> Size
+glassmere-core   fn Context::snapshots (& self) -> Vec < NodeSnapshot>
+glassmere-core   fn Context::state_graph (& self) -> & [crate :: GraphNode]
+glassmere-core   fn Context::stats (& self) -> FrameStats
+glassmere-core   fn Context::style_warnings (& self) -> & [String]
+glassmere-core   fn Context::stylesheet (& self) -> & StyleSheet
+glassmere-core   fn Context::take_clip (& mut self) -> Option < crate :: Clip>
+glassmere-core   fn Context::take_file_request (& mut self) -> Option < crate :: FileRequest>
+glassmere-core   fn Context::take_hot_state (& mut self) -> Option < String>
+glassmere-core   fn Context::take_menu (& mut self) -> Option < crate :: Menu>
+glassmere-core   fn Context::take_notifications (& mut self) -> Vec < crate :: Notification>
+glassmere-core   fn Context::take_paste_request (& mut self) -> bool
+glassmere-core   fn Context::take_tray (& mut self) -> Option < Option < crate :: Tray>>
+glassmere-core   fn Context::take_window_commands (& mut self) -> Vec < crate :: WindowCommand>
+glassmere-core   fn Context::theme (& self) -> & Theme
+glassmere-core   fn Context::toasts (& self) -> impl Iterator < Item = (ToastId, & Toast)>
+glassmere-core   fn Context::touches (& self) -> impl Iterator < Item = (u64, Point, Option < f32>, Option < Pen>)> + '_
+glassmere-core   fn Context::watch_error (& self, path : & std :: path :: Path) -> Option < & str>
+glassmere-core   fn Context::watched_known (& self, path : & std :: path :: Path) -> bool
+glassmere-core   fn Context::watched_paths (& self) -> & [std :: path :: PathBuf]
+glassmere-core   fn Context::withdraw_drag (& mut self) -> Option < DragPayload>
+glassmere-core   fn DiagnosticState::new () -> Self
+glassmere-core   fn DialogOptions::dismissible (mut self, dismissible : bool) -> Self
+glassmere-core   fn DialogOptions::modal (mut self, modal : bool) -> Self
+glassmere-core   fn DialogOptions::new (title : impl Into < String>) -> Self
+glassmere-core   fn DialogOptions::style (mut self, style : Style) -> Self
+glassmere-core   fn DialogOptions::width (mut self, width : Length) -> Self
+glassmere-core   fn DockLayout::activate (& mut self, panel : & str) -> bool
+glassmere-core   fn DockLayout::apply (& mut self, action : DockAction) -> bool
+glassmere-core   fn DockLayout::close (& mut self, panel : & str) -> bool
+glassmere-core   fn DockLayout::contains (& self, panel : & str) -> bool
+glassmere-core   fn DockLayout::group_of (& self, panel : & str) -> Option < & [String]>
+glassmere-core   fn DockLayout::groups_in (& self, area : DockArea) -> Vec < & [String]>
+glassmere-core   fn DockLayout::move_panel (& mut self, panel : & str, target : DockTarget) -> bool
+glassmere-core   fn DockLayout::new (root : DockNode) -> Self
+glassmere-core   fn DockLayout::normalize (& mut self)
+glassmere-core   fn DockLayout::panels (& self) -> Vec < & str>
+glassmere-core   fn DockLayout::parse (text : & str) -> Result < Self, DockLayoutError>
+glassmere-core   fn DockLayout::place_of (& self, panel : & str) -> Option < DockPlace>
+glassmere-core   fn DockLayout::redock (& mut self, id : DockWindowId) -> bool
+glassmere-core   fn DockLayout::remove_window (& mut self, id : DockWindowId) -> Vec < String>
+glassmere-core   fn DockLayout::retain_panels (& mut self, mut keep : impl FnMut (& str) -> bool)
+glassmere-core   fn DockLayout::show (& mut self, panel : & str)
+glassmere-core   fn DockLayout::to_text (& self) -> String
+glassmere-core   fn DockLayout::window (& self, id : DockWindowId) -> Option < & DockWindow>
+glassmere-core   fn DockNode::column (fraction : f32, first : Self, second : Self) -> Self
+glassmere-core   fn DockNode::row (fraction : f32, first : Self, second : Self) -> Self
+glassmere-core   fn DockNode::tabs < S : Into < String>> (panels : impl IntoIterator < Item = S>) -> Self
+glassmere-core   fn DockPanel::new (id : impl Into < String>, title : impl Into < String>) -> Self
+glassmere-core   fn DockPanel::pinned (id : impl Into < String>, title : impl Into < String>) -> Self
+glassmere-core   fn DragPayload::kind (& self) -> DropKind
+glassmere-core   fn DragSourceBuilder < M>::new (label : impl Into < String>, payload : crate :: DragPayload) -> Self
+glassmere-core   fn DragSourceBuilder < M>::on_drag_end (mut self, message : impl Fn (crate :: DragOutcome) -> M + 'static) -> Self
+glassmere-core   fn DropTargetBuilder < M>::new (label : impl Into < String>, accepts : crate :: DropKind) -> Self
+glassmere-core   fn DropTargetBuilder < M>::on_drop (mut self, message : impl Fn (crate :: DragPayload) -> M + 'static) -> Self
+glassmere-core   fn Easing::apply (self, t : f32) -> f32
+glassmere-core   fn Editor::apply (& mut self, edit : TextEdit) -> bool
+glassmere-core   fn Editor::caret (& self) -> Option < Rect>
+glassmere-core   fn Editor::caret_direction (& self) -> Option < bool>
+glassmere-core   fn Editor::composing (& self) -> bool
+glassmere-core   fn Editor::composition_range (& self) -> Option < Range < usize>>
+glassmere-core   fn Editor::display (& self) -> String
+glassmere-core   fn Editor::display_cursor (& self) -> Option < usize>
+glassmere-core   fn Editor::new (text : & str) -> Self
+glassmere-core   fn Editor::prepare (& mut self, measurer : & mut impl TextMeasurer, mut style : TextStyle, width : f32, rtl : bool,) -> bool
+glassmere-core   fn Editor::selected_text (& self) -> & str
+glassmere-core   fn Editor::synchronize (& mut self, text : & str)
+glassmere-core   fn Effect::fade (milliseconds : u64) -> Self
+glassmere-core   fn Effect::slide (x : f32, y : f32, milliseconds : u64) -> Self
+glassmere-core   fn Effect::zoom (factor : f32, milliseconds : u64) -> Self
+glassmere-core   fn Effects < '_, M>::cancel (& mut self, key : & str)
+glassmere-core   fn Effects < '_, M>::channel < T : Send + 'static> (& mut self, capacity : usize, message : impl Fn (T) -> M + 'static,) -> MessageSender < T>
+glassmere-core   fn Effects < '_, M>::choose_files (& mut self, request : FileRequest, message : impl Fn (Vec < PathBuf>) -> M + 'static,)
+glassmere-core   fn Effects < '_, M>::close_window (& mut self, window : WindowId)
+glassmere-core   fn Effects < '_, M>::copy (& mut self, clip : Clip)
+glassmere-core   fn Effects < '_, M>::in_window (& mut self, window : WindowId) -> & mut Self
+glassmere-core   fn Effects < '_, M>::map < N : 'static> (& mut self, f : impl Fn (N) -> M + 'static) -> Effects < '_, N>
+glassmere-core   fn Effects < '_, M>::notify (& mut self, notification : Notification)
+glassmere-core   fn Effects < '_, M>::open_window (& mut self, request : WindowRequest) -> WindowId
+glassmere-core   fn Effects < '_, M>::paste (& mut self, message : impl Fn (Clip) -> M + 'static)
+glassmere-core   fn Effects < '_, M>::request_focus (& mut self, key : impl Into < String>)
+glassmere-core   fn Effects < '_, M>::running (& self, key : & str) -> bool
+glassmere-core   fn Effects < '_, M>::set_binding (& mut self, id : impl Into < String>, shortcut : Option < Shortcut>)
+glassmere-core   fn Effects < '_, M>::set_format (& mut self, format : Option < Box < dyn LocaleFormat>>)
+glassmere-core   fn Effects < '_, M>::set_messages (& mut self, messages : Option < Box < dyn Messages>>)
+glassmere-core   fn Effects < '_, M>::set_theme (& mut self, theme : Theme)
+glassmere-core   fn Effects < '_, M>::spawn < T : Send + 'static> (& mut self, key : impl Into < String>, job : impl FnOnce (TaskSender < String, T>) + Send + 'static, message : impl Fn (T) -> M + 'static,) -> Cancel
+glassmere-core   fn Effects < '_, M>::toast (& mut self, toast : Toast)
+glassmere-core   fn Effects < '_, M>::toast_with (& mut self, toast : Toast, message : impl Fn (ToastAction) -> M + 'static)
+glassmere-core   fn Effects < '_, M>::window_command (& mut self, command : WindowCommand)
+glassmere-core   fn EventArea::all () -> Self
+glassmere-core   fn EventArea::capturing (mut self) -> Self
+glassmere-core   fn EventArea::consuming (mut self) -> Self
+glassmere-core   fn EventArea::keyboard () -> Self
+glassmere-core   fn EventArea::pointer () -> Self
+glassmere-core   fn EventArea::scroll () -> Self
+glassmere-core   fn FileRequest::directory (title : impl Into < String>) -> Self
+glassmere-core   fn FileRequest::in_directory (mut self, directory : impl Into < PathBuf>) -> Self
+glassmere-core   fn FileRequest::named (mut self, file_name : impl Into < String>) -> Self
+glassmere-core   fn FileRequest::open (title : impl Into < String>) -> Self
+glassmere-core   fn FileRequest::open_many (title : impl Into < String>) -> Self
+glassmere-core   fn FileRequest::save (title : impl Into < String>) -> Self
+glassmere-core   fn FileRequest::with_filter (mut self, name : impl Into < String>, extensions : impl IntoIterator < Item = impl Into < String>>,) -> Self
+glassmere-core   fn FindState::apply < M : 'static> (& mut self, document : & mut TextDocument, op : TextOp, effects : & mut crate :: Effects < '_, M>,)
+glassmere-core   fn FindState::error (& self) -> Option < & str>
+glassmere-core   fn FindState::matches (& self) -> & [Range < usize>]
+glassmere-core   fn FindState::refresh (& mut self, document : & TextDocument)
+glassmere-core   fn GestureBuilder < M>::new () -> Self
+glassmere-core   fn GestureBuilder < M>::on_gesture (mut self, message : impl Fn (crate :: GestureResponse) -> M + 'static) -> Self
+glassmere-core   fn GestureResponse::changed (& self) -> bool
+glassmere-core   fn Gradient::down (from : Color, to : Color) -> Self
+glassmere-core   fn Gradient::linear (from : (f32, f32), to : (f32, f32), start : Color, end : Color) -> Self
+glassmere-core   fn Gradient::radial (centre : Color, edge : Color) -> Self
+glassmere-core   fn Gradient::stops (mut self, stops : Vec < glassmere_scene :: GradientStop>) -> Self
+glassmere-core   fn GridArea::cell (column : u16, row : u16) -> Self
+glassmere-core   fn GridArea::span (column : u16, row : u16, column_span : u16, row_span : u16) -> Self
+glassmere-core   fn GridColumn::editor (mut self, editor : CellEditor) -> Self
+glassmere-core   fn GridColumn::filterable (mut self, filterable : bool) -> Self
+glassmere-core   fn GridColumn::new (label : impl Into < String>, width : f32) -> Self
+glassmere-core   fn GridColumn::sortable (mut self, sortable : bool) -> Self
+glassmere-core   fn GridColumns::arranged (& self, count : usize) -> Vec < usize>
+glassmere-core   fn GridColumns::hide (& mut self, count : usize, column : usize) -> bool
+glassmere-core   fn GridColumns::move_before (& mut self, count : usize, column : usize, before : Option < usize>)
+glassmere-core   fn GridColumns::reset (& mut self)
+glassmere-core   fn GridColumns::set_width (& mut self, column : usize, width : f32)
+glassmere-core   fn GridColumns::shift (& mut self, count : usize, column : usize, by : isize) -> bool
+glassmere-core   fn GridColumns::show_all (& mut self)
+glassmere-core   fn GridColumns::visible (& self, count : usize) -> Vec < usize>
+glassmere-core   fn GridColumns::width (& self, column : usize, default : f32) -> f32
+glassmere-core   fn GridModel::cell (& self, row : usize, column : usize) -> String
+glassmere-core   fn GridModel::columns (& self) -> & [GridColumn]
+glassmere-core   fn GridModel::filter (& mut self, filters : & [(usize, & str)]) -> bool
+glassmere-core   fn GridModel::set_cell (& mut self, row : usize, column : usize, value : CellValue) -> Result < (), String>
+glassmere-core   fn GridModel::sort (& mut self, column : usize, direction : SortDirection) -> bool
+glassmere-core   fn GridModel::value (& self, row : usize, column : usize) -> CellValue
+glassmere-core   fn GridState::applied_filters (& self) -> & [(usize, String)]
+glassmere-core   fn GridState::apply (& mut self, message : & GridMsg)
+glassmere-core   fn GridState::refuse_edit (& mut self, row : ItemId, column : usize, message : impl Into < String>)
+glassmere-core   fn Highlighter::begin (& mut self, _document : & TextDocument)
+glassmere-core   fn Highlighter::highlight (& mut self, document : & TextDocument, line : usize) -> Vec < HighlightSpan>
+glassmere-core   fn Highlighter::pending (& self) -> bool
+glassmere-core   fn ImageOptions::fit (mut self, fit : ImageFit) -> Self
+glassmere-core   fn ImageOptions::new (alt : impl Into < String>) -> Self
+glassmere-core   fn ImageOptions::style (mut self, style : Style) -> Self
+glassmere-core   fn ImageOptions::tint (mut self, tint : ImageTint) -> Self
+glassmere-core   fn ItemOrder::ids (& self) -> & [ItemId]
+glassmere-core   fn ItemOrder::index_of (& self, id : ItemId) -> Option < usize>
+glassmere-core   fn ItemOrder::new (ids : impl IntoIterator < Item = ItemId>) -> Result < Self, ModelError>
+glassmere-core   fn Keyframe::at (at : f32) -> Self
+glassmere-core   fn Keyframe::background (mut self, color : Color) -> Self
+glassmere-core   fn Keyframe::foreground (mut self, color : Color) -> Self
+glassmere-core   fn Keyframe::opacity (mut self, opacity : f32) -> Self
+glassmere-core   fn Keyframe::transform (mut self, transform : Transform) -> Self
+glassmere-core   fn Label::new (text : impl Into < String>) -> Self
+glassmere-core   fn Label::style (mut self, style : Style) -> Self
+glassmere-core   fn ListModel::depth (& self, _index : usize) -> usize
+glassmere-core   fn ListModel::expanded (& self, _index : usize) -> Option < bool>
+glassmere-core   fn ListModel::index_of (& self, id : ItemId) -> Option < usize>
+glassmere-core   fn ListModel::is_empty (& self) -> bool
+glassmere-core   fn ListModel::item_id (& self, index : usize) -> ItemId
+glassmere-core   fn ListModel::label (& self, index : usize) -> String
+glassmere-core   fn ListModel::len (& self) -> usize
+glassmere-core   fn ListModel::parent (& self, _id : ItemId) -> Option < ItemId>
+glassmere-core   fn ListModel::set_expanded (& mut self, _id : ItemId, _expanded : bool) -> bool
+glassmere-core   fn ListState::reveal (& mut self, id : ItemId)
+glassmere-core   fn ListState::scroll_offset (& self) -> f32
+glassmere-core   fn ListState::select (& mut self, id : Option < ItemId>)
+glassmere-core   fn ListState::selected (& self) -> Option < ItemId>
+glassmere-core   fn LocaleFormat::date (& self, date : Date, style : DateStyle) -> String
+glassmere-core   fn LocaleFormat::number (& self, value : f64, decimals : usize) -> String
+glassmere-core   fn LocaleFormat::parse_number (& self, text : & str) -> Option < f64>
+glassmere-core   fn LocaleFormat::time (& self, time : Time, seconds : bool) -> String
+glassmere-core   fn Mailbox < T>::drain (& self, limit : usize) -> Vec < T>
+glassmere-core   fn Mailbox < T>::pending (& self) -> usize
+glassmere-core   fn Marks::has (& self, mark : Mark) -> bool
+glassmere-core   fn Memo < T>::get (& self) -> T where T : Clone,
+glassmere-core   fn Memo < T>::version (& self) -> u64
+glassmere-core   fn Memo < T>::with < R> (& self, read : impl FnOnce (& T) -> R) -> R
+glassmere-core   fn Menu::is_empty (& self) -> bool
+glassmere-core   fn Menu::new (entries : impl IntoIterator < Item = MenuEntry>) -> Self
+glassmere-core   fn MenuEntry::submenu (label : impl Into < String>, entries : impl IntoIterator < Item = MenuEntry>) -> Self
+glassmere-core   fn MenuItem::command (command : & crate :: Command) -> Self
+glassmere-core   fn MenuItem::disabled (label : impl Into < String>) -> Self
+glassmere-core   fn MenuItem::new (label : impl Into < String>) -> Self
+glassmere-core   fn MessageSender < T>::send_blocking (& self, message : T) -> Result < (), SendError < T>>
+glassmere-core   fn MessageSender < T>::try_send (& self, message : T) -> Result < (), TrySendError < T>>
+glassmere-core   fn MessageSender < T>::wake (& self) -> bool
+glassmere-core   fn Messages::locale (& self) -> & str
+glassmere-core   fn Messages::text (& self, key : & str, args : & [(& str, MessageArg)]) -> Option < String>
+glassmere-core   fn Notification::new (title : impl Into < String>, body : impl Into < String>) -> Self
+glassmere-core   fn Notification::urgent (mut self) -> Self
+glassmere-core   fn NumberOptions::constrain (& self, value : f64) -> f64
+glassmere-core   fn NumberOptions::decimals (mut self, decimals : usize) -> Self
+glassmere-core   fn NumberOptions::format (& self, value : f64) -> String
+glassmere-core   fn NumberOptions::format_in (& self, context : & crate :: Context, value : f64) -> String
+glassmere-core   fn NumberOptions::parse (& self, text : & str) -> Option < f64>
+glassmere-core   fn NumberOptions::parse_in (& self, context : & crate :: Context, text : & str) -> Option < f64>
+glassmere-core   fn NumberOptions::range (mut self, min : f64, max : f64) -> Self
+glassmere-core   fn NumberOptions::step (mut self, step : f64) -> Self
+glassmere-core   fn NumberOptions::style (mut self, style : crate :: Style) -> Self
+glassmere-core   fn NumberOptions::suffix (mut self, suffix : impl Into < String>) -> Self
+glassmere-core   fn Pacing::invalidate (& mut self)
+glassmere-core   fn Pacing::invalidated (& self) -> bool
+glassmere-core   fn Paint::background (color : Color) -> Self
+glassmere-core   fn Paint::foreground (color : Color) -> Self
+glassmere-core   fn Paint::opacity (opacity : f32) -> Self
+glassmere-core   fn Paint::transform (transform : Transform) -> Self
+glassmere-core   fn PropertyGrid < '_, '_, M>::bool (& mut self, name : & str, value : bool)
+glassmere-core   fn PropertyGrid < '_, '_, M>::bool_with (& mut self, name : & str, value : bool, on : impl Fn (bool) -> M + 'static)
+glassmere-core   fn PropertyGrid < '_, '_, M>::choice (& mut self, name : & str, value : usize, choices : & [& str])
+glassmere-core   fn PropertyGrid < '_, '_, M>::choice_with (& mut self, name : & str, value : usize, choices : & [& str], on : impl Fn (usize) -> M + 'static,)
+glassmere-core   fn PropertyGrid < '_, '_, M>::color (& mut self, name : & str, value : Color)
+glassmere-core   fn PropertyGrid < '_, '_, M>::color_with (& mut self, name : & str, value : Color, on : impl Fn (Color) -> M + 'static)
+glassmere-core   fn PropertyGrid < '_, '_, M>::custom (& mut self, name : & str, editor : impl FnOnce (& mut Ui < '_, M>, & str))
+glassmere-core   fn PropertyGrid < '_, '_, M>::default < T : Any> (& mut self, value : T) -> & mut Self
+glassmere-core   fn PropertyGrid < '_, '_, M>::group (& mut self, name : & str, content : impl FnOnce (& mut PropertyGrid < '_, '_, M>))
+glassmere-core   fn PropertyGrid < '_, '_, M>::number (& mut self, name : & str, value : f64, options : NumberOptions)
+glassmere-core   fn PropertyGrid < '_, '_, M>::number_with (& mut self, name : & str, value : f64, options : NumberOptions, on : impl Fn (f64) -> M + 'static,)
+glassmere-core   fn PropertyGrid < '_, '_, M>::readonly (& mut self, name : & str, text : impl Into < String>)
+glassmere-core   fn PropertyGrid < '_, '_, M>::text (& mut self, name : & str, value : & str)
+glassmere-core   fn PropertyGrid < '_, '_, M>::text_with (& mut self, name : & str, value : & str, on : impl Fn (String) -> M + 'static)
+glassmere-core   fn PropertyGridOptions::filter (mut self, filter : bool) -> Self
+glassmere-core   fn PropertyGridOptions::height (mut self, height : f32) -> Self
+glassmere-core   fn PropertyGridOptions::new (label : impl Into < String>) -> Self
+glassmere-core   fn PropertyGridOptions::style (mut self, style : Style) -> Self
+glassmere-core   fn PropertyGridState::apply (& mut self, message : & PropertyMsg)
+glassmere-core   fn ResizeEdge::name (self) -> & 'static str
+glassmere-core   fn ResolvedText::from_theme (theme : & Theme) -> Self
+glassmere-core   fn ResolvedText::rtl (& self) -> bool
+glassmere-core   fn ResolvedText::text_style (& self, wrap : TextWrap) -> TextStyle
+glassmere-core   fn Response < '_>::focused (& self) -> bool
+glassmere-core   fn Response < '_>::hovered (& self) -> bool
+glassmere-core   fn Response < '_>::pressed (& self) -> bool
+glassmere-core   fn RichDocument::anchor (& self) -> RichPosition
+glassmere-core   fn RichDocument::apply (& mut self, op : RichOp)
+glassmere-core   fn RichDocument::apply_with < M : 'static> (& mut self, op : RichOp, effects : & mut crate :: Effects < '_, M>)
+glassmere-core   fn RichDocument::backspace (& mut self, word : bool)
+glassmere-core   fn RichDocument::block_kind (& self) -> BlockKind
+glassmere-core   fn RichDocument::blocks (& self) -> & [Block]
+glassmere-core   fn RichDocument::can_redo (& self) -> bool
+glassmere-core   fn RichDocument::can_undo (& self) -> bool
+glassmere-core   fn RichDocument::cursor (& self) -> RichPosition
+glassmere-core   fn RichDocument::cut (& mut self) -> String
+glassmere-core   fn RichDocument::delete (& mut self, word : bool)
+glassmere-core   fn RichDocument::from_blocks (mut blocks : Vec < Block>) -> Self
+glassmere-core   fn RichDocument::from_markdown (text : & str) -> Self
+glassmere-core   fn RichDocument::has_selection (& self) -> bool
+glassmere-core   fn RichDocument::insert_text (& mut self, text : & str)
+glassmere-core   fn RichDocument::marks (& self) -> Marks
+glassmere-core   fn RichDocument::move_cursor (& mut self, motion : RichMotion, select : bool)
+glassmere-core   fn RichDocument::new () -> Self
+glassmere-core   fn RichDocument::newline (& mut self)
+glassmere-core   fn RichDocument::plain_text (& self) -> String
+glassmere-core   fn RichDocument::redo (& mut self) -> bool
+glassmere-core   fn RichDocument::revision (& self) -> u64
+glassmere-core   fn RichDocument::select_all (& mut self)
+glassmere-core   fn RichDocument::select_block (& mut self, block : usize)
+glassmere-core   fn RichDocument::select_word (& mut self, position : RichPosition)
+glassmere-core   fn RichDocument::selected_text (& self) -> String
+glassmere-core   fn RichDocument::selection (& self) -> (RichPosition, RichPosition)
+glassmere-core   fn RichDocument::set_block_kind (& mut self, kind : BlockKind)
+glassmere-core   fn RichDocument::set_cursor (& mut self, position : RichPosition, select : bool)
+glassmere-core   fn RichDocument::set_link (& mut self, target : Option < & str>)
+glassmere-core   fn RichDocument::to_markdown (& self) -> String
+glassmere-core   fn RichDocument::toggle_mark (& mut self, mark : Mark)
+glassmere-core   fn RichDocument::undo (& mut self) -> bool
+glassmere-core   fn RichRun::background (mut self, color : Color) -> Self
+glassmere-core   fn RichRun::bold (mut self) -> Self
+glassmere-core   fn RichRun::code (mut self) -> Self
+glassmere-core   fn RichRun::color (mut self, color : Color) -> Self
+glassmere-core   fn RichRun::italic (mut self) -> Self
+glassmere-core   fn RichRun::link (mut self, target : impl Into < String>) -> Self
+glassmere-core   fn RichRun::new (text : impl Into < String>) -> Self
+glassmere-core   fn RichRun::strikethrough (mut self) -> Self
+glassmere-core   fn RichRun::underline (mut self) -> Self
+glassmere-core   fn RichText::bold (self, text : impl Into < String>) -> Self
+glassmere-core   fn RichText::code (self, text : impl Into < String>) -> Self
+glassmere-core   fn RichText::italic (self, text : impl Into < String>) -> Self
+glassmere-core   fn RichText::link (self, text : impl Into < String>, target : impl Into < String>) -> Self
+glassmere-core   fn RichText::new () -> Self
+glassmere-core   fn RichText::plain (& self) -> String
+glassmere-core   fn RichText::run (mut self, run : RichRun) -> Self
+glassmere-core   fn RichText::text (self, text : impl Into < String>) -> Self
+glassmere-core   fn Selection::caret (at : usize) -> Self
+glassmere-core   fn Selection::is_caret (self) -> bool
+glassmere-core   fn Selection::range (self) -> Range < usize>
+glassmere-core   fn Shadow::inset (mut self) -> Self
+glassmere-core   fn Shadow::lift (color : Color, blur : f32, down : f32) -> Self
+glassmere-core   fn Shadow::new (color : Color, blur : f32) -> Self
+glassmere-core   fn Shadow::spread (mut self, spread : f32) -> Self
+glassmere-core   fn Shortcut::describe (& self) -> String
+glassmere-core   fn Shortcut::primary (character : char) -> Self
+glassmere-core   fn Signal < T>::get (& self) -> T where T : Clone,
+glassmere-core   fn Signal < T>::set (& self, value : T) where T : PartialEq,
+glassmere-core   fn Signal < T>::update (& self, change : impl FnOnce (& mut T))
+glassmere-core   fn Signal < T>::version (& self) -> u64
+glassmere-core   fn Signal < T>::with < R> (& self, read : impl FnOnce (& T) -> R) -> R
+glassmere-core   fn Store::graph (& self) -> Vec < GraphNode>
+glassmere-core   fn Store::memo < T> (& self, name : impl Into < String>, compute : impl FnMut () -> T + 'static,) -> Memo < T>
+glassmere-core   fn Store::new () -> Self
+glassmere-core   fn Store::signal < T> (& self, name : impl Into < String>, value : T) -> Signal < T>
+glassmere-core   fn Store::version (& self) -> u64
+glassmere-core   fn Style::base_direction (mut self, direction : Direction) -> Self
+glassmere-core   fn Style::button () -> Self
+glassmere-core   fn Style::gradient (mut self, gradient : Gradient) -> Self
+glassmere-core   fn Style::offset (mut self, x : f32, y : f32) -> Self
+glassmere-core   fn Style::on_disabled (self, paint : Paint) -> Self
+glassmere-core   fn Style::on_focused (self, paint : Paint) -> Self
+glassmere-core   fn Style::on_hover (self, paint : Paint) -> Self
+glassmere-core   fn Style::on_pressed (self, paint : Paint) -> Self
+glassmere-core   fn Style::resolve_text (& self, inherited : & ResolvedText) -> ResolvedText
+glassmere-core   fn Style::shadow (mut self, shadow : Shadow) -> Self
+glassmere-core   fn StyleSheet::apply_to (& self, current : & Theme) -> Theme
+glassmere-core   fn StyleSheet::class (& self, name : & str) -> Option < & Style>
+glassmere-core   fn StyleSheet::classes (& self) -> impl Iterator < Item = (& str, & Style)>
+glassmere-core   fn StyleSheet::insert (& mut self, name : impl Into < String>, style : Style)
+glassmere-core   fn StyleSheet::parse (text : & str) -> Result < Self, StyleSheetError>
+glassmere-core   fn StyleSheet::rebase (& mut self, directory : & std :: path :: Path)
+glassmere-core   fn Tab::closable (label : impl Into < String>) -> Self
+glassmere-core   fn Tab::new (label : impl Into < String>) -> Self
+glassmere-core   fn TaskSender < K, T>::cancelled (& self) -> bool
+glassmere-core   fn TaskSender < K, T>::send (& self, value : T) -> Result < (), TrySendError < T>>
+glassmere-core   fn TaskSender < K, T>::send_blocking (& self, value : T) -> Result < (), SendError < T>>
+glassmere-core   fn Tasks < K, T>::cancel (& mut self, key : & K)
+glassmere-core   fn Tasks < K, T>::cancel_all (& mut self)
+glassmere-core   fn Tasks < K, T>::drain (& mut self, limit : usize) -> Vec < (K, T)>
+glassmere-core   fn Tasks < K, T>::new (capacity : usize, wake : impl Fn () -> bool + Send + Sync + 'static) -> Self
+glassmere-core   fn Tasks < K, T>::running (& self, key : & K) -> bool
+glassmere-core   fn Tasks < K, T>::running_keys (& self) -> impl Iterator < Item = & K>
+glassmere-core   fn Tasks < K, T>::spawn (& mut self, key : K, job : impl FnOnce (TaskSender < K, T>) + Send + 'static) -> Cancel where K : Send + 'static, T : Send + 'static,
+glassmere-core   fn Tasks < K, T>::start (& mut self, key : K) -> TaskSender < K, T>
+glassmere-core   fn TextDocument::add_cursor_vertically (& mut self, down : bool) -> bool
+glassmere-core   fn TextDocument::add_selection (& mut self, anchor : usize, cursor : usize)
+glassmere-core   fn TextDocument::apply (& mut self, op : TextOp)
+glassmere-core   fn TextDocument::apply_with < M : 'static> (& mut self, op : TextOp, effects : & mut crate :: Effects < '_, M>)
+glassmere-core   fn TextDocument::backspace (& mut self, word : bool) -> bool
+glassmere-core   fn TextDocument::backspace_paired (& mut self) -> bool
+glassmere-core   fn TextDocument::can_redo (& self) -> bool
+glassmere-core   fn TextDocument::can_undo (& self) -> bool
+glassmere-core   fn TextDocument::changed_since (& self, revision : u64) -> Option < usize>
+glassmere-core   fn TextDocument::collapse_selections (& mut self)
+glassmere-core   fn TextDocument::copy_text (& self) -> String
+glassmere-core   fn TextDocument::cut (& mut self) -> String
+glassmere-core   fn TextDocument::delete (& mut self, word : bool) -> bool
+glassmere-core   fn TextDocument::find_all (& self, query : & str, case_sensitive : bool, whole_word : bool,) -> Vec < Range < usize>>
+glassmere-core   fn TextDocument::find_all_regex (& self, pattern : & str, case_sensitive : bool,) -> Result < Vec < Range < usize>>, String>
+glassmere-core   fn TextDocument::from_text (text : & str) -> Self
+glassmere-core   fn TextDocument::indent (& mut self) -> bool
+glassmere-core   fn TextDocument::insert (& mut self, text : & str) -> bool
+glassmere-core   fn TextDocument::insert_paired (& mut self, text : & str) -> bool
+glassmere-core   fn TextDocument::is_modified (& self) -> bool
+glassmere-core   fn TextDocument::len_chars (& self) -> usize
+glassmere-core   fn TextDocument::len_lines (& self) -> usize
+glassmere-core   fn TextDocument::line (& self, line : usize) -> String
+glassmere-core   fn TextDocument::line_range (& self, line : usize) -> Range < usize>
+glassmere-core   fn TextDocument::mark_saved (& mut self)
+glassmere-core   fn TextDocument::matching_bracket (& self, offset : usize) -> Option < (usize, usize)>
+glassmere-core   fn TextDocument::move_cursors (& mut self, motion : Motion, select : bool)
+glassmere-core   fn TextDocument::new () -> Self
+glassmere-core   fn TextDocument::newline (& mut self) -> bool
+glassmere-core   fn TextDocument::offset (& self, line : usize, byte : usize) -> usize
+glassmere-core   fn TextDocument::outdent (& mut self) -> bool
+glassmere-core   fn TextDocument::position (& self, offset : usize) -> (usize, usize)
+glassmere-core   fn TextDocument::primary (& self) -> Selection
+glassmere-core   fn TextDocument::redo (& mut self) -> bool
+glassmere-core   fn TextDocument::replace_range (& mut self, range : Range < usize>, text : & str) -> bool
+glassmere-core   fn TextDocument::replace_ranges (& mut self, mut edits : Vec < (Range < usize>, String)>) -> bool
+glassmere-core   fn TextDocument::revision (& self) -> u64
+glassmere-core   fn TextDocument::rope (& self) -> & Rope
+glassmere-core   fn TextDocument::select_all (& mut self)
+glassmere-core   fn TextDocument::select_next_occurrence (& mut self) -> bool
+glassmere-core   fn TextDocument::selected_text (& self) -> String
+glassmere-core   fn TextDocument::selections (& self) -> & [Selection]
+glassmere-core   fn TextDocument::set_selection (& mut self, anchor : usize, cursor : usize)
+glassmere-core   fn TextDocument::set_text (& mut self, text : & str)
+glassmere-core   fn TextDocument::text (& self) -> String
+glassmere-core   fn TextDocument::undo (& mut self) -> bool
+glassmere-core   fn TextDocument::word_at (& self, offset : usize) -> Range < usize>
+glassmere-core   fn TextInput < M>::new (label : impl Into < String>) -> Self
+glassmere-core   fn TextInput < M>::on_submit (mut self, message : M) -> Self
+glassmere-core   fn TextInput < M>::placeholder (mut self, placeholder : impl Into < String>) -> Self
+glassmere-core   fn TextInput < M>::style (mut self, style : Style) -> Self
+glassmere-core   fn TextSelection::range (self) -> Range < usize>
+glassmere-core   fn Theme::dark () -> Self
+glassmere-core   fn Theme::light () -> Self
+glassmere-core   fn Theme::set_token (& mut self, name : & str, color : Color) -> bool
+glassmere-core   fn Theme::token (& self, name : & str) -> Option < Color>
+glassmere-core   fn Toast::action (mut self, label : impl Into < String>) -> Self
+glassmere-core   fn Toast::duration (mut self, duration : Duration) -> Self
+glassmere-core   fn Toast::error (text : impl Into < String>) -> Self
+glassmere-core   fn Toast::kind (mut self, kind : ToastKind) -> Self
+glassmere-core   fn Toast::new (text : impl Into < String>) -> Self
+glassmere-core   fn Toast::sticky (mut self) -> Self
+glassmere-core   fn Toast::success (text : impl Into < String>) -> Self
+glassmere-core   fn Toast::tag (mut self, tag : impl Into < String>) -> Self
+glassmere-core   fn Toast::warning (text : impl Into < String>) -> Self
+glassmere-core   fn ToastSender::send (& self, toast : Toast)
+glassmere-core   fn Track::repeat (count : u16, tracks : Vec < Track>) -> Self
+glassmere-core   fn Transform::is_identity (& self) -> bool
+glassmere-core   fn Transform::rotate (degrees : f32) -> Self
+glassmere-core   fn Transform::scale (factor : f32) -> Self
+glassmere-core   fn Transform::translate (x : f32, y : f32) -> Self
+glassmere-core   fn Transition::delay (mut self, milliseconds : u64) -> Self
+glassmere-core   fn Transition::easing (mut self, easing : Easing) -> Self
+glassmere-core   fn Transition::new (milliseconds : u64) -> Self
+glassmere-core   fn Tray::new (tooltip : impl Into < String>) -> Self
+glassmere-core   fn Tray::with_icon (mut self, icon : Image) -> Self
+glassmere-core   fn Tray::with_menu (mut self, menu : Menu) -> Self
+glassmere-core   fn TreeModel::item (& self, id : ItemId) -> Option < & TreeItem>
+glassmere-core   fn TreeModel::new (items : Vec < TreeItem>) -> Result < Self, ModelError>
+glassmere-core   fn Ui < '_, M>::component < C : Component> (& mut self, style : Style, component : & C, f : impl Fn (C :: Message) -> M + 'static,)
+glassmere-core   fn Ui < 'a, M>::autocomplete < S : AsRef < str>> (& mut self, label : impl Into < String>, value : & str, suggestions : & [S], on_change : impl Fn (String) -> M + 'static,) -> Response < 'a>
+glassmere-core   fn Ui < 'a, M>::autocomplete_with < S : AsRef < str>> (& mut self, label : impl Into < String>, value : & str, suggestions : & [S], on_change : impl Fn (String) -> M + 'static, extra : Autocomplete < M>,) -> Response < 'a>
+glassmere-core   fn Ui < 'a, M>::button (& mut self, button : impl Into < Button < M>>) -> Response < 'a>
+glassmere-core   fn Ui < 'a, M>::checkbox (& mut self, label : impl Into < String>, checked : bool, on_toggle : impl Fn (bool) -> M,) -> Response < 'a>
+glassmere-core   fn Ui < 'a, M>::class (& mut self, name : & str) -> Style
+glassmere-core   fn Ui < 'a, M>::code_editor (& mut self, document : & TextDocument, options : CodeEditorOptions < '_>, on : impl Fn (TextOp) -> M + 'static,)
+glassmere-core   fn Ui < 'a, M>::column (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+glassmere-core   fn Ui < 'a, M>::combo_box (& mut self, combo : impl Into < ComboBox>, selected : usize, items : & [& str], on_choose : impl Fn (usize) -> M + 'static,) -> Response < 'a>
+glassmere-core   fn Ui < 'a, M>::command (& self, command : & crate :: Command) -> crate :: Command
+glassmere-core   fn Ui < 'a, M>::command_button (& mut self, command : & crate :: Command, message : M) -> Response < 'a>
+glassmere-core   fn Ui < 'a, M>::command_palette (& mut self, open : bool, query : & str, commands : & [crate :: Command], palette : CommandPalette < M>,)
+glassmere-core   fn Ui < 'a, M>::container (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+glassmere-core   fn Ui < 'a, M>::context_menu (& mut self, items : & [MenuItem], style : Style, on_pick : impl Fn (usize) -> M + 'static, content : impl FnOnce (& mut Ui < '_, M>),)
+glassmere-core   fn Ui < 'a, M>::custom (& mut self, style : Style, widget : CustomWidget, on_click : M) -> Response < 'a>
+glassmere-core   fn Ui < 'a, M>::dialog (& mut self, key : impl Into < String>, open : bool, options : crate :: DialogOptions, on_open : impl Fn (bool) -> M + 'static, content : impl FnOnce (& mut Ui < '_, M>),)
+glassmere-core   fn Ui < 'a, M>::dock (& mut self, layout : & DockLayout, panels : & [DockPanel], options : DockOptions, on : impl Fn (DockAction) -> M + 'static, content : impl FnMut (& mut Ui < '_, M>, & str),)
+glassmere-core   fn Ui < 'a, M>::dock_window (& mut self, layout : & DockLayout, window : DockWindowId, panels : & [DockPanel], options : DockOptions, on : impl Fn (DockAction) -> M + 'static, content : impl FnMut (& mut Ui < '_, M>, & str),)
+glassmere-core   fn Ui < 'a, M>::drag_source (& mut self, style : Style, source : DragSourceBuilder < M>, content : impl FnOnce (& mut Ui < '_, M>),)
+glassmere-core   fn Ui < 'a, M>::drop_target (& mut self, style : Style, target : DropTargetBuilder < M>, content : impl FnOnce (& mut Ui < '_, M>),)
+glassmere-core   fn Ui < 'a, M>::enabled (& mut self, enabled : bool, content : impl FnOnce (& mut Ui < '_, M>))
+glassmere-core   fn Ui < 'a, M>::event_area (& mut self, style : Style, area : AreaBuilder < M>, content : impl FnOnce (& mut Ui < '_, M>),)
+glassmere-core   fn Ui < 'a, M>::focus_scope (& mut self, scope : crate :: FocusScope, style : Style, content : impl FnOnce (& mut Ui < '_, M>),)
+glassmere-core   fn Ui < 'a, M>::gesture_area (& mut self, style : Style, gesture : GestureBuilder < M>, content : impl FnOnce (& mut Ui < '_, M>),)
+glassmere-core   fn Ui < 'a, M>::grid (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+glassmere-core   fn Ui < 'a, M>::image (& mut self, image : & Image, options : ImageOptions)
+glassmere-core   fn Ui < 'a, M>::image_file (& mut self, path : impl AsRef < std :: path :: Path>, options : ImageOptions)
+glassmere-core   fn Ui < 'a, M>::keyed < R> (& mut self, key : impl Into < String>, content : impl FnOnce (& mut Ui < 'a, M>) -> R,) -> R
+glassmere-core   fn Ui < 'a, M>::label (& mut self, label : impl Into < Label>)
+glassmere-core   fn Ui < 'a, M>::map < N : Clone + 'static> (& mut self, f : impl Fn (N) -> M + 'static, content : impl FnOnce (& mut Ui < '_, N>),)
+glassmere-core   fn Ui < 'a, M>::memo < S : std :: hash :: Hash> (& mut self, state : & S, style : Style, content : impl FnOnce (& mut Ui < '_, M>),) -> bool
+glassmere-core   fn Ui < 'a, M>::menu (& mut self, label : impl Into < String>, items : & [MenuItem], on_pick : impl Fn (usize) -> M + 'static,) -> Response < 'a>
+glassmere-core   fn Ui < 'a, M>::menu_bar (& mut self, menu : & crate :: Menu)
+glassmere-core   fn Ui < 'a, M>::number_input (& mut self, label : impl Into < String>, value : f64, options : NumberOptions, on : impl Fn (f64) -> M + 'static,) -> Response < 'a>
+glassmere-core   fn Ui < 'a, M>::observe (& mut self, store : & crate :: Store)
+glassmere-core   fn Ui < 'a, M>::opened_files (& self) -> & [std :: path :: PathBuf]
+glassmere-core   fn Ui < 'a, M>::popover (& mut self, open : bool, options : PopoverOptions, on_open : impl Fn (bool) -> M + 'static, content : impl FnOnce (& mut Ui < '_, M>),)
+glassmere-core   fn Ui < 'a, M>::property_grid (& mut self, state : & PropertyGridState, options : PropertyGridOptions, on : impl Fn (PropertyMsg) -> M + 'static, content : impl FnOnce (& mut PropertyGrid < '_, '_, M>),)
+glassmere-core   fn Ui < 'a, M>::radio (& mut self, label : impl Into < String>, selected : usize, option : usize, on_select : impl Fn (usize) -> M,) -> Response < 'a>
+glassmere-core   fn Ui < 'a, M>::request_redraw (& mut self)
+glassmere-core   fn Ui < 'a, M>::resize_frame (& mut self, thickness : f32)
+glassmere-core   fn Ui < 'a, M>::responsive (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>, f32)) -> f32
+glassmere-core   fn Ui < 'a, M>::rich_editor (& mut self, document : & RichDocument, options : RichEditorOptions, on : impl Fn (RichOp) -> M + 'static,) -> RichEditorResponse
+glassmere-core   fn Ui < 'a, M>::rich_text (& mut self, text : & RichText, style : Style, on_link : impl Fn (String) -> M + 'static,) -> Response < 'a>
+glassmere-core   fn Ui < 'a, M>::row (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+glassmere-core   fn Ui < 'a, M>::scroll (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+glassmere-core   fn Ui < 'a, M>::set_menu (& mut self, menu : crate :: Menu)
+glassmere-core   fn Ui < 'a, M>::set_tray (& mut self, tray : Option < crate :: Tray>)
+glassmere-core   fn Ui < 'a, M>::slider (& mut self, label : impl Into < String>, value : f64, range : RangeInclusive < f64>, step : f64, on_change : impl Fn (f64) -> M + 'static,) -> Response < 'a>
+glassmere-core   fn Ui < 'a, M>::split (& mut self, ratio : f32, axis : Axis, options : SplitOptions, on : impl Fn (f32) -> M + 'static, first : impl FnOnce (& mut Ui < '_, M>), second : impl FnOnce (& mut Ui < '_, M>),)
+glassmere-core   fn Ui < 'a, M>::tabs (& mut self, selected : usize, tabs : & [Tab], on_select : impl Fn (usize) -> M + 'static, content : impl FnOnce (& mut Ui < '_, M>, usize),)
+glassmere-core   fn Ui < 'a, M>::tabs_close (& mut self, selected : usize, tabs : & [Tab], on_select : impl Fn (usize) -> M + 'static, on_close : impl Fn (usize) -> M, content : impl FnOnce (& mut Ui < '_, M>, usize),)
+glassmere-core   fn Ui < 'a, M>::text_area (& mut self, document : & TextDocument, options : CodeEditorOptions < '_>, on : impl Fn (TextOp) -> M + 'static,)
+glassmere-core   fn Ui < 'a, M>::text_input (& mut self, input : impl Into < TextInput < M>>, value : & str, on_change : impl Fn (String) -> M + 'static,) -> Response < 'a>
+glassmere-core   fn Ui < 'a, M>::theme (& self) -> & crate :: Theme
+glassmere-core   fn Ui < 'a, M>::title_bar (& mut self, style : Style, content : impl FnOnce (& mut Ui < '_, M>))
+glassmere-core   fn Ui < 'a, M>::toast_sender (& self) -> ToastSender
+glassmere-core   fn Ui < 'a, M>::tooltip (& mut self, text : impl Into < String>)
+glassmere-core   fn Ui < 'a, M>::watched_bytes (& mut self, path : impl AsRef < std :: path :: Path>) -> Option < Arc < [u8]>>
+glassmere-core   fn Ui < 'a, M>::watched_text (& mut self, path : impl AsRef < std :: path :: Path>) -> Option < Arc < str>>
+glassmere-core   fn Ui < 'a, M>::widget < F> (& mut self, style : Style, widget : crate :: WidgetBuilder < F, M>) -> Response < 'a> where F : FnOnce (& crate :: WidgetInput) -> CustomWidget,
+glassmere-core   fn Ui < 'a, M>::window (& self) -> crate :: WindowInfo
+glassmere-core   fn Ui < 'a, M>::window_buttons (& mut self, on_command : impl Fn (crate :: WindowCommand) -> M)
+glassmere-core   fn Ui < 'a, M>::window_size (& self) -> glassmere_scene :: Size
+glassmere-core   fn Ui < 'a, Msg>::data_grid (& mut self, model : & impl GridModel, state : & GridState, options : VirtualListOptions, on : impl Fn (GridMsg) -> Msg + 'static,)
+glassmere-core   fn Ui < 'a, Msg>::tree_view (& mut self, model : & impl ListModel, state : & ListState, options : VirtualListOptions, on : impl Fn (GridMsg) -> Msg + 'static,)
+glassmere-core   fn Ui < 'a, Msg>::tree_view_with < M : ListModel> (& mut self, model : & M, state : & ListState, options : VirtualListOptions, on : impl Fn (GridMsg) -> Msg + 'static, row : impl FnMut (& mut Ui < '_, Msg>, & M, usize, bool),)
+glassmere-core   fn Ui < 'a, Msg>::virtual_list (& mut self, model : & impl ListModel, state : & ListState, options : VirtualListOptions, on : impl Fn (GridMsg) -> Msg + 'static,)
+glassmere-core   fn Ui < 'a, Msg>::virtual_list_with < M : ListModel> (& mut self, model : & M, state : & ListState, options : VirtualListOptions, on : impl Fn (GridMsg) -> Msg + 'static, row : impl FnMut (& mut Ui < '_, Msg>, & M, usize, bool),)
+glassmere-core   fn WidgetBuilder < F, M>::new (build : F) -> Self where F : FnOnce (& WidgetInput) -> CustomWidget,
+glassmere-core   fn WidgetBuilder < F, M>::on_event (mut self, on_event : impl Fn (crate :: UiEvent) -> Option < M> + 'static) -> Self
+glassmere-core   fn crate :: Context::format_date (& self, date : Date, style : DateStyle) -> String
+glassmere-core   fn crate :: Context::format_number (& self, value : f64, decimals : usize) -> String
+glassmere-core   fn crate :: Context::format_time (& self, time : Time, seconds : bool) -> String
+glassmere-core   fn crate :: Context::locale (& self) -> & str
+glassmere-core   fn crate :: Context::missing_messages (& self) -> Vec < String>
+glassmere-core   fn crate :: Context::parse_number (& self, text : & str) -> Option < f64>
+glassmere-core   fn crate :: Context::set_format (& mut self, format : Option < Box < dyn LocaleFormat>>)
+glassmere-core   fn crate :: Context::set_messages (& mut self, messages : Option < Box < dyn Messages>>)
+glassmere-core   fn crate :: Context::tr (& self, key : & str, args : & [(& str, MessageArg)]) -> String
+glassmere-core   fn crate :: Ui < 'a, M>::format_date (& self, date : Date, style : DateStyle) -> String
+glassmere-core   fn crate :: Ui < 'a, M>::format_number (& self, value : f64, decimals : usize) -> String
+glassmere-core   fn crate :: Ui < 'a, M>::format_time (& self, time : Time, seconds : bool) -> String
+glassmere-core   fn crate :: Ui < 'a, M>::locale (& self) -> & str
+glassmere-core   fn crate :: Ui < 'a, M>::tr (& self, key : & str) -> String
+glassmere-core   fn crate :: Ui < 'a, M>::tr_args (& self, key : & str, args : & [(& str, MessageArg)]) -> String
+glassmere-core   variant Action::Activate
+glassmere-core   variant Action::Collapse
+glassmere-core   variant Action::Decrement
+glassmere-core   variant Action::Drop
+glassmere-core   variant Action::Expand
+glassmere-core   variant Action::Focus
+glassmere-core   variant Action::Increment
+glassmere-core   variant Action::ScrollBy
+glassmere-core   variant Action::ScrollByX
+glassmere-core   variant Action::ScrollIntoView
+glassmere-core   variant Action::ScrollTo
+glassmere-core   variant Action::ScrollToX
+glassmere-core   variant Action::SetNumber
+glassmere-core   variant Action::SetText
+glassmere-core   variant Action::StartDrag
+glassmere-core   variant Align::Baseline
+glassmere-core   variant Align::Center
+glassmere-core   variant Align::End
+glassmere-core   variant Align::Start
+glassmere-core   variant Align::Stretch
+glassmere-core   variant Axis::Horizontal
+glassmere-core   variant Axis::Vertical
+glassmere-core   variant BlockKind::Bullet
+glassmere-core   variant BlockKind::Code
+glassmere-core   variant BlockKind::Heading
+glassmere-core   variant BlockKind::Numbered
+glassmere-core   variant BlockKind::Paragraph
+glassmere-core   variant BlockKind::Quote
+glassmere-core   variant CaretMovement::Logical
+glassmere-core   variant CaretMovement::Visual
+glassmere-core   variant CellEditor::Bool
+glassmere-core   variant CellEditor::Choice
+glassmere-core   variant CellEditor::Number
+glassmere-core   variant CellEditor::Text
+glassmere-core   variant CellValue::Bool
+glassmere-core   variant CellValue::Choice
+glassmere-core   variant CellValue::Number
+glassmere-core   variant CellValue::Text
+glassmere-core   variant DateStyle::Long
+glassmere-core   variant DateStyle::Medium
+glassmere-core   variant DateStyle::Short
+glassmere-core   variant DiagnosticKind::Font
+glassmere-core   variant DiagnosticKind::HugeCollection
+glassmere-core   variant DiagnosticKind::Inaccessible
+glassmere-core   variant DiagnosticKind::Misuse
+glassmere-core   variant DiagnosticKind::OversizedLayer
+glassmere-core   variant DiagnosticKind::Relayout
+glassmere-core   variant DiagnosticKind::Repaint
+glassmere-core   variant DiagnosticKind::Resource
+glassmere-core   variant DiagnosticKind::UnstableIds
+glassmere-core   variant Direction::Ltr
+glassmere-core   variant Direction::Rtl
+glassmere-core   variant DockAction::Close
+glassmere-core   variant DockAction::FloatRect
+glassmere-core   variant DockAction::Move
+glassmere-core   variant DockAction::Raise
+glassmere-core   variant DockAction::Ratio
+glassmere-core   variant DockAction::Select
+glassmere-core   variant DockArea::Main
+glassmere-core   variant DockArea::Window
+glassmere-core   variant DockNode::Split
+glassmere-core   variant DockNode::Tabs
+glassmere-core   variant DockPlace::Float
+glassmere-core   variant DockPlace::Main
+glassmere-core   variant DockPlace::Window
+glassmere-core   variant DockTarget::Edge
+glassmere-core   variant DockTarget::Float
+glassmere-core   variant DockTarget::Group
+glassmere-core   variant DockTarget::Tab
+glassmere-core   variant DockTarget::Window
+glassmere-core   variant DockZone::Bottom
+glassmere-core   variant DockZone::Center
+glassmere-core   variant DockZone::Left
+glassmere-core   variant DockZone::Right
+glassmere-core   variant DockZone::Top
+glassmere-core   variant DragOutcome::Cancelled
+glassmere-core   variant DragOutcome::Dropped
+glassmere-core   variant DragPayload::Files
+glassmere-core   variant DragPayload::Item
+glassmere-core   variant DragPayload::Text
+glassmere-core   variant DropKind::Files
+glassmere-core   variant DropKind::Item
+glassmere-core   variant DropKind::Text
+glassmere-core   variant Easing::CubicBezier
+glassmere-core   variant Easing::EaseIn
+glassmere-core   variant Easing::EaseInOut
+glassmere-core   variant Easing::EaseOut
+glassmere-core   variant Easing::Linear
+glassmere-core   variant EditorCommand::AddCursorAbove
+glassmere-core   variant EditorCommand::AddCursorAt
+glassmere-core   variant EditorCommand::AddCursorBelow
+glassmere-core   variant EditorCommand::CloseFind
+glassmere-core   variant EditorCommand::Find
+glassmere-core   variant EditorCommand::FindNext
+glassmere-core   variant EditorCommand::FindPrevious
+glassmere-core   variant EditorCommand::Replace
+glassmere-core   variant EditorCommand::SelectNextOccurrence
+glassmere-core   variant EditorCommand::ToggleBold
+glassmere-core   variant EditorCommand::ToggleCode
+glassmere-core   variant EditorCommand::ToggleItalic
+glassmere-core   variant EditorCommand::ToggleStrikethrough
+glassmere-core   variant EditorCommand::ToggleUnderline
+glassmere-core   variant Event::Command
+glassmere-core   variant Event::ContextMenu
+glassmere-core   variant Event::DropAt
+glassmere-core   variant Event::Editor
+glassmere-core   variant Event::FocusLost
+glassmere-core   variant Event::KeyDown
+glassmere-core   variant Event::KeyUp
+glassmere-core   variant Event::PointerDown
+glassmere-core   variant Event::PointerDownWithShift
+glassmere-core   variant Event::PointerLeft
+glassmere-core   variant Event::PointerMoved
+glassmere-core   variant Event::PointerUp
+glassmere-core   variant Event::Rotate
+glassmere-core   variant Event::Scroll
+glassmere-core   variant Event::Shortcut
+glassmere-core   variant Event::Text
+glassmere-core   variant Event::Touch
+glassmere-core   variant Event::Zoom
+glassmere-core   variant FileKind::Directory
+glassmere-core   variant FileKind::Open
+glassmere-core   variant FileKind::OpenMany
+glassmere-core   variant FileKind::Save
+glassmere-core   variant FindEdit::CaseSensitive
+glassmere-core   variant FindEdit::Query
+glassmere-core   variant FindEdit::Regex
+glassmere-core   variant FindEdit::ReplaceAll
+glassmere-core   variant FindEdit::ReplaceOne
+glassmere-core   variant FindEdit::Replacement
+glassmere-core   variant FindEdit::WholeWord
+glassmere-core   variant Granularity::Char
+glassmere-core   variant Granularity::Line
+glassmere-core   variant Granularity::Word
+glassmere-core   variant GridMsg::Activate
+glassmere-core   variant GridMsg::Deselect
+glassmere-core   variant GridMsg::Edit
+glassmere-core   variant GridMsg::Expand
+glassmere-core   variant GridMsg::Filter
+glassmere-core   variant GridMsg::FiltersApplied
+glassmere-core   variant GridMsg::FreezeColumns
+glassmere-core   variant GridMsg::HideColumn
+glassmere-core   variant GridMsg::MoveColumn
+glassmere-core   variant GridMsg::ResetColumns
+glassmere-core   variant GridMsg::ResizeColumn
+glassmere-core   variant GridMsg::Select
+glassmere-core   variant GridMsg::ShowAllColumns
+glassmere-core   variant GridMsg::Sort
+glassmere-core   variant ImageFit::Contain
+glassmere-core   variant ImageFit::Cover
+glassmere-core   variant ImageFit::Fill
+glassmere-core   variant ImageFit::None
+glassmere-core   variant ImageSource::File
+glassmere-core   variant ImageSource::Image
+glassmere-core   variant ImageTint::Color
+glassmere-core   variant ImageTint::Foreground
+glassmere-core   variant ImageTint::None
+glassmere-core   variant Justify::Center
+glassmere-core   variant Justify::End
+glassmere-core   variant Justify::SpaceAround
+glassmere-core   variant Justify::SpaceBetween
+glassmere-core   variant Justify::SpaceEvenly
+glassmere-core   variant Justify::Start
+glassmere-core   variant Justify::Stretch
+glassmere-core   variant Key::ArrowDown
+glassmere-core   variant Key::ArrowLeft
+glassmere-core   variant Key::ArrowRight
+glassmere-core   variant Key::ArrowUp
+glassmere-core   variant Key::Backspace
+glassmere-core   variant Key::ContextMenu
+glassmere-core   variant Key::Delete
+glassmere-core   variant Key::End
+glassmere-core   variant Key::Enter
+glassmere-core   variant Key::Escape
+glassmere-core   variant Key::F2
+glassmere-core   variant Key::Home
+glassmere-core   variant Key::PageDown
+glassmere-core   variant Key::PageUp
+glassmere-core   variant Key::Space
+glassmere-core   variant Key::Tab
+glassmere-core   variant Length::Auto
+glassmere-core   variant Length::Percent
+glassmere-core   variant Length::Px
+glassmere-core   variant Live::Assertive
+glassmere-core   variant Live::Polite
+glassmere-core   variant Mark::Bold
+glassmere-core   variant Mark::Code
+glassmere-core   variant Mark::Italic
+glassmere-core   variant Mark::Strikethrough
+glassmere-core   variant Mark::Underline
+glassmere-core   variant MenuEntry::Command
+glassmere-core   variant MenuEntry::Separator
+glassmere-core   variant MenuEntry::Submenu
+glassmere-core   variant MessageArg::Number
+glassmere-core   variant MessageArg::Text
+glassmere-core   variant ModelError::Cycle
+glassmere-core   variant ModelError::Duplicate
+glassmere-core   variant ModelError::MissingParent
+glassmere-core   variant Motion::DocumentEnd
+glassmere-core   variant Motion::DocumentStart
+glassmere-core   variant Motion::Down
+glassmere-core   variant Motion::Left
+glassmere-core   variant Motion::LineEnd
+glassmere-core   variant Motion::LineStart
+glassmere-core   variant Motion::Lines
+glassmere-core   variant Motion::Right
+glassmere-core   variant Motion::Up
+glassmere-core   variant Motion::WordLeft
+glassmere-core   variant Motion::WordRight
+glassmere-core   variant PropertyMsg::Bool
+glassmere-core   variant PropertyMsg::Choice
+glassmere-core   variant PropertyMsg::Color
+glassmere-core   variant PropertyMsg::Filter
+glassmere-core   variant PropertyMsg::Group
+glassmere-core   variant PropertyMsg::NameShare
+glassmere-core   variant PropertyMsg::Number
+glassmere-core   variant PropertyMsg::Text
+glassmere-core   variant Repeat::Count
+glassmere-core   variant Repeat::Forever
+glassmere-core   variant Repeat::Once
+glassmere-core   variant ResizeEdge::East
+glassmere-core   variant ResizeEdge::North
+glassmere-core   variant ResizeEdge::NorthEast
+glassmere-core   variant ResizeEdge::NorthWest
+glassmere-core   variant ResizeEdge::South
+glassmere-core   variant ResizeEdge::SouthEast
+glassmere-core   variant ResizeEdge::SouthWest
+glassmere-core   variant ResizeEdge::West
+glassmere-core   variant RichGranularity::Block
+glassmere-core   variant RichGranularity::Char
+glassmere-core   variant RichGranularity::Word
+glassmere-core   variant RichMotion::BlockEnd
+glassmere-core   variant RichMotion::BlockStart
+glassmere-core   variant RichMotion::DocumentEnd
+glassmere-core   variant RichMotion::DocumentStart
+glassmere-core   variant RichMotion::Left
+glassmere-core   variant RichMotion::Right
+glassmere-core   variant RichMotion::WordLeft
+glassmere-core   variant RichMotion::WordRight
+glassmere-core   variant RichOp::Backspace
+glassmere-core   variant RichOp::Clipboard
+glassmere-core   variant RichOp::Delete
+glassmere-core   variant RichOp::Insert
+glassmere-core   variant RichOp::Move
+glassmere-core   variant RichOp::Newline
+glassmere-core   variant RichOp::Redo
+glassmere-core   variant RichOp::SelectAll
+glassmere-core   variant RichOp::SetBlock
+glassmere-core   variant RichOp::SetCursor
+glassmere-core   variant RichOp::Toggle
+glassmere-core   variant RichOp::Undo
+glassmere-core   variant Role::Alert
+glassmere-core   variant Role::Button
+glassmere-core   variant Role::Cell
+glassmere-core   variant Role::Checkbox
+glassmere-core   variant Role::ColumnHeader
+glassmere-core   variant Role::ComboBox
+glassmere-core   variant Role::Dialog
+glassmere-core   variant Role::Grid
+glassmere-core   variant Role::Group
+glassmere-core   variant Role::Image
+glassmere-core   variant Role::Label
+glassmere-core   variant Role::ListBox
+glassmere-core   variant Role::Menu
+glassmere-core   variant Role::MenuButton
+glassmere-core   variant Role::MenuItem
+glassmere-core   variant Role::Option
+glassmere-core   variant Role::Radio
+glassmere-core   variant Role::Row
+glassmere-core   variant Role::RowGroup
+glassmere-core   variant Role::ScrollView
+glassmere-core   variant Role::Slider
+glassmere-core   variant Role::SpinButton
+glassmere-core   variant Role::Splitter
+glassmere-core   variant Role::Status
+glassmere-core   variant Role::Tab
+glassmere-core   variant Role::TabList
+glassmere-core   variant Role::TabPanel
+glassmere-core   variant Role::TextInput
+glassmere-core   variant Role::Tree
+glassmere-core   variant Role::TreeItem
+glassmere-core   variant Severity::Error
+glassmere-core   variant Severity::Hint
+glassmere-core   variant Severity::Info
+glassmere-core   variant Severity::Warning
+glassmere-core   variant ShortcutKey::Character
+glassmere-core   variant ShortcutKey::Named
+glassmere-core   variant SortDirection::Ascending
+glassmere-core   variant SortDirection::Descending
+glassmere-core   variant StateKind::Memo
+glassmere-core   variant StateKind::Signal
+glassmere-core   variant SwipeDirection::Down
+glassmere-core   variant SwipeDirection::Left
+glassmere-core   variant SwipeDirection::Right
+glassmere-core   variant SwipeDirection::Up
+glassmere-core   variant TextEdit::Backspace
+glassmere-core   variant TextEdit::CancelComposition
+glassmere-core   variant TextEdit::Commit
+glassmere-core   variant TextEdit::Delete
+glassmere-core   variant TextEdit::Insert
+glassmere-core   variant TextEdit::Move
+glassmere-core   variant TextEdit::Preedit
+glassmere-core   variant TextEdit::Redo
+glassmere-core   variant TextEdit::Select
+glassmere-core   variant TextEdit::SelectAll
+glassmere-core   variant TextEdit::Undo
+glassmere-core   variant TextMove::DocumentEnd
+glassmere-core   variant TextMove::DocumentStart
+glassmere-core   variant TextMove::End
+glassmere-core   variant TextMove::Left
+glassmere-core   variant TextMove::Right
+glassmere-core   variant TextMove::Start
+glassmere-core   variant TextOp::Backspace
+glassmere-core   variant TextOp::BackspacePaired
+glassmere-core   variant TextOp::Clipboard
+glassmere-core   variant TextOp::CollapseSelections
+glassmere-core   variant TextOp::Command
+glassmere-core   variant TextOp::Delete
+glassmere-core   variant TextOp::Find
+glassmere-core   variant TextOp::Indent
+glassmere-core   variant TextOp::Insert
+glassmere-core   variant TextOp::InsertPaired
+glassmere-core   variant TextOp::Move
+glassmere-core   variant TextOp::Newline
+glassmere-core   variant TextOp::Outdent
+glassmere-core   variant TextOp::Pointer
+glassmere-core   variant TextOp::Redo
+glassmere-core   variant TextOp::SelectAll
+glassmere-core   variant TextOp::Undo
+glassmere-core   variant ToastKind::Error
+glassmere-core   variant ToastKind::Info
+glassmere-core   variant ToastKind::Success
+glassmere-core   variant ToastKind::Warning
+glassmere-core   variant TouchPhase::Cancelled
+glassmere-core   variant TouchPhase::Ended
+glassmere-core   variant TouchPhase::Moved
+glassmere-core   variant TouchPhase::Started
+glassmere-core   variant Track::Auto
+glassmere-core   variant Track::Fr
+glassmere-core   variant Track::MinMax
+glassmere-core   variant Track::Percent
+glassmere-core   variant Track::Px
+glassmere-core   variant Track::Repeat
+glassmere-core   variant TrackSize::Auto
+glassmere-core   variant TrackSize::Fr
+glassmere-core   variant TrackSize::Percent
+glassmere-core   variant TrackSize::Px
+glassmere-core   variant UiEvent::Activate
+glassmere-core   variant UiEvent::Key
+glassmere-core   variant UiEvent::PointerDown
+glassmere-core   variant UiEvent::PointerMoved
+glassmere-core   variant UiEvent::PointerUp
+glassmere-core   variant UiEvent::Scroll
+glassmere-core   variant UiEvent::Text
+glassmere-core   variant WindowCommand::Close
+glassmere-core   variant WindowCommand::Drag
+glassmere-core   variant WindowCommand::Minimize
+glassmere-core   variant WindowCommand::Resize
+glassmere-core   variant WindowCommand::ToggleMaximize
+glassmere-core const BUILTIN_MESSAGES
+glassmere-core const FILTER_DELAY
+glassmere-core const HUGE_CHILDREN
+glassmere-core const LAYER_AREA
+glassmere-core const RELAYOUT_FRAMES
+glassmere-core const REPAINT_FRAMES
+glassmere-core const REPAINT_MIN_NODES
+glassmere-core const TOKENS
+glassmere-core const TOOLTIP_DELAY
+glassmere-core const UNSTABLE_ID_FRAMES
+glassmere-core enum Action
+glassmere-core enum Align
+glassmere-core enum Axis
+glassmere-core enum BlockKind
+glassmere-core enum CaretMovement
+glassmere-core enum CellEditor
+glassmere-core enum CellValue
+glassmere-core enum DateStyle
+glassmere-core enum DiagnosticKind
+glassmere-core enum Direction
+glassmere-core enum DockAction
+glassmere-core enum DockArea
+glassmere-core enum DockNode
+glassmere-core enum DockPlace
+glassmere-core enum DockTarget
+glassmere-core enum DockZone
+glassmere-core enum DragOutcome
+glassmere-core enum DragPayload
+glassmere-core enum DropKind
+glassmere-core enum Easing
+glassmere-core enum EditorCommand
+glassmere-core enum Event
+glassmere-core enum FileKind
+glassmere-core enum FindEdit
+glassmere-core enum Granularity
+glassmere-core enum GridMsg
+glassmere-core enum ImageFit
+glassmere-core enum ImageSource
+glassmere-core enum ImageTint
+glassmere-core enum Justify
+glassmere-core enum Key
+glassmere-core enum Length
+glassmere-core enum Live
+glassmere-core enum Mark
+glassmere-core enum MenuEntry
+glassmere-core enum MessageArg
+glassmere-core enum ModelError
+glassmere-core enum Motion
+glassmere-core enum PropertyMsg
+glassmere-core enum Repeat
+glassmere-core enum ResizeEdge
+glassmere-core enum RichGranularity
+glassmere-core enum RichMotion
+glassmere-core enum RichOp
+glassmere-core enum Role
+glassmere-core enum Severity
+glassmere-core enum ShortcutKey
+glassmere-core enum SortDirection
+glassmere-core enum StateKind
+glassmere-core enum SwipeDirection
+glassmere-core enum TextEdit
+glassmere-core enum TextMove
+glassmere-core enum TextOp
+glassmere-core enum ToastKind
+glassmere-core enum TouchPhase
+glassmere-core enum Track
+glassmere-core enum TrackSize
+glassmere-core enum UiEvent
+glassmere-core enum WindowCommand
+glassmere-core fn message_channel < T> (capacity : usize, wake : impl Fn () -> bool + Send + Sync + 'static,) -> (MessageSender < T>, Mailbox < T>)
+glassmere-core fn suggest < 'a> (typed : & str, candidates : & [& 'a str], limit : usize) -> Vec < & 'a str>
+glassmere-core fn text_matches (cell : & str, filter : & str) -> bool
+glassmere-core struct Animation
+glassmere-core struct AppDriver
+glassmere-core struct AreaBuilder
+glassmere-core struct Autocomplete
+glassmere-core struct BackgroundImage
+glassmere-core struct Block
+glassmere-core struct Button
+glassmere-core struct Cancel
+glassmere-core struct Clip
+glassmere-core struct CodeEditorOptions
+glassmere-core struct CollectionInfo
+glassmere-core struct ComboBox
+glassmere-core struct Command
+glassmere-core struct CommandPalette
+glassmere-core struct Context
+glassmere-core struct CustomWidget
+glassmere-core struct Date
+glassmere-core struct Diagnostic
+glassmere-core struct DialogOptions
+glassmere-core struct DockFloat
+glassmere-core struct DockLayout
+glassmere-core struct DockLayoutError
+glassmere-core struct DockOptions
+glassmere-core struct DockPanel
+glassmere-core struct DockTabs
+glassmere-core struct DockWindow
+glassmere-core struct DockWindowId
+glassmere-core struct DragInfo
+glassmere-core struct DragSourceBuilder
+glassmere-core struct DropTargetBuilder
+glassmere-core struct Effect
+glassmere-core struct Effects
+glassmere-core struct EventArea
+glassmere-core struct FileRequest
+glassmere-core struct FindState
+glassmere-core struct FocusScope
+glassmere-core struct FrameDiagnostic
+glassmere-core struct FrameStats
+glassmere-core struct GestureBuilder
+glassmere-core struct GestureResponse
+glassmere-core struct Gradient
+glassmere-core struct GraphNode
+glassmere-core struct GridArea
+glassmere-core struct GridColumn
+glassmere-core struct GridColumns
+glassmere-core struct GridState
+glassmere-core struct HighlightSpan
+glassmere-core struct ImageOptions
+glassmere-core struct Indentation
+glassmere-core struct InlineRun
+glassmere-core struct ItemId
+glassmere-core struct ItemOrder
+glassmere-core struct Keyframe
+glassmere-core struct Label
+glassmere-core struct ListState
+glassmere-core struct Mailbox
+glassmere-core struct Marks
+glassmere-core struct Memo
+glassmere-core struct MemoryReport
+glassmere-core struct Menu
+glassmere-core struct MenuItem
+glassmere-core struct MessageSender
+glassmere-core struct NodeDetails
+glassmere-core struct NodeId
+glassmere-core struct NodeSnapshot
+glassmere-core struct Notification
+glassmere-core struct NumberOptions
+glassmere-core struct NumericValue
+glassmere-core struct Pacing
+glassmere-core struct Paint
+glassmere-core struct Pen
+glassmere-core struct PopoverOptions
+glassmere-core struct PropertyGrid
+glassmere-core struct PropertyGridOptions
+glassmere-core struct PropertyGridState
+glassmere-core struct ResolvedText
+glassmere-core struct Response
+glassmere-core struct RichDocument
+glassmere-core struct RichEditorOptions
+glassmere-core struct RichEditorResponse
+glassmere-core struct RichPosition
+glassmere-core struct RichRun
+glassmere-core struct RichText
+glassmere-core struct ScrollState
+glassmere-core struct Selection
+glassmere-core struct Semantics
+glassmere-core struct Shadow
+glassmere-core struct Shortcut
+glassmere-core struct Signal
+glassmere-core struct SplitOptions
+glassmere-core struct StateStyles
+glassmere-core struct Store
+glassmere-core struct Style
+glassmere-core struct StyleSheet
+glassmere-core struct StyleSheetError
+glassmere-core struct Swipe
+glassmere-core struct Tab
+glassmere-core struct TaskSender
+glassmere-core struct Tasks
+glassmere-core struct TextDocument
+glassmere-core struct TextInput
+glassmere-core struct TextSelection
+glassmere-core struct Theme
+glassmere-core struct Time
+glassmere-core struct Toast
+glassmere-core struct ToastAction
+glassmere-core struct ToastId
+glassmere-core struct ToastSender
+glassmere-core struct Transform
+glassmere-core struct Transition
+glassmere-core struct Tray
+glassmere-core struct TreeItem
+glassmere-core struct TreeModel
+glassmere-core struct Ui
+glassmere-core struct VirtualListOptions
+glassmere-core struct WidgetBuilder
+glassmere-core struct WidgetInput
+glassmere-core struct WindowId
+glassmere-core struct WindowInfo
+glassmere-core struct WindowRequest
+glassmere-core trait App
+glassmere-core trait Component
+glassmere-core trait GridModel
+glassmere-core trait Highlighter
+glassmere-core trait ListModel
+glassmere-core trait LocaleFormat
+glassmere-core trait Messages
+glassmere-core type Action
+glassmere-core use animation :: { Animation, Easing, Effect, Keyframe, Repeat, Transform, Transition }
+glassmere-core use app :: { App, AppDriver, Component, Effects, Pacing }
+glassmere-core use areas :: { AreaBuilder, DragSourceBuilder, DropTargetBuilder, GestureBuilder }
+glassmere-core use builders :: { Button, ComboBox, Label, TextInput }
+glassmere-core use clipboard :: Clip
+glassmere-core use collection :: { CellEditor, CellValue, FILTER_DELAY, GridColumn, GridColumns, GridModel, GridMsg, GridState, ItemId, ItemOrder, ListModel, ListState, ModelError, SortDirection, TreeItem, TreeModel, VirtualListOptions, text_matches, }
+glassmere-core use command :: { Command, Shortcut, ShortcutKey }
+glassmere-core use controls :: { DockAction, MenuItem, NumberOptions }
+glassmere-core use dock :: { DockArea, DockFloat, DockLayout, DockLayoutError, DockNode, DockPlace, DockTabs, DockTarget, DockWindow, DockWindowId, DockZone, }
+glassmere-core use dock :: { DockOptions, DockPanel }
+glassmere-core use document :: { Indentation, Motion, Selection, TextDocument }
+glassmere-core use drag :: { DragInfo, DragOutcome, DragPayload, DropKind }
+glassmere-core use editor :: { CaretMovement, TextEdit, TextMove, TextSelection }
+glassmere-core use events :: { EventArea, UiEvent }
+glassmere-core use fields :: { Autocomplete, suggest }
+glassmere-core use focus :: { DialogOptions, FocusScope }
+glassmere-core use glassmere_scene :: GradientStop
+glassmere-core use glassmere_scene :: { FontFamily, TextSpan, TextStyle, TextWrap }
+glassmere-core use glassmere_scene :: { MonospaceMeasurer, TextMeasurer }
+glassmere-core use image :: { BackgroundImage, ImageFit, ImageOptions, ImageSource, ImageTint }
+glassmere-core use locale_format :: { Date, DateStyle, LocaleFormat, Time }
+glassmere-core use mailbox :: { Mailbox, MessageSender, message_channel }
+glassmere-core use messages :: { BUILTIN_MESSAGES, MessageArg, Messages }
+glassmere-core use overlays :: CommandPalette
+glassmere-core use panes :: { Axis, PopoverOptions, SplitOptions, TOOLTIP_DELAY, Tab }
+glassmere-core use platform :: { FileKind, FileRequest, Menu, MenuEntry, Notification, Tray }
+glassmere-core use property_grid :: PropertyGrid
+glassmere-core use property_grid :: { PropertyGridOptions, PropertyGridState, PropertyMsg }
+glassmere-core use reactive :: { GraphNode, Memo, Signal, StateKind, Store }
+glassmere-core use rich_document :: { Block, BlockKind, InlineRun, Mark, Marks, RichDocument, RichMotion, RichPosition, }
+glassmere-core use rich_editor :: { RichEditorOptions, RichEditorResponse, RichOp }
+glassmere-core use rich_text :: { RichRun, RichText }
+glassmere-core use style :: { Align, Direction, Gradient, GridArea, Justify, Length, Paint, ResolvedText, Shadow, StateStyles, Style, Track, TrackSize, }
+glassmere-core use stylesheet :: { StyleSheet, StyleSheetError }
+glassmere-core use task :: { Cancel, TaskSender, Tasks }
+glassmere-core use text_area :: { CodeEditorOptions, Diagnostic, EditorCommand, FindEdit, FindState, HighlightSpan, Highlighter, Severity, TextOp, }
+glassmere-core use theme :: { TOKENS, Theme }
+glassmere-core use toast :: { Toast, ToastAction, ToastId, ToastKind, ToastSender }
+glassmere-core use touch_input :: { GestureResponse, Pen, Swipe, SwipeDirection, TouchPhase }
+glassmere-core use tree :: diagnostics :: { DiagnosticKind, FrameDiagnostic, HUGE_CHILDREN, LAYER_AREA, RELAYOUT_FRAMES, REPAINT_FRAMES, REPAINT_MIN_NODES, UNSTABLE_ID_FRAMES, }
+glassmere-core use tree :: { Action, CollectionInfo, Context, Dirty, Event, FrameStats, GestureResponse, Key, Live, MemoryReport, NodeDetails, NodeId, NodeSnapshot, NumericValue, Pen, Role, ScrollState, Semantics, Swipe, SwipeDirection, TouchPhase, }
+glassmere-core use types :: *
+glassmere-core use ui :: { AreaBuilder, Autocomplete, Button, ComboBox, CommandPalette, DockOptions, DockPanel, DragSourceBuilder, DropTargetBuilder, GestureBuilder, Label, PropertyGrid, Response, TextInput, Ui, suggest, }
+glassmere-core use widget :: { CustomWidget, WidgetBuilder, WidgetInput }
+glassmere-core use window :: { ResizeEdge, WindowCommand, WindowId, WindowInfo, WindowRequest }
+glassmere-scene   field Affine::a
+glassmere-scene   field Affine::b
+glassmere-scene   field Affine::c
+glassmere-scene   field Affine::d
+glassmere-scene   field Affine::e
+glassmere-scene   field Affine::f
+glassmere-scene   field CaretStop::byte
+glassmere-scene   field CaretStop::rect
+glassmere-scene   field GradientStop::at
+glassmere-scene   field GradientStop::color
+glassmere-scene   field Point::x
+glassmere-scene   field Point::y
+glassmere-scene   field Rect::height
+glassmere-scene   field Rect::width
+glassmere-scene   field Rect::x
+glassmere-scene   field Rect::y
+glassmere-scene   field Scene::primitives
+glassmere-scene   field Scene::size
+glassmere-scene   field Size::height
+glassmere-scene   field Size::width
+glassmere-scene   field TextCluster::bytes
+glassmere-scene   field TextCluster::rect
+glassmere-scene   field TextCluster::rtl
+glassmere-scene   field TextGeometry::carets
+glassmere-scene   field TextGeometry::clusters
+glassmere-scene   field TextGeometry::lines
+glassmere-scene   field TextGeometry::size
+glassmere-scene   field TextLine::bytes
+glassmere-scene   field TextLine::height
+glassmere-scene   field TextLine::rtl
+glassmere-scene   field TextLine::y
+glassmere-scene   field TextSpan::color
+glassmere-scene   field TextSpan::family
+glassmere-scene   field TextSpan::italic
+glassmere-scene   field TextSpan::text
+glassmere-scene   field TextSpan::weight
+glassmere-scene   field TextStyle::base
+glassmere-scene   field TextStyle::family
+glassmere-scene   field TextStyle::font_size
+glassmere-scene   field TextStyle::italic
+glassmere-scene   field TextStyle::rtl
+glassmere-scene   field TextStyle::weight
+glassmere-scene   field TextStyle::wrap
+glassmere-scene   fn Affine::about (self, pivot : Point) -> Self
+glassmere-scene   fn Affine::apply (self, point : Point) -> Point
+glassmere-scene   fn Affine::is_identity (self) -> bool
+glassmere-scene   fn Affine::rotate (degrees : f32) -> Self
+glassmere-scene   fn Affine::scale (x : f32, y : f32) -> Self
+glassmere-scene   fn Affine::then (self, next : Self) -> Self
+glassmere-scene   fn Affine::translate (x : f32, y : f32) -> Self
+glassmere-scene   fn Color::const rgb (r : u8, g : u8, b : u8) -> Self
+glassmere-scene   fn Color::linear (self) -> [f32; 4]
+glassmere-scene   fn Image::from_premultiplied (width : u32, height : u32, rgba : Vec < u8>) -> Option < Self>
+glassmere-scene   fn Image::from_rgba8 (width : u32, height : u32, mut rgba : Vec < u8>) -> Option < Self>
+glassmere-scene   fn Image::from_vector (vector : impl VectorImage + 'static) -> Self
+glassmere-scene   fn Image::id (& self) -> u64
+glassmere-scene   fn Image::is_vector (& self) -> bool
+glassmere-scene   fn Image::pixels (& self) -> Option < (u32, u32, & [u8])>
+glassmere-scene   fn Image::size (& self) -> Size
+glassmere-scene   fn Image::vector (& self) -> Option < & dyn VectorImage>
+glassmere-scene   fn Primitive::translated (& self, offset : Point) -> Self
+glassmere-scene   fn Rect::contains (self, p : Point) -> bool
+glassmere-scene   fn Rect::intersect (self, other : Self) -> Self
+glassmere-scene   fn Rect::translated (self, offset : Point) -> Self
+glassmere-scene   fn Rect::union (self, other : Self) -> Self
+glassmere-scene   fn Size::const new (width : f32, height : f32) -> Self
+glassmere-scene   fn TextGeometry::caret (& self, byte : usize) -> Rect
+glassmere-scene   fn TextGeometry::caret_at (& self, byte : usize, affinity : Affinity) -> Rect
+glassmere-scene   fn TextGeometry::hit (& self, point : Point) -> usize
+glassmere-scene   fn TextGeometry::hit_affinity (& self, point : Point) -> (usize, Affinity)
+glassmere-scene   fn TextGeometry::line_at (& self, byte : usize, affinity : Affinity) -> Option < & TextLine>
+glassmere-scene   fn TextGeometry::line_edge (& self, byte : usize, affinity : Affinity, end : bool) -> (usize, Affinity)
+glassmere-scene   fn TextGeometry::mixed_direction (& self, byte : usize, affinity : Affinity) -> Option < bool>
+glassmere-scene   fn TextGeometry::selection (& self, range : Range < usize>) -> Vec < Rect>
+glassmere-scene   fn TextGeometry::visual_step (& self, byte : usize, affinity : Affinity, right : bool,) -> Option < (usize, Affinity)>
+glassmere-scene   fn TextMeasurer::ascent (& mut self, style : & TextStyle) -> f32
+glassmere-scene   fn TextMeasurer::geometry (& mut self, text : & str, style : & TextStyle, width : Option < f32>) -> TextGeometry
+glassmere-scene   fn TextMeasurer::geometry_rich (& mut self, spans : & [TextSpan], style : & TextStyle, width : Option < f32>,) -> TextGeometry
+glassmere-scene   fn TextMeasurer::measure (& mut self, text : & str, font_size : f32) -> Size
+glassmere-scene   fn TextMeasurer::measure_styled (& mut self, text : & str, style : & TextStyle, width : Option < f32>) -> Size
+glassmere-scene   fn TextSpan::color (mut self, color : crate :: Color) -> Self
+glassmere-scene   fn TextSpan::family (mut self, family : FontFamily) -> Self
+glassmere-scene   fn TextSpan::italic (mut self, italic : bool) -> Self
+glassmere-scene   fn TextSpan::new (text : impl Into < String>) -> Self
+glassmere-scene   fn TextSpan::weight (mut self, weight : u16) -> Self
+glassmere-scene   fn VectorImage::rasterize (& self, width : u32, height : u32) -> Vec < u8>
+glassmere-scene   fn VectorImage::size (& self) -> Size
+glassmere-scene   variant Affinity::Downstream
+glassmere-scene   variant Affinity::Upstream
+glassmere-scene   variant FontFamily::Monospace
+glassmere-scene   variant FontFamily::Named
+glassmere-scene   variant FontFamily::SansSerif
+glassmere-scene   variant FontFamily::Serif
+glassmere-scene   variant Primitive::Custom
+glassmere-scene   variant Primitive::Gradient
+glassmere-scene   variant Primitive::Image
+glassmere-scene   variant Primitive::PopClip
+glassmere-scene   variant Primitive::PopLayer
+glassmere-scene   variant Primitive::PushClip
+glassmere-scene   variant Primitive::PushLayer
+glassmere-scene   variant Primitive::Quad
+glassmere-scene   variant Primitive::RichText
+glassmere-scene   variant Primitive::Shadow
+glassmere-scene   variant Primitive::StyledText
+glassmere-scene   variant Primitive::Text
+glassmere-scene   variant TextWrap::None
+glassmere-scene   variant TextWrap::Word
+glassmere-scene enum Affinity
+glassmere-scene enum FontFamily
+glassmere-scene enum Primitive
+glassmere-scene enum TextWrap
+glassmere-scene struct Affine
+glassmere-scene struct CaretStop
+glassmere-scene struct Color
+glassmere-scene struct GradientStop
+glassmere-scene struct Image
+glassmere-scene struct MonospaceMeasurer
+glassmere-scene struct Point
+glassmere-scene struct Rect
+glassmere-scene struct Scene
+glassmere-scene struct Size
+glassmere-scene struct TextCluster
+glassmere-scene struct TextGeometry
+glassmere-scene struct TextLine
+glassmere-scene struct TextSpan
+glassmere-scene struct TextStyle
+glassmere-scene trait TextMeasurer
+glassmere-scene trait VectorImage
+glassmere-scene use image :: { Image, VectorImage }
+glassmere-scene use text :: { Affinity, CaretStop, FontFamily, MonospaceMeasurer, TextCluster, TextGeometry, TextLine, TextMeasurer, TextSpan, TextStyle, TextWrap, }
+glassmere-text   field TextSystem::buffers
+glassmere-text   field TextSystem::fonts
+glassmere-text   fn TextSystem::ensure (& mut self, text : & str, font_size : f32) -> TextKey
+glassmere-text   fn TextSystem::ensure_rich (& mut self, spans : & [TextSpan], style : & TextStyle, width : Option < f32>,) -> TextKey
+glassmere-text   fn TextSystem::ensure_styled (& mut self, text : & str, style : & TextStyle, width : Option < f32>) -> TextKey
+glassmere-text   fn TextSystem::has_family (& self, name : & str) -> bool
+glassmere-text   fn TextSystem::retain (& mut self, active : & HashSet < TextKey>)
+glassmere-text   fn TextSystem::with_fonts (fonts : impl IntoIterator < Item = Vec < u8>>) -> Self
+glassmere-text struct TextKey
+glassmere-text struct TextSystem
+glassmere-text use cosmic_text
+glassmere-render-wgpu   field CustomDraw::device
+glassmere-render-wgpu   field CustomDraw::pass
+glassmere-render-wgpu   field CustomDraw::queue
+glassmere-render-wgpu   field CustomDraw::rect
+glassmere-render-wgpu   field CustomDraw::scale
+glassmere-render-wgpu   field CustomDraw::target_size
+glassmere-render-wgpu   field DriverMemory::allocated
+glassmere-render-wgpu   field DriverMemory::allocations
+glassmere-render-wgpu   field DriverMemory::reserved
+glassmere-render-wgpu   field GpuPassTime::duration
+glassmere-render-wgpu   field GpuPassTime::label
+glassmere-render-wgpu   field GpuProfile::frame
+glassmere-render-wgpu   field GpuProfile::passes
+glassmere-render-wgpu   field GpuProfile::total
+glassmere-render-wgpu   field MemoryStats::buffers
+glassmere-render-wgpu   field MemoryStats::canvas
+glassmere-render-wgpu   field MemoryStats::glyph_atlas
+glassmere-render-wgpu   field MemoryStats::image_atlas
+glassmere-render-wgpu   field MemoryStats::image_textures
+glassmere-render-wgpu   field MemoryStats::layers
+glassmere-render-wgpu   field MemoryStats::peak
+glassmere-render-wgpu   field MemoryStats::profiling
+glassmere-render-wgpu   field MemoryStats::total
+glassmere-render-wgpu   field RenderStats::atlas_pages
+glassmere-render-wgpu   field RenderStats::draw_calls
+glassmere-render-wgpu   field RenderStats::frames
+glassmere-render-wgpu   field RenderStats::gradients
+glassmere-render-wgpu   field RenderStats::image_bytes
+glassmere-render-wgpu   field RenderStats::image_draws
+glassmere-render-wgpu   field RenderStats::image_textures
+glassmere-render-wgpu   field RenderStats::image_uploads
+glassmere-render-wgpu   field RenderStats::layer_passes
+glassmere-render-wgpu   field RenderStats::layer_texture_bytes
+glassmere-render-wgpu   field RenderStats::layer_textures
+glassmere-render-wgpu   field RenderStats::memory
+glassmere-render-wgpu   field RenderStats::passes
+glassmere-render-wgpu   field RenderStats::preparations
+glassmere-render-wgpu   field RenderStats::quad_buffer_allocations
+glassmere-render-wgpu   field RenderStats::quad_buffer_bytes
+glassmere-render-wgpu   field RenderStats::quads
+glassmere-render-wgpu   field RenderStats::redrawn
+glassmere-render-wgpu   field RenderStats::shadows
+glassmere-render-wgpu   field RenderStats::text_batches
+glassmere-render-wgpu   field RenderStats::text_renderer_allocations
+glassmere-render-wgpu   fn ImageCache::begin (& mut self)
+glassmere-render-wgpu   fn ImageCache::bind_group (& self, texture : u32) -> & wgpu :: BindGroup
+glassmere-render-wgpu   fn ImageCache::bytes (& self) -> u64
+glassmere-render-wgpu   fn ImageCache::bytes_by_kind (& self) -> (u64, u64)
+glassmere-render-wgpu   fn ImageCache::counts (& self) -> (usize, usize)
+glassmere-render-wgpu   fn ImageCache::ensure (& mut self, device : & wgpu :: Device, queue : & wgpu :: Queue, image : & Image, raster : [u32; 2],) -> Option < Placement>
+glassmere-render-wgpu   fn ImageCache::new (device : & wgpu :: Device, layout : wgpu :: BindGroupLayout, sampler : wgpu :: Sampler,) -> Self
+glassmere-render-wgpu   fn ImageCache::raster_size (& self, image : & Image, rect : Rect, source : Rect, scale : f32) -> [u32; 2]
+glassmere-render-wgpu   fn Renderer::driver_memory (device : & wgpu :: Device) -> Option < DriverMemory>
+glassmere-render-wgpu   fn Renderer::gpu_profile (& self) -> Option < & GpuProfile>
+glassmere-render-wgpu   fn Renderer::new (device : & wgpu :: Device, queue : & wgpu :: Queue, format : wgpu :: TextureFormat) -> Self
+glassmere-render-wgpu   fn Renderer::profiling (& self) -> bool
+glassmere-render-wgpu   fn Renderer::render (& mut self, device : & wgpu :: Device, queue : & wgpu :: Queue, target : & wgpu :: TextureView, physical_size : [u32; 2], scale : f32, scene : & Scene, clear : Color,) -> RenderResult < ()>
+glassmere-render-wgpu   fn Renderer::render_cached (& mut self, device : & wgpu :: Device, queue : & wgpu :: Queue, target : & wgpu :: TextureView, physical_size : [u32; 2], scale : f32, scene : & Scene, clear : Color, scene_changed : bool, damage : & [Rect],) -> RenderResult < ()>
+glassmere-render-wgpu   fn Renderer::reset_peak (& mut self)
+glassmere-render-wgpu   fn Renderer::set_custom_draw (& mut self, id : u64, draw : Option < CustomDrawFn>)
+glassmere-render-wgpu   fn Renderer::set_image_budget (& mut self, bytes : u64)
+glassmere-render-wgpu   fn Renderer::set_profiling (& mut self, enabled : bool)
+glassmere-render-wgpu   fn Renderer::stats (& self) -> RenderStats
+glassmere-render-wgpu   fn Renderer::text_system (& mut self) -> & mut TextSystem
+glassmere-render-wgpu   fn Renderer::timestamps_supported (& self) -> bool
+glassmere-render-wgpu   fn Renderer::with_text_system (device : & wgpu :: Device, queue : & wgpu :: Queue, format : wgpu :: TextureFormat, text_system : TextSystem,) -> Self
+glassmere-render-wgpu   fn Timestamps::bytes (& self) -> u64
+glassmere-render-wgpu   fn Timestamps::collect (& mut self, device : & wgpu :: Device)
+glassmere-render-wgpu   fn Timestamps::new (device : & wgpu :: Device, queue : & wgpu :: Queue) -> Self
+glassmere-render-wgpu   fn Timestamps::resolve (& mut self, device : & wgpu :: Device, encoder : & mut wgpu :: CommandEncoder, frame : u64, labels : Vec < String>,) -> usize
+glassmere-render-wgpu   fn Timestamps::submitted (& mut self, slot : usize)
+glassmere-render-wgpu const MAX_GRADIENT_STOPS
+glassmere-render-wgpu const MAX_TIMED_PASSES
+glassmere-render-wgpu struct CustomDraw
+glassmere-render-wgpu struct DriverMemory
+glassmere-render-wgpu struct GpuPassTime
+glassmere-render-wgpu struct GpuProfile
+glassmere-render-wgpu struct MemoryStats
+glassmere-render-wgpu struct RenderStats
+glassmere-render-wgpu struct Renderer
+glassmere-render-wgpu type CustomDrawFn
+glassmere-render-wgpu type RenderResult
+glassmere-render-wgpu use glassmere_text :: TextSystem
+glassmere-render-wgpu use profile :: { DriverMemory, GpuPassTime, GpuProfile, MAX_TIMED_PASSES, MemoryStats }
+glassmere-render-wgpu use wgpu
+glassmere-render-cpu   field CpuStats::frames
+glassmere-render-cpu   field CpuStats::glyphs
+glassmere-render-cpu   field CpuStats::layers
+glassmere-render-cpu   field CpuStats::redrawn
+glassmere-render-cpu   field CpuStats::render
+glassmere-render-cpu   fn CpuRenderer::new () -> Self
+glassmere-render-cpu   fn CpuRenderer::render (& mut self, physical_size : [u32; 2], scale : f32, scene : & Scene, clear : Color,) -> & [u8]
+glassmere-render-cpu   fn CpuRenderer::render_damaged (& mut self, physical_size : [u32; 2], scale : f32, scene : & Scene, clear : Color, damage : & [Rect],) -> & [u8]
+glassmere-render-cpu   fn CpuRenderer::stats (& self) -> CpuStats
+glassmere-render-cpu   fn CpuRenderer::text_system (& mut self) -> & mut TextSystem
+glassmere-render-cpu   fn CpuRenderer::with_text_system (text : TextSystem) -> Self
+glassmere-render-cpu const MAX_GRADIENT_STOPS
+glassmere-render-cpu struct CpuRenderer
+glassmere-render-cpu struct CpuStats
+glassmere-winit   field AppOptions::background
+glassmere-winit   field AppOptions::caret_movement
+glassmere-winit   field AppOptions::decorations
+glassmere-winit   field AppOptions::devtools
+glassmere-winit   field AppOptions::direction
+glassmere-winit   field AppOptions::frame_limit
+glassmere-winit   field AppOptions::gpu
+glassmere-winit   field AppOptions::graphics
+glassmere-winit   field AppOptions::placement
+glassmere-winit   field AppOptions::reduced_motion
+glassmere-winit   field AppOptions::resizable
+glassmere-winit   field AppOptions::size
+glassmere-winit   field AppOptions::stylesheet
+glassmere-winit   field AppOptions::theme
+glassmere-winit   field AppOptions::title
+glassmere-winit   field GraphicsOptions::backend
+glassmere-winit   field GraphicsOptions::max_resource_bindings
+glassmere-winit   field GraphicsOptions::maximum_frame_latency
+glassmere-winit   field GraphicsOptions::memory_policy
+glassmere-winit   field SavedWindow::height
+glassmere-winit   field SavedWindow::width
+glassmere-winit   field SavedWindow::x
+glassmere-winit   field SavedWindow::y
+glassmere-winit   fn DirectionChoice::resolve (self) -> glassmere_core :: Direction
+glassmere-winit   fn GpuSetup::new (setup : impl FnMut (& mut Renderer) + Send + 'static) -> Self
+glassmere-winit   fn ImageFiles::deliver (& mut self, context : & mut Context)
+glassmere-winit   fn ImageFiles::new (wake : WakeHandle) -> Self
+glassmere-winit   fn ImageFiles::request (& mut self, context : & mut Context, changed : bool)
+glassmere-winit   fn Poller::changed (& mut self, path : & std :: path :: Path) -> Option < Result < Vec < u8>, String>>
+glassmere-winit   fn Poller::stamp_changed (& mut self, path : & std :: path :: Path) -> bool
+glassmere-winit   variant DirectionChoice::Auto
+glassmere-winit   variant DirectionChoice::Ltr
+glassmere-winit   variant DirectionChoice::Rtl
+glassmere-winit   variant GpuMemoryPolicy::Balanced
+glassmere-winit   variant GpuMemoryPolicy::Compact
+glassmere-winit   variant GraphicsBackend::Auto
+glassmere-winit   variant GraphicsBackend::Cpu
+glassmere-winit   variant GraphicsBackend::Direct3D12
+glassmere-winit   variant GraphicsBackend::Metal
+glassmere-winit   variant GraphicsBackend::OpenGl
+glassmere-winit   variant GraphicsBackend::Vulkan
+glassmere-winit   variant Placement::Centered
+glassmere-winit   variant Placement::Named
+glassmere-winit   variant Placement::System
+glassmere-winit   variant Placement::WithOwner
+glassmere-winit   variant ThemeChoice::Fixed
+glassmere-winit   variant ThemeChoice::System
+glassmere-winit const STATE_ENV
+glassmere-winit const STOP_ENV
+glassmere-winit enum DirectionChoice
+glassmere-winit enum GpuMemoryPolicy
+glassmere-winit enum GraphicsBackend
+glassmere-winit enum Placement
+glassmere-winit enum ThemeChoice
+glassmere-winit fn active () -> bool
+glassmere-winit fn locale_direction (locale : & str) -> glassmere_core :: Direction
+glassmere-winit fn run < A : App> (options : AppOptions, app : A) -> Result < ()>
+glassmere-winit fn run_with < S : 'static> (options : AppOptions, state : S, view : impl Fn (& S, & mut Ui < '_, Action < S>>) + 'static,) -> Result < ()>
+glassmere-winit fn saved_state () -> Option < String>
+glassmere-winit struct AppOptions
+glassmere-winit struct GpuSetup
+glassmere-winit struct GraphicsOptions
+glassmere-winit struct SavedWindow
+glassmere-winit use glassmere_core :: { Mailbox, MessageSender }
+glassmere-winit use graphics :: { GpuMemoryPolicy, GraphicsBackend, GraphicsOptions }
+glassmere-testing   fn Harness < A>::app (size : Size, app : A) -> Self
+glassmere-testing   fn Harness < A>::app_mut (& mut self) -> & mut A
+glassmere-testing   fn Harness < A>::send (& mut self, message : A :: Message) -> FrameStats
+glassmere-testing   fn Harness < A>::state_mut (& mut self) -> & mut A
+glassmere-testing   fn Harness < S>::action (& mut self, id : NodeId, action : Action) -> bool
+glassmere-testing   fn Harness < S>::by_label (& self, label : & str) -> NodeId
+glassmere-testing   fn Harness < S>::click (& mut self, id : NodeId) -> FrameStats
+glassmere-testing   fn Harness < S>::context (& self) -> & Context
+glassmere-testing   fn Harness < S>::event (& mut self, event : Event) -> bool
+glassmere-testing   fn Harness < S>::find (& self, path : & [& str]) -> NodeId
+glassmere-testing   fn Harness < S>::focus (& mut self, id : NodeId) -> FrameStats
+glassmere-testing   fn Harness < S>::hover (& mut self, id : NodeId) -> FrameStats
+glassmere-testing   fn Harness < S>::path (& self, id : NodeId) -> String
+glassmere-testing   fn Harness < S>::press (& mut self, key : Key) -> FrameStats
+glassmere-testing   fn Harness < S>::press_shift (& mut self, key : Key) -> FrameStats
+glassmere-testing   fn Harness < S>::query_label (& self, label : & str) -> Option < NodeId>
+glassmere-testing   fn Harness < S>::resize (& mut self, size : Size) -> FrameStats
+glassmere-testing   fn Harness < S>::run (& mut self) -> FrameStats
+glassmere-testing   fn Harness < S>::set_now (& mut self, now : std :: time :: Duration)
+glassmere-testing   fn Harness < S>::snapshot_accessibility (& self) -> String
+glassmere-testing   fn Harness < S>::snapshot_layout (& self) -> String
+glassmere-testing   fn Harness < S>::snapshot_scene (& self) -> String
+glassmere-testing   fn Harness < S>::snapshot_tree (& self) -> String
+glassmere-testing   fn Harness < S>::state (& self) -> & S
+glassmere-testing   fn Harness < S>::stats (& self) -> FrameStats
+glassmere-testing   fn Harness < S>::type_text (& mut self, text : & str) -> FrameStats
+glassmere-testing fn assert_snapshot (dir : impl AsRef < Path>, name : & str, actual : & str)
+glassmere-testing struct Harness
+glassmere-devtools   field EventRecord::description
+glassmere-devtools   field EventRecord::frame
+glassmere-devtools   field EventRecord::handled
+glassmere-devtools   field EventRecord::sequence
+glassmere-devtools   field FrameRecord::draw_calls
+glassmere-devtools   field FrameRecord::gpu
+glassmere-devtools   field FrameRecord::gpu_memory
+glassmere-devtools   field FrameRecord::render
+glassmere-devtools   field FrameRecord::stats
+glassmere-devtools   field FrameRecord::total
+glassmere-devtools   field GpuSnapshot::adapter
+glassmere-devtools   field GpuSnapshot::draw_calls
+glassmere-devtools   field GpuSnapshot::driver
+glassmere-devtools   field GpuSnapshot::memory
+glassmere-devtools   field GpuSnapshot::memory_peak
+glassmere-devtools   field GpuSnapshot::passes
+glassmere-devtools   field GpuSnapshot::quads
+glassmere-devtools   field GpuSnapshot::render_passes
+glassmere-devtools   field GpuSnapshot::software
+glassmere-devtools   field GpuSnapshot::text_batches
+glassmere-devtools   field GpuSnapshot::timestamps
+glassmere-devtools   field InspectedNode::depth
+glassmere-devtools   field InspectedNode::details
+glassmere-devtools   field InspectedNode::snapshot
+glassmere-devtools   field Inspector::show_damage
+glassmere-devtools   field Inspector::show_repaints
+glassmere-devtools   field Inspector::tab
+glassmere-devtools   field InspectorModel::damage
+glassmere-devtools   field InspectorModel::diagnostics
+glassmere-devtools   field InspectorModel::events
+glassmere-devtools   field InspectorModel::export_path
+glassmere-devtools   field InspectorModel::focused
+glassmere-devtools   field InspectorModel::frames
+glassmere-devtools   field InspectorModel::gpu
+glassmere-devtools   field InspectorModel::hovered
+glassmere-devtools   field InspectorModel::layers
+glassmere-devtools   field InspectorModel::memory
+glassmere-devtools   field InspectorModel::nodes
+glassmere-devtools   field InspectorModel::root
+glassmere-devtools   field InspectorModel::size
+glassmere-devtools   field InspectorModel::state
+glassmere-devtools   field InspectorModel::title
+glassmere-devtools   field InspectorModel::viewport
+glassmere-devtools   field InspectorModel::warnings
+glassmere-devtools   field InspectorResponse::export_csv
+glassmere-devtools   field InspectorResponse::focus
+glassmere-devtools   field LayerRow::bounds
+glassmere-devtools   field LayerRow::depth
+glassmere-devtools   field LayerRow::opacity
+glassmere-devtools   field LayerRow::primitives
+glassmere-devtools   field LayerRow::transform
+glassmere-devtools   fn FrameRecord::csv_row (& self) -> String
+glassmere-devtools   fn GpuSnapshot::memory_total (& self) -> u64
+glassmere-devtools   fn Inspector::overlay (& self, model : & InspectorModel) -> Vec < Primitive>
+glassmere-devtools   fn Inspector::selected (& self) -> Option < NodeId>
+glassmere-devtools   fn Inspector::showing (tab : Tab) -> Self
+glassmere-devtools   fn Inspector::sync (& mut self, model : & InspectorModel)
+glassmere-devtools   fn Inspector::update (& mut self, message : InspectorMsg, model : & InspectorModel) -> InspectorResponse
+glassmere-devtools   fn Inspector::view (& self, ui : & mut Ui < '_, InspectorMsg>, model : & InspectorModel)
+glassmere-devtools   fn InspectorModel::capture (context : & Context, title : & str, size : Size, recorder : & Recorder) -> Self
+glassmere-devtools   fn InspectorModel::node (& self, id : NodeId) -> Option < & InspectedNode>
+glassmere-devtools   fn InspectorModel::path (& self, id : NodeId) -> String
+glassmere-devtools   fn Recorder::csv (& self) -> String
+glassmere-devtools   fn Recorder::event (& mut self, frame : u64, description : String, handled : bool)
+glassmere-devtools   fn Recorder::events (& self) -> & VecDeque < EventRecord>
+glassmere-devtools   fn Recorder::frame (& mut self, stats : FrameStats, render : Duration, total : Duration)
+glassmere-devtools   fn Recorder::frames (& self) -> & VecDeque < FrameRecord>
+glassmere-devtools   fn Recorder::gpu (& mut self, snapshot : GpuSnapshot, completed : Option < (u64, Duration)>)
+glassmere-devtools   fn Recorder::gpu_snapshot (& self) -> Option < & GpuSnapshot>
+glassmere-devtools   fn Recorder::new (capacity : usize) -> Self
+glassmere-devtools   variant InspectorMsg::Damage
+glassmere-devtools   variant InspectorMsg::Events
+glassmere-devtools   variant InspectorMsg::ExportCsv
+glassmere-devtools   variant InspectorMsg::Focus
+glassmere-devtools   variant InspectorMsg::Frames
+glassmere-devtools   variant InspectorMsg::Repaints
+glassmere-devtools   variant InspectorMsg::ShowNode
+glassmere-devtools   variant InspectorMsg::Tab
+glassmere-devtools   variant InspectorMsg::Tree
+glassmere-devtools   variant Tab::Accessibility
+glassmere-devtools   variant Tab::Diagnostics
+glassmere-devtools   variant Tab::Events
+glassmere-devtools   variant Tab::Frames
+glassmere-devtools   variant Tab::Gpu
+glassmere-devtools   variant Tab::Scene
+glassmere-devtools   variant Tab::State
+glassmere-devtools   variant Tab::Tree
+glassmere-devtools enum InspectorMsg
+glassmere-devtools enum Tab
+glassmere-devtools struct EventRecord
+glassmere-devtools struct FrameRecord
+glassmere-devtools struct GpuSnapshot
+glassmere-devtools struct InspectedNode
+glassmere-devtools struct Inspector
+glassmere-devtools struct InspectorModel
+glassmere-devtools struct InspectorResponse
+glassmere-devtools struct LayerRow
+glassmere-devtools struct Recorder
+glassmere-image   fn Loader::finished (& self) -> impl Iterator < Item = (PathBuf, Result < Image, String>)> + '_
+glassmere-image   fn Loader::new (done : impl Fn () + Send + 'static) -> Self
+glassmere-image   fn Loader::request (& self, path : PathBuf)
+glassmere-image fn decode (bytes : & [u8]) -> Result < Image, String>
+glassmere-image fn load (path : & Path) -> Result < Image, String>
+glassmere-image struct Loader
+glassmere-win32   fn Caption::set_maximize (& self, button : Option < (i32, i32, i32, i32)>)
+glassmere-win32   fn Caption::take (& self) -> Vec < CaptionEvent>
+glassmere-win32   variant CaptionEvent::Hover
+glassmere-win32   variant CaptionEvent::Left
+glassmere-win32 enum CaptionEvent
+glassmere-win32 fn attach (window : isize) -> Option < Caption>
+glassmere-win32 struct Caption

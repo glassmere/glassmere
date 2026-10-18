@@ -1,5 +1,5 @@
 //! A rotary dial, built the way a third party would build one: a normal
-//! crate, depending on `seaglass` and on nothing private to it.
+//! crate, depending on `glassmere` and on nothing private to it.
 //!
 //! It is here to hold the framework to its promise. Everything a built-in
 //! control has, this has through the public API: its own state, the pointer
@@ -8,7 +8,7 @@
 //! headlessly. If any of that needed an internal type, the promise would be
 //! broken and this crate would not compile.
 
-use seaglass::{
+use glassmere::{
     Color, CustomWidget, EventArea, Key, NumericValue, Primitive, Rect, Role, Semantics, Size,
     Style, Ui, UiEvent, WidgetBuilder, WidgetInput,
 };

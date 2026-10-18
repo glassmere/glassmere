@@ -1,0 +1,60 @@
+[package]
+name = "glassmere"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+readme.workspace = true
+description = "Immediate-style GUI framework over a retained, incremental UI kernel, with widgets, layout, text, theming and accessibility."
+keywords = ["gui", "ui", "immediate-mode", "widgets", "wgpu"]
+categories = ["gui", "graphics"]
+
+# `tr!` in this crate's tests checks keys and arguments against this catalog.
+[package.metadata.glassmere]
+messages = "../../examples/locales/en.ftl"
+
+[features]
+default = ["desktop", "syntax", "images", "derive", "fluent", "regex"]
+desktop = ["dep:glassmere-winit", "dep:glassmere-render-wgpu"]
+diagnostics = ["desktop", "glassmere-winit/diagnostics"]
+# `glassmere::syntax`: syntect highlighting for the code editor.
+syntax = ["dep:glassmere-syntax"]
+# `glassmere::image`: PNG, JPEG, WebP, GIF and SVG decoding, and `Ui::image_file` on the desktop.
+images = ["dep:glassmere-image", "glassmere-winit?/images"]
+# `glassmere::icu`: CLDR numbers, dates and times through ICU4X. Not on by
+# default: a large dependency tree, and about a megabyte of compiled data.
+icu = ["dep:glassmere-icu"]
+# `glassmere::fluent`: Fluent catalogs for `Ui::tr`.
+fluent = ["dep:glassmere-fluent"]
+# `#[derive(Properties)]` for property grids.
+derive = ["dep:glassmere-derive"]
+# Regular expressions in the code editor's find bar.
+regex = ["glassmere-core/regex"]
+# Native file dialogs, notifications, application menus and tray icons. Not
+# on by default: four dependencies an application may not want.
+platform = ["desktop", "glassmere-winit/platform"]
+# Serialize and Deserialize for `DockLayout`.
+serde = ["glassmere-core/serde"]
+
+[dependencies]
+glassmere-core.workspace = true
+glassmere-scene.workspace = true
+glassmere-devtools.workspace = true
+glassmere-render-cpu.workspace = true
+glassmere-winit = { workspace = true, optional = true }
+glassmere-render-wgpu = { workspace = true, optional = true }
+glassmere-syntax = { workspace = true, optional = true }
+glassmere-image = { workspace = true, optional = true }
+glassmere-derive = { workspace = true, optional = true }
+glassmere-fluent = { workspace = true, optional = true }
+glassmere-icu = { workspace = true, optional = true }
+
+[dev-dependencies]
+glassmere-testing.workspace = true
+# Reads the crates' own sources for the public-surface snapshot.
+syn = { version = "2.0", features = ["full", "parsing", "printing"] }
+quote = "1.0"
+
+[lints]
+workspace = true

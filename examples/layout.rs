@@ -1,4 +1,4 @@
-use seaglass::{
+use glassmere::{
     Align, App, AppOptions, Button, Effects, GridArea, Justify, Label, Length, Size, Style,
     TextInput, TextWrap, Track, Ui, run,
 };
@@ -225,7 +225,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     run(
         AppOptions {
-            title: "Seaglass / Layout".into(),
+            title: "Glassmere / Layout".into(),
             size: Size::new(900.0, 820.0),
             frame_limit: smoke.then_some(3),
             ..AppOptions::default()

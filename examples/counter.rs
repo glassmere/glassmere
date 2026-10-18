@@ -1,4 +1,4 @@
-use seaglass::{
+use glassmere::{
     App, AppOptions, Button, Color, CustomWidget, Effects, GpuSetup, Label, Length, Placement,
     Primitive, Rect, Semantics, Size, Style, Ui, WidgetBuilder, run,
 };
@@ -25,7 +25,7 @@ struct Counter {
 }
 
 impl Counter {
-    /// Under `seaglass-dev` the previous run's state comes back after a rebuild.
+    /// Under `glassmere-dev` the previous run's state comes back after a rebuild.
     fn restore(saved: &str, hook: bool, stress: bool) -> Self {
         let mut fields = saved.split_whitespace();
         Self {
@@ -116,7 +116,7 @@ impl App for Counter {
         };
         ui.column(page, |ui| {
             ui.label(
-                Label::new("SEAGLASS  /  COUNTER")
+                Label::new("GLASSMERE  /  COUNTER")
                     .style(sized(12.0, Some(Color::rgb(103, 232, 206)))),
             );
             ui.label(Label::new("A small API. A retained engine.").style(sized(30.0, None)));
@@ -205,11 +205,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|pair| pair[1].parse::<u64>())
         .transpose()?
         .unwrap_or(600);
-    let saved = seaglass::hot::saved_state().unwrap_or_default();
+    let saved = glassmere::hot::saved_state().unwrap_or_default();
     let app = Counter::restore(&saved, hook, stress);
     run(
         AppOptions {
-            title: "Seaglass / Counter".into(),
+            title: "Glassmere / Counter".into(),
             gpu: hook.then(|| {
                 GpuSetup::new(move |renderer| {
                     let counted = counted.clone();

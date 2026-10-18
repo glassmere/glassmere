@@ -85,7 +85,7 @@ try {
     $processCondition = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(
         [System.Windows.Automation.AutomationElement]::ProcessIdProperty, [int]$probe.Id)
     $titleCondition = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(
-        [System.Windows.Automation.AutomationElement]::NameProperty, 'Seaglass / Text and controls')
+        [System.Windows.Automation.AutomationElement]::NameProperty, 'Glassmere / Text and controls')
     $condition = New-Object System.Windows.Automation.AndCondition -ArgumentList @($processCondition, $titleCondition)
     $window = $null
     for ($attempt = 0; $attempt -lt 100 -and $null -eq $window; $attempt++) {

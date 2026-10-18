@@ -2,8 +2,8 @@
 //! the framework's own controls following along. Run it with `--features icu`
 //! and numbers and dates follow the language as well. German leaves `name`
 //! untranslated on purpose, to show the fallback to English.
-use seaglass::fluent::FluentMessages;
-use seaglass::{
+use glassmere::fluent::FluentMessages;
+use glassmere::{
     App, AppOptions, Button, Date, DateStyle, Effects, Label, Length, LocaleFormat, Messages,
     NumberOptions, Size, Style, TextWrap, Toast, Ui, run, tr,
 };
@@ -24,7 +24,7 @@ fn set_locale(effects: &mut Effects<'_, Msg>, locale: &str) {
     // With `--features icu`, numbers and dates follow the language too.
     #[cfg(feature = "icu")]
     effects.set_format(
-        seaglass::icu::IcuFormat::new(locale)
+        glassmere::icu::IcuFormat::new(locale)
             .ok()
             .map(|format| Box::new(format) as Box<dyn LocaleFormat>),
     );
@@ -144,7 +144,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| "en".into());
     run(
         AppOptions {
-            title: "Seaglass / Localization".into(),
+            title: "Glassmere / Localization".into(),
             size: Size::new(760.0, 560.0),
             frame_limit: smoke.then_some(4),
             ..AppOptions::default()

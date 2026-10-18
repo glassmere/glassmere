@@ -40,13 +40,13 @@ First release. What does not work yet is listed in [docs/limitations.md](docs/li
 
 #### Platform and windows
 
-- Native winit host with DPI scaling, multiple windows on one shared graphics device, OS file drops and drags out, touch and gestures, and `Ui::title_bar` with Windows snap layouts through the `seaglass-win32` crate.
+- Native winit host with DPI scaling, multiple windows on one shared graphics device, OS file drops and drags out, touch and gestures, and `Ui::title_bar` with Windows snap layouts through the `glassmere-win32` crate.
 - Behind the `platform` feature: native file dialogs, notifications, an application menu, a tray icon and file associations.
-- A development runner, `seaglass-dev`, that rebuilds and restarts with app state and window kept.
+- A development runner, `glassmere-dev`, that rebuilds and restarts with app state and window kept.
 
 #### Testing and tooling
 
-- `seaglass-testing` harness with semantic finders, real input paths and text snapshots of the tree, layout, accessibility and scene.
+- `glassmere-testing` harness with semantic finders, real input paths and text snapshots of the tree, layout, accessibility and scene.
 - F12 inspector with node details, frame timings, GPU pass times and memory, repaint and damage overlays, CSV export and `tracing` spans, and framework diagnostics.
 - A public API snapshot guarded by a test, with the stability policy in [docs/api-stability.md](docs/api-stability.md).
 

@@ -1,12 +1,12 @@
 # Running on a desktop
 
-What the host (`seaglass-winit`, re-exported by `seaglass`) provides around the view: windows, graphics choice, touch, drag and drop, native services and the development runner.
+What the host (`glassmere-winit`, re-exported by `glassmere`) provides around the view: windows, graphics choice, touch, drag and drop, native services and the development runner.
 
 ## Starting
 
 `run(options, app)` runs an `App`; `run_with(options, state, view)` is the shorter form whose message is an `Action<S>`. `AppOptions` carries `title`, `size`, `background`, `theme`, `stylesheet`, `direction`, `caret_movement`, `reduced_motion`, `decorations`, `resizable`, `placement`, `devtools`, `graphics`, `gpu` and `frame_limit`. The defaults are a 900 by 650 window that follows the system theme with the inspector available.
 
-`App::save_state` and `seaglass::hot::saved_state` carry a string across a restart under the development runner. Outside it they do nothing.
+`App::save_state` and `glassmere::hot::saved_state` carry a string across a restart under the development runner. Outside it they do nothing.
 
 ## Windows
 
@@ -20,25 +20,25 @@ What the host (`seaglass-winit`, re-exported by `seaglass`) provides around the 
 
 `AppOptions::decorations = false` removes the system frame. `Ui::title_bar` is a strip that moves the window and maximizes on a double press, `Ui::window_buttons` draws minimize, maximize and close, and `Ui::resize_frame(thickness)` places the resize grips. `Ui::window()` reports whether the window is maximized or focused, of the last frame. `decorations` is read when the window opens. Full screen is not a window command.
 
-On Windows 11 the `seaglass-win32` crate answers the system's hit test for the maximize button so the snap layout flyout appears. It is the only crate with unsafe code and is a few lines of window procedure; on Windows 10 it does nothing. The system takes the press, so the maximize button shows hover but no pressed state.
+On Windows 11 the `glassmere-win32` crate answers the system's hit test for the maximize button so the snap layout flyout appears. It is the only crate with unsafe code and is a few lines of window procedure; on Windows 10 it does nothing. The system takes the press, so the maximize button shows hover but no pressed state.
 
 ## Graphics
 
 The wgpu renderer tries one compiled backend at a time (Metal, Direct3D 12, Vulkan, OpenGL, filtered by platform), restricted by `WGPU_BACKEND` if set. `GraphicsOptions { backend, max_resource_bindings, maximum_frame_latency, memory_policy }` defaults to `GraphicsBackend::Auto`, 4,096 bindings, a latency of one frame and `GpuMemoryPolicy::Compact`. An explicit backend overrides `WGPU_BACKEND` and disables fallback to other APIs. `AppOptions::gpu` registers the application's own drawing for `Primitive::Custom` rectangles; see [renderers](renderers.md).
 
-`GraphicsBackend::Cpu` or `SEAGLASS_RENDERER=cpu` paints with `CpuRenderer` through softbuffer. The host falls back to it on its own, after printing what failed, when no graphics backend can be started. `GraphicsOptions` other than the backend mean nothing to the CPU path, and a custom GPU draw leaves its rectangle empty.
+`GraphicsBackend::Cpu` or `GLASSMERE_RENDERER=cpu` paints with `CpuRenderer` through softbuffer. The host falls back to it on its own, after printing what failed, when no graphics backend can be started. `GraphicsOptions` other than the backend mean nothing to the CPU path, and a custom GPU draw leaves its rectangle empty.
 
 ## Environment variables
 
 | Variable | Effect |
 | --- | --- |
-| `SEAGLASS_RENDERER=cpu` | Paint with the CPU renderer. |
+| `GLASSMERE_RENDERER=cpu` | Paint with the CPU renderer. |
 | `WGPU_BACKEND` | Restrict the wgpu backends tried, as a comma list. |
-| `SEAGLASS_INSPECT` | Open the inspector window at start. |
-| `SEAGLASS_STARTUP` | Print how far startup had got at each step. |
-| `SEAGLASS_HOT_STATE`, `SEAGLASS_HOT_STOP` | Set by `seaglass-dev`; not for hand use. |
+| `GLASSMERE_INSPECT` | Open the inspector window at start. |
+| `GLASSMERE_STARTUP` | Print how far startup had got at each step. |
+| `GLASSMERE_HOT_STATE`, `GLASSMERE_HOT_STOP` | Set by `glassmere-dev`; not for hand use. |
 
-With the `diagnostics` feature: `SEAGLASS_MEMORY_TRACE`, `SEAGLASS_MEMORY_PROFILE`, `SEAGLASS_FRAME_LATENCY` and `SEAGLASS_BINDING_LIMIT` print memory checkpoints (`SEAGLASS_MEMORY_TRACE`), pick a memory preset (`compact` or `memory`) and override the frame latency and resource binding limit, for measuring.
+With the `diagnostics` feature: `GLASSMERE_MEMORY_TRACE`, `GLASSMERE_MEMORY_PROFILE`, `GLASSMERE_FRAME_LATENCY` and `GLASSMERE_BINDING_LIMIT` print memory checkpoints (`GLASSMERE_MEMORY_TRACE`), pick a memory preset (`compact` or `memory`) and override the frame latency and resource binding limit, for measuring.
 
 ## Input
 
@@ -63,13 +63,13 @@ A `Menu` is `MenuEntry::Command`, `Separator` or `submenu`. A menu item is a `Co
 ## Development runner
 
 ```sh
-cargo run -p seaglass-dev -- [--watch PATH]... [--poll MS] [cargo args] -- [app args]
+cargo run -p glassmere-dev -- [--watch PATH]... [--poll MS] [cargo args] -- [app args]
 ```
 
-`seaglass-dev` builds the app, runs it, and when a watched `.rs` or `.toml` file changes rebuilds it. After a successful build the running app is asked to stop, saves its state through `App::save_state`, and the new build starts where the old one was, with the window at the same position and size. A failed build leaves the running app alone. The watch defaults to the current directory and the poll to 500 ms. Only one window's state is saved, and focus and scroll positions are not part of it unless the application includes them.
+`glassmere-dev` builds the app, runs it, and when a watched `.rs` or `.toml` file changes rebuilds it. After a successful build the running app is asked to stop, saves its state through `App::save_state`, and the new build starts where the old one was, with the window at the same position and size. A failed build leaves the running app alone. The watch defaults to the current directory and the poll to 500 ms. Only one window's state is saved, and focus and scroll positions are not part of it unless the application includes them.
 
 Files the view reads are reloaded in place: `Ui::watched_text(path)` and `watched_bytes(path)` return the current contents and re-declare when the file's modification time changes. Stylesheets and image files reload the same way.
 
 ## Testing
 
-`seaglass-testing` drives a `Context` with a synthetic text measurer through the same event and action paths as the host. `Harness::app(size, app)` runs an `App` without a window; `find` locates a node by key path, `by_label` by accessible name, and `press`, `action`, `snapshot_accessibility` and the other snapshot methods drive and describe it. See [accessibility](accessibility.md) and [widgets](widgets.md) for examples.
+`glassmere-testing` drives a `Context` with a synthetic text measurer through the same event and action paths as the host. `Harness::app(size, app)` runs an `App` without a window; `find` locates a node by key path, `by_label` by accessible name, and `press`, `action`, `snapshot_accessibility` and the other snapshot methods drive and describe it. See [accessibility](accessibility.md) and [widgets](widgets.md) for examples.

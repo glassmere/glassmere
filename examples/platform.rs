@@ -2,9 +2,9 @@
 //! notifications, and the files the system started the application with.
 //!
 //! ```sh
-//! cargo run -p seaglass-examples --example platform --features platform
+//! cargo run -p glassmere-examples --example platform --features platform
 //! ```
-use seaglass::{
+use glassmere::{
     App, AppOptions, Color, Command, Effects, FileRequest, Label, Length, Menu, MenuEntry,
     Notification, Shortcut, Size, Style, TextWrap, Tray, Ui, run,
 };
@@ -87,7 +87,7 @@ impl App for Platform {
                 self.said += 1;
                 if !self.smoke {
                     effects.notify(Notification::new(
-                        "Seaglass",
+                        "Glassmere",
                         "The notes were saved.".to_owned(),
                     ));
                 }
@@ -114,7 +114,7 @@ impl App for Platform {
         // everywhere. Both send the commands declared below.
         ui.set_menu(menu(self.saved));
         ui.set_tray(Some(
-            Tray::new("Seaglass desktop example").with_menu(menu(self.saved)),
+            Tray::new("Glassmere desktop example").with_menu(menu(self.saved)),
         ));
         let page = Style {
             padding: 20.0,
@@ -202,7 +202,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     run(
         AppOptions {
-            title: "Seaglass / Desktop".into(),
+            title: "Glassmere / Desktop".into(),
             size: Size::new(640.0, 460.0),
             frame_limit: smoke.then_some(20),
             ..AppOptions::default()

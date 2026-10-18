@@ -59,7 +59,7 @@ $info.FileName = (Resolve-Path -LiteralPath $Executable).Path
 $info.UseShellExecute = $false
 $process = [System.Diagnostics.Process]::Start($info)
 try {
-    $window = Wait-Window 'Seaglass / Theming'
+    $window = Wait-Window 'Glassmere / Theming'
     Start-Sleep -Seconds 2
     Save-Window $window 'theming-initial'
     Invoke-Element (Wait-Element $window 'Light theme')

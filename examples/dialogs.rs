@@ -1,4 +1,4 @@
-use seaglass::{
+use glassmere::{
     App, AppOptions, Button, DialogOptions, Effects, FocusScope, Label, Length, Size, Style,
     TextWrap, Ui, WindowId, WindowRequest, run,
 };
@@ -254,7 +254,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let open = std::env::args().any(|arg| arg == "--open");
     run(
         AppOptions {
-            title: "Seaglass / Dialogs and focus".into(),
+            title: "Glassmere / Dialogs and focus".into(),
             size: Size::new(900.0, 720.0),
             frame_limit: smoke.then_some(4),
             ..AppOptions::default()

@@ -1,7 +1,7 @@
 //! A property grid editing the card it sits next to. The rows and the
 //! messages come from `#[derive(Properties)]` on the card; two more rows are
 //! added by hand through the builder, which is what the derive expands to.
-use seaglass::{
+use glassmere::{
     Align, App, AppOptions, Button, Color, Effects, Justify, Length, Properties,
     PropertyGridOptions, PropertyGridState, PropertyMsg, Size, Style, Ui, run,
 };
@@ -138,7 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     run(
         AppOptions {
-            title: "Seaglass / Property grid".into(),
+            title: "Glassmere / Property grid".into(),
             size: Size::new(960.0, 720.0),
             frame_limit: smoke.then_some(3),
             ..AppOptions::default()

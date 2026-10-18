@@ -1,4 +1,4 @@
-use seaglass::{
+use glassmere::{
     App, AppOptions, Button, DockAction, DockLayout, DockNode, DockOptions, DockPanel, DockTarget,
     DockWindowId, Effects, Label, Length, Size, Style, TextWrap, Ui, WindowId, WindowRequest, run,
 };
@@ -122,7 +122,7 @@ impl Docking {
                 continue;
             }
             let window = effects.open_window(WindowRequest {
-                title: "Seaglass / Docking (detached)".into(),
+                title: "Glassmere / Docking (detached)".into(),
                 size: Some(Size::new(dock.width, dock.height)),
                 modal_owner: None,
             });
@@ -222,7 +222,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     let reset = std::env::args().any(|arg| arg == "--reset");
     let open = std::env::args().any(|arg| arg == "--open");
-    let path = std::env::temp_dir().join("seaglass-docking.layout");
+    let path = std::env::temp_dir().join("glassmere-docking.layout");
     let mut layout = std::fs::read_to_string(&path)
         .ok()
         .filter(|_| !reset && !smoke && !open)
@@ -241,7 +241,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     run(
         AppOptions {
-            title: "Seaglass / Docking".into(),
+            title: "Glassmere / Docking".into(),
             size: Size::new(1100.0, 760.0),
             frame_limit: smoke.then_some(3),
             ..AppOptions::default()

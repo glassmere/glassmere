@@ -1,0 +1,19 @@
+[package]
+name = "glassmere-icu"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "CLDR number, date and time formatting for glassmere through ICU4X."
+
+[dependencies]
+glassmere-core.workspace = true
+# CLDR data is compiled in: correct for every locale, about a megabyte as used here.
+icu = "2.3.1"
+
+[dev-dependencies]
+glassmere-scene.workspace = true
+
+[lints]
+workspace = true

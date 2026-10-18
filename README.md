@@ -1,4 +1,4 @@
-# Seaglass
+# Glassmere
 
 ![MSRV](https://img.shields.io/badge/rust-1.90%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
@@ -7,7 +7,7 @@
 A native GUI framework for Rust. You write the view as plain function calls every frame; underneath, a retained tree keeps widget identity, layout and paint between frames and only redoes the parts that changed.
 
 ```rust
-use seaglass::{run, App, AppOptions, Button, Effects, Ui};
+use glassmere::{run, App, AppOptions, Button, Effects, Ui};
 
 #[derive(Clone)]
 enum Msg {
@@ -79,7 +79,7 @@ Green is used and tested by hand, yellow builds and passes tests but has gaps or
 - **Images:** PNG, JPEG, WebP, GIF and SVG decoded off the UI thread, with nine-slice backgrounds.
 - **Localization:** Fluent catalogs, a compile-time checked `tr!`, and CLDR number and date formatting through ICU4X behind the `icu` feature.
 - **Input:** keyboard focus scopes, multi-touch with inertia and gestures, drag and drop within and between windows, and files dragged out to the OS.
-- **Tooling:** an F12 inspector window (tree, styles, accessibility, events, frame and GPU timings, diagnostics), a headless test harness with semantic finders and snapshots, and `seaglass-dev`, which rebuilds and restarts the app and keeps its state.
+- **Tooling:** an F12 inspector window (tree, styles, accessibility, events, frame and GPU timings, diagnostics), a headless test harness with semantic finders and snapshots, and `glassmere-dev`, which rebuilds and restarts the app and keeps its state.
 - **Accessibility:** every widget publishes its role, name, value and actions through AccessKit.
 
 ## Examples
@@ -88,7 +88,7 @@ Each file in [`examples/`](examples) is one runnable app:
 
 ```sh
 cargo run --example counter
-cargo run -p seaglass-examples --example platform --features platform
+cargo run -p glassmere-examples --example platform --features platform
 ```
 
 | Example | Shows |
@@ -109,7 +109,7 @@ cargo run -p seaglass-examples --example platform --features platform
 | `properties` | A property grid editing a card. |
 | `images` | Image formats, fit modes, tinted icons, dragging a file out. |
 | `gestures` | Pan, pinch and rotate. |
-| `localization` | Fluent catalogs and switching language at run time. Add `-p seaglass-examples --features icu` for CLDR formatting. |
+| `localization` | Fluent catalogs and switching language at run time. Add `-p glassmere-examples --features icu` for CLDR formatting. |
 | `tasks` | Cancellable background jobs. |
 | `reactive` | The optional signal store. |
 | `titlebar` | A window that draws its own title bar. |
@@ -120,7 +120,7 @@ cargo run -p seaglass-examples --example platform --features platform
 To work on an app with hot restart:
 
 ```sh
-cargo run -p seaglass-dev -- -p seaglass-examples --example counter
+cargo run -p glassmere-dev -- -p glassmere-examples --example counter
 ```
 
 ## Guides
@@ -143,21 +143,21 @@ cargo run -p seaglass-dev -- -p seaglass-examples --example counter
 
 | Crate | |
 | --- | --- |
-| `seaglass` | The facade; most apps depend only on this. |
-| `seaglass-core` | Retained tree, layout, input, widgets, collections and semantics. No platform code. |
-| `seaglass-scene` | Geometry, colours and the display list. |
-| `seaglass-text` | Font loading and shaping on cosmic-text, shared by both renderers. |
-| `seaglass-render-wgpu` | The GPU renderer. |
-| `seaglass-render-cpu` | A software renderer for headless use, screenshots and as a fallback. |
-| `seaglass-winit` | Windows, input, AccessKit and presentation. |
-| `seaglass-win32` | Windows 11 snap layouts. The only crate with `unsafe`. |
-| `seaglass-image` | Image decoding and the background loader. |
-| `seaglass-fluent`, `seaglass-icu` | Localization. |
-| `seaglass-syntax` | Syntax highlighting for the code editor. |
-| `seaglass-derive` | `#[derive(Properties)]`, `tr!` and `style_sheet!`. |
-| `seaglass-devtools` | The inspector. |
-| `seaglass-testing` | Headless test harness. |
-| `seaglass-dev` | The hot-restart runner. |
+| `glassmere` | The facade; most apps depend only on this. |
+| `glassmere-core` | Retained tree, layout, input, widgets, collections and semantics. No platform code. |
+| `glassmere-scene` | Geometry, colours and the display list. |
+| `glassmere-text` | Font loading and shaping on cosmic-text, shared by both renderers. |
+| `glassmere-render-wgpu` | The GPU renderer. |
+| `glassmere-render-cpu` | A software renderer for headless use, screenshots and as a fallback. |
+| `glassmere-winit` | Windows, input, AccessKit and presentation. |
+| `glassmere-win32` | Windows 11 snap layouts. The only crate with `unsafe`. |
+| `glassmere-image` | Image decoding and the background loader. |
+| `glassmere-fluent`, `glassmere-icu` | Localization. |
+| `glassmere-syntax` | Syntax highlighting for the code editor. |
+| `glassmere-derive` | `#[derive(Properties)]`, `tr!` and `style_sheet!`. |
+| `glassmere-devtools` | The inspector. |
+| `glassmere-testing` | Headless test harness. |
+| `glassmere-dev` | The hot-restart runner. |
 
 ## Building
 
@@ -167,7 +167,7 @@ Rust 1.90 or newer. Linux needs the usual winit packages (X11 or Wayland and xkb
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
-cargo test -p seaglass-render-wgpu --test gpu -- --ignored   # needs a GPU
+cargo test -p glassmere-render-wgpu --test gpu -- --ignored   # needs a GPU
 ```
 
 Every example takes `--smoke`, which opens the window, presents two frames and exits.

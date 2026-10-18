@@ -1,0 +1,30 @@
+[package]
+name = "glassmere-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+readme.workspace = true
+description = "Retained UI kernel for glassmere: stable identity, reconciliation, layout, input and semantics."
+keywords = ["gui", "ui", "retained", "layout", "accessibility"]
+categories = ["gui"]
+
+[features]
+serde = ["dep:serde"]
+# Regular expressions in the editor's find bar. Without it a search that asks
+# for one reports that the feature is off.
+regex = ["dep:regex"]
+
+[dependencies]
+serde = { workspace = true, optional = true }
+regex = { version = "1.11", optional = true }
+glassmere-scene.workspace = true
+bitflags.workspace = true
+tracing.workspace = true
+taffy.workspace = true
+unicode-segmentation.workspace = true
+ropey.workspace = true
+
+[lints]
+workspace = true

@@ -1,5 +1,5 @@
-use seaglass::syntax::SyntectHighlighter;
-use seaglass::{
+use glassmere::syntax::SyntectHighlighter;
+use glassmere::{
     App, AppOptions, CodeEditorOptions, Diagnostic, Effects, FindState, Highlighter, Label, Length,
     RichRun, RichText, Severity, Size, Style, TextDocument, TextInput, TextOp, TextWrap, Ui, run,
 };
@@ -187,7 +187,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let diagnostics = lint(&document);
     run(
         AppOptions {
-            title: "Seaglass / Editor".into(),
+            title: "Glassmere / Editor".into(),
             size: Size::new(900.0, 700.0),
             frame_limit: smoke.then_some(3),
             ..AppOptions::default()

@@ -4,7 +4,7 @@
 //! file under `examples/assets` while this runs and it reloads. The file card
 //! at the bottom can be dragged out of the window, onto the desktop or into
 //! another application.
-use seaglass::{
+use glassmere::{
     Align, App, AppOptions, BackgroundImage, Button, Color, DragOutcome, DragPayload,
     DragSourceBuilder, Effects, Image, ImageFit, ImageOptions, ImageTint, Justify, Label, Length,
     Size, Style, Ui, run,
@@ -273,7 +273,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     run(
         AppOptions {
-            title: "Seaglass / Images".into(),
+            title: "Glassmere / Images".into(),
             size: Size::new(980.0, 860.0),
             stylesheet: Some(format!("{ASSETS}/../images.style").into()),
             // Long enough for the background decodes to land in a smoke run.

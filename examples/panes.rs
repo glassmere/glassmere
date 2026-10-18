@@ -1,4 +1,4 @@
-use seaglass::{
+use glassmere::{
     App, AppOptions, Axis, Button, Color, DirectionChoice, Effects, Label, Length, MenuItem,
     PopoverOptions, Size, SplitOptions, Style, Tab, TextWrap, Ui, run,
 };
@@ -213,7 +213,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let open = std::env::args().any(|arg| arg == "--open");
     run(
         AppOptions {
-            title: "Seaglass / Tabs, panes and overlays".into(),
+            title: "Glassmere / Tabs, panes and overlays".into(),
             size: Size::new(960.0, 720.0),
             frame_limit: smoke.then_some(3),
             direction,

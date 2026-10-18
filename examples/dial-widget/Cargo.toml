@@ -8,10 +8,10 @@ publish.workspace = true
 license.workspace = true
 
 [dependencies]
-seaglass = { path = "../../crates/seaglass" }
+glassmere = { path = "../../crates/glassmere" }
 
 [dev-dependencies]
-seaglass-testing = { path = "../../crates/seaglass-testing" }
+glassmere-testing = { path = "../../crates/glassmere-testing" }
 
 [lints]
 workspace = true

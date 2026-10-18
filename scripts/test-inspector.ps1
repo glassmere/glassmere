@@ -1,5 +1,5 @@
 param([string]$Executable = 'target/release/examples/application.exe')
-# Opens the application workbench with SEAGLASS_INSPECT=1, drives the inspector
+# Opens the application workbench with GLASSMERE_INSPECT=1, drives the inspector
 # window through UI Automation and saves screenshots under target/.
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient
@@ -63,10 +63,10 @@ function Save-Window($Window, [string]$Name) {
 $info = New-Object System.Diagnostics.ProcessStartInfo
 $info.FileName = (Resolve-Path -LiteralPath $Executable).Path
 $info.UseShellExecute = $false
-$info.EnvironmentVariables['SEAGLASS_INSPECT'] = '1'
+$info.EnvironmentVariables['GLASSMERE_INSPECT'] = '1'
 $process = [System.Diagnostics.Process]::Start($info)
 try {
-    $target = Wait-Window 'Seaglass / Application workbench'
+    $target = Wait-Window 'Glassmere / Application workbench'
     $inspector = Wait-Window 'Inspector'
     Start-Sleep -Seconds 2
     Save-Window $inspector 'inspector-tree'

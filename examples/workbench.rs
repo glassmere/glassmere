@@ -1,4 +1,4 @@
-use seaglass::{
+use glassmere::{
     App, AppOptions, Button, Color, Component, CustomWidget, Effects, Label, Length, MessageSender,
     Primitive, Rect, Role, Semantics, Size, Style, Ui, UiEvent, WidgetBuilder, WidgetInput,
     WindowCommand, run,
@@ -204,7 +204,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (closed_probe, probe) = std::sync::mpsc::channel();
     run(
         AppOptions {
-            title: "Seaglass / Architecture workbench".into(),
+            title: "Glassmere / Architecture workbench".into(),
             size: Size::new(920.0, 820.0),
             ..AppOptions::default()
         },

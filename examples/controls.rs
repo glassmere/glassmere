@@ -1,4 +1,4 @@
-use seaglass::{
+use glassmere::{
     App, AppOptions, Button, Color, DirectionChoice, Effects, FontFamily, Label, Length, MenuItem,
     NumberOptions, Size, Style, TextInput, TextWrap, Toast, Ui, run, suggest,
 };
@@ -261,7 +261,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     run(
         AppOptions {
-            title: "Seaglass / Text and controls".into(),
+            title: "Glassmere / Text and controls".into(),
             size: Size::new(880.0, 740.0),
             frame_limit: smoke.then_some(3),
             direction,

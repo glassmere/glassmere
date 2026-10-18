@@ -3,7 +3,7 @@
 //! older query can never overtake the current one, and the worker stops at
 //! its next look rather than running to the end. Results and progress arrive
 //! as a stream, a few frames' worth at a time.
-use seaglass::{
+use glassmere::{
     App, AppOptions, Button, Color, Effects, FontFamily, Label, Length, Size, Style, TextWrap, Ui,
     run,
 };
@@ -217,7 +217,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     run(
         AppOptions {
-            title: "Seaglass / Background work".into(),
+            title: "Glassmere / Background work".into(),
             size: Size::new(720.0, 620.0),
             frame_limit: smoke.then_some(90),
             ..AppOptions::default()

@@ -4,7 +4,7 @@
 //! been declared, sends a message from a worker thread, closes the window and
 //! exits; it fails unless each of those happened.
 
-use seaglass::{App, AppOptions, Button, Effects, Size, Ui, WindowId, WindowRequest, run};
+use glassmere::{App, AppOptions, Button, Effects, Size, Ui, WindowId, WindowRequest, run};
 use std::{
     sync::{
         Arc,
@@ -104,7 +104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let checks = Checks::default();
     run(
         AppOptions {
-            title: "Seaglass / Windows".into(),
+            title: "Glassmere / Windows".into(),
             size: Size::new(480.0, 320.0),
             frame_limit: smoke.then_some(300),
             ..AppOptions::default()

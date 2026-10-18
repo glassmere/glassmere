@@ -60,13 +60,13 @@ $info.RedirectStandardError = $true
 $process = [System.Diagnostics.Process]::Start($info)
 $errors = $process.StandardError.ReadToEndAsync()
 try {
-    $main = Wait-Window 'Seaglass / Application workbench'
+    $main = Wait-Window 'Glassmere / Application workbench'
     Start-Sleep -Seconds 2
     # The details window is opened from the toolbar.
     $open = Find-Element $main 'Details window   Ctrl+D'
     ([System.Windows.Automation.InvokePattern]$open.GetCurrentPattern(
         [System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
-    $details = Wait-Window 'Seaglass / Ticket details'
+    $details = Wait-Window 'Glassmere / Ticket details'
     Start-Sleep -Seconds 1
     # Put the two windows side by side: a drop that lands where they overlap
     # would not say which window took it.
