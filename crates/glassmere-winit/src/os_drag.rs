@@ -5,7 +5,7 @@
 //! files, through the `drag` crate, on Windows and macOS. Text needs a data
 //! object of our own and would be one more arm in `start`.
 use glassmere_core::{DragOutcome, DragPayload};
-use std::sync::mpsc::{Receiver, channel};
+use std::sync::mpsc::Receiver;
 use winit::window::Window;
 
 /// Starts a system drag. `None` means this payload cannot leave the app here,
@@ -16,7 +16,7 @@ pub(crate) fn start(window: &Window, payload: &DragPayload) -> Option<Receiver<D
     let DragPayload::Files(files) = payload else {
         return None;
     };
-    let (sender, receiver) = channel();
+    let (sender, receiver) = std::sync::mpsc::channel();
     drag::start_drag(
         window,
         drag::DragItem::Files(files.clone()),

@@ -249,7 +249,8 @@ fn the_palette_filters_commands_and_gives_back_the_one_that_was_chosen() {
     );
     let shown = labels(&driven.context);
     // Every command, each with the keys that would run it.
-    assert!(shown.iter().any(|label| label == "Save file, Ctrl+S"));
+    let save = format!("Save file, {}", Shortcut::primary('s').describe());
+    assert!(shown.contains(&save));
     assert!(shown.iter().any(|label| label == "Close window"));
     // The typing field has the focus the moment it opens.
     let field = named(&driven.context, "Search commands");
@@ -335,13 +336,8 @@ fn a_menu_item_writes_its_shortcut_along_the_far_edge() {
     assert!(hint.x + hint.width <= bounds.x + bounds.width + 0.5);
     assert!(hint.y >= bounds.y && hint.y + hint.height <= bounds.y + bounds.height + 0.5);
     // The screen reader hears it as part of the item.
-    assert!(
-        labels(&context)
-            .iter()
-            .any(|label| label.contains("Save") && label.contains("Ctrl")),
-        "{:?}",
-        labels(&context)
-    );
+    let save = format!("Save, {}", Shortcut::primary('s').describe());
+    assert!(labels(&context).contains(&save), "{:?}", labels(&context));
 }
 
 #[derive(Default)]
