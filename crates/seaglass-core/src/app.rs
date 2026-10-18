@@ -733,8 +733,9 @@ impl<M: Clone + 'static> AppDriver<M> {
         (opened, closed)
     }
 
-    /// Tells the app a window of its own was closed from outside, ; every view is due, and the windows `update` asked for are
-    /// in [`take_windows`](Self::take_windows).
+    /// Tells the app a window of its own was closed from outside. Every view
+    /// is due, and the windows `update` asked for are in
+    /// [`take_windows`](Self::take_windows).
     pub fn window_closed<A: App<Message = M>>(&mut self, app: &mut A, window: WindowId) {
         self.forget_window(window);
         self.effects.requests.origin = WindowId::MAIN;

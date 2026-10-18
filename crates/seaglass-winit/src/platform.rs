@@ -86,7 +86,8 @@ mod enabled {
                 builder = builder.with_menu(Box::new(menu));
             }
             if let Some((width, height, pixels)) = tray.icon.as_ref().and_then(Image::pixels)
-                && let Ok(icon) = tray_icon::Icon::from_rgba(straight(pixels), width, height)
+                && let Ok(icon) =
+                    tray_icon::Icon::from_rgba(crate::input::straight_rgba(pixels), width, height)
             {
                 builder = builder.with_icon(icon);
             }
@@ -96,24 +97,6 @@ mod enabled {
                 .ok()
                 .map(Self)
         }
-    }
-
-    /// Icons are straight RGBA; scenes hold premultiplied pixels.
-    fn straight(premultiplied: &[u8]) -> Vec<u8> {
-        let mut straight = Vec::with_capacity(premultiplied.len());
-        for pixel in premultiplied.as_chunks::<4>().0 {
-            let alpha = pixel[3];
-            for channel in &pixel[..3] {
-                straight.push(if alpha == 0 {
-                    0
-                } else {
-                    ((u32::from(*channel) * 255 + u32::from(alpha) / 2) / u32::from(alpha)).min(255)
-                        as u8
-                });
-            }
-            straight.push(alpha);
-        }
-        straight
     }
 
     /// Builds a platform menu. Each command keeps its own id, so the event

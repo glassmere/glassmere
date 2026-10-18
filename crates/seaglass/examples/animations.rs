@@ -1,6 +1,6 @@
 use seaglass::{
-    Animation, App, AppOptions, Button, Color, DialogOptions, Easing, Effect, Effects, Keyframe,
-    Label, Length, Paint, Repeat, Size, Style, TextWrap, Transform, Transition, Ui, run,
+    Align, Animation, App, AppOptions, Button, Color, DialogOptions, Easing, Effect, Effects,
+    Keyframe, Label, Length, Paint, Repeat, Size, Style, TextWrap, Transform, Transition, Ui, run,
 };
 
 #[derive(Clone)]
@@ -117,7 +117,7 @@ impl App for Animations {
                 Style::default()
                     .gap(24.0)
                     .padding(16.0)
-                    .align_items(seaglass::Align::Center),
+                    .align_items(Align::Center),
                 |ui| {
                     let tile = Style::default()
                         .width(Length::Px(44.0))
@@ -205,7 +205,7 @@ impl App for Animations {
                             .radius(8.0)
                             .width(Length::Px(360.0))
                             .background(theme.surface)
-                            .align_items(seaglass::Align::Center)
+                            .align_items(Align::Center)
                             .layout_transition(Transition::new(220).easing(Easing::EaseInOut))
                             .enter(Effect::slide(-24.0, 0.0, 220))
                             .exit(Effect::slide(40.0, 0.0, 200)),

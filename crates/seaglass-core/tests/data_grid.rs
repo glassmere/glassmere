@@ -136,6 +136,22 @@ impl App {
         self.driven.context.find(&path).unwrap()
     }
 
+    /// A cell of the first body row, in the scrolling part.
+    fn body_cell(&self, column: &str) -> NodeId {
+        self.driven
+            .context
+            .find(&[
+                "grid",
+                "$rows",
+                "item-0",
+                "$cells",
+                "$scrolling",
+                "$strip",
+                column,
+            ])
+            .unwrap()
+    }
+
     fn sort_button(&self, column: usize) -> NodeId {
         self.header(column, &["$drop", "$drag", "$sort"])
     }
@@ -286,33 +302,9 @@ fn dragging_a_header_edge_resizes_its_column_and_the_cells_follow() {
         },
     );
     assert_eq!(app.driven.state().grid.columns.width(0, 160.0), 220.0);
-    let cell = app
-        .driven
-        .context
-        .find(&[
-            "grid",
-            "$rows",
-            "item-0",
-            "$cells",
-            "$scrolling",
-            "$strip",
-            "0",
-        ])
-        .unwrap();
+    let cell = app.body_cell("0");
     assert_eq!(app.driven.context.node(cell).unwrap().bounds.width, 220.0);
-    let city = app
-        .driven
-        .context
-        .find(&[
-            "grid",
-            "$rows",
-            "item-0",
-            "$cells",
-            "$scrolling",
-            "$strip",
-            "1",
-        ])
-        .unwrap();
+    let city = app.body_cell("1");
     assert_eq!(app.driven.context.node(city).unwrap().bounds.x, 220.0);
 
     // Far past the minimum stops at the minimum; assistive technology can set it too.
@@ -345,19 +337,7 @@ fn dragging_a_header_onto_another_moves_the_column_and_a_click_still_sorts() {
     let to = app.centre(app.sort_button(1));
     app.drag(from, to);
     assert_eq!(app.headers(), ["Notes", "City", "Age", "Name"]);
-    let first = app
-        .driven
-        .context
-        .find(&[
-            "grid",
-            "$rows",
-            "item-0",
-            "$cells",
-            "$scrolling",
-            "$strip",
-            "3",
-        ])
-        .unwrap();
+    let first = app.body_cell("3");
     assert_eq!(app.driven.context.node(first).unwrap().bounds.x, 0.0);
     assert_eq!(
         app.driven.context.node(first).unwrap().semantics.label,

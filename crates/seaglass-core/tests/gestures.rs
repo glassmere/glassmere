@@ -173,6 +173,7 @@ fn one_finger_pans_after_the_slop_and_a_still_one_taps() {
     assert_eq!(gesture.tapped, local(&driven.context, at(301.0, 100.0)));
     assert_eq!(frame(&mut driven).tapped, None);
 }
+
 #[test]
 fn two_fingers_scale_turn_and_move_about_the_point_between_them() {
     let mut driven = Driven::new(ROOT, Canvas::default(), view);

@@ -85,8 +85,8 @@ fn load() -> Option<(Option<SavedWindow>, String)> {
 
 /// The text the previous run saved through `App::save_state`, when this
 /// process was started by the development runner after a restart. An `App`
-/// reads it itself, before `run`, as `counter.rs`
-/// does; the runner only passes the file on.
+/// reads it itself, before `run`, as `counter.rs` does; the runner only passes
+/// the file on.
 pub fn saved_state() -> Option<String> {
     load().map(|(_, state)| state)
 }
@@ -107,7 +107,7 @@ pub(crate) fn stop_requested() -> bool {
 }
 
 /// Modification-time polling for the files a window depends on.
-// ponytail: polled with the window's 500 ms tick; move to OS change
+// Polled with the window's 500 ms tick; move to OS change
 // notifications if many files are watched or latency matters.
 #[derive(Default)]
 pub(crate) struct Poller {

@@ -1,18 +1,14 @@
 //! Optional reactive state: values that know what was derived from them.
 //!
-//! Ordinary Rust state stays the way to write an application here. A view is
-//! declared from whatever the application owns, and nothing in the framework
-//! asks for a store. What this adds is for the case ordinary state handles
-//! badly: a value derived from several others, expensive to produce, read in
-//! several places, and only sometimes out of date. Written by hand that is a
-//! cache and a set of invalidation rules, and the rules are what rot.
+//! Ordinary Rust state stays the default; nothing in the framework asks for a
+//! store. This is for a value derived from several others, expensive to
+//! produce and read in several places, where a hand-written cache and its
+//! invalidation rules would rot.
 //!
-//! A [`Signal`] holds a value. A [`Memo`] derives one, and finds out for
-//! itself what it read while doing so, so nothing has to be declared twice.
-//! Changing a signal marks what depends on it, transitively, and a memo
-//! recomputes when it is next read, not when the change happened. Those
-//! recorded reads are also the dependency graph the inspector shows, which
-//! is the other half of what this is for: state you can look at.
+//! A [`Signal`] holds a value. A [`Memo`] derives one and records what it read
+//! while doing so. Changing a signal marks its dependents, transitively, and a
+//! memo recomputes when next read, not when the change happened. The recorded
+//! reads are also the dependency graph the inspector shows.
 
 use std::{
     cell::{Cell, RefCell},

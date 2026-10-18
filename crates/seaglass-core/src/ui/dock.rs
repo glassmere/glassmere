@@ -27,6 +27,7 @@ impl DockPanel {
             closable: true,
         }
     }
+
     /// A panel without a close button.
     pub fn pinned(id: impl Into<String>, title: impl Into<String>) -> Self {
         Self {
@@ -270,38 +271,24 @@ impl<'a, M: 'static> Ui<'a, M> {
                         .background(popup),
                     |ui| {
                         ui.push(Element {
-                            handler: None,
-                            seq: 0,
-                            key: WidgetKey::Named("$grip".into()),
-                            kind: Kind::DockHandle,
-                            text: String::new(),
                             style: Style::default()
                                 .width(Length::Percent(1.0))
                                 .height(Length::Px(12.0))
                                 .radius(4.0),
                             enabled: ui.enabled,
-                            children: Vec::new(),
-                            custom: None,
-                            tooltip: None,
                             control: handle(false),
+                            ..Element::new(WidgetKey::Named("$grip".into()), Kind::DockHandle)
                         });
                         group(ui, &float.tabs, &pass, true);
                         ui.push(Element {
-                            handler: None,
-                            seq: 0,
-                            key: WidgetKey::Named("$resize".into()),
-                            kind: Kind::DockHandle,
-                            text: String::new(),
                             style: Style::default()
                                 .offset(width - 16.0, height - 16.0)
                                 .width(Length::Px(14.0))
                                 .height(Length::Px(14.0))
                                 .radius(4.0),
                             enabled: ui.enabled,
-                            children: Vec::new(),
-                            custom: None,
-                            tooltip: None,
                             control: handle(true),
+                            ..Element::new(WidgetKey::Named("$resize".into()), Kind::DockHandle)
                         });
                     },
                 );
@@ -374,8 +361,8 @@ fn group<M: 'static>(
     pass: &RefCell<Pass<'_, M>>,
     float: bool,
 ) {
-    // ponytail: ids the app does not declare are skipped here, so tab indexes
-    // reported by drags are positions among the visible tabs.
+    // Ids the app does not declare are skipped, so tab indexes reported by
+    // drags are positions among the visible tabs.
     let visible: Vec<(usize, Tab, String)> = {
         let pass = pass.borrow();
         tabs.panels
@@ -429,10 +416,7 @@ fn group<M: 'static>(
         );
         route_tabs(strip, &ids, &closable, &sink);
     });
-    ui.set_control(Control::DockGroup {
-        panels: ids.clone(),
-        float,
-    });
+    ui.set_control(Control::DockGroup { panels: ids, float });
 }
 
 /// Sends a tab strip's selection and its close buttons as messages. Delete on

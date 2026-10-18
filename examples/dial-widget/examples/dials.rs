@@ -53,8 +53,8 @@ impl App for Dials {
                 ui.keyed("intro", |ui| {
                     ui.label(
                         Label::new(
-                            "Drag a dial, roll the wheel over it, or tab to it and use the arrow keys. \
-                             Shift makes the keys finer.",
+                            "Drag a dial, roll the wheel over it, or tab to it and use the arrow \
+                             keys. Shift makes the keys finer.",
                         )
                         .style(Style {
                             width: Length::Percent(1.0),
@@ -90,12 +90,10 @@ impl App for Dials {
                     });
                 });
                 ui.keyed("turns", |ui| {
-                    ui.label(
-                        Label::new(format!("{} turns", self.turns)).style(Style {
-                            foreground: Some(Color::rgb(103, 232, 206)),
-                            ..Style::default()
-                        }),
-                    )
+                    ui.label(Label::new(format!("{} turns", self.turns)).style(Style {
+                        foreground: Some(Color::rgb(103, 232, 206)),
+                        ..Style::default()
+                    }))
                 });
             })
         });

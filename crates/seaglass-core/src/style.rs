@@ -19,7 +19,7 @@ pub enum Align {
     Center,
     End,
     Stretch,
-    /// Aligns text bottoms today; true font baselines need measurer support.
+    /// Lines up the text baselines of the children.
     Baseline,
 }
 
@@ -504,8 +504,8 @@ impl Style {
             Length::Px(value) => Dimension::length(value.max(0.0)),
             Length::Percent(value) => Dimension::percent(value.max(0.0)),
         };
-        // Unset minimums stay at zero, so non-shrinking children keep their
-        // previous geometry; the automatic minimum only matters when shrinking.
+        // Unset minimums stay at zero, so non-shrinking children keep their size;
+        // the automatic minimum only matters when shrinking.
         let minimum = |value| match value {
             Length::Auto => Dimension::length(0.0),
             other => dimension(other),

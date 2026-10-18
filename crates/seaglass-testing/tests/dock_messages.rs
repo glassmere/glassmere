@@ -1,5 +1,5 @@
-//! Milestone 35, phase 2C: a dock and a split send what the user asked for as
-//! messages, `update` applies it, and the view declares once per batch.
+//! A dock and a split send what the user asked for as messages, `update`
+//! applies it, and the view declares once per batch.
 
 use seaglass_core::{
     Action, App, Axis, Context, DockAction, DockArea, DockLayout, DockNode, DockOptions, DockPanel,

@@ -1,6 +1,6 @@
-//! Milestone 35, phase 2E: text editors and rich text links send messages.
-//! Each edit reaches `update` as one `TextOp` or `RichOp`; the document is
-//! changed there, and the view declares it as it is afterwards.
+//! Text editors and rich text links send messages. Each edit reaches `update`
+//! as one `TextOp` or `RichOp`; the document is changed there, and the view
+//! declares it as it is afterwards.
 
 use seaglass_core::{
     App, Block, BlockKind, CodeEditorOptions, Effects, Event, Key, Length, RichDocument,

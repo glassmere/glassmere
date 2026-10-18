@@ -159,6 +159,25 @@ pub(crate) struct Element {
     pub control: Control,
 }
 
+impl Element {
+    /// An enabled element with no text, children, handler or control.
+    pub(crate) fn new(key: WidgetKey, kind: Kind) -> Self {
+        Element {
+            handler: None,
+            seq: 0,
+            key,
+            kind,
+            text: String::new(),
+            style: Style::default(),
+            enabled: true,
+            children: Vec::new(),
+            custom: None,
+            tooltip: None,
+            control: Control::None,
+        }
+    }
+}
+
 /// What a widget reports about itself. Reading [`Response::hovered`],
 /// [`Response::pressed`] or [`Response::focused`] tells the framework the view depends on that state,
 /// so a change in it declares the view again; a change in a state nobody
@@ -297,8 +316,6 @@ impl<'a, M: 'static> Ui<'a, M> {
         *self.observed = Some(store.clone());
     }
 
-    /// A named class from the installed stylesheet. Unknown names return the
-    /// default style and are reported through `Context::style_warnings`.
     /// Asks the host for another frame after this one, for work that spreads
     /// over frames without an input event or animation driving it.
     #[track_caller]
@@ -335,6 +352,8 @@ impl<'a, M: 'static> Ui<'a, M> {
         *self.focus = Some((self.parent, WidgetKey::Named(key.into())));
     }
 
+    /// A named class from the installed stylesheet. Unknown names return the
+    /// default style and are reported through `Context::style_warnings`.
     #[track_caller]
     pub fn class(&mut self, name: &str) -> Style {
         match self.context.stylesheet().class(name) {
@@ -450,17 +469,10 @@ impl<'a, M: 'static> Ui<'a, M> {
         enabled: bool,
     ) -> Response<'a> {
         self.push(Element {
-            handler: None,
-            seq: 0,
-            key,
-            kind,
             text,
             style,
             enabled,
-            children: Vec::new(),
-            custom: None,
-            tooltip: None,
-            control: Control::None,
+            ..Element::new(key, kind)
         })
     }
 
@@ -626,17 +638,9 @@ impl<'a, M: 'static> Ui<'a, M> {
         content(&mut child);
         let children = child.elements;
         self.push(Element {
-            handler: None,
-            seq: 0,
-            key,
-            kind,
-            text: String::new(),
             style,
-            enabled: true,
             children,
-            custom: None,
-            tooltip: None,
-            control: Control::None,
+            ..Element::new(key, kind)
         });
     }
 
@@ -754,7 +758,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         self.group(key, Kind::Scroll, style, content);
     }
 
-    // Disables an entire declaration scope without changing widget identities.
+    /// Disables everything declared in `content` without changing widget identities.
     #[track_caller]
     pub fn enabled(&mut self, enabled: bool, content: impl FnOnce(&mut Ui<'_, M>)) {
         let previous = self.enabled;

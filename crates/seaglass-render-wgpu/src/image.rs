@@ -14,7 +14,7 @@ const IDLE_PREPARATIONS: u64 = 120;
 pub(crate) const DEFAULT_BUDGET: u64 = 256 << 20;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
-// ponytail: six full vertices per image; instance them if scenes reach
+// Six full vertices per image; instance them if scenes reach
 // thousands of images.
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -43,7 +43,7 @@ struct Shelf {
     x: u32,
 }
 
-// ponytail: shelves never free a single entry; space comes back when the whole
+// Shelves never free a single entry; space comes back when the whole
 // page is dropped. A real allocator (guillotine, etlas) if churn shows up.
 struct Shelves {
     side: u32,
@@ -144,7 +144,7 @@ impl ImageCache {
         self.textures
             .retain(|_, texture| preparation - texture.used <= idle);
         if self.bytes() > self.budget {
-            // ponytail: pages are dropped whole and refilled by this preparation,
+            // Pages are dropped whole and refilled by this preparation,
             // which sheds stale vector rasters; a working set that is itself over
             // budget re-uploads every preparation. Per-entry eviction if that happens.
             self.textures.retain(|_, texture| texture.shelves.is_none());
@@ -223,7 +223,7 @@ impl ImageCache {
             return Some(*placement);
         }
         let (mut width, mut height, mut pixels) = match image.vector() {
-            // ponytail: rasterized on the render thread; a large SVG animating its
+            // Rasterized on the render thread; a large SVG animating its
             // size stalls frames. Rasterize off-thread and draw the stale size
             // meanwhile if that shows up.
             Some(vector) => {

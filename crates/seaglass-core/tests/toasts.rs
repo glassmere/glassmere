@@ -1,11 +1,14 @@
+mod support;
+
 use seaglass_core::{
-    App, AppDriver, Context, DialogOptions, Effects, Event, Live, MonospaceMeasurer, NodeId, Role,
-    Toast, ToastAction, ToastKind, Ui,
+    App, Context, DialogOptions, Effects, Event, Live, MonospaceMeasurer, NodeId, Role, Toast,
+    ToastAction, ToastKind, Ui,
 };
 use seaglass_scene::{Point, Size};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
+use support::Host;
 
 const ROOT: Size = Size::new(800.0, 600.0);
 
@@ -53,35 +56,7 @@ impl App for Toasts {
     }
 }
 
-/// The app, its driver and the context, run together as a window would.
-struct Harness {
-    context: Context,
-    driver: AppDriver<Msg>,
-    app: Toasts,
-}
-
-impl Harness {
-    fn new(app: Toasts) -> Self {
-        Self {
-            context: Context::new(),
-            driver: AppDriver::new(|| true),
-            app,
-        }
-    }
-
-    fn send(&mut self, message: Msg) {
-        self.driver.send(message);
-    }
-
-    fn frame(&mut self) {
-        self.driver.frame(
-            &mut self.app,
-            &mut self.context,
-            ROOT,
-            &mut MonospaceMeasurer,
-        );
-    }
-
+impl Host<Toasts> {
     fn at(&mut self, milliseconds: u64) {
         self.context.set_now(Duration::from_millis(milliseconds));
         self.frame();
@@ -107,7 +82,7 @@ fn click(context: &mut Context, id: NodeId) {
 
 #[test]
 fn toasts_stack_in_the_corner_announce_themselves_and_leave_on_time() {
-    let mut h = Harness::new(Toasts::default());
+    let mut h = Host::new(Toasts::default(), ROOT);
     h.send(Msg::Raise(Toast::success("Saved")));
     h.send(Msg::Raise(Toast::error("Upload failed")));
     h.at(0);
@@ -146,7 +121,7 @@ fn toasts_stack_in_the_corner_announce_themselves_and_leave_on_time() {
 
 #[test]
 fn the_pointer_holds_toasts_and_gives_them_a_moment_more_afterwards() {
-    let mut h = Harness::new(Toasts::default());
+    let mut h = Host::new(Toasts::default(), ROOT);
     h.context
         .push_toast(Toast::new("Reading this").duration(Duration::from_secs(2)));
     h.at(0);
@@ -175,7 +150,7 @@ fn the_pointer_holds_toasts_and_gives_them_a_moment_more_afterwards() {
 
 #[test]
 fn actions_are_reported_once_with_their_tag_and_close_dismisses_silently() {
-    let mut h = Harness::new(Toasts::default());
+    let mut h = Host::new(Toasts::default(), ROOT);
     h.send(Msg::Raise(
         Toast::new("Message deleted")
             .action("Undo")
@@ -227,7 +202,7 @@ fn actions_are_reported_once_with_their_tag_and_close_dismisses_silently() {
 
 #[test]
 fn equal_toasts_restart_instead_of_stacking_and_only_four_show_at_once() {
-    let mut h = Harness::new(Toasts::default());
+    let mut h = Host::new(Toasts::default(), ROOT);
     h.context.push_toast(Toast::new("Saved"));
     h.at(0);
     h.at(4000);
@@ -261,7 +236,7 @@ fn equal_toasts_restart_instead_of_stacking_and_only_four_show_at_once() {
 
 #[test]
 fn other_threads_raise_toasts_through_a_sender_that_wakes_the_window() {
-    let mut h = Harness::new(Toasts::default());
+    let mut h = Host::new(Toasts::default(), ROOT);
     let wakes = Arc::new(AtomicUsize::new(0));
     let counter = wakes.clone();
     h.context.set_toast_wake(move || {
@@ -291,10 +266,13 @@ fn other_threads_raise_toasts_through_a_sender_that_wakes_the_window() {
 
 #[test]
 fn a_toast_shows_above_a_modal_dialog_and_its_buttons_take_clicks() {
-    let mut h = Harness::new(Toasts {
-        dialog: true,
-        ..Toasts::default()
-    });
+    let mut h = Host::new(
+        Toasts {
+            dialog: true,
+            ..Toasts::default()
+        },
+        ROOT,
+    );
     h.context.push_toast(Toast::new("Still here").sticky());
     h.at(0);
     h.at(10);

@@ -1,14 +1,14 @@
 mod support;
 
 use seaglass_core::{
-    Action, Context, Event, FontFamily, Length, MonospaceMeasurer, Paint, Style, StyleSheet,
-    StyleSheetError, Theme, Ui,
+    Action, Context, Event, FontFamily, FrameStats, Length, MonospaceMeasurer, Paint, Style,
+    StyleSheet, StyleSheetError, TextWrap, Theme, Ui, WindowId, WindowRequest,
 };
 use seaglass_core::{Button, Label};
 use seaglass_scene::{Color, Point, Primitive, Size};
 use support::Driven;
 
-fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) -> seaglass_core::FrameStats {
+fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) -> FrameStats {
     context.run(Size::new(500.0, 400.0), &mut MonospaceMeasurer, view)
 }
 
@@ -265,7 +265,7 @@ fn stylesheets_parse_themes_tokens_classes_and_report_errors_with_lines() {
     assert_eq!(primary.width, Length::Percent(0.5));
     assert_eq!(primary.font_family, Some(FontFamily::Monospace));
     assert_eq!(primary.italic, Some(true));
-    assert_eq!(primary.wrap, seaglass_core::TextWrap::Word);
+    assert_eq!(primary.wrap, TextWrap::Word);
     let states = primary.states.as_ref().unwrap();
     assert_eq!(states.hover.background, Some(Color::rgb(34, 176, 160)));
     assert_eq!(states.disabled.foreground, Some(Color::rgb(128, 128, 128)));
@@ -427,13 +427,9 @@ fn views_switch_themes_and_sheet_tokens_survive_the_switch() {
 /// whose batch ran the update.
 #[test]
 fn a_theme_asked_for_in_one_window_reaches_every_window() {
-    let mut app = Driven::new(
-        Size::new(500.0, 400.0),
-        None::<seaglass_core::WindowId>,
-        |_, ui| {
-            ui.keyed("name", |ui| ui.label(ui.theme().name.clone()));
-        },
-    );
+    let mut app = Driven::new(Size::new(500.0, 400.0), None::<WindowId>, |_, ui| {
+        ui.keyed("name", |ui| ui.label(ui.theme().name.clone()));
+    });
     app.set_window_view(|_, _, ui| {
         ui.keyed("switch", |ui| {
             ui.button(Button::new("Light").on_click(support::act_fx(|_, effects| {
@@ -442,7 +438,7 @@ fn a_theme_asked_for_in_one_window_reaches_every_window() {
         });
     });
     app.effects(|window, effects| {
-        *window = Some(effects.open_window(seaglass_core::WindowRequest::default()));
+        *window = Some(effects.open_window(WindowRequest::default()));
     });
     app.frame();
     let second = app.state().expect("the app opened a window");

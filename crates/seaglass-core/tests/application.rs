@@ -6,7 +6,7 @@ use seaglass_core::{
     DropTargetBuilder, Event, Key, Length, Shortcut, Style, Ui, WindowId, WindowRequest,
 };
 use seaglass_scene::{Point, Size};
-use support::{Driven, act};
+use support::{Driven, act, center};
 
 const ROOT: Size = Size::new(500.0, 500.0);
 
@@ -16,13 +16,6 @@ fn key(context: &mut Context, key: Key) {
         shift: false,
         repeat: false,
     });
-}
-fn center(context: &Context, path: &[&str]) -> Point {
-    let bounds = context.node(context.find(path).unwrap()).unwrap().bounds;
-    Point {
-        x: bounds.x + bounds.width / 2.0,
-        y: bounds.y + bounds.height / 2.0,
-    }
 }
 fn boxed() -> Style {
     Style {

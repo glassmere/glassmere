@@ -179,8 +179,8 @@ fn pressed(
     named(key).map(|key| Command::Input(Event::KeyDown { key, shift, repeat }))
 }
 
-// Clipboard access remains lazy and owned for the lifetime of the application.
-// This also keeps X11 clipboard data alive after a copy operation.
+// The clipboard is opened on first use and kept for the life of the
+// application, which also keeps X11 clipboard data alive after a copy.
 trait ClipboardAccess {
     fn read(&mut self) -> Result<String, ()>;
     fn write(&mut self, text: &str) -> Result<(), ()>;
@@ -255,9 +255,9 @@ impl HostClipboard {
 }
 
 /// Undoes the premultiplication scenes carry, which is what the platform
-/// clipboards want.
-#[cfg(feature = "images")]
-fn straight_rgba(premultiplied: &[u8]) -> Vec<u8> {
+/// clipboards and icons want.
+#[cfg(any(feature = "images", feature = "platform"))]
+pub(crate) fn straight_rgba(premultiplied: &[u8]) -> Vec<u8> {
     let mut straight = Vec::with_capacity(premultiplied.len());
     for pixel in premultiplied.as_chunks::<4>().0 {
         let alpha = pixel[3];

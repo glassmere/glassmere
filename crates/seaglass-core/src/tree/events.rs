@@ -522,8 +522,8 @@ impl Context {
     /// press, and says whether the event changed anything.
     fn interaction_changed(
         &mut self,
-        before: Interaction,
-        after: Interaction,
+        before: EventState,
+        after: EventState,
         activated: bool,
     ) -> bool {
         if before.1 != after.1 {
@@ -558,7 +558,7 @@ impl Context {
 }
 
 /// Hovered, focused, captured, and pressed from the keyboard.
-type Interaction = (
+type EventState = (
     Option<NodeId>,
     Option<NodeId>,
     Option<NodeId>,

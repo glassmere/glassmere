@@ -83,7 +83,7 @@ fn far_jumps_catch_up_over_several_declarations_instead_of_stalling_one() {
     };
     assert!(declarations >= 3, "{declarations}");
     assert!(!spans.is_empty());
-    // Nearby lines now come from checkpoints without pending work.
+    // Nearby lines come from checkpoints without pending work.
     assert!(!frame(&mut highlighter, &document, 5800).is_empty());
     assert!(!highlighter.pending());
 }

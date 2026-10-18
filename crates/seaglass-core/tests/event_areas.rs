@@ -6,7 +6,7 @@ use seaglass_core::{
     Style, TextEdit, Ui, UiEvent, WidgetBuilder, WidgetInput,
 };
 use seaglass_scene::{Point, Size};
-use support::{Driven, act, on};
+use support::{Driven, act, click, on};
 
 const ROOT: Size = Size::new(300.0, 300.0);
 
@@ -73,12 +73,6 @@ fn centre(context: &Context, path: &[&str]) -> Point {
         x: bounds.x + bounds.width / 2.0,
         y: bounds.y + bounds.height / 2.0,
     }
-}
-
-fn click(context: &mut Context, at: Point) {
-    context.event(Event::PointerMoved(at));
-    context.event(Event::PointerDown);
-    context.event(Event::PointerUp);
 }
 
 #[test]
@@ -246,7 +240,7 @@ fn a_widget_inside_an_area_sends_its_message_in_the_batch_the_area_hears_it() {
 }
 
 #[test]
-fn a_view_without_areas_dispatches_exactly_as_before() {
+fn a_button_outside_any_area_still_gets_its_click() {
     let mut driven = Driven::new(
         ROOT,
         Seen::default(),

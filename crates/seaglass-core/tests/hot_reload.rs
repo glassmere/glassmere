@@ -1,14 +1,12 @@
+mod support;
+
 use seaglass_core::{App, AppDriver, Context, Effects, MonospaceMeasurer, Ui};
-use seaglass_scene::{Primitive, Size};
+use seaglass_scene::Size;
 use std::path::Path;
 
 const ROOT: Size = Size::new(400.0, 300.0);
 
-fn shows(context: &Context, needle: &str) -> bool {
-    context.scene().primitives.iter().any(|primitive| {
-        matches!(primitive, Primitive::StyledText { text, .. } | Primitive::Text { text, .. } if text == needle)
-    })
-}
+use support::shows;
 
 #[test]
 fn watched_files_are_requested_delivered_reloaded_and_survive_errors() {

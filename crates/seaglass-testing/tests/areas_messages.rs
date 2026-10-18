@@ -1,5 +1,5 @@
-//! Milestone 35, phase 2G: custom widgets, event areas, gestures and drag and
-//! drop send messages, and a batch of input declares the view at most once.
+//! Custom widgets, event areas, gestures and drag and drop send messages, and
+//! a batch of input declares the view at most once.
 use seaglass_core::{
     App, AppDriver, Context, CustomWidget, DragOutcome, DragPayload, DragSourceBuilder, DropKind,
     DropTargetBuilder, Effects, Event, EventArea, GestureBuilder, GestureResponse, Length,

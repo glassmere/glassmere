@@ -5,8 +5,9 @@
 //! at the bottom can be dragged out of the window, onto the desktop or into
 //! another application.
 use seaglass::{
-    App, AppOptions, BackgroundImage, Button, Color, DragOutcome, DragPayload, DragSourceBuilder,
-    Effects, Image, ImageFit, ImageOptions, ImageTint, Label, Length, Style, Ui, run,
+    Align, App, AppOptions, BackgroundImage, Button, Color, DragOutcome, DragPayload,
+    DragSourceBuilder, Effects, Image, ImageFit, ImageOptions, ImageTint, Justify, Label, Length,
+    Size, Style, Ui, run,
 };
 
 const ASSETS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/assets");
@@ -107,150 +108,163 @@ impl App for Gallery {
             width: Length::Percent(1.0),
             ..Style::default()
         };
+        let panel = Style {
+            padding: 12.0,
+            radius: 10.0,
+            background: Some(Color::rgb(24, 35, 49)),
+            ..Style::default()
+        };
         ui.column(page, |ui| {
             ui.label(Label::new("Images and assets").style(Style {
-                    font_size: Some(26.0),
-                    ..Style::default()
-                }));
+                font_size: Some(26.0),
+                ..Style::default()
+            }));
 
             caption(
                 ui,
                 "fits-caption",
                 "One 320 by 200 file in four 120 by 120 boxes: contain, cover, fill, none",
             );
-            ui.row(Style {
-                    gap: 14.0,
-                    ..Style::default()
-                }, |ui| {
-                    for (key, fit) in [
-                        ("contain", ImageFit::Contain),
-                        ("cover", ImageFit::Cover),
-                        ("fill", ImageFit::Fill),
-                        ("none", ImageFit::None),
-                    ] {
-                        let frame = Style {
-                            width: Length::Px(120.0),
-                            height: Length::Px(120.0),
-                            radius: 12.0,
-                            background: Some(Color::rgb(24, 35, 49)),
-                            ..Style::default()
-                        };
-                        ui.keyed(key, |ui| ui.image_file(format!("{ASSETS}/dusk.png"), ImageOptions::new(format!("Hills at dusk, {key}"))
-                                .fit(fit)
-                                .style(frame)));
-                    }
-                });
+            ui.row(Style::default().gap(14.0), |ui| {
+                for (key, fit) in [
+                    ("contain", ImageFit::Contain),
+                    ("cover", ImageFit::Cover),
+                    ("fill", ImageFit::Fill),
+                    ("none", ImageFit::None),
+                ] {
+                    let frame = Style {
+                        width: Length::Px(120.0),
+                        height: Length::Px(120.0),
+                        radius: 12.0,
+                        background: panel.background,
+                        ..Style::default()
+                    };
+                    let options = ImageOptions::new(format!("Hills at dusk, {key}"))
+                        .fit(fit)
+                        .style(frame);
+                    ui.keyed(key, |ui| {
+                        ui.image_file(format!("{ASSETS}/dusk.png"), options)
+                    });
+                }
+            });
 
             caption(
                 ui,
                 "icons-caption",
                 "SVG icons take the text colour; the badge is one SVG at three sizes",
             );
-            ui.row(Style {
-                    gap: 16.0,
-                    align_items: seaglass::Align::Center,
-                    ..Style::default()
-                }, |ui| {
-                    for name in ["search", "sliders"] {
-                        ui.keyed(name, |ui| ui.image_file(format!("{ASSETS}/{name}.svg"), ImageOptions::default().tint(ImageTint::Foreground)));
-                    }
-                    let heart = if liked {
-                        ImageTint::Color(Color::rgb(240, 82, 110))
-                    } else {
-                        ImageTint::Foreground
-                    };
-                    ui.image_file(format!("{ASSETS}/heart.svg"), ImageOptions::new(if liked { "Liked" } else { "Not liked" })
-                            .tint(heart));
-                    ui.button(Button::new(if liked { "Unlike" } else { "Like" }).on_click(Msg::Like));
-                    for (key, side) in [
-                        ("badge-small", 24.0),
-                        ("badge", 64.0),
-                        ("badge-large", 96.0),
-                    ] {
-                        ui.keyed(key, |ui| ui.image_file(format!("{ASSETS}/badge.svg"), ImageOptions::default().style(Style {
-                                width: Length::Px(side),
-                                ..Style::default()
-                            })));
-                    }
-                });
+            let icons = Style {
+                gap: 16.0,
+                align_items: Align::Center,
+                ..Style::default()
+            };
+            ui.row(icons, |ui| {
+                for name in ["search", "sliders"] {
+                    let options = ImageOptions::default().tint(ImageTint::Foreground);
+                    ui.keyed(name, |ui| {
+                        ui.image_file(format!("{ASSETS}/{name}.svg"), options)
+                    });
+                }
+                let heart = if liked {
+                    ImageTint::Color(Color::rgb(240, 82, 110))
+                } else {
+                    ImageTint::Foreground
+                };
+                let description = if liked { "Liked" } else { "Not liked" };
+                ui.image_file(
+                    format!("{ASSETS}/heart.svg"),
+                    ImageOptions::new(description).tint(heart),
+                );
+                ui.button(Button::new(if liked { "Unlike" } else { "Like" }).on_click(Msg::Like));
+                for (key, side) in [
+                    ("badge-small", 24.0),
+                    ("badge", 64.0),
+                    ("badge-large", 96.0),
+                ] {
+                    let options = ImageOptions::default().style(Style {
+                        width: Length::Px(side),
+                        ..Style::default()
+                    });
+                    ui.keyed(key, |ui| {
+                        ui.image_file(format!("{ASSETS}/badge.svg"), options)
+                    });
+                }
+            });
 
             caption(
                 ui,
                 "made-caption",
                 "Pixels made in code, translucent over a panel; a file that does not exist",
             );
-            ui.row(Style {
-                    gap: 16.0,
-                    ..Style::default()
-                }, |ui| {
-                    ui.container(Style {
-                            padding: 12.0,
-                            radius: 10.0,
-                            background: Some(Color::rgb(22, 105, 99)),
+            ui.row(Style::default().gap(16.0), |ui| {
+                let backing = Style {
+                    background: Some(Color::rgb(22, 105, 99)),
+                    ..panel.clone()
+                };
+                ui.container(backing, |ui| {
+                    ui.image(
+                        &self.made,
+                        ImageOptions::new("Checkerboard").style(Style {
+                            width: Length::Px(96.0),
+                            radius: 8.0,
                             ..Style::default()
-                        }, |ui| {
-                            ui.image(&self.made, ImageOptions::new("Checkerboard").style(Style {
-                                    width: Length::Px(96.0),
-                                    radius: 8.0,
-                                    ..Style::default()
-                                }));
-                        });
-                    ui.image_file(format!("{ASSETS}/not-there.png"), ImageOptions::new("not-there.png is missing").style(Style {
-                            width: Length::Px(220.0),
-                            height: Length::Px(120.0),
-                            padding: 12.0,
-                            radius: 10.0,
-                            ..Style::default()
-                        }));
+                        }),
+                    );
                 });
+                let missing = ImageOptions::new("not-there.png is missing").style(Style {
+                    width: Length::Px(220.0),
+                    height: Length::Px(120.0),
+                    background: None,
+                    ..panel.clone()
+                });
+                ui.image_file(format!("{ASSETS}/not-there.png"), missing);
+            });
 
             caption(
                 ui,
                 "backgrounds-caption",
-                "Backgrounds: a stylesheet photo, one SVG frame nine-sliced over three boxes, a 24 px skin made in code",
+                "Backgrounds: a stylesheet photo, one SVG frame nine-sliced over three boxes, a \
+                 24 px skin made in code",
             );
-            ui.row(Style {
-                    gap: 16.0,
-                    align_items: seaglass::Align::Start,
-                    ..Style::default()
-                }, |ui| {
-                    let hero = ui.class("hero");
-                    ui.column(hero, |ui| ui.label("Hills at dusk"));
-                    for (key, width, height) in [
-                        ("small", 90.0, 56.0),
-                        ("wide", 170.0, 56.0),
-                        ("tall", 120.0, 150.0),
-                    ] {
-                        let frame = Style {
-                            width: Length::Px(width),
-                            height: Length::Px(height),
-                            ..ui.class("frame")
-                        };
-                        ui.keyed(key, |ui| ui.column(frame, |ui| ui.label(key)));
-                    }
-                    let skinned = Style {
-                        width: Length::Px(170.0),
-                        height: Length::Px(64.0),
-                        align_items: seaglass::Align::Center,
-                        justify_content: seaglass::Justify::Center,
-                        ..Style::default()
-                    }
-                    .background_image(BackgroundImage::new(&self.skin).slice(8.0, 8.0, 8.0, 8.0));
-                    ui.column(skinned, |ui| ui.label("Raster skin"));
-                });
-
-            caption(ui, "export-caption", self.exported);
-            let card = Style {
-                padding: 12.0,
-                radius: 10.0,
-                background: Some(Color::rgb(24, 35, 49)),
+            let backgrounds = Style {
+                gap: 16.0,
+                align_items: Align::Start,
                 ..Style::default()
             };
+            ui.row(backgrounds, |ui| {
+                let hero = ui.class("hero");
+                ui.column(hero, |ui| ui.label("Hills at dusk"));
+                for (key, width, height) in [
+                    ("small", 90.0, 56.0),
+                    ("wide", 170.0, 56.0),
+                    ("tall", 120.0, 150.0),
+                ] {
+                    let frame = Style {
+                        width: Length::Px(width),
+                        height: Length::Px(height),
+                        ..ui.class("frame")
+                    };
+                    ui.keyed(key, |ui| ui.column(frame, |ui| ui.label(key)));
+                }
+                let skinned = Style {
+                    width: Length::Px(170.0),
+                    height: Length::Px(64.0),
+                    align_items: Align::Center,
+                    justify_content: Justify::Center,
+                    ..Style::default()
+                }
+                .background_image(BackgroundImage::new(&self.skin).slice(8.0, 8.0, 8.0, 8.0));
+                ui.column(skinned, |ui| ui.label("Raster skin"));
+            });
+
+            caption(ui, "export-caption", self.exported);
             let file = std::path::PathBuf::from(format!("{ASSETS}/dusk.png"));
-            ui.drag_source(card, DragSourceBuilder::new("dusk.png, draggable file", DragPayload::Files(vec![file]))
-                    .on_drag_end(Msg::Exported), |ui| {
-                    ui.label("dusk.png");
-                },);
+            let source =
+                DragSourceBuilder::new("dusk.png, draggable file", DragPayload::Files(vec![file]))
+                    .on_drag_end(Msg::Exported);
+            ui.drag_source(panel, source, |ui| {
+                ui.label("dusk.png");
+            });
         });
     }
 }
@@ -260,7 +274,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     run(
         AppOptions {
             title: "Seaglass / Images".into(),
-            size: seaglass::Size::new(980.0, 860.0),
+            size: Size::new(980.0, 860.0),
             stylesheet: Some(format!("{ASSETS}/../images.style").into()),
             // Long enough for the background decodes to land in a smoke run.
             frame_limit: smoke.then_some(30),

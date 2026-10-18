@@ -143,6 +143,16 @@ impl Context {
         }
     }
 
+    /// Damages everything the last scene covered.
+    pub(super) fn damage_scene(&mut self) {
+        self.add_damage(Rect {
+            x: 0.0,
+            y: 0.0,
+            width: self.scene.size.width,
+            height: self.scene.size.height,
+        });
+    }
+
     pub(super) fn invalidate_paint(&mut self, id: NodeId) {
         let Some(node) = self.nodes.get(&id) else {
             return;
@@ -432,13 +442,7 @@ impl Context {
 
     /// The node's own text, placed in its box.
     fn paint_text(&self, node: &Node, foreground: Color, scene: &mut Scene) {
-        let padding = node.style.padding.max(0.0);
-        let mut rect = Rect {
-            x: node.bounds.x + padding,
-            y: node.bounds.y + padding,
-            width: (node.bounds.width - 2.0 * padding).max(0.0),
-            height: (node.bounds.height - 2.0 * padding).max(0.0),
-        };
+        let mut rect = node.content_box();
         // Where the text sits in a box wider or taller than it is. A
         // wrapped block is aligned line by line by the shaper; this
         // places the block itself, which is what centres a glyph in a
@@ -471,7 +475,6 @@ impl Context {
                 _ => 0.0,
             };
         }
-        let color = foreground;
         if let Some((start, end)) = self.suggestion_match(node) {
             // The part of a suggestion that was typed stands out.
             let span = |text: &str, weight| seaglass_scene::TextSpan {
@@ -489,7 +492,7 @@ impl Context {
                     span(&node.text[end..], None),
                 ],
                 style: node.text_style(),
-                color,
+                color: foreground,
             });
         } else if node.text_style()
             == (TextStyle {
@@ -501,14 +504,14 @@ impl Context {
                 rect,
                 text: node.text.clone(),
                 font_size: node.resolved.font_size,
-                color,
+                color: foreground,
             });
         } else {
             scene.primitives.push(Primitive::StyledText {
                 rect,
                 text: node.text.clone(),
                 style: node.text_style(),
-                color,
+                color: foreground,
             });
         }
     }

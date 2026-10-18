@@ -679,15 +679,7 @@ impl Context {
                 let Control::Slider { value, step, .. } = node.control else {
                     return Some(false);
                 };
-                Some(self.set_number(
-                    target,
-                    value
-                        + if matches!(action, Action::Increment) {
-                            step
-                        } else {
-                            -step
-                        },
-                ))
+                Some(self.set_number(target, value + if up { step } else { -step }))
             }
             Action::Expand => Some(self.open_popup(target)),
             Action::Collapse => {

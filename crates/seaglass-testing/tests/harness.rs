@@ -1,5 +1,4 @@
-use seaglass_core::{App, Button, Effects};
-use seaglass_core::{Key, Length, Style, Ui};
+use seaglass_core::{App, Button, Effects, Key, Length, Style, Ui};
 use seaglass_scene::Size;
 use seaglass_testing::{Harness, assert_snapshot};
 

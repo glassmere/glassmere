@@ -113,8 +113,9 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
     /// draft, until the model's value for the cell differs from what it was
     /// when the edit began, so a `set_cell` that refuses the value leaves the
     /// editor open. Report the refusal with [`GridState::refuse_edit`] and the
-    /// editor shows it and accepts another commit; Escape cancels the edit. Messages that follow a commit (the
-    /// edit itself, the move to the next row) are sent one batch later.
+    /// editor shows it and accepts another commit; Escape cancels the edit.
+    /// Messages that follow a commit (the edit itself, the move to the next
+    /// row) are sent one batch later.
     #[track_caller]
     pub fn data_grid(
         &mut self,
@@ -487,24 +488,20 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                                         },
                                     )));
                                     ui.push(Element {
-                                        handler: None,
-                                        seq: 0,
-                                        key: WidgetKey::Named("$size".into()),
-                                        kind: Kind::Divider,
-                                        text: String::new(),
                                         style: Style::default()
                                             .width(Length::Px(SIZER))
                                             .height(Length::Px(options.row_height)),
                                         enabled: ui.enabled,
-                                        children: Vec::new(),
-                                        custom: None,
-                                        tooltip: None,
                                         control: Control::Sizer {
                                             label: resize_label.clone(),
                                             size: width,
                                             min: crate::GridColumns::MIN_WIDTH,
                                             max: crate::GridColumns::MAX_WIDTH,
                                         },
+                                        ..Element::new(
+                                            WidgetKey::Named("$size".into()),
+                                            Kind::Divider,
+                                        )
                                     });
                                     let on_resize = on.clone();
                                     ui.set_handler(crate::app::Handler::Map(Box::new(
@@ -1324,11 +1321,12 @@ impl ColumnPlan {
         let frozen_width: f32 = frozen.iter().map(|column| column.2).sum();
         let scrolling: f32 = rest.iter().map(|column| column.2).sum();
         let view = (viewport - frozen_width).clamp(0.0, scrolling);
-        // Keep the current cell in view when the cursor moved to it.
+        // Keep the current cell in view when the cursor moved to it. A column
+        // wider than the view shows its leading edge.
         let mut start = 0.0;
         for (_, column, width) in rest {
             if reveal == Some(*column) {
-                *scroll_x = scroll_x.min(start).max(start + width - view).min(start);
+                *scroll_x = scroll_x.max(start + width - view).min(start);
             }
             start += width;
         }

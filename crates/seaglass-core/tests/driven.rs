@@ -1,7 +1,7 @@
-//! The test driver the other kernel tests migrate to.
+//! Tests of the test driver in `support`.
 mod support;
 
-use seaglass_core::{Action as Accessibility, Button};
+use seaglass_core::{Action as Accessibility, Button, Event, TextEdit};
 use seaglass_scene::Size;
 use support::{Driven, act, on};
 
@@ -36,9 +36,7 @@ fn a_click_and_typed_text_reach_the_state_through_actions() {
     driven.context.action(name, Accessibility::Focus);
     driven
         .context
-        .event(seaglass_core::Event::Text(seaglass_core::TextEdit::Insert(
-            "Ada".into(),
-        )));
+        .event(Event::Text(TextEdit::Insert("Ada".into())));
     driven.frame();
     assert_eq!(driven.state().name, "Ada");
 }

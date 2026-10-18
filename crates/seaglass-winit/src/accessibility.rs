@@ -103,6 +103,8 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
             if let Some(description) = &snapshot.description {
                 node.set_description(description.clone());
             }
+            // `Axis` is the direction panes are laid out in; the separator
+            // between side-by-side panes is a vertical bar.
             if let Some(axis) = snapshot.orientation {
                 node.set_orientation(match axis {
                     seaglass_core::Axis::Horizontal => accesskit::Orientation::Vertical,

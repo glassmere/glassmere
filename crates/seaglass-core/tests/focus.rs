@@ -4,8 +4,8 @@ use seaglass_core::{
     Action, Button, Context, DialogOptions, Event, FocusScope, Key, Length, MonospaceMeasurer,
     Role, Style, Ui,
 };
-use seaglass_scene::{Point, Primitive, Size};
-use support::{Driven, act, on};
+use seaglass_scene::{Color, Point, Primitive, Rect, Size};
+use support::{Driven, act, center, click, on};
 
 const ROOT: Size = Size::new(600.0, 400.0);
 
@@ -38,20 +38,6 @@ fn focused_key(context: &Context) -> String {
         .focused()
         .and_then(|id| context.details(id))
         .map_or_else(|| "none".into(), |details| details.key)
-}
-
-fn center(context: &Context, path: &[&str]) -> Point {
-    let bounds = context.node(context.find(path).unwrap()).unwrap().bounds;
-    Point {
-        x: bounds.x + bounds.width / 2.0,
-        y: bounds.y + bounds.height / 2.0,
-    }
-}
-
-fn click(context: &mut Context, point: Point) {
-    context.event(Event::PointerMoved(point));
-    context.event(Event::PointerDown);
-    context.event(Event::PointerUp);
 }
 
 #[test]
@@ -167,7 +153,7 @@ fn restoring_scopes_return_focus_when_they_disappear() {
         "opener",
         "focus returns to the opener"
     );
-    // Without `restore`, a vanished focus is simply cleared.
+    // Without `restore`, a vanished focus is cleared.
     let plain = |show: bool| {
         move |ui: &mut Ui<'_>| {
             ui.keyed("opener", |ui| ui.button("Open"));
@@ -546,8 +532,6 @@ fn duplicate_dialog_keys_are_rejected() {
 
 #[test]
 fn a_focus_ring_never_floods_a_node_that_has_no_opaque_background() {
-    use seaglass_core::{Length, Style};
-    use seaglass_scene::{Color, Primitive, Rect};
     let mut context = Context::new();
     let view = |ui: &mut Ui<'_>| {
         let page = Style {

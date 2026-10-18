@@ -10,11 +10,43 @@ mod os_drag;
 mod platform;
 mod wakeup;
 pub use graphics::{GpuMemoryPolicy, GraphicsBackend, GraphicsOptions};
+use seaglass_core::{
+    App, Context, DragPayload, Effects, Event, FrameStats, StyleSheet, TextEdit, Theme, Ui,
+    app::Action,
+};
+pub use seaglass_core::{Mailbox, MessageSender};
+use seaglass_devtools::Recorder;
+use seaglass_render_cpu::CpuRenderer;
+use seaglass_render_wgpu::Renderer;
+use seaglass_render_wgpu::TextSystem;
+use seaglass_scene::{Color, Point, Primitive, Scene, Size};
+use std::{
+    cell::RefCell,
+    error::Error,
+    num::NonZeroU32,
+    path::PathBuf,
+    rc::Rc,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use wakeup::UserEvent;
+use wakeup::WakeHandle;
+use winit::{
+    application::ApplicationHandler,
+    dpi::{LogicalPosition, LogicalSize},
+    event::{ElementState, Ime, MouseButton, MouseScrollDelta, StartCause, WindowEvent},
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
+    keyboard::ModifiersState,
+    window::{CursorIcon, Window, WindowId},
+};
 
 /// What an application draws itself, registered once the window's renderer
 /// exists. Inside it, `Renderer::set_custom_draw` takes a callback for an id,
 /// and a `Primitive::Custom` with that id in a `CustomWidget` is where it
 /// draws. Nothing runs on a window painted without a graphics adapter.
+///
+/// The closure is `Send` because the options travel to the thread a window
+/// opens on; it runs there, on the renderer's own thread.
 ///
 /// ```ignore
 /// AppOptions {
@@ -24,8 +56,6 @@ pub use graphics::{GpuMemoryPolicy, GraphicsBackend, GraphicsOptions};
 ///     ..AppOptions::default()
 /// }
 /// ```
-/// `Send` because the options travel to the thread a window opens on; the
-/// closure itself runs there, on the renderer's own thread.
 #[derive(Clone)]
 pub struct GpuSetup(SharedSetup);
 
@@ -60,36 +90,6 @@ pub enum Placement {
     /// platform's own, as the display settings show them.
     Named(String),
 }
-use seaglass_core::{
-    App, Context, DragPayload, Effects, Event, FrameStats, StyleSheet, TextEdit, Theme, Ui,
-    app::Action,
-};
-pub use seaglass_core::{Mailbox, MessageSender};
-use seaglass_devtools::Recorder;
-use seaglass_render_cpu::CpuRenderer;
-use seaglass_render_wgpu::Renderer;
-use seaglass_render_wgpu::TextSystem;
-use seaglass_scene::{Color, Point, Primitive, Scene, Size};
-use std::{
-    cell::RefCell,
-    error::Error,
-    num::NonZeroU32,
-    path::PathBuf,
-    rc::Rc,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use wakeup::UserEvent;
-use wakeup::WakeHandle;
-use winit::{
-    application::ApplicationHandler,
-    dpi::{LogicalPosition, LogicalSize},
-    event::{ElementState, Ime, MouseButton, MouseScrollDelta, StartCause, WindowEvent},
-    event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
-    keyboard::ModifiersState,
-    window::{CursorIcon, Window, WindowId},
-};
-
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 /// Which theme a window starts with and follows.
@@ -180,7 +180,7 @@ pub struct AppOptions {
     pub theme: ThemeChoice,
     /// A stylesheet file installed at start and reloaded when it changes on disk.
     pub stylesheet: Option<PathBuf>,
-    /// Skips animations. ponytail: not read from the OS setting yet, winit has no
+    /// Skips animations. Not read from the OS setting yet, winit has no
     /// cross-platform query; wire it per platform when one appears.
     pub reduced_motion: bool,
     /// Whether Left and Right move on screen or in reading order in
@@ -217,7 +217,7 @@ impl Default for AppOptions {
 }
 
 /// How often a configured stylesheet is checked for changes.
-// ponytail: mtime polling keeps the host dependency-free; a file watcher
+// Polling mtimes keeps the host dependency-free; a file watcher
 // (notify) is the upgrade path if half-second latency or idle wakeups matter.
 pub(crate) const STYLESHEET_POLL: Duration = Duration::from_millis(500);
 
@@ -1369,7 +1369,7 @@ impl Application {
                                 .iter()
                                 .map(|pass| (pass.label.clone(), pass.duration))
                                 .collect();
-                            // ponytail: one entry per window that ever drew while an
+                            // One entry per window that ever drew while an
                             // inspector was open, overwritten and never pruned; prune
                             // on window close if apps start opening thousands.
                             routing
@@ -1618,7 +1618,7 @@ impl Application {
                     }
                 }
             }
-            // ponytail: winit 0.30 carries no drop position and Windows sends no
+            // winit 0.30 carries no drop position and Windows sends no
             // CursorMoved during an OLE drag, so this uses the last known pointer;
             // upgrade path is a platform cursor query at drop time.
             WindowEvent::DroppedFile(path) => self.input(Event::DropAt {

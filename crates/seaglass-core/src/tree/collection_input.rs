@@ -88,9 +88,10 @@ impl Context {
 
     pub(crate) fn set_list_anchor(&self, rows: NodeId, anchor: Option<ListAnchor>) {
         let mut anchors = self.list_anchors.borrow_mut();
-        match anchor {
-            Some(anchor) => drop(anchors.insert(rows, anchor)),
-            None => drop(anchors.remove(&rows)),
+        if let Some(anchor) = anchor {
+            anchors.insert(rows, anchor);
+        } else {
+            anchors.remove(&rows);
         }
     }
 

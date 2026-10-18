@@ -1,12 +1,15 @@
 //! A window that draws its own title bar: moving it, sizing it and the three
 //! buttons. The host is a test here, taking the commands and answering with
 //! what it did.
+mod support;
+
 use seaglass_core::{
-    App, AppDriver, Button, Context, Effects, Event, Length, MonospaceMeasurer, ResizeEdge, Style,
-    Ui, WindowCommand, WindowInfo,
+    App, Button, Context, Effects, Event, Length, MonospaceMeasurer, ResizeEdge, Style, Ui,
+    WindowCommand, WindowInfo,
 };
 use seaglass_scene::{Point, Size};
 use std::time::Duration;
+use support::Host;
 
 const ROOT: Size = Size::new(400.0, 300.0);
 
@@ -58,32 +61,6 @@ impl App for Chrome {
     }
 }
 
-/// The application, its driver and the context, run together as a window would.
-struct Harness {
-    context: Context,
-    driver: AppDriver<Msg>,
-    app: Chrome,
-}
-
-impl Harness {
-    fn new() -> Self {
-        Self {
-            context: Context::new(),
-            driver: AppDriver::new(|| true),
-            app: Chrome::default(),
-        }
-    }
-
-    fn frame(&mut self) {
-        self.driver.frame(
-            &mut self.app,
-            &mut self.context,
-            ROOT,
-            &mut MonospaceMeasurer,
-        );
-    }
-}
-
 fn centre(context: &Context, path: &[&str]) -> Point {
     let bounds = context.node(context.find(path).unwrap()).unwrap().bounds;
     Point {
@@ -100,7 +77,7 @@ fn press(context: &mut Context, at: Point) {
 
 #[test]
 fn pressing_the_bar_moves_the_window_and_pressing_it_twice_maximizes_it() {
-    let mut h = Harness::new();
+    let mut h = Host::new(Chrome::default(), ROOT);
     h.frame();
     assert!(h.context.take_window_commands().is_empty());
 
@@ -125,7 +102,7 @@ fn pressing_the_bar_moves_the_window_and_pressing_it_twice_maximizes_it() {
 
 #[test]
 fn a_control_in_the_bar_is_pressed_rather_than_the_window_moved() {
-    let mut h = Harness::new();
+    let mut h = Host::new(Chrome::default(), ROOT);
     h.frame();
     let at = centre(&h.context, &["bar", "menu"]);
     press(&mut h.context, at);
@@ -139,7 +116,7 @@ fn a_control_in_the_bar_is_pressed_rather_than_the_window_moved() {
 
 #[test]
 fn the_window_buttons_ask_for_what_they_say() {
-    let mut h = Harness::new();
+    let mut h = Host::new(Chrome::default(), ROOT);
     h.frame();
     for (key, command) in [
         ("minimize", WindowCommand::Minimize),
@@ -157,7 +134,7 @@ fn the_window_buttons_ask_for_what_they_say() {
 
 #[test]
 fn the_middle_button_follows_what_the_host_says_about_the_window() {
-    let mut h = Harness::new();
+    let mut h = Host::new(Chrome::default(), ROOT);
     let glyph = |context: &Context| {
         context
             .details(context.find(&["bar", "buttons", "maximize"]).unwrap())
@@ -179,7 +156,7 @@ fn the_middle_button_follows_what_the_host_says_about_the_window() {
 
 #[test]
 fn the_edges_lie_along_the_window_and_each_one_pulls_its_own_way() {
-    let mut h = Harness::new();
+    let mut h = Host::new(Chrome::default(), ROOT);
     h.frame();
     // The first frame does not know the size yet; the second does.
     h.frame();

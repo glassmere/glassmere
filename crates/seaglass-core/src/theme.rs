@@ -147,8 +147,30 @@ impl Theme {
     }
 
     pub fn token(&self, name: &str) -> Option<Color> {
-        let mut copy = self.clone();
-        copy.slot(name).map(|slot| *slot)
+        Some(match name {
+            "window" => self.window,
+            "surface" => self.surface,
+            "popup" => self.popup,
+            "control" => self.control,
+            "control-hover" => self.control_hover,
+            "control-pressed" => self.control_pressed,
+            "control-disabled" => self.control_disabled,
+            "text" => self.text,
+            "text-muted" => self.text_muted,
+            "text-disabled" => self.text_disabled,
+            "accent" => self.accent,
+            "focus" => self.focus,
+            "selection" => self.selection,
+            "highlight" => self.highlight,
+            "selection-inactive" => self.selection_inactive,
+            "row" => self.row,
+            "row-alternate" => self.row_alternate,
+            "track" => self.track,
+            "thumb" => self.thumb,
+            "scrollbar" => self.scrollbar,
+            "scrim" => self.scrim,
+            _ => return None,
+        })
     }
 
     /// Returns false for an unknown token name.

@@ -88,12 +88,7 @@ impl Context {
         }
         if !self.ghosts.is_empty() {
             self.pending |= Dirty::PAINT;
-            self.add_damage(Rect {
-                x: 0.0,
-                y: 0.0,
-                width: self.scene.size.width,
-                height: self.scene.size.height,
-            });
+            self.damage_scene();
         }
     }
 
@@ -214,14 +209,9 @@ impl Context {
             self.animating_nodes.push(id);
         }
         if !affine.is_identity() {
-            // ponytail: transformed pixels land outside the node's clip, so damage
-            // the whole scene; compute the transformed box if hosts start using damage.
-            self.add_damage(Rect {
-                x: 0.0,
-                y: 0.0,
-                width: self.scene.size.width,
-                height: self.scene.size.height,
-            });
+            // Transformed pixels land outside the node's clip, so damage the
+            // whole scene rather than computing the transformed box.
+            self.damage_scene();
         }
         Displayed {
             shown,
@@ -291,7 +281,7 @@ impl Context {
         self.pending |= Dirty::PAINT;
     }
 
-    /// Paints and retires ghosts. Called after normal content.
+    /// Paints ghosts after normal content and drops the finished ones.
     pub(super) fn paint_ghosts(&mut self, scene: &mut Scene) {
         let now = self.now;
         self.ghosts.retain(|ghost| {

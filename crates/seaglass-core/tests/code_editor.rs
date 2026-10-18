@@ -9,7 +9,7 @@ use seaglass_core::{
 use seaglass_scene::{Color, Point, Primitive, Size};
 use std::cell::RefCell;
 use std::time::Duration;
-use support::{Driven, on};
+use support::{Driven, click, labelled, on};
 
 const ROOT: Size = Size::new(640.0, 400.0);
 const SIZE: f32 = 14.0;
@@ -59,7 +59,7 @@ fn editor(state: &State, ui: &mut Ui<'_, Action<State>>) {
     });
 }
 
-/// A declared editor, after the second frame the old tests also waited for.
+/// A declared editor, after a second frame so that it has settled.
 fn started(text: &str) -> Driven<State> {
     let mut app = Driven::new(ROOT, State::new(text), editor);
     app.frame();
@@ -141,12 +141,6 @@ fn cell(line: usize, column: usize) -> Point {
         x: PADDING + column as f32 * ADVANCE + 1.0,
         y: PADDING + line as f32 * LINE + 4.0,
     }
-}
-
-fn click(context: &mut Context, point: Point) {
-    context.event(Event::PointerMoved(point));
-    context.event(Event::PointerDown);
-    context.event(Event::PointerUp);
 }
 
 fn key(context: &mut Context, key: Key, shift: bool) {
@@ -479,19 +473,6 @@ fn composition_shows_inline_and_escape_then_tab_leaves_the_editor() {
     key(&mut app.context, Key::Tab, false);
     app.frame();
     assert_eq!(app.state().document.text(), "a日本 b");
-}
-
-/// Bounds of the first node with this role and label.
-fn labelled(context: &Context, role: Role, label: &str) -> seaglass_scene::Rect {
-    let mut stack = vec![context.root()];
-    while let Some(id) = stack.pop() {
-        let node = context.node(id).unwrap();
-        if node.semantics.role == role && node.semantics.label == label {
-            return node.bounds;
-        }
-        stack.extend(node.children.iter().rev());
-    }
-    panic!("no {role:?} labelled {label}");
 }
 
 fn quads(context: &Context, color: Color) -> usize {

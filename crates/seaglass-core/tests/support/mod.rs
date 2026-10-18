@@ -2,9 +2,8 @@
 //! kernel's own tests: widgets send [`Action`]s on the state, and each
 //! [`Driven::frame`] applies what arrived, then declares at most once.
 //!
-//! A test that used to read `clicked()` or a `&mut` binding inside the view
-//! puts what it observes in the state instead, and asserts on
-//! [`Driven::state`] after the frame.
+//! A test records what it observes in the state instead of reading it inside
+//! the view, and asserts on [`Driven::state`] after the frame.
 //!
 //! An action that must also ask the framework for something (the clipboard,
 //! a theme, a window) is made with [`act_fx`], or sent with
@@ -17,7 +16,8 @@ use seaglass_core::{
     App, AppDriver, Context, Effects, FrameStats, MonospaceMeasurer, Pacing, Ui, WindowId,
     WindowRequest,
 };
-use seaglass_scene::Size;
+use seaglass_core::{Event, Role};
+use seaglass_scene::{Point, Primitive, Rect, Size};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -288,4 +288,72 @@ pub fn act_fx<S: 'static>(f: impl Fn(&mut S, &mut Effects<'_, Action<S>>) + 'sta
         let queued: WithEffects<S> = Box::new(move |state, effects| f(state, effects));
         EFFECTS.with(|queue| queue.borrow_mut().push(Box::new(queued)));
     })
+}
+
+/// An application, its driver and the context, run together as a window would.
+pub struct Host<A: App> {
+    pub context: Context,
+    pub driver: AppDriver<A::Message>,
+    pub app: A,
+    pub size: Size,
+}
+
+impl<A: App> Host<A> {
+    pub fn new(app: A, size: Size) -> Self {
+        Self {
+            context: Context::new(),
+            driver: AppDriver::new(|| true),
+            app,
+            size,
+        }
+    }
+
+    pub fn send(&mut self, message: A::Message) {
+        self.driver.send(message);
+    }
+
+    pub fn frame(&mut self) {
+        self.driver.frame(
+            &mut self.app,
+            &mut self.context,
+            self.size,
+            &mut MonospaceMeasurer,
+        );
+    }
+}
+
+/// Moves the pointer to `point` and presses and releases.
+pub fn click(context: &mut Context, point: Point) {
+    context.event(Event::PointerMoved(point));
+    context.event(Event::PointerDown);
+    context.event(Event::PointerUp);
+}
+
+/// Bounds of the first node with this role and label.
+pub fn labelled(context: &Context, role: Role, label: &str) -> Rect {
+    let mut stack = vec![context.root()];
+    while let Some(id) = stack.pop() {
+        let node = context.node(id).unwrap();
+        if node.semantics.role == role && node.semantics.label == label {
+            return node.bounds;
+        }
+        stack.extend(node.children.iter().rev());
+    }
+    panic!("no {role:?} labelled {label}");
+}
+
+/// Whether the scene draws exactly this text.
+pub fn shows(context: &Context, needle: &str) -> bool {
+    context.scene().primitives.iter().any(|primitive| {
+        matches!(primitive, Primitive::StyledText { text, .. } | Primitive::Text { text, .. } if text == needle)
+    })
+}
+
+/// The middle of the node at `path`.
+pub fn center(context: &Context, path: &[&str]) -> Point {
+    let bounds = context.node(context.find(path).unwrap()).unwrap().bounds;
+    Point {
+        x: bounds.x + bounds.width / 2.0,
+        y: bounds.y + bounds.height / 2.0,
+    }
 }

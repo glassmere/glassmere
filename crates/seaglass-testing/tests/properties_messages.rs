@@ -1,6 +1,6 @@
-//! Milestone 35, phase 2F: number fields and the property grid send messages.
-//! Each test sends one input through the harness, which is one batch, and
-//! checks the messages that arrive and the view that follows them.
+//! Number fields and the property grid send messages. Each test sends one
+//! input through the harness, which is one batch, and checks the messages
+//! that arrive and the view that follows them.
 
 use seaglass_core::{
     App, Effects, Key, NodeId, NumberOptions, PropertyGridOptions, PropertyGridState, PropertyMsg,
@@ -8,7 +8,10 @@ use seaglass_core::{
 };
 use seaglass_scene::Size;
 use seaglass_testing::Harness;
+
+mod support;
 use std::cell::Cell;
+use support::find_keyed;
 
 #[derive(Clone, Debug, PartialEq)]
 enum Msg {
@@ -47,24 +50,6 @@ impl App for Widths {
 
 fn harness() -> Harness<Widths> {
     Harness::app(Size::new(400.0, 400.0), Widths::default())
-}
-
-/// The node with this key anywhere in the tree.
-fn find_keyed(harness: &Harness<Widths>, key: &str) -> NodeId {
-    let context = harness.context();
-    let mut pending = vec![context.root()];
-    while let Some(id) = pending.pop() {
-        if context
-            .details(id)
-            .is_some_and(|details| details.key == key)
-        {
-            return id;
-        }
-        if let Some(node) = context.node(id) {
-            pending.extend(node.children);
-        }
-    }
-    panic!("no node keyed {key:?}");
 }
 
 #[test]

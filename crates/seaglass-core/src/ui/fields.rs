@@ -47,6 +47,7 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// stays allowed. Up and Down move through the list, Enter or a click
     /// takes a suggestion, Escape closes the list, and Enter without a
     /// highlighted suggestion submits what was typed.
+    ///
     /// An edit sends `on_change(text)`, and a pick from the list sends
     /// `on_change` of the suggestion it took.
     #[track_caller]
@@ -209,10 +210,6 @@ impl<'a, M: 'static> Ui<'a, M> {
                 ),
             ] {
                 ui.push(Element {
-                    handler: None,
-                    seq: 0,
-                    key: WidgetKey::Named(key.into()),
-                    kind: Kind::Button,
                     text: symbol.into(),
                     style: Style {
                         width: Length::Px(32.0),
@@ -221,10 +218,9 @@ impl<'a, M: 'static> Ui<'a, M> {
                         ..Style::button()
                     },
                     enabled: ui.enabled && enabled,
-                    children: Vec::new(),
-                    custom: None,
                     tooltip: Some(name),
                     control: Control::Stepper,
+                    ..Element::new(WidgetKey::Named(key.into()), Kind::Button)
                 });
                 ui.set_handler(Handler::Step(steps));
             }

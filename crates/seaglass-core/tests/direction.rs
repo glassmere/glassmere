@@ -7,7 +7,7 @@ use seaglass_core::{
     Role, SplitOptions, Style, StyleSheet, Tab, TextDocument, TextOp, TextWrap, Track, Ui,
 };
 use seaglass_scene::{Point, Primitive, Rect, Size};
-use support::{Driven, on};
+use support::{Driven, labelled, on};
 
 const ROOT: Size = Size::new(600.0, 400.0);
 
@@ -17,18 +17,6 @@ fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) {
 
 fn bounds(context: &Context, path: &[&str]) -> Rect {
     context.node(context.find(path).unwrap()).unwrap().bounds
-}
-
-fn labelled(context: &Context, role: Role, label: &str) -> Rect {
-    let mut stack = vec![context.root()];
-    while let Some(id) = stack.pop() {
-        let node = context.node(id).unwrap();
-        if node.semantics.role == role && node.semantics.label == label {
-            return node.bounds;
-        }
-        stack.extend(node.children.iter().rev());
-    }
-    panic!("no {role:?} labelled {label}");
 }
 
 fn boxed(width: f32) -> Style {

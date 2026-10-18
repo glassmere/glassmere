@@ -156,7 +156,7 @@ impl crate::Context {
             .missing_messages
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        // ponytail: a linear scan of at most 256 keys; a set if apps miss more.
+        // A linear scan of at most 256 keys; a set if apps miss more.
         if missing.len() < 256 && !missing.iter().any(|known| known == key) {
             missing.push(key.to_owned());
         }

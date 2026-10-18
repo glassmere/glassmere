@@ -1,5 +1,5 @@
 use super::rich_text::line_boxes;
-use super::text_area_input::{content, insert_span};
+use super::text_area_input::insert_span;
 use super::*;
 use crate::rich_editor::{RichBlockView, RichGranularity, RichOp};
 use crate::{BlockKind, EditorCommand, Mark, RichMotion, RichPosition, TextEdit, TextMove};
@@ -139,7 +139,7 @@ impl Context {
     fn rich_position(&self, id: NodeId, point: Point) -> Option<(RichPosition, Affinity)> {
         let node = self.nodes.get(&id)?;
         let state = node.rich_editor.as_ref()?;
-        let content = content(node);
+        let content = node.content_box();
         let y = point.y - content.y + node.scroll.offset;
         let block = state
             .layouts
@@ -242,7 +242,7 @@ impl Context {
         let layout = state.layouts.get(cursor.block)?;
         let caret = layout.geometry.caret_at(cursor.offset, state.affinity);
         let x = state.goal_x.unwrap_or(caret.x + layout.left);
-        let page = content(node).height;
+        let page = node.content_box().height;
         let in_block = |block: usize, x: f32, y: f32| {
             let layout = &state.layouts[block];
             let (offset, affinity) = layout.geometry.hit_affinity(Point {
@@ -296,7 +296,7 @@ impl Context {
             Key::PageUp | Key::PageDown => {
                 let caret = state.caret?;
                 let delta = if key == Key::PageUp { -page } else { page };
-                let origin = content(node).x;
+                let origin = node.content_box().x;
                 self.rich_position(
                     id,
                     Point {
@@ -537,8 +537,8 @@ impl Context {
 
     /// Shapes every block at the content width, stacks them, keeps the caret
     /// in view and publishes the scroll range.
-    // ponytail: all blocks are shaped, not just the visible ones; virtualize
-    // by block if documents reach thousands of paragraphs.
+    // Every block is shaped, not just the visible ones, so documents of
+    // thousands of paragraphs would need per-block virtualization.
     pub(super) fn prepare_rich_editors(&mut self, measurer: &mut impl TextMeasurer) {
         let ids: Vec<_> = self
             .nodes
@@ -557,7 +557,7 @@ impl Context {
                 continue;
             };
             let base = node.text_style();
-            let area = content(node);
+            let area = node.content_box();
             let mut state = node.rich_editor.take().unwrap_or_default();
             let same_frame =
                 state.width == area.width && state.font_size == *font_size && state.rtl == base.rtl;
@@ -678,7 +678,7 @@ impl Context {
         };
         let theme = &self.theme;
         let focused = self.focused == Some(id);
-        let area = content(node);
+        let area = node.content_box();
         let base = node.text_style();
         let (start, end) = (*anchor.min(cursor), *anchor.max(cursor));
         scene.primitives.push(Primitive::PushClip(area));

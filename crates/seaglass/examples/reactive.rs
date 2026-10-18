@@ -1,5 +1,5 @@
-//! Optional reactive state. Ordinary Rust state is still the way to write an
-//! application here; a store earns its place when a value is derived from
+//! Optional reactive state. Plain Rust state is the default way to write an
+//! application; a store earns its place when a value is derived from
 //! several others and read in several places. Press F12 and open the State
 //! tab to see what each derived value read and which one moved last.
 use seaglass::{

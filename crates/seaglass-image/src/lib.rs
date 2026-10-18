@@ -67,7 +67,7 @@ impl VectorImage for Svg {
 
 fn svg(bytes: &[u8]) -> Result<Image, String> {
     let mut options = usvg::Options::default();
-    // ponytail: system fonts are scanned once, and only for SVGs with text;
+    // System fonts are scanned once, and only for SVGs with text;
     // icons never pay for it. Bundle a font database here if apps need
     // identical SVG text on every machine.
     if bytes.windows(5).any(|window| window == b"<text") {
@@ -87,7 +87,7 @@ fn svg(bytes: &[u8]) -> Result<Image, String> {
 
 /// Loads image files on one background thread. `done` runs on that thread
 /// after each file, to wake the UI thread, which then drains `finished`.
-// ponytail: one worker; a pool if photo galleries need parallel decoding.
+// One worker; a pool if photo galleries need parallel decoding.
 pub struct Loader {
     requests: Sender<PathBuf>,
     results: Receiver<(PathBuf, Result<Image, String>)>,

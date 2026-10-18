@@ -3,11 +3,11 @@ mod support;
 use seaglass_core::app::Action;
 use seaglass_core::{Button, DragPayload, DragSourceBuilder, DropTargetBuilder};
 use seaglass_core::{
-    Context, DiagnosticKind, DropKind, Event, Length, MenuItem, Style, TouchPhase, Ui,
+    Context, DiagnosticKind, DropKind, Event, Length, MenuItem, Style, TextEdit, TouchPhase, Ui,
 };
-use seaglass_scene::{Point, Size};
+use seaglass_scene::{Point, Rect, Size};
 use std::time::Duration;
-use support::{Driven, act, on};
+use support::{Driven, act, center, on};
 
 const ROOT: Size = Size::new(600.0, 500.0);
 
@@ -15,14 +15,6 @@ fn sized(width: f32, height: f32) -> Style {
     Style::default()
         .width(Length::Px(width))
         .height(Length::Px(height))
-}
-
-fn center(context: &Context, path: &[&str]) -> Point {
-    let bounds = context.node(context.find(path).unwrap()).unwrap().bounds;
-    Point {
-        x: bounds.x + bounds.width / 2.0,
-        y: bounds.y + bounds.height / 2.0,
-    }
 }
 
 fn touch(context: &mut Context, id: u64, phase: TouchPhase, position: Point) -> bool {
@@ -311,7 +303,7 @@ fn two_fingers_move_two_sliders_and_a_second_finger_cannot_steal_one() {
         .node(driven.context.find(&["top", "right", "slider"]).unwrap())
         .unwrap()
         .bounds;
-    let middle = |bounds: seaglass_scene::Rect, share: f32| {
+    let middle = |bounds: Rect, share: f32| {
         at(
             bounds.x + bounds.width * share,
             bounds.y + bounds.height / 2.0,
@@ -346,7 +338,7 @@ fn two_fingers_move_two_sliders_and_a_second_finger_cannot_steal_one() {
     );
     driven.frame();
     // The thumb is inset by 12 px at both ends of the track.
-    let value = |bounds: seaglass_scene::Rect, share: f32| {
+    let value = |bounds: Rect, share: f32| {
         f64::from(((bounds.width * share - 12.0) / (bounds.width - 24.0) * 100.0).round())
     };
     assert_eq!(driven.state().left, value(left, 0.25));
@@ -506,7 +498,7 @@ fn a_rest_or_a_second_tap_in_text_selects_a_word_and_the_drag_extends_it() {
     // And typing replaces what was selected, which is the point of it.
     driven
         .context
-        .event(Event::Text(seaglass_core::TextEdit::Insert("one".into())));
+        .event(Event::Text(TextEdit::Insert("one".into())));
     driven.frame();
     assert_eq!(driven.state().typed, "one beta gamma");
 }

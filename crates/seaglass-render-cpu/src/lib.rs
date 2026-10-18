@@ -8,13 +8,13 @@
 //! let pixels = renderer.render([800, 600], 1.0, context.scene(), Color::rgb(16, 23, 34));
 //! ```
 //!
-//! It follows the display list exactly as `seaglass-render-wgpu` does: the
-//! same clip stack, the same layers snapped to the pixel grid, the same shaped
-//! text from `seaglass-text`, the same premultiplied linear texels, and, like
-//! an sRGB render target, it blends in
-//! linear light, so translucent fills, faded layers and the soft edges of
-//! glyphs come out the same. tiny-skia supplies geometry: the coverage of
-//! rounded corners and the resampling of images and transformed layers.
+//! It follows the display list as `seaglass-render-wgpu` does: the same clip
+//! stack, the same layers snapped to the pixel grid, the same shaped text from
+//! `seaglass-text`, the same premultiplied linear texels. Like an sRGB render
+//! target it blends in linear light, so translucent fills, faded layers and
+//! the soft edges of glyphs come out the same. tiny-skia supplies geometry:
+//! the coverage of rounded corners and the resampling of images and
+//! transformed layers.
 //!
 //! It is close to the GPU's output, not identical. A quad's edge is covered by
 //! its exact area here and feathered by the shader there, and what is resampled
@@ -516,7 +516,7 @@ impl CpuRenderer {
                     frames.push(frame);
                     clips.push(*bounds);
                     self.stats.layers += 1;
-                    // ponytail: a pixmap per layer per frame. Pool them by size,
+                    // A pixmap per layer per frame. Pool them by size,
                     // as the GPU renderer does, if animations show it in a profile.
                     surfaces.push(Surface {
                         pixmap: child,
@@ -711,7 +711,7 @@ impl CpuRenderer {
             return;
         }
         // Rounded: tiny-skia says how much of each visible pixel is covered.
-        // ponytail: a mask per rounded quad. Reuse one buffer if a profile of
+        // A mask per rounded quad. Reuse one buffer if a profile of
         // a real page ever shows the allocations.
         let (Some(path), Some(mut mask)) =
             (rounded(rect, radius), Mask::new(visible[2], visible[3]))

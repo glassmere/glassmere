@@ -35,7 +35,7 @@ impl Parse for Call {
 fn catalog() -> Option<PathBuf> {
     let directory = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR")?);
     let manifest = std::fs::read_to_string(directory.join("Cargo.toml")).ok()?;
-    // ponytail: a line scan instead of a TOML parser; the table has one key.
+    // A line scan instead of a TOML parser; the table has one key.
     let mut inside = false;
     for line in manifest.lines().map(str::trim) {
         if line.starts_with('[') {

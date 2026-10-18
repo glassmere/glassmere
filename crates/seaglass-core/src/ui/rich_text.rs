@@ -19,20 +19,14 @@ impl<'a, M: 'static> Ui<'a, M> {
             .collect();
         let key = self.next_key();
         let response = self.push(Element {
-            handler: None,
-            seq: 0,
-            key,
-            kind: Kind::RichText,
             text: text.plain(),
             style,
             enabled: self.enabled,
-            children: Vec::new(),
-            custom: None,
-            tooltip: None,
             control: Control::RichText {
                 runs: text.runs.clone(),
                 links: text.runs.iter().filter(|run| run.link.is_some()).count(),
             },
+            ..Element::new(key, Kind::RichText)
         });
         self.set_handler(crate::app::Handler::Map(Box::new(
             move |update| match update {

@@ -1,6 +1,6 @@
 # The performance model
 
-What makes a frame expensive here, what it costs, and how to see it. The numbers are from this machine (Windows 11, Ryzen 24 threads, RTX 3070) and are meant as orders of magnitude, not guarantees.
+What makes a frame expensive here, what it costs, and how to see it. The numbers were measured on Windows 11 with a 24-thread Ryzen and an RTX 3070 and are orders of magnitude, not guarantees.
 
 ## The five phases of a frame
 
@@ -36,7 +36,7 @@ Two things to read out of that table. First, size costs nothing that is not on s
 
 ## Startup
 
-`SEAGLASS_STARTUP=1` prints how far into startup each step was reached. A release build of the counter example on this machine:
+`SEAGLASS_STARTUP=1` prints how far into startup each step was reached. A release build of the counter example on that machine:
 
 | Step | Reached at |
 | --- | --- |
@@ -59,6 +59,10 @@ Release builds of the counter example, which is a whole application:
 | `--no-default-features --features desktop` | 12.3 MB |
 
 There is nothing to install beside it and no runtime to ship. On Windows the debug information is in a separate `.pdb`, so `-C strip=symbols` changes nothing: both numbers above are what is deployed. The 3.5 MB difference is syntax highlighting, image decoding, translation catalogs and regular expressions, each of which is a feature an application turns off if it does not use it.
+
+## Memory
+
+The counter example in a release build, Direct3D 12 on the same machine, four seconds after launch: about 67 MiB private resident, 109 MiB total resident and 122 MiB private commit, and no measurable CPU while idle. Most of that is the graphics driver and device, which exist before any widget does; the retained tree and the renderer are a small part. The defaults are chosen for it: one backend is initialised rather than all of them, allocations use compact 4 to 16 MiB blocks, the Direct3D descriptor heap is limited to 4,096 bindings, and the frame queue is one deep. `GraphicsOptions` changes each, and the `diagnostics` feature adds startup checkpoints and the `SEAGLASS_MEMORY_*` variables described in [platform](platform.md). The CPU renderer avoids the graphics stack altogether.
 
 ## Allocation
 

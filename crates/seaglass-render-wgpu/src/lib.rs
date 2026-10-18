@@ -29,7 +29,7 @@ struct Vertex {
     radius: f32,
 }
 
-// ponytail: the stops ride along in every vertex, which is wide but keeps the
+// The stops ride along in every vertex, which is wide but keeps the
 // ramp to one buffer and no bind group. A uniform buffer if scenes ever hold
 // thousands of gradients.
 #[repr(C)]
@@ -169,6 +169,183 @@ struct LayerFrame {
     clip_depth: usize,
     /// `None` for layers drawn inline as a clip.
     composite: Option<Draw>,
+}
+
+/// The two triangles of a unit square, as corner offsets.
+const UNIT_QUAD: [[f32; 2]; 6] = [
+    [0.0, 0.0],
+    [1.0, 0.0],
+    [0.0, 1.0],
+    [0.0, 1.0],
+    [1.0, 0.0],
+    [1.0, 1.0],
+];
+
+/// What one preparation collects while it walks the scene: the clip and layer
+/// stacks, the surfaces with their draw lists, the vertices and the text.
+struct Recording {
+    clips: Vec<Rect>,
+    frames: Vec<LayerFrame>,
+    /// The surface primitives are drawn into.
+    current: usize,
+    surfaces: Vec<Surface>,
+    /// Largest size a layer may render at.
+    cap: [u32; 2],
+    vertices: Vec<Vertex>,
+    image_vertices: Vec<image::ImageVertex>,
+    gradient_vertices: Vec<GradientVertex>,
+    shadow_vertices: Vec<ShadowVertex>,
+    text_items: Vec<PreparedText>,
+    /// Per text batch: its surface and its span of `text_items`.
+    text_ranges: Vec<(usize, std::ops::Range<usize>)>,
+    active_text: HashSet<seaglass_text::TextKey>,
+}
+
+impl Recording {
+    fn quad(&mut self, clip: Rect, rect: Rect, color: Color, radius: f32) {
+        let surface = &mut self.surfaces[self.current];
+        let scissor = scissor(clip.intersect(rect), surface);
+        if scissor[2] == 0 || scissor[3] == 0 {
+            return;
+        }
+        let (origin, scale, size) = (surface.origin, surface.scale, surface.size);
+        let start = self.vertices.len() as u32;
+        for [x, y] in UNIT_QUAD {
+            self.vertices.push(Vertex {
+                position: [
+                    ((rect.x - origin[0]) + x * rect.width) * scale / size[0] as f32 * 2.0 - 1.0,
+                    1.0 - ((rect.y - origin[1]) + y * rect.height) * scale / size[1] as f32 * 2.0,
+                ],
+                local: [x * rect.width, y * rect.height],
+                size: [rect.width, rect.height],
+                color: color.linear(),
+                radius,
+            });
+        }
+        surface.draws.push(Draw::Quad {
+            start,
+            clip: scissor,
+        });
+    }
+
+    fn gradient(&mut self, clip: Rect, primitive: &Primitive) {
+        let Primitive::Gradient {
+            rect,
+            radius,
+            from,
+            to,
+            stops,
+            radial,
+        } = primitive
+        else {
+            unreachable!()
+        };
+        let surface = &mut self.surfaces[self.current];
+        let scissor = scissor(clip.intersect(*rect), surface);
+        // A ramp needs two ends; one colour is a quad.
+        if scissor[2] == 0 || scissor[3] == 0 || stops.len() < 2 {
+            return;
+        }
+        let kept = stops.len().min(MAX_GRADIENT_STOPS);
+        let mut offsets = [0.0; MAX_GRADIENT_STOPS];
+        let mut colors = [[0.0; 4]; MAX_GRADIENT_STOPS];
+        for (index, (offset, color)) in offsets.iter_mut().zip(&mut colors).enumerate() {
+            // Stops past the eighth are dropped; the slots left over
+            // repeat the last one and mix into nothing.
+            let stop = stops[index.min(kept - 1)];
+            *offset = stop.at;
+            *color = stop.color.linear();
+        }
+        let (origin, scale, size) = (surface.origin, surface.scale, surface.size);
+        let start = self.gradient_vertices.len() as u32;
+        for [x, y] in UNIT_QUAD {
+            self.gradient_vertices.push(GradientVertex {
+                position: [
+                    ((rect.x - origin[0]) + x * rect.width) * scale / size[0] as f32 * 2.0 - 1.0,
+                    1.0 - ((rect.y - origin[1]) + y * rect.height) * scale / size[1] as f32 * 2.0,
+                ],
+                local: [x * rect.width, y * rect.height, rect.width, rect.height],
+                ends: [from.x, from.y, to.x, to.y],
+                offsets,
+                shape: [*radius, f32::from(u8::from(*radial))],
+                colors,
+            });
+        }
+        surface.draws.push(Draw::Gradient {
+            start,
+            clip: scissor,
+        });
+    }
+
+    fn shadow(&mut self, clip: Rect, primitive: &Primitive) {
+        let Primitive::Shadow {
+            rect,
+            radius,
+            color,
+            blur,
+            spread,
+            offset,
+            inset,
+        } = primitive
+        else {
+            unreachable!()
+        };
+        let blur = blur.max(0.0);
+        // The blurred rectangle: grown by the spread, moved by the
+        // offset. A spread that eats it leaves nothing to blur.
+        let half = [
+            (rect.width / 2.0 + spread).max(0.0),
+            (rect.height / 2.0 + spread).max(0.0),
+        ];
+        let centre = [
+            rect.x + rect.width / 2.0 + offset.x,
+            rect.y + rect.height / 2.0 + offset.y,
+        ];
+        let reach = 3.0 * blur;
+        // A Gaussian is spent three standard deviations out, and an
+        // inset shadow never leaves the rectangle it darkens.
+        let drawn = if *inset {
+            *rect
+        } else {
+            Rect {
+                x: centre[0] - half[0] - reach,
+                y: centre[1] - half[1] - reach,
+                width: (half[0] + reach) * 2.0,
+                height: (half[1] + reach) * 2.0,
+            }
+        };
+        let surface = &mut self.surfaces[self.current];
+        let scissor = scissor(clip.intersect(drawn), surface);
+        if scissor[2] == 0 || scissor[3] == 0 {
+            return;
+        }
+        let inner = [rect.width / 2.0, rect.height / 2.0];
+        let middle = [rect.x + inner[0], rect.y + inner[1]];
+        let (origin, scale, size) = (surface.origin, surface.scale, surface.size);
+        let start = self.shadow_vertices.len() as u32;
+        for [x, y] in UNIT_QUAD {
+            let point = [drawn.x + x * drawn.width, drawn.y + y * drawn.height];
+            self.shadow_vertices.push(ShadowVertex {
+                position: [
+                    (point[0] - origin[0]) * scale / size[0] as f32 * 2.0 - 1.0,
+                    1.0 - (point[1] - origin[1]) * scale / size[1] as f32 * 2.0,
+                ],
+                outer: [point[0] - centre[0], point[1] - centre[1], half[0], half[1]],
+                inner: [
+                    point[0] - middle[0],
+                    point[1] - middle[1],
+                    inner[0],
+                    inner[1],
+                ],
+                params: [blur, f32::from(u8::from(*inset)), radius + spread, *radius],
+                color: color.linear(),
+            });
+        }
+        surface.draws.push(Draw::Shadow {
+            start,
+            clip: scissor,
+        });
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -544,6 +721,23 @@ impl Renderer {
             return self.draw(device, queue, target, clear, damage);
         }
         self.prepared_target = None;
+        let mut recording = self.begin_recording(device, queue, physical_size, scale);
+        self.record_scene(device, queue, &mut recording, scene);
+        self.prepare_text(device, queue, &recording)?;
+        self.upload_vertices(device, queue, &mut recording);
+        self.finish_preparation(recording, target_key);
+        self.draw(device, queue, target, clear, damage)
+    }
+
+    /// Sets up the buffers and the target's own surface for walking a scene,
+    /// and ages the layer pool.
+    fn begin_recording(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        physical_size: [u32; 2],
+        scale: f32,
+    ) -> Recording {
         self.viewport.update(
             queue,
             Resolution {
@@ -557,7 +751,6 @@ impl Renderer {
             width: physical_size[0] as f32 / scale,
             height: physical_size[1] as f32 / scale,
         };
-        let mut clips = vec![viewport];
         let mut vertices = std::mem::take(&mut self.vertices);
         vertices.clear();
         let mut image_vertices = std::mem::take(&mut self.image_vertices);
@@ -573,428 +766,79 @@ impl Renderer {
             .map(|root| std::mem::take(&mut root.draws))
             .unwrap_or_default();
         draws.clear();
-        let mut surfaces = vec![Surface {
-            size: physical_size,
-            origin: [0.0; 2],
-            scale,
-            texture: None,
-            draws,
-        }];
-        let mut current = 0;
-        let mut frames: Vec<LayerFrame> = Vec::new();
         // Layer textures survive two preparations without use, then are released.
         self.pool.retain(|texture| texture.idle < 2);
         for texture in &mut self.pool {
             texture.idle += 1;
         }
         let limit = device.limits().max_texture_dimension_2d;
-        let cap = physical_size.map(|side| side.saturating_mul(2).min(limit));
-        let mut text_items = Vec::new();
-        let mut text_ranges: Vec<(usize, std::ops::Range<usize>)> = Vec::new();
-        let mut active_text = HashSet::new();
+        Recording {
+            clips: vec![viewport],
+            frames: Vec::new(),
+            current: 0,
+            surfaces: vec![Surface {
+                size: physical_size,
+                origin: [0.0; 2],
+                scale,
+                texture: None,
+                draws,
+            }],
+            cap: physical_size.map(|side| side.saturating_mul(2).min(limit)),
+            vertices,
+            image_vertices,
+            gradient_vertices,
+            shadow_vertices,
+            text_items: Vec::new(),
+            text_ranges: Vec::new(),
+            active_text: HashSet::new(),
+        }
+    }
+
+    /// Turns the scene's primitives into vertices and per-surface draw lists.
+    fn record_scene(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        rec: &mut Recording,
+        scene: &Scene,
+    ) {
         let close = Primitive::PopLayer;
         let mut primitives = scene.primitives.iter();
         loop {
             let primitive = match primitives.next() {
                 Some(primitive) => primitive,
-                None if frames.is_empty() => break,
+                None if rec.frames.is_empty() => break,
                 // Layers left open still composite.
                 None => &close,
             };
-            let clip = *clips.last().unwrap();
+            let clip = *rec.clips.last().unwrap();
             match primitive {
-                Primitive::PushClip(rect) => clips.push(clip.intersect(*rect)),
+                Primitive::PushClip(rect) => rec.clips.push(clip.intersect(*rect)),
                 Primitive::PopClip => {
-                    if clips.len() > frames.last().map_or(1, |frame| frame.clip_depth + 1) {
-                        clips.pop();
+                    if rec.clips.len() > rec.frames.last().map_or(1, |frame| frame.clip_depth + 1) {
+                        rec.clips.pop();
                     }
                 }
-                Primitive::PushLayer {
-                    bounds,
-                    opacity,
-                    transform,
-                } => {
-                    let mut frame = LayerFrame {
-                        parent: current,
-                        clip_depth: clips.len(),
-                        composite: None,
-                    };
-                    if *opacity >= 1.0 && transform.is_identity() {
-                        clips.push(clip.intersect(*bounds));
-                        frames.push(frame);
-                        continue;
-                    }
-                    let parent = &surfaces[current];
-                    let (origin, scale) = (parent.origin, parent.scale);
-                    // Snapped to the parent's pixel grid, so an untransformed
-                    // composite maps texels onto pixels one to one.
-                    let x = ((bounds.x - origin[0]) * scale).floor();
-                    let y = ((bounds.y - origin[1]) * scale).floor();
-                    let width =
-                        (((bounds.x + bounds.width - origin[0]) * scale).ceil() - x).max(1.0);
-                    let height =
-                        (((bounds.y + bounds.height - origin[1]) * scale).ceil() - y).max(1.0);
-                    // Oversized layers render at a lower resolution instead.
-                    let fit = (cap[0] as f32 / width).min(cap[1] as f32 / height).min(1.0);
-                    let size = [
-                        ((width * fit).ceil() as u32).clamp(1, cap[0]),
-                        ((height * fit).ceil() as u32).clamp(1, cap[1]),
-                    ];
-                    let child_origin = [origin[0] + x / scale, origin[1] + y / scale];
-                    let child_scale = scale * fit;
-                    let corners = [
-                        [0.0, 0.0],
-                        [1.0, 0.0],
-                        [0.0, 1.0],
-                        [0.0, 1.0],
-                        [1.0, 0.0],
-                        [1.0, 1.0],
-                    ]
-                    .map(|[u, v]| {
-                        let point = transform.apply(Point {
-                            x: child_origin[0] + u * size[0] as f32 / child_scale,
-                            y: child_origin[1] + v * size[1] as f32 / child_scale,
-                        });
-                        (u, v, point)
-                    });
-                    let min = |f: fn(Point) -> f32| {
-                        corners
-                            .iter()
-                            .map(|corner| f(corner.2))
-                            .fold(f32::INFINITY, f32::min)
-                    };
-                    let (left, top) = (min(|p| p.x), min(|p| p.y));
-                    let covered = Rect {
-                        x: left,
-                        y: top,
-                        width: -min(|p| -p.x) - left,
-                        height: -min(|p| -p.y) - top,
-                    };
-                    // The clip at the push bounds the composite; rotated groups
-                    // are scissored by their bounding box.
-                    let composite_clip = scissor(clip.intersect(covered), parent);
-                    if !(*opacity > 0.0 && bounds.width > 0.0 && bounds.height > 0.0)
-                        || composite_clip[2] == 0
-                        || composite_clip[3] == 0
-                    {
-                        // Invisible: an empty clip culls the content.
-                        clips.push(Rect {
-                            x: 0.0,
-                            y: 0.0,
-                            width: 0.0,
-                            height: 0.0,
-                        });
-                        frames.push(frame);
-                        continue;
-                    }
-                    let start = vertices.len() as u32;
-                    vertices.extend(corners.map(|(u, v, point)| Vertex {
-                        position: [
-                            (point.x - origin[0]) * scale / parent.size[0] as f32 * 2.0 - 1.0,
-                            1.0 - (point.y - origin[1]) * scale / parent.size[1] as f32 * 2.0,
-                        ],
-                        local: [u, v],
-                        size: [0.0; 2],
-                        color: [0.0, 0.0, 0.0, opacity.min(1.0)],
-                        radius: 0.0,
-                    }));
-                    let texture = match self
-                        .pool
-                        .iter()
-                        .position(|texture| texture.idle > 0 && texture.size == size)
-                    {
-                        Some(index) => index,
-                        None => {
-                            let created = self.layer_texture(device, queue, size);
-                            self.pool.push(created);
-                            self.pool.len() - 1
-                        }
-                    };
-                    self.pool[texture].idle = 0;
-                    frame.composite = Some(Draw::Layer {
-                        surface: surfaces.len(),
-                        start,
-                        clip: composite_clip,
-                    });
-                    frames.push(frame);
-                    clips.push(*bounds);
-                    current = surfaces.len();
-                    surfaces.push(Surface {
-                        size,
-                        origin: child_origin,
-                        scale: child_scale,
-                        texture: Some(texture),
-                        draws: Vec::new(),
-                    });
+                Primitive::PushLayer { .. } => {
+                    self.record_push_layer(device, queue, rec, clip, primitive)
                 }
                 Primitive::PopLayer => {
-                    if let Some(frame) = frames.pop() {
-                        clips.truncate(frame.clip_depth);
-                        current = frame.parent;
-                        surfaces[current].draws.extend(frame.composite);
+                    if let Some(frame) = rec.frames.pop() {
+                        rec.clips.truncate(frame.clip_depth);
+                        rec.current = frame.parent;
+                        rec.surfaces[rec.current].draws.extend(frame.composite);
                     }
                 }
                 Primitive::Quad {
                     rect,
                     color,
                     radius,
-                } => {
-                    let surface = &mut surfaces[current];
-                    let scissor = scissor(clip.intersect(*rect), surface);
-                    if scissor[2] == 0 || scissor[3] == 0 {
-                        continue;
-                    }
-                    let (origin, scale, size) = (surface.origin, surface.scale, surface.size);
-                    let start = vertices.len() as u32;
-                    for [x, y] in [
-                        [0.0, 0.0],
-                        [1.0, 0.0],
-                        [0.0, 1.0],
-                        [0.0, 1.0],
-                        [1.0, 0.0],
-                        [1.0, 1.0],
-                    ] {
-                        vertices.push(Vertex {
-                            position: [
-                                ((rect.x - origin[0]) + x * rect.width) * scale / size[0] as f32
-                                    * 2.0
-                                    - 1.0,
-                                1.0 - ((rect.y - origin[1]) + y * rect.height) * scale
-                                    / size[1] as f32
-                                    * 2.0,
-                            ],
-                            local: [x * rect.width, y * rect.height],
-                            size: [rect.width, rect.height],
-                            color: color.linear(),
-                            radius: *radius,
-                        });
-                    }
-                    surface.draws.push(Draw::Quad {
-                        start,
-                        clip: scissor,
-                    });
-                }
-                Primitive::Image {
-                    rect,
-                    image,
-                    source,
-                    tint,
-                    radius,
-                } => {
-                    let surface = &mut surfaces[current];
-                    let visible = scissor(clip.intersect(*rect), surface);
-                    if visible[2] == 0
-                        || visible[3] == 0
-                        || source.width == 0.0
-                        || source.height == 0.0
-                    {
-                        continue;
-                    }
-                    let raster = self
-                        .images
-                        .raster_size(image, *rect, *source, surface.scale);
-                    let Some(place) = self.images.ensure(device, queue, image, raster) else {
-                        continue;
-                    };
-                    // `source` in texels of the placement, which differ from the
-                    // image's units for vector rasters and downscaled photos.
-                    let natural = image.size();
-                    let texels = |at: f32, length: f32, natural: f32, axis: usize| {
-                        let (start, side) = (place.rect[axis] as f32, place.rect[axis + 2] as f32);
-                        let from = start + at * side / natural;
-                        let to = from + length * side / natural;
-                        // Half a texel inside both the source and the image, so
-                        // filtering blends in nothing from beyond either.
-                        let low = from.min(to).max(start) + 0.5;
-                        let high = from.max(to).min(start + side) - 0.5;
-                        let (low, high) = if low > high {
-                            ((low + high) / 2.0, (low + high) / 2.0)
-                        } else {
-                            (low, high)
-                        };
-                        [from, to, low, high].map(|texel| texel / place.texture_size[axis] as f32)
-                    };
-                    let u = texels(source.x, source.width, natural.width, 0);
-                    let v = texels(source.y, source.height, natural.height, 1);
-                    let (origin, scale, size) = (surface.origin, surface.scale, surface.size);
-                    let start = image_vertices.len() as u32;
-                    for [x, y] in [
-                        [0.0, 0.0],
-                        [1.0, 0.0],
-                        [0.0, 1.0],
-                        [0.0, 1.0],
-                        [1.0, 0.0],
-                        [1.0, 1.0],
-                    ] {
-                        image_vertices.push(image::ImageVertex {
-                            position: [
-                                ((rect.x - origin[0]) + x * rect.width) * scale / size[0] as f32
-                                    * 2.0
-                                    - 1.0,
-                                1.0 - ((rect.y - origin[1]) + y * rect.height) * scale
-                                    / size[1] as f32
-                                    * 2.0,
-                            ],
-                            uv: [u[0] + x * (u[1] - u[0]), v[0] + y * (v[1] - v[0])],
-                            local: [x * rect.width, y * rect.height],
-                            size: [rect.width, rect.height],
-                            tint: tint.map_or([0.0, 0.0, 0.0, 1.0], Color::linear),
-                            params: [*radius, f32::from(u8::from(tint.is_some()))],
-                            bounds: [u[2], v[2], u[3], v[3]],
-                        });
-                    }
-                    // The scissor is the clip alone, so neighbours can share a draw.
-                    let clip = scissor(clip, surface);
-                    match surface.draws.last_mut() {
-                        Some(Draw::Image {
-                            texture,
-                            start: first,
-                            count,
-                            clip: last,
-                        }) if *texture == place.texture
-                            && *last == clip
-                            && *first + *count == start =>
-                        {
-                            *count += 6
-                        }
-                        _ => surface.draws.push(Draw::Image {
-                            texture: place.texture,
-                            start,
-                            count: 6,
-                            clip,
-                        }),
-                    }
-                }
-                Primitive::Gradient {
-                    rect,
-                    radius,
-                    from,
-                    to,
-                    stops,
-                    radial,
-                } => {
-                    let surface = &mut surfaces[current];
-                    let scissor = scissor(clip.intersect(*rect), surface);
-                    // A ramp needs two ends; one colour is a quad.
-                    if scissor[2] == 0 || scissor[3] == 0 || stops.len() < 2 {
-                        continue;
-                    }
-                    let kept = stops.len().min(MAX_GRADIENT_STOPS);
-                    let mut offsets = [0.0; MAX_GRADIENT_STOPS];
-                    let mut colors = [[0.0; 4]; MAX_GRADIENT_STOPS];
-                    for (index, (offset, color)) in offsets.iter_mut().zip(&mut colors).enumerate()
-                    {
-                        // Stops past the eighth are dropped; the slots left over
-                        // repeat the last one and mix into nothing.
-                        let stop = stops[index.min(kept - 1)];
-                        *offset = stop.at;
-                        *color = stop.color.linear();
-                    }
-                    let (origin, scale, size) = (surface.origin, surface.scale, surface.size);
-                    let start = gradient_vertices.len() as u32;
-                    for [x, y] in [
-                        [0.0, 0.0],
-                        [1.0, 0.0],
-                        [0.0, 1.0],
-                        [0.0, 1.0],
-                        [1.0, 0.0],
-                        [1.0, 1.0],
-                    ] {
-                        gradient_vertices.push(GradientVertex {
-                            position: [
-                                ((rect.x - origin[0]) + x * rect.width) * scale / size[0] as f32
-                                    * 2.0
-                                    - 1.0,
-                                1.0 - ((rect.y - origin[1]) + y * rect.height) * scale
-                                    / size[1] as f32
-                                    * 2.0,
-                            ],
-                            local: [x * rect.width, y * rect.height, rect.width, rect.height],
-                            ends: [from.x, from.y, to.x, to.y],
-                            offsets,
-                            shape: [*radius, f32::from(u8::from(*radial))],
-                            colors,
-                        });
-                    }
-                    surface.draws.push(Draw::Gradient {
-                        start,
-                        clip: scissor,
-                    });
-                }
-                Primitive::Shadow {
-                    rect,
-                    radius,
-                    color,
-                    blur,
-                    spread,
-                    offset,
-                    inset,
-                } => {
-                    let blur = blur.max(0.0);
-                    // The blurred rectangle: grown by the spread, moved by the
-                    // offset. A spread that eats it leaves nothing to blur.
-                    let half = [
-                        (rect.width / 2.0 + spread).max(0.0),
-                        (rect.height / 2.0 + spread).max(0.0),
-                    ];
-                    let centre = [
-                        rect.x + rect.width / 2.0 + offset.x,
-                        rect.y + rect.height / 2.0 + offset.y,
-                    ];
-                    let reach = 3.0 * blur;
-                    // A Gaussian is spent three standard deviations out, and an
-                    // inset shadow never leaves the rectangle it darkens.
-                    let drawn = if *inset {
-                        *rect
-                    } else {
-                        Rect {
-                            x: centre[0] - half[0] - reach,
-                            y: centre[1] - half[1] - reach,
-                            width: (half[0] + reach) * 2.0,
-                            height: (half[1] + reach) * 2.0,
-                        }
-                    };
-                    let surface = &mut surfaces[current];
-                    let scissor = scissor(clip.intersect(drawn), surface);
-                    if scissor[2] == 0 || scissor[3] == 0 {
-                        continue;
-                    }
-                    let inner = [rect.width / 2.0, rect.height / 2.0];
-                    let middle = [rect.x + inner[0], rect.y + inner[1]];
-                    let (origin, scale, size) = (surface.origin, surface.scale, surface.size);
-                    let start = shadow_vertices.len() as u32;
-                    for [x, y] in [
-                        [0.0, 0.0],
-                        [1.0, 0.0],
-                        [0.0, 1.0],
-                        [0.0, 1.0],
-                        [1.0, 0.0],
-                        [1.0, 1.0],
-                    ] {
-                        let point = [drawn.x + x * drawn.width, drawn.y + y * drawn.height];
-                        shadow_vertices.push(ShadowVertex {
-                            position: [
-                                (point[0] - origin[0]) * scale / size[0] as f32 * 2.0 - 1.0,
-                                1.0 - (point[1] - origin[1]) * scale / size[1] as f32 * 2.0,
-                            ],
-                            outer: [point[0] - centre[0], point[1] - centre[1], half[0], half[1]],
-                            inner: [
-                                point[0] - middle[0],
-                                point[1] - middle[1],
-                                inner[0],
-                                inner[1],
-                            ],
-                            params: [blur, f32::from(u8::from(*inset)), radius + spread, *radius],
-                            color: color.linear(),
-                        });
-                    }
-                    surface.draws.push(Draw::Shadow {
-                        start,
-                        clip: scissor,
-                    });
-                }
+                } => rec.quad(clip, *rect, *color, *radius),
+                Primitive::Image { .. } => self.record_image(device, queue, rec, clip, primitive),
+                Primitive::Gradient { .. } => rec.gradient(clip, primitive),
+                Primitive::Shadow { .. } => rec.shadow(clip, primitive),
                 Primitive::Custom { rect, id } => {
-                    let surface = &mut surfaces[current];
+                    let surface = &mut rec.surfaces[rec.current];
                     let scissor = scissor(clip.intersect(*rect), surface);
                     if scissor[2] == 0 || scissor[3] == 0 {
                         continue;
@@ -1009,50 +853,277 @@ impl Renderer {
                         clip: scissor,
                     });
                 }
-                Primitive::Text { rect, color, .. }
-                | Primitive::StyledText { rect, color, .. }
-                | Primitive::RichText { rect, color, .. } => {
-                    let key = match primitive {
-                        Primitive::Text {
-                            text, font_size, ..
-                        } => self.text_system.ensure(text, *font_size),
-                        Primitive::StyledText { text, style, .. } => self
-                            .text_system
-                            .ensure_styled(text, style, Some(rect.width)),
-                        Primitive::RichText { spans, style, .. } => {
-                            self.text_system.ensure_rich(spans, style, Some(rect.width))
-                        }
-                        _ => unreachable!(),
-                    };
-                    active_text.insert(key.clone());
-                    let surface = &mut surfaces[current];
-                    let scissor = scissor(clip.intersect(*rect), surface);
-                    if scissor[2] == 0 || scissor[3] == 0 {
-                        continue;
-                    }
-                    let index = text_items.len();
-                    text_items.push(PreparedText {
-                        key,
-                        left: (rect.x - surface.origin[0]) * surface.scale,
-                        top: (rect.y - surface.origin[1]) * surface.scale,
-                        scale: surface.scale,
-                        clip: scissor,
-                        color: *color,
-                    });
-                    // Clips are attached to each text area. Adjacent text may be
-                    // batched across clip commands, but never across a painted quad
-                    // or a composited layer.
-                    if let Some(Draw::Text(batch)) = surface.draws.last() {
-                        text_ranges[*batch].1.end = index + 1;
-                    } else {
-                        surface.draws.push(Draw::Text(text_ranges.len()));
-                        text_ranges.push((current, index..index + 1));
-                    }
-                }
+                Primitive::Text { .. }
+                | Primitive::StyledText { .. }
+                | Primitive::RichText { .. } => self.record_text(rec, clip, primitive),
             }
         }
-        let text_count = text_ranges.len();
-        for (index, (surface, range)) in text_ranges.into_iter().enumerate() {
+    }
+
+    /// Opens a layer: inline as a clip where it is opaque and untransformed,
+    /// otherwise as an offscreen surface composited at its pop.
+    fn record_push_layer(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        rec: &mut Recording,
+        clip: Rect,
+        primitive: &Primitive,
+    ) {
+        let Primitive::PushLayer {
+            bounds,
+            opacity,
+            transform,
+        } = primitive
+        else {
+            unreachable!()
+        };
+        let mut frame = LayerFrame {
+            parent: rec.current,
+            clip_depth: rec.clips.len(),
+            composite: None,
+        };
+        if *opacity >= 1.0 && transform.is_identity() {
+            rec.clips.push(clip.intersect(*bounds));
+            rec.frames.push(frame);
+            return;
+        }
+        let parent = &rec.surfaces[rec.current];
+        let (origin, scale) = (parent.origin, parent.scale);
+        // Snapped to the parent's pixel grid, so an untransformed
+        // composite maps texels onto pixels one to one.
+        let x = ((bounds.x - origin[0]) * scale).floor();
+        let y = ((bounds.y - origin[1]) * scale).floor();
+        let width = (((bounds.x + bounds.width - origin[0]) * scale).ceil() - x).max(1.0);
+        let height = (((bounds.y + bounds.height - origin[1]) * scale).ceil() - y).max(1.0);
+        // Oversized layers render at a lower resolution instead.
+        let fit = (rec.cap[0] as f32 / width)
+            .min(rec.cap[1] as f32 / height)
+            .min(1.0);
+        let size = [
+            ((width * fit).ceil() as u32).clamp(1, rec.cap[0]),
+            ((height * fit).ceil() as u32).clamp(1, rec.cap[1]),
+        ];
+        let child_origin = [origin[0] + x / scale, origin[1] + y / scale];
+        let child_scale = scale * fit;
+        let corners = UNIT_QUAD.map(|[u, v]| {
+            let point = transform.apply(Point {
+                x: child_origin[0] + u * size[0] as f32 / child_scale,
+                y: child_origin[1] + v * size[1] as f32 / child_scale,
+            });
+            (u, v, point)
+        });
+        let min = |f: fn(Point) -> f32| {
+            corners
+                .iter()
+                .map(|corner| f(corner.2))
+                .fold(f32::INFINITY, f32::min)
+        };
+        let (left, top) = (min(|p| p.x), min(|p| p.y));
+        let covered = Rect {
+            x: left,
+            y: top,
+            width: -min(|p| -p.x) - left,
+            height: -min(|p| -p.y) - top,
+        };
+        // The clip at the push bounds the composite; rotated groups
+        // are scissored by their bounding box.
+        let composite_clip = scissor(clip.intersect(covered), parent);
+        if !(*opacity > 0.0 && bounds.width > 0.0 && bounds.height > 0.0)
+            || composite_clip[2] == 0
+            || composite_clip[3] == 0
+        {
+            // Invisible: an empty clip culls the content.
+            rec.clips.push(Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 0.0,
+                height: 0.0,
+            });
+            rec.frames.push(frame);
+            return;
+        }
+        let start = rec.vertices.len() as u32;
+        let parent_size = parent.size;
+        rec.vertices.extend(corners.map(|(u, v, point)| Vertex {
+            position: [
+                (point.x - origin[0]) * scale / parent_size[0] as f32 * 2.0 - 1.0,
+                1.0 - (point.y - origin[1]) * scale / parent_size[1] as f32 * 2.0,
+            ],
+            local: [u, v],
+            size: [0.0; 2],
+            color: [0.0, 0.0, 0.0, opacity.min(1.0)],
+            radius: 0.0,
+        }));
+        let texture = match self
+            .pool
+            .iter()
+            .position(|texture| texture.idle > 0 && texture.size == size)
+        {
+            Some(index) => index,
+            None => {
+                let created = self.layer_texture(device, queue, size);
+                self.pool.push(created);
+                self.pool.len() - 1
+            }
+        };
+        self.pool[texture].idle = 0;
+        frame.composite = Some(Draw::Layer {
+            surface: rec.surfaces.len(),
+            start,
+            clip: composite_clip,
+        });
+        rec.frames.push(frame);
+        rec.clips.push(*bounds);
+        rec.current = rec.surfaces.len();
+        rec.surfaces.push(Surface {
+            size,
+            origin: child_origin,
+            scale: child_scale,
+            texture: Some(texture),
+            draws: Vec::new(),
+        });
+    }
+
+    fn record_image(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        rec: &mut Recording,
+        clip: Rect,
+        primitive: &Primitive,
+    ) {
+        let Primitive::Image {
+            rect,
+            image,
+            source,
+            tint,
+            radius,
+        } = primitive
+        else {
+            unreachable!()
+        };
+        let surface = &mut rec.surfaces[rec.current];
+        let visible = scissor(clip.intersect(*rect), surface);
+        if visible[2] == 0 || visible[3] == 0 || source.width == 0.0 || source.height == 0.0 {
+            return;
+        }
+        let raster = self
+            .images
+            .raster_size(image, *rect, *source, surface.scale);
+        let Some(place) = self.images.ensure(device, queue, image, raster) else {
+            return;
+        };
+        // `source` in texels of the placement, which differ from the
+        // image's units for vector rasters and downscaled photos.
+        let natural = image.size();
+        let texels = |at: f32, length: f32, natural: f32, axis: usize| {
+            let (start, side) = (place.rect[axis] as f32, place.rect[axis + 2] as f32);
+            let from = start + at * side / natural;
+            let to = from + length * side / natural;
+            // Half a texel inside both the source and the image, so
+            // filtering blends in nothing from beyond either.
+            let low = from.min(to).max(start) + 0.5;
+            let high = from.max(to).min(start + side) - 0.5;
+            let (low, high) = if low > high {
+                ((low + high) / 2.0, (low + high) / 2.0)
+            } else {
+                (low, high)
+            };
+            [from, to, low, high].map(|texel| texel / place.texture_size[axis] as f32)
+        };
+        let u = texels(source.x, source.width, natural.width, 0);
+        let v = texels(source.y, source.height, natural.height, 1);
+        let (origin, scale, size) = (surface.origin, surface.scale, surface.size);
+        let start = rec.image_vertices.len() as u32;
+        for [x, y] in UNIT_QUAD {
+            rec.image_vertices.push(image::ImageVertex {
+                position: [
+                    ((rect.x - origin[0]) + x * rect.width) * scale / size[0] as f32 * 2.0 - 1.0,
+                    1.0 - ((rect.y - origin[1]) + y * rect.height) * scale / size[1] as f32 * 2.0,
+                ],
+                uv: [u[0] + x * (u[1] - u[0]), v[0] + y * (v[1] - v[0])],
+                local: [x * rect.width, y * rect.height],
+                size: [rect.width, rect.height],
+                tint: tint.map_or([0.0, 0.0, 0.0, 1.0], Color::linear),
+                params: [*radius, f32::from(u8::from(tint.is_some()))],
+                bounds: [u[2], v[2], u[3], v[3]],
+            });
+        }
+        // The scissor is the clip alone, so neighbours can share a draw.
+        let clip = scissor(clip, surface);
+        match surface.draws.last_mut() {
+            Some(Draw::Image {
+                texture,
+                start: first,
+                count,
+                clip: last,
+            }) if *texture == place.texture && *last == clip && *first + *count == start => {
+                *count += 6
+            }
+            _ => surface.draws.push(Draw::Image {
+                texture: place.texture,
+                start,
+                count: 6,
+                clip,
+            }),
+        }
+    }
+
+    fn record_text(&mut self, rec: &mut Recording, clip: Rect, primitive: &Primitive) {
+        let (Primitive::Text { rect, color, .. }
+        | Primitive::StyledText { rect, color, .. }
+        | Primitive::RichText { rect, color, .. }) = primitive
+        else {
+            unreachable!()
+        };
+        let key = match primitive {
+            Primitive::Text {
+                text, font_size, ..
+            } => self.text_system.ensure(text, *font_size),
+            Primitive::StyledText { text, style, .. } => {
+                self.text_system
+                    .ensure_styled(text, style, Some(rect.width))
+            }
+            Primitive::RichText { spans, style, .. } => {
+                self.text_system.ensure_rich(spans, style, Some(rect.width))
+            }
+            _ => unreachable!(),
+        };
+        rec.active_text.insert(key.clone());
+        let surface = &mut rec.surfaces[rec.current];
+        let scissor = scissor(clip.intersect(*rect), surface);
+        if scissor[2] == 0 || scissor[3] == 0 {
+            return;
+        }
+        let index = rec.text_items.len();
+        rec.text_items.push(PreparedText {
+            key,
+            left: (rect.x - surface.origin[0]) * surface.scale,
+            top: (rect.y - surface.origin[1]) * surface.scale,
+            scale: surface.scale,
+            clip: scissor,
+            color: *color,
+        });
+        // Clips are attached to each text area. Adjacent text may be
+        // batched across clip commands, but never across a painted quad
+        // or a composited layer.
+        if let Some(Draw::Text(batch)) = surface.draws.last() {
+            rec.text_ranges[*batch].1.end = index + 1;
+        } else {
+            surface.draws.push(Draw::Text(rec.text_ranges.len()));
+            rec.text_ranges.push((rec.current, index..index + 1));
+        }
+    }
+
+    /// Lays out and rasterises the recorded text, one batch per renderer.
+    fn prepare_text(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        rec: &Recording,
+    ) -> RenderResult<()> {
+        for (index, (surface, range)) in rec.text_ranges.iter().enumerate() {
             if index == self.text_renderers.len() {
                 self.text_renderers.push(TextRenderer::new(
                     &mut self.atlas,
@@ -1063,7 +1134,7 @@ impl Renderer {
                 self.stats.text_renderer_allocations += 1;
             }
             let buffers = &self.text_system.buffers;
-            let areas = text_items[range].iter().map(|item| TextArea {
+            let areas = rec.text_items[range.clone()].iter().map(|item| TextArea {
                 buffer: &buffers[&item.key],
                 left: item.left,
                 top: item.top,
@@ -1082,7 +1153,7 @@ impl Renderer {
                 ),
                 custom_glyphs: &[],
             });
-            let viewport = match surfaces[surface].texture {
+            let viewport = match rec.surfaces[*surface].texture {
                 Some(texture) => &self.pool[texture].viewport,
                 None => &self.viewport,
             };
@@ -1098,28 +1169,24 @@ impl Renderer {
         }
         // A bounded spare pool avoids recreating GPU buffers when small sections
         // appear/disappear; exceptionally large past scenes do not remain retained.
-        self.text_renderers.truncate(text_count.max(16));
-        self.text_system.retain(&active_text);
+        self.text_renderers.truncate(rec.text_ranges.len().max(16));
+        self.text_system.retain(&rec.active_text);
+        Ok(())
+    }
+
+    /// Writes the recorded vertices to their retained buffers, growing them
+    /// where they no longer fit, and takes the vertex vectors back.
+    fn upload_vertices(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, rec: &mut Recording) {
         // Last in the buffer, at the corners of the target: the canvas blit.
-        self.blit = vertices.len() as u32;
-        vertices.extend(
-            [
-                [0.0, 0.0],
-                [1.0, 0.0],
-                [0.0, 1.0],
-                [0.0, 1.0],
-                [1.0, 0.0],
-                [1.0, 1.0],
-            ]
-            .map(|[u, v]| Vertex {
-                position: [u * 2.0 - 1.0, 1.0 - v * 2.0],
-                local: [u, v],
-                size: [0.0; 2],
-                color: [0.0, 0.0, 0.0, 1.0],
-                radius: 0.0,
-            }),
-        );
-        let bytes = bytemuck::cast_slice(&vertices);
+        self.blit = rec.vertices.len() as u32;
+        rec.vertices.extend(UNIT_QUAD.map(|[u, v]| Vertex {
+            position: [u * 2.0 - 1.0, 1.0 - v * 2.0],
+            local: [u, v],
+            size: [0.0; 2],
+            color: [0.0, 0.0, 0.0, 1.0],
+            radius: 0.0,
+        }));
+        let bytes = bytemuck::cast_slice(&rec.vertices);
         if !bytes.is_empty() {
             if bytes.len() as u64 > self.stats.quad_buffer_bytes {
                 let capacity = (bytes.len() as u64).next_power_of_two().max(256);
@@ -1134,7 +1201,7 @@ impl Renderer {
             }
             queue.write_buffer(self.quad_buffer.as_ref().unwrap(), 0, bytes);
         }
-        let bytes = bytemuck::cast_slice(&image_vertices);
+        let bytes = bytemuck::cast_slice(&rec.image_vertices);
         if !bytes.is_empty() {
             if bytes.len() as u64 > self.image_buffer_bytes {
                 self.image_buffer_bytes = (bytes.len() as u64).next_power_of_two();
@@ -1147,25 +1214,31 @@ impl Renderer {
             }
             queue.write_buffer(self.image_buffer.as_ref().unwrap(), 0, bytes);
         }
-        self.image_vertices = image_vertices;
         upload(
             device,
             queue,
             "seaglass retained gradient vertices",
             &mut self.gradient_buffer,
             &mut self.gradient_buffer_bytes,
-            bytemuck::cast_slice(&gradient_vertices),
+            bytemuck::cast_slice(&rec.gradient_vertices),
         );
-        self.gradient_vertices = gradient_vertices;
         upload(
             device,
             queue,
             "seaglass retained shadow vertices",
             &mut self.shadow_buffer,
             &mut self.shadow_buffer_bytes,
-            bytemuck::cast_slice(&shadow_vertices),
+            bytemuck::cast_slice(&rec.shadow_vertices),
         );
-        self.shadow_vertices = shadow_vertices;
+        self.vertices = std::mem::take(&mut rec.vertices);
+        self.image_vertices = std::mem::take(&mut rec.image_vertices);
+        self.gradient_vertices = std::mem::take(&mut rec.gradient_vertices);
+        self.shadow_vertices = std::mem::take(&mut rec.shadow_vertices);
+    }
+
+    /// Keeps the recorded surfaces for drawing and refreshes the statistics.
+    fn finish_preparation(&mut self, rec: Recording, target_key: ([u32; 2], u32)) {
+        let surfaces = rec.surfaces;
         let count = |wanted: fn(&Draw) -> bool| {
             surfaces
                 .iter()
@@ -1182,11 +1255,10 @@ impl Renderer {
         self.stats.image_uploads = self.images.uploads;
         (self.stats.atlas_pages, self.stats.image_textures) = self.images.counts();
         self.stats.image_bytes = self.images.bytes();
-        self.vertices = vertices;
         self.surfaces = surfaces;
         self.prepared_target = Some(target_key);
         self.stats.preparations += 1;
-        self.stats.text_batches = text_count;
+        self.stats.text_batches = rec.text_ranges.len();
         self.stats.layer_textures = self.pool.len();
         let texel = u64::from(self.format.block_copy_size(None).unwrap_or(4));
         self.stats.layer_texture_bytes = self
@@ -1202,7 +1274,6 @@ impl Renderer {
         (memory.image_atlas, memory.image_textures) = self.images.bytes_by_kind();
         memory.layers = self.stats.layer_texture_bytes;
         memory.settle();
-        self.draw(device, queue, target, clear, damage)
     }
 
     /// Brings the canvas to the target at hand and works out how much of this
@@ -1341,23 +1412,16 @@ impl Renderer {
             let colour = clear.linear();
             // A pixel wider than the surface on every side, so that the
             // shape's own antialiasing falls outside it.
-            let vertices: Vec<Vertex> = [
-                [0.0, 0.0],
-                [1.0, 0.0],
-                [0.0, 1.0],
-                [0.0, 1.0],
-                [1.0, 0.0],
-                [1.0, 1.0],
-            ]
-            .into_iter()
-            .map(|[u, v]| Vertex {
-                position: [u * 2.0 - 1.0, 1.0 - v * 2.0],
-                local: [u * (size[0] + 2.0) - 1.0, v * (size[1] + 2.0) - 1.0],
-                size: [size[0] + 2.0, size[1] + 2.0],
-                color: colour,
-                radius: 0.0,
-            })
-            .collect();
+            let vertices: Vec<Vertex> = UNIT_QUAD
+                .into_iter()
+                .map(|[u, v]| Vertex {
+                    position: [u * 2.0 - 1.0, 1.0 - v * 2.0],
+                    local: [u * (size[0] + 2.0) - 1.0, v * (size[1] + 2.0) - 1.0],
+                    size: [size[0] + 2.0, size[1] + 2.0],
+                    color: colour,
+                    radius: 0.0,
+                })
+                .collect();
             let bytes = bytemuck::cast_slice(&vertices);
             let buffer = self.clear_quad.get_or_insert_with(|| {
                 device.create_buffer(&wgpu::BufferDescriptor {

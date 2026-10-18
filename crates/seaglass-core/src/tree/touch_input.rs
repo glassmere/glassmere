@@ -612,9 +612,8 @@ impl Context {
         None
     }
 
-    /// Another finger of the area: the one with the lowest id.
-    // ponytail: a third finger moves the picture against the first only.
-    // Upgrade path: a least-squares fit over all contacts.
+    /// Another finger of the area: the one with the lowest id. A third finger
+    /// moves the picture against the first only.
     fn gesture_partner(&self, area: NodeId) -> Option<Point> {
         self.touches
             .iter()

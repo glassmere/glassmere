@@ -63,6 +63,14 @@ struct Lists {
     activated: Vec<ItemId>,
 }
 
+fn lists(count: usize) -> Lists {
+    Lists {
+        model: model(count),
+        list: ListState::default(),
+        activated: Vec::new(),
+    }
+}
+
 fn list_msg(message: GridMsg) -> Message<Lists> {
     act(move |s: &mut Lists| match &message {
         GridMsg::Select(id) => s.list.select(Some(*id)),
@@ -88,15 +96,7 @@ fn key<S: 'static>(driven: &mut Driven<S>, key: Key) {
 
 #[test]
 fn million_items_realize_only_the_viewport_and_can_jump_to_last_item() {
-    let mut driven = Driven::new(
-        ROOT,
-        Lists {
-            model: model(1_000_000),
-            list: ListState::default(),
-            activated: Vec::new(),
-        },
-        list_view,
-    );
+    let mut driven = Driven::new(ROOT, lists(1_000_000), list_view);
     assert!(driven.context.find(&["list", "item-0"]).is_some());
     assert!(driven.context.find(&["list", "item-12"]).is_none());
     assert!(driven.context.node_count() < 35);
@@ -132,15 +132,7 @@ fn million_items_realize_only_the_viewport_and_can_jump_to_last_item() {
 
 #[test]
 fn enter_activates_only_a_selected_row() {
-    let mut driven = Driven::new(
-        ROOT,
-        Lists {
-            model: model(10),
-            list: ListState::default(),
-            activated: Vec::new(),
-        },
-        list_view,
-    );
+    let mut driven = Driven::new(ROOT, lists(10), list_view);
     let owner = driven.context.find(&["list"]).unwrap();
     driven.context.action(owner, Action::Focus);
     key(&mut driven, Key::Enter);
@@ -154,15 +146,7 @@ fn enter_activates_only_a_selected_row() {
 
 #[test]
 fn a_selection_the_model_lost_is_cleared_by_a_message() {
-    let mut driven = Driven::new(
-        ROOT,
-        Lists {
-            model: model(10),
-            list: ListState::default(),
-            activated: Vec::new(),
-        },
-        list_view,
-    );
+    let mut driven = Driven::new(ROOT, lists(10), list_view);
     driven.state_mut().list.select(Some(ItemId(8)));
     driven.frame();
     assert_eq!(driven.state().list.selected(), Some(ItemId(8)));
@@ -174,25 +158,17 @@ fn a_selection_the_model_lost_is_cleared_by_a_message() {
 
 #[test]
 fn an_application_that_keeps_a_lost_selection_is_told_once() {
-    let mut driven = Driven::new(
-        ROOT,
-        Lists {
-            model: model(10),
-            list: ListState::default(),
-            activated: Vec::new(),
-        },
-        |state, ui| {
-            ui.keyed("list", |ui| {
-                ui.virtual_list(&state.model, &state.list, options(), |message| {
-                    act(move |s: &mut Lists| {
-                        if let GridMsg::Select(id) = message {
-                            s.list.select(Some(id));
-                        }
-                    })
+    let mut driven = Driven::new(ROOT, lists(10), |state, ui| {
+        ui.keyed("list", |ui| {
+            ui.virtual_list(&state.model, &state.list, options(), |message| {
+                act(move |s: &mut Lists| {
+                    if let GridMsg::Select(id) = message {
+                        s.list.select(Some(id));
+                    }
                 })
-            });
-        },
-    );
+            })
+        });
+    });
     driven.state_mut().list.select(Some(ItemId(8)));
     driven.frame();
     driven.state_mut().model.count = 5;
@@ -206,15 +182,7 @@ fn an_application_that_keeps_a_lost_selection_is_told_once() {
 
 #[test]
 fn pointer_capture_survives_the_intervening_frame_and_keyboard_events_accumulate() {
-    let mut driven = Driven::new(
-        ROOT,
-        Lists {
-            model: model(1000),
-            list: ListState::default(),
-            activated: Vec::new(),
-        },
-        list_view,
-    );
+    let mut driven = Driven::new(ROOT, lists(1000), list_view);
     driven
         .context
         .event(Event::PointerMoved(Point { x: 15.0, y: 75.0 }));
@@ -243,15 +211,7 @@ fn pointer_capture_survives_the_intervening_frame_and_keyboard_events_accumulate
 
 #[test]
 fn empty_lists_and_disabled_collections_reject_selection() {
-    let mut driven = Driven::new(
-        ROOT,
-        Lists {
-            model: model(0),
-            list: ListState::default(),
-            activated: Vec::new(),
-        },
-        list_view,
-    );
+    let mut driven = Driven::new(ROOT, lists(0), list_view);
     let owner = driven.context.find(&["list"]).unwrap();
     driven.context.action(owner, Action::Focus);
     key(&mut driven, Key::End);
@@ -469,15 +429,7 @@ fn grid_realizes_bounded_cells_and_sorting_preserves_selected_identity() {
 
 #[test]
 fn stable_selection_outlives_unrealized_nodes_and_reorder_preserves_anchor() {
-    let mut driven = Driven::new(
-        ROOT,
-        Lists {
-            model: model(1000),
-            list: ListState::default(),
-            activated: Vec::new(),
-        },
-        list_view,
-    );
+    let mut driven = Driven::new(ROOT, lists(1000), list_view);
     let old_node = driven.context.find(&["list", "item-4"]).unwrap();
     driven.context.action(old_node, Action::Activate);
     driven.frame();

@@ -8,7 +8,7 @@ use seaglass_core::{
 };
 
 use seaglass_scene::{Affinity, Point, Size, TextMeasurer, TextStyle};
-use support::{Driven, on};
+use support::{Driven, click, on};
 
 const ROOT: Size = Size::new(640.0, 400.0);
 /// Latin, a Hebrew word, Latin: `abc אבג def`. The Hebrew run reads right to left.
@@ -21,12 +21,6 @@ fn key(context: &mut Context, key: Key, shift: bool) {
         repeat: false,
     });
     context.event(Event::KeyUp(key));
-}
-
-fn click(context: &mut Context, point: Point) {
-    context.event(Event::PointerMoved(point));
-    context.event(Event::PointerDown);
-    context.event(Event::PointerUp);
 }
 
 #[test]

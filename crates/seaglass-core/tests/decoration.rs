@@ -12,7 +12,7 @@ fn scene(style: Style) -> Vec<Primitive> {
     context.scene().primitives.clone()
 }
 
-/// Where the first primitive of a kind sits, from `after` onward.
+/// Index of the first primitive matching `of`, searching from index `from`.
 fn at(primitives: &[Primitive], from: usize, of: impl Fn(&Primitive) -> bool) -> usize {
     primitives[from..]
         .iter()

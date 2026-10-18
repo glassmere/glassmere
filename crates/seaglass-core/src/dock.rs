@@ -945,10 +945,10 @@ impl Parser {
         token
     }
     fn expect(&mut self, what: &str) -> Result<(usize, Token), DockLayoutError> {
-        let line = self.last_line;
-        self.next()
-            .ok_or(())
-            .or_else(|()| fail(line, format!("expected {what}, found the end")))
+        match self.next() {
+            Some(token) => Ok(token),
+            None => fail(self.last_line, format!("expected {what}, found the end")),
+        }
     }
     fn word(&mut self, word: &str) -> Result<(), DockLayoutError> {
         match self.expect(&format!("`{word}`"))? {
@@ -973,12 +973,10 @@ impl Parser {
     }
     fn number(&mut self) -> Result<f32, DockLayoutError> {
         match self.expect("a number")? {
-            (line, Token::Word(word)) => word
-                .parse::<f32>()
-                .ok()
-                .filter(|value| value.is_finite())
-                .ok_or(())
-                .or_else(|()| fail(line, format!("invalid number `{word}`"))),
+            (line, Token::Word(word)) => match word.parse::<f32>() {
+                Ok(value) if value.is_finite() => Ok(value),
+                _ => fail(line, format!("invalid number `{word}`")),
+            },
             (line, other) => fail(line, format!("expected a number, found {other}")),
         }
     }

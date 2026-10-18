@@ -4,11 +4,11 @@ use seaglass_core::app::Action;
 use seaglass_core::{
     App, AppDriver, Block, BlockKind, Context, EditorCommand, Effects, Event, Key, Length,
     MonospaceMeasurer, RichDocument, RichEditorOptions, RichOp, RichPosition, Role, Style,
-    TextEdit, Ui,
+    TextEdit, TextMove, Ui,
 };
-use seaglass_scene::{Point, Primitive, Rect, Size};
+use seaglass_scene::{Point, Primitive, Size};
 use std::time::Duration;
-use support::{Driven, on};
+use support::{Driven, click, labelled, on};
 
 const ROOT: Size = Size::new(640.0, 480.0);
 const ADVANCE: f32 = 16.0 * 0.6;
@@ -60,12 +60,6 @@ fn at(block: usize, offset: usize) -> RichPosition {
     RichPosition { block, offset }
 }
 
-fn click(context: &mut Context, point: Point) {
-    context.event(Event::PointerMoved(point));
-    context.event(Event::PointerDown);
-    context.event(Event::PointerUp);
-}
-
 fn key(context: &mut Context, key: Key, shift: bool) {
     context.event(Event::KeyDown {
         key,
@@ -86,18 +80,6 @@ fn cell(row: usize, column: usize) -> Point {
         x: PADDING + column as f32 * ADVANCE + 1.0,
         y: PADDING + row as f32 * (LINE + 10.0) + 4.0,
     }
-}
-
-fn labelled(context: &Context, role: Role, label: &str) -> Rect {
-    let mut stack = vec![context.root()];
-    while let Some(id) = stack.pop() {
-        let node = context.node(id).unwrap();
-        if node.semantics.role == role && node.semantics.label == label {
-            return node.bounds;
-        }
-        stack.extend(node.children.iter().rev());
-    }
-    panic!("no {role:?} labelled {label}");
 }
 
 #[test]
@@ -185,7 +167,7 @@ fn vertical_and_line_keys_follow_the_wrapped_lines_with_a_sticky_column() {
         .set_cursor(at(0, COLUMNS * 2 + 5), false);
     app.frame();
     app.context.event(Event::Text(TextEdit::Move {
-        direction: seaglass_core::TextMove::Right,
+        direction: TextMove::Right,
         select: false,
         word: false,
     }));
@@ -388,7 +370,7 @@ fn clipboard_read_only_composition_and_scrolling_behave_like_the_code_editor() {
 
     // Moving to the end scrolls the last paragraph into view.
     context.event(Event::Text(TextEdit::Move {
-        direction: seaglass_core::TextMove::DocumentEnd,
+        direction: TextMove::DocumentEnd,
         select: false,
         word: false,
     }));

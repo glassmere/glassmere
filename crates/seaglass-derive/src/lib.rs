@@ -31,11 +31,11 @@
 //! to the field name with spaces and a capital.
 //!
 //! It generates `CardMsg`, with a variant per editable field, `Card::apply`,
-//! which stores one, and `Card::properties`, which declares the rows. A `flatten` field is a nested group whose
-//! variant wraps the inner struct's own message (`ShadowMsg`, which must be
-//! derived beside it in the same module path). A `with` field is declared
-//! through `PropertyGrid::custom` by a function of your own that sends the
-//! new value as a message:
+//! which stores one, and `Card::properties`, which declares the rows. A
+//! `flatten` field is a nested group whose variant wraps the inner struct's
+//! own message (`ShadowMsg`, which must be derived beside it in the same
+//! module path). A `with` field is declared through `PropertyGrid::custom` by
+//! a function of your own that sends the new value as a message:
 //!
 //! ```ignore
 //! fn edit_anchor<M: 'static>(
@@ -443,7 +443,12 @@ fn message_row(
             .default
             .as_ref()
             .map(|default| quote! { grid.default::<f64>((#default) as f64); });
-        let send = quote! { { let __on = __on.clone(); move |__value: f64| (*__on)(#message::#variant(__value as #ty)) } };
+        let send = quote! {
+            {
+                let __on = __on.clone();
+                move |__value: f64| (*__on)(#message::#variant(__value as #ty))
+            }
+        };
         return Ok((
             carried,
             quote! {
@@ -462,9 +467,13 @@ fn message_row(
         ),
         "String" => (
             quote! { grid.text_with(#name, &self.#ident, #send); },
-            options.default.as_ref().map(
-                |default| quote! { grid.default::<::std::string::String>(::std::string::String::from(#default)); },
-            ),
+            options.default.as_ref().map(|default| {
+                quote! {
+                    grid.default::<::std::string::String>(
+                        ::std::string::String::from(#default)
+                    );
+                }
+            }),
         ),
         "Color" => (
             quote! { grid.color_with(#name, self.#ident, #send); },

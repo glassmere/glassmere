@@ -128,6 +128,17 @@ struct Node {
 }
 
 impl Node {
+    /// The box inside the padding.
+    fn content_box(&self) -> Rect {
+        let padding = self.style.padding.max(0.0);
+        Rect {
+            x: self.bounds.x + padding,
+            y: self.bounds.y + padding,
+            width: (self.bounds.width - padding * 2.0).max(0.0),
+            height: (self.bounds.height - padding * 2.0).max(0.0),
+        }
+    }
+
     fn text_style(&self) -> TextStyle {
         self.resolved.text_style(self.style.wrap)
     }
@@ -464,7 +475,7 @@ pub struct Context {
     /// an application that keeps it is told once, not every batch.
     lost_selections: std::cell::RefCell<HashMap<NodeId, crate::ItemId>>,
     /// Activations, edits and submissions in the order they arrived, beside
-    /// the maps the old `Response` path reads.
+    /// the per-kind maps.
     queued: Vec<(NodeId, Queued)>,
     /// Elements whose hover or focus the view read before their node existed.
     observed_new: std::cell::RefCell<Vec<u32>>,
@@ -809,7 +820,6 @@ impl Context {
         self.pending |= Dirty::PAINT;
         self.view_stale = true;
     }
-    /// Unknown class names requested since the stylesheet was installed.
     /// What this window's tree, scene and caches occupy. Walks every node,
     /// so ask for it when an inspector is open rather than every frame.
     pub fn memory(&self) -> MemoryReport {
@@ -840,6 +850,7 @@ impl Context {
         report
     }
 
+    /// Unknown class names requested since the stylesheet was installed.
     pub fn style_warnings(&self) -> &[String] {
         &self.style_warnings
     }
@@ -1013,8 +1024,8 @@ impl Context {
         self.root
     }
 
-    /// Conservative logical damage from the most recent declaration. The GPU
-    /// host still presents a full surface; partial presentation is a later step.
+    /// Conservative logical damage from the most recent declaration, which the
+    /// renderers use to limit what they redraw.
     pub fn damage_regions(&self) -> &[Rect] {
         &self.damage
     }

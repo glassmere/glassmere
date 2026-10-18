@@ -47,22 +47,16 @@ impl<'a, M: 'static> Ui<'a, M> {
             }
         }
         self.push(Element {
-            handler: None,
-            seq: 0,
-            key,
-            kind: Kind::Image,
             text: options.alt,
             style,
             enabled: self.enabled,
-            children: Vec::new(),
-            custom: None,
-            tooltip: None,
             control: Control::Image {
                 image,
                 failed,
                 fit: options.fit,
                 tint: options.tint,
             },
+            ..Element::new(key, Kind::Image)
         });
     }
 }

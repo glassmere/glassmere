@@ -9,7 +9,7 @@ use std::sync::mpsc::{Receiver, channel};
 use winit::window::Window;
 
 /// Starts a system drag. `None` means this payload cannot leave the app here,
-/// and the in-app drag simply goes on. On Windows this returns only when the
+/// and the in-app drag goes on. On Windows this returns only when the
 /// drag is over; on macOS the outcome arrives later.
 #[cfg(any(windows, target_os = "macos"))]
 pub(crate) fn start(window: &Window, payload: &DragPayload) -> Option<Receiver<DragOutcome>> {
@@ -27,7 +27,7 @@ pub(crate) fn start(window: &Window, payload: &DragPayload) -> Option<Receiver<D
                 drag::DragResult::Cancel => DragOutcome::Cancelled,
             });
         },
-        // ponytail: always a copy. A move makes the receiving app delete the
+        // Always a copy. A move makes the receiving app delete the
         // source file; add a flag on the payload when an app needs that.
         drag::Options::default(),
     )
@@ -37,7 +37,7 @@ pub(crate) fn start(window: &Window, payload: &DragPayload) -> Option<Receiver<D
     Some(receiver)
 }
 
-// ponytail: the `drag` crate needs a GTK window on Linux, which winit does not
+// The `drag` crate needs a GTK window on Linux, which winit does not
 // give us. Upgrade path: XDND and wl_data_device of our own.
 #[cfg(not(any(windows, target_os = "macos")))]
 pub(crate) fn start(_: &Window, _: &DragPayload) -> Option<Receiver<DragOutcome>> {

@@ -1,7 +1,8 @@
 use seaglass::syntax::SyntectHighlighter;
 use seaglass::{
-    App, AppOptions, Axis, CodeEditorOptions, Effects, Label, Length, RichDocument,
-    RichEditorOptions, RichOp, Size, SplitOptions, Style, TextDocument, TextOp, Ui, run,
+    App, AppOptions, Axis, CodeEditorOptions, DirectionChoice, Effects, Label, Length,
+    RichDocument, RichEditorOptions, RichOp, Size, SplitOptions, Style, TextDocument, TextOp, Ui,
+    run,
 };
 use std::cell::RefCell;
 
@@ -143,9 +144,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     // `--rtl` mirrors the window as a right-to-left locale would.
     let direction = if std::env::args().any(|arg| arg == "--rtl") {
-        seaglass::DirectionChoice::Rtl
+        DirectionChoice::Rtl
     } else {
-        seaglass::DirectionChoice::Auto
+        DirectionChoice::Auto
     };
     let document = RichDocument::from_markdown(SAMPLE);
     let markdown = TextDocument::from_text(&document.to_markdown());

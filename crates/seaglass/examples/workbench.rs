@@ -88,40 +88,77 @@ impl App for Workbench {
 
     fn view(&self, ui: &mut Ui<'_, Message>) {
         let tick = self.tick;
-        ui.column(Style { padding: 28.0, gap: 16.0, width: Length::Percent(1.0), ..Style::default() }, |ui| {
-            ui.label(Label::new("Architecture workbench").style(Style { font_size: Some(28.0), ..Style::default() }));
+        let page = Style {
+            padding: 28.0,
+            gap: 16.0,
+            width: Length::Percent(1.0),
+            ..Style::default()
+        };
+        let rows = Style {
+            width: Length::Percent(1.0),
+            height: Length::Px(240.0),
+            padding: 8.0,
+            gap: 4.0,
+            background: Some(Color::rgb(24, 35, 49)),
+            ..Style::default()
+        };
+        let row_button = Style {
+            width: Length::Percent(0.97),
+            height: Length::Px(36.0),
+            padding: 7.0,
+            ..Style::button()
+        };
+        ui.column(page, |ui| {
+            ui.label(Label::new("Architecture workbench").style(Style {
+                font_size: Some(28.0),
+                ..Style::default()
+            }));
             ui.label(format!("Background updates: {tick}"));
-            ui.label("Wheel to scroll. Tab reveals focused rows. Arrow keys, Page Up/Down, Home/End scroll.");
-            ui.row(Style { gap: 36.0, ..Style::default() }, |ui| {
+            ui.label(
+                "Wheel to scroll. Tab reveals focused rows. Arrow keys, Page Up/Down, Home/End scroll.",
+            );
+            ui.row(Style::default().gap(36.0), |ui| {
                 ui.component(Style::default(), &self.left, Message::Left);
                 ui.component(Style::default(), &self.right, Message::Right);
             });
             let custom_count = self.custom_count;
             ui.widget(
                 Style::default(),
-                WidgetBuilder::new(move |_: &WidgetInput| custom_action(custom_count))
-                    .on_event(|event| match event {
+                WidgetBuilder::new(move |_: &WidgetInput| custom_action(custom_count)).on_event(
+                    |event| match event {
                         UiEvent::Activate => Some(Message::Custom),
                         // A pointer click arrives as its release over the widget.
-                        UiEvent::PointerUp(at) if (0.0..230.0).contains(&at.x) && (0.0..44.0).contains(&at.y) => {
+                        UiEvent::PointerUp(at)
+                            if (0.0..230.0).contains(&at.x) && (0.0..44.0).contains(&at.y) =>
+                        {
                             Some(Message::Custom)
                         }
                         _ => None,
-                    }),
+                    },
+                ),
             );
             ui.button(Button::new("Unavailable action").enabled(false));
             ui.label(format!("Selected row: {}", self.selection));
-            ui.scroll(Style {
-                width: Length::Percent(1.0), height: Length::Px(240.0),
-                padding: 8.0, gap: 4.0, background: Some(Color::rgb(24, 35, 49)), ..Style::default()
-            }, |ui| {
+            ui.scroll(rows, |ui| {
                 for index in 0..250 {
-                    ui.keyed(index.to_string(), |ui| ui.button(Button::new(format!("Row {index:03}")).style(Style {
-                        width: Length::Percent(0.97), height: Length::Px(36.0), padding: 7.0, ..Style::button()
-                    }).on_click(Message::Select(index))));
+                    ui.keyed(index.to_string(), |ui| {
+                        ui.button(
+                            Button::new(format!("Row {index:03}"))
+                                .style(row_button.clone())
+                                .on_click(Message::Select(index)),
+                        )
+                    });
                 }
             });
-            ui.label(Label::new("Native accessibility shares the same IDs and actions as pointer and keyboard input.").style(Style { font_size: Some(13.0), ..Style::default() }));
+            ui.label(
+                Label::new(
+                    "Native accessibility shares the same IDs and actions as pointer and keyboard input.",
+                )
+                .style(Style {
+                    font_size: Some(13.0),
+                    ..Style::default()
+                }),
+            );
         });
     }
 }

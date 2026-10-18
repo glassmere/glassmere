@@ -116,20 +116,7 @@ impl StyleSheet {
             if let Some((name, style)) = current.as_mut() {
                 let body = content.strip_suffix('}');
                 let closes = body.is_some();
-                for property in body.unwrap_or(content).split(';') {
-                    let property = property.trim();
-                    if property.is_empty() {
-                        continue;
-                    }
-                    let Some((key, value)) = property.split_once(':') else {
-                        return fail(
-                            line,
-                            format!("expected `property: value` in class `{name}`"),
-                        );
-                    };
-                    apply(style, key.trim(), value.trim())
-                        .map_err(|message| StyleSheetError { line, message })?;
-                }
+                apply_properties(style, body.unwrap_or(content), line, name)?;
                 if closes {
                     let (name, style) = current.take().unwrap();
                     sheet.classes.insert(name, style);
@@ -188,20 +175,7 @@ impl StyleSheet {
                     let inline = inline.trim();
                     let inline = inline.strip_prefix('{').unwrap_or(inline).trim();
                     if let Some(body) = inline.strip_suffix('}') {
-                        for property in body.split(';') {
-                            let property = property.trim();
-                            if property.is_empty() {
-                                continue;
-                            }
-                            let Some((key, value)) = property.split_once(':') else {
-                                return fail(
-                                    line,
-                                    format!("expected `property: value` in class `{name}`"),
-                                );
-                            };
-                            apply(&mut style, key.trim(), value.trim())
-                                .map_err(|message| StyleSheetError { line, message })?;
-                        }
+                        apply_properties(&mut style, body, line, &name)?;
                         sheet.classes.insert(name, style);
                     } else if inline.is_empty() {
                         current = Some((name, style));
@@ -223,6 +197,30 @@ impl StyleSheet {
         }
         Ok(sheet)
     }
+}
+
+/// Applies the `;`-separated `property: value` pairs of a class body.
+fn apply_properties(
+    style: &mut Style,
+    body: &str,
+    line: usize,
+    class: &str,
+) -> Result<(), StyleSheetError> {
+    for property in body.split(';') {
+        let property = property.trim();
+        if property.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = property.split_once(':') else {
+            return Err(StyleSheetError {
+                line,
+                message: format!("expected `property: value` in class `{class}`"),
+            });
+        };
+        apply(style, key.trim(), value.trim())
+            .map_err(|message| StyleSheetError { line, message })?;
+    }
+    Ok(())
 }
 
 fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {

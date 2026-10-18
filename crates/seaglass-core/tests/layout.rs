@@ -3,7 +3,7 @@ use seaglass_core::{
     Align, Context, GridArea, Justify, Length, MonospaceMeasurer, NodeId, Style, StyleSheet, Track,
     TrackSize, Ui,
 };
-use seaglass_scene::{Rect, Size};
+use seaglass_scene::{Primitive, Rect, Size};
 
 const ROOT: Size = Size::new(500.0, 400.0);
 
@@ -362,8 +362,7 @@ fn baseline_alignment_lines_up_the_text_of_different_sizes() {
     assert!(large.height > small.height);
     // The synthetic measurer puts the baseline at four fifths of the size,
     // and padding pushes it down with the text.
-    let baseline =
-        |rect: seaglass_scene::Rect, size: f32, padding: f32| rect.y + padding + size * 0.8;
+    let baseline = |rect: Rect, size: f32, padding: f32| rect.y + padding + size * 0.8;
     let line = baseline(large, 32.0, 0.0);
     let same = |value: f32| (value - line).abs() < 0.01;
     assert!(same(baseline(small, 12.0, 0.0)), "{small:?} against {line}");
@@ -445,35 +444,31 @@ fn a_container_tells_its_content_how_much_room_it_had() {
     let mut context = Context::new();
     let mut seen = Vec::new();
     let declare = |context: &mut Context, width: f32, seen: &mut Vec<f32>| {
-        context.run(
-            seaglass_scene::Size::new(width, 200.0),
-            &mut MonospaceMeasurer,
-            |ui| {
-                ui.keyed("page", |ui| {
-                    ui.responsive(
-                        Style::default().width(Length::Percent(1.0)).padding(10.0),
-                        |ui, room| {
-                            seen.push(room);
-                            // A narrow page stacks what a wide one puts in a row.
-                            if room >= 300.0 {
-                                ui.keyed("wide", |ui| {
-                                    ui.row(Style::default(), |ui| {
-                                        ui.keyed("a", |ui| ui.label("a"));
-                                        ui.keyed("b", |ui| ui.label("b"));
-                                    })
-                                });
-                            } else {
-                                ui.keyed("narrow", |ui| {
-                                    ui.column(Style::default(), |ui| {
-                                        ui.keyed("a", |ui| ui.label("a"));
-                                    })
-                                });
-                            }
-                        },
-                    )
-                });
-            },
-        );
+        context.run(Size::new(width, 200.0), &mut MonospaceMeasurer, |ui| {
+            ui.keyed("page", |ui| {
+                ui.responsive(
+                    Style::default().width(Length::Percent(1.0)).padding(10.0),
+                    |ui, room| {
+                        seen.push(room);
+                        // A narrow page stacks what a wide one puts in a row.
+                        if room >= 300.0 {
+                            ui.keyed("wide", |ui| {
+                                ui.row(Style::default(), |ui| {
+                                    ui.keyed("a", |ui| ui.label("a"));
+                                    ui.keyed("b", |ui| ui.label("b"));
+                                })
+                            });
+                        } else {
+                            ui.keyed("narrow", |ui| {
+                                ui.column(Style::default(), |ui| {
+                                    ui.keyed("a", |ui| ui.label("a"));
+                                })
+                            });
+                        }
+                    },
+                )
+            });
+        });
     };
     // Nothing has been laid out on the first frame, so the content is told
     // nothing and the narrow shape appears.
@@ -498,8 +493,6 @@ fn a_container_tells_its_content_how_much_room_it_had() {
 /// centres a glyph in a caption button.
 #[test]
 fn a_text_leaf_is_placed_in_its_box_by_the_same_properties_a_container_uses() {
-    use seaglass_scene::Primitive;
-
     let mut context = Context::new();
     let boxed = |justify: Justify, align: Align| Style {
         width: Length::Px(200.0),

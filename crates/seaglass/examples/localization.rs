@@ -4,13 +4,13 @@
 //! untranslated on purpose, to show the fallback to English.
 use seaglass::fluent::FluentMessages;
 use seaglass::{
-    App, AppOptions, Button, Effects, Label, Length, NumberOptions, Size, Style, TextWrap, Toast,
-    Ui, run, tr,
+    App, AppOptions, Button, Date, DateStyle, Effects, Label, Length, LocaleFormat, Messages,
+    NumberOptions, Size, Style, TextWrap, Toast, Ui, run, tr,
 };
 
 const LOCALES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/locales");
 
-fn messages(locale: &str) -> Option<Box<dyn seaglass::Messages>> {
+fn messages(locale: &str) -> Option<Box<dyn Messages>> {
     let mut messages = FluentMessages::new(locale, "en").ok()?;
     if let Err(error) = messages.load_dir(LOCALES) {
         eprintln!("catalog not loaded: {error}");
@@ -26,7 +26,7 @@ fn set_locale(effects: &mut Effects<'_, Msg>, locale: &str) {
     effects.set_format(
         seaglass::icu::IcuFormat::new(locale)
             .ok()
-            .map(|format| Box::new(format) as Box<dyn seaglass::LocaleFormat>),
+            .map(|format| Box::new(format) as Box<dyn LocaleFormat>),
     );
 }
 
@@ -106,7 +106,7 @@ impl App for Localization {
             });
             // `tr!` checks the key and its arguments against locales/en.ftl while compiling.
             ui.label(tr!(ui, "files", count = self.count));
-            let today = seaglass::Date {
+            let today = Date {
                 year: 2026,
                 month: 9,
                 day: 21,
@@ -114,7 +114,7 @@ impl App for Localization {
             ui.label(format!(
                 "{}  ·  {}",
                 ui.format_number(1_234_567.891, 2),
-                ui.format_date(today, seaglass::DateStyle::Long)
+                ui.format_date(today, DateStyle::Long)
             ));
             // The stepper buttons' names are the framework's and follow the language.
             ui.label(ui.tr("weight"));

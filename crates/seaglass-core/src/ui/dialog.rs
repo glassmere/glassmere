@@ -61,7 +61,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             if !title.is_empty() {
                 ui.label_at(
                     "$title",
-                    title.clone(),
+                    title,
                     Style {
                         font_size: Some(20.0),
                         font_weight: Some(700),
@@ -72,11 +72,6 @@ impl<'a, M: 'static> Ui<'a, M> {
             content(ui);
         });
         let mut element = Element {
-            handler: None,
-            seq: 0,
-            key,
-            kind: Kind::Dialog,
-            text: String::new(),
             style: Style {
                 width: crate::Length::Percent(1.0),
                 height: crate::Length::Percent(1.0),
@@ -87,13 +82,12 @@ impl<'a, M: 'static> Ui<'a, M> {
             },
             enabled,
             children: child.elements,
-            custom: None,
-            tooltip: None,
             control: Control::Dialog {
                 title: options.title,
                 modal: options.modal,
                 dismissible: options.dismissible,
             },
+            ..Element::new(key, Kind::Dialog)
         };
         // Nested dialogs declared inside `content` were pushed meanwhile; keep
         // this one below them so children stack on top of their parents.

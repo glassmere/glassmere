@@ -24,7 +24,7 @@ pub(crate) fn expand(path: LitStr) -> Result<Tokens, Error> {
             format!("{relative}:{}: {}", problem.line, problem.message),
         ));
     }
-    let full = full.to_string_lossy().replace(char::from(92), "/");
+    let full = full.to_string_lossy().replace('\\', "/");
     // `include_str!` again, so that editing the file rebuilds the crate.
     Ok(quote! {
         ::seaglass::StyleSheet::parse(include_str!(#full))

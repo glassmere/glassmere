@@ -3,7 +3,7 @@
 //! Builds the app, runs it, and when a watched `.rs` or `.toml` file changes
 //! rebuilds it. After a successful build the running app is asked to stop
 //! (it saves its state through `App::save_state`), and the new build starts
-//! where the old one was. A failed build leaves the old app running.
+//! where the previous one was. A failed build leaves the running app alone.
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, Stdio};
@@ -56,7 +56,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Options, String>
 }
 
 /// The last executable named in cargo's JSON build messages.
-// ponytail: string search instead of a JSON parser; cargo writes one message
+// String search instead of a JSON parser; cargo writes one message
 // per line with the field spelled exactly like this.
 fn executable_from(lines: impl IntoIterator<Item = String>) -> Option<PathBuf> {
     const FIELD: &str = "\"executable\":\"";

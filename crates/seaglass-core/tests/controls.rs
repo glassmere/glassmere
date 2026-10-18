@@ -9,6 +9,8 @@ use seaglass_core::{
 use seaglass_scene::{Point, Primitive, Size};
 use support::{Driven, act, on};
 
+const ROOT: Size = Size::new(500.0, 500.0);
+
 fn key(context: &mut Context, key: Key) {
     context.event(Event::KeyDown {
         key,
@@ -46,7 +48,7 @@ fn input_view(state: &Input, ui: &mut Ui<'_, Msg<Input>>) {
 }
 
 fn input(value: &str) -> Driven<Input> {
-    Driven::new(Size::new(500.0, 500.0), Input::new(value), input_view)
+    Driven::new(ROOT, Input::new(value), input_view)
 }
 
 #[test]
@@ -201,7 +203,7 @@ fn choices_view(state: &Choices, ui: &mut Ui<'_, Msg<Choices>>) {
 #[test]
 fn checkbox_radio_keyboard_and_disabled_scope_share_one_activation_path() {
     let mut app = Driven::new(
-        Size::new(500.0, 500.0),
+        ROOT,
         Choices {
             checked: false,
             selected: 0,
@@ -246,7 +248,7 @@ fn volume_view(state: &Volume, ui: &mut Ui<'_, Msg<Volume>>) {
 
 #[test]
 fn slider_drag_keys_and_accessibility_snap_and_clamp() {
-    let mut app = Driven::new(Size::new(500.0, 500.0), Volume { value: 0.0 }, volume_view);
+    let mut app = Driven::new(ROOT, Volume { value: 0.0 }, volume_view);
     let id = app.context.find(&["slider"]).unwrap();
     app.context.action(id, Action::SetNumber(4.1));
     app.frame();
@@ -291,7 +293,7 @@ fn pick_view(state: &Pick, ui: &mut Ui<'_, Msg<Pick>>) {
 #[test]
 fn combo_popup_overlays_later_siblings_scrolls_highlight_and_restores_focus() {
     let mut app = Driven::new(
-        Size::new(500.0, 500.0),
+        ROOT,
         Pick {
             selected: 0,
             entries: (0..20).map(|index| format!("Choice {index}")).collect(),
@@ -366,11 +368,7 @@ fn menu_view(_: &Picked, ui: &mut Ui<'_, Msg<Picked>>) {
 
 #[test]
 fn menus_skip_disabled_items_emit_once_and_close_on_outside_click() {
-    let mut app = Driven::new(
-        Size::new(500.0, 500.0),
-        Picked { picks: Vec::new() },
-        menu_view,
-    );
+    let mut app = Driven::new(ROOT, Picked { picks: Vec::new() }, menu_view);
     let owner = app.context.find(&["menu"]).unwrap();
     app.context.action(owner, Action::Expand);
     app.frame();

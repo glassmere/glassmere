@@ -127,7 +127,7 @@ impl Dial {
     #[allow(clippy::too_many_arguments)]
     fn paint(
         &self,
-        input: &seaglass::WidgetInput,
+        input: &WidgetInput,
         size: f32,
         face: Color,
         ring: Color,

@@ -95,6 +95,41 @@ ui.memo(&(&self.rows, self.selected), style, |ui| { .. });
 
 The retained subtree stays exactly as it was, so it still paints, scrolls and animates, and the handlers it left keep sending. The state must cover everything the content reads. `Store::version` and `Signal::version` are hashable, so a store plugs straight in.
 
+## Docking layouts
+
+`DockLayout` is the layout of a docked workspace: a tree of splits and tab groups, floating groups and detached windows. It is plain data the application owns. `Ui::dock(&layout, &panels, options, Msg::Dock, |ui, id| ..)` draws it and sends a `DockAction` for every move, resize, selection, close and raise; `update` applies it with `layout.apply(action)` and saves the layout if that returned true. `Ui::dock_window` draws one detached window from `view_window`. A panel is a `DockPanel::new(id, title)`, or `pinned` when it cannot be closed. `DockLayout::show`, `move_panel(id, DockTarget)`, `redock` and `remove_window` change it from code.
+
+```rust
+let layout = DockLayout::new(DockNode::row(
+    0.22,
+    DockNode::tabs(["files", "search"]),
+    DockNode::column(0.7, DockNode::tabs(["editor"]), DockNode::tabs(["output"])),
+));
+```
+
+`to_text` and `DockLayout::parse` save and restore it, and the `serde` feature derives `Serialize` and `Deserialize` as well. The text form:
+
+```text
+dock v1
+main {
+    split horizontal 0.22 {
+        tabs 0 "files" "search"
+        split vertical 0.7 {
+            tabs 0 "editor"
+            tabs 0 "output"
+        }
+    }
+}
+float 300 140 320 220 {
+    tabs 0 "preview"
+}
+window 1 640 480 {
+    tabs 0 "inspector"
+}
+```
+
+`tabs` takes the active index and the panel ids; `split` an axis and the fraction given to the first child. `float x y width height` holds one `tabs` group and `window id width height` a split or tabs node of its own. Parsing drops duplicate panel ids. `//` starts a comment. A malformed file is a `DockLayoutError` naming the line. `retain_panels` drops ids the application no longer has. Opening a detached window is the application's job: see `examples/docking.rs`, which opens an OS window for each `layout.windows` entry and calls `redock` when one closes.
+
 ## State that outlives the process
 
 `App::save_state` hands the development runner a string to keep across a rebuild, and `seaglass::hot::saved_state` reads it back on the next start. It is for the edit-and-see loop, not for saving documents: an application saves its own files.

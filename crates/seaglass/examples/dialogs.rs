@@ -100,18 +100,42 @@ impl App for Dialogs {
             .wrap(TextWrap::Word)
             .width(Length::Percent(1.0));
         let heading = Style::default().font_weight(700);
-        ui.column(Style::default().width(Length::Percent(1.0)).padding(28.0).gap(16.0), |ui| {
-            ui.label(Label::new("Dialogs and focus").style(Style::default().font_size(28.0).font_weight(700)));
-            ui.label(Label::new("Modal dialogs trap Tab, block the content behind them and return focus when they close. Focus scopes remember their last child and can move focus with arrow keys. Escape or the scrim dismisses.").style(muted.clone()));
+        let page = Style::default()
+            .width(Length::Percent(1.0))
+            .padding(28.0)
+            .gap(16.0);
+        let arrows = FocusScope {
+            arrows: true,
+            ..FocusScope::default()
+        };
+        ui.column(page, |ui| {
+            ui.label(
+                Label::new("Dialogs and focus")
+                    .style(Style::default().font_size(28.0).font_weight(700)),
+            );
+            ui.label(
+                Label::new(
+                    "Modal dialogs trap Tab, block the content behind them and return focus when \
+                     they close. Focus scopes remember their last child and can move focus with \
+                     arrow keys. Escape or the scrim dismisses.",
+                )
+                .style(muted.clone()),
+            );
             ui.row(Style::default().gap(8.0), |ui| {
                 ui.button(Button::new("Delete file…").on_click(Msg::Confirm(true)));
                 ui.button(Button::new("Preferences (non-modal)").on_click(Msg::Preferences(true)));
                 ui.button(Button::new("Native modal window…").on_click(Msg::OpenNative));
             });
-            ui.label(format!("Deleted {}  ·  dismissed {}  ·  native results {}  ·  name \"{}\"", self.deleted, self.dismissed, self.native_results, self.name));
+            ui.label(format!(
+                "Deleted {}  ·  dismissed {}  ·  native results {}  ·  name \"{}\"",
+                self.deleted, self.dismissed, self.native_results, self.name
+            ));
 
-            ui.label(Label::new("Arrow-key toolbar  ·  focus_scope(arrows: true)").style(heading.clone()));
-            ui.focus_scope(FocusScope { arrows: true, ..FocusScope::default() }, Style::default(), |ui| {
+            ui.label(
+                Label::new("Arrow-key toolbar  ·  focus_scope(arrows: true)")
+                    .style(heading.clone()),
+            );
+            ui.focus_scope(arrows, Style::default(), |ui| {
                 ui.row(Style::default().gap(8.0), |ui| {
                     for tool in ["Cut", "Copy", "Paste", "Find"] {
                         ui.keyed(tool.to_lowercase(), |ui| ui.button(tool));
@@ -123,7 +147,10 @@ impl App for Dialogs {
                     }
                 });
             });
-            ui.label(Label::new("Remembered scope  ·  Tab away and back lands on the last used button").style(heading.clone()));
+            ui.label(
+                Label::new("Remembered scope  ·  Tab away and back lands on the last used button")
+                    .style(heading),
+            );
             ui.focus_scope(FocusScope::default(), Style::default(), |ui| {
                 ui.row(Style::default().gap(8.0), |ui| {
                     for choice in ["Alpha", "Beta", "Gamma"] {
@@ -132,7 +159,13 @@ impl App for Dialogs {
                 });
             });
             ui.button("A button after the scopes");
-            ui.label(Label::new("Native modal windows block their owner until closed and, on Windows, stay above it as owned windows.").style(muted));
+            ui.label(
+                Label::new(
+                    "Native modal windows block their owner until closed and, on Windows, stay \
+                     above it as owned windows.",
+                )
+                .style(muted),
+            );
         });
 
         ui.dialog(

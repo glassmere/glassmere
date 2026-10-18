@@ -3,8 +3,8 @@
 //! or Ctrl with the wheel zooms about the pointer. The two sliders above the
 //! photo can be dragged at the same time, one finger each.
 use seaglass::{
-    App, AppOptions, Button, Color, Effects, GestureBuilder, GestureResponse, ImageFit,
-    ImageOptions, Length, Size, Style, Transform, Ui, run,
+    Align, App, AppOptions, Button, Color, Effects, GestureBuilder, GestureResponse, ImageFit,
+    ImageOptions, Justify, Length, Size, Style, Transform, Ui, run,
 };
 
 const PHOTO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/assets/dusk.png");
@@ -42,7 +42,7 @@ impl App for Gestures {
                 if gesture.changed() {
                     // What was under the fingers stays under them: the photo's
                     // centre is scaled and turned about the point the fingers
-                    // came from, and lands relative to where they are now.
+                    // came from, and lands relative to where they are.
                     let about = gesture.center.unwrap_or_default();
                     let (cx, cy) = (about.x - CANVAS.width / 2.0, about.y - CANVAS.height / 2.0);
                     let factor = gesture.scale.clamp(0.2 / self.zoom, 8.0 / self.zoom);
@@ -84,7 +84,8 @@ impl App for Gestures {
                 ui.button(Button::new("Reset view").on_click(Msg::Reset));
             });
             ui.label(format!(
-                "Zoom {:.2}  ·  turned {:.0}°  ·  moved {:.0}, {:.0}  ·  taps {}  ·  sliders {:.0} / {:.0}",
+                "Zoom {:.2}  ·  turned {:.0}°  ·  moved {:.0}, {:.0}  ·  taps {}  ·  \
+                 sliders {:.0} / {:.0}",
                 self.zoom,
                 self.turn.to_degrees(),
                 self.x,
@@ -99,11 +100,14 @@ impl App for Gestures {
                 height: Length::Px(CANVAS.height),
                 radius: 12.0,
                 background: Some(Color::rgb(24, 35, 49)),
-                align_items: seaglass::Align::Center,
-                justify_content: seaglass::Justify::Center,
+                align_items: Align::Center,
+                justify_content: Justify::Center,
                 ..Style::default()
             };
-            ui.gesture_area(canvas, GestureBuilder::new().on_gesture(Msg::Gesture), |ui| {
+            ui.gesture_area(
+                canvas,
+                GestureBuilder::new().on_gesture(Msg::Gesture),
+                |ui| {
                     let photo = Style {
                         width: Length::Px(320.0),
                         height: Length::Px(200.0),
@@ -123,7 +127,8 @@ impl App for Gestures {
                             .fit(ImageFit::Cover)
                             .style(photo),
                     );
-                },);
+                },
+            );
         });
     }
 }

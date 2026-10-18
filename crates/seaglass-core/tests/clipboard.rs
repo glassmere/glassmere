@@ -77,11 +77,10 @@ fn a_clip_carries_every_form_at_once() {
         Clip::custom("app/thing", vec![9]).bytes("app/thing"),
         Some(&[9][..])
     );
-    // Nothing else sees a clip with no text, which is worth saying out loud.
+    // A clip with only private bytes has no text for other applications.
     assert!(Clip::custom("app/thing", vec![9]).text.is_empty());
 }
 
-/// The style argument is the node's own, so a view can copy from anywhere.
 #[test]
 fn copying_does_not_disturb_the_declaration() {
     let mut app = board();

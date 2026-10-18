@@ -6,9 +6,9 @@ use seaglass_core::{
 use seaglass_scene::{Color, Point, Primitive, Rect, Size};
 use std::{any::Any, path::Path};
 
-/// What declares: an [`App`]'s driver, and the batch it runs.
+/// Erases the app's message type, so `Harness<S>` needs no bound on `S`.
 struct Runner<S> {
-    /// The `AppDriver` of the app's message.
+    /// An `AppDriver` for the app's message type.
     driver: Box<dyn Any>,
     frame: fn(&mut S, &mut dyn Any, &mut Context, Size) -> FrameStats,
 }
@@ -196,11 +196,11 @@ impl<S> Harness<S> {
 
     /// `key kind role "label" [disabled] [focusable]`, parent-first, indented by depth.
     pub fn snapshot_tree(&self) -> String {
-        self.lines(|_, prefix, _| prefix.to_owned())
+        self.lines(|prefix, _| prefix.to_owned())
     }
     /// Tree lines plus `@ x,y w×h` and `clip …` when the clip differs from the bounds.
     pub fn snapshot_layout(&self) -> String {
-        self.lines(|_, prefix, node| {
+        self.lines(|prefix, node| {
             let mut line = format!("{prefix} @ {}", rect(node.bounds));
             if rect(node.clip) != rect(node.bounds) {
                 line += &format!(" clip {}", rect(node.clip));
@@ -210,7 +210,7 @@ impl<S> Harness<S> {
     }
     /// What assistive technology sees: role, label and present state fields.
     pub fn snapshot_accessibility(&self) -> String {
-        self.lines(|_, _, node| {
+        self.lines(|_, node| {
             let mut line = format!("{:?} {:?}", node.semantics.role, node.semantics.label);
             if let Some(value) = &node.value {
                 line += &format!(" value={value:?}");
@@ -236,7 +236,7 @@ impl<S> Harness<S> {
             line
         })
     }
-    fn lines(&self, format: impl Fn(usize, &str, &NodeSnapshot) -> String) -> String {
+    fn lines(&self, format: impl Fn(&str, &NodeSnapshot) -> String) -> String {
         let root = self.context.root();
         let mut out = String::new();
         for node in self.context.snapshots() {
@@ -268,7 +268,7 @@ impl<S> Harness<S> {
                 prefix += " [focusable]";
             }
             out += &"  ".repeat(depth);
-            out += &format(depth, &prefix, &node);
+            out += &format(&prefix, &node);
             out.push('\n');
         }
         out
@@ -470,6 +470,8 @@ fn app_frame<A: App>(
     driver.frame(app, context, size, &mut MonospaceMeasurer)
 }
 
+/// Compares `actual` with `<dir>/<name>.snap`. `UPDATE_SNAPSHOTS` rewrites the
+/// file; a missing file is written and reported so it can be reviewed.
 pub fn assert_snapshot(dir: impl AsRef<Path>, name: &str, actual: &str) {
     let path = dir.as_ref().join(format!("{name}.snap"));
     let write = || {

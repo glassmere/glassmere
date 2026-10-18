@@ -3,7 +3,7 @@
 //!
 //! The framework says what is asked for and what comes back; a host does it
 //! with the platform's own dialogs and menus. Nothing here draws anything,
-//! and a host that cannot do one of them simply does not.
+//! and a host that cannot do one of them does not.
 
 use crate::Command;
 use seaglass_scene::Image;

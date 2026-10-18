@@ -11,7 +11,7 @@ use support::{Driven, act};
 const ROOT: Size = Size::new(900.0, 500.0);
 const COLUMNS: usize = 30;
 
-/// Thirty 100 px columns of generated text.
+/// Thirty 100 px columns of text.
 struct Wide(Vec<GridColumn>);
 
 impl ListModel for Wide {

@@ -282,16 +282,8 @@ impl<'a, M: 'static> Ui<'a, M> {
         // Source code reads left to right whatever the UI direction is.
         style.direction = Some(crate::Direction::Ltr);
         self.push(Element {
-            handler: None,
-            seq: 0,
-            key,
-            kind: Kind::TextArea,
-            text: String::new(),
             style,
             enabled: self.enabled,
-            children: Vec::new(),
-            custom: None,
-            tooltip: None,
             control: Control::TextArea {
                 label: options.label,
                 lines,
@@ -307,6 +299,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                 marks,
                 gutter_marks,
             },
+            ..Element::new(key, Kind::TextArea)
         });
         if let Some(handler) = handler {
             self.set_handler(handler);

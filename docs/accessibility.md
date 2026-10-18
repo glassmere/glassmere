@@ -55,6 +55,6 @@ harness.action(harness.by_label("Save"), Action::Activate);
 
 Fill in `Semantics` and it is announced like anything else: `focusable` puts it in the tab order whatever its role, `value` and `numeric` are what is read out, and `Role::Button` opts into the same activation path as a built-in button. A dial that reports neither value nor numeric is a dial that says nothing; `examples/dial-widget` shows one that does.
 
-## What is not verified here
+## What has not been checked
 
-The tree is checked by tests and by UI Automation scripts on Windows. Speech and navigation with a real screen reader, and the platform layers on macOS and Linux, have not been exercised by hand.
+The tree is checked by tests and by UI Automation scripts on Windows. Speech and navigation with a real screen reader, and the platform layers on macOS and Linux, have not been exercised by hand; [limitations](limitations.md) lists the rest.

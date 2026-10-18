@@ -1,7 +1,7 @@
 use seaglass_core::Label;
 use seaglass_core::{
-    Context, DiagnosticKind, HUGE_CHILDREN, Length, MonospaceMeasurer, RELAYOUT_FRAMES,
-    REPAINT_FRAMES, Style, Tab, TextWrap, UNSTABLE_ID_FRAMES, Ui,
+    Context, DiagnosticKind, FontFamily, HUGE_CHILDREN, ImageOptions, Length, MonospaceMeasurer,
+    RELAYOUT_FRAMES, REPAINT_FRAMES, Style, Tab, TextWrap, UNSTABLE_ID_FRAMES, Ui,
 };
 use seaglass_scene::{Color, Size};
 
@@ -230,12 +230,10 @@ fn resources_that_fail_and_fonts_that_are_missing_are_reported() {
     context.set_diagnostics(true);
     let path = std::path::Path::new("logo.png");
     context.run(ROOT, &mut MonospaceMeasurer, |ui| {
-        ui.keyed("logo", |ui| {
-            ui.image_file(path, seaglass_core::ImageOptions::default())
-        });
+        ui.keyed("logo", |ui| ui.image_file(path, ImageOptions::default()));
         ui.keyed("title", |ui| {
             ui.label(Label::new("Title").style(Style {
-                font_family: Some(seaglass_core::FontFamily::Named("Nonesuch".into())),
+                font_family: Some(FontFamily::Named("Nonesuch".into())),
                 ..Style::default()
             }))
         });
@@ -245,7 +243,7 @@ fn resources_that_fail_and_fonts_that_are_missing_are_reported() {
     let resource = context
         .diagnostics()
         .iter()
-        .find(|entry| entry.kind == seaglass_core::DiagnosticKind::Resource)
+        .find(|entry| entry.kind == DiagnosticKind::Resource)
         .expect("the failed image");
     assert!(resource.message.contains("logo.png") && resource.message.contains("not a PNG"));
     // The same failure again is one entry, not two.
@@ -254,7 +252,7 @@ fn resources_that_fail_and_fonts_that_are_missing_are_reported() {
         context
             .diagnostics()
             .iter()
-            .filter(|entry| entry.kind == seaglass_core::DiagnosticKind::Resource)
+            .filter(|entry| entry.kind == DiagnosticKind::Resource)
             .count(),
         1
     );
@@ -267,7 +265,6 @@ fn resources_that_fail_and_fonts_that_are_missing_are_reported() {
         context
             .diagnostics()
             .iter()
-            .any(|entry| entry.kind == seaglass_core::DiagnosticKind::Font
-                && entry.message.contains("Nonesuch"))
+            .any(|entry| entry.kind == DiagnosticKind::Font && entry.message.contains("Nonesuch"))
     );
 }

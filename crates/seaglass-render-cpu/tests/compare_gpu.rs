@@ -1,7 +1,8 @@
 //! The two renderers on the same scene. They are not meant to agree to the
-//! bit: the GPU blends in linear light and feathers the edges of quads, the
-//! CPU blends in sRGB space and covers edges exactly. They are meant to draw
-//! the same picture, and this states how close that is.
+//! bit: the GPU feathers the edges of quads and filters resampled images in
+//! linear light, the CPU covers edges exactly and filters on sRGB-encoded
+//! values. They are meant to draw the same picture, and this states how close
+//! that is.
 use seaglass_render_cpu::CpuRenderer;
 use seaglass_render_wgpu::Renderer;
 use seaglass_scene::{

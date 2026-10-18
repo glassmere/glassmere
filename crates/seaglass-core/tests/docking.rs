@@ -5,8 +5,8 @@ use seaglass_core::{
     Axis, Context, DockArea, DockLayout, DockNode, DockOptions, DockPanel, DockPlace, DockTarget,
     DockWindowId, DockZone, Event, Key, Role, Ui,
 };
-use seaglass_scene::{Point, Primitive, Rect, Size};
-use support::{Driven, act};
+use seaglass_scene::{Point, Rect, Size};
+use support::{Driven, act, labelled, shows};
 
 const ROOT: Size = Size::new(800.0, 600.0);
 
@@ -350,25 +350,6 @@ impl App {
     fn context(&mut self) -> &mut Context {
         &mut self.driven.context
     }
-}
-
-fn shows(context: &Context, needle: &str) -> bool {
-    context.scene().primitives.iter().any(|primitive| {
-        matches!(primitive, Primitive::StyledText { text, .. } | Primitive::Text { text, .. } if text == needle)
-    })
-}
-
-/// Bounds of the first node with this role and label.
-fn labelled(context: &Context, role: Role, label: &str) -> Rect {
-    let mut stack = vec![context.root()];
-    while let Some(id) = stack.pop() {
-        let node = context.node(id).unwrap();
-        if node.semantics.role == role && node.semantics.label == label {
-            return node.bounds;
-        }
-        stack.extend(node.children.iter().rev());
-    }
-    panic!("no {role:?} labelled {label}");
 }
 
 fn center(rect: Rect) -> Point {

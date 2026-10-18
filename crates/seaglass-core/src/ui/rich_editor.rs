@@ -103,16 +103,8 @@ impl<'a, M: 'static> Ui<'a, M> {
             .radius(options.style.radius);
         style.background = options.style.background;
         self.push(Element {
-            handler: None,
-            seq: 0,
-            key: WidgetKey::Named("$area".into()),
-            kind: Kind::RichEditor,
-            text: String::new(),
             style,
             enabled: self.enabled,
-            children: Vec::new(),
-            custom: None,
-            tooltip: None,
             control: Control::RichEditor {
                 label: options.label,
                 blocks: views(document, accent),
@@ -121,6 +113,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                 font_size,
                 read_only: options.read_only,
             },
+            ..Element::new(WidgetKey::Named("$area".into()), Kind::RichEditor)
         });
         if let Some(handler) = handler {
             self.set_handler(handler);

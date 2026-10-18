@@ -182,7 +182,7 @@ impl Recorder {
     }
 
     /// The renderer's report after the frame just recorded. `completed` is a
-    /// GPU time that has arrived now for an earlier frame, by its number.
+    /// GPU time that has arrived for an earlier frame, by its number.
     pub fn gpu(&mut self, snapshot: GpuSnapshot, completed: Option<(u64, Duration)>) {
         if let Some(last) = self.frames.back_mut() {
             last.draw_calls = snapshot.draw_calls;
@@ -563,227 +563,282 @@ impl Inspector {
             width: Length::Percent(1.0),
             ..Style::default()
         };
-        ui.keyed("inspector", |ui| ui.column(Style {
-                width: Length::Percent(1.0),
-                height: Length::Percent(1.0),
-                padding: 12.0,
-                gap: 8.0,
-                ..Style::default()
-            }, |ui| {
-                ui.keyed("title", |ui| ui.label(Label::new(format!(
-                        "{}  ·  {:.0} × {:.0}  ·  {} nodes  ·  frame {}",
-                        model.title,
-                        model.size.width,
-                        model.size.height,
-                        model.nodes.len(),
-                        model.frames.last().map_or(0, |frame| frame.stats.frame)
-                    )).style(Style {
+        let page = Style {
+            width: Length::Percent(1.0),
+            height: Length::Percent(1.0),
+            padding: 12.0,
+            gap: 8.0,
+            ..Style::default()
+        };
+        ui.keyed("inspector", |ui| {
+            ui.column(page, |ui| {
+                let title = format!(
+                    "{}  ·  {:.0} × {:.0}  ·  {} nodes  ·  frame {}",
+                    model.title,
+                    model.size.width,
+                    model.size.height,
+                    model.nodes.len(),
+                    model.frames.last().map_or(0, |frame| frame.stats.frame)
+                );
+                ui.keyed("title", |ui| {
+                    ui.label(Label::new(title).style(Style {
                         font_size: Some(14.0),
                         font_weight: Some(700),
                         ..Style::default()
-                    })));
+                    }))
+                });
                 if !model.warnings.is_empty() {
-                    ui.keyed("warnings", |ui| ui.label(Label::new(format!("Style warnings: {}", model.warnings.join("; "))).style(Style {
+                    let warnings = format!("Style warnings: {}", model.warnings.join("; "));
+                    ui.keyed("warnings", |ui| {
+                        ui.label(Label::new(warnings).style(Style {
                             font_size: Some(13.0),
                             foreground: Some(Color::rgb(255, 196, 96)),
                             width: Length::Percent(1.0),
                             wrap: TextWrap::Word,
                             ..Style::default()
-                        })));
+                        }))
+                    });
                 }
-                ui.keyed("tabs", |ui| ui.row(Style {
-                        gap: 6.0,
-                        ..Style::default()
-                    }, |ui| {
-                        for (tab, label) in [
-                            (Tab::Tree, "Tree".to_owned()),
-                            (Tab::Accessibility, "Accessibility".to_owned()),
-                            (Tab::Events, "Events".to_owned()),
-                            (Tab::Frames, "Frames".to_owned()),
-                            (Tab::Gpu, "GPU".to_owned()),
-                            (Tab::Scene, format!("Scene ({})", model.layers.len())),
-                            (Tab::State, format!("State ({})", model.state.len())),
-                            (
-                                Tab::Diagnostics,
-                                format!("Diagnostics ({})", model.diagnostics.len()),
-                            ),
-                        ] {
-                            let style = Style {
-                                background: (self.tab == tab).then_some(ui.theme().selection),
-                                ..Style::button()
-                            };
-                            ui.keyed(format!("{tab:?}"), |ui| ui.button(Button::new(label).enabled(true).style(style).on_click(InspectorMsg::Tab(tab))));
-                        }
-                    }));
+                self.tab_strip(ui, model);
                 // Their own row: with seven tabs there is no width left for
                 // them beside the strip.
-                ui.keyed("overlays", |ui| ui.row(Style {
-                        gap: 12.0,
-                        ..Style::default()
-                    }, |ui| {
-                        ui.keyed("damage", |ui| ui.checkbox("Damage", self.show_damage, InspectorMsg::Damage));
-                        ui.keyed("repaints", |ui| ui.checkbox("Repaints", self.show_repaints, InspectorMsg::Repaints));
-                    }));
+                ui.keyed("overlays", |ui| {
+                    ui.row(Style::default().gap(12.0), |ui| {
+                        ui.keyed("damage", |ui| {
+                            ui.checkbox("Damage", self.show_damage, InspectorMsg::Damage)
+                        });
+                        ui.keyed("repaints", |ui| {
+                            ui.checkbox("Repaints", self.show_repaints, InspectorMsg::Repaints)
+                        });
+                    })
+                });
                 match self.tab {
                     Tab::Tree | Tab::Accessibility => {
-                        let accessibility = self.tab == Tab::Accessibility;
-                        let selected = self.tree.selected().map(|id| NodeId(id.0));
-                        let tree_width = (width * 0.56).floor();
-                        ui.keyed("body", |ui| ui.row(Style {
-                                gap: 12.0,
-                                width: Length::Percent(1.0),
-                                ..Style::default()
-                            }, |ui| {
-                                let rows = Rows::new(model, &self.collapsed, accessibility);
-                                ui.keyed("tree", |ui| ui.tree_view_with(&rows, &self.tree, VirtualListOptions {
-                                        label: "Nodes".into(),
-                                        height: list_height,
-                                        row_height: 24.0,
-                                        style: Style {
-                                            width: Length::Px(tree_width),
-                                            ..Style::default()
-                                        },
-                                        ..VirtualListOptions::default()
-                                    }, InspectorMsg::Tree, |ui, rows, index, _| {
-                                        let node = rows.node(index);
-                                        ui.keyed("label", |ui| ui.label(Label::new(rows.text(index)).style(Style {
-                                                width: Length::Percent(1.0),
-                                                padding: 4.0,
-                                                font_size: Some(13.0),
-                                                foreground: (!node.details.changed.is_empty())
-                                                    .then_some(Color::rgb(255, 196, 96)),
-                                                ..Style::default()
-                                            })));
-                                    }));
-                                ui.keyed("details", |ui| ui.column(Style {
-                                        gap: 4.0,
-                                        width: Length::Px(width - tree_width - 12.0),
-                                        ..Style::default()
-                                    }, |ui| match selected.and_then(|id| model.node(id)) {
-                                        Some(node) => details(ui, model, node),
-                                        None => ui.keyed("hint", |ui| ui.label(Label::new("Select a node. Arrows move, Right/Left expand and collapse. Orange rows changed in the last declaration; ▮ marks a repainted node.").style(Style {
-                                                font_size: Some(13.0),
-                                                foreground: Some(MUTED),
-                                                width: Length::Percent(1.0),
-                                                wrap: TextWrap::Word,
-                                                ..Style::default()
-                                            }))),
-                                    }));
-                            }));
+                        self.nodes_tab(ui, model, width, list_height);
                     }
-                    Tab::Events => {
-                        let rows = EventRows(&model.events);
-                        ui.keyed("events", |ui| ui.virtual_list_with(&rows, &self.events, VirtualListOptions {
-                                label: "Events".into(),
-                                height: list_height,
-                                row_height: 22.0,
-                                ..VirtualListOptions::default()
-                            }, InspectorMsg::Events, |ui, rows, index, _| {
-                                let event = &rows.0[index];
-                                ui.keyed("label", |ui| ui.label(Label::new(format!(
-                                        "f{:<6} {} {}",
-                                        event.frame,
-                                        if event.handled { "●" } else { "○" },
-                                        event.description
-                                    )).style(Style {
-                                        foreground: Some(if event.handled { Color::WHITE } else { MUTED }),
-                                        ..mono.clone()
-                                    })));
-                            }));
-                    }
-                    Tab::Diagnostics => {
-                        if model.diagnostics.is_empty() {
-                            ui.keyed("none", |ui| ui.label(Label::new("No framework diagnostics. Checks run in debug builds.").style(Style {
-                                    foreground: Some(MUTED),
-                                    ..mono.clone()
-                                })));
-                        }
-                        ui.keyed("diagnostics", |ui| ui.scroll(Style {
-                                width: Length::Percent(1.0),
-                                height: Length::Px(list_height),
-                                gap: 6.0,
-                                ..Style::default()
-                            }, |ui| {
-                                for (index, entry) in model.diagnostics.iter().enumerate() {
-                                    // Selecting an entry shows its node in the tree.
-                                    let title = format!(
-                                        "{:?}  ·  {}  ·  ×{}",
-                                        entry.kind,
-                                        if entry.path.is_empty() {
-                                            "(window)"
-                                        } else {
-                                            entry.path.as_str()
-                                        },
-                                        entry.count
-                                    );
-                                    let button = Button::new(title).enabled(entry.node.is_some()).style(Style {
-                                        width: Length::Percent(1.0),
-                                        padding: 6.0,
-                                        ..Style::button()
-                                    });
-                                    let button = match entry.node {
-                                        Some(node) => button.on_click(InspectorMsg::ShowNode(node)),
-                                        None => button,
-                                    };
-                                    ui.keyed(format!("entry-{index}"), |ui| ui.button(button));
-                                    ui.keyed(format!("message-{index}"), |ui| ui.label(Label::new(entry.message.clone()).style(Style {
-                                            font_size: Some(12.0),
-                                            foreground: Some(MUTED),
-                                            width: Length::Percent(1.0),
-                                            wrap: TextWrap::Word,
-                                            ..Style::default()
-                                        })));
-                                }
-                            }));
-                    }
+                    Tab::Events => self.events_tab(ui, model, &mono, list_height),
+                    Tab::Diagnostics => diagnostics_tab(ui, model, &mono, list_height),
                     Tab::Gpu => gpu_tab(ui, model, &mono),
                     Tab::Scene => scene_tab(ui, model, &mono),
                     Tab::State => state_tab(ui, model, &mono),
-                    Tab::Frames => {
-                        let count = model.frames.len().max(1) as f64;
-                        let average = |pick: fn(&FrameRecord) -> Duration| {
-                            model.frames.iter().map(pick).sum::<Duration>().as_secs_f64() * 1000.0
-                                / count
-                        };
-                        ui.keyed("summary", |ui| ui.label(format!(
-                                "{} frames recorded  ·  average declare {:.2} ms  ·  layout {:.2}  ·  paint {:.2}  ·  shaping {:.2}  ·  render {:.2}  ·  total {:.2}",
-                                model.frames.len(),
-                                average(|frame| frame.stats.declare),
-                                average(|frame| frame.stats.layout),
-                                average(|frame| frame.stats.paint),
-                                average(|frame| frame.stats.shaping),
-                                average(|frame| frame.render),
-                                average(|frame| frame.total)
-                            )));
-                        ui.keyed("actions", |ui| ui.row(Style {
-                                gap: 8.0,
-                                ..Style::default()
-                            }, |ui| {
-                                ui.keyed("export", |ui| ui.button(Button::new("Export CSV").on_click(InspectorMsg::ExportCsv)));
-                                if let Some(path) = &model.export_path {
-                                    ui.keyed("path", |ui| ui.label(Label::new(format!("Written to {path}")).style(Style {
-                                            font_size: Some(13.0),
-                                            foreground: Some(MUTED),
-                                            ..Style::default()
-                                        })));
-                                }
-                            }));
-                        ui.keyed("columns", |ui| ui.label(Label::new(FrameRecord::SUMMARY_HEADER).style(Style {
-                            foreground: Some(MUTED),
-                            ..mono.clone()
-                        })));
-                        let rows = FrameRows(&model.frames);
-                        ui.keyed("frames", |ui| ui.virtual_list_with(&rows, &self.frames, VirtualListOptions {
-                                label: "Frames".into(),
-                                height: (list_height - 96.0).max(120.0),
-                                row_height: 22.0,
-                                ..VirtualListOptions::default()
-                            }, InspectorMsg::Frames, |ui, rows, index, _| {
-                                ui.keyed("label", |ui| ui.label(Label::new(rows.0[index].summary()).style(mono.clone())));
-                            }));
-                    }
+                    Tab::Frames => self.frames_tab(ui, model, &mono, list_height),
                 }
-            }));
+            })
+        });
+    }
+
+    fn tab_strip(&self, ui: &mut Ui<'_, InspectorMsg>, model: &InspectorModel) {
+        ui.keyed("tabs", |ui| {
+            ui.row(Style::default().gap(6.0), |ui| {
+                for (tab, label) in [
+                    (Tab::Tree, "Tree".to_owned()),
+                    (Tab::Accessibility, "Accessibility".to_owned()),
+                    (Tab::Events, "Events".to_owned()),
+                    (Tab::Frames, "Frames".to_owned()),
+                    (Tab::Gpu, "GPU".to_owned()),
+                    (Tab::Scene, format!("Scene ({})", model.layers.len())),
+                    (Tab::State, format!("State ({})", model.state.len())),
+                    (
+                        Tab::Diagnostics,
+                        format!("Diagnostics ({})", model.diagnostics.len()),
+                    ),
+                ] {
+                    let style = Style {
+                        background: (self.tab == tab).then_some(ui.theme().selection),
+                        ..Style::button()
+                    };
+                    let button = Button::new(label)
+                        .enabled(true)
+                        .style(style)
+                        .on_click(InspectorMsg::Tab(tab));
+                    ui.keyed(format!("{tab:?}"), |ui| ui.button(button));
+                }
+            })
+        });
+    }
+
+    /// The Tree and Accessibility tabs: the node list and the selected node.
+    fn nodes_tab(
+        &self,
+        ui: &mut Ui<'_, InspectorMsg>,
+        model: &InspectorModel,
+        width: f32,
+        list_height: f32,
+    ) {
+        let accessibility = self.tab == Tab::Accessibility;
+        let selected = self.tree.selected().map(|id| NodeId(id.0));
+        let tree_width = (width * 0.56).floor();
+        let options = VirtualListOptions {
+            label: "Nodes".into(),
+            height: list_height,
+            row_height: 24.0,
+            style: Style {
+                width: Length::Px(tree_width),
+                ..Style::default()
+            },
+            ..VirtualListOptions::default()
+        };
+        let hint = Label::new(
+            "Select a node. Arrows move, Right/Left expand and collapse. Orange rows changed in \
+             the last declaration; ▮ marks a repainted node.",
+        )
+        .style(Style {
+            font_size: Some(13.0),
+            foreground: Some(MUTED),
+            width: Length::Percent(1.0),
+            wrap: TextWrap::Word,
+            ..Style::default()
+        });
+        ui.keyed("body", |ui| {
+            let layout = Style::default().gap(12.0).width(Length::Percent(1.0));
+            ui.row(layout, |ui| {
+                let rows = Rows::new(model, &self.collapsed, accessibility);
+                ui.keyed("tree", |ui| {
+                    ui.tree_view_with(
+                        &rows,
+                        &self.tree,
+                        options,
+                        InspectorMsg::Tree,
+                        |ui, rows, index, _| {
+                            let node = rows.node(index);
+                            let changed = !node.details.changed.is_empty();
+                            ui.keyed("label", |ui| {
+                                ui.label(Label::new(rows.text(index)).style(Style {
+                                    width: Length::Percent(1.0),
+                                    padding: 4.0,
+                                    font_size: Some(13.0),
+                                    foreground: changed.then_some(Color::rgb(255, 196, 96)),
+                                    ..Style::default()
+                                }))
+                            });
+                        },
+                    )
+                });
+                let side = Style::default()
+                    .gap(4.0)
+                    .width(Length::Px(width - tree_width - 12.0));
+                ui.keyed("details", |ui| {
+                    ui.column(side, |ui| match selected.and_then(|id| model.node(id)) {
+                        Some(node) => details(ui, model, node),
+                        None => ui.keyed("hint", |ui| ui.label(hint)),
+                    })
+                });
+            });
+        });
+    }
+
+    fn events_tab(
+        &self,
+        ui: &mut Ui<'_, InspectorMsg>,
+        model: &InspectorModel,
+        mono: &Style,
+        list_height: f32,
+    ) {
+        let rows = EventRows(&model.events);
+        let options = VirtualListOptions {
+            label: "Events".into(),
+            height: list_height,
+            row_height: 22.0,
+            ..VirtualListOptions::default()
+        };
+        ui.keyed("events", |ui| {
+            ui.virtual_list_with(
+                &rows,
+                &self.events,
+                options,
+                InspectorMsg::Events,
+                |ui, rows, index, _| {
+                    let event = &rows.0[index];
+                    let shade = if event.handled { Color::WHITE } else { MUTED };
+                    let text = format!(
+                        "f{:<6} {} {}",
+                        event.frame,
+                        if event.handled { "●" } else { "○" },
+                        event.description
+                    );
+                    ui.keyed("label", |ui| {
+                        ui.label(Label::new(text).style(Style {
+                            foreground: Some(shade),
+                            ..mono.clone()
+                        }))
+                    });
+                },
+            )
+        });
+    }
+
+    fn frames_tab(
+        &self,
+        ui: &mut Ui<'_, InspectorMsg>,
+        model: &InspectorModel,
+        mono: &Style,
+        list_height: f32,
+    ) {
+        let count = model.frames.len().max(1) as f64;
+        let average = |pick: fn(&FrameRecord) -> Duration| {
+            model
+                .frames
+                .iter()
+                .map(pick)
+                .sum::<Duration>()
+                .as_secs_f64()
+                * 1000.0
+                / count
+        };
+        let summary = format!(
+            "{} frames recorded  ·  average declare {:.2} ms  ·  layout {:.2}  ·  paint {:.2}  ·  \
+             shaping {:.2}  ·  render {:.2}  ·  total {:.2}",
+            model.frames.len(),
+            average(|frame| frame.stats.declare),
+            average(|frame| frame.stats.layout),
+            average(|frame| frame.stats.paint),
+            average(|frame| frame.stats.shaping),
+            average(|frame| frame.render),
+            average(|frame| frame.total)
+        );
+        ui.keyed("summary", |ui| ui.label(summary));
+        ui.keyed("actions", |ui| {
+            ui.row(Style::default().gap(8.0), |ui| {
+                ui.keyed("export", |ui| {
+                    ui.button(Button::new("Export CSV").on_click(InspectorMsg::ExportCsv))
+                });
+                if let Some(path) = &model.export_path {
+                    ui.keyed("path", |ui| {
+                        ui.label(Label::new(format!("Written to {path}")).style(Style {
+                            font_size: Some(13.0),
+                            foreground: Some(MUTED),
+                            ..Style::default()
+                        }))
+                    });
+                }
+            })
+        });
+        ui.keyed("columns", |ui| {
+            ui.label(Label::new(FrameRecord::SUMMARY_HEADER).style(Style {
+                foreground: Some(MUTED),
+                ..mono.clone()
+            }))
+        });
+        let rows = FrameRows(&model.frames);
+        let options = VirtualListOptions {
+            label: "Frames".into(),
+            height: (list_height - 96.0).max(120.0),
+            row_height: 22.0,
+            ..VirtualListOptions::default()
+        };
+        ui.keyed("frames", |ui| {
+            ui.virtual_list_with(
+                &rows,
+                &self.frames,
+                options,
+                InspectorMsg::Frames,
+                |ui, rows, index, _| {
+                    ui.keyed("label", |ui| {
+                        ui.label(Label::new(rows.0[index].summary()).style(mono.clone()))
+                    });
+                },
+            )
+        });
     }
 
     /// Logical-coordinate primitives for the inspected window to paint after its scene.
@@ -816,6 +871,68 @@ impl Inspector {
         }
         out
     }
+}
+
+fn diagnostics_tab(
+    ui: &mut Ui<'_, InspectorMsg>,
+    model: &InspectorModel,
+    mono: &Style,
+    list_height: f32,
+) {
+    if model.diagnostics.is_empty() {
+        ui.keyed("none", |ui| {
+            ui.label(
+                Label::new("No framework diagnostics. Checks run in debug builds.").style(Style {
+                    foreground: Some(MUTED),
+                    ..mono.clone()
+                }),
+            )
+        });
+    }
+    let list = Style {
+        width: Length::Percent(1.0),
+        height: Length::Px(list_height),
+        gap: 6.0,
+        ..Style::default()
+    };
+    ui.keyed("diagnostics", |ui| {
+        ui.scroll(list, |ui| {
+            for (index, entry) in model.diagnostics.iter().enumerate() {
+                // Selecting an entry shows its node in the tree.
+                let title = format!(
+                    "{:?}  ·  {}  ·  ×{}",
+                    entry.kind,
+                    if entry.path.is_empty() {
+                        "(window)"
+                    } else {
+                        entry.path.as_str()
+                    },
+                    entry.count
+                );
+                let entry_style = Style {
+                    width: Length::Percent(1.0),
+                    padding: 6.0,
+                    ..Style::button()
+                };
+                let button = Button::new(title)
+                    .enabled(entry.node.is_some())
+                    .style(entry_style);
+                let button = match entry.node {
+                    Some(node) => button.on_click(InspectorMsg::ShowNode(node)),
+                    None => button,
+                };
+                ui.keyed(format!("entry-{index}"), |ui| ui.button(button));
+                let message = Label::new(entry.message.clone()).style(Style {
+                    font_size: Some(12.0),
+                    foreground: Some(MUTED),
+                    width: Length::Percent(1.0),
+                    wrap: TextWrap::Word,
+                    ..Style::default()
+                });
+                ui.keyed(format!("message-{index}"), |ui| ui.label(message));
+            }
+        })
+    });
 }
 
 fn outline(out: &mut Vec<Primitive>, rect: Rect, thickness: f32, color: Color) {
@@ -940,7 +1057,8 @@ fn details(ui: &mut Ui<'_, InspectorMsg>, model: &InspectorModel, node: &Inspect
         ui,
         "layout",
         format!(
-            "Style: width {:?} · height {:?} · padding {} · gap {} · grow {} · shrink {} · radius {}",
+            "Style: width {:?} · height {:?} · padding {} · gap {} · grow {} · shrink {} · \
+             radius {}",
             style.width,
             style.height,
             style.padding,
@@ -954,7 +1072,8 @@ fn details(ui: &mut Ui<'_, InspectorMsg>, model: &InspectorModel, node: &Inspect
         ui,
         "align",
         format!(
-            "Align items {:?} · justify {:?} · self {:?}/{:?} · min {:?}×{:?} · max {:?}×{:?} · aspect {:?}",
+            "Align items {:?} · justify {:?} · self {:?}/{:?} · min {:?}×{:?} · \
+             max {:?}×{:?} · aspect {:?}",
             style.align_items,
             style.justify_content,
             style.align_self,
@@ -1191,18 +1310,21 @@ fn scene_tab(ui: &mut Ui<'_, InspectorMsg>, model: &InspectorModel, mono: &Style
             memory.images,
             kb(memory.image_bytes)
         ),
-        "The layout engine's own arena, the allocator's overhead and the glyph atlas are not counted here; the atlas lives on the GPU."
+        "The layout engine's own arena, the allocator's overhead and the glyph atlas are not \
+         counted here; the atlas lives on the GPU."
             .to_owned(),
     ]
     .into_iter()
     .enumerate()
     {
-        ui.keyed(format!("memory-{index}"), |ui| ui.label(Label::new(line).style(Style {
+        ui.keyed(format!("memory-{index}"), |ui| {
+            ui.label(Label::new(line).style(Style {
                 foreground: Some(if index == 4 { MUTED } else { ACCENT }),
                 width: Length::Percent(1.0),
                 wrap: TextWrap::Word,
                 ..mono.clone()
-            })));
+            }))
+        });
     }
     if model.layers.is_empty() {
         ui.keyed("no-layers", |ui| {
@@ -1488,12 +1610,16 @@ fn gpu_tab(ui: &mut Ui<'_, InspectorMsg>, model: &InspectorModel, mono: &Style) 
             ))
         });
     } else {
-        ui.keyed("time", |ui| ui.label(Label::new("This adapter has no timestamp queries, so GPU time is unknown. The render column \
-             of the Frames tab is CPU time: it measures the driver's queue, not the GPU.").style(Style {
-                wrap: seaglass_core::TextWrap::Word,
-                width: Length::Percent(1.0),
-                ..muted.clone()
-            })));
+        let note = Label::new(
+            "This adapter has no timestamp queries, so GPU time is unknown. The render column of \
+             the Frames tab is CPU time: it measures the driver's queue, not the GPU.",
+        )
+        .style(Style {
+            wrap: seaglass_core::TextWrap::Word,
+            width: Length::Percent(1.0),
+            ..muted.clone()
+        });
+        ui.keyed("time", |ui| ui.label(note));
     }
     ui.keyed("counters", |ui| {
         ui.label(format!(

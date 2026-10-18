@@ -82,6 +82,31 @@ impl App for Form {
     }
 }
 
+/// Fails, naming the first differing pixels, unless both frames are the same.
+fn assert_frames_match(partial: &[u8], full: &[u8], width: usize, step: &str) {
+    let differing = partial
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(full.as_chunks::<4>().0)
+        .enumerate()
+        .filter(|(_, (left, right))| left != right)
+        .map(|(at, (left, right))| {
+            format!(
+                "({}, {}) {left:?} against {right:?}",
+                at % width,
+                at / width
+            )
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        differing.is_empty(),
+        "after {step}, {} pixels differ, first: {:?}",
+        differing.len(),
+        &differing[..differing.len().min(4)]
+    );
+}
+
 #[test]
 fn a_frame_painted_from_damage_is_the_frame_painted_in_full() {
     let mut context = Context::new();
@@ -103,27 +128,7 @@ fn a_frame_painted_from_damage_is_the_frame_painted_in_full() {
             .render_damaged(physical, 1.0, scene, CLEAR, &damage)
             .to_vec();
         let full = whole.render(physical, 1.0, scene, CLEAR).to_vec();
-        let differing = partial
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .zip(full.as_chunks::<4>().0)
-            .enumerate()
-            .filter(|(_, (left, right))| left != right)
-            .map(|(at, (left, right))| {
-                format!(
-                    "({}, {}) {left:?} against {right:?}",
-                    at % physical[0] as usize,
-                    at / physical[0] as usize
-                )
-            })
-            .collect::<Vec<_>>();
-        assert!(
-            differing.is_empty(),
-            "after {step}, {} pixels differ, first: {:?}",
-            differing.len(),
-            &differing[..differing.len().min(4)]
-        );
+        assert_frames_match(&partial, &full, physical[0] as usize, step);
         // The point of it all: most steps touch a small part of the window.
         incremental.stats().redrawn
     };
@@ -264,21 +269,7 @@ fn closing_a_menu_by_its_own_button_leaves_nothing_of_it_behind() {
             .render_damaged(physical, 1.0, scene, CLEAR, &damage)
             .to_vec();
         let full = whole.render(physical, 1.0, scene, CLEAR).to_vec();
-        let differing = partial
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .zip(full.as_chunks::<4>().0)
-            .enumerate()
-            .filter(|(_, (left, right))| left != right)
-            .map(|(at, _)| (at % physical[0] as usize, at / physical[0] as usize))
-            .collect::<Vec<_>>();
-        assert!(
-            differing.is_empty(),
-            "after {step}, {} pixels differ, first: {:?}",
-            differing.len(),
-            &differing[..differing.len().min(4)]
-        );
+        assert_frames_match(&partial, &full, physical[0] as usize, step);
     };
     frame(&mut context, "the first frame");
 
@@ -411,21 +402,7 @@ fn every_overlay_leaves_the_window_as_it_found_it() {
             .render_damaged(physical, 1.0, scene, CLEAR, &damage)
             .to_vec();
         let full = whole.render(physical, 1.0, scene, CLEAR).to_vec();
-        let differing = partial
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .zip(full.as_chunks::<4>().0)
-            .enumerate()
-            .filter(|(_, (left, right))| left != right)
-            .map(|(at, _)| (at % physical[0] as usize, at / physical[0] as usize))
-            .collect::<Vec<_>>();
-        assert!(
-            differing.is_empty(),
-            "after {step}, {} pixels differ, first: {:?}",
-            differing.len(),
-            &differing[..differing.len().min(4)]
-        );
+        assert_frames_match(&partial, &full, physical[0] as usize, step);
     };
     let tick = Duration::from_millis(16);
     frame(&mut context, &mut driver, &mut app, tick, "the first frame");

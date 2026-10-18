@@ -625,7 +625,9 @@ impl GridState {
             GridMsg::FiltersApplied => self.applied_filters = self.wanted_filters(),
             GridMsg::Select(id) => self.rows.select(Some(*id)),
             GridMsg::Deselect => self.rows.select(None),
-            GridMsg::HideColumn(column) => drop(self.columns.hidden.insert(*column)),
+            GridMsg::HideColumn(column) => {
+                self.columns.hidden.insert(*column);
+            }
             GridMsg::ShowAllColumns => self.columns.show_all(),
             GridMsg::ResetColumns => self.columns.reset(),
             GridMsg::FreezeColumns(count) => self.columns.frozen = *count,

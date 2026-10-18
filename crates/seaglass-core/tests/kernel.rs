@@ -4,12 +4,12 @@ use seaglass_core::app::Action as Message;
 use seaglass_core::{Button, Label};
 use seaglass_core::{Context, Dirty, Event, Key, Length, MonospaceMeasurer, Style, Ui};
 use seaglass_scene::{Color, Point, Primitive, Size};
-use support::{Driven, act};
+use support::{Driven, act, center};
 
 const ROOT: Size = Size::new(640.0, 480.0);
 
 fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) -> seaglass_core::FrameStats {
-    context.run(Size::new(640.0, 480.0), &mut MonospaceMeasurer, view)
+    context.run(ROOT, &mut MonospaceMeasurer, view)
 }
 
 fn buttons(ui: &mut Ui<'_>) {
@@ -26,14 +26,6 @@ fn buttons(ui: &mut Ui<'_>) {
             ui.keyed("last", |ui| ui.button("Last"));
         })
     });
-}
-
-fn center(context: &Context, path: &[&str]) -> Point {
-    let rect = context.node(context.find(path).unwrap()).unwrap().bounds;
-    Point {
-        x: rect.x + rect.width / 2.0,
-        y: rect.y + rect.height / 2.0,
-    }
 }
 
 #[test]

@@ -40,17 +40,10 @@ impl<'a, M: 'static> Ui<'a, M> {
             return Response::default();
         }
         let response = self.push(Element {
-            handler: None,
-            seq: 0,
-            key,
-            kind: Kind::Custom,
-            text: String::new(),
             style,
             enabled: !widget.semantics.disabled,
-            children: Vec::new(),
             custom: Some(widget),
-            tooltip: None,
-            control: Control::None,
+            ..Element::new(key, Kind::Custom)
         });
         // What reaches a widget that listens is taken when it is resolved,
         // so a widget without `on_event` still has a handler that drops it.
@@ -80,17 +73,10 @@ impl<'a, M: 'static> Ui<'a, M> {
         }
         let key = self.next_key();
         let response = self.push(Element {
-            handler: None,
-            seq: 0,
-            key,
-            kind: Kind::Custom,
-            text: String::new(),
             style,
             enabled: !widget.semantics.disabled,
-            children: Vec::new(),
             custom: Some(widget),
-            tooltip: None,
-            control: Control::None,
+            ..Element::new(key, Kind::Custom)
         });
         self.set_handler(crate::app::Handler::Message(on_click));
         response
@@ -196,7 +182,7 @@ impl<M> AreaBuilder<M> {
 impl<'a, M: 'static> Ui<'a, M> {
     /// Content that drags `source`'s payload. Drags inside the window are
     /// delivered to a `drop_target`. A host that can hands a drag that leaves
-    /// the window to the operating system (files only today); how that ended
+    /// the window to the operating system (files only); how that ended
     /// is sent through [`DragSourceBuilder::on_drag_end`].
     #[track_caller]
     pub fn drag_source(
@@ -294,10 +280,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         self.set_control(Control::EventArea(area.area));
         // Always a handler, so that what reaches the area is taken at resolve
         // time even when nothing is sent.
-        let on_event: Box<dyn Fn(crate::UiEvent) -> Option<M>> = match area.on_event {
-            Some(on_event) => on_event,
-            None => Box::new(|_| None),
-        };
+        let on_event = area.on_event.unwrap_or_else(|| Box::new(|_| None));
         self.set_handler(crate::app::Handler::Event(on_event));
     }
 }

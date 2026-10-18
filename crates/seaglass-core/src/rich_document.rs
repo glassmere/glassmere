@@ -217,6 +217,26 @@ struct Snapshot {
 
 const HISTORY: usize = 300;
 
+/// The part of block `index` inside the selection `start..end`.
+fn block_range(
+    blocks: &[Block],
+    index: usize,
+    start: RichPosition,
+    end: RichPosition,
+) -> Range<usize> {
+    let from = if index == start.block {
+        start.offset
+    } else {
+        0
+    };
+    let to = if index == end.block {
+        end.offset
+    } else {
+        blocks[index].len()
+    };
+    from..to
+}
+
 #[derive(Clone, Debug)]
 pub struct RichDocument {
     blocks: Vec<Block>,
@@ -224,7 +244,7 @@ pub struct RichDocument {
     cursor: RichPosition,
     /// Marks the next typed text takes when toggled at a caret.
     typing: Option<Marks>,
-    // ponytail: whole-document snapshots; switch to block-level edits if
+    // Whole-document snapshots; switch to block-level edits if
     // documents grow past a few thousand blocks.
     undo: Vec<Snapshot>,
     redo: Vec<Snapshot>,
@@ -657,18 +677,8 @@ impl RichDocument {
     fn each_selected(&mut self, mut change: impl FnMut(&mut Block, Range<usize>)) {
         let (start, end) = self.selection();
         for index in start.block..=end.block {
-            let block = &mut self.blocks[index];
-            let from = if index == start.block {
-                start.offset
-            } else {
-                0
-            };
-            let to = if index == end.block {
-                end.offset
-            } else {
-                block.len()
-            };
-            change(block, from..to);
+            let range = block_range(&self.blocks, index, start, end);
+            change(&mut self.blocks[index], range);
         }
     }
 
@@ -698,18 +708,8 @@ impl RichDocument {
         }
         let (start, end) = self.selection();
         let all = (start.block..=end.block).all(|index| {
-            let block = &self.blocks[index];
-            let from = if index == start.block {
-                start.offset
-            } else {
-                0
-            };
-            let to = if index == end.block {
-                end.offset
-            } else {
-                block.len()
-            };
-            block.all(from..to, |marks| marks.has(mark))
+            let range = block_range(&self.blocks, index, start, end);
+            self.blocks[index].all(range, |marks| marks.has(mark))
         });
         self.record(false);
         self.each_selected(|block, range| block.each(range, |marks| marks.set(mark, !all)));
@@ -748,18 +748,8 @@ impl RichDocument {
         let (start, end) = self.selection();
         (start.block..=end.block)
             .map(|index| {
-                let text = self.blocks[index].text();
-                let from = if index == start.block {
-                    start.offset
-                } else {
-                    0
-                };
-                let to = if index == end.block {
-                    end.offset
-                } else {
-                    text.len()
-                };
-                text[from..to].to_owned()
+                let range = block_range(&self.blocks, index, start, end);
+                self.blocks[index].text()[range].to_owned()
             })
             .collect::<Vec<_>>()
             .join("\n")

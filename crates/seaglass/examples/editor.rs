@@ -104,9 +104,9 @@ impl App for Editor {
                 .text(", ")
                 .run(RichRun::new("decorations").underline())
                 .text(" and links such as ")
-                .link("the milestone report", "docs/milestone-7.md")
+                .link("the architecture notes", "docs/architecture.md")
                 .text(" or ")
-                .link("the roadmap", "docs/roadmap.md")
+                .link("the widget guide", "docs/widgets.md")
                 .text(
                     ". In the editor: Ctrl+F and Ctrl+H search and replace, F3 steps, Ctrl+D \
                      selects the next occurrence, Alt+click and Ctrl+Alt+Up/Down add cursors.",

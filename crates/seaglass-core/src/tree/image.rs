@@ -156,13 +156,7 @@ impl Context {
         else {
             return;
         };
-        let padding = node.style.padding.max(0.0);
-        let content = Rect {
-            x: node.bounds.x + padding,
-            y: node.bounds.y + padding,
-            width: (node.bounds.width - padding * 2.0).max(0.0),
-            height: (node.bounds.height - padding * 2.0).max(0.0),
-        };
+        let content = node.content_box();
         let Some(image) = image else {
             // Still loading, or failed: a quiet box, with the name if loading failed.
             scene.primitives.push(Primitive::Quad {

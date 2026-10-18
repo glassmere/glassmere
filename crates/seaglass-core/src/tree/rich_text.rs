@@ -33,20 +33,10 @@ fn ranges(runs: &[RichRun]) -> impl Iterator<Item = (&RichRun, Range<usize>)> {
     })
 }
 
-fn content(node: &Node) -> Rect {
-    let padding = node.style.padding.max(0.0);
-    Rect {
-        x: node.bounds.x + padding,
-        y: node.bounds.y + padding,
-        width: (node.bounds.width - padding * 2.0).max(0.0),
-        height: (node.bounds.height - padding * 2.0).max(0.0),
-    }
-}
-
 /// The content box the text is drawn in. Wrapped blocks are aligned by the
 /// shaper; a single line in a wider right-to-left box moves to the right edge.
 fn aligned(node: &Node, state: &RichState) -> Rect {
-    let mut content = content(node);
+    let mut content = node.content_box();
     if node.resolved.rtl() && node.style.wrap == TextWrap::None {
         let shift = (content.width - state.geometry.size.width).max(0.0);
         content.x += shift;
@@ -81,7 +71,7 @@ impl Context {
             let Control::RichText { runs, links } = &node.control else {
                 continue;
             };
-            let width = content(node).width;
+            let width = node.content_box().width;
             let stale = node
                 .rich
                 .as_ref()

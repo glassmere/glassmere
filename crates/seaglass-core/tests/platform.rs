@@ -3,47 +3,17 @@
 mod support;
 
 use seaglass_core::{
-    Action, App, AppDriver, Command, Context, Effects, Event, FileKind, FileRequest, Menu,
-    MenuEntry, MonospaceMeasurer, Notification, Style, Tray, Ui,
+    Action, App, Command, Context, Effects, Event, FileKind, FileRequest, Menu, MenuEntry,
+    MonospaceMeasurer, Notification, Style, Tray, Ui,
 };
 use seaglass_scene::Size;
 use std::path::PathBuf;
-use support::{Driven, act};
+use support::{Driven, Host, act};
 
 const ROOT: Size = Size::new(400.0, 300.0);
 
 /// The message type of a `Driven` view over state `S`.
 type Handler<S> = seaglass_core::app::Action<S>;
-
-/// An application, its driver and the context, run together as a window would.
-struct Host<A: App> {
-    context: Context,
-    driver: AppDriver<A::Message>,
-    app: A,
-}
-
-impl<A: App> Host<A> {
-    fn new(app: A) -> Self {
-        Self {
-            context: Context::new(),
-            driver: AppDriver::new(|| true),
-            app,
-        }
-    }
-
-    fn send(&mut self, message: A::Message) {
-        self.driver.send(message);
-    }
-
-    fn frame(&mut self) {
-        self.driver.frame(
-            &mut self.app,
-            &mut self.context,
-            ROOT,
-            &mut MonospaceMeasurer,
-        );
-    }
-}
 
 #[derive(Clone)]
 enum FileMsg {
@@ -78,7 +48,7 @@ impl App for Files {
 
 #[test]
 fn a_file_dialog_is_asked_for_once_and_answered_later() {
-    let mut host = Host::new(Files::default());
+    let mut host = Host::new(Files::default(), ROOT);
     host.frame();
     assert!(host.context.take_file_request().is_none());
     host.send(FileMsg::Save);
@@ -131,7 +101,7 @@ impl App for Notices {
 
 #[test]
 fn notifications_queue_in_order_and_are_taken_once() {
-    let mut host = Host::new(Notices);
+    let mut host = Host::new(Notices, ROOT);
     host.send(NoticeMsg::Post);
     host.frame();
     let posted = host.context.take_notifications();

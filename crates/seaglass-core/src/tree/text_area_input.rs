@@ -42,16 +42,6 @@ pub(crate) struct AreaView {
     pub primary: Option<(usize, usize)>,
 }
 
-pub(super) fn content(node: &Node) -> Rect {
-    let padding = node.style.padding.max(0.0);
-    Rect {
-        x: node.bounds.x + padding,
-        y: node.bounds.y + padding,
-        width: (node.bounds.width - padding * 2.0).max(0.0),
-        height: (node.bounds.height - padding * 2.0).max(0.0),
-    }
-}
-
 fn text_style(font_size: f32) -> TextStyle {
     TextStyle {
         font_size,
@@ -66,7 +56,7 @@ impl Context {
         let node = self.nodes.get(&id)?;
         Some(AreaView {
             scroll_y: node.scroll.offset,
-            viewport: content(node).height,
+            viewport: node.content_box().height,
             primary: node.area.as_ref().and_then(|area| area.primary),
         })
     }
@@ -190,7 +180,7 @@ impl Context {
         let Control::TextArea { total_lines, .. } = node.control else {
             return None;
         };
-        let content = content(node);
+        let content = node.content_box();
         let row = ((point.y - content.y + node.scroll.offset) / area.line_height.max(1.0)).floor();
         let line = (row.max(0.0) as usize).min(total_lines.saturating_sub(1));
         let Some(layout) = line
@@ -474,7 +464,7 @@ impl Context {
             return None;
         };
         let area = node.area.as_ref()?;
-        let page = ((content(node).height / area.line_height.max(1.0)) as isize - 1).max(1);
+        let page = ((node.content_box().height / area.line_height.max(1.0)) as isize - 1).max(1);
         let escaped = area.tab_escape;
         let motion = |motion| TextOp::Move {
             motion,
@@ -604,7 +594,7 @@ impl Context {
                 area.affinity = area.pending_affinity.take().unwrap_or_default();
             }
             let affinity = area.affinity;
-            let content = content(node);
+            let content = node.content_box();
             let text_width = (content.width - gutter).max(1.0);
             let caret = primary
                 .0
@@ -663,7 +653,7 @@ impl Context {
         };
         let theme = &self.theme;
         let focused = self.focused == Some(id);
-        let content = content(node);
+        let content = node.content_box();
         let line_height = area.line_height;
         let text_x = content.x + area.gutter;
         let origin_y = content.y - node.scroll.offset;

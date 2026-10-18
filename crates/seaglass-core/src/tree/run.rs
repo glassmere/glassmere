@@ -378,7 +378,7 @@ impl Context {
     pub(super) fn reconcile(
         &mut self,
         parent: NodeId,
-        elements: Vec<Element>,
+        mut elements: Vec<Element>,
         measurer: &mut impl TextMeasurer,
     ) {
         let old_children = self.nodes[&parent].children.clone();
@@ -389,7 +389,6 @@ impl Context {
             .collect();
         let mut children = Vec::with_capacity(elements.len());
         let (mut created_here, mut removed_here) = (0usize, 0usize);
-        let mut elements = elements;
         for element in elements.drain(..) {
             let existing = available.remove(&element.key).filter(|id| {
                 if self.nodes[id].kind == element.kind {

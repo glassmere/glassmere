@@ -43,8 +43,7 @@ fn parse_hex(text: &str) -> Option<Color> {
 
 /// Share of the width the content takes in a scrolling grid, which leaves the
 /// scrollbar a margin of its own instead of covering the editors' ends.
-// ponytail: a percentage because styles have no one-sided padding; an inset
-// when they do.
+/// A percentage because styles have no one-sided padding.
 const BESIDE_SCROLLBAR: f32 = 0.97;
 
 fn fill() -> Style {

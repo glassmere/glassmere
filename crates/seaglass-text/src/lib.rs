@@ -9,8 +9,8 @@ use seaglass_scene::{
 use std::collections::{HashMap, HashSet};
 use unicode_segmentation::UnicodeSegmentation;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 /// Identifies one shaped block: its text and everything that shapes it.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TextKey {
     text: String,
     size: u32,

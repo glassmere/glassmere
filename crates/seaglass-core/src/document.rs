@@ -399,13 +399,9 @@ impl TextDocument {
             after.push(Selection::caret(at));
             delta += inserted - edit.removed.chars().count() as isize;
         }
-        // Edits map one to one onto selections except for whole-line operations.
-        if after.len() == before.len() {
-            self.selections = after;
-        } else {
-            self.selections = after;
-            self.primary = self.primary.min(self.selections.len() - 1);
-        }
+        // Whole-line operations can leave fewer carets than there were selections.
+        self.selections = after;
+        self.primary = self.primary.min(self.selections.len() - 1);
         self.merge_selections(None);
         let merge = typing
             && self.undo.last().is_some_and(|last| {
@@ -935,10 +931,6 @@ impl TextDocument {
         from..to
     }
 
-    /// All occurrences of `query`, ascending and non-overlapping, as char
-    /// ranges. Matches do not span lines.
-    // ponytail: compares lowercased chars line by line; move to a streaming
-    // searcher if documents reach tens of megabytes.
     /// Every match of a regular expression, ascending, or why the pattern
     /// could not be used. Matches never cross a line.
     pub fn find_all_regex(
@@ -986,6 +978,10 @@ impl TextDocument {
         }
     }
 
+    /// All occurrences of `query`, ascending and non-overlapping, as char
+    /// ranges. Matches do not span lines.
+    // Compares lowercased chars line by line; move to a streaming
+    // searcher if documents reach tens of megabytes.
     pub fn find_all(
         &self,
         query: &str,

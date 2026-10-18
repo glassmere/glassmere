@@ -104,7 +104,7 @@ impl Context {
         {
             return false;
         }
-        // ponytail: hosts report one file per drop event; merge them into one delivery.
+        // Hosts report one file per drop event; merge them into one delivery.
         match (self.updates.get_mut(&target), payload) {
             (
                 Some(ControlUpdate::Drop(DragPayload::Files(existing))),

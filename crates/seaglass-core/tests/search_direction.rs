@@ -1,4 +1,6 @@
-use seaglass_core::{Direction, FindState, Style, TextDocument, TextStyle, TextWrap};
+use seaglass_core::{
+    Direction, FindState, ResolvedText, Style, TextDocument, TextStyle, TextWrap, Theme,
+};
 
 /// Finds matches the way the find bar does, by hand.
 fn matches(document: &TextDocument, state: &mut FindState) -> Vec<String> {
@@ -50,18 +52,14 @@ fn the_find_bar_searches_by_pattern_and_says_why_a_bad_one_found_nothing() {
 fn a_paragraph_can_be_forced_to_start_in_one_direction() {
     // The style says what the text system is told.
     let forced = Style::default().base_direction(Direction::Rtl);
-    let resolved = forced.resolve_text(&seaglass_core::ResolvedText::from_theme(
-        &seaglass_core::Theme::dark(),
-    ));
+    let resolved = forced.resolve_text(&ResolvedText::from_theme(&Theme::dark()));
     assert_eq!(resolved.base_direction, Some(Direction::Rtl));
     assert_eq!(resolved.text_style(TextWrap::None).base, Some(true));
 
     // It is inherited, and left to the text when nobody forces it.
     let inside = Style::default().resolve_text(&resolved);
     assert_eq!(inside.base_direction, Some(Direction::Rtl));
-    let plain = Style::default().resolve_text(&seaglass_core::ResolvedText::from_theme(
-        &seaglass_core::Theme::dark(),
-    ));
+    let plain = Style::default().resolve_text(&ResolvedText::from_theme(&Theme::dark()));
     assert_eq!(plain.text_style(TextWrap::None).base, None);
     assert_eq!(
         Style::default()

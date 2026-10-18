@@ -12,7 +12,7 @@ use support::{Driven, act};
 const ROOT: Size = Size::new(400.0, 400.0);
 
 fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) -> seaglass_core::FrameStats {
-    context.run(Size::new(400.0, 400.0), &mut MonospaceMeasurer, view)
+    context.run(ROOT, &mut MonospaceMeasurer, view)
 }
 
 fn scroll_list(ui: &mut Ui<'_>, count: usize) {

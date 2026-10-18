@@ -80,9 +80,7 @@ impl People {
                 .collect(),
         }
     }
-}
 
-impl People {
     fn person(&self, row: usize) -> &Person {
         &self.everyone[self.rows[row]]
     }
@@ -95,7 +93,7 @@ impl ListModel for People {
     fn item_id(&self, index: usize) -> ItemId {
         ItemId(self.person(index).id)
     }
-    // ponytail: a linear search; keep an id-to-row map once there are more than a few thousand rows.
+    // A linear search; keep an id-to-row map once there are more than a few thousand rows.
     fn index_of(&self, id: ItemId) -> Option<usize> {
         self.rows
             .iter()
@@ -116,7 +114,7 @@ impl GridModel for People {
             0 => format!("#{}", person.id),
             1 => person.name.clone(),
             2 => CITIES[person.city].into(),
-            3 => format!("{}", person.age),
+            3 => person.age.to_string(),
             4 => format!("{} €", person.salary),
             5 => if person.active { "☑" } else { "☐" }.into(),
             6 => format!(
@@ -253,11 +251,18 @@ impl App for Directory {
             ..Style::default()
         };
         ui.column(page, |ui| {
-            ui.label(Label::new(format!("People · {} of 2,000 rows", self.people.rows.len())).style(Style {
-                    font_size: Some(24.0),
-                    ..Style::default()
-                }));
-            ui.label("F2, Enter, a second click or typing edits · Enter stores, Tab moves on, Esc cancels · Shift+wheel scrolls sideways");
+            ui.label(
+                Label::new(format!("People · {} of 2,000 rows", self.people.rows.len())).style(
+                    Style {
+                        font_size: Some(24.0),
+                        ..Style::default()
+                    },
+                ),
+            );
+            ui.label(
+                "F2, Enter, a second click or typing edits · Enter stores, Tab moves on, Esc \
+                 cancels · Shift+wheel scrolls sideways",
+            );
             let options = VirtualListOptions {
                 label: "People".into(),
                 height: 460.0,

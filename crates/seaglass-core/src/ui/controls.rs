@@ -34,17 +34,11 @@ impl<'a, M: 'static> Ui<'a, M> {
         control: Control,
     ) -> Response<'a> {
         self.push(Element {
-            handler: None,
-            seq: 0,
-            key,
-            kind,
             text,
             style,
             enabled: self.enabled,
-            children: Vec::new(),
-            custom: None,
-            tooltip: None,
             control,
+            ..Element::new(key, kind)
         })
     }
 
@@ -102,16 +96,9 @@ impl<'a, M: 'static> Ui<'a, M> {
     ) -> Response<'a> {
         style.wrap = seaglass_scene::TextWrap::None;
         self.push(Element {
-            handler: None,
-            seq: 0,
-            key,
-            kind: Kind::TextInput,
-            text: String::new(),
             style,
             enabled: self.enabled,
             children: extra.children,
-            custom: None,
-            tooltip: None,
             control: Control::TextInput {
                 label,
                 value: single_line(value),
@@ -120,6 +107,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                 suggestions: extra.suggestions,
                 draft: extra.draft,
             },
+            ..Element::new(key, Kind::TextInput)
         })
     }
 
@@ -275,21 +263,16 @@ impl<'a, M: 'static> Ui<'a, M> {
             Length::Percent(1.0),
         );
         self.push(Element {
-            handler: None,
-            seq: 0,
-            key,
-            kind: Kind::ComboBox,
             text: format!("{}  ▾", items.get(selected).copied().unwrap_or("—")),
             style,
             enabled: self.enabled && !items.is_empty(),
             children,
-            custom: None,
-            tooltip: None,
             control: Control::Combo {
                 label: combo.label,
                 selected,
                 items: entries,
             },
+            ..Element::new(key, Kind::ComboBox)
         })
     }
 
@@ -363,21 +346,17 @@ impl<'a, M: 'static> Ui<'a, M> {
         let children =
             self.popup_children(&key, Kind::MenuButton, items, usize::MAX, true, popup_width);
         self.push(Element {
-            handler: None,
-            seq: 0,
-            key,
-            kind: Kind::MenuButton,
             text: text.into(),
             style,
             enabled: self.enabled && items.iter().any(|item| item.enabled),
             children,
-            custom: None,
-            tooltip: None,
             control: Control::Menu {
                 items: items.to_vec(),
             },
+            ..Element::new(key, Kind::MenuButton)
         })
     }
+
     #[track_caller]
     pub(super) fn popup_children(
         &mut self,
@@ -412,10 +391,6 @@ impl<'a, M: 'static> Ui<'a, M> {
             |ui| {
                 for (index, item) in items.iter().enumerate() {
                     ui.push(Element {
-                        handler: None,
-                        seq: 0,
-                        key: WidgetKey::Named(index.to_string()),
-                        kind: Kind::Choice,
                         text: item.label.clone(),
                         style: Style {
                             width: Length::Percent(1.0),
@@ -425,15 +400,13 @@ impl<'a, M: 'static> Ui<'a, M> {
                             ..Style::default()
                         },
                         enabled: item.enabled,
-                        children: Vec::new(),
-                        custom: None,
-                        tooltip: None,
                         control: Control::Choice {
                             hint: item.hint.clone(),
                             index,
                             selected: selected == index,
                             menu,
                         },
+                        ..Element::new(WidgetKey::Named(index.to_string()), Kind::Choice)
                     });
                 }
             },

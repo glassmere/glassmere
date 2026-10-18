@@ -1,10 +1,13 @@
-//! Milestone 35, phase 2A: the controls and fields that send messages. Each
-//! test sends one input through the harness, which is one batch, and checks
-//! that the message arrives and that the view shows its new value after it.
+//! The controls and fields that send messages. Each test sends one input
+//! through the harness, which is one batch, and checks that the message
+//! arrives and that the view shows its new value after it.
 
-use seaglass_core::{App, Command, Effects, Event, MenuItem, NodeId, Ui, WindowCommand};
+use seaglass_core::{App, Command, Effects, Event, MenuItem, Ui, WindowCommand};
 use seaglass_scene::Size;
 use seaglass_testing::Harness;
+
+mod support;
+use support::find_keyed;
 
 const THEMES: [&str; 3] = ["Light", "Dark", "Auto"];
 const SUGGESTIONS: [&str; 3] = ["apple", "apricot", "banana"];
@@ -69,25 +72,6 @@ impl App for Controls {
 
 fn harness() -> Harness<Controls> {
     Harness::app(Size::new(400.0, 1400.0), Controls::default())
-}
-
-/// The node with this key anywhere in the tree; the caption buttons are
-/// declared under sites the test does not name.
-fn find_keyed(harness: &Harness<Controls>, key: &str) -> NodeId {
-    let context = harness.context();
-    let mut pending = vec![context.root()];
-    while let Some(id) = pending.pop() {
-        if context
-            .details(id)
-            .is_some_and(|details| details.key == key)
-        {
-            return id;
-        }
-        if let Some(node) = context.node(id) {
-            pending.extend(node.children);
-        }
-    }
-    panic!("no node keyed {key:?}");
 }
 
 #[test]

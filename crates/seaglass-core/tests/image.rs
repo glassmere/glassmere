@@ -154,7 +154,7 @@ fn image_files_show_a_placeholder_until_the_host_delivers_and_keep_the_last_good
         |primitive| matches!(primitive, Primitive::Quad { rect, .. } if *rect == placeholder)
     ));
 
-    // A failure before any success: still a placeholder, now with the name.
+    // A failure before any success: still a placeholder, labelled with the name.
     assert!(context.set_image_file(path, Err("photo.png: not found".into())));
     assert!(!context.set_image_file(path, Err("photo.png: not found".into())));
     frame(&mut context);

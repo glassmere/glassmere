@@ -10,7 +10,7 @@ pub(crate) struct ToastOutbox {
     pub closed: Vec<(ToastId, bool)>,
 }
 
-// ponytail: fixed colours; theme tokens when apps need to restyle toasts.
+// Fixed colours: the theme has no toast tokens.
 fn accent(kind: ToastKind, info: Color) -> Color {
     match kind {
         ToastKind::Info => info,

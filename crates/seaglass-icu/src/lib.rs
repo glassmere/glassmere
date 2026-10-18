@@ -128,7 +128,7 @@ impl LocaleFormat for IcuFormat {
                 plain.push('.');
                 rest = &rest[self.decimal_separator.len()..];
                 continue;
-            } else if rest.starts_with(self.grouping_separator.as_str())
+            } else if !(rest.starts_with(self.grouping_separator.as_str())
                 && !self.grouping_separator.is_empty()
                 // People type an ordinary space, or none, where the locale
                 // prints a no-break one.
@@ -136,16 +136,17 @@ impl LocaleFormat for IcuFormat {
                 || character == '\u{2019}'
                 // Invisible direction marks that right-to-left locales print.
                 || matches!(character, '\u{61c}' | '\u{200e}' | '\u{200f}')
+                || character == '+' && plain.is_empty())
             {
-            } else if matches!(character, '-' | '\u{2212}') && plain.is_empty() {
-                plain.push('-');
-            } else if character == '+' && plain.is_empty() {
-            } else if matches!(character, 'e' | 'E') && !plain.is_empty() {
-                plain.push('e');
-            } else if character == '-' && plain.ends_with('e') {
-                plain.push('-');
-            } else {
-                return None;
+                if matches!(character, '-' | '\u{2212}') && plain.is_empty() {
+                    plain.push('-');
+                } else if matches!(character, 'e' | 'E') && !plain.is_empty() {
+                    plain.push('e');
+                } else if character == '-' && plain.ends_with('e') {
+                    plain.push('-');
+                } else {
+                    return None;
+                }
             }
             rest = &rest[width..];
         }

@@ -1,13 +1,12 @@
 //! Background work: cancellation, many results per job, and superseding.
 //!
-//! No executor is started and none is forced. A job is a thread, or a future
-//! on whatever runtime the application already runs; what lives here is the
-//! part a user interface needs and a plain channel does not give. A job can
-//! be asked to stop, a newer job supersedes the one under the same key, and
-//! a superseded job's results never reach the view, including the ones it
-//! had already sent. That last promise is what makes search as you type
-//! correct: the answer to the query before last cannot overtake the answer
-//! to the current one.
+//! No executor is started. A job is a thread, or a future on whatever runtime
+//! the application already runs; this module adds what a user interface needs
+//! on top of a plain channel. A job can be asked to stop, and a newer job
+//! under the same key supersedes the older one: its results never reach the
+//! view, including those already sent. That is what keeps search as you type
+//! correct, since the answer to the query before last cannot overtake the
+//! current one.
 
 use crate::mailbox::{Mailbox, MessageSender, message_channel};
 use std::{
@@ -205,7 +204,7 @@ impl<K: Clone + Eq + Hash, T> Tasks<K, T> {
             })
             .map(|message| (message.key, message.value))
             .collect();
-        // A finished job is forgotten once nothing of its is still waiting,
+        // A finished job is forgotten once nothing from it is still waiting,
         // because forgetting it earlier would drop those results as stale.
         if self.mailbox.pending() == 0 {
             self.live.retain(|_, live| !live.finished());

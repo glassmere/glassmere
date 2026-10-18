@@ -122,7 +122,7 @@ impl Context {
                 continue;
             };
             let width = measurer
-                .measure_styled(&hint.clone(), &node.text_style(), None)
+                .measure_styled(hint, &node.text_style(), None)
                 .width;
             self.nodes.get_mut(&id).unwrap().hint_width = width;
         }
@@ -173,13 +173,7 @@ impl Context {
             }
         }
         if let Some(editor) = &node.editor {
-            let padding = node.style.padding.max(0.0);
-            let content = Rect {
-                x: node.bounds.x + padding,
-                y: node.bounds.y + padding,
-                width: (node.bounds.width - padding * 2.0).max(0.0),
-                height: (node.bounds.height - padding * 2.0).max(0.0),
-            };
+            let content = node.content_box();
             let origin = Point {
                 x: content.x - editor.scroll_x + editor.align_x,
                 y: content.y,

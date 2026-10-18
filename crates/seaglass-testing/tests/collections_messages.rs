@@ -1,5 +1,5 @@
-//! Milestone 35, phase 2B: grids, lists and trees send `GridMsg`s through
-//! `Harness::app`, and the application applies them in `update`.
+//! Grids, lists and trees send `GridMsg`s through `Harness::app`, and the
+//! application applies them in `update`.
 
 use seaglass_core::{
     Action, App, CellEditor, CellValue, Effects, Event, FILTER_DELAY, GridColumn, GridModel,

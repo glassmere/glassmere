@@ -2,6 +2,27 @@
 
 There are three ways to add something to the framework, and the first one that fits is the right one.
 
+## The built-in controls
+
+All of them are methods of `Ui`, take a value and a message constructor, and are listed with their signatures in the API snapshot.
+
+| Kind | Methods |
+| --- | --- |
+| Layout | `row`, `column`, `grid`, `container`, `scroll`, `split`, `responsive`, `focus_scope`, `enabled` |
+| Text and values | `label`, `rich_text`, `text_input`, `number_input`, `autocomplete`, `checkbox`, `radio`, `slider`, `combo_box` |
+| Editors | `text_area`, `code_editor`, `rich_editor` (see [text](text.md)) |
+| Collections | `virtual_list`, `tree_view`, `data_grid`, `property_grid` |
+| Overlays | `dialog`, `popover`, `tooltip`, `menu`, `context_menu`, `command_palette`, toasts through `Effects::toast` |
+| Panes | `tabs`, `tabs_close`, `split`, `dock`, `dock_window` (see [state](state.md)) |
+| Windows | `title_bar`, `window_buttons`, `resize_frame`, `menu_bar` (see [platform](platform.md)) |
+| Media | `image`, `image_file` |
+| Input | `drag_source`, `drop_target`, `gesture_area`, `event_area` |
+| Your own | `component`, `widget`, `custom`, `map`, `keyed`, `memo` |
+
+Collections take a model rather than data: `ListModel` answers by index and by `ItemId`, only the visible range is declared, and `ListState` and `GridState` hold selection and scroll. A grid's columns can be resized, reordered, hidden and frozen through `GridColumns`, filtered per column, and edited in place through typed cell editors whose values the model may refuse with a message.
+
+`#[derive(Properties)]` turns a struct into property grid rows. Fields get an editor by type, and `#[property(..)]` sets `group`, `name`, `min`, `max`, `step`, `suffix`, `default`, `choices(..)`, `readonly`, `flatten`, `with` and `skip`.
+
 ## A function
 
 Most "widgets" are a function that declares built-in ones. It needs no trait, no state of its own and no registration:

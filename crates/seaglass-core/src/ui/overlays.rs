@@ -136,10 +136,6 @@ impl<'a, M: 'static> Ui<'a, M> {
                         for (index, tab) in tabs.iter().enumerate() {
                             let active = index == current;
                             ui.push(Element {
-                                handler: None,
-                                seq: 0,
-                                key: WidgetKey::Named(index.to_string()),
-                                kind: Kind::Tab,
                                 text: tab.label.clone(),
                                 style: Style {
                                     padding: 10.0,
@@ -154,14 +150,12 @@ impl<'a, M: 'static> Ui<'a, M> {
                                     ..Style::default()
                                 },
                                 enabled: ui.enabled,
-                                children: Vec::new(),
-                                custom: None,
-                                tooltip: None,
                                 control: Control::Tab {
                                     index,
                                     selected: active,
                                     closable: tab.closable,
                                 },
+                                ..Element::new(WidgetKey::Named(index.to_string()), Kind::Tab)
                             });
                             if tab.closable {
                                 ui.button_at(
@@ -275,22 +269,15 @@ impl<'a, M: 'static> Ui<'a, M> {
                 first,
             );
             ui.push(Element {
-                handler: None,
-                seq: 0,
-                key: WidgetKey::Named("$divider".into()),
-                kind: Kind::Divider,
-                text: String::new(),
                 style: divider_style,
                 enabled: ui.enabled,
-                children: Vec::new(),
-                custom: None,
-                tooltip: None,
                 control: Control::Divider {
                     axis,
                     fraction: share,
                     min_first: options.min_first,
                     min_second: options.min_second,
                 },
+                ..Element::new(WidgetKey::Named("$divider".into()), Kind::Divider)
             });
             ui.group(
                 WidgetKey::named("$second"),
@@ -316,11 +303,10 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// chosen. The palette declares no commands of its own, so it never takes
     /// a shortcut from the window.
     ///
-    /// Escape or a scrim click
-    /// sends `palette`'s `on_open(false)`; typing sends its `on_query(text)`;
-    /// Enter or a click on a row sends its `on_pick(index)`, where `index` is
-    /// into `commands`. The application closes the palette and clears the
-    /// query in `update`.
+    /// Escape or a scrim click sends `palette`'s `on_open(false)`; typing sends
+    /// its `on_query(text)`; Enter or a click on a row sends its
+    /// `on_pick(index)`, where `index` is into `commands`. The application
+    /// closes the palette and clears the query in `update`.
     #[track_caller]
     pub fn command_palette(
         &mut self,
@@ -411,10 +397,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                     },
                 );
             },
-            match on_open {
-                Some(on_open) => closing(on_open),
-                None => crate::app::Handler::Map(Box::new(|_| None)),
-            },
+            on_open.map_or_else(|| crate::app::Handler::Map(Box::new(|_| None)), closing),
         );
     }
 

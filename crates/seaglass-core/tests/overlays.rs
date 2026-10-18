@@ -6,7 +6,7 @@ use seaglass_core::{
 };
 use seaglass_scene::{Point, Primitive, Size};
 use std::time::Duration;
-use support::{Driven, on};
+use support::{Driven, center, click, on};
 
 const ROOT: Size = Size::new(500.0, 400.0);
 
@@ -35,20 +35,6 @@ fn focused_key(context: &Context) -> String {
 
 fn bounds(context: &Context, path: &[&str]) -> seaglass_scene::Rect {
     context.node(context.find(path).unwrap()).unwrap().bounds
-}
-
-fn center(context: &Context, path: &[&str]) -> Point {
-    let bounds = bounds(context, path);
-    Point {
-        x: bounds.x + bounds.width / 2.0,
-        y: bounds.y + bounds.height / 2.0,
-    }
-}
-
-fn click(context: &mut Context, point: Point) {
-    context.event(Event::PointerMoved(point));
-    context.event(Event::PointerDown);
-    context.event(Event::PointerUp);
 }
 
 fn click_at(context: &mut Context, path: &[&str]) {

@@ -1,6 +1,6 @@
 use seaglass::{
-    App, AppOptions, Axis, Button, Effects, Label, Length, MenuItem, PopoverOptions, Size,
-    SplitOptions, Style, Tab, TextWrap, Ui, run,
+    App, AppOptions, Axis, Button, Color, DirectionChoice, Effects, Label, Length, MenuItem,
+    PopoverOptions, Size, SplitOptions, Style, Tab, TextWrap, Ui, run,
 };
 
 #[derive(Clone)]
@@ -65,7 +65,46 @@ impl App for Panes {
             .foreground(theme.text_muted)
             .wrap(TextWrap::Word)
             .width(Length::Percent(1.0));
-        ui.column(Style::default().width(Length::Percent(1.0)).height(Length::Percent(1.0)).padding(20.0).gap(12.0), |ui| {
+        let page = Style::default()
+            .width(Length::Percent(1.0))
+            .height(Length::Percent(1.0))
+            .padding(20.0)
+            .gap(12.0);
+        let share_popover = PopoverOptions {
+            width: Length::Px(340.0),
+            ..PopoverOptions::default()
+        };
+        let sidebar = SplitOptions {
+            min_first: 140.0,
+            min_second: 240.0,
+            style: Style::default()
+                .width(Length::Percent(1.0))
+                .height(Length::Px(460.0)),
+            ..SplitOptions::default()
+        };
+        let editor_split = SplitOptions {
+            min_first: 120.0,
+            min_second: 80.0,
+            ..SplitOptions::default()
+        };
+        let file_list = Style::default()
+            .padding(8.0)
+            .gap(4.0)
+            .width(Length::Percent(1.0));
+        let output_panel = Style::default().padding(12.0).width(Length::Percent(1.0));
+        let wrapped = Style::default()
+            .wrap(TextWrap::Word)
+            .width(Length::Percent(1.0));
+        let file_button = Style::button()
+            .width(Length::Percent(1.0))
+            .padding(8.0)
+            .background(Color::TRANSPARENT);
+        let editor_area = Style::default()
+            .width(Length::Percent(1.0))
+            .height(Length::Percent(1.0))
+            .padding(12.0)
+            .background(theme.surface);
+        ui.column(page, |ui| {
             ui.row(Style::default().gap(8.0), |ui| {
                 ui.button("New");
                 ui.tooltip("Create a new document (Ctrl+N)");
@@ -73,7 +112,7 @@ impl App for Panes {
                 ui.tooltip("Open a document from disk");
                 ui.button(Button::new("Share ▾").on_click(Msg::ToggleShare));
                 ui.tooltip("Share a link to this document");
-                ui.popover(self.share, PopoverOptions { width: Length::Px(340.0), ..PopoverOptions::default() }, Msg::Share, |ui| {
+                ui.popover(self.share, share_popover.clone(), Msg::Share, |ui| {
                     ui.label(Label::new("Share link").style(Style::default().font_weight(700)));
                     ui.text_input("Link", &self.link, Msg::Link);
                     ui.row(Style::default().gap(8.0), |ui| {
@@ -81,30 +120,84 @@ impl App for Panes {
                         ui.button("Email…");
                     });
                 });
-                ui.label(Label::new(format!("Context menu: {}  ·  closed tabs: {}", self.last_menu, self.closed)).style(muted.clone()));
+                ui.label(
+                    Label::new(format!(
+                        "Context menu: {}  ·  closed tabs: {}",
+                        self.last_menu, self.closed
+                    ))
+                    .style(muted.clone()),
+                );
             });
-            ui.label(Label::new("Hover the toolbar for tooltips. Right-click the editor (or press Shift+F10 while it has focus) for a context menu. Drag the dividers or focus one and use the arrow keys.").style(muted.clone()));
-            ui.tabs_close(self.selected, &self.tabs, Msg::Select, Msg::Close, |ui, index| {
-                ui.split(self.sidebar, Axis::Horizontal, SplitOptions { min_first: 140.0, min_second: 240.0, style: Style::default().width(Length::Percent(1.0)).height(Length::Px(460.0)), ..SplitOptions::default() }, Msg::Sidebar, |ui| {
-                    ui.column(Style::default().padding(8.0).gap(4.0).width(Length::Percent(1.0)), |ui| {
-                        ui.label(Label::new("Files").style(Style::default().font_weight(700)));
-                        for name in ["README.md", "notes.md", "main.rs", "Cargo.toml"] {
-                            ui.keyed(name, |ui| ui.button(Button::new(name).style(Style::button().width(Length::Percent(1.0)).padding(8.0).background(seaglass::Color::TRANSPARENT))));
-                        }
-                    });
-                }, |ui| {
-                    ui.split(self.editor_split, Axis::Vertical, SplitOptions { min_first: 120.0, min_second: 80.0, ..SplitOptions::default() }, Msg::EditorSplit, |ui| {
-                        ui.context_menu(&editor_menu(), Style::default().width(Length::Percent(1.0)).height(Length::Percent(1.0)).padding(12.0).background(theme.surface), Msg::Menu, |ui| {
-                            ui.label(Label::new(format!("Editor for tab {index}: right-click anywhere in this area.")).style(Style::default().wrap(TextWrap::Word).width(Length::Percent(1.0))));
-                            ui.button("A focusable control inside the area");
-                        });
-                    }, |ui| {
-                        ui.column(Style::default().padding(12.0).width(Length::Percent(1.0)), |ui| {
-                            ui.label(Label::new("Output panel · drag the divider above").style(Style::default().font_size(13.0).foreground(theme.text_muted)));
-                        });
-                    });
-                });
-            });
+            ui.label(
+                Label::new(
+                    "Hover the toolbar for tooltips. Right-click the editor (or press Shift+F10 \
+                     while it has focus) for a context menu. Drag the dividers or focus one and \
+                     use the arrow keys.",
+                )
+                .style(muted),
+            );
+            ui.tabs_close(
+                self.selected,
+                &self.tabs,
+                Msg::Select,
+                Msg::Close,
+                |ui, index| {
+                    ui.split(
+                        self.sidebar,
+                        Axis::Horizontal,
+                        sidebar.clone(),
+                        Msg::Sidebar,
+                        |ui| {
+                            ui.column(file_list.clone(), |ui| {
+                                ui.label(
+                                    Label::new("Files").style(Style::default().font_weight(700)),
+                                );
+                                for name in ["README.md", "notes.md", "main.rs", "Cargo.toml"] {
+                                    ui.keyed(name, |ui| {
+                                        ui.button(Button::new(name).style(file_button.clone()))
+                                    });
+                                }
+                            });
+                        },
+                        |ui| {
+                            ui.split(
+                                self.editor_split,
+                                Axis::Vertical,
+                                editor_split.clone(),
+                                Msg::EditorSplit,
+                                |ui| {
+                                    ui.context_menu(
+                                        &editor_menu(),
+                                        editor_area.clone(),
+                                        Msg::Menu,
+                                        |ui| {
+                                            ui.label(
+                                Label::new(format!(
+                                    "Editor for tab {index}: right-click anywhere in this area."
+                                ))
+                                .style(wrapped.clone()),
+                            );
+                                            ui.button("A focusable control inside the area");
+                                        },
+                                    );
+                                },
+                                |ui| {
+                                    ui.column(output_panel.clone(), |ui| {
+                                        ui.label(
+                                            Label::new("Output panel · drag the divider above")
+                                                .style(
+                                                    Style::default()
+                                                        .font_size(13.0)
+                                                        .foreground(theme.text_muted),
+                                                ),
+                                        );
+                                    });
+                                },
+                            );
+                        },
+                    );
+                },
+            );
         });
     }
 }
@@ -113,9 +206,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     // `--rtl` mirrors the window as a right-to-left locale would.
     let direction = if std::env::args().any(|arg| arg == "--rtl") {
-        seaglass::DirectionChoice::Rtl
+        DirectionChoice::Rtl
     } else {
-        seaglass::DirectionChoice::Auto
+        DirectionChoice::Auto
     };
     let open = std::env::args().any(|arg| arg == "--open");
     run(
