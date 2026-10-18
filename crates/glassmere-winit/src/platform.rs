@@ -47,6 +47,8 @@ mod enabled {
     pub(crate) fn notify(notification: &Notification) {
         let mut post = notify_rust::Notification::new();
         post.summary(&notification.title).body(&notification.body);
+        // macOS notifications have no urgency.
+        #[cfg(not(target_os = "macos"))]
         if notification.urgent {
             post.urgency(notify_rust::Urgency::Critical);
         }

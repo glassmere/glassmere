@@ -161,7 +161,7 @@ cargo run -p glassmere-dev -- -p glassmere-examples --example counter
 
 ## Building
 
-Rust 1.90 or newer. Linux needs the usual winit packages (X11 or Wayland and xkbcommon), and GTK for the `platform` feature.
+Rust 1.90 or newer. Linux needs the usual winit packages (X11 or Wayland and xkbcommon), and GTK, the app indicator and libxdo for the `platform` feature.
 
 ```sh
 cargo fmt --all -- --check
