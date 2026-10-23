@@ -1,5 +1,5 @@
 use accesskit::{
-    Action, ActionData, ActionRequest, Node, NodeId, Rect, Role, ScrollUnit, Tree, TreeId,
+    Action, ActionData, ActionRequest, Node, NodeId, Rect, Role, ScrollUnit, TreeId, TreeInfo,
     TreeUpdate,
 };
 use glassmere_core::{Action as CoreAction, Context, NodeId as CoreNodeId, Role as CoreRole};
@@ -287,7 +287,7 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
         .collect();
     TreeUpdate {
         nodes,
-        tree: Some(Tree::new(NodeId(root.0))),
+        tree: Some(TreeInfo::new(NodeId(root.0))),
         tree_id: TreeId::ROOT,
         focus: NodeId(focus.0),
     }
