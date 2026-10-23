@@ -5,7 +5,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 ## Platforms
 
 - Windows is the platform used day to day. macOS and Linux build and run the test suite in CI, but nobody has used applications on them by hand.
-- Linux needs the GTK development packages for the `platform` feature, and its clipboard uses X11 or XWayland; the pure Wayland clipboard is not enabled.
+- Linux needs the GTK development packages for the `platform` feature.
 - The `platform` feature (file dialogs, notifications, tray, menus) has not been exercised on macOS or Linux.
 - Windows 10 lacks the snap layout flyout on the maximize button; only Windows 11 has it. There is no equivalent for other platforms.
 - Fonts come from the system. The check for a missing family knows whether it is installed, not whether it has the glyphs a text needs.
