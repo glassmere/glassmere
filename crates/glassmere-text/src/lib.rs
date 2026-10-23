@@ -215,15 +215,12 @@ impl TextSystem {
         };
         self.buffers.entry(key.clone()).or_insert_with(|| {
             let mut buffer = Buffer::new(&mut self.fonts, Metrics::new(font_size, font_size * 1.4));
-            buffer.set_wrap(
-                &mut self.fonts,
-                if style.wrap == TextWrap::None {
-                    Wrap::None
-                } else {
-                    Wrap::WordOrGlyph
-                },
-            );
-            buffer.set_size(&mut self.fonts, width, None);
+            buffer.set_wrap(if style.wrap == TextWrap::None {
+                Wrap::None
+            } else {
+                Wrap::WordOrGlyph
+            });
+            buffer.set_size(width, None);
             let base = attrs(&style.family, style.weight, style.italic);
             if spans.is_empty() {
                 // A forced paragraph direction is an isolate around the text:
@@ -234,7 +231,7 @@ impl TextSystem {
                     format!("{mark}{text}\u{2069}")
                 });
                 let text = forced.as_deref().unwrap_or(text);
-                buffer.set_text(&mut self.fonts, text, &base, Shaping::Advanced, None);
+                buffer.set_text(text, &base, Shaping::Advanced, None);
             } else {
                 // A span colour overrides the text area's default colour per glyph.
                 let runs = spans.iter().map(|span| {
@@ -260,7 +257,7 @@ impl TextSystem {
                 let unused = base
                     .clone()
                     .weight(cosmic_text::Weight(style.weight.clamp(100, 900) ^ 1));
-                buffer.set_rich_text(&mut self.fonts, runs, &unused, Shaping::Advanced, None);
+                buffer.set_rich_text(runs, &unused, Shaping::Advanced, None);
             }
             if style.rtl && width.is_some() {
                 for line in &mut buffer.lines {

@@ -56,7 +56,7 @@ glassmere-icu = { workspace = true, optional = true }
 [dev-dependencies]
 glassmere-testing.workspace = true
 # Reads the crates' own sources for the public-surface snapshot.
-syn = { version = "2.0", features = ["full", "parsing", "printing"] }
+syn = { version = "3.0", features = ["full", "parsing", "printing"] }
 quote = "1.0"
 
 [lints]

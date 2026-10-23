@@ -110,8 +110,8 @@ pub(super) fn anchor_minimum(style: &mut taffy::Style, element: &Element, measur
     if element.kind.text_leaf() && !element.children.is_empty() {
         let padding = element.style.padding.max(0.0) * 2.0;
         style.min_size = taffy::Size {
-            width: taffy::Dimension::length(measured.width + padding),
-            height: taffy::Dimension::length(measured.height + padding),
+            width: taffy::LengthPercentageAuto::length(measured.width + padding),
+            height: taffy::LengthPercentageAuto::length(measured.height + padding),
         };
     }
 }

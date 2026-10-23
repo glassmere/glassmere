@@ -182,7 +182,10 @@ fn renders_ordered_clipped_quads_and_shaped_text_at_two_x_scale() {
             });
         device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
         receiver.recv().unwrap().unwrap();
-        let data = output.slice(..).get_mapped_range();
+        let data = output
+            .slice(..)
+            .get_mapped_range()
+            .expect("the readback buffer is mapped");
         let pixel = |x: usize, y: usize| &data[(y * 128 + x) * 4..(y * 128 + x) * 4 + 4];
         assert_eq!(pixel(2, 2), [200, 0, 0, 255]);
         assert_eq!(pixel(16, 16), [0, 180, 0, 255]);
@@ -269,7 +272,10 @@ fn renders_ordered_clipped_quads_and_shaped_text_at_two_x_scale() {
             });
         device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
         receiver.recv().unwrap().unwrap();
-        let data = output.slice(..).get_mapped_range();
+        let data = output
+            .slice(..)
+            .get_mapped_range()
+            .expect("the readback buffer is mapped");
         let pixel = |x: usize, y: usize| &data[(y * 128 + x) * 4..(y * 128 + x) * 4 + 4];
         for line in 0..4 {
             let ink = (4 + line * 28..32 + line * 28)
@@ -328,7 +334,10 @@ fn readback(
         });
     device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
     receiver.recv().unwrap().unwrap();
-    let data = output.slice(..).get_mapped_range();
+    let data = output
+        .slice(..)
+        .get_mapped_range()
+        .expect("the readback buffer is mapped");
     let pixels = data
         .chunks(padded)
         .flat_map(|row| row[..width * 4].iter().copied())

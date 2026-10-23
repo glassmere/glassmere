@@ -164,6 +164,7 @@ impl Timestamps {
                         .buffer
                         .slice(..bytes)
                         .get_mapped_range()
+                        .expect("a readback buffer is mapped before it is READY")
                         .as_chunks::<8>()
                         .0
                         .iter()
