@@ -37,7 +37,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - Stylesheets have no variables or nesting and reload by polling every half second.
 - One transition covers all animated properties of a node, with no spring physics. Control internals (slider thumbs, caret) do not ease.
 - Ancestors clip to their bounds; there is no unclipped container.
-- Holding a press on a scrollbar's track pages once; it does not repeat. Only direct children extend a scroll view's width, and popups scroll vertically only.
+- Only direct children extend a scroll view's width, and popups scroll vertically only.
 - The OS reduced-motion preference is read on Windows only (at startup and when a window gains focus, not the moment it changes). macOS and Linux use the application option alone. `AppOptions::reduced_motion = false` follows the system; an application cannot force animations on against it.
 
 ## Text
