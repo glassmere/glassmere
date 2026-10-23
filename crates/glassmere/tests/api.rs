@@ -161,7 +161,7 @@ fn owner(block: &syn::ItemImpl) -> String {
     match &block.trait_ {
         // Trait implementations add no name an application calls by; they
         // are recorded so that losing one shows up.
-        Some((_, path, _)) => format!("{text} as {}", one_line(path)),
+        Some((path, _)) => format!("{text} as {}", one_line(path)),
         None => text,
     }
 }

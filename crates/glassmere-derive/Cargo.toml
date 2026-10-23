@@ -15,7 +15,7 @@ proc-macro = true
 
 [dependencies]
 # Only what a derive needs: no `full` syntax tree, no visitors.
-syn = { version = "2.0", default-features = false, features = ["derive", "parsing", "printing", "proc-macro"] }
+syn = { version = "3.0", default-features = false, features = ["derive", "parsing", "printing", "proc-macro"] }
 quote = { version = "1.0", default-features = false, features = ["proc-macro"] }
 proc-macro2 = { version = "1.0", default-features = false, features = ["proc-macro"] }
 # Reads the default-locale catalog that `tr!` checks keys and arguments against.
