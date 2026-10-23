@@ -8,6 +8,10 @@ const GRIP: f32 = 12.0;
 const THIN: f32 = 4.0;
 /// While hovered or held, so it is seen to be what the pointer has.
 const WIDE: f32 = 8.0;
+/// How long a press on the track rests before it pages again, and then how
+/// often it does.
+const REPEAT_DELAY: Duration = Duration::from_millis(400);
+const REPEAT_INTERVAL: Duration = Duration::from_millis(50);
 
 /// A thumb being dragged: which node, on which axis, and where in the thumb
 /// it was taken, along the axis. For a grid's bar, the node is the track and
@@ -17,6 +21,16 @@ pub(super) struct ScrollbarGrab {
     pub node: NodeId,
     pub vertical: bool,
     pub within: f32,
+}
+
+/// A press held on a track: which node pages, on which axis, toward which
+/// end, and when it pages next. For a grid's bar, the node is the track.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct TrackHold {
+    node: NodeId,
+    vertical: bool,
+    toward_end: bool,
+    next: Duration,
 }
 
 /// One axis of a node's scrollbar, in window coordinates.
@@ -172,7 +186,7 @@ impl Context {
         let track = self
             .hit_test(point)
             .filter(|id| matches!(self.nodes[id].control, Control::GridScrollbar { .. }))?;
-        let rows = self.grid_of_track(track)?;
+        self.grid_of_track(track)?;
         let node = &self.nodes[&track];
         let thumb = self.nodes[node.children.first()?].bounds;
         if (thumb.x..=thumb.x + thumb.width).contains(&point.x) {
@@ -183,12 +197,87 @@ impl Context {
             });
             return Some(true);
         }
-        let page = if point.x > thumb.x {
-            node.bounds.width
+        Some(self.press_track(track, false, point.x > thumb.x))
+    }
+
+    /// Pages `node` toward an end, a view at a time. For a grid's bar, `node`
+    /// is the track and pages the columns.
+    fn page_track(&mut self, node: NodeId, vertical: bool, toward_end: bool) -> bool {
+        let sign = if toward_end { 1.0 } else { -1.0 };
+        let bounds = self.nodes[&node].bounds;
+        if matches!(self.nodes[&node].control, Control::GridScrollbar { .. }) {
+            let Some(rows) = self.grid_of_track(node) else {
+                return false;
+            };
+            return self.grid_scroll_x(rows, sign * bounds.width);
+        }
+        let scroll = self.nodes[&node].scroll;
+        if vertical {
+            self.set_scroll(node, scroll.offset + sign * bounds.height)
         } else {
-            -node.bounds.width
+            self.set_scroll_x(node, scroll.offset_x + sign * bounds.width)
+        }
+    }
+
+    /// A press on a track: it pages once, and again while it is held.
+    fn press_track(&mut self, node: NodeId, vertical: bool, toward_end: bool) -> bool {
+        self.track_hold = Some(TrackHold {
+            node,
+            vertical,
+            toward_end,
+            next: self.now + REPEAT_DELAY,
+        });
+        self.page_track(node, vertical, toward_end)
+    }
+
+    /// Which way the held press would page from `point`, or `None` where it
+    /// would not: off its track, or on the thumb, which has reached it.
+    fn hold_direction(&self, hold: &TrackHold, point: Point) -> Option<bool> {
+        let node = self.nodes.get(&hold.node)?;
+        if matches!(node.control, Control::GridScrollbar { .. }) {
+            let thumb = self.nodes[node.children.first()?].bounds;
+            return (node.bounds.contains(point)
+                && !(thumb.x..=thumb.x + thumb.width).contains(&point.x))
+            .then_some(point.x > thumb.x);
+        }
+        let bar = self
+            .bars(hold.node, THIN)
+            .into_iter()
+            .flatten()
+            .find(|bar| bar.vertical == hold.vertical)?;
+        let along = bar.along(point);
+        let start = bar.thumb_start();
+        (bar.grip.contains(point) && !(start..=start + bar.thumb_length()).contains(&along))
+            .then_some((along > start) != (!bar.vertical && node.resolved.rtl()))
+    }
+
+    /// Pages again where a held press is due, until the thumb reaches the
+    /// pointer, which lets go or leaves the track.
+    pub(crate) fn update_track_hold(&mut self) {
+        let Some(hold) = self.track_hold else {
+            return;
         };
-        Some(self.grid_scroll_x(rows, page))
+        if self.now < hold.next {
+            return;
+        }
+        let direction = self
+            .pointer
+            .and_then(|point| self.hold_direction(&hold, point));
+        if direction != Some(hold.toward_end)
+            || !self.page_track(hold.node, hold.vertical, hold.toward_end)
+        {
+            self.track_hold = None;
+            return;
+        }
+        self.track_hold = Some(TrackHold {
+            next: self.now + REPEAT_INTERVAL,
+            ..hold
+        });
+        self.view_stale = true;
+    }
+
+    pub(super) fn track_wake(&self) -> Option<Duration> {
+        self.track_hold.map(|hold| hold.next)
     }
 
     /// Takes a press on a scrollbar, the moves while it is held, and its
@@ -212,16 +301,16 @@ impl Context {
                     return Some(true);
                 }
                 // The track pages toward the press, a view at a time.
-                let node = &self.nodes[&id];
-                let toward_end = (along > start) != (!bar.vertical && node.resolved.rtl());
-                let page = if toward_end { 1.0 } else { -1.0 };
-                Some(if bar.vertical {
-                    self.set_scroll(id, node.scroll.offset + page * node.bounds.height)
-                } else {
-                    self.set_scroll_x(id, node.scroll.offset_x + page * node.bounds.width)
-                })
+                let toward_end =
+                    (along > start) != (!bar.vertical && self.nodes[&id].resolved.rtl());
+                Some(self.press_track(id, bar.vertical, toward_end))
             }
             Event::PointerMoved(point) => {
+                if let Some(hold) = self.track_hold
+                    && self.hold_direction(&hold, *point).is_none()
+                {
+                    self.track_hold = None;
+                }
                 let over = self.bar_under(*point).map(|(id, _)| id);
                 if over != self.bar_hovered {
                     for id in [self.bar_hovered, over].into_iter().flatten() {
@@ -269,11 +358,13 @@ impl Context {
                 })
             }
             Event::PointerUp => {
+                self.track_hold = None;
                 let grab = self.scrollbar_grab.take()?;
                 self.invalidate_paint(grab.node);
                 Some(true)
             }
             Event::PointerLeft | Event::FocusLost => {
+                self.track_hold = None;
                 for id in [
                     self.bar_hovered.take(),
                     self.scrollbar_grab.take().map(|grab| grab.node),

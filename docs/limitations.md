@@ -37,7 +37,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - Stylesheets have no variables or nesting and reload by polling every half second.
 - One transition covers all animated properties of a node, with no spring physics. Control internals (slider thumbs, caret) do not ease.
 - Ancestors clip to their bounds; there is no unclipped container.
-- Holding a press on a scrollbar's track pages once; it does not repeat. Only direct children extend a scroll view's width, and popups scroll vertically only.
+- Only direct children extend a scroll view's width, and popups scroll vertically only.
 - Reduced motion is an application option. The OS preference is not read.
 
 ## Text

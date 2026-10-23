@@ -389,6 +389,8 @@ pub struct Context {
     dock_drag: Option<Box<dock_input::DockDrag>>,
     dock_grab: Option<dock_input::DockGrab>,
     scrollbar_grab: Option<scrollbar_input::ScrollbarGrab>,
+    /// A press held on a scrollbar's track, paging again while it lasts.
+    track_hold: Option<scrollbar_input::TrackHold>,
     /// The node whose scrollbar the pointer is on, drawn wider.
     bar_hovered: Option<NodeId>,
     /// What `Effects::copy` left for the host, what `Effects::paste` asked
@@ -591,6 +593,7 @@ impl Default for Context {
             dock_drag: None,
             dock_grab: None,
             scrollbar_grab: None,
+            track_hold: None,
             bar_hovered: None,
             clip_out: None,
             paste_requested: false,
