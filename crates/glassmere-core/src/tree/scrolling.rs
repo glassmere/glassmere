@@ -33,7 +33,7 @@ impl Context {
         let Some(node) = self.nodes.get_mut(&id) else {
             return false;
         };
-        if !matches!(node.kind, Kind::Scroll | Kind::Collection) {
+        if !matches!(node.kind, Kind::Scroll | Kind::Collection | Kind::TextArea) {
             return false;
         }
         let offset = offset.clamp(0.0, node.scroll.maximum_x);
@@ -65,7 +65,11 @@ impl Context {
         ) {
             return self.grid_scroll_x(id, delta);
         }
-        let delta = if node.resolved.rtl() { -delta } else { delta };
+        let delta = if node.scrolls_x_from_end() {
+            -delta
+        } else {
+            delta
+        };
         self.set_scroll_x(id, node.scroll.offset_x + delta)
     }
 
@@ -92,7 +96,7 @@ impl Context {
         self.order(self.root, &mut order);
         order.into_iter().rev().any(|id| {
             let node = &self.nodes[&id];
-            matches!(node.kind, Kind::Scroll | Kind::Collection)
+            matches!(node.kind, Kind::Scroll | Kind::Collection | Kind::TextArea)
                 && node.clip.contains(pointer)
                 && self.scroll_x_by(id, delta)
         })

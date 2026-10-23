@@ -831,6 +831,7 @@ impl<M: Clone + 'static> AppDriver<M> {
         let mut batch = std::mem::take(&mut self.batch);
         batch.append(&mut self.sent);
         let sent = batch.len();
+        context.update_edge_scroll();
         context.resolve(&mut batch);
         let own = self.deliver(window, context, &mut batch);
         let messages = batch.len();

@@ -88,7 +88,7 @@ impl Context {
                 track: (bounds.x, track),
                 thumb: Rect {
                     // The thumb starts at the start side, like the content.
-                    x: if rtl {
+                    x: if node.scrolls_x_from_end() {
                         bounds.x + track - length - travelled
                     } else {
                         bounds.x + travelled
@@ -248,7 +248,7 @@ impl Context {
         let along = bar.along(point);
         let start = bar.thumb_start();
         (bar.grip.contains(point) && !(start..=start + bar.thumb_length()).contains(&along))
-            .then_some((along > start) != (!bar.vertical && node.resolved.rtl()))
+            .then_some((along > start) != (!bar.vertical && node.scrolls_x_from_end()))
     }
 
     /// Pages again where a held press is due, until the thumb reaches the
@@ -302,7 +302,7 @@ impl Context {
                 }
                 // The track pages toward the press, a view at a time.
                 let toward_end =
-                    (along > start) != (!bar.vertical && self.nodes[&id].resolved.rtl());
+                    (along > start) != (!bar.vertical && self.nodes[&id].scrolls_x_from_end());
                 Some(self.press_track(id, bar.vertical, toward_end))
             }
             Event::PointerMoved(point) => {
@@ -349,7 +349,7 @@ impl Context {
                 Some(if grab.vertical {
                     self.set_scroll(grab.node, fraction * node.scroll.maximum)
                 } else {
-                    let fraction = if node.resolved.rtl() {
+                    let fraction = if node.scrolls_x_from_end() {
                         1.0 - fraction
                     } else {
                         fraction

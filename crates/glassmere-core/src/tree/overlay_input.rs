@@ -25,6 +25,7 @@ impl Context {
             self.touch_wake(),
             self.grid_wake(),
             self.track_wake(),
+            self.edge_scroll_wake(),
         ]
         .into_iter()
         .flatten()
