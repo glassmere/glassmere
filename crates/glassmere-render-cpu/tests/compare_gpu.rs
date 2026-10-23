@@ -268,7 +268,11 @@ fn gpu(scene: &Scene, scale: f32, clear: Color) -> Vec<u8> {
             });
         device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
         receiver.recv().unwrap().unwrap();
-        let pixels = output.slice(..).get_mapped_range().to_vec();
+        let pixels = output
+            .slice(..)
+            .get_mapped_range()
+            .expect("the readback buffer is mapped")
+            .to_vec();
         output.unmap();
         pixels
     })

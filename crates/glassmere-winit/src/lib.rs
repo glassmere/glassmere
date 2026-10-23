@@ -698,7 +698,7 @@ impl WindowState {
             diagnostics::checkpoint("first_render", Some(&device));
         }
         self.window.pre_present_notify();
-        texture.present();
+        queue.present(texture);
         let render = started.elapsed();
         if frame.first {
             diagnostics::checkpoint("first_present", Some(&device));

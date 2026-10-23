@@ -51,13 +51,13 @@ ropey = "1.6"
 serde = { version = "1.0.229", features = ["derive"] }
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 taffy = { version = "0.10.1", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid"] }
-wgpu = "29.0.4"
+wgpu = "30"
 winit = "0.30.13"
 # The version glyphon uses, so that both share one font system type.
-cosmic-text = "0.18"
-glyphon = "0.11.0"
+cosmic-text = "0.19"
+glyphon = "0.12.0"
 bytemuck = { version = "1.25", features = ["derive"] }
-pollster = "0.4"
+pollster = "1.0"
 accesskit = "0.24.1"
 accesskit_winit = "0.32.2"
 unicode-segmentation = "1.13"

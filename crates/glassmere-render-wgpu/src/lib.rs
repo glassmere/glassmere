@@ -555,11 +555,11 @@ impl Renderer {
                         module: &shader,
                         entry_point: Some("vs_main"),
                         compilation_options: Default::default(),
-                        buffers: &[wgpu::VertexBufferLayout {
+                        buffers: &[Some(wgpu::VertexBufferLayout {
                             array_stride: stride as u64,
                             step_mode: wgpu::VertexStepMode::Vertex,
                             attributes,
-                        }],
+                        })],
                     },
                     fragment: Some(wgpu::FragmentState {
                         module: &shader,
