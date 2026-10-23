@@ -50,7 +50,7 @@ bitflags = "2.13"
 ropey = "1.6"
 serde = { version = "1.0.229", features = ["derive"] }
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
-taffy = { version = "0.10.1", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid"] }
+taffy = { version = "0.15", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid"] }
 wgpu = "30"
 winit = "0.30.13"
 # The version glyphon uses, so that both share one font system type.

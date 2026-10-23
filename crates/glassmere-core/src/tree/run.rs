@@ -286,30 +286,39 @@ impl Context {
                         width: taffy::AvailableSpace::Definite(size.width),
                         height: taffy::AvailableSpace::Definite(size.height),
                     },
-                    |known, available, _, context, _| {
-                        let measured = if let Some(Measurement {
-                            wrapped: Some((text, style)),
-                            spans,
-                            ..
-                        }) = context
-                        {
-                            let width = known.width.or(match available.width {
-                                taffy::AvailableSpace::Definite(width) => Some(width),
-                                taffy::AvailableSpace::MinContent => Some(1.0),
-                                taffy::AvailableSpace::MaxContent => None,
-                            });
-                            self.stats.text_measures += 1;
-                            match spans {
-                                Some(spans) => measurer.geometry_rich(spans, style, width).size,
-                                None => measurer.measure_styled(text, style, width),
-                            }
-                        } else {
-                            context.map(|context| context.size).unwrap_or_default()
-                        };
-                        taffy::Size {
-                            width: known.width.unwrap_or(measured.width),
-                            height: known.height.unwrap_or(measured.height),
-                        }
+                    |inputs, _, context, style| {
+                        taffy::compute_leaf_layout(
+                            inputs,
+                            style,
+                            |_, _| 0.0,
+                            |known, available| {
+                                let measured = if let Some(Measurement {
+                                    wrapped: Some((text, style)),
+                                    spans,
+                                    ..
+                                }) = context
+                                {
+                                    let width = known.width.or(match available.width {
+                                        taffy::AvailableSpace::Definite(width) => Some(width),
+                                        taffy::AvailableSpace::MinContent => Some(1.0),
+                                        taffy::AvailableSpace::MaxContent => None,
+                                    });
+                                    self.stats.text_measures += 1;
+                                    match spans {
+                                        Some(spans) => {
+                                            measurer.geometry_rich(spans, style, width).size
+                                        }
+                                        None => measurer.measure_styled(text, style, width),
+                                    }
+                                } else {
+                                    context.map(|context| context.size).unwrap_or_default()
+                                };
+                                taffy::Size {
+                                    width: known.width.unwrap_or(measured.width),
+                                    height: known.height.unwrap_or(measured.height),
+                                }
+                            },
+                        )
                     },
                 )
                 .unwrap();

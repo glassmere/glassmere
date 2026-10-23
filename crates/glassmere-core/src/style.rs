@@ -506,28 +506,33 @@ impl Style {
         };
         // Unset minimums stay at zero, so non-shrinking children keep their size;
         // the automatic minimum only matters when shrinking.
+        let bound = |value| match value {
+            Length::Auto => LengthPercentageAuto::auto(),
+            Length::Px(value) => LengthPercentageAuto::length(value.max(0.0)),
+            Length::Percent(value) => LengthPercentageAuto::percent(value.max(0.0)),
+        };
         let minimum = |value| match value {
-            Length::Auto => Dimension::length(0.0),
-            other => dimension(other),
+            Length::Auto => LengthPercentageAuto::length(0.0),
+            other => bound(other),
         };
         let align = |value: Align| match value {
-            Align::Start => AlignItems::Start,
-            Align::Center => AlignItems::Center,
-            Align::End => AlignItems::End,
-            Align::Stretch => AlignItems::Stretch,
+            Align::Start => AlignItems::START,
+            Align::Center => AlignItems::CENTER,
+            Align::End => AlignItems::END,
+            Align::Stretch => AlignItems::STRETCH,
             // Taffy would take a leaf's bottom edge for its baseline; the
             // real one comes from the font, so the rows are lined up after
             // layout instead. See `Context::align_baselines`.
-            Align::Baseline => AlignItems::FlexStart,
+            Align::Baseline => AlignItems::FLEX_START,
         };
         let justify = |value: Justify| match value {
-            Justify::Start => AlignContent::Start,
-            Justify::Center => AlignContent::Center,
-            Justify::End => AlignContent::End,
-            Justify::Stretch => AlignContent::Stretch,
-            Justify::SpaceBetween => AlignContent::SpaceBetween,
-            Justify::SpaceAround => AlignContent::SpaceAround,
-            Justify::SpaceEvenly => AlignContent::SpaceEvenly,
+            Justify::Start => AlignContent::START,
+            Justify::Center => AlignContent::CENTER,
+            Justify::End => AlignContent::END,
+            Justify::Stretch => AlignContent::STRETCH,
+            Justify::SpaceBetween => AlignContent::SPACE_BETWEEN,
+            Justify::SpaceAround => AlignContent::SPACE_AROUND,
+            Justify::SpaceEvenly => AlignContent::SPACE_EVENLY,
         };
         let min_track = |size: TrackSize| -> MinTrackSizingFunction {
             match size {
@@ -591,8 +596,8 @@ impl Style {
                 height: minimum(self.min_height),
             },
             max_size: Size {
-                width: dimension(self.max_width),
-                height: dimension(self.max_height),
+                width: bound(self.max_width),
+                height: bound(self.max_height),
             },
             aspect_ratio: self
                 .aspect_ratio
@@ -604,10 +609,13 @@ impl Style {
             } else {
                 FlexDirection::Column
             },
-            align_items: Some(align(self.align_items)),
+            align_items: align(self.align_items),
             // `Start` keeps the engine's normal behavior, which lets grid tracks fill.
-            justify_content: (self.justify_content != Justify::Start)
-                .then(|| justify(self.justify_content)),
+            justify_content: if self.justify_content != Justify::Start {
+                justify(self.justify_content)
+            } else {
+                AlignContent::NORMAL
+            },
             align_self: self.align_self.map(align),
             justify_self: self.justify_self.map(align),
             flex_grow: self.grow.max(0.0),
