@@ -18,7 +18,10 @@ use windows_sys::Win32::{
     Graphics::Gdi::ScreenToClient,
     UI::{
         Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
-        WindowsAndMessaging::{HTMAXBUTTON, WM_NCHITTEST, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE},
+        WindowsAndMessaging::{
+            HTMAXBUTTON, SPI_GETCLIENTAREAANIMATION, SystemParametersInfoW, WM_NCHITTEST,
+            WM_NCMOUSELEAVE, WM_NCMOUSEMOVE,
+        },
     },
 };
 
@@ -62,6 +65,24 @@ impl Shared {
 pub struct Caption {
     window: HWND,
     shared: Arc<Shared>,
+}
+
+/// Whether the user has switched off animations in Windows (Settings,
+/// Accessibility, Visual effects), `Some(true)` meaning they have. `None`
+/// when Windows would not say.
+pub fn animations_disabled() -> Option<bool> {
+    let mut enabled: i32 = 1;
+    // SAFETY: for `SPI_GETCLIENTAREAANIMATION`, `pvParam` points to a `BOOL`
+    // that Windows writes; `enabled` is one and outlives the call.
+    let read = unsafe {
+        SystemParametersInfoW(
+            SPI_GETCLIENTAREAANIMATION,
+            0,
+            (&mut enabled as *mut i32).cast(),
+            0,
+        )
+    } != 0;
+    read.then_some(enabled == 0)
 }
 
 /// Which subclass this is, among whatever else has subclassed the window.

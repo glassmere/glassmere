@@ -161,6 +161,43 @@ mod direction_tests {
     }
 }
 
+/// Whether animations are skipped: the application asked for it, or the
+/// system did. An application cannot turn motion on against the system.
+fn resolve_reduced_motion(app: bool, system: Option<bool>) -> bool {
+    app || system.unwrap_or(false)
+}
+
+/// The OS preference for reduced motion, where this platform is read.
+#[cfg(windows)]
+fn system_reduced_motion() -> Option<bool> {
+    glassmere_win32::animations_disabled()
+}
+
+/// No platform query exists here yet: no preference.
+#[cfg(not(windows))]
+fn system_reduced_motion() -> Option<bool> {
+    None
+}
+
+fn reduced_motion(app: bool) -> bool {
+    resolve_reduced_motion(app, system_reduced_motion())
+}
+
+#[cfg(test)]
+mod reduced_motion_tests {
+    use super::resolve_reduced_motion;
+
+    #[test]
+    fn the_application_forces_it_and_the_system_adds_to_it() {
+        assert!(!resolve_reduced_motion(false, None));
+        assert!(!resolve_reduced_motion(false, Some(false)));
+        assert!(resolve_reduced_motion(false, Some(true)));
+        assert!(resolve_reduced_motion(true, None));
+        assert!(resolve_reduced_motion(true, Some(false)));
+        assert!(resolve_reduced_motion(true, Some(true)));
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AppOptions {
     pub title: String,
@@ -180,8 +217,9 @@ pub struct AppOptions {
     pub theme: ThemeChoice,
     /// A stylesheet file installed at start and reloaded when it changes on disk.
     pub stylesheet: Option<PathBuf>,
-    /// Skips animations. Not read from the OS setting yet, winit has no
-    /// cross-platform query; wire it per platform when one appears.
+    /// Skips animations. Animations are also skipped while the OS asks for
+    /// reduced motion (read on Windows only), so `false` means "follow the
+    /// system", not "always animate"; `true` forces them off.
     pub reduced_motion: bool,
     /// Whether Left and Right move on screen or in reading order in
     /// bidirectional text.
@@ -808,7 +846,7 @@ impl Application {
     ) -> Self {
         let mut context = Context::new();
         context.set_opened_files(opened_files());
-        context.set_reduced_motion(options.reduced_motion);
+        context.set_reduced_motion(reduced_motion(options.reduced_motion));
         context.set_caret_movement(options.caret_movement);
         context.set_direction(options.direction.resolve());
         // `ToastSender::send` from any thread wakes the loop; the next frame shows the toast.
@@ -1584,6 +1622,11 @@ impl Application {
             WindowEvent::Focused(focused) => {
                 if !focused {
                     self.modifiers = ModifiersState::empty();
+                }
+                if focused {
+                    // The setting may have changed while another window had focus.
+                    self.context
+                        .set_reduced_motion(reduced_motion(self.options.reduced_motion));
                 }
                 if input::window_focus(&mut self.context, &mut self.restore_focus, focused) {
                     state.window.request_redraw();
