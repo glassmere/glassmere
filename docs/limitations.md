@@ -75,5 +75,5 @@ What does not work, is partial, or has not been tried. Grouped by area.
 
 - Hot reload is a rebuild and restart that keeps state; it is not in-process code swapping. It saves one window's state, polls every 500 ms, and does not carry focus or scroll unless the application saves them.
 - The inspector captures the full target tree on each of its frames, which a 100,000-node target will feel. GPU timings come from timestamp queries and were checked on one adapter.
-- The public API snapshot is read from the sources, so it does not know about `cfg`, and it records signatures, not behaviour.
+- The public API snapshot is read from the sources: it records `cfg` gates as written without evaluating them, expands only the workspace's own macros, and records signatures, not behaviour.
 - The test suite's allocation counts are the framework's own declarations, not allocator calls.

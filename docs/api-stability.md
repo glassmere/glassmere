@@ -4,7 +4,7 @@ An application is written against these crates' signatures. This says which of t
 
 ## The surface
 
-`crates/glassmere/tests/snapshots/public-api.snap` is the record: every public item and every public method of the crates an application depends on, with its signature. A test reads the sources and compares them with that file, so a rename, a removal or an added parameter cannot slip through unnoticed. Accepting a change is deliberate:
+`crates/glassmere/tests/snapshots/public-api.snap` is the record of what an application can name in the crates it depends on. A test reads the sources, follows `pub mod` and `pub use` from each crate's root (an item in a private module counts only when something public re-exports it), and compares the result with that file. For each reachable item it records the signature with its generics and bounds, the type of every public field, the payload of every enum variant, the public methods and constants of its `impl` blocks, and the headers of the trait implementations that name it (`From`, `Default`, `Display` and the like). It also records the attributes that are part of the contract: `derive`, `repr`, `non_exhaustive`, `must_use`, `deprecated`, `track_caller`, and `cfg` gates such as `#[cfg(feature = "desktop")]`. Items the workspace's own macros generate, such as the `Style` setters and the `Dirty` flags, are expanded and recorded like any other. A rename, a removal, a changed type or an added parameter cannot slip through unnoticed. Accepting a change is deliberate:
 
 ```sh
 UPDATE_SNAPSHOTS=1 cargo test -p glassmere --test api
