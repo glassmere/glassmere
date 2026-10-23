@@ -22,6 +22,7 @@ mod control_paint;
 pub mod diagnostics;
 mod dock_input;
 mod drag_input;
+mod edge_scroll;
 mod events;
 mod focus_input;
 mod handlers;
@@ -129,6 +130,12 @@ struct Node {
 }
 
 impl Node {
+    /// Whether the horizontal offset counts from the right. Editors lay their
+    /// text out left to right whatever the direction around them.
+    fn scrolls_x_from_end(&self) -> bool {
+        self.resolved.rtl() && self.kind != Kind::TextArea
+    }
+
     /// The box inside the padding.
     fn content_box(&self) -> Rect {
         let padding = self.style.padding.max(0.0);
@@ -440,6 +447,8 @@ pub struct Context {
     /// When and where the last tap ended, for telling a double tap.
     last_tap: Option<(Duration, Point)>,
     fling: Option<touch_input::Fling>,
+    /// When a selection drag held outside an editor last scrolled it.
+    edge_scroll_at: Option<Duration>,
     pub(crate) messages: Option<Box<dyn crate::Messages>>,
     pub(crate) format: Option<Box<dyn crate::LocaleFormat>>,
     pub(crate) missing_messages: std::sync::Mutex<Vec<String>>,
@@ -624,6 +633,7 @@ impl Default for Context {
             touches: HashMap::new(),
             last_tap: None,
             fling: None,
+            edge_scroll_at: None,
             messages: None,
             format: None,
             missing_messages: std::sync::Mutex::new(Vec::new()),

@@ -165,6 +165,23 @@ impl Context {
         ))
     }
 
+    /// Extends the selection of a held pointer to a point, taken at the edge
+    /// of the text when it is outside.
+    pub(super) fn rich_drag(&mut self, id: NodeId, point: Point) -> Option<bool> {
+        let point = self.clamp_to_viewport(id, point)?;
+        let (position, affinity) = self.rich_position(id, point)?;
+        self.set_rich_affinity(id, affinity);
+        self.rich_op(
+            id,
+            RichOp::SetCursor {
+                position,
+                select: true,
+                granularity: RichGranularity::Char,
+            },
+        );
+        Some(true)
+    }
+
     fn set_rich_affinity(&mut self, id: NodeId, affinity: Affinity) {
         if let Some(state) = self
             .nodes
@@ -367,17 +384,7 @@ impl Context {
                     return None;
                 }
                 self.pointer = Some(*point);
-                let (position, affinity) = self.rich_position(id, *point)?;
-                self.set_rich_affinity(id, affinity);
-                self.rich_op(
-                    id,
-                    RichOp::SetCursor {
-                        position,
-                        select: true,
-                        granularity: RichGranularity::Char,
-                    },
-                );
-                Some(true)
+                self.rich_drag(id, *point)
             }
             Event::Editor(command) => {
                 let id = self.editor_area()?;

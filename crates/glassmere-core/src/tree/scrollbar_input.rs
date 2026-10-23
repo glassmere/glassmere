@@ -74,7 +74,7 @@ impl Context {
                 track: (bounds.x, track),
                 thumb: Rect {
                     // The thumb starts at the start side, like the content.
-                    x: if rtl {
+                    x: if node.scrolls_x_from_end() {
                         bounds.x + track - length - travelled
                     } else {
                         bounds.x + travelled
@@ -213,7 +213,7 @@ impl Context {
                 }
                 // The track pages toward the press, a view at a time.
                 let node = &self.nodes[&id];
-                let toward_end = (along > start) != (!bar.vertical && node.resolved.rtl());
+                let toward_end = (along > start) != (!bar.vertical && node.scrolls_x_from_end());
                 let page = if toward_end { 1.0 } else { -1.0 };
                 Some(if bar.vertical {
                     self.set_scroll(id, node.scroll.offset + page * node.bounds.height)
@@ -260,7 +260,7 @@ impl Context {
                 Some(if grab.vertical {
                     self.set_scroll(grab.node, fraction * node.scroll.maximum)
                 } else {
-                    let fraction = if node.resolved.rtl() {
+                    let fraction = if node.scrolls_x_from_end() {
                         1.0 - fraction
                     } else {
                         fraction

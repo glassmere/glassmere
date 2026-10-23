@@ -15,8 +15,8 @@ struct LineLayout {
 pub(super) struct AreaState {
     layouts: Vec<LineLayout>,
     first_line: usize,
-    scroll_x: f32,
-    gutter: f32,
+    /// Width of the line numbers and marks left of the text.
+    pub(super) gutter: f32,
     /// Advance of one digit, for right-aligned line numbers.
     digit: f32,
     line_height: f32,
@@ -189,7 +189,7 @@ impl Context {
         else {
             return Some((line, 0, Affinity::Downstream));
         };
-        let x = point.x - content.x - area.gutter + area.scroll_x;
+        let x = point.x - content.x - area.gutter + node.scroll.offset_x;
         let (mut byte, affinity) = layout.geometry.hit_affinity(Point {
             x,
             y: area.line_height / 2.0,
@@ -203,6 +203,26 @@ impl Context {
             };
         }
         Some((line, byte.min(layout.line.text.len()), affinity))
+    }
+
+    /// Extends the selection of a held pointer to a point. The point is taken
+    /// at the edge of the text when it is outside, so that how far an edge
+    /// scroll has gone, not how far the pointer is, decides what is selected.
+    pub(super) fn area_drag(&mut self, id: NodeId, point: Point) -> Option<bool> {
+        let point = self.clamp_to_viewport(id, point)?;
+        let (line, byte, affinity) = self.area_hit(id, point)?;
+        self.set_pending_affinity(id, affinity);
+        self.area_op(
+            id,
+            TextOp::Pointer {
+                line,
+                byte,
+                select: true,
+                granularity: Granularity::Char,
+                add: false,
+            },
+        );
+        Some(true)
     }
 
     fn set_pending_affinity(&mut self, id: NodeId, affinity: Affinity) {
@@ -317,19 +337,7 @@ impl Context {
                     return None;
                 }
                 self.pointer = Some(*point);
-                let (line, byte, affinity) = self.area_hit(id, *point)?;
-                self.set_pending_affinity(id, affinity);
-                self.area_op(
-                    id,
-                    TextOp::Pointer {
-                        line,
-                        byte,
-                        select: true,
-                        granularity: Granularity::Char,
-                        add: false,
-                    },
-                );
-                Some(true)
+                self.area_drag(id, *point)
             }
             Event::Text(edit) => {
                 let id = self.focused_area()?;
@@ -596,6 +604,7 @@ impl Context {
             let affinity = area.affinity;
             let content = node.content_box();
             let text_width = (content.width - gutter).max(1.0);
+            let mut offset_x = node.scroll.offset_x;
             let caret = primary
                 .0
                 .checked_sub(*first_line)
@@ -607,16 +616,29 @@ impl Context {
             if let Some(caret) = caret
                 && (area.primary != Some(*primary) || area.preedit.is_some())
             {
-                let old_scroll = area.scroll_x;
-                area.scroll_x = area
-                    .scroll_x
+                offset_x = offset_x
                     .min(caret.x)
                     .max(caret.x - text_width + digit * 2.0)
                     .max(0.0);
-                changed |= old_scroll != area.scroll_x;
             }
+            // Lines are not wrapped; the widest one declared sets the range,
+            // with room for the caret after its last character.
+            let widest = area
+                .layouts
+                .iter()
+                .map(|layout| layout.geometry.size.width)
+                .fold(0.0, f32::max);
+            let maximum_x = if widest > text_width {
+                widest + digit * 2.0 - text_width
+            } else {
+                0.0
+            };
+            let offset_x = offset_x.clamp(0.0, maximum_x);
+            changed |= node.scroll.offset_x != offset_x || node.scroll.maximum_x != maximum_x;
+            node.scroll.offset_x = offset_x;
+            node.scroll.maximum_x = maximum_x;
             area.caret = caret.map(|caret| Rect {
-                x: content.x + gutter + caret.x - area.scroll_x,
+                x: content.x + gutter + caret.x - offset_x,
                 y: content.y + primary.0 as f32 * line_height - node.scroll.offset,
                 width: 2.0,
                 height: line_height,
@@ -721,7 +743,7 @@ impl Context {
             width: (content.width - area.gutter).max(0.0),
             ..content
         }));
-        let origin_x = text_x - area.scroll_x;
+        let origin_x = text_x - node.scroll.offset_x;
         let layout_of = |line: usize| {
             line.checked_sub(*first_line)
                 .and_then(|index| area.layouts.get(index))
