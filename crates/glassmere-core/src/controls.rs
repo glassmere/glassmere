@@ -406,7 +406,7 @@ pub(crate) enum ControlUpdate {
 
 /// What a drag, click or menu pick in a dock asks of its layout. Applied by
 /// [`crate::DockLayout::apply`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum DockAction {
     Move {
         panel: String,
