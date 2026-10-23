@@ -461,6 +461,7 @@ impl<A: App> Harness<A> {
         &mut self.state
     }
     /// Same as [`app_mut`](Self::app_mut): the next batch declares the view.
+    #[deprecated(note = "use `app_mut`")]
     pub fn state_mut(&mut self) -> &mut A {
         self.app_mut()
     }

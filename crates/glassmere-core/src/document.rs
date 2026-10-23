@@ -156,6 +156,7 @@ impl TextDocument {
         }
     }
 
+    #[deprecated(note = "removed in 0.2: it exposes the ropey type")]
     pub fn rope(&self) -> &Rope {
         &self.rope
     }

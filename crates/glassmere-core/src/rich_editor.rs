@@ -3,6 +3,7 @@ use crate::{BlockKind, Length, Mark, Marks, RichDocument, RichMotion, RichPositi
 use glassmere_scene::{Color, FontFamily, TextSpan};
 use std::ops::Range;
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct RichEditorOptions {
     /// Accessible name.
     pub label: String,
