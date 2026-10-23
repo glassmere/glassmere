@@ -2135,5 +2135,6 @@ glassmere-win32   fn Caption::take (& self) -> Vec < CaptionEvent>
 glassmere-win32   variant CaptionEvent::Hover
 glassmere-win32   variant CaptionEvent::Left
 glassmere-win32 enum CaptionEvent
+glassmere-win32 fn animations_disabled () -> Option < bool>
 glassmere-win32 fn attach (window : isize) -> Option < Caption>
 glassmere-win32 struct Caption
