@@ -22,6 +22,7 @@ mod control_paint;
 pub mod diagnostics;
 mod dock_input;
 mod drag_input;
+mod edge_scroll;
 mod events;
 mod focus_input;
 mod handlers;
@@ -129,6 +130,12 @@ struct Node {
 }
 
 impl Node {
+    /// Whether the horizontal offset counts from the right. Editors lay their
+    /// text out left to right whatever the direction around them.
+    fn scrolls_x_from_end(&self) -> bool {
+        self.resolved.rtl() && self.kind != Kind::TextArea
+    }
+
     /// The box inside the padding.
     fn content_box(&self) -> Rect {
         let padding = self.style.padding.max(0.0);
@@ -389,6 +396,8 @@ pub struct Context {
     dock_drag: Option<Box<dock_input::DockDrag>>,
     dock_grab: Option<dock_input::DockGrab>,
     scrollbar_grab: Option<scrollbar_input::ScrollbarGrab>,
+    /// A press held on a scrollbar's track, paging again while it lasts.
+    track_hold: Option<scrollbar_input::TrackHold>,
     /// The node whose scrollbar the pointer is on, drawn wider.
     bar_hovered: Option<NodeId>,
     /// What `Effects::copy` left for the host, what `Effects::paste` asked
@@ -440,6 +449,8 @@ pub struct Context {
     /// When and where the last tap ended, for telling a double tap.
     last_tap: Option<(Duration, Point)>,
     fling: Option<touch_input::Fling>,
+    /// When a selection drag held outside an editor last scrolled it.
+    edge_scroll_at: Option<Duration>,
     pub(crate) messages: Option<Box<dyn crate::Messages>>,
     pub(crate) format: Option<Box<dyn crate::LocaleFormat>>,
     pub(crate) missing_messages: std::sync::Mutex<Vec<String>>,
@@ -591,6 +602,7 @@ impl Default for Context {
             dock_drag: None,
             dock_grab: None,
             scrollbar_grab: None,
+            track_hold: None,
             bar_hovered: None,
             clip_out: None,
             paste_requested: false,
@@ -624,6 +636,7 @@ impl Default for Context {
             touches: HashMap::new(),
             last_tap: None,
             fling: None,
+            edge_scroll_at: None,
             messages: None,
             format: None,
             missing_messages: std::sync::Mutex::new(Vec::new()),

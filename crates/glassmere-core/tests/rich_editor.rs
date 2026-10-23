@@ -395,3 +395,49 @@ fn clipboard_read_only_composition_and_scrolling_behave_like_the_code_editor() {
     frame(&mut driver, &mut notes, &mut context);
     assert_eq!(notes.document.blocks()[59].text(), "paragraph 59");
 }
+
+#[test]
+fn a_drag_held_below_the_editor_scrolls_it_by_the_clock_and_extends_the_selection() {
+    let blocks = (0..60)
+        .map(|n| Block::new(BlockKind::Paragraph, &format!("paragraph {n}")))
+        .collect();
+    let mut app = started(RichDocument::from_blocks(blocks));
+    let first = |app: &Driven<State>| -> String {
+        app.context
+            .scene()
+            .primitives
+            .iter()
+            .find_map(|primitive| match primitive {
+                Primitive::RichText { spans, .. } => {
+                    Some(spans.iter().map(|span| span.text.as_str()).collect())
+                }
+                _ => None,
+            })
+            .unwrap()
+    };
+    let tick = |app: &mut Driven<State>, milliseconds: u64| {
+        app.context.set_now(Duration::from_millis(milliseconds));
+        app.frame();
+    };
+    tick(&mut app, 0);
+    app.context.event(Event::PointerMoved(cell(0, 2)));
+    app.context.event(Event::PointerDown);
+    // Below the 300 px editor, and then not moving.
+    app.context
+        .event(Event::PointerMoved(Point { x: 100.0, y: 400.0 }));
+    tick(&mut app, 0);
+    assert_eq!(first(&app), "paragraph 0");
+    assert!(app.context.next_wake().is_some());
+    tick(&mut app, 500);
+    tick(&mut app, 1000);
+    assert_ne!(first(&app), "paragraph 0");
+    assert!(app.state().document.cursor().block > 10);
+    assert_eq!(app.state().document.anchor(), at(0, 2));
+
+    app.context.event(Event::PointerUp);
+    app.frame();
+    assert_eq!(app.context.next_wake(), None);
+    let stopped = first(&app);
+    tick(&mut app, 3000);
+    assert_eq!(first(&app), stopped);
+}

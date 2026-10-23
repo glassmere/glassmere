@@ -74,7 +74,7 @@ Easings are `linear`, `ease-in`, `ease-out`, `ease-in-out` and `cubic-bezier(x1,
 
 Ancestors clip to their bounds, so a node that slides or scales needs room inside its parent. A transformed layer is a bilinear-filtered image, so text softens while it is scaled or turned.
 
-`AppOptions::reduced_motion` skips animations. It is an application option; the OS preference is not read.
+`AppOptions::reduced_motion` skips animations. `true` forces them off; `false` follows the system. On Windows the host reads the "Animation effects" switch (`SPI_GETCLIENTAREAANIMATION`) at startup and whenever a window gains focus, and skips animations while it is off. macOS and Linux have no preference read yet, so only the application option applies there. An application cannot turn animations on against the system.
 
 ## Images and backgrounds
 
