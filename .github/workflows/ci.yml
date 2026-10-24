@@ -58,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # Must match rust-version in Cargo.toml's [workspace.package].
-      - uses: dtolnay/rust-toolchain@1.90
+      - uses: dtolnay/rust-toolchain@1.120
       - name: Linux packages
         run: |
           sudo apt-get update
