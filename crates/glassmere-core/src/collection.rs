@@ -286,6 +286,14 @@ pub struct TreeModel {
     order: ItemOrder,
     depths: Vec<usize>,
 }
+
+impl std::fmt::Debug for TreeModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TreeModel")
+            .field("items", &self.items.len())
+            .finish_non_exhaustive()
+    }
+}
 impl TreeModel {
     pub fn new(items: Vec<TreeItem>) -> Result<Self, ModelError> {
         let mut map = HashMap::with_capacity(items.len());

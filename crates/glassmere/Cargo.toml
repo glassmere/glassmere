@@ -58,6 +58,7 @@ glassmere-testing.workspace = true
 # Reads the crates' own sources for the public-surface snapshot.
 syn = { version = "3.0", features = ["full", "parsing", "printing"] }
 quote = "1.0"
+proc-macro2 = "1.0"
 
 [lints]
 workspace = true

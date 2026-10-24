@@ -4,8 +4,8 @@
 //! untranslated on purpose, to show the fallback to English.
 use glassmere::fluent::FluentMessages;
 use glassmere::{
-    App, AppOptions, Button, Date, DateStyle, Effects, Label, Length, LocaleFormat, Messages,
-    NumberOptions, Size, Style, TextWrap, Toast, Ui, run, tr,
+    App, AppOptions, Button, Date, DateStyle, Effects, Label, Length, Messages, NumberOptions,
+    Size, Style, TextWrap, Toast, Ui, run, tr,
 };
 
 const LOCALES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/locales");
@@ -26,7 +26,7 @@ fn set_locale(effects: &mut Effects<'_, Msg>, locale: &str) {
     effects.set_format(
         glassmere::icu::IcuFormat::new(locale)
             .ok()
-            .map(|format| Box::new(format) as Box<dyn LocaleFormat>),
+            .map(|format| Box::new(format) as Box<dyn glassmere::LocaleFormat>),
     );
 }
 
