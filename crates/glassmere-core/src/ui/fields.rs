@@ -11,6 +11,12 @@ pub struct Autocomplete<M = ()> {
     on_submit: Option<M>,
 }
 
+impl<M> std::fmt::Debug for Autocomplete<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Autocomplete").finish_non_exhaustive()
+    }
+}
+
 impl<M> Default for Autocomplete<M> {
     fn default() -> Self {
         Self {
