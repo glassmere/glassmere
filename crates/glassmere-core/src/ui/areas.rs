@@ -91,6 +91,12 @@ pub struct DragSourceBuilder<M = ()> {
     on_drag_end: Option<Box<dyn Fn(crate::DragOutcome) -> M>>,
 }
 
+impl<M> std::fmt::Debug for DragSourceBuilder<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DragSourceBuilder").finish_non_exhaustive()
+    }
+}
+
 impl<M> DragSourceBuilder<M> {
     pub fn new(label: impl Into<String>, payload: crate::DragPayload) -> Self {
         Self {
@@ -115,6 +121,12 @@ pub struct DropTargetBuilder<M = ()> {
     on_drop: Option<Box<dyn Fn(crate::DragPayload) -> M>>,
 }
 
+impl<M> std::fmt::Debug for DropTargetBuilder<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DropTargetBuilder").finish_non_exhaustive()
+    }
+}
+
 impl<M> DropTargetBuilder<M> {
     pub fn new(label: impl Into<String>, accepts: crate::DropKind) -> Self {
         Self {
@@ -135,6 +147,12 @@ impl<M> DropTargetBuilder<M> {
 /// A gesture area as [`Ui::gesture_area`] declares it.
 pub struct GestureBuilder<M = ()> {
     on_gesture: Option<Box<dyn Fn(crate::GestureResponse) -> M>>,
+}
+
+impl<M> std::fmt::Debug for GestureBuilder<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GestureBuilder").finish_non_exhaustive()
+    }
 }
 
 impl<M> Default for GestureBuilder<M> {
@@ -161,6 +179,12 @@ impl<M> GestureBuilder<M> {
 pub struct AreaBuilder<M = ()> {
     area: crate::EventArea,
     on_event: Option<Box<dyn Fn(crate::UiEvent) -> Option<M>>>,
+}
+
+impl<M> std::fmt::Debug for AreaBuilder<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AreaBuilder").finish_non_exhaustive()
+    }
 }
 
 impl<M> AreaBuilder<M> {

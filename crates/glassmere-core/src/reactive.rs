@@ -235,6 +235,14 @@ impl Inner {
 #[derive(Clone, Default)]
 pub struct Store(Rc<Inner>);
 
+impl std::fmt::Debug for Store {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Store")
+            .field("version", &self.version())
+            .finish_non_exhaustive()
+    }
+}
+
 impl Store {
     pub fn new() -> Self {
         Self::default()
@@ -298,6 +306,14 @@ pub struct Signal<T> {
     id: usize,
     store: Rc<Inner>,
     value: Rc<RefCell<T>>,
+}
+
+impl<T> std::fmt::Debug for Signal<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Signal")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<T> Clone for Signal<T> {
@@ -364,6 +380,14 @@ pub struct Memo<T> {
     id: usize,
     store: Rc<Inner>,
     state: Rc<RefCell<MemoState<T>>>,
+}
+
+impl<T> std::fmt::Debug for Memo<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Memo")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<T> Clone for Memo<T> {

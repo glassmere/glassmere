@@ -39,6 +39,12 @@ pub struct WidgetBuilder<F, M = ()> {
     pub(crate) on_event: Option<Box<dyn Fn(crate::UiEvent) -> Option<M>>>,
 }
 
+impl<F, M> std::fmt::Debug for WidgetBuilder<F, M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WidgetBuilder").finish_non_exhaustive()
+    }
+}
+
 impl<F, M> WidgetBuilder<F, M> {
     /// `build` is called with what the widget was laid out at and how it is
     /// being touched.
