@@ -1,7 +1,20 @@
 version: 2
 updates:
+  # 0.1.x takes patch updates only; anything that can need code changes goes to develop.
   - package-ecosystem: cargo
     directory: /
+    target-branch: support/0.1.x
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    groups:
+      cargo:
+        patterns: ["*"]
+  - package-ecosystem: cargo
+    directory: /
+    target-branch: develop
     schedule:
       interval: weekly
     groups:
@@ -9,5 +22,9 @@ updates:
         patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
+    target-branch: develop
     schedule:
       interval: monthly
+    ignore:
+      # The MSRV pin, not a version to keep current.
+      - dependency-name: dtolnay/rust-toolchain
