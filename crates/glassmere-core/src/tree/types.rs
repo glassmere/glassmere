@@ -20,6 +20,7 @@ bitflags::bitflags! {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Role {
     #[default]
     Group,
@@ -74,6 +75,7 @@ pub struct Semantics {
 }
 
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct NodeSnapshot {
     pub id: NodeId,
     pub parent: Option<NodeId>,
@@ -104,6 +106,7 @@ pub struct NodeSnapshot {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct CollectionInfo {
     pub item: Option<crate::ItemId>,
     pub index: usize,
@@ -143,6 +146,7 @@ pub struct ScrollState {
 /// Actions from accessibility or another host use the same retained identities
 /// and activation queue as pointer and keyboard input. Removed IDs are ignored.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum Action {
     Focus,
     Activate,
@@ -164,6 +168,7 @@ pub enum Action {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum Key {
     Tab,
     Enter,
@@ -186,6 +191,7 @@ pub enum Key {
 }
 
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum Event {
     PointerMoved(Point),
     PointerLeft,
@@ -241,6 +247,7 @@ pub enum Event {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
+#[non_exhaustive]
 pub struct FrameStats {
     pub created: usize,
     pub reused: usize,
@@ -283,6 +290,7 @@ pub struct FrameStats {
 /// layout engine's own arena, the allocator's overhead, and the glyph atlas,
 /// which lives on the GPU behind glyphon.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct MemoryReport {
     pub nodes: usize,
     /// The nodes themselves, without what they point at.
@@ -302,6 +310,7 @@ pub struct MemoryReport {
 
 /// Inspector-facing facts about one node that ordinary semantics do not carry.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct NodeDetails {
     /// Explicit key, or the declaring call site as `file.rs:line:column`,
     /// with `#n` for the n-th repeat of one site.

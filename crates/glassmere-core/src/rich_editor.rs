@@ -33,6 +33,7 @@ impl Default for RichEditorOptions {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct RichEditorResponse {
     /// The document's content changed during this declaration.
     pub changed: bool,
@@ -51,6 +52,7 @@ pub enum RichGranularity {
 
 /// One edit to a rich editor's document, as a message carries it.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum RichOp {
     Insert(String),
     Backspace {

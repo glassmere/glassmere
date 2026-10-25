@@ -28,6 +28,13 @@ pub struct DialogOptions {
     pub style: Style,
 }
 
+/// An untitled modal dialog, as [`DialogOptions::new`] makes it.
+impl Default for DialogOptions {
+    fn default() -> Self {
+        Self::new("")
+    }
+}
+
 impl DialogOptions {
     pub fn new(title: impl Into<String>) -> Self {
         Self {

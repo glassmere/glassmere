@@ -1,6 +1,7 @@
 use crate::Key;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum ShortcutKey {
     Character(char),
     Named(Key),

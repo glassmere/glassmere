@@ -21,10 +21,9 @@ impl App for Counter {
 }
 
 #[test]
-#[allow(deprecated)]
-fn state_mut_then_run_shows_the_change() {
+fn app_mut_then_run_shows_the_change() {
     let mut harness = Harness::app(Size::new(300.0, 200.0), Counter::default());
-    harness.state_mut().value = 7;
+    harness.app_mut().value = 7;
     harness.run();
     harness.by_label("Value 7");
 }

@@ -87,6 +87,10 @@ fn polylines(path: &Path, pixel: f32) -> Vec<(Vec<Point>, bool)> {
                 continue;
             }
             Segment::Line(to) | Segment::Quad(_, to) | Segment::Cubic(_, _, to) => to,
+            _ => {
+                debug_assert!(false, "unhandled path segment {segment:?}");
+                continue;
+            }
         };
         // A segment with nothing before it starts where the last one ended.
         if !open {
@@ -99,7 +103,7 @@ fn polylines(path: &Path, pixel: f32) -> Vec<(Vec<Point>, bool)> {
             Segment::Cubic(first, second, to) => {
                 builder.cubic_bezier_to(point(first), point(second), point(to))
             }
-            Segment::Move(_) | Segment::Close => unreachable!(),
+            _ => unreachable!(),
         };
         last = to;
     }

@@ -57,7 +57,7 @@ fn property_msg(message: PropertyMsg) -> Message<Settings> {
                 s.shape.fill = *value;
                 s.changed.push(path.clone());
             }
-            PropertyMsg::Filter(_) | PropertyMsg::Group { .. } | PropertyMsg::NameShare(_) => {}
+            _ => {}
         }
     })
 }

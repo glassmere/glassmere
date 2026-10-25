@@ -4,6 +4,7 @@ use glassmere_scene::{Affine, Color, Point, Rect};
 use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Easing {
     Linear,
     EaseIn,
@@ -234,6 +235,7 @@ impl Keyframe {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Repeat {
     Once,
     Count(u32),

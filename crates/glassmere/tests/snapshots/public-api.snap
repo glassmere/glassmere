@@ -1032,7 +1032,6 @@ glassmere-core   fn TextDocument::redo(&mut self) -> bool
 glassmere-core   fn TextDocument::replace_range(&mut self, range: Range<usize>, text: &str) -> bool
 glassmere-core   fn TextDocument::replace_ranges(&mut self, mut edits: Vec<(Range<usize>, String)>) -> bool
 glassmere-core   fn TextDocument::revision(&self) -> u64
-glassmere-core   fn TextDocument::rope(&self) -> &Rope #[deprecated(note = "removed in 0.2: it exposes the ropey type")]
 glassmere-core   fn TextDocument::select_all(&mut self)
 glassmere-core   fn TextDocument::select_next_occurrence(&mut self) -> bool
 glassmere-core   fn TextDocument::selected_text(&self) -> String
@@ -1523,63 +1522,63 @@ glassmere-core const REPAINT_MIN_NODES: usize
 glassmere-core const TOKENS: [&str; 21]
 glassmere-core const TOOLTIP_DELAY: Duration
 glassmere-core const UNSTABLE_ID_FRAMES: u8
-glassmere-core enum Action #[derive(Clone, Debug)]
-glassmere-core enum Align #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+glassmere-core enum Action #[derive(Clone, Debug)] #[non_exhaustive]
+glassmere-core enum Align #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
 glassmere-core enum Axis #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-glassmere-core enum BlockKind #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-glassmere-core enum CaretMovement #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-glassmere-core enum CellEditor #[derive(Clone, Debug, PartialEq)]
-glassmere-core enum CellValue #[derive(Clone, Debug, PartialEq)]
-glassmere-core enum DateStyle #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-glassmere-core enum DiagnosticKind #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+glassmere-core enum BlockKind #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum CaretMovement #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum CellEditor #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core enum CellValue #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core enum DateStyle #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum DiagnosticKind #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)] #[non_exhaustive]
 glassmere-core enum Direction #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-glassmere-core enum DockAction #[derive(Clone, Debug, PartialEq)]
-glassmere-core enum DockArea #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-glassmere-core enum DockNode #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[derive(Clone, Debug, PartialEq)]
-glassmere-core enum DockPlace #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-glassmere-core enum DockTarget #[derive(Clone, Debug, PartialEq)]
-glassmere-core enum DockZone #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-glassmere-core enum DragOutcome #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-glassmere-core enum DragPayload #[derive(Clone, Debug, Eq, PartialEq)]
-glassmere-core enum DropKind #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-glassmere-core enum Easing #[derive(Clone, Copy, Debug, PartialEq)]
-glassmere-core enum EditorCommand #[derive(Clone, Copy, Debug, PartialEq)]
-glassmere-core enum Event #[derive(Clone, Debug)]
-glassmere-core enum FileKind #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-glassmere-core enum FindEdit #[derive(Clone, Debug, PartialEq)]
-glassmere-core enum GridMsg #[derive(Clone, Debug, PartialEq)]
-glassmere-core enum ImageFit #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-glassmere-core enum ImageSource #[derive(Clone, Debug, PartialEq)]
-glassmere-core enum ImageTint #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-glassmere-core enum Justify #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-glassmere-core enum Key #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-glassmere-core enum Length #[derive(Clone, Copy, Debug, Default, PartialEq)]
+glassmere-core enum DockAction #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core enum DockArea #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum DockNode #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core enum DockPlace #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum DockTarget #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core enum DockZone #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum DragOutcome #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum DragPayload #[derive(Clone, Debug, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum DropKind #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum Easing #[derive(Clone, Copy, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core enum EditorCommand #[derive(Clone, Copy, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core enum Event #[derive(Clone, Debug)] #[non_exhaustive]
+glassmere-core enum FileKind #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum FindEdit #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core enum GridMsg #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core enum ImageFit #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum ImageSource #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core enum ImageTint #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum Justify #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum Key #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)] #[non_exhaustive]
+glassmere-core enum Length #[derive(Clone, Copy, Debug, Default, PartialEq)] #[non_exhaustive]
 glassmere-core enum Live #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-glassmere-core enum Mark #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-glassmere-core enum MenuEntry #[derive(Clone, Debug, PartialEq)]
+glassmere-core enum Mark #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum MenuEntry #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
 glassmere-core enum MessageArg #[derive(Clone, Debug, PartialEq)]
-glassmere-core enum ModelError #[derive(Clone, Debug, Eq, PartialEq)]
-glassmere-core enum Motion #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-glassmere-core enum PropertyMsg #[derive(Clone, Debug, PartialEq)]
-glassmere-core enum Repeat #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+glassmere-core enum ModelError #[derive(Clone, Debug, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum Motion #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum PropertyMsg #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core enum Repeat #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
 glassmere-core enum ResizeEdge #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-glassmere-core enum RichMotion #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-glassmere-core enum RichOp #[derive(Clone, Debug, PartialEq)]
-glassmere-core enum Role #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-glassmere-core enum Severity #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-glassmere-core enum ShortcutKey #[derive(Clone, Debug, Eq, Hash, PartialEq)]
+glassmere-core enum RichMotion #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum RichOp #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core enum Role #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum Severity #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)] #[non_exhaustive]
+glassmere-core enum ShortcutKey #[derive(Clone, Debug, Eq, Hash, PartialEq)] #[non_exhaustive]
 glassmere-core enum SortDirection #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-glassmere-core enum StateKind #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+glassmere-core enum StateKind #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
 glassmere-core enum SwipeDirection #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-glassmere-core enum TextEdit #[derive(Clone, Debug)]
-glassmere-core enum TextMove #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-glassmere-core enum TextOp #[derive(Clone, Debug, PartialEq)]
-glassmere-core enum ToastKind #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-glassmere-core enum TouchPhase #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-glassmere-core enum Track #[derive(Clone, Debug, PartialEq)]
-glassmere-core enum TrackSize #[derive(Clone, Copy, Debug, PartialEq)]
-glassmere-core enum UiEvent #[derive(Clone, Debug, PartialEq)]
-glassmere-core enum WindowCommand #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+glassmere-core enum TextEdit #[derive(Clone, Debug)] #[non_exhaustive]
+glassmere-core enum TextMove #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum TextOp #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core enum ToastKind #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum TouchPhase #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core enum Track #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core enum TrackSize #[derive(Clone, Copy, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core enum UiEvent #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core enum WindowCommand #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
 glassmere-core fn message_channel<T>(capacity: usize, wake: impl Fn() -> bool + Send + Sync + 'static) -> (MessageSender<T>, Mailbox<T>)
 glassmere-core fn suggest<'a>(typed: &str, candidates: &[&'a str], limit: usize) -> Vec<&'a str>
 glassmere-core fn text_matches(cell: &str, filter: &str) -> bool
@@ -1601,6 +1600,7 @@ glassmere-core impl ::core::ops::Sub for Dirty
 glassmere-core impl ::core::ops::SubAssign for Dirty
 glassmere-core impl Default for CodeEditorOptions<'_>
 glassmere-core impl Default for Context
+glassmere-core impl Default for DialogOptions
 glassmere-core impl Default for DockOptions
 glassmere-core impl Default for GestureResponse
 glassmere-core impl Default for Indentation
@@ -1690,7 +1690,7 @@ glassmere-core struct Button<M = ()> #[derive(Clone, Debug)] (private fields)
 glassmere-core struct Cancel #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct Clip #[derive(Clone, Debug, Default, PartialEq)]
 glassmere-core struct CodeEditorOptions<'a>
-glassmere-core struct CollectionInfo #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+glassmere-core struct CollectionInfo #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
 glassmere-core struct ComboBox #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct Command #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct CommandPalette<M = ()> (private fields)
@@ -1702,13 +1702,13 @@ glassmere-core struct DialogOptions #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct Dirty #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] (private fields)
 glassmere-core struct DockFloat #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct DockLayout #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[derive(Clone, Debug, Default, PartialEq)]
-glassmere-core struct DockLayoutError #[derive(Clone, Debug, Eq, PartialEq)]
+glassmere-core struct DockLayoutError #[derive(Clone, Debug, Eq, PartialEq)] #[non_exhaustive]
 glassmere-core struct DockOptions #[derive(Clone, Debug)]
 glassmere-core struct DockPanel #[derive(Clone, Debug, Eq, PartialEq)]
 glassmere-core struct DockTabs #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[derive(Clone, Debug, Default, PartialEq)]
 glassmere-core struct DockWindow #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct DockWindowId #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-glassmere-core struct DragInfo #[derive(Clone, Copy, Debug)]
+glassmere-core struct DragInfo #[derive(Clone, Copy, Debug)] #[non_exhaustive]
 glassmere-core struct DragSourceBuilder<M = ()> (private fields)
 glassmere-core struct DropTargetBuilder<M = ()> (private fields)
 glassmere-core struct Effect #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1717,12 +1717,12 @@ glassmere-core struct EventArea #[derive(Clone, Copy, Debug, Default, Eq, Partia
 glassmere-core struct FileRequest #[derive(Clone, Debug, Default, Eq, PartialEq)]
 glassmere-core struct FindState #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct FocusScope #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-glassmere-core struct FrameDiagnostic #[derive(Clone, Debug, PartialEq)]
-glassmere-core struct FrameStats #[derive(Clone, Copy, Debug, Default)]
+glassmere-core struct FrameDiagnostic #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core struct FrameStats #[derive(Clone, Copy, Debug, Default)] #[non_exhaustive]
 glassmere-core struct GestureBuilder<M = ()> (private fields)
-glassmere-core struct GestureResponse #[derive(Clone, Copy, Debug, PartialEq)]
+glassmere-core struct GestureResponse #[derive(Clone, Copy, Debug, PartialEq)] #[non_exhaustive]
 glassmere-core struct Gradient #[derive(Clone, Debug, PartialEq)]
-glassmere-core struct GraphNode #[derive(Clone, Debug, Eq, PartialEq)]
+glassmere-core struct GraphNode #[derive(Clone, Debug, Eq, PartialEq)] #[non_exhaustive]
 glassmere-core struct GridArea #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 glassmere-core struct GridColumn #[derive(Clone, Debug)]
 glassmere-core struct GridColumns #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[derive(Clone, Debug, Default, PartialEq)]
@@ -1739,28 +1739,28 @@ glassmere-core struct ListState #[derive(Clone, Debug, Default)] (private fields
 glassmere-core struct Mailbox<T> (private fields)
 glassmere-core struct Marks #[derive(Clone, Debug, Default, Eq, PartialEq)]
 glassmere-core struct Memo<T> (private fields)
-glassmere-core struct MemoryReport #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+glassmere-core struct MemoryReport #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
 glassmere-core struct Menu #[derive(Clone, Debug, Default, PartialEq)]
 glassmere-core struct MenuItem #[derive(Clone, Debug, Eq, PartialEq)]
 glassmere-core struct MessageSender<T> (private fields)
-glassmere-core struct NodeDetails #[derive(Clone, Debug)]
+glassmere-core struct NodeDetails #[derive(Clone, Debug)] #[non_exhaustive]
 glassmere-core struct NodeId #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-glassmere-core struct NodeSnapshot #[derive(Clone, Debug)]
+glassmere-core struct NodeSnapshot #[derive(Clone, Debug)] #[non_exhaustive]
 glassmere-core struct Notification #[derive(Clone, Debug, Default, Eq, PartialEq)]
 glassmere-core struct NumberOptions #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct NumericValue #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-core struct Pacing #[derive(Default)] (private fields)
 glassmere-core struct Paint #[derive(Clone, Copy, Debug, Default, PartialEq)]
-glassmere-core struct Pen #[derive(Clone, Copy, Debug, Default, PartialEq)]
+glassmere-core struct Pen #[derive(Clone, Copy, Debug, Default, PartialEq)] #[non_exhaustive]
 glassmere-core struct PopoverOptions #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct PropertyGrid<'a, 'u, M: 'static = ()> (private fields)
 glassmere-core struct PropertyGridOptions #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct PropertyGridState #[derive(Clone, Debug, PartialEq)]
-glassmere-core struct ResolvedText #[derive(Clone, Debug, PartialEq)]
+glassmere-core struct ResolvedText #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
 glassmere-core struct Response<'a> #[derive(Clone, Copy, Default)] (private fields)
 glassmere-core struct RichDocument #[derive(Clone, Debug)] (private fields)
 glassmere-core struct RichEditorOptions #[derive(Clone, Debug, PartialEq)]
-glassmere-core struct RichEditorResponse #[derive(Clone, Debug, Default, Eq, PartialEq)]
+glassmere-core struct RichEditorResponse #[derive(Clone, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
 glassmere-core struct RichPosition #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 glassmere-core struct RichRun #[derive(Clone, Debug, Default, PartialEq)]
 glassmere-core struct RichText #[derive(Clone, Debug, Default, PartialEq)]
@@ -1775,8 +1775,8 @@ glassmere-core struct StateStyles #[derive(Clone, Debug, Default, PartialEq)]
 glassmere-core struct Store #[derive(Clone, Default)] (private fields)
 glassmere-core struct Style #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct StyleSheet #[derive(Clone, Debug, Default, PartialEq)] (private fields)
-glassmere-core struct StyleSheetError #[derive(Clone, Debug, Eq, PartialEq)]
-glassmere-core struct Swipe #[derive(Clone, Copy, Debug, PartialEq)]
+glassmere-core struct StyleSheetError #[derive(Clone, Debug, Eq, PartialEq)] #[non_exhaustive]
+glassmere-core struct Swipe #[derive(Clone, Copy, Debug, PartialEq)] #[non_exhaustive]
 glassmere-core struct Tab #[derive(Clone, Debug, Eq, PartialEq)]
 glassmere-core struct TaskSender<K, T> (private fields)
 glassmere-core struct Tasks<K, T> (private fields)
@@ -1797,7 +1797,7 @@ glassmere-core struct TreeModel (private fields)
 glassmere-core struct Ui<'a, M: 'static = ()> (private fields)
 glassmere-core struct VirtualListOptions #[derive(Clone, Debug)]
 glassmere-core struct WidgetBuilder<F, M = ()> (private fields)
-glassmere-core struct WidgetInput #[derive(Clone, Debug, Default, PartialEq)]
+glassmere-core struct WidgetInput #[derive(Clone, Debug, Default, PartialEq)] #[non_exhaustive]
 glassmere-core struct WindowId #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 glassmere-core struct WindowInfo #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-core struct WindowRequest #[derive(Clone, Debug, Default, PartialEq)]
@@ -2146,11 +2146,12 @@ glassmere-scene   variant Segment::Quad(Point, Point)
 glassmere-scene   variant TextWrap::None
 glassmere-scene   variant TextWrap::Word
 glassmere-scene enum Affinity #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-glassmere-scene enum FontFamily #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
-glassmere-scene enum Primitive #[derive(Clone, Debug, PartialEq)]
-glassmere-scene enum Segment #[derive(Clone, Copy, Debug, PartialEq)]
-glassmere-scene enum TextWrap #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+glassmere-scene enum FontFamily #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)] #[non_exhaustive]
+glassmere-scene enum Primitive #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-scene enum Segment #[derive(Clone, Copy, Debug, PartialEq)] #[non_exhaustive]
+glassmere-scene enum TextWrap #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)] #[non_exhaustive]
 glassmere-scene impl Default for Affine
+glassmere-scene impl Default for Stroke
 glassmere-scene impl Default for TextStyle
 glassmere-scene impl PartialEq for Image
 glassmere-scene impl TextMeasurer for MonospaceMeasurer
@@ -2264,12 +2265,12 @@ glassmere-render-wgpu   fn Renderer::timestamps_supported(&self) -> bool
 glassmere-render-wgpu   fn Renderer::with_text_system(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, text_system: TextSystem) -> Self
 glassmere-render-wgpu const MAX_GRADIENT_STOPS: usize
 glassmere-render-wgpu const MAX_TIMED_PASSES: usize
-glassmere-render-wgpu struct CustomDraw<'a>
-glassmere-render-wgpu struct DriverMemory #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-glassmere-render-wgpu struct GpuPassTime #[derive(Clone, Debug, Eq, PartialEq)]
-glassmere-render-wgpu struct GpuProfile #[derive(Clone, Debug, Eq, PartialEq)]
-glassmere-render-wgpu struct MemoryStats #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-glassmere-render-wgpu struct RenderStats #[derive(Clone, Copy, Debug, Default)]
+glassmere-render-wgpu struct CustomDraw<'a> #[non_exhaustive]
+glassmere-render-wgpu struct DriverMemory #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
+glassmere-render-wgpu struct GpuPassTime #[derive(Clone, Debug, Eq, PartialEq)] #[non_exhaustive]
+glassmere-render-wgpu struct GpuProfile #[derive(Clone, Debug, Eq, PartialEq)] #[non_exhaustive]
+glassmere-render-wgpu struct MemoryStats #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
+glassmere-render-wgpu struct RenderStats #[derive(Clone, Copy, Debug, Default)] #[non_exhaustive]
 glassmere-render-wgpu struct Renderer (private fields)
 glassmere-render-wgpu type CustomDrawFn = Box<dyn FnMut(CustomDraw<'_>)>
 glassmere-render-wgpu type RenderResult<T> = Result<T, Box<dyn Error>>
@@ -2294,7 +2295,7 @@ glassmere-render-cpu   fn CpuRenderer::with_text_system(text: TextSystem) -> Sel
 glassmere-render-cpu const MAX_GRADIENT_STOPS: usize
 glassmere-render-cpu impl Default for CpuRenderer
 glassmere-render-cpu struct CpuRenderer (private fields)
-glassmere-render-cpu struct CpuStats #[derive(Clone, Copy, Debug, Default)]
+glassmere-render-cpu struct CpuStats #[derive(Clone, Copy, Debug, Default)] #[non_exhaustive]
 glassmere-winit   field AppOptions::background: Option<Color>
 glassmere-winit   field AppOptions::caret_movement: glassmere_core::CaretMovement
 glassmere-winit   field AppOptions::decorations: bool
@@ -2339,11 +2340,11 @@ glassmere-winit   variant ThemeChoice::Fixed(Theme)
 glassmere-winit   variant ThemeChoice::System
 glassmere-winit const hot::STATE_ENV: &str
 glassmere-winit const hot::STOP_ENV: &str
-glassmere-winit enum DirectionChoice #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-glassmere-winit enum GpuMemoryPolicy #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-glassmere-winit enum GraphicsBackend #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-glassmere-winit enum Placement #[derive(Clone, Debug, Default, Eq, PartialEq)]
-glassmere-winit enum ThemeChoice #[derive(Clone, Debug, PartialEq)]
+glassmere-winit enum DirectionChoice #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
+glassmere-winit enum GpuMemoryPolicy #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
+glassmere-winit enum GraphicsBackend #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
+glassmere-winit enum Placement #[derive(Clone, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
+glassmere-winit enum ThemeChoice #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
 glassmere-winit fn hot::active() -> bool
 glassmere-winit fn hot::saved_state() -> Option<String>
 glassmere-winit fn locale_direction(locale: &str) -> glassmere_core::Direction
@@ -2385,7 +2386,6 @@ glassmere-testing   fn Harness::snapshot_layout(&self) -> String [impl<S> Harnes
 glassmere-testing   fn Harness::snapshot_scene(&self) -> String [impl<S> Harness<S>]
 glassmere-testing   fn Harness::snapshot_tree(&self) -> String [impl<S> Harness<S>]
 glassmere-testing   fn Harness::state(&self) -> &S [impl<S> Harness<S>]
-glassmere-testing   fn Harness::state_mut(&mut self) -> &mut A #[deprecated(note = "use `app_mut`")] [impl<A: App> Harness<A>]
 glassmere-testing   fn Harness::stats(&self) -> FrameStats [impl<S> Harness<S>]
 glassmere-testing   fn Harness::type_text(&mut self, text: &str) -> FrameStats [impl<S> Harness<S>]
 glassmere-testing fn assert_snapshot(dir: impl AsRef<Path>, name: &str, actual: &str)
@@ -2478,18 +2478,18 @@ glassmere-devtools   variant Tab::Gpu
 glassmere-devtools   variant Tab::Scene
 glassmere-devtools   variant Tab::State
 glassmere-devtools   variant Tab::Tree
-glassmere-devtools enum InspectorMsg #[derive(Clone, Debug, PartialEq)]
-glassmere-devtools enum Tab #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+glassmere-devtools enum InspectorMsg #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-devtools enum Tab #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
 glassmere-devtools impl Default for Inspector
 glassmere-devtools impl Default for InspectorModel
-glassmere-devtools struct EventRecord #[derive(Clone, Debug)]
-glassmere-devtools struct FrameRecord #[derive(Clone, Copy, Debug)]
+glassmere-devtools struct EventRecord #[derive(Clone, Debug)] #[non_exhaustive]
+glassmere-devtools struct FrameRecord #[derive(Clone, Copy, Debug)] #[non_exhaustive]
 glassmere-devtools struct GpuSnapshot #[derive(Clone, Debug, Default, PartialEq)]
-glassmere-devtools struct InspectedNode #[derive(Clone, Debug)]
+glassmere-devtools struct InspectedNode #[derive(Clone, Debug)] #[non_exhaustive]
 glassmere-devtools struct Inspector (private fields)
 glassmere-devtools struct InspectorModel #[derive(Clone, Debug)] (private fields)
-glassmere-devtools struct InspectorResponse #[derive(Clone, Debug, Default)]
-glassmere-devtools struct LayerRow #[derive(Clone, Copy, Debug, PartialEq)]
+glassmere-devtools struct InspectorResponse #[derive(Clone, Debug, Default)] #[non_exhaustive]
+glassmere-devtools struct LayerRow #[derive(Clone, Copy, Debug, PartialEq)] #[non_exhaustive]
 glassmere-devtools struct Recorder (private fields)
 glassmere-image   fn Loader::finished(&self) -> impl Iterator<Item = (PathBuf, Result<Image, String>)> + '_
 glassmere-image   fn Loader::new(done: impl Fn() + Send + 'static) -> Self
@@ -2522,7 +2522,7 @@ glassmere-fluent const FRAMEWORK_CATALOGS: &[(&str, &str)]
 glassmere-fluent impl Messages for FluentMessages
 glassmere-fluent impl std::error::Error for FluentError
 glassmere-fluent impl std::fmt::Display for FluentError
-glassmere-fluent struct FluentError #[derive(Clone, Debug, Eq, PartialEq)]
+glassmere-fluent struct FluentError #[derive(Clone, Debug, Eq, PartialEq)] #[non_exhaustive]
 glassmere-fluent struct FluentMessages (private fields)
 glassmere-icu   fn IcuFormat::locale(&self) -> &str
 glassmere-icu   fn IcuFormat::new(locale: &str) -> Result<Self, String>

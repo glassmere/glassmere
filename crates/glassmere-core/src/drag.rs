@@ -2,6 +2,7 @@ use crate::{ItemId, NodeId};
 use glassmere_scene::Point;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DropKind {
     Text,
     Item,
@@ -11,6 +12,7 @@ pub enum DropKind {
 /// In-process payloads. Dropping reports data; the app decides whether to copy,
 /// move, load, or reject it. File payloads never trigger filesystem operations.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DragPayload {
     Text(String),
     Item { domain: String, id: ItemId },
@@ -30,6 +32,7 @@ impl DragPayload {
 /// framework never touches the dragged files; an app that moves rather than
 /// copies acts on `Dropped` itself.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DragOutcome {
     /// Another application, or another window, accepted the payload.
     Dropped,
@@ -37,6 +40,7 @@ pub enum DragOutcome {
 }
 
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub struct DragInfo {
     pub source: bool,
     pub can_drop: bool,

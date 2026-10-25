@@ -2,6 +2,7 @@ use super::*;
 
 /// What a framework diagnostic is about.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum DiagnosticKind {
     /// A container's children are destroyed and recreated frame after frame,
     /// which loses focus, scroll and editing state: their keys are not stable.
@@ -30,6 +31,7 @@ pub enum DiagnosticKind {
 /// One framework warning. Repeats of the same kind on the same node count up
 /// instead of adding entries.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct FrameDiagnostic {
     pub kind: DiagnosticKind,
     pub node: Option<NodeId>,

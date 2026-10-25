@@ -28,6 +28,7 @@ const DOUBLE_TAP_NEAR: f32 = 24.0;
 const SWIPE_SPEED: f32 = 350.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum TouchPhase {
     Started,
     Moved,
@@ -38,6 +39,7 @@ pub enum TouchPhase {
 
 /// A quick flick over a gesture area, reported when the finger lifts.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct Swipe {
     pub direction: SwipeDirection,
     /// Logical pixels a second.
@@ -55,6 +57,7 @@ pub enum SwipeDirection {
 /// What a pen reports besides where it is. No desktop backend gives these
 /// today; the contact carries them for one that does.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[non_exhaustive]
 pub struct Pen {
     /// Away from straight up, in degrees, along each axis.
     pub tilt_x: f32,
@@ -82,6 +85,7 @@ enum Mode {
 /// finger pans; two also scale and turn; a pinch on a trackpad and Ctrl with
 /// the wheel scale about the pointer.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct GestureResponse {
     /// Fingers are down in the area.
     pub active: bool,

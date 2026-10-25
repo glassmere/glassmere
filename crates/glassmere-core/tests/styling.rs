@@ -2,7 +2,7 @@ mod support;
 
 use glassmere_core::{
     Action, Context, Event, FontFamily, FrameStats, Length, MonospaceMeasurer, Paint, Style,
-    StyleSheet, StyleSheetError, TextWrap, Theme, Ui, WindowId, WindowRequest,
+    StyleSheet, TextWrap, Theme, Ui, WindowId, WindowRequest,
 };
 use glassmere_core::{Button, Label};
 use glassmere_scene::{Color, Point, Primitive, Size};
@@ -279,12 +279,10 @@ fn stylesheets_parse_themes_tokens_classes_and_report_errors_with_lines() {
     assert_eq!(sheet.classes().count(), 2);
 
     let error = |text: &str| StyleSheet::parse(text).unwrap_err();
+    let unknown = error("theme dark\ntoken nope #ffffff");
     assert_eq!(
-        error("theme dark\ntoken nope #ffffff"),
-        StyleSheetError {
-            line: 2,
-            message: "unknown token `nope`".into()
-        }
+        (unknown.line, unknown.message.as_str()),
+        (2, "unknown token `nope`")
     );
     // Tokens without a base theme overlay whichever theme is active.
     let overlay = StyleSheet::parse("token accent #ff00ff").unwrap();

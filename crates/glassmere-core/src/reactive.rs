@@ -58,6 +58,7 @@ pub(crate) fn declaring<R>(panics: bool, declare: impl FnOnce() -> R) -> (R, Vec
 
 /// What a value in a [`Store`] is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum StateKind {
     /// Held, and changed from outside.
     Signal,
@@ -67,6 +68,7 @@ pub enum StateKind {
 
 /// One value in the graph, as [`Store::graph`] reports it.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct GraphNode {
     pub name: String,
     pub kind: StateKind,

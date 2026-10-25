@@ -41,6 +41,10 @@ mod enabled {
             FileKind::OpenMany => dialog.pick_files().unwrap_or_default(),
             FileKind::Save => dialog.save_file().into_iter().collect(),
             FileKind::Directory => dialog.pick_folder().into_iter().collect(),
+            other => {
+                debug_assert!(false, "unhandled file dialog {other:?}");
+                Vec::new()
+            }
         }
     }
 
@@ -128,6 +132,10 @@ mod enabled {
                         let borrowed: Vec<&dyn muda::IsMenuItem> =
                             inside.iter().map(AsRef::as_ref).collect();
                         Box::new(muda::Submenu::with_items(label, true, &borrowed).ok()?)
+                    }
+                    other => {
+                        debug_assert!(false, "unhandled menu entry {other:?}");
+                        return None;
                     }
                 })
             })

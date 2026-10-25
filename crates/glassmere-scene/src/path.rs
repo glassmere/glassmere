@@ -23,6 +23,7 @@ pub struct Path {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Segment {
     Move(Point),
     Line(Point),
@@ -39,6 +40,16 @@ pub enum Segment {
 pub struct Stroke {
     pub width: f32,
     pub color: Color,
+}
+
+/// One pixel of opaque black.
+impl Default for Stroke {
+    fn default() -> Self {
+        Self {
+            width: 1.0,
+            color: Color(0, 0, 0, 255),
+        }
+    }
 }
 
 impl Path {
