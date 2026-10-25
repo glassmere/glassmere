@@ -223,6 +223,27 @@ impl Editor {
         })
     }
 
+    /// What assistive technology reads: the text as shown, its shaping and
+    /// the selection in the offsets of that text. A password gives nothing,
+    /// and so does a field that has not been shaped for what it shows.
+    pub(crate) fn readable(&self) -> Option<(String, &TextGeometry, TextSelection)> {
+        let shown = self.shown();
+        if self.masked || self.geometry_key.as_ref().is_none_or(|key| key.0 != shown) {
+            return None;
+        }
+        let selection = match self.composition_range() {
+            Some(range) => {
+                let caret = self.display_cursor().unwrap_or(range.end);
+                TextSelection {
+                    anchor: caret,
+                    cursor: caret,
+                }
+            }
+            None => self.selection,
+        };
+        Some((shown, &self.geometry, selection))
+    }
+
     pub fn display_cursor(&self) -> Option<usize> {
         match &self.composition {
             Some(composition) => composition.selection.map(|(_, cursor)| {

@@ -1,8 +1,240 @@
 use accesskit::{
-    Action, ActionData, ActionRequest, Node, NodeId, Rect, Role, ScrollUnit, TreeId, TreeInfo,
-    TreeUpdate,
+    Action, ActionData, ActionRequest, Node, NodeId, Rect, Role, ScrollUnit, TextDirection,
+    TextPosition, TextSelection, TreeId, TreeInfo, TreeUpdate,
 };
-use glassmere_core::{Action as CoreAction, Context, NodeId as CoreNodeId, Role as CoreRole};
+use glassmere_core::{
+    Action as CoreAction, Context, EditorPoint, EditorText, NodeId as CoreNodeId, Role as CoreRole,
+};
+use std::ops::Range;
+
+/// Text runs take ids no node of the tree has: the top bit, the editor they
+/// belong to, the paragraph, the wrapped line of the paragraph and the piece
+/// of the line. They name text, not a place in the list, so a line keeps its
+/// id when others scroll out of the declared window or are inserted around it.
+/// A part that does not fit its bits stops at the largest value, and runs
+/// that then share an id are left out.
+const RUN_ID: u64 = 1 << 63;
+const OWNER_BITS: u32 = 24;
+const PARAGRAPH_BITS: u32 = 22;
+const WRAP_BITS: u32 = 9;
+const PIECE_BITS: u32 = 8;
+
+/// The platform tree indexes the characters and word starts of a run in a
+/// byte, so a longer line is cut into several runs.
+const RUN_CHARACTERS: usize = 255;
+
+/// A stretch of the characters of one line of an editor.
+struct Run {
+    id: NodeId,
+    line: usize,
+    characters: Range<usize>,
+}
+
+fn run_id(owner: CoreNodeId, paragraph: usize, wrap: usize, piece: usize) -> NodeId {
+    let part = |value: u64, bits: u32| value.min((1 << bits) - 1);
+    let mut id = part(owner.0, OWNER_BITS);
+    id = id << PARAGRAPH_BITS | part(paragraph as u64, PARAGRAPH_BITS);
+    id = id << WRAP_BITS | part(wrap as u64, WRAP_BITS);
+    id = id << PIECE_BITS | part(piece as u64, PIECE_BITS);
+    NodeId(RUN_ID | id)
+}
+
+fn runs(owner: CoreNodeId, text: &EditorText) -> Vec<Run> {
+    let mut runs: Vec<Run> = Vec::new();
+    let mut wrap = 0;
+    for (line, entry) in text.lines.iter().enumerate() {
+        wrap = match line.checked_sub(1).map(|before| &text.lines[before]) {
+            Some(before) if before.paragraph == entry.paragraph => wrap + 1,
+            _ => 0,
+        };
+        let count = entry.characters.len();
+        let mut from = 0;
+        let mut piece = 0;
+        loop {
+            let to = (from + RUN_CHARACTERS).min(count);
+            let id = run_id(owner, entry.paragraph, wrap, piece);
+            if runs.last().is_none_or(|last| last.id != id) {
+                runs.push(Run {
+                    id,
+                    line,
+                    characters: from..to,
+                });
+            }
+            if to == count {
+                break;
+            }
+            from = to;
+            piece += 1;
+        }
+    }
+    runs
+}
+
+/// Where the run nodes are, as the platform expects a selection.
+fn text_position(text: &EditorText, runs: &[Run], point: EditorPoint) -> Option<TextPosition> {
+    let of_paragraph = |line: &&glassmere_core::EditorLine| line.paragraph == point.paragraph;
+    let line = text
+        .lines
+        .iter()
+        .rposition(|line| of_paragraph(&line) && line.start <= point.byte)
+        .or_else(|| text.lines.iter().rposition(|line| of_paragraph(&line)))?;
+    let entry = &text.lines[line];
+    let offset = point.byte.saturating_sub(entry.start);
+    let (mut index, mut at) = (0, 0);
+    for character in &entry.characters {
+        if at >= offset {
+            break;
+        }
+        at += character.len;
+        index += 1;
+    }
+    let count = entry.characters.len();
+    let run = runs.iter().position(|run| {
+        run.line == line
+            && index >= run.characters.start
+            && (index < run.characters.end || run.characters.end == count)
+    })?;
+    Some(TextPosition {
+        node: runs[run].id,
+        character_index: index - runs[run].characters.start,
+    })
+}
+
+/// The place in the editor a position of the platform stands for.
+fn editor_point(text: &EditorText, runs: &[Run], position: TextPosition) -> Option<EditorPoint> {
+    let run = runs.iter().find(|run| run.id == position.node)?;
+    let line = run.line;
+    let entry = &text.lines[line];
+    let index = (run.characters.start + position.character_index).min(entry.characters.len());
+    let byte: usize = entry.characters[..index]
+        .iter()
+        .map(|character| character.len)
+        .sum();
+    // The line break that ends a paragraph is a character of its last line,
+    // and the place after it is the start of the next paragraph.
+    let last_of_paragraph = text
+        .lines
+        .get(line + 1)
+        .is_none_or(|next| next.paragraph != entry.paragraph);
+    Some(
+        if last_of_paragraph && entry.text.ends_with('\n') && byte == entry.text.len() {
+            EditorPoint {
+                paragraph: entry.paragraph + 1,
+                byte: 0,
+            }
+        } else {
+            EditorPoint {
+                paragraph: entry.paragraph,
+                byte: entry.start + byte,
+            }
+        },
+    )
+}
+
+/// The text run nodes of an editor and the selection in them.
+fn text_runs(
+    owner: CoreNodeId,
+    text: &EditorText,
+    scale: f64,
+) -> (Vec<(NodeId, Node)>, Option<TextSelection>) {
+    let runs = runs(owner, text);
+    let nodes = runs
+        .iter()
+        .enumerate()
+        .map(|(index, run)| {
+            let entry = &text.lines[run.line];
+            let characters = &entry.characters[run.characters.clone()];
+            // Byte offset of each character of the line, and the end.
+            let mut starts = Vec::with_capacity(entry.characters.len() + 1);
+            let mut at = 0;
+            for character in &entry.characters {
+                starts.push(at);
+                at += character.len;
+            }
+            starts.push(at);
+            let bytes = starts[run.characters.start]..starts[run.characters.end];
+            let mut node = Node::new(Role::TextRun);
+            node.set_value(&entry.text[bytes.clone()]);
+            node.set_character_lengths(
+                characters
+                    .iter()
+                    .map(|character| character.len as u8)
+                    .collect::<Vec<_>>(),
+            );
+            let bounds = entry.bounds;
+            let (first, last) = characters.iter().fold((f32::MAX, f32::MIN), |(a, b), c| {
+                (a.min(c.position), b.max(c.position + c.width))
+            });
+            let (first, last) = if characters.is_empty() {
+                (0.0, 0.0)
+            } else {
+                (first, last)
+            };
+            // Positions are measured from the edge a line starts at.
+            let (left, right) = if entry.rtl {
+                (
+                    bounds.x + bounds.width - last,
+                    bounds.x + bounds.width - first,
+                )
+            } else {
+                (bounds.x + first, bounds.x + last)
+            };
+            node.set_bounds(Rect {
+                x0: f64::from(left) * scale,
+                y0: f64::from(bounds.y) * scale,
+                x1: f64::from(right) * scale,
+                y1: f64::from(bounds.y + bounds.height) * scale,
+            });
+            node.set_character_positions(
+                characters
+                    .iter()
+                    .map(|c| ((c.position - first) as f64 * scale) as f32)
+                    .collect::<Vec<_>>(),
+            );
+            node.set_character_widths(
+                characters
+                    .iter()
+                    .map(|c| (f64::from(c.width) * scale) as f32)
+                    .collect::<Vec<_>>(),
+            );
+            node.set_word_starts(
+                entry
+                    .word_starts
+                    .iter()
+                    .filter_map(|start| starts.binary_search(start).ok())
+                    .filter(|character| run.characters.contains(character))
+                    .map(|character| (character - run.characters.start) as u8)
+                    .collect::<Vec<_>>(),
+            );
+            node.set_text_direction(if entry.rtl {
+                TextDirection::RightToLeft
+            } else {
+                TextDirection::LeftToRight
+            });
+            if index > 0 && runs[index - 1].line == run.line {
+                node.set_previous_on_line(runs[index - 1].id);
+            }
+            if runs
+                .get(index + 1)
+                .is_some_and(|next| next.line == run.line)
+            {
+                node.set_next_on_line(runs[index + 1].id);
+            }
+            (run.id, node)
+        })
+        .collect();
+    let selection = text.selection.and_then(|selection| {
+        text_position(text, &runs, selection.anchor).zip(text_position(
+            text,
+            &runs,
+            selection.focus,
+        ))
+    });
+    (
+        nodes,
+        selection.map(|(anchor, focus)| TextSelection { anchor, focus }),
+    )
+}
 
 pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
     let root = context.root();
@@ -23,7 +255,11 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
         .unwrap_or(root);
     let nodes = snapshots
         .into_iter()
-        .map(|snapshot| {
+        .flat_map(|snapshot| {
+            let (runs, selection) = context
+                .editor_text(snapshot.id)
+                .map(|text| text_runs(snapshot.id, &text, scale))
+                .unwrap_or_default();
             let role = if snapshot.id == root {
                 Role::Window
             } else {
@@ -33,6 +269,7 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     CoreRole::Button | CoreRole::MenuButton => Role::Button,
                     CoreRole::ScrollView => Role::ScrollView,
                     CoreRole::TextInput => Role::TextInput,
+                    CoreRole::MultilineTextInput => Role::MultilineTextInput,
                     CoreRole::PasswordInput => Role::PasswordInput,
                     CoreRole::Checkbox => Role::CheckBox,
                     CoreRole::Radio => Role::RadioButton,
@@ -74,7 +311,7 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
             });
             // Popups escape their owner's bounds and intermediate layout groups.
             // Only viewport/scroll containers clip the platform subtree.
-            if snapshot.id == root || snapshot.scroll.is_some() {
+            if snapshot.id == root || snapshot.scroll.is_some() || !runs.is_empty() {
                 node.set_clips_children();
             }
             node.set_children(
@@ -84,8 +321,15 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     .filter(|id| !popups.contains(id))
                     .chain(popups.iter().filter(|_| snapshot.id == root))
                     .map(|id| NodeId(id.0))
+                    .chain(runs.iter().map(|(id, _)| *id))
                     .collect::<Vec<_>>(),
             );
+            if let Some(selection) = selection {
+                node.set_text_selection(selection);
+                if !snapshot.semantics.disabled {
+                    node.add_action(Action::SetTextSelection);
+                }
+            }
             if snapshot.id == root {
                 node.set_label(title);
             } else if role == Role::Label {
@@ -286,7 +530,7 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                 }
                 node.add_action(Action::SetScrollOffset);
             }
-            (NodeId(snapshot.id.0), node)
+            std::iter::once((NodeId(snapshot.id.0), node)).chain(runs)
         })
         .collect();
     TreeUpdate {
@@ -310,6 +554,22 @@ pub(crate) fn action(context: &mut Context, request: ActionRequest, scale: f64) 
             Some(ActionData::NumericValue(value)) => CoreAction::SetNumber(value),
             _ => return false,
         },
+        Action::SetTextSelection => {
+            let Some(ActionData::SetTextSelection(selection)) = request.data else {
+                return false;
+            };
+            let Some(text) = context.editor_text(target) else {
+                return false;
+            };
+            let runs = runs(target, &text);
+            let (Some(anchor), Some(focus)) = (
+                editor_point(&text, &runs, selection.anchor),
+                editor_point(&text, &runs, selection.focus),
+            ) else {
+                return false;
+            };
+            CoreAction::SetSelection { anchor, focus }
+        }
         Action::Increment => CoreAction::Increment,
         Action::Decrement => CoreAction::Decrement,
         Action::Expand => CoreAction::Expand,
@@ -364,8 +624,450 @@ pub(crate) fn action(context: &mut Context, request: ActionRequest, scale: f64) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use glassmere_core::{Button, Length, MonospaceMeasurer, Style};
+    use glassmere_core::{
+        Button, CodeEditorOptions, EditorPoint, ItemId, Length, ListModel, ListState,
+        MonospaceMeasurer, Style, TextDocument, TextEdit, TextInput, TreeItem, TreeModel,
+        VirtualListOptions,
+    };
     use glassmere_scene::Size;
+    use std::{cell::RefCell, rc::Rc};
+
+    fn node_in(update: &TreeUpdate, id: NodeId) -> &Node {
+        &update.nodes.iter().find(|(key, _)| *key == id).unwrap().1
+    }
+
+    /// The text runs of an editor, in order.
+    fn runs_in<'a>(update: &'a TreeUpdate, editor: &Node) -> Vec<(NodeId, &'a Node)> {
+        editor
+            .children()
+            .iter()
+            .map(|id| (*id, node_in(update, *id)))
+            .filter(|(_, node)| node.role() == Role::TextRun)
+            .collect()
+    }
+
+    fn field_view(ui: &mut glassmere_core::Ui<'_>, text: &str) {
+        ui.keyed("field", |ui| ui.text_input("Field", text, |_| ()));
+        ui.keyed("secret", |ui| {
+            ui.text_input(TextInput::new("Secret").password(), "hunter2", |_| ())
+        });
+    }
+
+    fn run_fields(context: &mut Context, text: &str) {
+        context.run(Size::new(600.0, 200.0), &mut MonospaceMeasurer, |ui| {
+            field_view(ui, text)
+        });
+    }
+
+    #[test]
+    fn a_text_input_carries_text_runs_with_caret_and_selection() {
+        let mut context = Context::new();
+        run_fields(&mut context, "héllo wörld");
+        let field = context.find(&["field"]).unwrap();
+        context.action(field, CoreAction::Focus);
+        context.event(glassmere_core::Event::Text(TextEdit::Select {
+            anchor: 1,
+            cursor: 8,
+        }));
+        run_fields(&mut context, "héllo wörld");
+        let update = tree(&context, "Fields", 2.0);
+        let editor = node_in(&update, NodeId(field.0));
+        assert_eq!(editor.role(), Role::TextInput);
+        assert!(editor.supports_action(Action::SetTextSelection));
+        let runs = runs_in(&update, editor);
+        assert_eq!(runs.len(), 1);
+        let (id, run) = runs[0];
+        assert_eq!(run.value(), Some("héllo wörld"));
+        // The bytes of each character: é and ö take two.
+        assert_eq!(run.character_lengths(), [1, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1]);
+        assert_eq!(run.word_starts(), [0, 6]);
+        assert_eq!(run.text_direction(), Some(TextDirection::LeftToRight));
+        let positions = run.character_positions().unwrap();
+        let widths = run.character_widths().unwrap();
+        assert_eq!(positions[0], 0.0);
+        for index in 1..positions.len() {
+            assert!((positions[index] - positions[index - 1] - widths[index - 1]).abs() < 0.01);
+        }
+        // Bounds are in physical pixels, like the positions.
+        let bounds = run.bounds().unwrap();
+        let end = f64::from(positions[10] + widths[10]);
+        assert!((bounds.x1 - bounds.x0 - end).abs() < 0.01);
+        let selection = editor.text_selection().unwrap();
+        assert_eq!(
+            selection.anchor,
+            TextPosition {
+                node: id,
+                character_index: 1
+            }
+        );
+        assert_eq!(
+            selection.focus,
+            TextPosition {
+                node: id,
+                character_index: 7
+            }
+        );
+    }
+
+    #[test]
+    fn the_platform_can_move_the_caret_of_a_text_input() {
+        let mut context = Context::new();
+        run_fields(&mut context, "héllo wörld");
+        let field = context.find(&["field"]).unwrap();
+        let update = tree(&context, "Fields", 1.0);
+        let run = runs_in(&update, node_in(&update, NodeId(field.0)))[0].0;
+        let at = |character_index| TextPosition {
+            node: run,
+            character_index,
+        };
+        let request = |anchor, focus| ActionRequest {
+            action: Action::SetTextSelection,
+            target_tree: TreeId::ROOT,
+            target_node: NodeId(field.0),
+            data: Some(ActionData::SetTextSelection(TextSelection {
+                anchor,
+                focus,
+            })),
+        };
+        assert!(action(&mut context, request(at(3), at(8)), 1.0));
+        run_fields(&mut context, "héllo wörld");
+        // Character 3 starts at byte 4, character 8 at byte 10.
+        let selection = context.node(field).unwrap().text_selection.unwrap();
+        assert_eq!((selection.anchor, selection.cursor), (4, 10));
+        assert_eq!(tree(&context, "Fields", 1.0).focus, NodeId(field.0));
+        // A position in some other node's text is not ours to move to.
+        let stranger = TextPosition {
+            node: NodeId(run.0 + (1 << 24)),
+            character_index: 0,
+        };
+        assert!(!action(&mut context, request(stranger, stranger), 1.0));
+    }
+
+    #[test]
+    fn a_long_line_is_cut_into_linked_runs_the_platform_can_index() {
+        let mut context = Context::new();
+        let text = "a".repeat(300);
+        run_fields(&mut context, &text);
+        let field = context.find(&["field"]).unwrap();
+        let update = tree(&context, "Fields", 1.0);
+        let editor = node_in(&update, NodeId(field.0));
+        let runs = runs_in(&update, editor);
+        let lengths: Vec<_> = runs
+            .iter()
+            .map(|(_, run)| run.character_lengths().len())
+            .collect();
+        assert_eq!(lengths, [255, 45]);
+        assert_eq!(runs[0].1.next_on_line(), Some(runs[1].0));
+        assert_eq!(runs[1].1.previous_on_line(), Some(runs[0].0));
+        assert_eq!(runs[0].1.previous_on_line(), None);
+        assert_eq!(runs[1].1.value().map(str::len), Some(45));
+        // One word, which starts in the first run only.
+        assert_eq!(runs[0].1.word_starts(), [0]);
+        assert!(runs[1].1.word_starts().is_empty());
+        // The caret is at the end, in the second run.
+        let selection = editor.text_selection().unwrap();
+        assert_eq!(selection.focus.node, runs[1].0);
+        assert_eq!(selection.focus.character_index, 45);
+        // The second run starts where the first ends.
+        let (first, second) = (runs[0].1.bounds().unwrap(), runs[1].1.bounds().unwrap());
+        assert!((first.x1 - second.x0).abs() < 0.01);
+        // Character 10 of the second run is character 265 of the line.
+        let at = TextPosition {
+            node: runs[1].0,
+            character_index: 10,
+        };
+        let request = ActionRequest {
+            action: Action::SetTextSelection,
+            target_tree: TreeId::ROOT,
+            target_node: NodeId(field.0),
+            data: Some(ActionData::SetTextSelection(TextSelection {
+                anchor: at,
+                focus: at,
+            })),
+        };
+        assert!(action(&mut context, request, 1.0));
+        run_fields(&mut context, &text);
+        let selection = context.node(field).unwrap().text_selection.unwrap();
+        assert_eq!((selection.anchor, selection.cursor), (265, 265));
+    }
+
+    #[test]
+    fn right_to_left_text_is_positioned_from_the_right_edge() {
+        let mut context = Context::new();
+        // Alef, bet, gimel, a space and Latin letters, which read left to right.
+        run_fields(&mut context, "\u{5d0}\u{5d1}\u{5d2} abc");
+        let field = context.find(&["field"]).unwrap();
+        let update = tree(&context, "Fields", 1.0);
+        let runs = runs_in(&update, node_in(&update, NodeId(field.0)));
+        assert_eq!(runs.len(), 1);
+        let run = runs[0].1;
+        assert_eq!(run.text_direction(), Some(TextDirection::RightToLeft));
+        assert_eq!(run.character_lengths(), [2, 2, 2, 1, 1, 1, 1]);
+        let positions = run.character_positions().unwrap();
+        let widths = run.character_widths().unwrap();
+        let advance = widths[0];
+        for (index, position) in positions[..4].iter().enumerate() {
+            assert!(
+                (position - advance * index as f32).abs() < 0.01,
+                "{positions:?}"
+            );
+        }
+        // The Latin run is reversed as a whole, so its first letter is the
+        // furthest from the right edge.
+        assert!(positions[4] > positions[5] && positions[5] > positions[6]);
+        assert!((positions[4] - advance * 6.0).abs() < 0.01, "{positions:?}");
+    }
+
+    #[test]
+    fn a_password_exposes_no_text_runs_or_selection() {
+        let mut context = Context::new();
+        run_fields(&mut context, "name");
+        let secret = context.find(&["secret"]).unwrap();
+        let update = tree(&context, "Fields", 1.0);
+        let editor = node_in(&update, NodeId(secret.0));
+        assert_eq!(editor.role(), Role::PasswordInput);
+        assert!(runs_in(&update, editor).is_empty());
+        assert!(editor.text_selection().is_none());
+        assert!(!editor.supports_action(Action::SetTextSelection));
+        assert!(!editor.value().unwrap_or_default().contains('h'));
+        // Only the other field has text runs.
+        let field = context.find(&["field"]).unwrap();
+        let runs = update
+            .nodes
+            .iter()
+            .filter(|(_, node)| node.role() == Role::TextRun)
+            .count();
+        assert_eq!(
+            runs,
+            runs_in(&update, node_in(&update, NodeId(field.0))).len()
+        );
+    }
+
+    #[test]
+    fn a_text_area_is_multiline_with_a_run_per_line_and_the_primary_selection() {
+        let mut document = TextDocument::from_text("h\u{e9}llo\nw\u{f6}rld\n\u{5d0}\u{5d1} end");
+        // From the é on the first line to the r of the second.
+        document.set_selection(1, 8);
+        let mut context = Context::new();
+        let view = |ui: &mut glassmere_core::Ui<'_>| {
+            ui.keyed("notes", |ui| {
+                ui.text_area(
+                    &document,
+                    CodeEditorOptions {
+                        label: "Notes".into(),
+                        style: Style::default()
+                            .width(Length::Px(400.0))
+                            .height(Length::Px(200.0)),
+                        ..CodeEditorOptions::default()
+                    },
+                    |_| (),
+                )
+            });
+        };
+        context.run(Size::new(600.0, 400.0), &mut MonospaceMeasurer, view);
+        let notes = context.find(&["notes"]).unwrap();
+        let update = tree(&context, "Notes", 1.0);
+        let editor = node_in(&update, NodeId(notes.0));
+        assert_eq!(editor.role(), Role::MultilineTextInput);
+        assert!(editor.supports_action(Action::SetTextSelection));
+        let runs = runs_in(&update, editor);
+        let values: Vec<_> = runs.iter().map(|(_, run)| run.value().unwrap()).collect();
+        assert_eq!(
+            values,
+            ["h\u{e9}llo\n", "w\u{f6}rld\n", "\u{5d0}\u{5d1} end"]
+        );
+        // A line break is a character, and so is counted.
+        assert_eq!(runs[0].1.character_lengths(), [1, 2, 1, 1, 1, 1]);
+        assert_eq!(runs[2].1.character_lengths(), [2, 2, 1, 1, 1, 1]);
+        assert_eq!(runs[2].1.text_direction(), Some(TextDirection::RightToLeft));
+        // Lines are stacked.
+        let tops: Vec<_> = runs
+            .iter()
+            .map(|(_, run)| run.bounds().unwrap().y0)
+            .collect();
+        assert!(tops[0] < tops[1] && tops[1] < tops[2], "{tops:?}");
+        let selection = editor.text_selection().unwrap();
+        assert_eq!(
+            selection.anchor,
+            TextPosition {
+                node: runs[0].0,
+                character_index: 1
+            }
+        );
+        assert_eq!(
+            selection.focus,
+            TextPosition {
+                node: runs[1].0,
+                character_index: 2
+            }
+        );
+    }
+
+    /// A text area of about ten lines, whose operations go to `document`.
+    fn run_long_area(context: &mut Context, document: &Rc<RefCell<TextDocument>>) {
+        // The second run knows how much of the text the area shows.
+        for _ in 0..2 {
+            let target = Rc::clone(document);
+            let document = document.borrow();
+            context.run(
+                Size::new(600.0, 400.0),
+                &mut MonospaceMeasurer,
+                |ui: &mut glassmere_core::Ui<'_>| {
+                    ui.keyed("notes", |ui| {
+                        ui.text_area(
+                            &document,
+                            CodeEditorOptions {
+                                label: "Notes".into(),
+                                style: Style::default()
+                                    .width(Length::Px(400.0))
+                                    .height(Length::Px(200.0)),
+                                ..CodeEditorOptions::default()
+                            },
+                            move |op| target.borrow_mut().apply(op),
+                        )
+                    });
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn a_run_keeps_its_id_while_the_window_of_a_long_text_area_scrolls() {
+        let text: Vec<_> = (0..1000).map(|n| format!("line {n}")).collect();
+        let document = Rc::new(RefCell::new(TextDocument::from_text(&text.join("\n"))));
+        let mut context = Context::new();
+        run_long_area(&mut context, &document);
+        let notes = context.find(&["notes"]).unwrap();
+        let id_of = |context: &Context, value: &str| {
+            let update = tree(context, "Notes", 1.0);
+            let editor = node_in(&update, NodeId(notes.0));
+            runs_in(&update, editor)
+                .into_iter()
+                .find(|(_, run)| run.value() == Some(value))
+                .map(|(id, _)| id)
+        };
+        let before = id_of(&context, "line 20\n").unwrap();
+        assert!(id_of(&context, "line 0\n").is_some());
+
+        context.event(glassmere_core::Event::PointerMoved(
+            glassmere_scene::Point { x: 100.0, y: 100.0 },
+        ));
+        context.event(glassmere_core::Event::Scroll {
+            delta_x: 0.0,
+            delta_y: 14.0 * 1.4 * 10.0,
+        });
+        run_long_area(&mut context, &document);
+        // Lines went out of the window, so the list of runs starts later, but
+        // the line has the id it had.
+        assert!(id_of(&context, "line 0\n").is_none());
+        assert_eq!(id_of(&context, "line 20\n"), Some(before));
+        // Lines with other numbers have other ids.
+        assert_ne!(id_of(&context, "line 21\n"), Some(before));
+    }
+
+    #[test]
+    fn the_place_after_a_paragraph_break_is_the_start_of_the_next_paragraph() {
+        let document = Rc::new(RefCell::new(TextDocument::from_text("ab\ncd")));
+        let mut context = Context::new();
+        run_long_area(&mut context, &document);
+        let notes = context.find(&["notes"]).unwrap();
+        let text = context.editor_text(notes).unwrap();
+        let runs = runs(notes, &text);
+        let at = |run: usize, character_index| TextPosition {
+            node: runs[run].id,
+            character_index,
+        };
+        let point = |paragraph, byte| EditorPoint { paragraph, byte };
+        // "ab" and its break are three characters.
+        assert_eq!(editor_point(&text, &runs, at(0, 2)), Some(point(0, 2)));
+        assert_eq!(editor_point(&text, &runs, at(0, 3)), Some(point(1, 0)));
+        // The last line has no break after it.
+        assert_eq!(editor_point(&text, &runs, at(1, 2)), Some(point(1, 2)));
+        // A run of another editor is not one of this.
+        let other = TextPosition {
+            node: NodeId(RUN_ID | 1),
+            character_index: 0,
+        };
+        assert_eq!(editor_point(&text, &runs, other), None);
+    }
+
+    #[test]
+    fn a_position_past_a_single_line_field_stays_inside_it() {
+        let mut context = Context::new();
+        run_fields(&mut context, "héllo");
+        let field = context.find(&["field"]).unwrap();
+        let text = context.editor_text(field).unwrap();
+        let runs = runs(field, &text);
+        let past = TextPosition {
+            node: runs[0].id,
+            character_index: 40,
+        };
+        let request = ActionRequest {
+            action: Action::SetTextSelection,
+            target_tree: TreeId::ROOT,
+            target_node: NodeId(field.0),
+            data: Some(ActionData::SetTextSelection(TextSelection {
+                anchor: past,
+                focus: past,
+            })),
+        };
+        assert!(action(&mut context, request, 1.0));
+        run_fields(&mut context, "héllo");
+        let selection = context.node(field).unwrap().text_selection.unwrap();
+        assert_eq!((selection.anchor, selection.cursor), (6, 6));
+    }
+    #[test]
+    fn expanded_state_reaches_combo_boxes_and_tree_rows_with_children() {
+        let item = |id, parent: Option<u64>| TreeItem {
+            id: ItemId(id),
+            parent: parent.map(ItemId),
+            label: format!("Node {id}"),
+        };
+        let mut model =
+            TreeModel::new(vec![item(1, None), item(2, Some(1)), item(3, None)]).unwrap();
+        let state = ListState::default();
+        let mut context = Context::new();
+        let declare = |context: &mut Context, model: &TreeModel| {
+            context.run(Size::new(500.0, 500.0), &mut MonospaceMeasurer, |ui| {
+                ui.keyed("combo", |ui| {
+                    ui.combo_box("Theme", 0, &["Dark", "Light"], |_| ())
+                });
+                ui.keyed("tree", |ui| {
+                    ui.tree_view(
+                        model,
+                        &state,
+                        VirtualListOptions {
+                            height: 200.0,
+                            row_height: 30.0,
+                            ..Default::default()
+                        },
+                        |_| (),
+                    )
+                });
+            });
+        };
+        declare(&mut context, &model);
+        let combo = context.find(&["combo"]).unwrap();
+        let parent = context.find(&["tree", "item-1"]).unwrap();
+        let leaf = context.find(&["tree", "item-3"]).unwrap();
+        let update = tree(&context, "Tree", 1.0);
+        let expanded = |id: CoreNodeId| node_in(&update, NodeId(id.0)).is_expanded();
+        assert_eq!(expanded(combo), Some(false));
+        assert_eq!(expanded(parent), Some(false));
+        assert!(node_in(&update, NodeId(parent.0)).supports_action(Action::Expand));
+        assert_eq!(expanded(leaf), None);
+
+        context.action(combo, CoreAction::Expand);
+        model.set_expanded(ItemId(1), true);
+        declare(&mut context, &model);
+        declare(&mut context, &model);
+        let update = tree(&context, "Tree", 1.0);
+        let expanded = |id: CoreNodeId| node_in(&update, NodeId(id.0)).is_expanded();
+        assert_eq!(expanded(combo), Some(true));
+        assert!(node_in(&update, NodeId(combo.0)).supports_action(Action::Collapse));
+        assert_eq!(expanded(parent), Some(true));
+        assert_eq!(expanded(leaf), None);
+    }
 
     #[test]
     fn controls_expose_values_actions_and_unclipped_popup_focus() {

@@ -866,3 +866,99 @@ impl Context {
         scene.primitives.push(Primitive::PopClip);
     }
 }
+
+impl Context {
+    /// The blocks as assistive technology reads them, once they have been
+    /// shaped as declared.
+    pub(super) fn rich_editor_text(&self, id: NodeId) -> Option<crate::EditorText> {
+        let node = self.nodes.get(&id)?;
+        let Control::RichEditor {
+            blocks,
+            anchor,
+            cursor,
+            ..
+        } = &node.control
+        else {
+            return None;
+        };
+        let state = node.rich_editor.as_ref()?;
+        if state.layouts.len() != blocks.len()
+            || state
+                .layouts
+                .iter()
+                .zip(blocks)
+                .any(|(layout, block)| layout.preedit.is_none() && layout.view != *block)
+        {
+            return None;
+        }
+        let content = node.content_box();
+        let paragraphs: Vec<_> = state
+            .layouts
+            .iter()
+            .enumerate()
+            .map(|(index, layout)| editor_text::Paragraph {
+                text: layout
+                    .view
+                    .spans
+                    .iter()
+                    .map(|span| span.text.as_str())
+                    .collect(),
+                geometry: &layout.geometry,
+                origin: Point {
+                    x: content.x + layout.left,
+                    y: content.y + layout.y - node.scroll.offset,
+                },
+                breaks: index + 1 < blocks.len(),
+            })
+            .collect();
+        let point = |position: RichPosition| crate::EditorPoint {
+            paragraph: position.block,
+            byte: position.offset,
+        };
+        let composing = state
+            .layouts
+            .get(cursor.block)
+            .and_then(|layout| layout.preedit);
+        let (anchor, focus) = match composing {
+            // While composing, the caret is after the text being composed.
+            Some((at, len)) => {
+                let caret = crate::EditorPoint {
+                    paragraph: cursor.block,
+                    byte: at + len,
+                };
+                (caret, caret)
+            }
+            None => (point(*anchor), point(*cursor)),
+        };
+        editor_text::build(0, &paragraphs, anchor, focus)
+    }
+
+    /// Whether a block holds text being composed.
+    pub(super) fn rich_composing_in(&self, id: NodeId) -> bool {
+        self.nodes
+            .get(&id)
+            .and_then(|node| node.rich_editor.as_ref())
+            .is_some_and(|state| state.preedit.is_some())
+    }
+
+    /// Selects from `anchor` to `focus` in blocks and bytes.
+    pub(super) fn rich_select(
+        &mut self,
+        id: NodeId,
+        anchor: crate::EditorPoint,
+        focus: crate::EditorPoint,
+    ) {
+        let cursor = |point: crate::EditorPoint, select| RichOp::SetCursor {
+            position: RichPosition {
+                block: point.paragraph,
+                offset: point.byte,
+            },
+            select,
+            granularity: RichGranularity::Char,
+        };
+        self.rich_op(id, cursor(anchor, false));
+        if focus != anchor {
+            self.rich_op(id, cursor(focus, true));
+        }
+    }
+}

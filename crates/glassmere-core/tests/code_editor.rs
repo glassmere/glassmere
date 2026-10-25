@@ -457,7 +457,7 @@ fn composition_shows_inline_and_escape_then_tab_leaves_the_editor() {
 
     let editor = app.context.focused().unwrap();
     let node = app.context.node(editor).unwrap();
-    assert_eq!(node.semantics.role, Role::TextInput);
+    assert_eq!(node.semantics.role, Role::MultilineTextInput);
     assert_eq!(node.semantics.label, "Source");
     assert_eq!(node.value.as_deref(), Some("a日本b"));
 

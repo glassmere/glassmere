@@ -6,7 +6,7 @@ Every node carries semantics, and the host publishes them to the platform: Acces
 
 ```rust
 pub struct Semantics {
-    pub role: Role,            // Button, Slider, ListBox, TextInput, Dialog, ...
+    pub role: Role,            // Button, Slider, ListBox, TextInput, MultilineTextInput, Dialog, ...
     pub label: String,         // what it is called
     pub disabled: bool,
     pub focusable: bool,       // in the tab order, and takes the keyboard
@@ -37,6 +37,19 @@ Shortcuts belong to commands, which are also what a menu item and a tray entry a
 
 IME preedit is shown inline and committed as one undo step; the host tells the platform where the caret is so the candidate window follows it. Bidirectional text has a caret with affinity, and `CaretMovement` chooses whether Left and Right move on screen or in reading order.
 
+### Reading and moving through text
+
+A text field, a number field, a text area, a code editor and a rich text editor publish their text the way a screen reader navigates it, not only as one `value`:
+
+- `Context::editor_text` returns the shaped lines of an editor: for each visual line its text, its box, its direction, the length, position and width of every character (a grapheme cluster), and where its words start in the line. It walks every declared line, so it is not part of `NodeSnapshot`, which the host reads for hover and cursor on every frame; the accessibility adapter asks for it per editor when it builds the tree and when it receives `SetTextSelection`. The host turns each line into a text run child of the editor, cuts a line of more than 255 characters into linked runs, and sets the editor's text selection from the selection of the result.
+- A run's id is made of the editor, the paragraph, the wrapped line in the paragraph and the piece of a long line, not of its place in the list, so a line keeps its id when other lines scroll in or out of a text area's window. Inserting a line above renumbers the paragraphs below it, so those ids do change.
+- A single-line field is a `TextInput` (a `SpinButton` for a number field). A text area, a code editor and a rich editor are a `MultilineTextInput`: one run per line, and a wrapped paragraph of the rich editor has one per visual line. The line break at the end of a paragraph is a character of the run, as the platform expects.
+- The caret is the selection with `anchor == focus`. While an IME composes, the caret is after the preedit text. An editor with several cursors reports the primary one.
+- A text area and a code editor declare only the lines around their view, so only those are readable; scrolling declares others. The selection is reported only when both of its ends are in declared lines, and `SetSelection` is refused unless both ends are, because an end outside the window cannot be told from its edge.
+- `SetSelection` is refused while text is being composed, in a field, a text area and a rich editor alike.
+- A password field is a `PasswordInput` that reads as bullets. It has no text runs, no selection and no word boundaries, so nothing is read by character or word and no character of it reaches the platform.
+- A screen reader that moves the caret or selects sends `SetTextSelection`, which becomes `Action::SetSelection { anchor, focus }` with `EditorPoint`s (a paragraph and a byte offset in it) and moves the caret the way a click and a shift-click would. A text area and a rich editor apply it through their ordinary ops, so the application's `update` sees it as `TextOp::Pointer` or `RichOp::SetCursor`.
+
 ## Testing it without a screen reader
 
 ```rust
@@ -49,7 +62,7 @@ harness.action(harness.by_label("Save"), Action::Activate);
 
 `snapshot_accessibility` prints the whole tree with roles, names, values, checked and selected states and what has focus, which is what a snapshot test should assert on rather than pixels. `by_label` finds a node the way assistive technology would, so a test that cannot find a control is a control a screen reader cannot find either.
 
-`Action` is the platform's vocabulary: `Focus`, `Activate`, `Increment`, `Decrement`, `Expand`, `Collapse`, `SetText`, `SetNumber`, `ScrollIntoView`, `StartDrag`, `Drop`. Everything a pointer can do, an action can do, which is both how assistive technology drives the window and how the tests do.
+`Action` is the platform's vocabulary: `Focus`, `Activate`, `Increment`, `Decrement`, `Expand`, `Collapse`, `SetText`, `SetNumber`, `SetSelection`, `ScrollIntoView`, `StartDrag`, `Drop`. Everything a pointer can do, an action can do, which is both how assistive technology drives the window and how the tests do.
 
 ## A widget of your own
 
@@ -57,4 +70,4 @@ Fill in `Semantics` and it is announced like anything else: `focusable` puts it 
 
 ## What has not been checked
 
-The tree is checked by tests and by UI Automation scripts on Windows. Speech and navigation with a real screen reader, and the platform layers on macOS and Linux, have not been exercised by hand; [limitations](limitations.md) lists the rest.
+The tree is checked by tests and by UI Automation scripts on Windows. Speech and navigation with a real screen reader (NVDA, Narrator, VoiceOver, Orca), including reading text by character, word and line, have not been exercised by hand, and neither have the platform layers on macOS and Linux; [limitations](limitations.md) lists what is exposed and the rest.

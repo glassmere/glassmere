@@ -354,7 +354,7 @@ fn text_fields_align_right_and_the_code_editor_stays_left_to_right() {
 
     // The code editor sits at the right of the column but its text starts at
     // its own left edge.
-    let editor = labelled(&app.context, Role::TextInput, "Editor");
+    let editor = labelled(&app.context, Role::MultilineTextInput, "Editor");
     assert!((editor.x + editor.width - 600.0).abs() < 0.5);
     let line = app
         .context

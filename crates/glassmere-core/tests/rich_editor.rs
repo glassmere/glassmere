@@ -130,7 +130,7 @@ fn typing_marks_enter_and_undo_flow_through_queued_operations() {
     assert_eq!(app.state().document.blocks()[1].runs.len(), 1);
 
     let node = app.context.node(app.context.focused().unwrap()).unwrap();
-    assert_eq!(node.semantics.role, Role::TextInput);
+    assert_eq!(node.semantics.role, Role::MultilineTextInput);
     assert_eq!(node.semantics.label, "Notes");
     assert_eq!(node.value.as_deref(), Some("next"));
 }
@@ -250,7 +250,7 @@ fn the_toolbar_formats_shows_state_and_returns_focus_to_the_text() {
     )]));
     app.state_mut().toolbar = true;
     app.frame();
-    let area = labelled(&app.context, Role::TextInput, "Notes");
+    let area = labelled(&app.context, Role::MultilineTextInput, "Notes");
     click(
         &mut app.context,
         Point {
