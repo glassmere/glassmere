@@ -137,10 +137,14 @@ impl App for Platform {
         ));
         match self.bar {
             Bar::Inside => ui.app_bar(AppBar::new().menu(menu(self.saved))),
-            Bar::Separate => {
-                ui.app_bar(AppBar::new());
-                ui.menu_bar(&menu(self.saved));
-            }
+            // Together, so the page's gap does not open between the two bars.
+            Bar::Separate => ui.column(
+                Style::default().gap(0.0).width(Length::Percent(1.0)),
+                |ui| {
+                    ui.app_bar(AppBar::new());
+                    ui.menu_bar(&menu(self.saved));
+                },
+            ),
             Bar::Native => {}
         }
         let page = Style {

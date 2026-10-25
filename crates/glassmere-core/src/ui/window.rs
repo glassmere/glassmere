@@ -211,7 +211,15 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// out the window's own menu bar on Windows, so that it is shown once.
     #[track_caller]
     pub fn menu_bar(&mut self, menu: &crate::Menu) {
-        self.draw_menu_bar(menu);
+        // A strip across the window in the app bar's colour, so that it reads
+        // as a bar of its own under whatever is above it.
+        let strip = Style {
+            width: crate::Length::Percent(1.0),
+            padding: 4.0,
+            background: Some(self.theme().surface),
+            ..Style::default()
+        };
+        self.draw_menu_bar(menu, strip);
     }
 
     /// The title bar of a window that draws its own, ready made: see
@@ -247,7 +255,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                 }))
             });
             if let Some(menu) = &bar.menu {
-                ui.keyed("$menu", |ui| ui.draw_menu_bar(menu));
+                ui.keyed("$menu", |ui| ui.draw_menu_bar(menu, Style::default()));
             }
             // Everything after this sits at the far end.
             ui.keyed("$gap", |ui| {
@@ -262,7 +270,7 @@ impl<'a, M: 'static> Ui<'a, M> {
     }
 
     #[track_caller]
-    fn draw_menu_bar(&mut self, menu: &crate::Menu) {
+    fn draw_menu_bar(&mut self, menu: &crate::Menu, strip: Style) {
         self.host.drawn_menus.push(menu.clone());
         let foreground = self.theme().text;
         // A wash of the text colour, as the caption buttons use but fainter,
@@ -287,7 +295,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         let style = Style {
             gap: 2.0,
             align_items: crate::Align::Center,
-            ..Style::default()
+            ..strip
         };
         let mut chosen = None;
         self.row(style, |ui| {
