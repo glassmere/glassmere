@@ -1266,6 +1266,9 @@ impl Application {
             .context
             .hovered()
             .and_then(|id| self.context.resize_grip(id));
+        // The maximize button keeps the arrow, as the system's does. Windows
+        // sets it over the button itself, and a hand from here would fight it.
+        let maximize = self.context.maximize_button();
         state.window.set_cursor(if let Some(edge) = grip {
             resize_cursor(edge)
         } else {
@@ -1284,6 +1287,7 @@ impl Application {
                         _ => CursorIcon::ColResize,
                     }
                 }
+                Some(node) if maximize == Some(node.bounds) => CursorIcon::Default,
                 Some(node) if node.semantics.focusable => CursorIcon::Pointer,
                 _ => CursorIcon::Default,
             }

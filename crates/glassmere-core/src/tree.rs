@@ -424,9 +424,11 @@ pub struct Context {
     /// When and where the title bar was last pressed, for telling a second
     /// press that means "maximize" from two separate ones.
     last_title_press: Option<(Duration, Point)>,
-    /// Where the maximize button of a title bar the view draws itself is,
-    /// for a host that has to tell the platform.
-    maximize_button: Option<Rect>,
+    /// The maximize button of a title bar the view draws itself, for a host
+    /// that has to tell the platform where it is. The node rather than its
+    /// rectangle, because it is found when the tree is reconciled and only
+    /// laid out after.
+    maximize_button: Option<NodeId>,
     /// What the overlays painted straight into the last scene. They are not
     /// nodes, so nothing invalidates them: the frame one appears, moves or
     /// goes has to name its rectangle itself.
@@ -919,7 +921,9 @@ impl Context {
     /// in logical coordinates, for a host that tells the platform so that it
     /// can offer its own window layouts over it.
     pub fn maximize_button(&self) -> Option<Rect> {
-        self.maximize_button
+        self.nodes
+            .get(&self.maximize_button?)
+            .map(|node| node.bounds)
     }
 
     /// The logical size the window was last declared at.

@@ -115,6 +115,18 @@ fn a_control_in_the_bar_is_pressed_rather_than_the_window_moved() {
 }
 
 #[test]
+fn the_maximize_button_is_where_it_is_drawn_from_the_first_frame() {
+    // The platform learns where it is before the pointer ever reaches it: no
+    // second frame, no input.
+    let mut h = Host::new(Chrome::default(), ROOT);
+    h.frame();
+    let node = h.context.find(&["bar", "buttons", "maximize"]).unwrap();
+    let drawn = h.context.node(node).unwrap().bounds;
+    assert!(drawn.width > 0.0);
+    assert_eq!(h.context.maximize_button(), Some(drawn));
+}
+
+#[test]
 fn the_window_buttons_ask_for_what_they_say() {
     let mut h = Host::new(Chrome::default(), ROOT);
     h.frame();

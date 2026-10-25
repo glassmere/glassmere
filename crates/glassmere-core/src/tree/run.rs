@@ -233,9 +233,9 @@ impl Context {
         }
         self.maximize_button = self
             .nodes
-            .values()
-            .find(|node| node.control == Control::MaximizeButton)
-            .map(|node| node.bounds);
+            .iter()
+            .find(|(_, node)| node.control == Control::MaximizeButton)
+            .map(|(id, _)| *id);
         self.areas = self
             .nodes
             .iter()
