@@ -23,6 +23,7 @@ pub mod diagnostics;
 mod dock_input;
 mod drag_input;
 mod edge_scroll;
+mod editor_text;
 mod events;
 mod focus_input;
 mod handlers;
@@ -278,7 +279,8 @@ impl Node {
                     Kind::Image if !self.text.is_empty() => Role::Image,
                     Kind::Button => Role::Button,
                     Kind::Scroll => Role::ScrollView,
-                    Kind::TextInput | Kind::TextArea | Kind::RichEditor => Role::TextInput,
+                    Kind::TextInput => Role::TextInput,
+                    Kind::TextArea | Kind::RichEditor => Role::MultilineTextInput,
                     Kind::Checkbox => Role::Checkbox,
                     Kind::Radio => Role::Radio,
                     Kind::Slider => Role::Slider,

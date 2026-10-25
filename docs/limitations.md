@@ -13,9 +13,13 @@ What does not work, is partial, or has not been tried. Grouped by area.
 
 ## Accessibility
 
-- The accessibility tree is checked by tests and by UI Automation scripts on Windows. Nobody has listened to it with a screen reader (Narrator, NVDA, VoiceOver, Orca).
-- Editable text exposes its value and caret but not full character-level selection and navigation.
-- AccessKit's Windows adapter has no UI Automation ExpandCollapse pattern. The tree exposes expand and collapse actions, but combo boxes and menus open from automation only through focus and keyboard or pointer input.
+- The accessibility tree is checked by tests and by UI Automation scripts on Windows. Nobody has run NVDA, Narrator, VoiceOver or Orca against it, so everything below is what the tree contains, not what a screen reader was heard to say.
+- Text fields, number fields, text areas, code editors and rich editors publish text runs with the length, position and width of each character, word starts, direction, and the caret or selection, and accept `SetTextSelection`. Multi-line editors have the multiline role. The tests check the tree and the round trip of a selection; reading by character, word and line, braille and the highlight cursor have not been tried. Word starts come from Unicode word boundaries, which may differ from where Ctrl+Arrow stops.
+- A text area and a code editor expose only the lines they declare (the visible ones and a few around them). Text scrolled out of that window cannot be read or selected by the platform until it is scrolled in. With several cursors only the primary one is reported.
+- The rich editor's block kinds, marks, links and the code editor's line numbers, diagnostics and find matches are not exposed as text attributes. A custom widget has no way to publish text runs.
+- A password field reads as bullets and has no runs, selection or word boundaries. The platform cannot read or move through it by character.
+- Combo boxes, menu buttons, autocomplete fields and tree rows that have children report expanded or collapsed and take expand and collapse. The framework's menus do not nest, so there are no submenu items to report: `Ui::menu_bar` flattens a submenu inside a submenu.
+- AccessKit's Windows adapter (0.35) does implement the UI Automation ExpandCollapse pattern and routes it to those actions. The Linux (AT-SPI, 0.21) and macOS (0.27) adapters have no handling of the expanded state at all, so there it is not reported. Both send `SetTextSelection`, but nobody has run them.
 - IME routing and preedit geometry are covered by model-level tests. Real candidate windows for Japanese, Chinese and Korean, and dead-key input, have not been tried.
 - Accessibility checks cover names, not contrast, focus order or target size.
 

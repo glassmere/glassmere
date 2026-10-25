@@ -28,6 +28,8 @@ pub enum Role {
     Button,
     ScrollView,
     TextInput,
+    /// A text area, a code editor or a rich text editor.
+    MultilineTextInput,
     PasswordInput,
     Checkbox,
     Radio,
@@ -94,6 +96,9 @@ pub struct NodeSnapshot {
     pub expanded: Option<bool>,
     pub active_descendant: Option<NodeId>,
     pub text_selection: Option<TextSelection>,
+    /// What assistive technology reads of an editor, line by line. A password
+    /// field has none.
+    pub editor_text: Option<EditorText>,
     pub is_popup: bool,
     /// A modal dialog layer; assistive technology treats it as modal.
     pub modal: bool,
@@ -103,6 +108,58 @@ pub struct NodeSnapshot {
     pub orientation: Option<crate::Axis>,
     pub collection: Option<CollectionInfo>,
     pub drag: Option<crate::DragInfo>,
+}
+
+/// A place in an editor's text: a paragraph and a byte offset into its text.
+/// A single-line field has one paragraph, a text area numbers its paragraphs
+/// by document line and a rich editor by block.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct EditorPoint {
+    pub paragraph: usize,
+    pub byte: usize,
+}
+
+/// The text of an editor as assistive technology navigates it: one entry per
+/// shaped line, with the selection. A text area declares only the lines
+/// around its view, so only those are here.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct EditorText {
+    pub lines: Vec<EditorLine>,
+    pub anchor: EditorPoint,
+    pub focus: EditorPoint,
+}
+
+/// One visual line of an editor, in window coordinates.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct EditorLine {
+    /// The paragraph the line belongs to, and the byte offset in it where the
+    /// line starts. A wrapped paragraph has several lines.
+    pub paragraph: usize,
+    pub start: usize,
+    /// The line's text. The last line of a paragraph that is followed by
+    /// another one ends in a line break.
+    pub text: String,
+    pub bounds: Rect,
+    pub rtl: bool,
+    /// The selectable characters (grapheme clusters) of `text` in reading
+    /// order. Their lengths add up to the length of `text`.
+    pub characters: Vec<EditorCharacter>,
+    /// Byte offsets in `text` where a word starts.
+    pub word_starts: Vec<usize>,
+}
+
+/// One selectable character of an editor line.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct EditorCharacter {
+    /// Length in bytes, 255 at most.
+    pub len: usize,
+    /// Distance from the line's start edge, along its direction, and the
+    /// advance. Both are in pixels of the logical window.
+    pub position: f32,
+    pub width: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -163,6 +220,11 @@ pub enum Action {
     Decrement,
     Expand,
     Collapse,
+    /// Moves the caret, or selects from `anchor` to `focus`, in an editor.
+    SetSelection {
+        anchor: EditorPoint,
+        focus: EditorPoint,
+    },
     StartDrag,
     Drop,
 }

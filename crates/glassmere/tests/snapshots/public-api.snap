@@ -123,6 +123,21 @@ glassmere-core   field DockWindowId::0: u64
 glassmere-core   field DragInfo::can_drop: bool
 glassmere-core   field DragInfo::dragging: bool
 glassmere-core   field DragInfo::source: bool
+glassmere-core   field EditorCharacter::len: usize
+glassmere-core   field EditorCharacter::position: f32
+glassmere-core   field EditorCharacter::width: f32
+glassmere-core   field EditorLine::bounds: Rect
+glassmere-core   field EditorLine::characters: Vec<EditorCharacter>
+glassmere-core   field EditorLine::paragraph: usize
+glassmere-core   field EditorLine::rtl: bool
+glassmere-core   field EditorLine::start: usize
+glassmere-core   field EditorLine::text: String
+glassmere-core   field EditorLine::word_starts: Vec<usize>
+glassmere-core   field EditorPoint::byte: usize
+glassmere-core   field EditorPoint::paragraph: usize
+glassmere-core   field EditorText::anchor: EditorPoint
+glassmere-core   field EditorText::focus: EditorPoint
+glassmere-core   field EditorText::lines: Vec<EditorLine>
 glassmere-core   field Effect::opacity: f32
 glassmere-core   field Effect::transform: Transform
 glassmere-core   field Effect::transition: Transition
@@ -265,6 +280,7 @@ glassmere-core   field NodeSnapshot::clip: Rect
 glassmere-core   field NodeSnapshot::collection: Option<CollectionInfo>
 glassmere-core   field NodeSnapshot::description: Option<String>
 glassmere-core   field NodeSnapshot::drag: Option<crate::DragInfo>
+glassmere-core   field NodeSnapshot::editor_text: Option<EditorText>
 glassmere-core   field NodeSnapshot::expanded: Option<bool>
 glassmere-core   field NodeSnapshot::focused: bool
 glassmere-core   field NodeSnapshot::id: NodeId
@@ -1166,6 +1182,7 @@ glassmere-core   variant Action::ScrollIntoView
 glassmere-core   variant Action::ScrollTo(f32)
 glassmere-core   variant Action::ScrollToX(f32)
 glassmere-core   variant Action::SetNumber(f64)
+glassmere-core   variant Action::SetSelection { anchor: EditorPoint, focus: EditorPoint }
 glassmere-core   variant Action::SetText(String)
 glassmere-core   variant Action::StartDrag
 glassmere-core   variant Align::Baseline
@@ -1413,6 +1430,7 @@ glassmere-core   variant Role::ListBox
 glassmere-core   variant Role::Menu
 glassmere-core   variant Role::MenuButton
 glassmere-core   variant Role::MenuItem
+glassmere-core   variant Role::MultilineTextInput
 glassmere-core   variant Role::Option
 glassmere-core   variant Role::PasswordInput
 glassmere-core   variant Role::Radio
@@ -1711,6 +1729,10 @@ glassmere-core struct DockWindowId #[cfg_attr(feature = "serde", derive(serde::S
 glassmere-core struct DragInfo #[derive(Clone, Copy, Debug)] #[non_exhaustive]
 glassmere-core struct DragSourceBuilder<M = ()> (private fields)
 glassmere-core struct DropTargetBuilder<M = ()> (private fields)
+glassmere-core struct EditorCharacter #[derive(Clone, Copy, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core struct EditorLine #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core struct EditorPoint #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+glassmere-core struct EditorText #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
 glassmere-core struct Effect #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-core struct Effects<'a, M> (private fields)
 glassmere-core struct EventArea #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -1863,7 +1885,11 @@ glassmere-core use DragSourceBuilder = ui::DragSourceBuilder
 glassmere-core use DropKind = drag::DropKind
 glassmere-core use DropTargetBuilder = ui::DropTargetBuilder
 glassmere-core use Easing = animation::Easing
+glassmere-core use EditorCharacter = tree::EditorCharacter
 glassmere-core use EditorCommand = text_area::EditorCommand
+glassmere-core use EditorLine = tree::EditorLine
+glassmere-core use EditorPoint = tree::EditorPoint
+glassmere-core use EditorText = tree::EditorText
 glassmere-core use Effect = animation::Effect
 glassmere-core use Effects = app::Effects
 glassmere-core use Event = tree::Event

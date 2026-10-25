@@ -86,9 +86,9 @@ pub use tree::diagnostics::{
     REPAINT_MIN_NODES, UNSTABLE_ID_FRAMES,
 };
 pub use tree::{
-    Action, CollectionInfo, Context, Dirty, Event, FrameStats, GestureResponse, Key, Live,
-    MemoryReport, NodeDetails, NodeId, NodeSnapshot, NumericValue, Pen, Role, ScrollState,
-    Semantics, Swipe, SwipeDirection, TouchPhase,
+    Action, CollectionInfo, Context, Dirty, EditorCharacter, EditorLine, EditorPoint, EditorText,
+    Event, FrameStats, GestureResponse, Key, Live, MemoryReport, NodeDetails, NodeId, NodeSnapshot,
+    NumericValue, Pen, Role, ScrollState, Semantics, Swipe, SwipeDirection, TouchPhase,
 };
 pub use ui::{
     AreaBuilder, Autocomplete, Button, ComboBox, CommandPalette, DockOptions, DockPanel,

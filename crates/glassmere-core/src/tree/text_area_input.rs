@@ -150,7 +150,7 @@ impl Context {
         Some(node.area.as_ref()?.caret?.intersect(node.clip))
     }
 
-    fn area_op(&mut self, id: NodeId, op: TextOp) {
+    pub(super) fn area_op(&mut self, id: NodeId, op: TextOp) {
         if let Some(area) = self.nodes.get_mut(&id).and_then(|node| node.area.as_mut()) {
             area.pending_affinity = match op {
                 // Typed text keeps the caret with the character just entered.
@@ -938,4 +938,89 @@ pub(super) fn insert_span(spans: &mut Vec<TextSpan>, mut at: usize, text: &str) 
     spans.insert(index + 1, inserted);
     spans.insert(index + 2, rest);
     spans.retain(|span| !span.text.is_empty());
+}
+
+impl Context {
+    /// The declared lines as assistive technology reads them, once they have
+    /// been shaped as declared. The primary selection is the one reported.
+    pub(super) fn area_editor_text(&self, id: NodeId) -> Option<crate::EditorText> {
+        let node = self.nodes.get(&id)?;
+        let Control::TextArea {
+            lines,
+            first_line,
+            total_lines,
+            selections,
+            primary,
+            ..
+        } = &node.control
+        else {
+            return None;
+        };
+        let area = node.area.as_ref()?;
+        if area.first_line != *first_line
+            || area.layouts.len() != lines.len()
+            || area
+                .layouts
+                .iter()
+                .zip(lines)
+                .any(|(layout, line)| layout.line.text != line.text)
+        {
+            return None;
+        }
+        let content = node.content_box();
+        let paragraphs: Vec<_> = area
+            .layouts
+            .iter()
+            .enumerate()
+            .map(|(index, layout)| editor_text::Paragraph {
+                text: layout
+                    .line
+                    .spans
+                    .iter()
+                    .map(|span| span.text.as_str())
+                    .collect(),
+                geometry: &layout.geometry,
+                origin: Point {
+                    x: content.x + area.gutter - node.scroll.offset_x,
+                    y: content.y + (first_line + index) as f32 * area.line_height
+                        - node.scroll.offset,
+                },
+                breaks: first_line + index + 1 < *total_lines,
+            })
+            .collect();
+        let point = |(paragraph, byte)| crate::EditorPoint { paragraph, byte };
+        let (anchor, focus) = match (
+            area.layouts.iter().find_map(|layout| layout.preedit),
+            selections.iter().find(|selection| selection.primary),
+        ) {
+            // While composing, the caret is after the text being composed.
+            (Some((at, len)), _) => ((primary.0, at + len), (primary.0, at + len)),
+            (None, Some(selection)) if selection.cursor == selection.start => {
+                (selection.end, selection.start)
+            }
+            (None, Some(selection)) => (selection.start, selection.end),
+            (None, None) => (*primary, *primary),
+        };
+        editor_text::build(*first_line, &paragraphs, point(anchor), point(focus))
+    }
+
+    /// Selects from `anchor` to `focus` in document lines and bytes.
+    pub(super) fn area_select(
+        &mut self,
+        id: NodeId,
+        anchor: crate::EditorPoint,
+        focus: crate::EditorPoint,
+    ) {
+        let pointer = |point: crate::EditorPoint, select| TextOp::Pointer {
+            line: point.paragraph,
+            byte: point.byte,
+            select,
+            granularity: Granularity::Char,
+            add: false,
+        };
+        self.area_op(id, pointer(anchor, false));
+        if focus != anchor {
+            self.area_op(id, pointer(focus, true));
+        }
+    }
 }

@@ -1277,7 +1277,9 @@ impl Application {
                 Some(node)
                     if matches!(
                         node.semantics.role,
-                        glassmere_core::Role::TextInput | glassmere_core::Role::PasswordInput
+                        glassmere_core::Role::TextInput
+                            | glassmere_core::Role::MultilineTextInput
+                            | glassmere_core::Role::PasswordInput
                     ) =>
                 {
                     CursorIcon::Text
