@@ -63,6 +63,8 @@ pub(crate) struct HostOutbox {
     pub watched: Vec<std::path::PathBuf>,
     /// The native menu and tray icon as the view last declared them.
     pub menu: Option<crate::Menu>,
+    /// Whether what is being declared sits in a title bar.
+    pub in_title_bar: bool,
     pub tray: Option<Option<crate::Tray>>,
     /// Commands a menu the framework drew itself chose.
     pub commands: Vec<String>,

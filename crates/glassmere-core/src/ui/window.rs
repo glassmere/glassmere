@@ -27,7 +27,9 @@ impl<'a, M: 'static> Ui<'a, M> {
 
     /// A strip that moves the window, for a window with the system's title
     /// bar turned off. Pressing it starts a move; pressing it twice
-    /// maximizes or restores. Whatever is declared inside it keeps working,
+    /// maximizes or restores. A [`Ui::menu_bar`] in it is drawn flat, as part
+    /// of the bar. Unless the style gives a height, it is as tall as the
+    /// system's caption. Whatever is declared inside it keeps working,
     /// because a press that lands on a control there is that control's.
     ///
     /// ```ignore
@@ -38,9 +40,15 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// ```
     #[track_caller]
     pub fn title_bar(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_, M>)) {
+        let mut style = style;
+        if style.height == crate::Length::Auto {
+            style.height = crate::Length::Px(caption::HEIGHT);
+        }
         // A row, so that a title, a menu and the buttons sit side by side
         // the way a title bar's do.
+        let outer = std::mem::replace(&mut self.host.in_title_bar, true);
         self.row(style, content);
+        self.host.in_title_bar = outer;
         self.set_control(Control::TitleBar);
     }
 
@@ -56,7 +64,8 @@ impl<'a, M: 'static> Ui<'a, M> {
         // button: light over a dark title bar, dark over a light one.
         let wash = |alpha: u8| Color(foreground.0, foreground.1, foreground.2, alpha);
         let (hover, pressed) = (wash(caption::WASH_HOVER), wash(caption::WASH_PRESSED));
-        self.row(Style::default(), |ui| {
+        // Side by side with nothing between them, as the system's are.
+        self.row(Style::default().gap(0.0), |ui| {
             for (key, glyph, name, command) in [
                 (
                     "minimize",
@@ -117,14 +126,18 @@ impl<'a, M: 'static> Ui<'a, M> {
                 }));
                 ui.button_at(key, glyph, true, style);
                 ui.set_handler(crate::app::Handler::Message(on_command(command)));
-                // The glyph is what is drawn; the name is what is announced.
+                // The glyph is what is drawn; the name is what is announced,
+                // and what the tooltip says where the system does not show
+                // its own.
                 let label = ui.tr(name);
                 ui.tooltip(label);
-                if matches!(command, crate::WindowCommand::ToggleMaximize) {
-                    // Windows asks where this one is, to offer its snap
-                    // layouts when the pointer rests over it.
-                    ui.set_control(Control::MaximizeButton);
-                }
+                // Windows asks where these are, to show its own tooltips over
+                // them and offer its snap layouts over the maximize button.
+                ui.set_control(match command {
+                    crate::WindowCommand::Minimize => Control::MinimizeButton,
+                    crate::WindowCommand::Close => Control::CloseButton,
+                    _ => Control::MaximizeButton,
+                });
             }
         });
     }
@@ -194,9 +207,45 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// do not nest.
     #[track_caller]
     pub fn menu_bar(&mut self, menu: &crate::Menu) {
-        let style = Style {
-            gap: 4.0,
-            ..Style::default()
+        let (style, heading) = if self.host.in_title_bar {
+            // In a title bar it is part of that bar, its headings flat and
+            // no taller than it.
+            let foreground = self.theme().text;
+            // A wash of the text colour, as the caption buttons use but
+            // fainter, for a heading is no button: light over a dark bar,
+            // dark over a light one.
+            let wash = |alpha: u8| Color(foreground.0, foreground.1, foreground.2, alpha);
+            let heading = Style {
+                padding: 5.0,
+                radius: 4.0,
+                background: Some(Color(0, 0, 0, 0)),
+                ..Style::default()
+            }
+            .on_hover(crate::Paint {
+                background: Some(wash(8)),
+                ..crate::Paint::default()
+            })
+            // A heading is pressed while its dropdown is open.
+            .on_pressed(crate::Paint {
+                background: Some(wash(14)),
+                ..crate::Paint::default()
+            });
+            let style = Style {
+                gap: 2.0,
+                align_items: crate::Align::Center,
+                ..Style::default()
+            };
+            (style, heading)
+        } else {
+            let style = Style {
+                gap: 4.0,
+                ..Style::default()
+            };
+            let heading = Style {
+                padding: 8.0,
+                ..Style::button()
+            };
+            (style, heading)
         };
         let mut chosen = None;
         self.row(style, |ui| {
@@ -229,10 +278,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                     WidgetKey::named(format!("menu{index}")),
                     label.clone(),
                     &items,
-                    Style {
-                        padding: 8.0,
-                        ..Style::button()
-                    },
+                    heading.clone(),
                     crate::Length::Px(260.0),
                 ) && let Some((_, Some(command))) = flat.get(picked)
                 {

@@ -5,8 +5,8 @@
 //! Press the strip to move the window, press it twice to maximize it, and
 //! pull any edge or corner to resize.
 use glassmere::{
-    App, AppOptions, Color, Command, Effects, Label, Length, Menu, MenuEntry, Shortcut, Size,
-    Style, TextWrap, Ui, WindowCommand, run,
+    Align, App, AppOptions, Color, Command, Effects, Label, Length, Menu, MenuEntry, Shortcut,
+    Size, Style, TextWrap, Ui, WindowCommand, run,
 };
 
 #[derive(Clone)]
@@ -55,10 +55,12 @@ impl App for TitleBar {
         let theme = ui.theme().clone();
         let maximized = ui.window().maximized;
         ui.title_bar(
+            // As tall as the system's caption, which a title bar is unless
+            // its style says otherwise.
             Style {
                 width: Length::Percent(1.0),
-                padding: 6.0,
-                gap: 10.0,
+                gap: 6.0,
+                align_items: Align::Center,
                 background: Some(theme.surface),
                 ..Style::default()
             },
