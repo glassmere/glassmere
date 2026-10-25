@@ -6,8 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Screen readers can read and move through editor text. Text fields, text areas, the code editor and the rich editor publish one text run per visual line, with character extents and word starts, and they publish the caret and the selection.
+  - The platform can move the caret or set the selection, as `Action::SetSelection` in core.
+  - `Context::editor_text` returns what is published.
+  - Password fields publish no text.
+
 ### Changed
 
+- Text areas, the code editor and the rich editor report `Role::MultilineTextInput` instead of `Role::TextInput`.
 - wgpu 30. It is part of the public API through `AppOptions::gpu`, `CustomDraw` and the renderer, so an application that draws with wgpu itself needs wgpu 30 too.
 - Most public enums are `#[non_exhaustive]`, so a later release can add a variant without breaking a `match`; a `match` on one needs a `_` arm. The closed sets that stay exhaustive are listed in [API stability](docs/api-stability.md#what-a-release-can-add).
 - Structs the framework fills in and the application only reads are `#[non_exhaustive]` and cannot be built outside their crate. Among them are `FrameStats`, `MemoryReport`, `NodeSnapshot`, `NodeDetails`, `CollectionInfo`, `FrameDiagnostic`, `GraphNode`, `DragInfo`, `GestureResponse`, `RichEditorResponse`, `ResolvedText`, `Swipe`, `Pen`, `WidgetInput`, `RenderStats`, `CpuStats`, `CustomDraw`, the GPU profile and memory types, the devtools records, and the error types `DockLayoutError`, `StyleSheetError` and `FluentError`.
