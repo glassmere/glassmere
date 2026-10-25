@@ -60,15 +60,107 @@ pub enum Track {
     Auto,
     MinMax(TrackSize, TrackSize),
     Repeat(u16, Vec<Track>),
+    /// As many repetitions as fit the container, empty ones included. The
+    /// tracks need a definite size: `Px`, `Percent`, or a `MinMax` with one.
+    AutoFill(Vec<Track>),
+    /// Like `AutoFill`, but repetitions no item landed in collapse to nothing.
+    AutoFit(Vec<Track>),
 }
 
 impl Track {
     pub fn repeat(count: u16, tracks: Vec<Track>) -> Self {
         Self::Repeat(count, tracks)
     }
+    pub fn auto_fill(tracks: Vec<Track>) -> Self {
+        Self::AutoFill(tracks)
+    }
+    pub fn auto_fit(tracks: Vec<Track>) -> Self {
+        Self::AutoFit(tracks)
+    }
 }
 
-/// Explicit grid placement in 1-based lines; spans default to one cell.
+/// How a grid places children that have no explicit `area`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AutoFlow {
+    /// Fills each row in turn, adding rows as needed.
+    #[default]
+    Row,
+    /// Fills each column in turn, adding columns as needed.
+    Column,
+    /// `Row`, but a smaller child may fill a hole an earlier larger one left.
+    RowDense,
+    /// `Column`, with the same hole filling.
+    ColumnDense,
+}
+
+/// Checks a `Style::areas` template and returns it in the engine's form. Each
+/// string is one row of whitespace-separated names, with `.` for an empty cell;
+/// every row has the same number of cells and a name covers one rectangle.
+pub(crate) fn template_areas(
+    rows: &[String],
+) -> Result<taffy::style::GridTemplateAreas<String>, String> {
+    let cells: Vec<Vec<&str>> = rows
+        .iter()
+        .map(|row| row.split_whitespace().collect())
+        .collect();
+    let columns = cells.first().map_or(0, Vec::len);
+    if cells.iter().any(|row| row.len() != columns) {
+        return Err("every row of `areas` needs the same number of cells".to_owned());
+    }
+    let mut areas: Vec<taffy::style::GridTemplateArea<String>> = Vec::new();
+    for (row, names) in cells.iter().enumerate() {
+        for (column, name) in names.iter().enumerate() {
+            if *name == "." {
+                continue;
+            }
+            let (row, column) = (row as u16, column as u16);
+            match areas.iter_mut().find(|area| area.name == *name) {
+                Some(area) => {
+                    area.row_start = area.row_start.min(row);
+                    area.row_end = area.row_end.max(row + 1);
+                    area.column_start = area.column_start.min(column);
+                    area.column_end = area.column_end.max(column + 1);
+                }
+                None => areas.push(taffy::style::GridTemplateArea {
+                    name: (*name).to_owned(),
+                    row_start: row,
+                    row_end: row + 1,
+                    column_start: column,
+                    column_end: column + 1,
+                }),
+            }
+        }
+    }
+    for area in &areas {
+        for row in area.row_start..area.row_end {
+            for column in area.column_start..area.column_end {
+                if cells[row as usize][column as usize] != area.name {
+                    return Err(format!("area `{}` is not a rectangle", area.name));
+                }
+            }
+        }
+    }
+    Ok(taffy::style::GridTemplateAreas {
+        areas: areas
+            .into_iter()
+            .map(|area| taffy::style::GridTemplateArea {
+                // Taffy counts lines from one.
+                row_start: area.row_start + 1,
+                row_end: area.row_end + 1,
+                column_start: area.column_start + 1,
+                column_end: area.column_end + 1,
+                ..area
+            })
+            .collect(),
+        row_count: cells.len() as u16,
+        column_count: columns as u16,
+    })
+}
+
+/// Explicit grid placement in 1-based lines; spans default to one cell. A line
+/// of 0 leaves that axis to auto-flow, so the child still takes `column_span`
+/// or `row_span` tracks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GridArea {
     pub column: u16,
@@ -85,6 +177,10 @@ impl GridArea {
             column_span: 1,
             row_span: 1,
         }
+    }
+    /// Placed by auto-flow, covering the given number of tracks.
+    pub fn auto_span(column_span: u16, row_span: u16) -> Self {
+        Self::span(0, 0, column_span, row_span)
     }
     pub fn span(column: u16, row: u16, column_span: u16, row_span: u16) -> Self {
         Self {
@@ -177,6 +273,10 @@ pub struct Style {
     pub aspect_ratio: Option<f32>,
     pub padding: f32,
     pub gap: f32,
+    /// Overrides `gap` between rows when set.
+    pub row_gap: Option<f32>,
+    /// Overrides `gap` between columns when set.
+    pub column_gap: Option<f32>,
     pub grow: f32,
     /// Flex shrink factor; children do not shrink unless this is set.
     pub shrink: f32,
@@ -192,8 +292,19 @@ pub struct Style {
     /// Sizes for implicitly created tracks; `Auto` when empty.
     pub auto_columns: Vec<Track>,
     pub auto_rows: Vec<Track>,
+    /// Grid containers: how children without an `area` are placed.
+    pub auto_flow: AutoFlow,
+    /// Grid containers: named areas, one string per row. Each holds
+    /// whitespace-separated names, `.` marking an empty cell, as CSS
+    /// `grid-template-areas` does: `"header header"`, `"nav main"`. A template
+    /// that is ragged or has a name that is not one rectangle is reported as
+    /// misuse by `Ui::grid`.
+    pub areas: Vec<String>,
     /// Grid items only: explicit placement instead of auto-flow.
     pub area: Option<GridArea>,
+    /// Grid items only: placement in the named area of the parent's `areas`.
+    /// Wins over `area`.
+    pub area_name: Option<String>,
     pub background: Option<Color>,
     /// A ramp of colours instead of a flat `background`, painted under
     /// `background_image`.
@@ -251,6 +362,8 @@ impl Default for Style {
             shadow: None,
             padding: 0.0,
             gap: 12.0,
+            row_gap: None,
+            column_gap: None,
             grow: 0.0,
             shrink: 0.0,
             radius: 0.0,
@@ -262,7 +375,10 @@ impl Default for Style {
             rows: Vec::new(),
             auto_columns: Vec::new(),
             auto_rows: Vec::new(),
+            auto_flow: AutoFlow::Row,
+            areas: Vec::new(),
             area: None,
+            area_name: None,
             background: None,
             background_image: None,
             foreground: None,
@@ -432,7 +548,15 @@ impl Style {
         some
     );
     setter!(padding, padding, f32);
-    setter!(gap, gap, f32);
+    /// Sets the gap between rows and between columns.
+    pub fn gap(mut self, value: f32) -> Self {
+        self.gap = value;
+        self.row_gap = None;
+        self.column_gap = None;
+        self
+    }
+    setter!(row_gap, row_gap, f32, some);
+    setter!(column_gap, column_gap, f32, some);
     setter!(grow, grow, f32);
     setter!(shrink, shrink, f32);
     setter!(radius, radius, f32);
@@ -444,7 +568,18 @@ impl Style {
     setter!(rows, rows, Vec<Track>);
     setter!(auto_columns, auto_columns, Vec<Track>);
     setter!(auto_rows, auto_rows, Vec<Track>);
+    setter!(auto_flow, auto_flow, AutoFlow);
+    /// Declares the named areas of a grid, one string per row.
+    pub fn areas<I>(mut self, rows: I) -> Self
+    where
+        I: IntoIterator,
+        I::Item: Into<String>,
+    {
+        self.areas = rows.into_iter().map(Into::into).collect();
+        self
+    }
     setter!(area, area, GridArea, some);
+    setter!(area_name, area_name, String, some);
     setter!(wrap, wrap, TextWrap);
     setter!(opacity, opacity, f32);
     setter!(transform, transform, Transform);
@@ -501,9 +636,10 @@ impl Style {
     pub(crate) fn layout(&self, flow: Flow) -> taffy::Style {
         use taffy::prelude::*;
         use taffy::style::{
-            AlignContent, GridPlacement, GridTemplateComponent, MaxTrackSizingFunction,
-            MinTrackSizingFunction, RepetitionCount, TrackSizingFunction,
+            AlignContent, GridAutoFlow, GridPlacement, GridTemplateComponent,
+            MaxTrackSizingFunction, MinTrackSizingFunction, RepetitionCount, TrackSizingFunction,
         };
+        let gap = |value: Option<f32>| LengthPercentage::length(value.unwrap_or(self.gap).max(0.0));
         let dimension = |value| match value {
             Length::Auto => Dimension::auto(),
             Length::Px(value) => Dimension::length(value.max(0.0)),
@@ -568,7 +704,9 @@ impl Style {
                 Track::Auto => minmax(auto(), auto()),
                 Track::MinMax(min, max) => minmax(min_track(*min), max_track(*max)),
                 // Nested repeats are not part of the contract; treat as auto.
-                Track::Repeat(..) => minmax(auto(), auto()),
+                Track::Repeat(..) | Track::AutoFill(_) | Track::AutoFit(_) => {
+                    minmax(auto(), auto())
+                }
             }
         };
         let template = |tracks: &[Track]| -> Vec<GridTemplateComponent<String>> {
@@ -579,13 +717,29 @@ impl Style {
                         RepetitionCount::Count((*count).max(1)),
                         inner.iter().map(sizing).collect(),
                     ),
+                    Track::AutoFill(inner) => repeat(
+                        RepetitionCount::AutoFill,
+                        inner.iter().map(sizing).collect(),
+                    ),
+                    Track::AutoFit(inner) => {
+                        repeat(RepetitionCount::AutoFit, inner.iter().map(sizing).collect())
+                    }
                     other => GridTemplateComponent::Single(sizing(other)),
                 })
                 .collect()
         };
         let placement = |start: u16, count: u16| Line::<GridPlacement> {
-            start: line(i16::try_from(start.max(1)).unwrap_or(i16::MAX)),
+            start: if start == 0 {
+                GridPlacement::Auto
+            } else {
+                line(i16::try_from(start).unwrap_or(i16::MAX))
+            },
             end: span(count.max(1)),
+        };
+        // A name alone resolves to the `-start` and `-end` lines of its area.
+        let named = |name: &str| Line::<GridPlacement> {
+            start: GridPlacement::NamedLine(name.to_owned(), 0),
+            end: GridPlacement::NamedLine(name.to_owned(), 0),
         };
         taffy::Style {
             display: match flow {
@@ -608,7 +762,10 @@ impl Style {
                 .aspect_ratio
                 .filter(|ratio| ratio.is_finite() && *ratio > 0.0),
             padding: Rect::length(self.padding.max(0.0)),
-            gap: Size::length(self.gap.max(0.0)),
+            gap: Size {
+                width: gap(self.column_gap),
+                height: gap(self.row_gap),
+            },
             flex_direction: if flow == Flow::Row {
                 FlexDirection::Row
             } else {
@@ -629,12 +786,25 @@ impl Style {
             grid_template_rows: template(&self.rows),
             grid_auto_columns: self.auto_columns.iter().map(sizing).collect(),
             grid_auto_rows: self.auto_rows.iter().map(sizing).collect(),
-            grid_column: self.area.map_or_else(Default::default, |area| {
-                placement(area.column, area.column_span)
-            }),
-            grid_row: self
-                .area
-                .map_or_else(Default::default, |area| placement(area.row, area.row_span)),
+            grid_auto_flow: match self.auto_flow {
+                AutoFlow::Row => GridAutoFlow::Row,
+                AutoFlow::Column => GridAutoFlow::Column,
+                AutoFlow::RowDense => GridAutoFlow::RowDense,
+                AutoFlow::ColumnDense => GridAutoFlow::ColumnDense,
+            },
+            grid_template_areas: template_areas(&self.areas)
+                .ok()
+                .filter(|template| template.row_count > 0),
+            grid_column: match (&self.area_name, self.area) {
+                (Some(name), _) => named(name),
+                (None, Some(area)) => placement(area.column, area.column_span),
+                (None, None) => Default::default(),
+            },
+            grid_row: match (&self.area_name, self.area) {
+                (Some(name), _) => named(name),
+                (None, Some(area)) => placement(area.row, area.row_span),
+                (None, None) => Default::default(),
+            },
             position: if self.offset.is_some() {
                 Position::Absolute
             } else {
