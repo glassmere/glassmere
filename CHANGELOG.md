@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [0.1.2] - 2026-10-25
+
+### Added
+
+- `Context::minimize_button` and `close_button`, beside `maximize_button`; `glassmere_win32::Caption::set_minimize`, `set_close` and `take_input`, whose `CaptionInput` also carries presses, and `glassmere_win32::frame_shadow`.
+
+### Fixed
+
+- On Windows, a title bar the view draws behaves like the system's:
+  - Its maximize button offers the snap layouts from the first hover. Before, Windows learnt where the button was only once the view had been declared a second time.
+  - A click on its maximize button maximizes or restores the window.
+  - Its minimize, maximize and close buttons show the system's tooltips and arrow cursor, without the cursor flickering to a hand.
+  - The window keeps the system's shadow and rounded corners.
+- `Ui::title_bar` is as tall as the system's caption unless its style sets a height, its window buttons sit side by side with no gap, and a `Ui::menu_bar` in it has flat headings that fit the bar.
+- A press in a title bar takes focus without drawing a focus ring; moving focus by keyboard shows it again.
+- A window closed from the view, as a title bar's close button does, closes at once rather than at the next event.
+- The yanked `clipboard-win` 5.4.1 in `Cargo.lock` is replaced with 5.4.3.
+
 ## [0.1.1] - 2026-10-25
 
 ### Added

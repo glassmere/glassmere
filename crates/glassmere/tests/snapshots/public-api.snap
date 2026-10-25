@@ -554,6 +554,7 @@ glassmere-core   fn Context::captured(&self) -> Option<NodeId>
 glassmere-core   fn Context::caret_movement(&self) -> crate::CaretMovement
 glassmere-core   fn Context::clear_bindings(&mut self)
 glassmere-core   fn Context::clear_diagnostics(&mut self)
+glassmere-core   fn Context::close_button(&self) -> Option<Rect>
 glassmere-core   fn Context::composing_text(&self) -> bool
 glassmere-core   fn Context::damage_regions(&self) -> &[Rect]
 glassmere-core   fn Context::details(&self, id: NodeId) -> Option<NodeDetails>
@@ -581,6 +582,7 @@ glassmere-core   fn Context::ime_cursor_rect(&self) -> Option<Rect>
 glassmere-core   fn Context::locale(&self) -> &str
 glassmere-core   fn Context::maximize_button(&self) -> Option<Rect>
 glassmere-core   fn Context::memory(&self) -> MemoryReport
+glassmere-core   fn Context::minimize_button(&self) -> Option<Rect>
 glassmere-core   fn Context::missing_messages(&self) -> Vec<String>
 glassmere-core   fn Context::new() -> Self
 glassmere-core   fn Context::next_wake(&self) -> Option<Duration>
@@ -2497,13 +2499,22 @@ glassmere-image   fn Loader::request(&self, path: PathBuf)
 glassmere-image fn decode(bytes: &[u8]) -> Result<Image, String>
 glassmere-image fn load(path: &Path) -> Result<Image, String>
 glassmere-image struct Loader (private fields)
+glassmere-win32   fn Caption::set_close(&self, button: Option<(i32, i32, i32, i32)>)
 glassmere-win32   fn Caption::set_maximize(&self, button: Option<(i32, i32, i32, i32)>)
+glassmere-win32   fn Caption::set_minimize(&self, button: Option<(i32, i32, i32, i32)>)
 glassmere-win32   fn Caption::take(&self) -> Vec<CaptionEvent>
+glassmere-win32   fn Caption::take_input(&self) -> Vec<CaptionInput>
 glassmere-win32   variant CaptionEvent::Hover(i32, i32)
 glassmere-win32   variant CaptionEvent::Left
+glassmere-win32   variant CaptionInput::Down(i32, i32)
+glassmere-win32   variant CaptionInput::Hover(i32, i32)
+glassmere-win32   variant CaptionInput::Left
+glassmere-win32   variant CaptionInput::Up(i32, i32)
 glassmere-win32 enum CaptionEvent #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+glassmere-win32 enum CaptionInput #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
 glassmere-win32 fn animations_disabled() -> Option<bool>
 glassmere-win32 fn attach(window: isize) -> Option<Caption>
+glassmere-win32 fn frame_shadow(window: isize)
 glassmere-win32 impl Drop for Caption
 glassmere-win32 struct Caption (private fields)
 glassmere-derive fn properties(input: TokenStream) -> TokenStream #[proc_macro_derive(Properties, attributes(property))]
