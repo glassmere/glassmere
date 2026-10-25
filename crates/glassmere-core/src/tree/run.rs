@@ -81,6 +81,11 @@ impl Context {
         };
         let ((), refused) = crate::reactive::declaring(panics, || {
             view(&mut ui);
+            // Over everything the view declared, so a press on an edge is the
+            // edge's.
+            if ui.host.frameless {
+                ui.resize_frame(6.0);
+            }
             ui.declare_toasts();
         });
         let mut elements = ui.elements;
@@ -176,6 +181,11 @@ impl Context {
             self.menu_shown = Some(menu.clone());
             self.menu_out = Some(menu);
         }
+        self.menu_drawn = self
+            .menu_shown
+            .as_ref()
+            .is_some_and(|menu| host.drawn_menus.contains(menu));
+        self.frameless = host.frameless;
         if let Some(tray) = host.tray
             && self.tray_shown != tray
         {

@@ -1,8 +1,10 @@
 use super::*;
 
 impl<'a, M: 'static> Ui<'a, M> {
-    /// The application's native menu: the menu bar on macOS and the window's
-    /// own on Windows. Declaring the same menu again changes
+    /// The application's menu: the menu bar on macOS and, on Windows, the
+    /// window's own menu bar when the window has the system's frame and the
+    /// view does not draw this menu itself, in an [`AppBar`] or with
+    /// `Ui::menu_bar`. Declaring the same menu again changes
     /// nothing, so a view may set it every frame. Choosing an item sends
     /// `Event::Command` with that command's id, which activates the command
     /// the view declared, exactly as its button would.
@@ -27,7 +29,7 @@ impl<'a, M: 'static> Ui<'a, M> {
     }
 
     /// A strip that moves the window, for a window with the system's title
-    /// bar turned off. Pressing it starts a move; pressing it twice
+    /// bar turned off, which placing one does for a window that has it. Pressing it starts a move; pressing it twice
     /// maximizes or restores. Whatever is declared inside it keeps working,
     /// because a press that lands on a control there is that control's.
     ///
@@ -43,6 +45,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         // the way a title bar's do.
         self.row(style, content);
         self.set_control(Control::TitleBar);
+        self.host.frameless = true;
     }
 
     /// Minimize, maximize or restore, and close, as three buttons. The
@@ -194,32 +197,73 @@ impl<'a, M: 'static> Ui<'a, M> {
         });
     }
 
-    /// Draws `menu` as a menu bar, for the platforms where a menu belongs
-    /// to the window rather than to the application. Choosing an item
-    /// activates that command, exactly as the platform's own menu does, so a
-    /// view handles both the same way: through the command it declared.
+    /// Draws `menu` as a menu bar, a row of flat headings each opening its
+    /// items in a dropdown. Placed in the body of the view it is a bar of its
+    /// own, under the system's title bar or under an [`AppBar`]. Choosing an
+    /// item activates that command, exactly as the platform's own menu does,
+    /// so a view handles both the same way: through the command it declared.
     ///
-    /// The bar is a row of flat headings, each opening its items in a
-    /// dropdown. Two levels are shown. A submenu inside a submenu is drawn as
-    /// a heading with its items under it, because the framework's own menus
-    /// do not nest.
+    /// Two levels are shown. A submenu inside a submenu is drawn as a heading
+    /// with its items under it, because the framework's own menus do not
+    /// nest.
     ///
-    /// Where the host shows this same menu, declared with `Ui::set_menu`,
-    /// somewhere else, nothing is drawn: in a menu bar of the window's own,
-    /// or in the title bar the framework draws for a window with a menu (see
-    /// `AppOptions::menu_bar`). A window that draws its own title bar has
-    /// neither, so a menu bar inside the title bar the view draws itself
-    /// stays where it is.
+    /// When `menu` is also the one given to `Ui::set_menu`, the host leaves
+    /// out the window's own menu bar on Windows, so that it is shown once.
     #[track_caller]
     pub fn menu_bar(&mut self, menu: &crate::Menu) {
-        if self.context.menu_bar_is_native(menu) {
-            return;
-        }
         self.draw_menu_bar(menu);
+    }
+
+    /// The title bar of a window that draws its own, ready made: see
+    /// [`AppBar`]. It moves the window when pressed and maximizes it when
+    /// pressed twice, its buttons minimize, maximize and close the window
+    /// without the app handling a message, and the edges of the window
+    /// resize it. It is drawn in the app's theme, with the title dimmed
+    /// while the window has no keyboard focus. Place it before the body.
+    #[track_caller]
+    pub fn app_bar(&mut self, bar: AppBar) {
+        let theme = self.theme().clone();
+        let focused = self.window().focused;
+        let title = bar
+            .title
+            .unwrap_or_else(|| self.context.window_title().to_owned());
+        let style = Style {
+            width: crate::Length::Percent(1.0),
+            height: crate::Length::Px(caption::HEIGHT),
+            align_items: crate::Align::Center,
+            background: Some(theme.surface),
+            ..Style::default()
+        };
+        self.group(WidgetKey::named("$title-bar"), Kind::Row, style, |ui| {
+            ui.keyed("$title", |ui| {
+                ui.label(crate::Label::new(title).style(Style {
+                    padding: 10.0,
+                    foreground: Some(if focused {
+                        theme.text
+                    } else {
+                        theme.text_muted
+                    }),
+                    ..Style::default()
+                }))
+            });
+            if let Some(menu) = &bar.menu {
+                ui.keyed("$menu", |ui| ui.draw_menu_bar(menu));
+            }
+            // Everything after this sits at the far end.
+            ui.keyed("$gap", |ui| {
+                ui.container(Style::default().grow(1.0), |_| {})
+            });
+            ui.keyed("$buttons", |ui| {
+                ui.caption_buttons(crate::app::Handler::Window);
+            });
+        });
+        self.set_control(Control::TitleBar);
+        self.host.frameless = true;
     }
 
     #[track_caller]
     fn draw_menu_bar(&mut self, menu: &crate::Menu) {
+        self.host.drawn_menus.push(menu.clone());
         let foreground = self.theme().text;
         // A wash of the text colour, as the caption buttons use but fainter,
         // for a heading is no button: light over a dark bar, dark over a
@@ -283,67 +327,6 @@ impl<'a, M: 'static> Ui<'a, M> {
         if let Some(id) = chosen {
             self.host.commands.push(id);
         }
-    }
-
-    /// Declares `content` under the title bar the framework draws for a
-    /// window whose system title bar is off, or as it is where there is none.
-    /// The bar has the window's title, the menu the view declared, a gap that
-    /// moves the window, and the window's buttons; the edges that resize the
-    /// window lie over everything.
-    #[track_caller]
-    pub(crate) fn chrome(&mut self, content: impl FnOnce(&mut Ui<'_, M>)) {
-        let Some((title, menu)) = self
-            .context
-            .framework_title_bar()
-            .map(|(title, menu)| (title.to_owned(), menu.cloned()))
-        else {
-            content(self);
-            return;
-        };
-        let theme = self.theme().clone();
-        let focused = self.window().focused;
-        let bar = Style {
-            width: crate::Length::Percent(1.0),
-            height: crate::Length::Px(caption::HEIGHT),
-            align_items: crate::Align::Center,
-            background: Some(theme.surface),
-            ..Style::default()
-        };
-        self.group(WidgetKey::named("$title-bar"), Kind::Row, bar, |ui| {
-            ui.keyed("$title", |ui| {
-                ui.label(crate::Label::new(title).style(Style {
-                    padding: 10.0,
-                    foreground: Some(if focused {
-                        theme.text
-                    } else {
-                        theme.text_muted
-                    }),
-                    ..Style::default()
-                }))
-            });
-            if let Some(menu) = &menu {
-                ui.keyed("$menu", |ui| ui.draw_menu_bar(menu));
-            }
-            // Everything after this sits at the far end.
-            ui.keyed("$gap", |ui| {
-                ui.container(Style::default().grow(1.0), |_| {})
-            });
-            ui.keyed("$buttons", |ui| {
-                ui.caption_buttons(crate::app::Handler::Window);
-            });
-        });
-        self.set_control(Control::TitleBar);
-        self.keyed("$content", |ui| {
-            ui.column(
-                Style {
-                    width: crate::Length::Percent(1.0),
-                    grow: 1.0,
-                    ..Style::default()
-                },
-                content,
-            );
-        });
-        self.resize_frame(6.0);
     }
 
     /// The application's tray icon, or `None` to take it away.

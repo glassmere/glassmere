@@ -64,14 +64,12 @@ mod enabled {
     }
 
     /// The application's menu where the platform has one of its own. That is
-    /// the menu bar on macOS and, for a window that keeps the system's frame
-    /// (`MenuBarPlacement::Separate`), the window's own menu bar on Windows.
-    /// A window that draws its own title bar has no room for a Win32 menu
-    /// bar, and on Linux a menu bar belongs to the window as well and is not
-    /// put there, so `Ui::menu_bar` draws it instead. With the default
-    /// `MenuBarPlacement::TitleBar` the host does not install one on Windows
-    /// or Linux at all: the framework draws the menu in a title bar of its
-    /// own.
+    /// the menu bar on macOS and, for a window with the system's frame whose
+    /// view does not draw the menu itself, the window's own menu bar on
+    /// Windows. A window that draws its own title bar has no room for a
+    /// Win32 menu bar, and on Linux a menu bar belongs to the window as well
+    /// and is not put there, so `Ui::menu_bar` or an `AppBar` draws it
+    /// instead.
     ///
     /// The Windows bar is attached to the window and detached when this is
     /// dropped. Windows opens it on Alt or F10, as it does for any window
@@ -107,11 +105,6 @@ mod enabled {
                 .map(Self);
             #[cfg(not(windows))]
             Some(Self(native))
-        }
-
-        /// Whether the menu is in the window, as opposed to the application.
-        pub(crate) fn in_window(&self) -> bool {
-            cfg!(windows)
         }
 
         /// The bar follows the window's theme.
@@ -263,10 +256,6 @@ mod disabled {
     impl NativeMenu {
         pub(crate) fn install(_: &Menu, _: &Window, _: bool, _: &Theme) -> Option<Self> {
             None
-        }
-
-        pub(crate) fn in_window(&self) -> bool {
-            false
         }
 
         pub(crate) fn set_theme(&mut self, _: &Theme) {}

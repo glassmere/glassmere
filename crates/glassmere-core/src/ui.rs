@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::panic::Location;
 use std::sync::Arc;
 mod builders;
-pub use builders::{Button, ComboBox, Label, TextInput};
+pub use builders::{AppBar, Button, ComboBox, Label, TextInput};
 mod collections;
 mod controls;
 mod dock;
@@ -63,6 +63,9 @@ pub(crate) struct HostOutbox {
     pub watched: Vec<std::path::PathBuf>,
     /// The native menu and tray icon as the view last declared them.
     pub menu: Option<crate::Menu>,
+    /// The menus the view drew itself, and whether it placed a title bar.
+    pub drawn_menus: Vec<crate::Menu>,
+    pub frameless: bool,
     pub tray: Option<Option<crate::Tray>>,
     /// Commands a menu the framework drew itself chose.
     pub commands: Vec<String>,

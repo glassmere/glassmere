@@ -417,11 +417,14 @@ pub struct Context {
     /// What the host has been given, so that declaring the same menu or
     /// tray again asks for nothing.
     menu_shown: Option<crate::Menu>,
-    /// The host shows `menu_shown` in a menu bar of the window's own.
-    native_menu_bar: bool,
-    /// The title the framework draws a title bar with, which carries
-    /// `menu_shown`, for a window whose system title bar is off.
-    title_bar: Option<String>,
+    /// The view drew `menu_shown` itself in the last frame, in an app bar or
+    /// with `Ui::menu_bar`.
+    menu_drawn: bool,
+    /// The view placed a title bar of its own in the last frame, so the
+    /// window has no use for the system's.
+    frameless: bool,
+    /// The window's title, which an app bar shows unless it is given another.
+    window_title: String,
     tray_shown: Option<crate::Tray>,
     /// What a title bar of the application's own asked the window to do,
     /// what the host says about the window, and the size it was last given.
@@ -621,8 +624,9 @@ impl Default for Context {
             menu_out: None,
             tray_out: None,
             menu_shown: None,
-            native_menu_bar: false,
-            title_bar: None,
+            menu_drawn: false,
+            frameless: false,
+            window_title: String::new(),
             tray_shown: None,
             window_commands: Vec::new(),
             window_info: crate::WindowInfo::default(),
@@ -978,35 +982,31 @@ impl Context {
         self.menu_out.take()
     }
 
-    /// Whether the host shows the menu a view declared in a menu bar of the
-    /// window's own, so that `Ui::menu_bar` has nothing left to draw.
-    pub fn set_native_menu_bar(&mut self, shown: bool) {
-        if self.native_menu_bar != shown {
-            self.native_menu_bar = shown;
+    /// Whether the view drew the menu it declared with `Ui::set_menu` itself
+    /// in the last frame, in an app bar or with `Ui::menu_bar`. A host that
+    /// has a menu bar of its own for the window leaves it out then, so the
+    /// menu is not shown twice.
+    pub fn menu_drawn(&self) -> bool {
+        self.menu_drawn
+    }
+
+    /// Whether the view placed a title bar of its own in the last frame,
+    /// with `Ui::app_bar` or `Ui::title_bar`. A host turns the system's
+    /// title bar off for a window that did.
+    pub fn wants_frameless(&self) -> bool {
+        self.frameless
+    }
+
+    pub(crate) fn window_title(&self) -> &str {
+        &self.window_title
+    }
+
+    /// The window's title, for an app bar that is not given one.
+    pub fn set_window_title(&mut self, title: &str) {
+        if self.window_title != title {
+            self.window_title = title.to_owned();
             self.view_stale = true;
         }
-    }
-
-    /// Whether the framework draws a title bar of its own above the view,
-    /// with this title, the window's buttons, and the menu the view declared
-    /// with `Ui::set_menu` in it. The host turns the system's title bar off
-    /// for a window that asks for this. `None` takes the bar away.
-    pub fn set_title_bar(&mut self, title: Option<String>) {
-        if self.title_bar != title {
-            self.title_bar = title;
-            self.view_stale = true;
-        }
-    }
-
-    /// The title of the title bar the framework draws, and the menu in it.
-    pub(crate) fn framework_title_bar(&self) -> Option<(&str, Option<&crate::Menu>)> {
-        Some((self.title_bar.as_deref()?, self.menu_shown.as_ref()))
-    }
-
-    /// Whether `menu` is the one the host shows, in a menu bar of the
-    /// window's own or in the title bar the framework draws.
-    pub(crate) fn menu_bar_is_native(&self, menu: &crate::Menu) -> bool {
-        (self.native_menu_bar || self.title_bar.is_some()) && self.menu_shown.as_ref() == Some(menu)
     }
 
     /// The tray icon a view last declared, or `Some(None)` to take it away.

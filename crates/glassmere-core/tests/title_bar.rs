@@ -1,11 +1,10 @@
-//! The title bar the framework draws for a window that declares a menu, and
-//! the menu bar it draws there. The host is a test here: it switches the bar
-//! on, as it does once the system's title bar is off, and takes the window
-//! commands.
+//! The app bar: the title bar a view places itself, with the menu in it. The
+//! host is a test here: it takes the window commands.
 mod support;
 
 use glassmere_core::{
-    App, Command, Context, Effects, Event, Menu, MenuEntry, MenuItem, Role, Ui, WindowCommand,
+    App, AppBar, Command, Context, Effects, Event, Menu, MenuEntry, MenuItem, ResizeEdge, Role,
+    Style, Ui, WindowCommand,
 };
 use glassmere_scene::{Point, Size};
 use std::time::Duration;
@@ -24,9 +23,8 @@ fn menu() -> Menu {
     )])
 }
 
-/// A view that declares its menu, asks for it to be drawn too, and has some
-/// content that fills the window.
-struct Shell;
+/// A view that places what it is told to before a body.
+struct Shell(fn(&mut Ui<'_, ()>));
 
 impl App for Shell {
     type Message = ();
@@ -34,8 +32,7 @@ impl App for Shell {
     fn update(&mut self, _: (), _: &mut Effects<'_, ()>) {}
 
     fn view(&self, ui: &mut Ui<'_, ()>) {
-        ui.set_menu(menu());
-        ui.keyed("bar", |ui| ui.menu_bar(&menu()));
+        (self.0)(ui);
         ui.keyed("body", |ui| ui.label("Content"));
     }
 }
@@ -54,26 +51,21 @@ fn press(context: &mut Context, at: Point) {
     context.event(Event::PointerUp);
 }
 
-fn with_title_bar() -> Host<Shell> {
-    let mut h = Host::new(Shell, ROOT);
-    h.frame();
-    h.context.set_title_bar(Some("Shell".to_owned()));
+fn host(view: fn(&mut Ui<'_, ()>)) -> Host<Shell> {
+    let mut h = Host::new(Shell(view), ROOT);
+    h.context.set_window_title("Shell");
     h.frame();
     h
 }
 
-#[test]
-fn a_window_has_no_title_bar_until_the_host_asks_for_one() {
-    let mut h = Host::new(Shell, ROOT);
-    h.frame();
-    assert!(h.context.find(&["$title-bar"]).is_none());
-    // Its own menu bar is what it has.
-    assert!(h.context.find(&["bar", "menu0"]).is_some());
+/// An app bar with the menu in it.
+fn shell() -> Host<Shell> {
+    host(|ui| ui.app_bar(AppBar::new().menu(menu())))
 }
 
 #[test]
-fn the_title_bar_holds_the_title_the_declared_menu_and_the_window_buttons() {
-    let h = with_title_bar();
+fn the_app_bar_holds_the_window_title_the_menu_and_the_window_buttons() {
+    let h = shell();
     let title = h.context.find(&["$title-bar", "$title"]).unwrap();
     assert_eq!(h.context.details(title).unwrap().text, "Shell");
     assert!(h.context.find(&["$title-bar", "$menu", "menu0"]).is_some());
@@ -86,30 +78,48 @@ fn the_title_bar_holds_the_title_the_declared_menu_and_the_window_buttons() {
 }
 
 #[test]
-fn the_views_own_menu_bar_draws_nothing_while_the_title_bar_shows_the_menu() {
-    let mut h = with_title_bar();
-    assert!(h.context.find(&["bar", "menu0"]).is_none());
-    h.context.set_title_bar(None);
-    h.frame();
-    assert!(h.context.find(&["$title-bar"]).is_none());
-    assert!(h.context.find(&["bar", "menu0"]).is_some());
+fn a_bar_without_a_menu_has_none_and_a_title_of_its_own_replaces_the_windows() {
+    let h = host(|ui| ui.app_bar(AppBar::new().title("Mine")));
+    let title = h.context.find(&["$title-bar", "$title"]).unwrap();
+    assert_eq!(h.context.details(title).unwrap().text, "Mine");
+    assert!(h.context.find(&["$title-bar", "$menu"]).is_none());
 }
 
 #[test]
-fn the_content_sits_under_the_bar_and_fills_what_is_left() {
-    let h = with_title_bar();
+fn a_window_wants_no_system_title_bar_exactly_while_the_view_places_one() {
+    assert!(shell().context.wants_frameless());
+    assert!(!host(|_| {}).context.wants_frameless());
+    // The low-level strip counts too.
+    let strip = host(|ui| ui.title_bar(Style::default(), |ui| ui.label("Mine")));
+    assert!(strip.context.wants_frameless());
+}
+
+#[test]
+fn the_edges_lie_over_the_body_and_the_bar() {
+    let mut h = shell();
+    // The first frame does not know the size yet.
+    h.frame();
+    press(&mut h.context, Point { x: 200.0, y: 3.0 });
+    assert_eq!(
+        h.context.take_window_commands(),
+        [WindowCommand::Resize(ResizeEdge::North)]
+    );
+}
+
+#[test]
+fn the_body_sits_under_the_bar() {
+    let h = shell();
     let bar = h.context.node(h.context.find(&["$title-bar"]).unwrap());
-    let content = h.context.node(h.context.find(&["$content"]).unwrap());
-    let (bar, content) = (bar.unwrap().bounds, content.unwrap().bounds);
+    let body = h.context.node(h.context.find(&["body"]).unwrap());
+    let (bar, body) = (bar.unwrap().bounds, body.unwrap().bounds);
     assert_eq!(bar.y, 0.0);
     assert_eq!(bar.width, ROOT.width);
-    assert!(content.y >= bar.y + bar.height);
-    assert!((content.y + content.height - ROOT.height).abs() < 0.5);
+    assert!(body.y >= bar.y + bar.height);
 }
 
 #[test]
 fn the_buttons_ask_the_window_without_the_app_handling_a_message() {
-    let mut h = with_title_bar();
+    let mut h = shell();
     for (key, command) in [
         ("minimize", WindowCommand::Minimize),
         ("maximize", WindowCommand::ToggleMaximize),
@@ -124,7 +134,7 @@ fn the_buttons_ask_the_window_without_the_app_handling_a_message() {
 
 #[test]
 fn pressing_the_gap_moves_the_window_and_pressing_a_menu_opens_it() {
-    let mut h = with_title_bar();
+    let mut h = shell();
     let gap = centre(&h.context, &["$title-bar", "$gap"]);
     h.context.set_now(Duration::from_millis(100));
     press(&mut h.context, gap);
@@ -144,7 +154,7 @@ fn pressing_the_gap_moves_the_window_and_pressing_a_menu_opens_it() {
 
 #[test]
 fn a_separator_is_a_rule_in_the_dropdown_and_no_item() {
-    let mut h = with_title_bar();
+    let mut h = shell();
     let heading = centre(&h.context, &["$title-bar", "$menu", "menu0"]);
     press(&mut h.context, heading);
     h.frame();

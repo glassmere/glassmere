@@ -17,7 +17,6 @@ glassmere use GraphicsBackend = glassmere_winit::GraphicsBackend #[cfg(feature =
 glassmere use GraphicsOptions = glassmere_winit::GraphicsOptions #[cfg(feature = "desktop")]
 glassmere use Image = glassmere_scene::Image
 glassmere use Join = glassmere_scene::Join
-glassmere use MenuBarPlacement = glassmere_winit::MenuBarPlacement #[cfg(feature = "desktop")]
 glassmere use Path = glassmere_scene::Path
 glassmere use Placement = glassmere_winit::Placement #[cfg(feature = "desktop")]
 glassmere use Point = glassmere_scene::Point
@@ -522,6 +521,9 @@ glassmere-core   fn App::update(&mut self, message: Self::Message, effects: &mut
 glassmere-core   fn App::view(&self, ui: &mut Ui<'_, Self::Message>)
 glassmere-core   fn App::view_window(&self, _window: WindowId, ui: &mut Ui<'_, Self::Message>) (provided)
 glassmere-core   fn App::window_closed(&mut self, _window: WindowId, _effects: &mut Effects<'_, Self::Message>) (provided)
+glassmere-core   fn AppBar::menu(mut self, menu: crate::Menu) -> Self
+glassmere-core   fn AppBar::new() -> Self
+glassmere-core   fn AppBar::title(mut self, title: impl Into<String>) -> Self
 glassmere-core   fn AppDriver::awaiting(&self) -> Vec<WindowId> [impl<M: Clone + 'static> AppDriver<M>]
 glassmere-core   fn AppDriver::batch<A: App<Message = M>>(&mut self, app: &mut A, context: &mut Context) -> (usize, bool) [impl<M: Clone + 'static> AppDriver<M>]
 glassmere-core   fn AppDriver::batch_in<A: App<Message = M>>(&mut self, window: WindowId, app: &mut A, context: &mut Context) -> (usize, bool) [impl<M: Clone + 'static> AppDriver<M>]
@@ -610,6 +612,7 @@ glassmere-core   fn Context::ime_cursor_rect(&self) -> Option<Rect>
 glassmere-core   fn Context::locale(&self) -> &str
 glassmere-core   fn Context::maximize_button(&self) -> Option<Rect>
 glassmere-core   fn Context::memory(&self) -> MemoryReport
+glassmere-core   fn Context::menu_drawn(&self) -> bool
 glassmere-core   fn Context::missing_messages(&self) -> Vec<String>
 glassmere-core   fn Context::new() -> Self
 glassmere-core   fn Context::next_wake(&self) -> Option<Duration>
@@ -637,16 +640,15 @@ glassmere-core   fn Context::set_direction(&mut self, direction: crate::Directio
 glassmere-core   fn Context::set_format(&mut self, format: Option<Box<dyn LocaleFormat>>)
 glassmere-core   fn Context::set_image_file(&mut self, path: &Path, image: std::result::Result<Image, String>) -> bool
 glassmere-core   fn Context::set_messages(&mut self, messages: Option<Box<dyn Messages>>)
-glassmere-core   fn Context::set_native_menu_bar(&mut self, shown: bool)
 glassmere-core   fn Context::set_now(&mut self, now: Duration)
 glassmere-core   fn Context::set_opened_files(&mut self, paths: Vec<std::path::PathBuf>)
 glassmere-core   fn Context::set_reduced_motion(&mut self, reduced: bool)
 glassmere-core   fn Context::set_stylesheet(&mut self, sheet: StyleSheet)
 glassmere-core   fn Context::set_theme(&mut self, theme: Theme)
-glassmere-core   fn Context::set_title_bar(&mut self, title: Option<String>)
 glassmere-core   fn Context::set_toast_wake(&mut self, wake: impl Fn() + Send + 'static)
 glassmere-core   fn Context::set_watched_file(&mut self, path: &std::path::Path, content: std::result::Result<Vec<u8>, String>) -> bool
 glassmere-core   fn Context::set_window_info(&mut self, info: crate::WindowInfo)
+glassmere-core   fn Context::set_window_title(&mut self, title: &str)
 glassmere-core   fn Context::size(&self) -> Size
 glassmere-core   fn Context::snapshots(&self) -> Vec<NodeSnapshot>
 glassmere-core   fn Context::state_graph(&self) -> &[crate::GraphNode]
@@ -665,6 +667,7 @@ glassmere-core   fn Context::theme(&self) -> &Theme
 glassmere-core   fn Context::toasts(&self) -> impl Iterator<Item = (ToastId, &Toast)>
 glassmere-core   fn Context::touches(&self) -> impl Iterator<Item = (u64, Point, Option<f32>, Option<Pen>)> + '_
 glassmere-core   fn Context::tr(&self, key: &str, args: &[(&str, MessageArg)]) -> String
+glassmere-core   fn Context::wants_frameless(&self) -> bool
 glassmere-core   fn Context::watch_error(&self, path: &std::path::Path) -> Option<&str>
 glassmere-core   fn Context::watched_known(&self, path: &std::path::Path) -> bool
 glassmere-core   fn Context::watched_paths(&self) -> &[std::path::PathBuf]
@@ -1114,6 +1117,7 @@ glassmere-core   fn Tray::with_icon(mut self, icon: Image) -> Self
 glassmere-core   fn Tray::with_menu(mut self, menu: Menu) -> Self
 glassmere-core   fn TreeModel::item(&self, id: ItemId) -> Option<&TreeItem>
 glassmere-core   fn TreeModel::new(items: Vec<TreeItem>) -> Result<Self, ModelError>
+glassmere-core   fn Ui::app_bar(&mut self, bar: AppBar) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::autocomplete<S: AsRef<str>>(&mut self, label: impl Into<String>, value: &str, suggestions: &[S], on_change: impl Fn(String) -> M + 'static) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::autocomplete_with<S: AsRef<str>>(&mut self, label: impl Into<String>, value: &str, suggestions: &[S], on_change: impl Fn(String) -> M + 'static, extra: Autocomplete<M>) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::button(&mut self, button: impl Into<Button<M>>) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
@@ -1730,6 +1734,7 @@ glassmere-core impl<T> std::fmt::Debug for Memo<T>
 glassmere-core impl<T> std::fmt::Debug for Signal<T>
 glassmere-core mod app
 glassmere-core struct Animation #[derive(Clone, Debug, PartialEq)]
+glassmere-core struct AppBar #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct AppDriver<M: 'static> (private fields)
 glassmere-core struct AreaBuilder<M = ()> (private fields)
 glassmere-core struct Autocomplete<M = ()> (private fields)
@@ -1867,6 +1872,7 @@ glassmere-core use Action = tree::Action
 glassmere-core use Align = style::Align
 glassmere-core use Animation = animation::Animation
 glassmere-core use App = app::App
+glassmere-core use AppBar = ui::AppBar
 glassmere-core use AppDriver = app::AppDriver
 glassmere-core use AreaBuilder = ui::AreaBuilder
 glassmere-core use AutoFlow = style::AutoFlow
@@ -2400,7 +2406,6 @@ glassmere-winit   field AppOptions::direction: DirectionChoice
 glassmere-winit   field AppOptions::frame_limit: Option<u64>
 glassmere-winit   field AppOptions::gpu: Option<GpuSetup>
 glassmere-winit   field AppOptions::graphics: GraphicsOptions
-glassmere-winit   field AppOptions::menu_bar: MenuBarPlacement
 glassmere-winit   field AppOptions::placement: Placement
 glassmere-winit   field AppOptions::reduced_motion: bool
 glassmere-winit   field AppOptions::resizable: bool
@@ -2429,8 +2434,6 @@ glassmere-winit   variant GraphicsBackend::Direct3D12
 glassmere-winit   variant GraphicsBackend::Metal
 glassmere-winit   variant GraphicsBackend::OpenGl
 glassmere-winit   variant GraphicsBackend::Vulkan
-glassmere-winit   variant MenuBarPlacement::Separate
-glassmere-winit   variant MenuBarPlacement::TitleBar
 glassmere-winit   variant Placement::Centered
 glassmere-winit   variant Placement::Named(String)
 glassmere-winit   variant Placement::System
@@ -2442,7 +2445,6 @@ glassmere-winit const hot::STOP_ENV: &str
 glassmere-winit enum DirectionChoice #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
 glassmere-winit enum GpuMemoryPolicy #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
 glassmere-winit enum GraphicsBackend #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
-glassmere-winit enum MenuBarPlacement #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
 glassmere-winit enum Placement #[derive(Clone, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
 glassmere-winit enum ThemeChoice #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
 glassmere-winit fn hot::active() -> bool

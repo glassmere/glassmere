@@ -627,8 +627,9 @@ impl Desktop {
             &state.window,
             self.proxy.clone(),
         ));
-        // A window that may swap its title bar waits for its first frame.
-        if !options.may_draw_title_bar() {
+        // A window with the system's frame waits for its first frame: its
+        // view may place a title bar of its own.
+        if !options.decorations {
             state.window.set_visible(true);
         }
         state.window.request_redraw();
@@ -669,7 +670,7 @@ impl Desktop {
                 // runs and for tools without keyboard focus.
                 app.inspector_requested =
                     app.options.devtools && std::env::var_os("GLASSMERE_INSPECT").is_some();
-                if app.options.may_draw_title_bar() {
+                if app.options.decorations {
                     app.show_settled(event_loop);
                 }
                 self.windows.insert(key, app);

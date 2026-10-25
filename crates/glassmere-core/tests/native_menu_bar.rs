@@ -1,8 +1,9 @@
-//! `Ui::menu_bar` draws a menu bar unless the host shows the same menu in one
-//! of the window's own. The host is a test here.
+//! What the host is told about the menu a view declares with `Ui::set_menu`:
+//! whether the view drew it itself, which is when the host leaves out a menu
+//! bar of the window's own.
 mod support;
 
-use glassmere_core::{App, Command, Context, Effects, Menu, MenuEntry, Ui};
+use glassmere_core::{App, AppBar, Command, Effects, Menu, MenuEntry, Ui};
 use glassmere_scene::Size;
 use support::Host;
 
@@ -15,8 +16,15 @@ fn menu() -> Menu {
     )])
 }
 
-/// A view that declares its menu and asks for it to be drawn too.
-struct Shell;
+fn other() -> Menu {
+    Menu::new([MenuEntry::submenu(
+        "Edit",
+        [MenuEntry::Command(Command::new("Copy", None))],
+    )])
+}
+
+/// A view that declares `menu()` and draws what it is told to.
+struct Shell(fn(&mut Ui<'_, ()>));
 
 impl App for Shell {
     type Message = ();
@@ -24,59 +32,56 @@ impl App for Shell {
     fn update(&mut self, _: (), _: &mut Effects<'_, ()>) {}
 
     fn view(&self, ui: &mut Ui<'_, ()>) {
-        ui.keyed("bar", |ui| {
-            ui.set_menu(menu());
-            ui.menu_bar(&menu());
-        });
+        ui.set_menu(menu());
+        (self.0)(ui);
     }
 }
 
-fn drawn(context: &Context) -> bool {
-    context.find(&["bar", "menu0"]).is_some()
+fn drawn(view: fn(&mut Ui<'_, ()>)) -> bool {
+    let mut h = Host::new(Shell(view), ROOT);
+    h.frame();
+    h.context.menu_drawn()
 }
 
 #[test]
-fn the_bar_is_drawn_until_the_host_shows_it() {
-    let mut h = Host::new(Shell, ROOT);
+fn a_menu_nobody_draws_is_the_hosts_to_show() {
+    assert!(!drawn(|_| {}));
+}
+
+#[test]
+fn a_menu_in_the_app_bar_or_in_a_bar_of_the_body_is_drawn() {
+    assert!(drawn(|ui| ui.app_bar(AppBar::new().menu(menu()))));
+    assert!(drawn(|ui| ui.menu_bar(&menu())));
+}
+
+#[test]
+fn another_menu_drawn_is_not_the_one_declared() {
+    assert!(!drawn(|ui| ui.menu_bar(&other())));
+    assert!(!drawn(|ui| ui.app_bar(AppBar::new())));
+}
+
+#[test]
+fn a_body_bar_is_a_bar_of_its_own_under_the_app_bar() {
+    let mut h = Host::new(
+        Shell(|ui| {
+            ui.app_bar(AppBar::new());
+            ui.keyed("bar", |ui| ui.menu_bar(&menu()));
+        }),
+        ROOT,
+    );
     h.frame();
-    assert!(drawn(&h.context));
-    // The host took the menu but has no bar of its own for it.
+    assert!(h.context.find(&["$title-bar", "$menu"]).is_none());
+    let bar = h.context.node(h.context.find(&["$title-bar"]).unwrap());
+    let body = h.context.node(h.context.find(&["bar"]).unwrap());
+    assert!(body.unwrap().bounds.y >= bar.unwrap().bounds.height);
+    assert!(h.context.menu_drawn());
+}
+
+#[test]
+fn the_menu_is_given_to_the_host_once() {
+    let mut h = Host::new(Shell(|_| {}), ROOT);
+    h.frame();
     assert_eq!(h.context.take_menu(), Some(menu()));
     h.frame();
-    assert!(drawn(&h.context));
-}
-
-#[test]
-fn the_bar_is_left_out_once_the_host_shows_it() {
-    let mut h = Host::new(Shell, ROOT);
-    h.frame();
-    assert_eq!(h.context.take_menu(), Some(menu()));
-    h.context.set_native_menu_bar(true);
-    h.frame();
-    assert!(!drawn(&h.context));
-    // The host lost it again, say because the window was given a title bar.
-    h.context.set_native_menu_bar(false);
-    h.frame();
-    assert!(drawn(&h.context));
-}
-
-#[test]
-fn a_menu_the_host_does_not_show_is_still_drawn() {
-    struct Other;
-    impl App for Other {
-        type Message = ();
-        fn update(&mut self, _: (), _: &mut Effects<'_, ()>) {}
-        fn view(&self, ui: &mut Ui<'_, ()>) {
-            ui.keyed("bar", |ui| {
-                ui.set_menu(Menu::default());
-                ui.menu_bar(&menu());
-            });
-        }
-    }
-    let mut h = Host::new(Other, ROOT);
-    h.frame();
-    h.context.take_menu();
-    h.context.set_native_menu_bar(true);
-    h.frame();
-    assert!(drawn(&h.context));
+    assert_eq!(h.context.take_menu(), None);
 }

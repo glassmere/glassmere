@@ -876,10 +876,8 @@ impl<M: Clone + 'static> AppDriver<M> {
         if declare {
             pacing.declared = true;
             match window {
-                None => context.run_app(size, measurer, |ui| ui.chrome(|ui| app.view(ui))),
-                Some(id) => context.run_app(size, measurer, |ui| {
-                    ui.chrome(|ui| app.view_window(id, ui));
-                }),
+                None => context.run_app(size, measurer, |ui| app.view(ui)),
+                Some(id) => context.run_app(size, measurer, |ui| app.view_window(id, ui)),
             };
         } else {
             context.refresh(size, measurer);

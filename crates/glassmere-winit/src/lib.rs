@@ -102,26 +102,6 @@ pub enum ThemeChoice {
     Fixed(Theme),
 }
 
-/// Where a window's menu, declared with `Ui::set_menu`, is shown on Windows
-/// and Linux. On macOS the menu is always the application's menu bar.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum MenuBarPlacement {
-    /// Inside the title bar, on the row with the window's title and its
-    /// buttons. A window that has the system's frame and declares a menu
-    /// gets a title bar the framework draws in the app's theme, in place of
-    /// the system's: the system's frame is turned off for that window, and
-    /// the window's buttons, its title, moving it by the bar and resizing it
-    /// by its edges are the framework's. A window that draws its own title
-    /// bar, or has no menu, is left as it is.
-    #[default]
-    TitleBar,
-    /// A bar of its own under the system's title bar: the window's native
-    /// menu bar on Windows, and the bar `Ui::menu_bar` draws in the view on
-    /// Linux.
-    Separate,
-}
-
 /// Where the window's reading and layout direction comes from.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
@@ -181,30 +161,6 @@ mod direction_tests {
         }
         assert_eq!(DirectionChoice::Rtl.resolve(), Direction::Rtl);
         assert_eq!(DirectionChoice::Ltr.resolve(), Direction::Ltr);
-    }
-}
-
-#[cfg(test)]
-mod menu_bar_tests {
-    use super::{AppOptions, MenuBarPlacement};
-
-    #[test]
-    fn the_menu_goes_in_a_title_bar_of_the_frameworks_unless_the_window_says_otherwise() {
-        let default = AppOptions::default();
-        assert_eq!(default.menu_bar, MenuBarPlacement::TitleBar);
-        // On macOS the menu belongs to the application, whatever is asked.
-        assert_eq!(default.may_draw_title_bar(), !cfg!(target_os = "macos"));
-        let separate = AppOptions {
-            menu_bar: MenuBarPlacement::Separate,
-            ..AppOptions::default()
-        };
-        assert!(!separate.may_draw_title_bar());
-        // A window that draws its own title bar keeps the menu where it put it.
-        let own = AppOptions {
-            decorations: false,
-            ..AppOptions::default()
-        };
-        assert!(!own.may_draw_title_bar());
     }
 }
 
@@ -277,21 +233,6 @@ pub struct AppOptions {
     /// to be moved or resized but the one the application draws.
     pub decorations: bool,
     pub resizable: bool,
-    /// Where the menu a view declares with `Ui::set_menu` is shown. Only a
-    /// window with the system's frame (`decorations`) has a choice.
-    pub menu_bar: MenuBarPlacement,
-}
-
-impl AppOptions {
-    /// Whether a window may end up with the title bar the framework draws,
-    /// once its view declares a menu: it has the system's frame, wants the
-    /// menu in the title bar, and is not on macOS, where the menu belongs to
-    /// the application.
-    pub(crate) fn may_draw_title_bar(&self) -> bool {
-        self.decorations
-            && self.menu_bar == MenuBarPlacement::TitleBar
-            && !cfg!(target_os = "macos")
-    }
 }
 
 impl Default for AppOptions {
@@ -312,7 +253,6 @@ impl Default for AppOptions {
             direction: DirectionChoice::Auto,
             decorations: true,
             resizable: true,
-            menu_bar: MenuBarPlacement::default(),
         }
     }
 }
@@ -858,9 +798,13 @@ struct Application {
     /// window, which drops after it, so that a menu bar is detached from a
     /// window that is still there.
     menu: Option<platform::NativeMenu>,
-    /// The framework draws this window's title bar, because it declared a
-    /// menu and the system's one is off.
-    title_bar: bool,
+    /// The menu the view declared with `Ui::set_menu`, and whether the
+    /// platform's menu bar was tried for it.
+    declared_menu: Option<glassmere_core::Menu>,
+    menu_attempted: bool,
+    /// The system's title bar was turned off because the view placed one of
+    /// its own.
+    frameless: bool,
     state: Option<WindowState>,
     modifiers: ModifiersState,
     error: Option<Box<dyn Error>>,
@@ -918,6 +862,7 @@ impl Application {
         context.set_reduced_motion(reduced_motion(options.reduced_motion));
         context.set_caret_movement(options.caret_movement);
         context.set_direction(options.direction.resolve());
+        context.set_window_title(&options.title);
         // `ToastSender::send` from any thread wakes the loop; the next frame shows the toast.
         let toast_wake = wake.clone();
         context.set_toast_wake(move || {
@@ -928,7 +873,9 @@ impl Application {
             view,
             context,
             menu: None,
-            title_bar: false,
+            declared_menu: None,
+            menu_attempted: false,
+            frameless: false,
             state: Some(state),
             modifiers: ModifiersState::empty(),
             error: None,
@@ -1116,29 +1063,36 @@ impl Application {
         // Only a menu the view declared differently comes out of the context,
         // so the platform's one is not rebuilt every frame.
         if let Some(menu) = self.context.take_menu() {
+            self.declared_menu = Some(menu);
             // Dropping the old one first: two menus is one too many.
             self.menu = None;
-            if self.options.may_draw_title_bar() {
-                self.draw_title_bar();
-            } else if let Some(state) = &self.state {
-                self.menu = platform::NativeMenu::install(
-                    &menu,
-                    &state.window,
-                    self.options.decorations,
-                    self.context.theme(),
-                );
-            }
-            // The view stops drawing its own bar once the window has one.
-            self.request_redraw();
+            self.menu_attempted = false;
+        }
+        if self.context.wants_frameless() {
+            self.turn_frame_off();
+        }
+        // The window's own menu bar is for a menu the view does not draw
+        // itself, in an app bar or with `Ui::menu_bar`, and for a window that
+        // has the system's frame: a Win32 menu bar sits under it.
+        let native = cfg!(not(windows))
+            || (self.options.decorations && !self.frameless && !self.context.menu_drawn());
+        if !native {
+            self.menu = None;
+            self.menu_attempted = false;
+        } else if !self.menu_attempted
+            && let (Some(menu), Some(state)) = (&self.declared_menu, &self.state)
+        {
+            self.menu_attempted = true;
+            self.menu = platform::NativeMenu::install(
+                menu,
+                &state.window,
+                self.options.decorations && !self.frameless,
+                self.context.theme(),
+            );
         }
         if let Some(menu) = &mut self.menu {
             menu.set_theme(self.context.theme());
         }
-        let in_window = self
-            .menu
-            .as_ref()
-            .is_some_and(platform::NativeMenu::in_window);
-        self.context.set_native_menu_bar(in_window);
         if let Some(tray) = self.context.take_tray() {
             self.tray = None;
             self.tray = tray.as_ref().and_then(platform::NativeTray::install);
@@ -1153,16 +1107,16 @@ impl Application {
         }
     }
 
-    /// Swaps the system's title bar for the one the framework draws, which
-    /// has the menu in it.
-    fn draw_title_bar(&mut self) {
+    /// Turns the system's frame off, for a view that placed a title bar of
+    /// its own.
+    fn turn_frame_off(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
-        if self.title_bar {
+        if self.frameless || !self.options.decorations {
             return;
         }
-        self.title_bar = true;
+        self.frameless = true;
         // Without the frame the window would keep its outer size and so gain
         // the room the frame took; it keeps the client area instead.
         let (size, at) = (state.window.inner_size(), state.window.inner_position());
@@ -1174,13 +1128,13 @@ impl Application {
             }
             state.resize();
         }
-        self.context.set_title_bar(Some(self.options.title.clone()));
     }
 
-    /// Shows a window that was created hidden, because it may swap the
-    /// system's title bar for its own: it draws the frame its view declares
-    /// first, takes what that asked of the platform, which is where the swap
-    /// happens, draws again, and only then appears.
+    /// Shows a window that was created hidden, because its view may place a
+    /// title bar of its own and the system's must not be seen first: it draws
+    /// the frame its view declares, takes what that asked of the platform,
+    /// which is where the system's frame goes, draws again, and only then
+    /// appears.
     fn show_settled(&mut self, event_loop: &ActiveEventLoop) {
         for _ in 0..2 {
             if let Err(error) = self.redraw(event_loop) {

@@ -68,9 +68,8 @@ impl App for TitleBar {
                     padding: 6.0,
                     ..Style::default()
                 }));
-                // Drawn here even with the `platform` feature: this window has
-                // the system's title bar off, so the framework draws no bar
-                // for it and there is no native one either.
+                // The menu as a bar in the strip. `Ui::app_bar` assembles all
+                // of this, so this is how its pieces fit together.
                 ui.menu_bar(&menu());
                 // Everything after this sits at the far end.
                 ui.container(Style::default().grow(1.0), |_| {});
