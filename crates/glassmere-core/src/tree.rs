@@ -417,6 +417,8 @@ pub struct Context {
     /// What the host has been given, so that declaring the same menu or
     /// tray again asks for nothing.
     menu_shown: Option<crate::Menu>,
+    /// The host shows `menu_shown` in a menu bar of the window's own.
+    native_menu_bar: bool,
     tray_shown: Option<crate::Tray>,
     /// What a title bar of the application's own asked the window to do,
     /// what the host says about the window, and the size it was last given.
@@ -616,6 +618,7 @@ impl Default for Context {
             menu_out: None,
             tray_out: None,
             menu_shown: None,
+            native_menu_bar: false,
             tray_shown: None,
             window_commands: Vec::new(),
             window_info: crate::WindowInfo::default(),
@@ -969,6 +972,20 @@ impl Context {
     /// rebuilds it only when it changes.
     pub fn take_menu(&mut self) -> Option<crate::Menu> {
         self.menu_out.take()
+    }
+
+    /// Whether the host shows the menu a view declared in a menu bar of the
+    /// window's own, so that `Ui::menu_bar` has nothing left to draw.
+    pub fn set_native_menu_bar(&mut self, shown: bool) {
+        if self.native_menu_bar != shown {
+            self.native_menu_bar = shown;
+            self.view_stale = true;
+        }
+    }
+
+    /// Whether `menu` is the one the host shows in the window's menu bar.
+    pub(crate) fn menu_bar_is_native(&self, menu: &crate::Menu) -> bool {
+        self.native_menu_bar && self.menu_shown.as_ref() == Some(menu)
     }
 
     /// The tray icon a view last declared, or `Some(None)` to take it away.

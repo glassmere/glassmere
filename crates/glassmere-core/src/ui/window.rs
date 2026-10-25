@@ -1,7 +1,8 @@
 use super::*;
 
 impl<'a, M: 'static> Ui<'a, M> {
-    /// The window's native menu bar. Declaring the same menu again changes
+    /// The application's native menu: the menu bar on macOS and the window's
+    /// own on Windows. Declaring the same menu again changes
     /// nothing, so a view may set it every frame. Choosing an item sends
     /// `Event::Command` with that command's id, which activates the command
     /// the view declared, exactly as its button would.
@@ -192,8 +193,16 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// Two levels are shown. A submenu inside a submenu is drawn as a
     /// heading with its items under it, because the framework's own menus
     /// do not nest.
+    ///
+    /// Where the host shows this same menu, declared with `Ui::set_menu`, in
+    /// a menu bar of the window's own, nothing is drawn. A host does that
+    /// only when the window has the system's frame, so a menu bar inside a
+    /// title bar the view draws itself stays where it is.
     #[track_caller]
     pub fn menu_bar(&mut self, menu: &crate::Menu) {
+        if self.context.menu_bar_is_native(menu) {
+            return;
+        }
         let style = Style {
             gap: 4.0,
             ..Style::default()

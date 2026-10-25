@@ -17,7 +17,7 @@ features = ["diagnostics", "images"]
 diagnostics = []
 # Native file dialogs, notifications, menu bars and tray icons. Off by
 # default: each is a dependency an application may not want in its binary.
-platform = ["dep:rfd", "dep:notify-rust", "dep:muda", "dep:tray-icon"]
+platform = ["dep:rfd", "dep:notify-rust", "dep:muda", "dep:tray-icon", "glassmere-win32/menu"]
 # Decoding for `Ui::image_file`; without it image files report an error.
 images = ["dep:glassmere-image", "arboard/image-data"]
 

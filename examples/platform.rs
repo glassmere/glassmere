@@ -123,9 +123,9 @@ impl App for Platform {
             ..Style::default()
         };
         ui.column(page, |ui| {
-            // On Windows and Linux a menu bar belongs to the window, and
-            // this draws it. Choosing an item activates the same command
-            // the platform's menu does.
+            // Where the window has no menu bar of its own for the menu above,
+            // this draws it; where it has, this draws nothing. Choosing an
+            // item activates the same command the platform's menu does.
             ui.menu_bar(&menu(self.saved));
             ui.label(Label::new("Desktop integration").style(Style {
                 font_size: Some(26.0),

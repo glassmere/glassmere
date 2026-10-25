@@ -9,8 +9,14 @@
 //! This is the one crate in the workspace that uses unsafe code, and this is
 //! all of it: one procedure, a shared rectangle it reads, and a list of what
 //! it saw. Everything it learns is handed back as ordinary events for the
-//! framework to deal with in its usual way.
+//! framework to deal with in its usual way. With the `menu` feature it also
+//! puts a menu in a window's menu bar, which takes a raw window handle.
 #![cfg(windows)]
+
+#[cfg(feature = "menu")]
+mod menu;
+#[cfg(feature = "menu")]
+pub use menu::{MenuBar, attach_menu};
 
 use std::sync::{Arc, Mutex};
 use windows_sys::Win32::{

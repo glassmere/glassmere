@@ -68,6 +68,8 @@ impl App for TitleBar {
                     padding: 6.0,
                     ..Style::default()
                 }));
+                // Drawn here even with the `platform` feature: a Win32 menu bar
+                // sits under the system's title bar, and this window has none.
                 ui.menu_bar(&menu());
                 // Everything after this sits at the far end.
                 ui.container(Style::default().grow(1.0), |_| {});

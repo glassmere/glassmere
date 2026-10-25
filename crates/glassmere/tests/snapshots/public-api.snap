@@ -636,6 +636,7 @@ glassmere-core   fn Context::set_direction(&mut self, direction: crate::Directio
 glassmere-core   fn Context::set_format(&mut self, format: Option<Box<dyn LocaleFormat>>)
 glassmere-core   fn Context::set_image_file(&mut self, path: &Path, image: std::result::Result<Image, String>) -> bool
 glassmere-core   fn Context::set_messages(&mut self, messages: Option<Box<dyn Messages>>)
+glassmere-core   fn Context::set_native_menu_bar(&mut self, shown: bool)
 glassmere-core   fn Context::set_now(&mut self, now: Duration)
 glassmere-core   fn Context::set_opened_files(&mut self, paths: Vec<std::path::PathBuf>)
 glassmere-core   fn Context::set_reduced_motion(&mut self, reduced: bool)
@@ -2591,13 +2592,19 @@ glassmere-image fn load(path: &Path) -> Result<Image, String>
 glassmere-image struct Loader (private fields)
 glassmere-win32   fn Caption::set_maximize(&self, button: Option<(i32, i32, i32, i32)>)
 glassmere-win32   fn Caption::take(&self) -> Vec<CaptionEvent>
+glassmere-win32   fn MenuBar::set_dark(&mut self, dark: bool) #[cfg(feature = "menu")]
 glassmere-win32   variant CaptionEvent::Hover(i32, i32)
 glassmere-win32   variant CaptionEvent::Left
 glassmere-win32 enum CaptionEvent #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 glassmere-win32 fn animations_disabled() -> Option<bool>
 glassmere-win32 fn attach(window: isize) -> Option<Caption>
+glassmere-win32 fn attach_menu(window: isize, menu: Menu, dark: bool) -> Option<MenuBar> #[cfg(feature = "menu")]
 glassmere-win32 impl Drop for Caption
+glassmere-win32 impl Drop for MenuBar #[cfg(feature = "menu")]
 glassmere-win32 struct Caption (private fields)
+glassmere-win32 struct MenuBar #[cfg(feature = "menu")] (private fields)
+glassmere-win32 use MenuBar = menu::MenuBar #[cfg(feature = "menu")]
+glassmere-win32 use attach_menu = menu::attach_menu #[cfg(feature = "menu")]
 glassmere-derive fn properties(input: TokenStream) -> TokenStream #[proc_macro_derive(Properties, attributes(property))]
 glassmere-derive fn style_sheet(input: TokenStream) -> TokenStream #[proc_macro]
 glassmere-derive fn tr(input: TokenStream) -> TokenStream #[proc_macro]

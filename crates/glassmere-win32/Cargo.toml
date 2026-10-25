@@ -10,7 +10,12 @@ license.workspace = true
 repository.workspace = true
 readme.workspace = true
 
+[features]
+# A window's menu bar, which muda attaches with unsafe calls.
+menu = ["dep:muda"]
+
 [target.'cfg(windows)'.dependencies]
+muda = { version = "0.21", optional = true }
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
@@ -24,7 +29,8 @@ default-target = "x86_64-pc-windows-msvc"
 targets = ["x86_64-pc-windows-msvc"]
 
 # Deliberately not `workspace = true`: this crate exists to hold the unsafe
-# the rest of the workspace forbids. Everything here is one window procedure.
+# the rest of the workspace forbids. Everything here is one window procedure
+# and the menu bar.
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
 

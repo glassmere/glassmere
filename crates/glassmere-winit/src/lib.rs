@@ -794,6 +794,10 @@ struct Application {
     options: AppOptions,
     view: desktop::View,
     context: Context,
+    /// The platform's menu, kept alive while it is shown. It comes before the
+    /// window, which drops after it, so that a menu bar is detached from a
+    /// window that is still there.
+    menu: Option<platform::NativeMenu>,
     state: Option<WindowState>,
     modifiers: ModifiersState,
     error: Option<Box<dyn Error>>,
@@ -825,8 +829,7 @@ struct Application {
     pub(crate) drag_escaped: bool,
     /// Font families already reported as missing, so each is said once.
     families_seen: std::collections::HashSet<String>,
-    /// The platform's menu and tray icon, kept alive while they are shown.
-    menu: Option<platform::NativeMenu>,
+    /// The platform's tray icon, kept alive while it is shown.
     tray: Option<platform::NativeTray>,
     /// Where Windows is told the application's own maximize button is, so
     /// that it offers its snap layouts over it.
@@ -861,6 +864,7 @@ impl Application {
             options,
             view,
             context,
+            menu: None,
             state: Some(state),
             modifiers: ModifiersState::empty(),
             error: None,
@@ -884,7 +888,6 @@ impl Application {
             os_drag: None,
             drag_escaped: false,
             families_seen: std::collections::HashSet::new(),
-            menu: None,
             tray: None,
             #[cfg(windows)]
             caption: None,
@@ -1046,11 +1049,30 @@ impl Application {
         for notification in self.context.take_notifications() {
             platform::notify(&notification);
         }
+        // Only a menu the view declared differently comes out of the context,
+        // so the platform's one is not rebuilt every frame.
         if let Some(menu) = self.context.take_menu() {
             // Dropping the old one first: two menus is one too many.
             self.menu = None;
-            self.menu = platform::NativeMenu::install(&menu);
+            if let Some(state) = &self.state {
+                self.menu = platform::NativeMenu::install(
+                    &menu,
+                    &state.window,
+                    self.options.decorations,
+                    self.context.theme(),
+                );
+            }
+            // The view stops drawing its own bar once the window has one.
+            self.request_redraw();
         }
+        if let Some(menu) = &mut self.menu {
+            menu.set_theme(self.context.theme());
+        }
+        let in_window = self
+            .menu
+            .as_ref()
+            .is_some_and(platform::NativeMenu::in_window);
+        self.context.set_native_menu_bar(in_window);
         if let Some(tray) = self.context.take_tray() {
             self.tray = None;
             self.tray = tray.as_ref().and_then(platform::NativeTray::install);
