@@ -6,7 +6,7 @@ pub use glassmere_text::TextSystem;
 pub use profile::{DriverMemory, GpuPassTime, GpuProfile, MAX_TIMED_PASSES, MemoryStats};
 pub use wgpu;
 
-use glassmere_scene::{Color, Point, Primitive, Rect, Scene};
+use glassmere_scene::{Brush, Color, GradientStop, Join, Point, Primitive, Rect, Scene};
 use glyphon::{
     Cache, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
 };
@@ -43,8 +43,9 @@ struct GradientVertex {
     ends: [f32; 4],
     /// Where the stops sit; slots past the last stop repeat it.
     offsets: [f32; MAX_GRADIENT_STOPS],
-    /// Corner radius, and 1 for a radial ramp.
-    shape: [f32; 2],
+    /// Corner radius, 1 for a radial ramp, then 1 for a path's triangles and
+    /// how much of the pixel the path covers at this corner.
+    shape: [f32; 4],
     /// The stop colours, in linear light.
     colors: [[f32; 4]; MAX_GRADIENT_STOPS],
 }
@@ -52,9 +53,24 @@ struct GradientVertex {
 impl GradientVertex {
     const ATTRIBUTES: [wgpu::VertexAttribute; 14] = wgpu::vertex_attr_array![
         0 => Float32x2, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4,
-        5 => Float32x2, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4, 9 => Float32x4,
+        5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4, 9 => Float32x4,
         10 => Float32x4, 11 => Float32x4, 12 => Float32x4, 13 => Float32x4
     ];
+}
+
+/// The offsets and linear colours of `stops`, of which there is at least one.
+/// Stops past the eighth are dropped; the slots left over repeat the last one
+/// and mix into nothing.
+fn ramp(stops: &[GradientStop]) -> ([f32; MAX_GRADIENT_STOPS], [[f32; 4]; MAX_GRADIENT_STOPS]) {
+    let kept = stops.len().min(MAX_GRADIENT_STOPS);
+    let mut offsets = [0.0; MAX_GRADIENT_STOPS];
+    let mut colors = [[0.0; 4]; MAX_GRADIENT_STOPS];
+    for (index, (offset, color)) in offsets.iter_mut().zip(&mut colors).enumerate() {
+        let stop = stops[index.min(kept - 1)];
+        *offset = stop.at;
+        *color = stop.color.linear();
+    }
+    (offsets, colors)
 }
 
 /// A corner of a path's triangles; the alpha is the colour's times how much
@@ -132,8 +148,11 @@ enum Draw {
         start: u32,
         clip: [u32; 4],
     },
+    /// A rectangle's two triangles, or a path's, as a vertex range of the
+    /// gradient buffer.
     Gradient {
         start: u32,
+        count: u32,
         clip: [u32; 4],
     },
     Shadow {
@@ -258,8 +277,16 @@ impl Recording {
             return;
         };
         let surface = &mut self.surfaces[self.current];
-        let reach =
-            stroke.map_or(0.0, |stroke| stroke.width * path::MITER_LIMIT) + 1.0 / surface.scale;
+        // A mitre is at most the limit's worth of widths long; the other
+        // joins and the caps stay within one.
+        let reach = stroke.as_ref().map_or(0.0, |stroke| {
+            let widths = if stroke.join == Join::Miter {
+                stroke.miter_limit.max(1.0)
+            } else {
+                1.0
+            };
+            stroke.width * widths
+        }) + 1.0 / surface.scale;
         let bounds = path.bounds();
         let bounds = Rect {
             x: bounds.x - reach,
@@ -272,14 +299,27 @@ impl Recording {
             return;
         }
         let pixel = 1.0 / surface.scale;
-        if let Some(color) = fill.filter(|color| color.3 > 0) {
-            self.corners.clear();
-            path::fill(path, pixel, &mut self.corners);
-            self.push_path(color, 1.0, scissor);
+        if let Some(fill) = fill {
+            match &fill.brush {
+                Brush::Solid(color) if color.3 > 0 => {
+                    self.corners.clear();
+                    path::fill(path, fill.rule, pixel, &mut self.corners);
+                    self.push_path(*color, 1.0, scissor);
+                }
+                Brush::Linear { .. } | Brush::Radial { .. } => {
+                    self.corners.clear();
+                    path::fill(path, fill.rule, pixel, &mut self.corners);
+                    self.push_path_ramp(path.bounds(), &fill.brush, scissor);
+                }
+                _ => {}
+            }
         }
-        if let Some(line) = stroke.filter(|line| line.color.3 > 0 && line.width > 0.0) {
+        if let Some(line) = stroke
+            .as_ref()
+            .filter(|line| line.color.3 > 0 && line.width > 0.0)
+        {
             self.corners.clear();
-            let faint = path::stroke(path, line.width, pixel, &mut self.corners);
+            let faint = path::stroke(path, line, pixel, &mut self.corners);
             self.push_path(line.color, faint, scissor);
         }
     }
@@ -331,16 +371,7 @@ impl Recording {
         if scissor[2] == 0 || scissor[3] == 0 || stops.len() < 2 {
             return;
         }
-        let kept = stops.len().min(MAX_GRADIENT_STOPS);
-        let mut offsets = [0.0; MAX_GRADIENT_STOPS];
-        let mut colors = [[0.0; 4]; MAX_GRADIENT_STOPS];
-        for (index, (offset, color)) in offsets.iter_mut().zip(&mut colors).enumerate() {
-            // Stops past the eighth are dropped; the slots left over
-            // repeat the last one and mix into nothing.
-            let stop = stops[index.min(kept - 1)];
-            *offset = stop.at;
-            *color = stop.color.linear();
-        }
+        let (offsets, colors) = ramp(stops);
         let (origin, scale, size) = (surface.origin, surface.scale, surface.size);
         let start = self.gradient_vertices.len() as u32;
         for [x, y] in UNIT_QUAD {
@@ -352,12 +383,52 @@ impl Recording {
                 local: [x * rect.width, y * rect.height, rect.width, rect.height],
                 ends: [from.x, from.y, to.x, to.y],
                 offsets,
-                shape: [*radius, f32::from(u8::from(*radial))],
+                shape: [*radius, f32::from(u8::from(*radial)), 0.0, 1.0],
                 colors,
             });
         }
         surface.draws.push(Draw::Gradient {
             start,
+            count: 6,
+            clip: scissor,
+        });
+    }
+
+    /// Draws the triangles in `corners` with a ramp laid out over `bounds`.
+    fn push_path_ramp(&mut self, bounds: Rect, brush: &Brush, scissor: [u32; 4]) {
+        let (Brush::Linear { from, to, stops } | Brush::Radial { from, to, stops }) = brush else {
+            return;
+        };
+        // A ramp needs two ends, and a shape needs an area to lay it over.
+        if self.corners.is_empty() || stops.len() < 2 || bounds.width <= 0.0 || bounds.height <= 0.0
+        {
+            return;
+        }
+        let (offsets, colors) = ramp(stops);
+        let radial = f32::from(u8::from(matches!(brush, Brush::Radial { .. })));
+        let surface = &mut self.surfaces[self.current];
+        let (origin, scale, size) = (surface.origin, surface.scale, surface.size);
+        let start = self.gradient_vertices.len() as u32;
+        self.gradient_vertices
+            .extend(self.corners.iter().map(|(point, coverage)| GradientVertex {
+                position: [
+                    (point.x - origin[0]) * scale / size[0] as f32 * 2.0 - 1.0,
+                    1.0 - (point.y - origin[1]) * scale / size[1] as f32 * 2.0,
+                ],
+                local: [
+                    point.x - bounds.x,
+                    point.y - bounds.y,
+                    bounds.width,
+                    bounds.height,
+                ],
+                ends: [from.x, from.y, to.x, to.y],
+                offsets,
+                shape: [0.0, radial, 1.0, *coverage],
+                colors,
+            }));
+        surface.draws.push(Draw::Gradient {
+            start,
+            count: self.corners.len() as u32,
             clip: scissor,
         });
     }
@@ -452,6 +523,7 @@ pub struct RenderStats {
     pub gradients: usize,
     pub shadows: usize,
     /// Path draw calls in the prepared frame: one for a fill, one for a stroke.
+    /// A fill with a gradient counts as a gradient.
     pub paths: usize,
     /// Image uploads so far; a cached image does not upload again.
     pub image_uploads: u64,
@@ -770,7 +842,7 @@ impl Renderer {
         };
     }
 
-    /// Paint in display-list order. `physical_size` and `scale` describe the target;
+    /// Brush in display-list order. `physical_size` and `scale` describe the target;
     /// scene geometry remains in logical pixels. Targets must be nonzero and sRGB.
     #[allow(clippy::too_many_arguments)]
     pub fn render(
@@ -1674,10 +1746,10 @@ impl Renderer {
                         pass.set_vertex_buffer(0, self.quad_buffer.as_ref().unwrap().slice(..));
                         pass.draw(*start..*start + 6, 0..1);
                     }
-                    Draw::Gradient { start, .. } => {
+                    Draw::Gradient { start, count, .. } => {
                         pass.set_pipeline(&self.gradient_pipeline);
                         pass.set_vertex_buffer(0, self.gradient_buffer.as_ref().unwrap().slice(..));
-                        pass.draw(*start..*start + 6, 0..1);
+                        pass.draw(*start..*start + *count, 0..1);
                     }
                     Draw::Shadow { start, .. } => {
                         pass.set_pipeline(&self.shadow_pipeline);

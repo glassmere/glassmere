@@ -1,7 +1,7 @@
 use glassmere_render_cpu::CpuRenderer;
 use glassmere_scene::{
-    Affine, Color, Image, Path, Point, Primitive, Rect, Scene, Size, Stroke, TextMeasurer,
-    TextStyle, VectorImage,
+    Affine, Brush, Cap, Color, Dash, Fill, FillRule, GradientStop, Image, Join, Path, Point,
+    Primitive, Rect, Scene, Size, Stroke, TextMeasurer, TextStyle, VectorImage,
 };
 use glassmere_text::TextSystem;
 
@@ -587,10 +587,11 @@ fn paths_fill_by_the_non_zero_rule_and_stroke_over_the_fill() {
         1.0,
         vec![Primitive::Path {
             path: square,
-            fill: Some(RED),
+            fill: Some(RED.into()),
             stroke: Some(Stroke {
                 width: 4.0,
                 color: BLUE,
+                ..Stroke::default()
             }),
         }],
     );
@@ -603,4 +604,177 @@ fn paths_fill_by_the_non_zero_rule_and_stroke_over_the_fill() {
     assert_near(pixel(&pixels, 25, 32), [0, 0, 255, 255]);
     // Mitred: the corner is square, not cut.
     assert_near(pixel(&pixels, 6, 6), [0, 0, 255, 255]);
+}
+
+fn polyline(points: &[(f32, f32)]) -> Path {
+    let mut path = Path::new();
+    for (index, (x, y)) in points.iter().enumerate() {
+        let at = Point { x: *x, y: *y };
+        if index == 0 {
+            path.move_to(at);
+        } else {
+            path.line_to(at);
+        }
+    }
+    path
+}
+
+fn stroked(path: Path, stroke: Stroke) -> Vec<u8> {
+    render(
+        &mut renderer(),
+        1.0,
+        vec![Primitive::Path {
+            path,
+            fill: None,
+            stroke: Some(stroke),
+        }],
+    )
+}
+
+#[test]
+fn even_odd_cuts_a_hole_where_the_non_zero_rule_fills_it() {
+    let mut path = polyline(&[(8.0, 8.0), (56.0, 8.0), (56.0, 56.0), (8.0, 56.0)]);
+    path.close();
+    // Wound the same way as the outer one.
+    path.move_to(Point { x: 24.0, y: 24.0 })
+        .line_to(Point { x: 40.0, y: 24.0 })
+        .line_to(Point { x: 40.0, y: 40.0 })
+        .line_to(Point { x: 24.0, y: 40.0 })
+        .close();
+    for (rule, middle) in [
+        (FillRule::NonZero, [255, 0, 0, 255]),
+        (FillRule::EvenOdd, WHITE),
+    ] {
+        let pixels = render(
+            &mut renderer(),
+            1.0,
+            vec![Primitive::Path {
+                path: path.clone(),
+                fill: Some(Fill { rule, ..RED.into() }),
+                stroke: None,
+            }],
+        );
+        assert_near(pixel(&pixels, 16, 16), [255, 0, 0, 255]);
+        assert_near(pixel(&pixels, 32, 32), middle);
+    }
+}
+
+#[test]
+fn caps_end_a_stroke_square_round_or_not_at_all() {
+    let line = || polyline(&[(16.0, 32.0), (48.0, 32.0)]);
+    let ink = [0, 0, 255, 255];
+    let with = |cap| {
+        stroked(
+            line(),
+            Stroke {
+                width: 8.0,
+                color: BLUE,
+                cap,
+                ..Stroke::default()
+            },
+        )
+    };
+    let butt = with(Cap::Butt);
+    assert_near(pixel(&butt, 46, 32), ink);
+    assert_near(pixel(&butt, 50, 32), WHITE);
+    let square = with(Cap::Square);
+    assert_near(pixel(&square, 50, 32), ink);
+    assert_near(pixel(&square, 50, 29), ink);
+    let round = with(Cap::Round);
+    assert_near(pixel(&round, 50, 32), ink);
+    // The corner of the square cap is not in the round one.
+    assert_near(pixel(&round, 51, 28), WHITE);
+}
+
+#[test]
+fn joins_turn_the_corner_mitred_bevelled_or_round() {
+    let corner = || polyline(&[(8.0, 56.0), (8.0, 8.0), (56.0, 8.0)]);
+    let ink = [0, 0, 255, 255];
+    let with = |join| {
+        stroked(
+            corner(),
+            Stroke {
+                width: 8.0,
+                color: BLUE,
+                join,
+                ..Stroke::default()
+            },
+        )
+    };
+    // 4 out each way from the corner point is the outer edge of the mitre.
+    assert_near(pixel(&with(Join::Miter), 5, 5), ink);
+    assert_near(pixel(&with(Join::Bevel), 4, 4), WHITE);
+    assert_near(pixel(&with(Join::Round), 4, 4), WHITE);
+    // Round reaches 4 from the point along the diagonal, bevel 2.8.
+    let r = pixel(&with(Join::Round), 5, 5);
+    assert!(r[0] < 120, "{r:?}");
+    assert!(pixel(&with(Join::Bevel), 5, 5)[0] > 150);
+}
+
+#[test]
+fn a_dash_alternates_ink_and_gap_and_starts_where_the_offset_says() {
+    let line = || polyline(&[(4.0, 32.0), (60.0, 32.0)]);
+    let ink = [0, 0, 255, 255];
+    let with = |offset| {
+        stroked(
+            line(),
+            Stroke {
+                width: 4.0,
+                color: BLUE,
+                dash: Some(Dash {
+                    lengths: vec![8.0, 8.0],
+                    offset,
+                }),
+                ..Stroke::default()
+            },
+        )
+    };
+    let pixels = with(0.0);
+    assert_near(pixel(&pixels, 8, 32), ink);
+    assert_near(pixel(&pixels, 16, 32), WHITE);
+    assert_near(pixel(&pixels, 24, 32), ink);
+    assert_near(pixel(&pixels, 32, 32), WHITE);
+    // Eight in, the pattern starts with its gap.
+    let shifted = with(8.0);
+    assert_near(pixel(&shifted, 8, 32), WHITE);
+    assert_near(pixel(&shifted, 16, 32), ink);
+}
+
+#[test]
+fn a_gradient_fill_ramps_across_the_bounds_of_the_path() {
+    let mut square = polyline(&[(8.0, 8.0), (56.0, 8.0), (56.0, 56.0), (8.0, 56.0)]);
+    square.close();
+    let stops = vec![
+        GradientStop {
+            at: 0.0,
+            color: RED,
+        },
+        GradientStop {
+            at: 1.0,
+            color: BLUE,
+        },
+    ];
+    let pixels = render(
+        &mut renderer(),
+        1.0,
+        vec![Primitive::Path {
+            path: square,
+            fill: Some(Fill {
+                brush: Brush::Linear {
+                    from: Point { x: 0.0, y: 0.0 },
+                    to: Point { x: 1.0, y: 0.0 },
+                    stops,
+                },
+                rule: FillRule::NonZero,
+            }),
+            stroke: None,
+        }],
+    );
+    let left = pixel(&pixels, 10, 32);
+    let right = pixel(&pixels, 53, 32);
+    assert!(left[0] > 200 && left[2] < 100, "{left:?}");
+    assert!(right[2] > 200 && right[0] < 100, "{right:?}");
+    // The ramp runs along x alone.
+    assert_eq!(pixel(&pixels, 32, 12), pixel(&pixels, 32, 52));
+    assert_near(pixel(&pixels, 4, 32), WHITE);
 }

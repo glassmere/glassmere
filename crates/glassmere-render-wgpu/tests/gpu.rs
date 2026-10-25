@@ -1,7 +1,7 @@
 use glassmere_render_wgpu::{CustomDraw, Renderer, TextSystem, wgpu};
 use glassmere_scene::{
-    Affine, Color, FontFamily, GradientStop, Image, Point, Primitive, Rect, Scene, Size,
-    TextMeasurer, TextSpan, TextStyle, TextWrap, VectorImage,
+    Affine, Brush, Color, Dash, Fill, FillRule, FontFamily, GradientStop, Image, Path, Point,
+    Primitive, Rect, Scene, Size, Stroke, TextMeasurer, TextSpan, TextStyle, TextWrap, VectorImage,
 };
 
 /// GPU tests take turns. The test harness starts one thread per core, and many
@@ -1659,6 +1659,97 @@ fn radial_gradient_runs_from_its_centre_to_the_far_corner() {
     }
     assert!(at(102, 102) > 0.93, "the corner is where the ramp ends");
     assert_pixel(&pixels, 20, 20, [255; 3]);
+}
+
+fn polygon(points: &[(f32, f32)]) -> Path {
+    let mut path = Path::new();
+    for (index, (x, y)) in points.iter().enumerate() {
+        if index == 0 {
+            path.move_to(point(*x, *y));
+        } else {
+            path.line_to(point(*x, *y));
+        }
+    }
+    path.close();
+    path
+}
+
+/// A path's gradient is laid over its bounds as a rectangle's is over itself,
+/// and mixes light; the even-odd rule leaves a hole the non-zero rule fills;
+/// a dash leaves gaps.
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn paths_take_gradients_fill_rules_and_dashes() {
+    let mut gpu = Gpu::new();
+    let band = rect(24.0, 24.0, 81.0, 40.0);
+    let across = polygon(&[(24.0, 24.0), (105.0, 24.0), (105.0, 64.0), (24.0, 64.0)]);
+    let mut ring = polygon(&[(24.0, 72.0), (56.0, 72.0), (56.0, 104.0), (24.0, 104.0)]);
+    ring.move_to(point(32.0, 80.0))
+        .line_to(point(48.0, 80.0))
+        .line_to(point(48.0, 96.0))
+        .line_to(point(32.0, 96.0))
+        .close();
+    let mut line = Path::new();
+    line.move_to(point(64.0, 88.0)).line_to(point(112.0, 88.0));
+    let pixels = gpu.render(
+        1.0,
+        &[
+            Primitive::Path {
+                path: across,
+                fill: Some(Fill {
+                    brush: Brush::Linear {
+                        from: point(0.0, 0.0),
+                        to: point(1.0, 0.0),
+                        stops: vec![stop(0.0, RED), stop(1.0, BLUE)],
+                    },
+                    rule: FillRule::NonZero,
+                }),
+                stroke: None,
+            },
+            Primitive::Path {
+                path: ring,
+                fill: Some(Fill {
+                    rule: FillRule::EvenOdd,
+                    ..RED.into()
+                }),
+                stroke: None,
+            },
+            Primitive::Path {
+                path: line,
+                fill: None,
+                stroke: Some(Stroke {
+                    width: 4.0,
+                    color: BLUE,
+                    dash: Some(Dash::new([8.0, 8.0])),
+                    ..Stroke::default()
+                }),
+            },
+        ],
+        true,
+    );
+    assert_eq!(pixels.len(), SIDE * SIDE * 4);
+    assert_eq!(gpu.renderer.stats().gradients, 1);
+    for x in [26, 44, 64, 84, 102] {
+        let at = (x as f32 + 0.5 - band.x) / band.width;
+        assert_pixel(&pixels, x, 44, [srgb(1.0 - at), 0, srgb(at)]);
+    }
+    // The ramp runs along x alone.
+    assert_pixel(&pixels, 64, 26, [188, 0, 188]);
+    assert_pixel(&pixels, 64, 62, [188, 0, 188]);
+    assert_pixel(&pixels, 20, 44, [255; 3]);
+    // Wound the same way as the outer ring, the inner one is a hole.
+    assert_pixel(&pixels, 28, 76, [255, 0, 0]);
+    assert_pixel(&pixels, 40, 88, [255; 3]);
+    // The dashes run 64 to 72, 80 to 88 and so on.
+    for (x, ink) in [
+        (68, true),
+        (76, false),
+        (84, true),
+        (92, false),
+        (100, true),
+    ] {
+        assert_pixel(&pixels, x, 88, if ink { [0, 0, 255] } else { [255; 3] });
+    }
 }
 
 /// A shadow darkens around its rectangle, out to the spread and three standard

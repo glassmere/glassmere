@@ -473,7 +473,7 @@ fn a_custom_widget_draws_paths_where_it_is_laid_out() {
         size: Size::new(40.0, 30.0),
         primitives: vec![Primitive::Path {
             path: triangle,
-            fill: Some(Color::WHITE),
+            fill: Some(Color::WHITE.into()),
             stroke: None,
         }],
         ..CustomWidget::default()

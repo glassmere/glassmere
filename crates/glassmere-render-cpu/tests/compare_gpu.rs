@@ -6,8 +6,8 @@
 use glassmere_render_cpu::CpuRenderer;
 use glassmere_render_wgpu::Renderer;
 use glassmere_scene::{
-    Affine, Color, GradientStop, Image, Path, Point, Primitive, Rect, Scene, Size, Stroke,
-    TextStyle, VectorImage,
+    Affine, Brush, Cap, Color, Dash, Fill, FillRule, GradientStop, Image, Join, Path, Point,
+    Primitive, Rect, Scene, Size, Stroke, TextStyle, VectorImage,
 };
 use glassmere_text::TextSystem;
 
@@ -386,15 +386,16 @@ fn paths() -> Scene {
         primitives: vec![
             Primitive::Path {
                 path: star,
-                fill: Some(Color::rgb(250, 204, 21)),
+                fill: Some(Color::rgb(250, 204, 21).into()),
                 stroke: Some(Stroke {
                     width: 3.0,
                     color: Color::rgb(180, 83, 9),
+                    ..Stroke::default()
                 }),
             },
             Primitive::Path {
                 path: ring,
-                fill: Some(Color(56, 189, 248, 200)),
+                fill: Some(Color(56, 189, 248, 200).into()),
                 stroke: None,
             },
             Primitive::Path {
@@ -403,6 +404,7 @@ fn paths() -> Scene {
                 stroke: Some(Stroke {
                     width: 6.0,
                     color: Color(244, 114, 182, 180),
+                    ..Stroke::default()
                 }),
             },
             Primitive::Path {
@@ -411,6 +413,7 @@ fn paths() -> Scene {
                 stroke: Some(Stroke {
                     width: 4.0,
                     color: Color::rgb(255, 255, 255),
+                    ..Stroke::default()
                 }),
             },
             Primitive::Path {
@@ -419,6 +422,7 @@ fn paths() -> Scene {
                 stroke: Some(Stroke {
                     width: 0.5,
                     color: Color::rgb(255, 255, 255),
+                    ..Stroke::default()
                 }),
             },
         ],
@@ -439,6 +443,178 @@ fn paths_look_the_same_on_both_renderers() {
             std::fs::write(directory.join(format!("cpu-paths-{scale}.rgba")), &pixels).unwrap();
             std::fs::write(
                 directory.join(format!("gpu-paths-{scale}.rgba")),
+                &reference,
+            )
+            .unwrap();
+        }
+        agree(&pixels, &reference, scale);
+    }
+}
+
+/// Joins and caps of every kind, a dashed curve and a dotted ring, an
+/// even-odd fill and linear and radial gradient fills.
+fn path_styles() -> Scene {
+    let at = |x: f32, y: f32| Point { x, y };
+    let corner = |x: f32, y: f32| {
+        let mut path = Path::new();
+        path.move_to(at(x, y + 40.0))
+            .line_to(at(x + 16.0, y))
+            .line_to(at(x + 36.0, y + 40.0));
+        path
+    };
+    let mut primitives = Vec::new();
+    for (index, (join, cap)) in [
+        (Join::Miter, Cap::Butt),
+        (Join::Round, Cap::Round),
+        (Join::Bevel, Cap::Square),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        primitives.push(Primitive::Path {
+            path: corner(14.0 + 56.0 * index as f32, 12.0),
+            fill: None,
+            stroke: Some(Stroke {
+                width: 10.0,
+                color: Color::rgb(250, 204, 21),
+                join,
+                cap,
+                ..Stroke::default()
+            }),
+        });
+    }
+    let mut wave = Path::new();
+    wave.move_to(at(14.0, 100.0))
+        .cubic_to(at(60.0, 60.0), at(100.0, 140.0), at(150.0, 100.0))
+        .quad_to(at(180.0, 80.0), at(240.0, 110.0));
+    primitives.push(Primitive::Path {
+        path: wave,
+        fill: None,
+        stroke: Some(Stroke {
+            width: 5.0,
+            color: Color::rgb(244, 114, 182),
+            cap: Cap::Round,
+            dash: Some(Dash {
+                lengths: vec![12.0, 8.0],
+                offset: 3.0,
+            }),
+            ..Stroke::default()
+        }),
+    });
+    let mut dotted = Path::new();
+    dotted
+        .move_to(at(60.0, 130.0))
+        .line_to(at(108.0, 130.0))
+        .line_to(at(108.0, 178.0))
+        .line_to(at(60.0, 178.0))
+        .close();
+    primitives.push(Primitive::Path {
+        path: dotted,
+        fill: None,
+        stroke: Some(Stroke {
+            width: 6.0,
+            color: Color::rgb(255, 255, 255),
+            join: Join::Round,
+            cap: Cap::Round,
+            dash: Some(Dash::new([0.0, 12.0])),
+            ..Stroke::default()
+        }),
+    });
+    let mut star = Path::new();
+    for index in 0..5 {
+        let angle = std::f32::consts::PI * 4.0 * index as f32 / 5.0;
+        let point = at(190.0 + 40.0 * angle.sin(), 160.0 - 40.0 * angle.cos());
+        if index == 0 {
+            star.move_to(point);
+        } else {
+            star.line_to(point);
+        }
+    }
+    star.close();
+    primitives.push(Primitive::Path {
+        path: star,
+        fill: Some(Fill {
+            rule: FillRule::EvenOdd,
+            ..Color::rgb(56, 189, 248).into()
+        }),
+        stroke: None,
+    });
+    let stops = vec![
+        GradientStop {
+            at: 0.0,
+            color: Color::rgb(239, 68, 68),
+        },
+        GradientStop {
+            at: 0.5,
+            color: Color::rgb(250, 204, 21),
+        },
+        GradientStop {
+            at: 1.0,
+            color: Color::rgb(37, 99, 235),
+        },
+    ];
+    let mut leaf = Path::new();
+    leaf.move_to(at(14.0, 240.0))
+        .cubic_to(at(14.0, 190.0), at(70.0, 190.0), at(120.0, 190.0))
+        .cubic_to(at(120.0, 240.0), at(70.0, 250.0), at(14.0, 240.0))
+        .close();
+    primitives.push(Primitive::Path {
+        path: leaf,
+        fill: Some(Fill {
+            brush: Brush::Linear {
+                from: at(0.0, 0.0),
+                to: at(1.0, 1.0),
+                stops: stops.clone(),
+            },
+            rule: FillRule::NonZero,
+        }),
+        stroke: Some(Stroke {
+            width: 2.0,
+            color: Color::rgb(255, 255, 255),
+            ..Stroke::default()
+        }),
+    });
+    let mut disc = Path::new();
+    disc.move_to(at(160.0, 215.0))
+        .cubic_to(at(160.0, 190.0), at(240.0, 190.0), at(240.0, 215.0))
+        .cubic_to(at(240.0, 245.0), at(160.0, 245.0), at(160.0, 215.0))
+        .close();
+    primitives.push(Primitive::Path {
+        path: disc,
+        fill: Some(Fill {
+            brush: Brush::Radial {
+                from: at(0.5, 0.5),
+                to: at(1.0, 0.5),
+                stops,
+            },
+            rule: FillRule::NonZero,
+        }),
+        stroke: None,
+    });
+    Scene {
+        size: Size::new(SIDE as f32, SIDE as f32),
+        primitives,
+    }
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn path_styles_look_the_same_on_both_renderers() {
+    let clear = Color::rgb(16, 23, 34);
+    for scale in [1.0, 1.25, 2.0] {
+        let scene = path_styles();
+        let reference = gpu(&scene, scale, clear);
+        let mut renderer = CpuRenderer::new();
+        let pixels = renderer.render([SIDE; 2], scale, &scene, clear).to_vec();
+        if let Some(directory) = std::env::var_os("COMPARE_DUMP") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::write(
+                directory.join(format!("cpu-path-styles-{scale}.rgba")),
+                &pixels,
+            )
+            .unwrap();
+            std::fs::write(
+                directory.join(format!("gpu-path-styles-{scale}.rgba")),
                 &reference,
             )
             .unwrap();

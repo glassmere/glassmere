@@ -2,15 +2,21 @@ glassmere use * = glassmere_core::*
 glassmere use Affine = glassmere_scene::Affine
 glassmere use Affinity = glassmere_scene::Affinity
 glassmere use AppOptions = glassmere_winit::AppOptions #[cfg(feature = "desktop")]
+glassmere use Brush = glassmere_scene::Brush
+glassmere use Cap = glassmere_scene::Cap
 glassmere use Color = glassmere_scene::Color
 glassmere use CpuRenderer = glassmere_render_cpu::CpuRenderer
 glassmere use CpuStats = glassmere_render_cpu::CpuStats
+glassmere use Dash = glassmere_scene::Dash
 glassmere use DirectionChoice = glassmere_winit::DirectionChoice #[cfg(feature = "desktop")]
+glassmere use Fill = glassmere_scene::Fill
+glassmere use FillRule = glassmere_scene::FillRule
 glassmere use GpuMemoryPolicy = glassmere_winit::GpuMemoryPolicy #[cfg(feature = "desktop")]
 glassmere use GpuSetup = glassmere_winit::GpuSetup #[cfg(feature = "desktop")]
 glassmere use GraphicsBackend = glassmere_winit::GraphicsBackend #[cfg(feature = "desktop")]
 glassmere use GraphicsOptions = glassmere_winit::GraphicsOptions #[cfg(feature = "desktop")]
 glassmere use Image = glassmere_scene::Image
+glassmere use Join = glassmere_scene::Join
 glassmere use Path = glassmere_scene::Path
 glassmere use Placement = glassmere_winit::Placement #[cfg(feature = "desktop")]
 glassmere use Point = glassmere_scene::Point
@@ -2081,6 +2087,10 @@ glassmere-scene   field Color::0: u8
 glassmere-scene   field Color::1: u8
 glassmere-scene   field Color::2: u8
 glassmere-scene   field Color::3: u8
+glassmere-scene   field Dash::lengths: Vec<f32>
+glassmere-scene   field Dash::offset: f32
+glassmere-scene   field Fill::brush: Brush
+glassmere-scene   field Fill::rule: FillRule
 glassmere-scene   field GradientStop::at: f32
 glassmere-scene   field GradientStop::color: Color
 glassmere-scene   field Point::x: f32
@@ -2093,7 +2103,11 @@ glassmere-scene   field Scene::primitives: Vec<Primitive>
 glassmere-scene   field Scene::size: Size
 glassmere-scene   field Size::height: f32
 glassmere-scene   field Size::width: f32
+glassmere-scene   field Stroke::cap: Cap
 glassmere-scene   field Stroke::color: Color
+glassmere-scene   field Stroke::dash: Option<Dash>
+glassmere-scene   field Stroke::join: Join
+glassmere-scene   field Stroke::miter_limit: f32
 glassmere-scene   field Stroke::width: f32
 glassmere-scene   field TextCluster::bytes: Range<usize>
 glassmere-scene   field TextCluster::rect: Rect
@@ -2126,6 +2140,8 @@ glassmere-scene   fn Affine::scale(x: f32, y: f32) -> Self
 glassmere-scene   fn Affine::then(self, next: Self) -> Self
 glassmere-scene   fn Affine::translate(x: f32, y: f32) -> Self
 glassmere-scene   fn Color::linear(self) -> [f32; 4]
+glassmere-scene   fn Dash::new(lengths: impl Into<Vec<f32>>) -> Self
+glassmere-scene   fn Dash::pattern(&self) -> Option<Vec<f32>>
 glassmere-scene   fn Image::from_premultiplied(width: u32, height: u32, rgba: Vec<u8>) -> Option<Self>
 glassmere-scene   fn Image::from_rgba8(width: u32, height: u32, mut rgba: Vec<u8>) -> Option<Self>
 glassmere-scene   fn Image::from_vector(vector: impl VectorImage + 'static) -> Self
@@ -2171,14 +2187,25 @@ glassmere-scene   fn VectorImage::rasterize(&self, width: u32, height: u32) -> V
 glassmere-scene   fn VectorImage::size(&self) -> Size
 glassmere-scene   variant Affinity::Downstream
 glassmere-scene   variant Affinity::Upstream
+glassmere-scene   variant Brush::Linear { from: Point, to: Point, stops: Vec<GradientStop> }
+glassmere-scene   variant Brush::Radial { from: Point, to: Point, stops: Vec<GradientStop> }
+glassmere-scene   variant Brush::Solid(Color)
+glassmere-scene   variant Cap::Butt
+glassmere-scene   variant Cap::Round
+glassmere-scene   variant Cap::Square
+glassmere-scene   variant FillRule::EvenOdd
+glassmere-scene   variant FillRule::NonZero
 glassmere-scene   variant FontFamily::Monospace
 glassmere-scene   variant FontFamily::Named(String)
 glassmere-scene   variant FontFamily::SansSerif
 glassmere-scene   variant FontFamily::Serif
+glassmere-scene   variant Join::Bevel
+glassmere-scene   variant Join::Miter
+glassmere-scene   variant Join::Round
 glassmere-scene   variant Primitive::Custom { rect: Rect, id: u64 }
 glassmere-scene   variant Primitive::Gradient { rect: Rect, radius: f32, from: Point, to: Point, stops: Vec<GradientStop>, radial: bool }
 glassmere-scene   variant Primitive::Image { rect: Rect, image: Image, source: Rect, tint: Option<Color>, radius: f32 }
-glassmere-scene   variant Primitive::Path { path: Path, fill: Option<Color>, stroke: Option<Stroke> }
+glassmere-scene   variant Primitive::Path { path: Path, fill: Option<Fill>, stroke: Option<Stroke> }
 glassmere-scene   variant Primitive::PopClip
 glassmere-scene   variant Primitive::PopLayer
 glassmere-scene   variant Primitive::PushClip(Rect)
@@ -2196,19 +2223,27 @@ glassmere-scene   variant Segment::Quad(Point, Point)
 glassmere-scene   variant TextWrap::None
 glassmere-scene   variant TextWrap::Word
 glassmere-scene enum Affinity #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+glassmere-scene enum Brush #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-scene enum Cap #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
+glassmere-scene enum FillRule #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
 glassmere-scene enum FontFamily #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)] #[non_exhaustive]
+glassmere-scene enum Join #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
 glassmere-scene enum Primitive #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
 glassmere-scene enum Segment #[derive(Clone, Copy, Debug, PartialEq)] #[non_exhaustive]
 glassmere-scene enum TextWrap #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)] #[non_exhaustive]
 glassmere-scene impl Default for Affine
+glassmere-scene impl Default for Fill
 glassmere-scene impl Default for Stroke
 glassmere-scene impl Default for TextStyle
+glassmere-scene impl From<Color> for Fill
 glassmere-scene impl PartialEq for Image
 glassmere-scene impl TextMeasurer for MonospaceMeasurer
 glassmere-scene impl std::fmt::Debug for Image
 glassmere-scene struct Affine #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-scene struct CaretStop #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-scene struct Color #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+glassmere-scene struct Dash #[derive(Clone, Debug, Default, PartialEq)]
+glassmere-scene struct Fill #[derive(Clone, Debug, PartialEq)]
 glassmere-scene struct GradientStop #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-scene struct Image #[derive(Clone)] (private fields)
 glassmere-scene struct MonospaceMeasurer #[derive(Default)]
@@ -2217,7 +2252,7 @@ glassmere-scene struct Point #[derive(Clone, Copy, Debug, Default, PartialEq)]
 glassmere-scene struct Rect #[derive(Clone, Copy, Debug, Default, PartialEq)]
 glassmere-scene struct Scene #[derive(Clone, Debug, Default, PartialEq)]
 glassmere-scene struct Size #[derive(Clone, Copy, Debug, Default, PartialEq)]
-glassmere-scene struct Stroke #[derive(Clone, Copy, Debug, PartialEq)]
+glassmere-scene struct Stroke #[derive(Clone, Debug, PartialEq)]
 glassmere-scene struct TextCluster #[derive(Clone, Debug, PartialEq)]
 glassmere-scene struct TextGeometry #[derive(Clone, Debug, Default, PartialEq)]
 glassmere-scene struct TextLine #[derive(Clone, Debug, PartialEq)]
@@ -2226,9 +2261,15 @@ glassmere-scene struct TextStyle #[derive(Clone, Debug, PartialEq)]
 glassmere-scene trait TextMeasurer
 glassmere-scene trait VectorImage: Send + Sync
 glassmere-scene use Affinity = text::Affinity
+glassmere-scene use Brush = path::Brush
+glassmere-scene use Cap = path::Cap
 glassmere-scene use CaretStop = text::CaretStop
+glassmere-scene use Dash = path::Dash
+glassmere-scene use Fill = path::Fill
+glassmere-scene use FillRule = path::FillRule
 glassmere-scene use FontFamily = text::FontFamily
 glassmere-scene use Image = image::Image
+glassmere-scene use Join = path::Join
 glassmere-scene use MonospaceMeasurer = text::MonospaceMeasurer
 glassmere-scene use Path = path::Path
 glassmere-scene use Segment = path::Segment

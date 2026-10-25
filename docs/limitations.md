@@ -27,7 +27,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 
 ## Rendering
 
-- Paths fill by the non-zero rule only. Strokes have mitred corners (bevelled past four widths) and square-cut ends: no round joins or caps, no dashes, no gradient fills. There are no conic gradients and no gradient or shadow animation.
+- There are no conic gradients and no gradient or shadow animation. A path's gradient fill is linear or radial and a stroke is always one colour. A dash follows the length of the curve as each renderer measures it, so on a curved path the two can place the dashes a little apart.
 - The GPU anti-aliases a path's edges with a fringe one pixel wide. Where outlines cross or pass within a pixel of each other, it can differ from the CPU renderer by a few pixels.
 - The CPU renderer and the wgpu renderer differ at edges: a quad edge is covered by its exact area in one and feathered by the shader in the other. Resampled images and transformed layers are filtered in sRGB in one and in linear light in the other.
 - `Primitive::Custom` is a wgpu callback. A window painted by the CPU renderer leaves it empty.

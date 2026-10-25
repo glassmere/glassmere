@@ -3,7 +3,7 @@ mod image;
 mod path;
 mod text;
 pub use image::{Image, VectorImage};
-pub use path::{Path, Segment, Stroke};
+pub use path::{Brush, Cap, Dash, Fill, FillRule, Join, Path, Segment, Stroke};
 pub use text::{
     Affinity, CaretStop, FontFamily, MonospaceMeasurer, TextCluster, TextGeometry, TextLine,
     TextMeasurer, TextSpan, TextStyle, TextWrap,
@@ -287,9 +287,11 @@ pub enum Primitive {
     },
     PopLayer,
     /// A shape filled, outlined, or both; the outline is drawn over the fill.
+    /// The fill says how the inside is found and painted, the stroke how the
+    /// outline is joined, capped and dashed.
     Path {
         path: Path,
-        fill: Option<Color>,
+        fill: Option<Fill>,
         stroke: Option<Stroke>,
     },
 }
@@ -413,8 +415,8 @@ impl Primitive {
             Self::PopLayer => Self::PopLayer,
             Self::Path { path, fill, stroke } => Self::Path {
                 path: path.translated(offset),
-                fill: *fill,
-                stroke: *stroke,
+                fill: fill.clone(),
+                stroke: stroke.clone(),
             },
         }
     }

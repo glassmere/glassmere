@@ -189,6 +189,7 @@ impl Dial {
             stroke: Some(Stroke {
                 width: 4.0,
                 color: if input.enabled { mark } else { dim },
+                ..Stroke::default()
             }),
         });
         if input.hovered || input.pressed {

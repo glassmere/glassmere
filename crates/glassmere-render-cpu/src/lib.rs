@@ -21,7 +21,7 @@
 //! is filtered on sRGB-encoded values here and in linear light there. Both show
 //! at edges, never across a flat area.
 use glassmere_scene::{
-    Affine, Color, GradientStop, Image, Path, Point, Primitive, Rect, Scene, Segment,
+    Affine, Brush, Color, GradientStop, Image, Path, Point, Primitive, Rect, Scene, Segment, Stroke,
 };
 use glassmere_text::cosmic_text::{SwashCache, SwashContent};
 use glassmere_text::{TextKey, TextSystem};
@@ -229,6 +229,31 @@ fn rounded(rect: Rect, radius: f32) -> Option<tiny_skia::Path> {
     path.cubic_to(left, top + bend, left + bend, top, left + radius, top);
     path.close();
     path.finish()
+}
+
+fn skia_stroke(stroke: &Stroke) -> tiny_skia::Stroke {
+    use glassmere_scene::{Cap, Join};
+    tiny_skia::Stroke {
+        width: stroke.width,
+        miter_limit: stroke.miter_limit,
+        line_cap: match stroke.cap {
+            Cap::Round => tiny_skia::LineCap::Round,
+            Cap::Square => tiny_skia::LineCap::Square,
+            _ => tiny_skia::LineCap::Butt,
+        },
+        line_join: match stroke.join {
+            Join::Round => tiny_skia::LineJoin::Round,
+            Join::Bevel => tiny_skia::LineJoin::Bevel,
+            _ => tiny_skia::LineJoin::Miter,
+        },
+        dash: None,
+    }
+}
+
+/// The stroke's dashes, if it has a pattern that draws any.
+fn skia_dash(stroke: &Stroke) -> Option<tiny_skia::StrokeDash> {
+    let dash = stroke.dash.as_ref()?;
+    tiny_skia::StrokeDash::new(dash.pattern()?, dash.offset)
 }
 
 fn skia_path(path: &Path) -> Option<tiny_skia::Path> {
@@ -618,8 +643,22 @@ impl CpuRenderer {
                     radial,
                 } => {
                     let visible = surface.pixels(clip.intersect(*rect));
-                    if visible[2] > 0 && visible[3] > 0 && stops.len() >= 2 {
-                        self.gradient(surface, visible, *rect, *radius, *from, *to, stops, *radial);
+                    if visible[2] > 0
+                        && visible[3] > 0
+                        && stops.len() >= 2
+                        && let Some(shape) = rounded(*rect, *radius)
+                    {
+                        self.gradient(
+                            surface,
+                            visible,
+                            *rect,
+                            &shape,
+                            FillRule::Winding,
+                            *from,
+                            *to,
+                            stops,
+                            *radial,
+                        );
                     }
                 }
                 Primitive::Shadow {
@@ -658,19 +697,37 @@ impl CpuRenderer {
                     let Some(shape) = skia_path(path) else {
                         continue;
                     };
-                    if let Some(color) = fill {
-                        let visible = surface.pixels(clip.intersect(path.bounds()));
-                        self.cover(surface, visible, &shape, *color);
+                    if let Some(fill) = fill {
+                        let bounds = path.bounds();
+                        let visible = surface.pixels(clip.intersect(bounds));
+                        let rule = match fill.rule {
+                            glassmere_scene::FillRule::EvenOdd => FillRule::EvenOdd,
+                            _ => FillRule::Winding,
+                        };
+                        match &fill.brush {
+                            Brush::Solid(color) => {
+                                self.cover(surface, visible, &shape, rule, *color);
+                            }
+                            Brush::Linear { from, to, stops }
+                            | Brush::Radial { from, to, stops }
+                                if visible[2] > 0 && visible[3] > 0 && stops.len() >= 2 =>
+                            {
+                                let radial = matches!(fill.brush, Brush::Radial { .. });
+                                self.gradient(
+                                    surface, visible, bounds, &shape, rule, *from, *to, stops,
+                                    radial,
+                                );
+                            }
+                            _ => {}
+                        }
                     }
                     if let Some(stroke) = stroke
-                        && let Some(outline) = shape.stroke(
-                            &tiny_skia::Stroke {
-                                width: stroke.width,
-                                miter_limit: 4.0,
-                                ..tiny_skia::Stroke::default()
-                            },
-                            surface.scale,
-                        )
+                        // tiny-skia cuts the dashes in the painter, not the stroker.
+                        && let Some(along) = match skia_dash(stroke) {
+                            Some(dash) => shape.dash(&dash, surface.scale),
+                            None => Some(shape),
+                        }
+                        && let Some(outline) = along.stroke(&skia_stroke(stroke), surface.scale)
                     {
                         let bounds = outline.bounds();
                         let visible = surface.pixels(clip.intersect(Rect {
@@ -679,7 +736,7 @@ impl CpuRenderer {
                             width: bounds.width(),
                             height: bounds.height(),
                         }));
-                        self.cover(surface, visible, &outline, stroke.color);
+                        self.cover(surface, visible, &outline, FillRule::Winding, stroke.color);
                     }
                 }
                 Primitive::Text { rect, color, .. }
@@ -758,7 +815,7 @@ impl CpuRenderer {
             return;
         }
         if let Some(path) = rounded(rect, radius) {
-            self.cover(surface, visible, &path, color);
+            self.cover(surface, visible, &path, FillRule::Winding, color);
         }
     }
 
@@ -769,6 +826,7 @@ impl CpuRenderer {
         surface: &mut Surface,
         visible: [u32; 4],
         path: &tiny_skia::Path,
+        rule: FillRule,
         color: Color,
     ) {
         // A mask per shape. Reuse one buffer if a profile of a real page
@@ -783,12 +841,7 @@ impl CpuRenderer {
         let start = |row: u32| (visible[1] + row) as usize * stride + visible[0] as usize * 4;
         let opaque = [color.0, color.1, color.2, 255];
         let rgb = [color.0, color.1, color.2];
-        mask.fill_path(
-            path,
-            FillRule::Winding,
-            true,
-            toward(surface.transform(), visible),
-        );
+        mask.fill_path(path, rule, true, toward(surface.transform(), visible));
         let coverage = mask.data();
         let data = surface.pixmap.data_mut();
         for (row, coverage) in coverage.chunks_exact(visible[2] as usize).enumerate() {
@@ -804,15 +857,16 @@ impl CpuRenderer {
         }
     }
 
-    /// Fills `rect` with a ramp of colours, mixed in linear light as the GPU
-    /// mixes them.
+    /// Fills `shape` with a ramp of colours laid out over `rect`, mixed in
+    /// linear light as the GPU mixes them.
     #[allow(clippy::too_many_arguments)]
     fn gradient(
         &self,
         surface: &mut Surface,
         visible: [u32; 4],
         rect: Rect,
-        radius: f32,
+        shape: &tiny_skia::Path,
+        rule: FillRule,
         from: Point,
         to: Point,
         stops: &[GradientStop],
@@ -839,15 +893,7 @@ impl CpuRenderer {
         let Some(mut mask) = Mask::new(visible[2], visible[3]) else {
             return;
         };
-        let Some(path) = rounded(rect, radius) else {
-            return;
-        };
-        mask.fill_path(
-            &path,
-            FillRule::Winding,
-            true,
-            toward(surface.transform(), visible),
-        );
+        mask.fill_path(shape, rule, true, toward(surface.transform(), visible));
         let (axis_x, axis_y) = (to.x - from.x, to.y - from.y);
         let length = axis_x * axis_x + axis_y * axis_y;
         let stride = surface.pixmap.width() as usize * 4;
