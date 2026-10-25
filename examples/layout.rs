@@ -1,6 +1,6 @@
 use glassmere::{
-    Align, App, AppOptions, Button, Effects, GridArea, Justify, Label, Length, Size, Style,
-    TextInput, TextWrap, Track, Ui, run,
+    Align, App, AppOptions, AutoFlow, Button, Effects, GridArea, Justify, Label, Length, Size,
+    Style, TextInput, TextWrap, Track, TrackSize, Ui, run,
 };
 
 #[derive(Clone)]
@@ -140,6 +140,58 @@ impl App for Layout {
                     ui.keyed(name, |ui| {
                         ui.container(card.clone().area_name(name.to_owned()), |ui| {
                             ui.label(name);
+                        })
+                    });
+                }
+            });
+
+            ui.label(
+                Label::new(
+                    "Auto-fill · repeat(auto-fill, minmax(110px, 1fr)) adds a column whenever                      another 110 px fits",
+                )
+                .style(heading.clone()),
+            );
+            let tiles = full
+                .clone()
+                .columns(vec![Track::auto_fill(vec![Track::MinMax(
+                    TrackSize::Px(110.0),
+                    TrackSize::Fr(1.0),
+                )])])
+                .auto_rows(vec![Track::Px(56.0)])
+                .gap(10.0);
+            ui.grid(tiles, |ui| {
+                for index in 1..=7 {
+                    ui.keyed(format!("tile-{index}"), |ui| {
+                        ui.container(card.clone(), |ui| {
+                            ui.label(format!("Tile {index}"));
+                        })
+                    });
+                }
+            });
+
+            ui.label(
+                Label::new(
+                    "Dense flow · wide cards leave holes and the small ones after them fill them",
+                )
+                .style(heading.clone()),
+            );
+            let packed = full
+                .clone()
+                .columns(vec![Track::repeat(4, vec![Track::Fr(1.0)])])
+                .auto_rows(vec![Track::Px(48.0)])
+                .auto_flow(AutoFlow::RowDense)
+                .gap(10.0);
+            ui.grid(packed, |ui| {
+                for (index, span) in [1, 3, 2, 1, 1, 3].into_iter().enumerate() {
+                    let style = card.clone().area(GridArea::auto_span(span, 1));
+                    let style = if span > 1 {
+                        style.background(theme.selection)
+                    } else {
+                        style
+                    };
+                    ui.keyed(format!("packed-{index}"), |ui| {
+                        ui.container(style, |ui| {
+                            ui.label(format!("{index} · span {span}"));
                         })
                     });
                 }
