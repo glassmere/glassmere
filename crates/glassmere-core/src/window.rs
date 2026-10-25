@@ -123,9 +123,10 @@ pub(crate) mod caption {
     pub(crate) const CLOSE: &str = "\u{2715}";
 
     /// The box each one sits in and the glyph's size in it, which are the
-    /// shell's own measurements at a scale factor of one.
+    /// shell's own measurements at a scale factor of one: the system's
+    /// caption is 30 pixels tall, its buttons as tall as it.
     pub(crate) const WIDTH: f32 = 46.0;
-    pub(crate) const HEIGHT: f32 = 32.0;
+    pub(crate) const HEIGHT: f32 = 30.0;
     pub(crate) const SIZE: f32 = 10.0;
 
     /// How much of the text colour a hovered or pressed button is washed

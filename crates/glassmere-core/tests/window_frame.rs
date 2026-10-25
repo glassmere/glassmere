@@ -4,10 +4,10 @@
 mod support;
 
 use glassmere_core::{
-    App, Button, Context, Effects, Event, Length, MonospaceMeasurer, ResizeEdge, Style, Ui,
+    App, Button, Context, Effects, Event, Key, Length, MonospaceMeasurer, ResizeEdge, Style, Ui,
     WindowCommand, WindowInfo,
 };
-use glassmere_scene::{Point, Size};
+use glassmere_scene::{Point, Primitive, Size};
 use std::time::Duration;
 use support::Host;
 
@@ -112,6 +112,47 @@ fn a_control_in_the_bar_is_pressed_rather_than_the_window_moved() {
     );
     h.frame();
     assert_eq!(h.app.clicks, 1);
+}
+
+#[test]
+fn the_maximize_button_is_where_it_is_drawn_from_the_first_frame() {
+    // The platform learns where it is before the pointer ever reaches it: no
+    // second frame, no input.
+    let mut h = Host::new(Chrome::default(), ROOT);
+    h.frame();
+    let node = h.context.find(&["bar", "buttons", "maximize"]).unwrap();
+    let drawn = h.context.node(node).unwrap().bounds;
+    assert!(drawn.width > 0.0);
+    assert_eq!(h.context.maximize_button(), Some(drawn));
+}
+
+/// Whether the scene draws the focus colour anywhere.
+fn draws_a_focus_ring(context: &Context) -> bool {
+    let focus = context.theme().focus;
+    context
+        .scene()
+        .primitives
+        .iter()
+        .any(|primitive| matches!(primitive, Primitive::Quad { color, .. } if *color == focus))
+}
+
+#[test]
+fn a_press_in_the_bar_takes_focus_without_a_ring_and_the_keyboard_brings_it_back() {
+    let mut h = Host::new(Chrome::default(), ROOT);
+    h.frame();
+    let at = centre(&h.context, &["bar", "menu"]);
+    press(&mut h.context, at);
+    h.frame();
+    assert!(h.context.focused().is_some(), "the button has the keyboard");
+    assert!(!draws_a_focus_ring(&h.context));
+
+    h.context.event(Event::KeyDown {
+        key: Key::Tab,
+        shift: false,
+        repeat: false,
+    });
+    h.frame();
+    assert!(draws_a_focus_ring(&h.context));
 }
 
 #[test]
