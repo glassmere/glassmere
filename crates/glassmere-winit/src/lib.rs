@@ -1121,6 +1121,13 @@ impl Application {
         // the room the frame took; it keeps the client area instead.
         let (size, at) = (state.window.inner_size(), state.window.inner_position());
         state.window.set_decorations(false);
+        // The shadow and rounded corners the frame gave it stay.
+        #[cfg(target_os = "windows")]
+        {
+            use winit::platform::windows::{CornerPreference, WindowExtWindows};
+            state.window.set_undecorated_shadow(true);
+            state.window.set_corner_preference(CornerPreference::Round);
+        }
         if !state.window.is_maximized() {
             let _ = state.window.request_inner_size(size);
             if let Ok(at) = at {
@@ -1182,17 +1189,30 @@ impl Application {
         let seen = caption.take();
         for event in seen {
             match event {
-                glassmere_win32::CaptionEvent::Hover(x, y) => {
-                    self.pointer = Point {
-                        x: x as f32 / scale,
-                        y: y as f32 / scale,
-                    };
-                    self.input(Event::PointerMoved(self.pointer));
-                }
+                glassmere_win32::CaptionEvent::Hover(x, y) => self.caption_pointer(x, y, scale),
                 glassmere_win32::CaptionEvent::Left => self.input(Event::PointerLeft),
+                glassmere_win32::CaptionEvent::Down(x, y) => {
+                    self.caption_pointer(x, y, scale);
+                    self.input(Event::PointerDown);
+                }
+                glassmere_win32::CaptionEvent::Up(x, y) => {
+                    self.caption_pointer(x, y, scale);
+                    self.input(Event::PointerUp);
+                }
             }
             self.request_redraw();
         }
+    }
+
+    /// The pointer over the maximize button, which Windows reports in client
+    /// pixels outside the usual mouse messages.
+    #[cfg(windows)]
+    fn caption_pointer(&mut self, x: i32, y: i32, scale: f32) {
+        self.pointer = Point {
+            x: x as f32 / scale,
+            y: y as f32 / scale,
+        };
+        self.input(Event::PointerMoved(self.pointer));
     }
 
     #[cfg(not(windows))]

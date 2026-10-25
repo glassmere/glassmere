@@ -572,6 +572,15 @@ impl Desktop {
             .with_decorations(options.decorations)
             .with_resizable(options.resizable)
             .with_inner_size(LogicalSize::new(options.size.width, options.size.height));
+        // A window without the system's frame keeps the system's shadow and,
+        // on Windows 11, its rounded corners.
+        #[cfg(target_os = "windows")]
+        if !options.decorations {
+            use winit::platform::windows::{CornerPreference, WindowAttributesExtWindows};
+            attributes = attributes
+                .with_undecorated_shadow(true)
+                .with_corner_preference(CornerPreference::Round);
+        }
         // Where the window opens, when the application asked for something
         // other than what the system would do.
         let screen = self.screen_for(event_loop, owner, &options.placement);

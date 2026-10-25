@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - On Windows with the `platform` feature, the window's own menu bar shows the app menu. Windows with a custom title bar keep the drawn one.
   - `Ui::app_bar(AppBar::new().menu(menu))` is a title bar the view places itself, with the window's title, the menu, the window buttons and the resize edges, and it turns the system's title bar off. A `Ui::menu_bar` in the body is a second bar under it, and the native bar is used only when the view draws the menu neither way.
+  - On Windows a window without the system's title bar keeps the system's shadow and rounded corners, and a click on its own maximize button maximizes it.
   - `Ui::menu_bar` draws flat headings with a hover and open highlight, and `MenuItem::separator()` is a rule in a dropdown.
 - Path styles, drawn the same way by the CPU and GPU renderers:
   - Stroke joins (`Join`: miter with `miter_limit`, round, bevel) and caps (`Cap`: butt, round, square).
