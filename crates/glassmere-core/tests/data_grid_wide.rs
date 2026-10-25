@@ -6,6 +6,7 @@ use glassmere_core::{
     ListModel, NodeId, SortDirection, Style, Ui, VirtualListOptions,
 };
 use glassmere_scene::{Point, Rect, Size};
+use std::time::Duration;
 use support::{Driven, act};
 
 const ROOT: Size = Size::new(900.0, 500.0);
@@ -343,4 +344,96 @@ fn the_grid_scrollbar_drags_and_pages_its_columns() {
     app.driven.context.event(Event::PointerUp);
     app.frame();
     assert_eq!(app.xs(6, false), [rows.x - 50.0; 3]);
+}
+
+fn thumb_x(app: &App) -> f32 {
+    let thumb = app
+        .driven
+        .context
+        .find(&["grid", "$hbar", "$track", "$thumb"])
+        .unwrap();
+    app.driven.context.node(thumb).unwrap().bounds.x
+}
+
+fn at(app: &mut App, milliseconds: u64) {
+    app.driven
+        .context
+        .set_now(Duration::from_millis(milliseconds));
+    app.frame();
+}
+
+#[test]
+fn a_held_press_on_the_grid_scrollbar_track_keeps_paging_until_the_thumb_reaches_it() {
+    let mut app = App::new(Direction::Ltr);
+    let rows = app.driven.context.node(app.rows()).unwrap().bounds;
+    let thumb = app
+        .driven
+        .context
+        .find(&["grid", "$hbar", "$track", "$thumb"])
+        .unwrap();
+    let thumb = app.driven.context.node(thumb).unwrap().bounds;
+    let pointer = Point {
+        x: rows.x + 300.0,
+        y: thumb.y + thumb.height / 2.0,
+    };
+    at(&mut app, 1000);
+    app.driven.context.event(Event::PointerMoved(pointer));
+    app.driven.context.event(Event::PointerDown);
+    app.frame();
+    let paged = thumb_x(&app);
+    assert!(paged > thumb.x, "the press pages once");
+    assert_eq!(
+        app.driven.context.next_wake(),
+        Some(Duration::from_millis(1400))
+    );
+
+    at(&mut app, 1399);
+    assert_eq!(thumb_x(&app), paged, "and waits out the delay");
+    at(&mut app, 1400);
+    let repeated = thumb_x(&app);
+    assert!(repeated > paged, "then pages again");
+    assert_eq!(
+        app.driven.context.next_wake(),
+        Some(Duration::from_millis(1450))
+    );
+
+    // The thumb catches up with the pointer and the repeat ends.
+    for step in 1..=20 {
+        at(&mut app, 1400 + step * 50);
+    }
+    let stopped = thumb_x(&app);
+    assert!(stopped + 1.0 > pointer.x - 70.0 && stopped <= pointer.x);
+    assert_eq!(app.driven.context.next_wake(), None);
+    at(&mut app, 5000);
+    assert_eq!(thumb_x(&app), stopped);
+}
+
+#[test]
+fn a_grid_scrollbar_track_press_stops_repeating_on_release_or_when_the_pointer_leaves() {
+    for release in [true, false] {
+        let mut app = App::new(Direction::Ltr);
+        let rows = app.driven.context.node(app.rows()).unwrap().bounds;
+        let before = thumb_x(&app);
+        let pointer = Point {
+            x: rows.x + 440.0,
+            y: rows.y + rows.height + 5.0,
+        };
+        at(&mut app, 1000);
+        app.driven.context.event(Event::PointerMoved(pointer));
+        app.driven.context.event(Event::PointerDown);
+        app.frame();
+        let paged = thumb_x(&app);
+        assert!(paged > before, "the press pages once");
+        if release {
+            app.driven.context.event(Event::PointerUp);
+        } else {
+            app.driven.context.event(Event::PointerMoved(Point {
+                y: pointer.y - 200.0,
+                ..pointer
+            }));
+        }
+        assert_eq!(app.driven.context.next_wake(), None);
+        at(&mut app, 2000);
+        assert_eq!(thumb_x(&app), paged);
+    }
 }

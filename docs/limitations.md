@@ -5,7 +5,8 @@ What does not work, is partial, or has not been tried. Grouped by area.
 ## Platforms
 
 - Windows is the platform used day to day. macOS and Linux build and run the test suite in CI, but nobody has used applications on them by hand.
-- Linux needs the GTK development packages for the `platform` feature, and its clipboard uses X11 or XWayland; the pure Wayland clipboard is not enabled.
+- Linux needs the GTK development packages for the `platform` feature.
+- The clipboard in a pure Wayland session (`wayland-data-control`) has not been tried by hand.
 - The `platform` feature (file dialogs, notifications, tray, menus) has not been exercised on macOS or Linux.
 - Windows 10 lacks the snap layout flyout on the maximize button; only Windows 11 has it. There is no equivalent for other platforms.
 - Fonts come from the system. The check for a missing family knows whether it is installed, not whether it has the glyphs a text needs.
@@ -37,15 +38,15 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - Stylesheets have no variables or nesting and reload by polling every half second.
 - One transition covers all animated properties of a node, with no spring physics. Control internals (slider thumbs, caret) do not ease.
 - Ancestors clip to their bounds; there is no unclipped container.
-- Holding a press on a scrollbar's track pages once; it does not repeat. Only direct children extend a scroll view's width, and popups scroll vertically only.
-- Reduced motion is an application option. The OS preference is not read.
+- Only direct children extend a scroll view's width, and popups scroll vertically only.
+- The OS reduced-motion preference is read on Windows only (at startup and when a window gains focus, not the moment it changes). macOS and Linux use the application option alone. `AppOptions::reduced_motion = false` follows the system; an application cannot force animations on against it.
 
 ## Text
 
 - A password field has no button that shows the text. Input methods stay on in it, and macOS secure input is not turned on.
 - Visual-line and visual-caret moves in the document editors resolve against the last shaped frame, so several arrow presses between two frames move one step. Several cursors in the code editor move logically.
 - Rich documents have one font size per block, no images, tables, nested lists, alignment or colours, are shaped in full on each change, and paste as plain text.
-- Dragging a selection past the edge of an editor does not scroll it, and the code editor has no horizontal scrollbar or wheel.
+- Dragging a selection past the edge of a single-line text input only follows the pointer as it moves; it does not keep scrolling while the pointer rests. The code editor's horizontal range comes from the widest line declared around the view, so the scrollbar can change length as the view scrolls vertically through lines of different widths.
 - Bracket matching ignores strings and comments. Find is line by line.
 - The base direction of a paragraph is taken from its first strong character and cannot be forced in an editor. Left and Right in tree rows keep their left-to-right meanings (Left collapses, Right expands) in a right-to-left window.
 - Fluent formats numbers plainly; use `Ui::format_number` for locale notation. Only the default catalog is checked by `tr!`.
@@ -75,5 +76,5 @@ What does not work, is partial, or has not been tried. Grouped by area.
 
 - Hot reload is a rebuild and restart that keeps state; it is not in-process code swapping. It saves one window's state, polls every 500 ms, and does not carry focus or scroll unless the application saves them.
 - The inspector captures the full target tree on each of its frames, which a 100,000-node target will feel. GPU timings come from timestamp queries and were checked on one adapter.
-- The public API snapshot is read from the sources, so it does not know about `cfg`, and it records signatures, not behaviour.
+- The public API snapshot is read from the sources: it records `cfg` gates as written without evaluating them, expands only the workspace's own macros, and records signatures, not behaviour.
 - The test suite's allocation counts are the framework's own declarations, not allocator calls.

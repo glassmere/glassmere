@@ -136,6 +136,7 @@ pub(super) struct Touch {
     dock_drag: Option<Box<dock_input::DockDrag>>,
     dock_grab: Option<dock_input::DockGrab>,
     scrollbar_grab: Option<super::scrollbar_input::ScrollbarGrab>,
+    track_hold: Option<super::scrollbar_input::TrackHold>,
 
     mode: Mode,
     start: Point,
@@ -169,6 +170,7 @@ impl Context {
         std::mem::swap(&mut self.dock_drag, &mut touch.dock_drag);
         std::mem::swap(&mut self.dock_grab, &mut touch.dock_grab);
         std::mem::swap(&mut self.scrollbar_grab, &mut touch.scrollbar_grab);
+        std::mem::swap(&mut self.track_hold, &mut touch.track_hold);
     }
 
     /// Runs `events` with the contact as the pointer.
@@ -200,6 +202,7 @@ impl Context {
         self.dock_grab = None;
         self.dock_drag = None;
         self.scrollbar_grab = None;
+        self.track_hold = None;
         self.cancel_drag() | held.iter().any(Option::is_some)
     }
 
@@ -272,6 +275,7 @@ impl Context {
             dock_drag: None,
             dock_grab: None,
             scrollbar_grab: None,
+            track_hold: None,
             mode: Mode::Pressing,
             start: position,
             last: position,

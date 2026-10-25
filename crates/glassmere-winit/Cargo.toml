@@ -47,6 +47,10 @@ tray-icon = { version = "0.25.1", optional = true }
 [target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 drag = "2.1"
 
+# The clipboard talks to Wayland directly when there is a Wayland session.
+[target.'cfg(target_os = "linux")'.dependencies]
+arboard = { workspace = true, features = ["wayland-data-control"] }
+
 # Where the maximize button of a title bar the application draws is, which
 # only a window procedure can answer.
 [target.'cfg(windows)'.dependencies]

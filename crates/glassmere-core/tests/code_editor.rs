@@ -704,3 +704,180 @@ fn lines_and_labels(context: &Context) -> Vec<String> {
         })
         .collect()
 }
+
+/// Moves the host clock and runs a frame, as a host does when a wake is due.
+fn at(app: &mut Driven<State>, milliseconds: u64) {
+    app.context.set_now(Duration::from_millis(milliseconds));
+    app.frame();
+}
+
+/// The number the first declared line ends with.
+fn first_line(context: &Context) -> usize {
+    lines(context)[0]
+        .trim_start_matches("line ")
+        .parse()
+        .unwrap()
+}
+
+/// Where the first declared line starts, which is left of the editor's
+/// content while the view is scrolled sideways.
+fn text_left(context: &Context) -> f32 {
+    context
+        .scene()
+        .primitives
+        .iter()
+        .find_map(|primitive| match primitive {
+            Primitive::RichText { rect, .. } => Some(rect.x),
+            _ => None,
+        })
+        .unwrap()
+}
+
+#[test]
+fn a_drag_held_below_or_above_the_editor_scrolls_it_by_the_clock_until_release() {
+    let text: String = (0..1000).map(|n| format!("line {n}\n")).collect();
+    let mut app = started(&text);
+    at(&mut app, 0);
+    app.context.event(Event::PointerMoved(cell(1, 2)));
+    app.context.event(Event::PointerDown);
+    // Below the 216 px editor, not moving again from here on.
+    app.context
+        .event(Event::PointerMoved(Point { x: 100.0, y: 300.0 }));
+    at(&mut app, 0);
+    assert_eq!(first_line(&app.context), 0);
+    assert!(app.context.next_wake().is_some());
+
+    at(&mut app, 500);
+    let top = first_line(&app.context);
+    assert!(top > 5, "{top}");
+    at(&mut app, 1000);
+    assert!(first_line(&app.context) > top);
+    // The selection follows what comes into view.
+    let (line, _) = app
+        .state()
+        .document
+        .position(app.state().document.primary().cursor);
+    assert!(line > first_line(&app.context), "{line}");
+    assert!(app.state().document.selected_text().starts_with("ne 1\n"));
+
+    // The further out the pointer is, the faster the scroll.
+    let before = first_line(&app.context);
+    at(&mut app, 1100);
+    let near = first_line(&app.context) - before;
+    app.context
+        .event(Event::PointerMoved(Point { x: 100.0, y: 900.0 }));
+    let before = first_line(&app.context);
+    at(&mut app, 1200);
+    assert!(first_line(&app.context) - before > near);
+
+    // Above the editor it scrolls back up.
+    app.context
+        .event(Event::PointerMoved(Point { x: 100.0, y: 2.0 }));
+    let before = first_line(&app.context);
+    at(&mut app, 1700);
+    assert!(first_line(&app.context) < before);
+
+    app.context.event(Event::PointerUp);
+    app.frame();
+    let stopped = first_line(&app.context);
+    assert_eq!(app.context.next_wake(), None);
+    at(&mut app, 3000);
+    assert_eq!(first_line(&app.context), stopped);
+}
+
+#[test]
+fn a_drag_held_past_the_side_scrolls_sideways_and_selects_along_the_line() {
+    let line = "x".repeat(300);
+    let mut app = started(&format!("{line}\nshort"));
+    at(&mut app, 0);
+    app.context.event(Event::PointerMoved(cell(0, 2)));
+    app.context.event(Event::PointerDown);
+    app.context
+        .event(Event::PointerMoved(Point { x: 630.0, y: 20.0 }));
+    at(&mut app, 0);
+    at(&mut app, 500);
+    assert!(text_left(&app.context) < PADDING - 50.0);
+    assert!(app.state().document.selected_text().len() > 50);
+    app.context.event(Event::PointerUp);
+    app.frame();
+    assert_eq!(app.context.next_wake(), None);
+}
+
+#[test]
+fn long_lines_scroll_sideways_with_the_horizontal_wheel_and_the_scrollbar() {
+    let mut app = started(&format!("{}\nshort", "x".repeat(300)));
+    assert_eq!(text_left(&app.context), PADDING);
+    app.context
+        .event(Event::PointerMoved(Point { x: 100.0, y: 100.0 }));
+    // Shift with the vertical wheel arrives from the host as this.
+    app.context.event(Event::Scroll {
+        delta_x: 100.0,
+        delta_y: 0.0,
+    });
+    app.frame();
+    assert_eq!(text_left(&app.context), PADDING - 100.0);
+    app.context.event(Event::Scroll {
+        delta_x: -30.0,
+        delta_y: 0.0,
+    });
+    app.frame();
+    assert_eq!(text_left(&app.context), PADDING - 70.0);
+    // The end of the longest line is the end of the range.
+    app.context.event(Event::Scroll {
+        delta_x: 100_000.0,
+        delta_y: 0.0,
+    });
+    app.frame();
+    let end = text_left(&app.context);
+    let range = 302.0 * ADVANCE - (600.0 - PADDING * 2.0);
+    assert!((end - (PADDING - range)).abs() < 1.0, "{end}");
+    // The wheel moves the view, not the caret.
+    assert_eq!(app.state().document.primary().cursor, 0);
+
+    // A bar along the bottom edge takes the thumb, and dragging it scrolls.
+    let bar = Point {
+        x: PADDING + 600.0 - 2.0 * PADDING - 20.0,
+        y: 216.0 - 2.0,
+    };
+    app.context.event(Event::PointerMoved(bar));
+    app.context.event(Event::PointerDown);
+    app.context.event(Event::PointerMoved(Point {
+        x: bar.x - 200.0,
+        ..bar
+    }));
+    app.context.event(Event::PointerUp);
+    app.frame();
+    assert!(text_left(&app.context) > end);
+}
+
+#[test]
+fn the_caret_is_kept_in_view_sideways_when_it_moves_and_not_when_the_wheel_scrolls() {
+    let mut app = started(&format!("{}\nshort", "x".repeat(300)));
+    click(&mut app.context, cell(0, 0));
+    app.frame();
+    key(&mut app.context, Key::End, false);
+    app.frame();
+    app.frame();
+    let caret = app.context.ime_cursor_rect().unwrap();
+    assert!(caret.x > 0.0 && caret.x + caret.width <= PADDING + 584.0 + 0.5);
+    assert!(text_left(&app.context) < PADDING - 1000.0);
+
+    key(&mut app.context, Key::Home, false);
+    app.frame();
+    app.frame();
+    assert_eq!(text_left(&app.context), PADDING);
+
+    // Scrolling away leaves the caret where it is until it moves again.
+    app.context
+        .event(Event::PointerMoved(Point { x: 100.0, y: 100.0 }));
+    app.context.event(Event::Scroll {
+        delta_x: 400.0,
+        delta_y: 0.0,
+    });
+    app.frame();
+    assert_eq!(text_left(&app.context), PADDING - 400.0);
+    key(&mut app.context, Key::ArrowRight, false);
+    app.frame();
+    app.frame();
+    assert!((text_left(&app.context) - (PADDING - ADVANCE)).abs() < 0.01);
+}
