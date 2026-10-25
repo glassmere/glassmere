@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [0.1.1] - 2026-10-25
+
+### Added
+
+- `Debug` for `Store`, `Signal`, `Memo`, `TreeModel`, `CommandPalette`, `Autocomplete` and the area, widget, gesture, drag source and drop target builders; `PartialEq` for `DockAction` and `RichEditorOptions`, which also gains `Clone` and `Debug`.
+- `glassmere_win32::animations_disabled()` reads the Windows "Animation effects" switch.
+
+### Changed
+
+- `AppOptions::reduced_motion = false` now follows the system on Windows: when animation effects are off in Windows settings, animations are skipped. `true` still forces them off.
+- On Linux the clipboard also works in a pure Wayland session, through `arboard`'s `wayland-data-control` feature.
+
+### Fixed
+
+- Holding a press on a scrollbar track keeps paging until the thumb reaches the pointer.
+- Dragging a selection past the edge of a text area, code editor or rich text editor scrolls it, and the code editor scrolls sideways for long lines.
+
+### Deprecated
+
+- `TextDocument::rope`, which exposes the `ropey` type; it goes in 0.2.
+- `Harness::state_mut`; use `Harness::app_mut`.
+
 ## [0.1.0] - 2026-10-18
 
 First release. What does not work yet is listed in [docs/limitations.md](docs/limitations.md).
