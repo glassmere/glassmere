@@ -718,12 +718,17 @@ impl<'a, M: 'static> Ui<'a, M> {
     }
 
     /// Children fill `style.columns` cells in row-major order, wrapping into
-    /// implicit rows sized by `auto_rows`; a child's `area` places it explicitly.
+    /// implicit rows sized by `auto_rows`; a child's `area` places it explicitly,
+    /// and its `area_name` places it in one of the container's `areas`.
     /// Items without a width stretch to their cell. Percentage widths resolve
     /// against the grid container, not the cell, so prefer `Length::Auto` to fill.
     #[track_caller]
     pub fn grid(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_, M>)) {
         let key = self.next_key();
+        if let Err(message) = crate::style::template_areas(&style.areas) {
+            self.misuse(message);
+            return;
+        }
         self.group(key, Kind::Grid, style, content);
     }
 

@@ -13,8 +13,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `Context::editor_text` returns what is published.
   - Password fields publish no text.
 
+- Grid layout features:
+  - `Style::row_gap` and `column_gap`. `gap` still sets both.
+  - `Track::AutoFill` and `Track::AutoFit`, written `repeat(auto-fill, ...)` in a stylesheet.
+  - Dense auto-flow through `Style::auto_flow` and `AutoFlow`.
+  - Named template areas: `Style::areas` on the grid, `Style::area_name` on a child.
+  - `GridArea::auto_span` for a child that auto-flow places across several tracks.
+
+  The stylesheet has the same properties: `row-gap`, `column-gap`, `auto-flow`, `areas`, and `area: <name>`.
+
 ### Changed
 
+- A `GridArea` line of 0 leaves that axis to auto-flow. It used to mean line 1.
 - Text areas, the code editor and the rich editor report `Role::MultilineTextInput` instead of `Role::TextInput`.
 - wgpu 30. It is part of the public API through `AppOptions::gpu`, `CustomDraw` and the renderer, so an application that draws with wgpu itself needs wgpu 30 too.
 - Most public enums are `#[non_exhaustive]`, so a later release can add a variant without breaking a `match`; a `match` on one needs a `_` arm. The closed sets that stay exhaustive are listed in [API stability](docs/api-stability.md#what-a-release-can-add).
