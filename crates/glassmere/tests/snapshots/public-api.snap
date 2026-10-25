@@ -584,6 +584,7 @@ glassmere-core   fn Context::captured(&self) -> Option<NodeId>
 glassmere-core   fn Context::caret_movement(&self) -> crate::CaretMovement
 glassmere-core   fn Context::clear_bindings(&mut self)
 glassmere-core   fn Context::clear_diagnostics(&mut self)
+glassmere-core   fn Context::close_button(&self) -> Option<Rect>
 glassmere-core   fn Context::composing_text(&self) -> bool
 glassmere-core   fn Context::damage_regions(&self) -> &[Rect]
 glassmere-core   fn Context::details(&self, id: NodeId) -> Option<NodeDetails>
@@ -613,6 +614,7 @@ glassmere-core   fn Context::locale(&self) -> &str
 glassmere-core   fn Context::maximize_button(&self) -> Option<Rect>
 glassmere-core   fn Context::memory(&self) -> MemoryReport
 glassmere-core   fn Context::menu_drawn(&self) -> bool
+glassmere-core   fn Context::minimize_button(&self) -> Option<Rect>
 glassmere-core   fn Context::missing_messages(&self) -> Vec<String>
 glassmere-core   fn Context::new() -> Self
 glassmere-core   fn Context::next_wake(&self) -> Option<Duration>
@@ -2599,7 +2601,9 @@ glassmere-image   fn Loader::request(&self, path: PathBuf)
 glassmere-image fn decode(bytes: &[u8]) -> Result<Image, String>
 glassmere-image fn load(path: &Path) -> Result<Image, String>
 glassmere-image struct Loader (private fields)
+glassmere-win32   fn Caption::set_close(&self, button: Option<(i32, i32, i32, i32)>)
 glassmere-win32   fn Caption::set_maximize(&self, button: Option<(i32, i32, i32, i32)>)
+glassmere-win32   fn Caption::set_minimize(&self, button: Option<(i32, i32, i32, i32)>)
 glassmere-win32   fn Caption::take(&self) -> Vec<CaptionEvent>
 glassmere-win32   fn MenuBar::set_dark(&mut self, dark: bool) #[cfg(feature = "menu")]
 glassmere-win32   variant CaptionEvent::Down(i32, i32)
@@ -2610,6 +2614,7 @@ glassmere-win32 enum CaptionEvent #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 glassmere-win32 fn animations_disabled() -> Option<bool>
 glassmere-win32 fn attach(window: isize) -> Option<Caption>
 glassmere-win32 fn attach_menu(window: isize, menu: Menu, dark: bool) -> Option<MenuBar> #[cfg(feature = "menu")]
+glassmere-win32 fn frame_shadow(window: isize)
 glassmere-win32 impl Drop for Caption
 glassmere-win32 impl Drop for MenuBar #[cfg(feature = "menu")]
 glassmere-win32 struct Caption (private fields)

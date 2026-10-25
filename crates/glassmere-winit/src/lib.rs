@@ -1125,7 +1125,7 @@ impl Application {
         #[cfg(target_os = "windows")]
         {
             use winit::platform::windows::{CornerPreference, WindowExtWindows};
-            state.window.set_undecorated_shadow(true);
+            frame_shadow(&state.window);
             state.window.set_corner_preference(CornerPreference::Round);
         }
         if !state.window.is_maximized() {
@@ -1178,14 +1178,19 @@ impl Application {
         let Some(caption) = &self.caption else {
             return;
         };
-        caption.set_maximize(self.context.maximize_button().map(|button| {
-            (
-                (button.x * scale) as i32,
-                (button.y * scale) as i32,
-                ((button.x + button.width) * scale) as i32,
-                ((button.y + button.height) * scale) as i32,
-            )
-        }));
+        let pixels = |button: Option<glassmere_scene::Rect>| {
+            button.map(|button| {
+                (
+                    (button.x * scale) as i32,
+                    (button.y * scale) as i32,
+                    ((button.x + button.width) * scale) as i32,
+                    ((button.y + button.height) * scale) as i32,
+                )
+            })
+        };
+        caption.set_minimize(pixels(self.context.minimize_button()));
+        caption.set_maximize(pixels(self.context.maximize_button()));
+        caption.set_close(pixels(self.context.close_button()));
         let seen = caption.take();
         for event in seen {
             match event {
@@ -1374,6 +1379,13 @@ impl Application {
             .context
             .hovered()
             .and_then(|id| self.context.resize_grip(id));
+        // The window buttons keep the arrow, as the system's do. Windows sets
+        // it over them itself, and a hand from here would fight it.
+        let caption = [
+            self.context.minimize_button(),
+            self.context.maximize_button(),
+            self.context.close_button(),
+        ];
         state.window.set_cursor(if let Some(edge) = grip {
             resize_cursor(edge)
         } else {
@@ -1394,6 +1406,7 @@ impl Application {
                         _ => CursorIcon::ColResize,
                     }
                 }
+                Some(node) if caption.contains(&Some(node.bounds)) => CursorIcon::Default,
                 Some(node) if node.semantics.focusable => CursorIcon::Pointer,
                 _ => CursorIcon::Default,
             }
@@ -1889,5 +1902,15 @@ impl Application {
             },
             _ => {}
         }
+    }
+}
+
+/// Draws the system's shadow around a window without the system's frame.
+#[cfg(windows)]
+fn frame_shadow(window: &winit::window::Window) {
+    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    if let Ok(RawWindowHandle::Win32(handle)) = window.window_handle().map(|handle| handle.as_raw())
+    {
+        glassmere_win32::frame_shadow(isize::from(handle.hwnd));
     }
 }

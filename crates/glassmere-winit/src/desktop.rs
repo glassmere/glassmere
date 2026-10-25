@@ -572,14 +572,12 @@ impl Desktop {
             .with_decorations(options.decorations)
             .with_resizable(options.resizable)
             .with_inner_size(LogicalSize::new(options.size.width, options.size.height));
-        // A window without the system's frame keeps the system's shadow and,
-        // on Windows 11, its rounded corners.
+        // A window without the system's frame keeps the system's rounded
+        // corners on Windows 11, and its shadow once it exists.
         #[cfg(target_os = "windows")]
         if !options.decorations {
             use winit::platform::windows::{CornerPreference, WindowAttributesExtWindows};
-            attributes = attributes
-                .with_undecorated_shadow(true)
-                .with_corner_preference(CornerPreference::Round);
+            attributes = attributes.with_corner_preference(CornerPreference::Round);
         }
         // Where the window opens, when the application asked for something
         // other than what the system would do.
@@ -606,6 +604,10 @@ impl Desktop {
         #[cfg(not(target_os = "windows"))]
         let _ = owner;
         let window = Arc::new(event_loop.create_window(attributes)?);
+        #[cfg(target_os = "windows")]
+        if !options.decorations {
+            crate::frame_shadow(&window);
+        }
         // Centred by the frame the user sees, which is only known once the
         // window exists, and in the screen's own pixels.
         if let Some(screen) = screen {
@@ -1123,9 +1125,14 @@ impl ApplicationHandler<UserEvent> for Desktop {
     }
     /// Between frames: what the declarations asked the desktop for, and
     /// what the desktop's own menus have to say back.
-    fn about_to_wait(&mut self, _: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         for app in self.windows.values_mut() {
             app.platform_requests();
+        }
+        // A window a view closed here, as a title bar's close button does,
+        // would otherwise stay open until some other event came.
+        if self.windows.values().any(|app| app.close_requested) {
+            self.finish(event_loop);
         }
         for id in crate::platform::chosen_commands() {
             // A menu belongs to the application, so the command goes to the

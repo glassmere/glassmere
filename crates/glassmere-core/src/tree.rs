@@ -356,6 +356,9 @@ pub struct Context {
     focused: Option<NodeId>,
     captured: Option<NodeId>,
     keyboard_pressed: Option<(NodeId, Key)>,
+    /// A node in a title bar that took focus from a press, which shows no
+    /// focus ring: a desktop's title bar never does.
+    quiet_focus: Option<NodeId>,
     pointer: Option<Point>,
     clicks: HashSet<NodeId>,
     /// The clicks a pointer made, as opposed to keys or assistive
@@ -434,9 +437,11 @@ pub struct Context {
     /// When and where the title bar was last pressed, for telling a second
     /// press that means "maximize" from two separate ones.
     last_title_press: Option<(Duration, Point)>,
-    /// Where the maximize button of a title bar the view draws itself is,
-    /// for a host that has to tell the platform.
-    maximize_button: Option<Rect>,
+    /// Minimize, maximize and close of a title bar the view draws, for a
+    /// host that has to tell the platform where they are. The nodes rather
+    /// than their rectangles, because they are found when the tree is
+    /// reconciled and only laid out after.
+    caption_buttons: [Option<NodeId>; 3],
     /// What the overlays painted straight into the last scene. They are not
     /// nodes, so nothing invalidates them: the frame one appears, moves or
     /// goes has to name its rectangle itself.
@@ -586,6 +591,7 @@ impl Default for Context {
             focused: None,
             captured: None,
             keyboard_pressed: None,
+            quiet_focus: None,
             pointer: None,
             clicks: HashSet::new(),
             pointer_clicks: HashSet::new(),
@@ -632,7 +638,7 @@ impl Default for Context {
             window_info: crate::WindowInfo::default(),
             size: Size::default(),
             last_title_press: None,
-            maximize_button: None,
+            caption_buttons: [None; 3],
             painted_overlays: Vec::new(),
             redraw_requested: false,
             caret_movement: crate::CaretMovement::Visual,
@@ -928,11 +934,43 @@ impl Context {
         self.window_info
     }
 
+    /// Whether a node is a title bar or inside one.
+    fn in_title_bar(&self, id: NodeId) -> bool {
+        let mut at = Some(id);
+        while let Some(id) = at {
+            let Some(node) = self.nodes.get(&id) else {
+                return false;
+            };
+            if node.control == Control::TitleBar {
+                return true;
+            }
+            at = node.parent;
+        }
+        false
+    }
+
     /// Where the maximize button of a title bar the view draws itself sits,
     /// in logical coordinates, for a host that tells the platform so that it
     /// can offer its own window layouts over it.
     pub fn maximize_button(&self) -> Option<Rect> {
-        self.maximize_button
+        self.caption_button(1)
+    }
+
+    /// Where its minimize button sits, as `maximize_button`.
+    pub fn minimize_button(&self) -> Option<Rect> {
+        self.caption_button(0)
+    }
+
+    /// Where its close button sits, as `maximize_button`.
+    pub fn close_button(&self) -> Option<Rect> {
+        self.caption_button(2)
+    }
+
+    /// Where a caption button was last laid out.
+    fn caption_button(&self, index: usize) -> Option<Rect> {
+        self.nodes
+            .get(&self.caption_buttons[index]?)
+            .map(|node| node.bounds)
     }
 
     /// The logical size the window was last declared at.

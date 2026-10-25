@@ -29,9 +29,12 @@ impl<'a, M: 'static> Ui<'a, M> {
     }
 
     /// A strip that moves the window, for a window with the system's title
-    /// bar turned off, which placing one does for a window that has it. Pressing it starts a move; pressing it twice
-    /// maximizes or restores. Whatever is declared inside it keeps working,
-    /// because a press that lands on a control there is that control's.
+    /// bar turned off, which placing one does for a window that has it.
+    /// Pressing it starts a move; pressing it twice maximizes or restores.
+    /// A [`Ui::menu_bar`] in it is drawn flat, as part of the bar. Unless
+    /// the style gives a height, it is as tall as the system's caption.
+    /// Whatever is declared inside it keeps working, because a press that
+    /// lands on a control there is that control's.
     ///
     /// ```ignore
     /// ui.title_bar(Style::default().padding(6.0), |ui| {
@@ -41,9 +44,15 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// ```
     #[track_caller]
     pub fn title_bar(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_, M>)) {
+        let mut style = style;
+        if style.height == crate::Length::Auto {
+            style.height = crate::Length::Px(caption::HEIGHT);
+        }
         // A row, so that a title, a menu and the buttons sit side by side
         // the way a title bar's do.
+        let outer = std::mem::replace(&mut self.host.in_title_bar, true);
         self.row(style, content);
+        self.host.in_title_bar = outer;
         self.set_control(Control::TitleBar);
         self.host.frameless = true;
     }
@@ -69,7 +78,8 @@ impl<'a, M: 'static> Ui<'a, M> {
         // button: light over a dark title bar, dark over a light one.
         let wash = |alpha: u8| Color(foreground.0, foreground.1, foreground.2, alpha);
         let (hover, pressed) = (wash(caption::WASH_HOVER), wash(caption::WASH_PRESSED));
-        self.row(Style::default(), |ui| {
+        // Side by side with nothing between them, as the system's are.
+        self.row(Style::default().gap(0.0), |ui| {
             for (key, glyph, name, command) in [
                 (
                     "minimize",
@@ -130,14 +140,18 @@ impl<'a, M: 'static> Ui<'a, M> {
                 }));
                 ui.button_at(key, glyph, true, style);
                 ui.set_handler(handler(command));
-                // The glyph is what is drawn; the name is what is announced.
+                // The glyph is what is drawn; the name is what is announced,
+                // and what the tooltip says where the system does not show
+                // its own.
                 let label = ui.tr(name);
                 ui.tooltip(label);
-                if matches!(command, crate::WindowCommand::ToggleMaximize) {
-                    // Windows asks where this one is, to offer its snap
-                    // layouts when the pointer rests over it.
-                    ui.set_control(Control::MaximizeButton);
-                }
+                // Windows asks where these are, to show its own tooltips over
+                // them and offer its snap layouts over the maximize button.
+                ui.set_control(match command {
+                    crate::WindowCommand::Minimize => Control::MinimizeButton,
+                    crate::WindowCommand::Close => Control::CloseButton,
+                    _ => Control::MaximizeButton,
+                });
             }
         });
     }
@@ -211,13 +225,18 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// out the window's own menu bar on Windows, so that it is shown once.
     #[track_caller]
     pub fn menu_bar(&mut self, menu: &crate::Menu) {
-        // A strip across the window in the app bar's colour, so that it reads
-        // as a bar of its own under whatever is above it.
-        let strip = Style {
-            width: crate::Length::Percent(1.0),
-            padding: 4.0,
-            background: Some(self.theme().surface),
-            ..Style::default()
+        // In a title bar it is part of that bar. Anywhere else it is a strip
+        // across its parent in the app bar's colour, so that it reads as a
+        // bar of its own under whatever is above it.
+        let strip = if self.host.in_title_bar {
+            Style::default()
+        } else {
+            Style {
+                align_self: Some(crate::Align::Stretch),
+                padding: 4.0,
+                background: Some(self.theme().surface),
+                ..Style::default()
+            }
         };
         self.draw_menu_bar(menu, strip);
     }

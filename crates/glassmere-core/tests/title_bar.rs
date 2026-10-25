@@ -3,10 +3,10 @@
 mod support;
 
 use glassmere_core::{
-    App, AppBar, Command, Context, Effects, Event, Menu, MenuEntry, MenuItem, ResizeEdge, Role,
-    Style, Ui, WindowCommand,
+    App, AppBar, Command, Context, Effects, Event, Key, Menu, MenuEntry, MenuItem, ResizeEdge,
+    Role, Style, Ui, WindowCommand,
 };
-use glassmere_scene::{Point, Size};
+use glassmere_scene::{Point, Primitive, Size};
 use std::time::Duration;
 use support::Host;
 
@@ -118,6 +118,23 @@ fn the_body_sits_under_the_bar() {
 }
 
 #[test]
+fn the_window_buttons_are_where_they_are_drawn_from_the_first_frame() {
+    // The platform learns where they are before the pointer ever reaches
+    // them: no second frame, no input.
+    let h = shell();
+    for (key, rect) in [
+        ("minimize", h.context.minimize_button()),
+        ("maximize", h.context.maximize_button()),
+        ("close", h.context.close_button()),
+    ] {
+        let node = h.context.find(&["$title-bar", "$buttons", key]).unwrap();
+        let drawn = h.context.node(node).unwrap().bounds;
+        assert!(drawn.width > 0.0, "{key}");
+        assert_eq!(rect, Some(drawn), "{key}");
+    }
+}
+
+#[test]
 fn the_buttons_ask_the_window_without_the_app_handling_a_message() {
     let mut h = shell();
     for (key, command) in [
@@ -150,6 +167,40 @@ fn pressing_the_gap_moves_the_window_and_pressing_a_menu_opens_it() {
             .is_some(),
         "the dropdown is open"
     );
+}
+
+/// Whether the scene draws the focus colour anywhere.
+fn draws_a_focus_ring(context: &Context) -> bool {
+    let focus = context.theme().focus;
+    context
+        .scene()
+        .primitives
+        .iter()
+        .any(|primitive| matches!(primitive, Primitive::Quad { color, .. } if *color == focus))
+}
+
+#[test]
+fn a_press_in_the_bar_takes_focus_without_a_ring_and_the_keyboard_brings_it_back() {
+    let mut h = shell();
+    let heading = centre(&h.context, &["$title-bar", "$menu", "menu0"]);
+    press(&mut h.context, heading);
+    h.frame();
+    assert!(h.context.focused().is_some(), "the menu has the keyboard");
+    assert!(!draws_a_focus_ring(&h.context));
+
+    // Closing the dropdown and moving on by keyboard shows where focus is.
+    h.context.event(Event::KeyDown {
+        key: Key::Escape,
+        shift: false,
+        repeat: false,
+    });
+    h.context.event(Event::KeyDown {
+        key: Key::Tab,
+        shift: false,
+        repeat: false,
+    });
+    h.frame();
+    assert!(draws_a_focus_ring(&h.context));
 }
 
 #[test]

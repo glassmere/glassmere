@@ -241,11 +241,17 @@ impl Context {
                 );
             }
         }
-        self.maximize_button = self
-            .nodes
-            .values()
-            .find(|node| node.control == Control::MaximizeButton)
-            .map(|node| node.bounds);
+        let caption = |control: Control| {
+            self.nodes
+                .iter()
+                .find(|(_, node)| node.control == control)
+                .map(|(id, _)| *id)
+        };
+        self.caption_buttons = [
+            caption(Control::MinimizeButton),
+            caption(Control::MaximizeButton),
+            caption(Control::CloseButton),
+        ];
         self.areas = self
             .nodes
             .iter()

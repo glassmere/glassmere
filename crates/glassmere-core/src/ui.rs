@@ -66,6 +66,8 @@ pub(crate) struct HostOutbox {
     /// The menus the view drew itself, and whether it placed a title bar.
     pub drawn_menus: Vec<crate::Menu>,
     pub frameless: bool,
+    /// Whether what is being declared sits in a title bar.
+    pub in_title_bar: bool,
     pub tray: Option<Option<crate::Tray>>,
     /// Commands a menu the framework drew itself chose.
     pub commands: Vec<String>,
