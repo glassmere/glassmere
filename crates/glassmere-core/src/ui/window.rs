@@ -56,7 +56,12 @@ impl<'a, M: 'static> Ui<'a, M> {
         // button: light over a dark title bar, dark over a light one.
         let wash = |alpha: u8| Color(foreground.0, foreground.1, foreground.2, alpha);
         let (hover, pressed) = (wash(caption::WASH_HOVER), wash(caption::WASH_PRESSED));
-        self.row(Style::default(), |ui| {
+        // Side by side with nothing between them, as the system's are.
+        let row = Style {
+            gap: 0.0,
+            ..Style::default()
+        };
+        self.row(row, |ui| {
             for (key, glyph, name, command) in [
                 (
                     "minimize",
