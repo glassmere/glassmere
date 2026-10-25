@@ -20,7 +20,7 @@ use windows_sys::Win32::{
         Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
         WindowsAndMessaging::{
             HTMAXBUTTON, SPI_GETCLIENTAREAANIMATION, SystemParametersInfoW, WM_NCHITTEST,
-            WM_NCMOUSELEAVE, WM_NCMOUSEMOVE,
+            WM_NCLBUTTONDBLCLK, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE,
         },
     },
 };
@@ -28,13 +28,17 @@ use windows_sys::Win32::{
 /// What the window procedure saw over the maximize button. The framework
 /// does not hear of it otherwise: while the button is part of the caption as
 /// far as Windows is concerned, no ordinary mouse message arrives there.
-/// Pressing it is left to Windows, which maximizes the window itself, and
-/// offers its layouts while the pointer rests there.
+/// Windows offers its layouts while the pointer rests there, but does not
+/// press the button of a window without its own caption, so presses are
+/// handed on for the framework's button to act on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CaptionEvent {
     /// The pointer is over the button, at this point in client pixels.
     Hover(i32, i32),
     Left,
+    /// The button was pressed or released, at this point in client pixels.
+    Down(i32, i32),
+    Up(i32, i32),
 }
 
 #[derive(Default)]
@@ -166,32 +170,33 @@ unsafe extern "system" fn caption(
             // The default answer first, so borders and everything else keep
             // working; only the button's own rectangle is overridden.
             let hit = forward();
-            let mut point = POINT {
-                x: (lparam & 0xffff) as i16 as i32,
-                y: ((lparam >> 16) & 0xffff) as i16 as i32,
-            };
-            // SAFETY: `point` is a live local, and `window` is this window.
-            if unsafe { ScreenToClient(window, &raw mut point) } == 0 {
-                return hit;
-            }
-            if shared.contains(point.x, point.y) {
+            if client_point(window, lparam).is_some_and(|(x, y)| shared.contains(x, y)) {
                 HTMAXBUTTON as LRESULT
             } else {
                 hit
             }
         }
         WM_NCMOUSEMOVE if wparam == HTMAXBUTTON as WPARAM => {
-            let mut point = POINT {
-                x: (lparam & 0xffff) as i16 as i32,
-                y: ((lparam >> 16) & 0xffff) as i16 as i32,
-            };
-            // SAFETY: as above.
-            if unsafe { ScreenToClient(window, &raw mut point) } != 0 {
-                shared.saw(CaptionEvent::Hover(point.x, point.y));
+            if let Some((x, y)) = client_point(window, lparam) {
+                shared.saw(CaptionEvent::Hover(x, y));
             }
             // Forwarded, because this is the message Windows itself watches
             // to decide when to offer its window layouts.
             forward()
+        }
+        // Kept from Windows, which would otherwise start a move or track a
+        // caption button the window does not have.
+        WM_NCLBUTTONDOWN | WM_NCLBUTTONDBLCLK if wparam == HTMAXBUTTON as WPARAM => {
+            if let Some((x, y)) = client_point(window, lparam) {
+                shared.saw(CaptionEvent::Down(x, y));
+            }
+            0
+        }
+        WM_NCLBUTTONUP if wparam == HTMAXBUTTON as WPARAM => {
+            if let Some((x, y)) = client_point(window, lparam) {
+                shared.saw(CaptionEvent::Up(x, y));
+            }
+            0
         }
         WM_NCMOUSELEAVE => {
             shared.saw(CaptionEvent::Left);
@@ -199,4 +204,15 @@ unsafe extern "system" fn caption(
         }
         _ => forward(),
     }
+}
+
+/// The screen point a non-client message carries, in client pixels.
+fn client_point(window: HWND, lparam: LPARAM) -> Option<(i32, i32)> {
+    let mut point = POINT {
+        x: (lparam & 0xffff) as i16 as i32,
+        y: ((lparam >> 16) & 0xffff) as i16 as i32,
+    };
+    // SAFETY: `point` is a live local, and `window` is the window the
+    // message was sent to.
+    (unsafe { ScreenToClient(window, &raw mut point) } != 0).then_some((point.x, point.y))
 }
