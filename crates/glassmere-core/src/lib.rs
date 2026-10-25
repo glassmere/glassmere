@@ -92,7 +92,7 @@ pub use tree::{
     SwipeDirection, TouchPhase,
 };
 pub use ui::{
-    AreaBuilder, Autocomplete, Button, ComboBox, CommandPalette, DockOptions, DockPanel,
+    AppBar, AreaBuilder, Autocomplete, Button, ComboBox, CommandPalette, DockOptions, DockPanel,
     DragSourceBuilder, DropTargetBuilder, GestureBuilder, Label, PropertyGrid, Response, TextInput,
     Ui, suggest,
 };

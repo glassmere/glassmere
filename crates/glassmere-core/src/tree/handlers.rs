@@ -145,6 +145,11 @@ impl Context {
                         self.refocus_editor(id);
                     }
                 }
+                (Queued::Click, Handler::Window(command)) => {
+                    if enabled && self.clicks.contains(&id) {
+                        self.window_commands.push(*command);
+                    }
+                }
                 (Queued::Click, Handler::Step(steps)) => {
                     let row = node.parent.and_then(|row| self.nodes.get(&row));
                     let field = row.and_then(|row| {

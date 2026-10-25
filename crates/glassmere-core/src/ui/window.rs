@@ -1,7 +1,10 @@
 use super::*;
 
 impl<'a, M: 'static> Ui<'a, M> {
-    /// The window's native menu bar. Declaring the same menu again changes
+    /// The application's menu: the menu bar on macOS and, on Windows, the
+    /// window's own menu bar when the window has the system's frame and the
+    /// view does not draw this menu itself, in an [`AppBar`] or with
+    /// `Ui::menu_bar`. Declaring the same menu again changes
     /// nothing, so a view may set it every frame. Choosing an item sends
     /// `Event::Command` with that command's id, which activates the command
     /// the view declared, exactly as its button would.
@@ -26,9 +29,12 @@ impl<'a, M: 'static> Ui<'a, M> {
     }
 
     /// A strip that moves the window, for a window with the system's title
-    /// bar turned off. Pressing it starts a move; pressing it twice
-    /// maximizes or restores. Whatever is declared inside it keeps working,
-    /// because a press that lands on a control there is that control's.
+    /// bar turned off, which placing one does for a window that has it.
+    /// Pressing it starts a move; pressing it twice maximizes or restores.
+    /// A [`Ui::menu_bar`] in it is drawn flat, as part of the bar. Unless
+    /// the style gives a height, it is as tall as the system's caption.
+    /// Whatever is declared inside it keeps working, because a press that
+    /// lands on a control there is that control's.
     ///
     /// ```ignore
     /// ui.title_bar(Style::default().padding(6.0), |ui| {
@@ -38,10 +44,17 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// ```
     #[track_caller]
     pub fn title_bar(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_, M>)) {
+        let mut style = style;
+        if style.height == crate::Length::Auto {
+            style.height = crate::Length::Px(caption::HEIGHT);
+        }
         // A row, so that a title, a menu and the buttons sit side by side
         // the way a title bar's do.
+        let outer = std::mem::replace(&mut self.host.in_title_bar, true);
         self.row(style, content);
+        self.host.in_title_bar = outer;
         self.set_control(Control::TitleBar);
+        self.host.frameless = true;
     }
 
     /// Minimize, maximize or restore, and close, as three buttons. The
@@ -50,13 +63,23 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// it out.
     #[track_caller]
     pub fn window_buttons(&mut self, on_command: impl Fn(crate::WindowCommand) -> M) {
+        self.caption_buttons(|command| crate::app::Handler::Message(on_command(command)));
+    }
+
+    /// `window_buttons` whose clicks go to the handler `handler` makes.
+    #[track_caller]
+    fn caption_buttons(
+        &mut self,
+        handler: impl Fn(crate::WindowCommand) -> crate::app::Handler<M>,
+    ) {
         let maximized = self.window().maximized;
         let foreground = self.theme().text;
         // A wash of the text colour, which is how a desktop marks a caption
         // button: light over a dark title bar, dark over a light one.
         let wash = |alpha: u8| Color(foreground.0, foreground.1, foreground.2, alpha);
         let (hover, pressed) = (wash(caption::WASH_HOVER), wash(caption::WASH_PRESSED));
-        self.row(Style::default(), |ui| {
+        // Side by side with nothing between them, as the system's are.
+        self.row(Style::default().gap(0.0), |ui| {
             for (key, glyph, name, command) in [
                 (
                     "minimize",
@@ -116,15 +139,19 @@ impl<'a, M: 'static> Ui<'a, M> {
                     pressed
                 }));
                 ui.button_at(key, glyph, true, style);
-                ui.set_handler(crate::app::Handler::Message(on_command(command)));
-                // The glyph is what is drawn; the name is what is announced.
+                ui.set_handler(handler(command));
+                // The glyph is what is drawn; the name is what is announced,
+                // and what the tooltip says where the system does not show
+                // its own.
                 let label = ui.tr(name);
                 ui.tooltip(label);
-                if matches!(command, crate::WindowCommand::ToggleMaximize) {
-                    // Windows asks where this one is, to offer its snap
-                    // layouts when the pointer rests over it.
-                    ui.set_control(Control::MaximizeButton);
-                }
+                // Windows asks where these are, to show its own tooltips over
+                // them and offer its snap layouts over the maximize button.
+                ui.set_control(match command {
+                    crate::WindowCommand::Minimize => Control::MinimizeButton,
+                    crate::WindowCommand::Close => Control::CloseButton,
+                    _ => Control::MaximizeButton,
+                });
             }
         });
     }
@@ -184,19 +211,110 @@ impl<'a, M: 'static> Ui<'a, M> {
         });
     }
 
-    /// Draws `menu` as a menu bar, for the platforms where a menu belongs
-    /// to the window rather than to the application. Choosing an item
-    /// activates that command, exactly as the platform's own menu does, so a
-    /// view handles both the same way: through the command it declared.
+    /// Draws `menu` as a menu bar, a row of flat headings each opening its
+    /// items in a dropdown. Placed in the body of the view it is a bar of its
+    /// own, under the system's title bar or under an [`AppBar`]. Choosing an
+    /// item activates that command, exactly as the platform's own menu does,
+    /// so a view handles both the same way: through the command it declared.
     ///
-    /// Two levels are shown. A submenu inside a submenu is drawn as a
-    /// heading with its items under it, because the framework's own menus
-    /// do not nest.
+    /// Two levels are shown. A submenu inside a submenu is drawn as a heading
+    /// with its items under it, because the framework's own menus do not
+    /// nest.
+    ///
+    /// When `menu` is also the one given to `Ui::set_menu`, the host leaves
+    /// out the window's own menu bar on Windows, so that it is shown once.
     #[track_caller]
     pub fn menu_bar(&mut self, menu: &crate::Menu) {
+        // In a title bar it is part of that bar. Anywhere else it is a strip
+        // across its parent in the app bar's colour, so that it reads as a
+        // bar of its own under whatever is above it.
+        let strip = if self.host.in_title_bar {
+            Style::default()
+        } else {
+            Style {
+                align_self: Some(crate::Align::Stretch),
+                padding: 4.0,
+                background: Some(self.theme().surface),
+                ..Style::default()
+            }
+        };
+        self.draw_menu_bar(menu, strip);
+    }
+
+    /// The title bar of a window that draws its own, ready made: see
+    /// [`AppBar`]. It moves the window when pressed and maximizes it when
+    /// pressed twice, its buttons minimize, maximize and close the window
+    /// without the app handling a message, and the edges of the window
+    /// resize it. It is drawn in the app's theme, with the title dimmed
+    /// while the window has no keyboard focus. Place it before the body.
+    #[track_caller]
+    pub fn app_bar(&mut self, bar: AppBar) {
+        let theme = self.theme().clone();
+        let focused = self.window().focused;
+        let title = bar
+            .title
+            .unwrap_or_else(|| self.context.window_title().to_owned());
         let style = Style {
-            gap: 4.0,
+            width: crate::Length::Percent(1.0),
+            height: crate::Length::Px(caption::HEIGHT),
+            align_items: crate::Align::Center,
+            background: Some(theme.surface),
             ..Style::default()
+        };
+        self.group(WidgetKey::named("$title-bar"), Kind::Row, style, |ui| {
+            ui.keyed("$title", |ui| {
+                ui.label(crate::Label::new(title).style(Style {
+                    padding: 10.0,
+                    foreground: Some(if focused {
+                        theme.text
+                    } else {
+                        theme.text_muted
+                    }),
+                    ..Style::default()
+                }))
+            });
+            if let Some(menu) = &bar.menu {
+                ui.keyed("$menu", |ui| ui.draw_menu_bar(menu, Style::default()));
+            }
+            // Everything after this sits at the far end.
+            ui.keyed("$gap", |ui| {
+                ui.container(Style::default().grow(1.0), |_| {})
+            });
+            ui.keyed("$buttons", |ui| {
+                ui.caption_buttons(crate::app::Handler::Window);
+            });
+        });
+        self.set_control(Control::TitleBar);
+        self.host.frameless = true;
+    }
+
+    #[track_caller]
+    fn draw_menu_bar(&mut self, menu: &crate::Menu, strip: Style) {
+        self.host.drawn_menus.push(menu.clone());
+        let foreground = self.theme().text;
+        // A wash of the text colour, as the caption buttons use but fainter,
+        // for a heading is no button: light over a dark bar, dark over a
+        // light one.
+        let wash = |alpha: u8| Color(foreground.0, foreground.1, foreground.2, alpha);
+        let heading = Style {
+            padding: 5.0,
+            radius: 4.0,
+            background: Some(Color(0, 0, 0, 0)),
+            ..Style::default()
+        }
+        .on_hover(crate::Paint {
+            background: Some(wash(8)),
+            ..crate::Paint::default()
+        })
+        // A heading is pressed while its dropdown is open.
+        .on_pressed(crate::Paint {
+            background: Some(wash(14)),
+            ..crate::Paint::default()
+        });
+        let style = Style {
+            gap: 2.0,
+            align_items: crate::Align::Center,
+            ..strip
         };
         let mut chosen = None;
         self.row(style, |ui| {
@@ -218,21 +336,14 @@ impl<'a, M: 'static> Ui<'a, M> {
                                 .map(crate::Shortcut::describe)
                                 .unwrap_or_default(),
                         },
-                        None => crate::MenuItem {
-                            label: "─".repeat(12),
-                            enabled: false,
-                            hint: String::new(),
-                        },
+                        None => crate::MenuItem::separator(),
                     })
                     .collect();
                 if let Some(picked) = ui.menu_pick(
                     WidgetKey::named(format!("menu{index}")),
                     label.clone(),
                     &items,
-                    Style {
-                        padding: 8.0,
-                        ..Style::button()
-                    },
+                    heading.clone(),
                     crate::Length::Px(260.0),
                 ) && let Some((_, Some(command))) = flat.get(picked)
                 {

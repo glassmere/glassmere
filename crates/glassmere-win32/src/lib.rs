@@ -9,58 +9,96 @@
 //! This is the one crate in the workspace that uses unsafe code, and this is
 //! all of it: one procedure, a shared rectangle it reads, and a list of what
 //! it saw. Everything it learns is handed back as ordinary events for the
-//! framework to deal with in its usual way.
+//! framework to deal with in its usual way. With the `menu` feature it also
+//! puts a menu in a window's menu bar, which takes a raw window handle.
 #![cfg(windows)]
+
+#[cfg(feature = "menu")]
+mod menu;
+#[cfg(feature = "menu")]
+pub use menu::{MenuBar, attach_menu};
 
 use std::sync::{Arc, Mutex};
 use windows_sys::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM},
-    Graphics::Gdi::ScreenToClient,
+    Graphics::{Dwm::DwmExtendFrameIntoClientArea, Gdi::ScreenToClient},
+    UI::Controls::MARGINS,
     UI::{
         Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
         WindowsAndMessaging::{
-            HTMAXBUTTON, SPI_GETCLIENTAREAANIMATION, SystemParametersInfoW, WM_NCHITTEST,
-            WM_NCMOUSELEAVE, WM_NCMOUSEMOVE,
+            HTCLOSE, HTMAXBUTTON, HTMINBUTTON, SPI_GETCLIENTAREAANIMATION, SystemParametersInfoW,
+            WM_NCHITTEST, WM_NCLBUTTONDBLCLK, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE,
+            WM_NCMOUSEMOVE,
         },
     },
 };
 
-/// What the window procedure saw over the maximize button. The framework
-/// does not hear of it otherwise: while the button is part of the caption as
-/// far as Windows is concerned, no ordinary mouse message arrives there.
-/// Pressing it is left to Windows, which maximizes the window itself, and
-/// offers its layouts while the pointer rests there.
+/// Where the pointer went over the caption buttons: [`CaptionInput`] without
+/// the presses, as [`Caption::take`] reports it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CaptionEvent {
-    /// The pointer is over the button, at this point in client pixels.
+    /// The pointer is over a button, at this point in client pixels.
     Hover(i32, i32),
     Left,
 }
 
+/// What the window procedure saw over the caption buttons. The framework
+/// does not hear of it otherwise: while the buttons are part of the caption
+/// as far as Windows is concerned, no ordinary mouse message arrives there.
+/// Windows shows their tooltips and offers its layouts over the maximize
+/// button, but does not press the buttons of a window without its own
+/// caption, so presses are handed on for the framework's buttons to act on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum CaptionInput {
+    /// The pointer is over a button, at this point in client pixels.
+    Hover(i32, i32),
+    Left,
+    /// A button was pressed or released, at this point in client pixels.
+    Down(i32, i32),
+    Up(i32, i32),
+}
+
+/// A button in client pixels: left, top, right, bottom.
+type Button = (i32, i32, i32, i32);
+
+/// What Windows calls each caption button, in the order `Shared` keeps them.
+const HITS: [u32; 3] = [HTMINBUTTON, HTMAXBUTTON, HTCLOSE];
+
 #[derive(Default)]
 struct Shared {
-    /// The maximize button in client pixels: left, top, right, bottom.
-    button: Mutex<Option<(i32, i32, i32, i32)>>,
-    seen: Mutex<Vec<CaptionEvent>>,
+    /// Minimize, maximize and close.
+    buttons: Mutex<[Option<Button>; 3]>,
+    seen: Mutex<Vec<CaptionInput>>,
 }
 
 impl Shared {
-    fn contains(&self, x: i32, y: i32) -> bool {
-        self.button.lock().is_ok_and(|button| {
-            button.is_some_and(|(left, top, right, bottom)| {
-                x >= left && x < right && y >= top && y < bottom
-            })
+    /// The caption button at a point, as Windows names it.
+    fn hit(&self, x: i32, y: i32) -> Option<u32> {
+        let buttons = self.buttons.lock().ok()?;
+        buttons.iter().zip(HITS).find_map(|(button, hit)| {
+            button
+                .is_some_and(|(left, top, right, bottom)| {
+                    x >= left && x < right && y >= top && y < bottom
+                })
+                .then_some(hit)
         })
     }
 
-    fn saw(&self, event: CaptionEvent) {
+    fn set(&self, index: usize, button: Option<Button>) {
+        if let Ok(mut held) = self.buttons.lock() {
+            held[index] = button;
+        }
+    }
+
+    fn saw(&self, event: CaptionInput) {
         if let Ok(mut seen) = self.seen.lock() {
             seen.push(event);
         }
     }
 }
 
-/// A window whose maximize button Windows knows about. Dropping it puts the
+/// A window whose caption buttons Windows knows about. Dropping it puts the
 /// window back the way it was.
 pub struct Caption {
     window: HWND,
@@ -83,6 +121,22 @@ pub fn animations_disabled() -> Option<bool> {
         )
     } != 0;
     read.then_some(enabled == 0)
+}
+
+/// Gives a window without the system's frame the system's shadow, by
+/// extending the frame one pixel into the bottom of the client area. Only the
+/// bottom, because a frame reaching into the top is where Windows looks for a
+/// caption and stops offering its layouts over the maximize button.
+pub fn frame_shadow(window: isize) {
+    let margins = MARGINS {
+        cxLeftWidth: 0,
+        cxRightWidth: 0,
+        cyTopHeight: 0,
+        cyBottomHeight: 1,
+    };
+    // SAFETY: `margins` is a live local, and a window handle that is no
+    // longer valid only makes the call fail.
+    unsafe { DwmExtendFrameIntoClientArea(window as HWND, &raw const margins) };
 }
 
 /// Which subclass this is, among whatever else has subclassed the window.
@@ -113,13 +167,33 @@ impl Caption {
     /// Where the maximize button is, in client pixels, or `None` when the
     /// view has none. Set it after every layout.
     pub fn set_maximize(&self, button: Option<(i32, i32, i32, i32)>) {
-        if let Ok(mut held) = self.shared.button.lock() {
-            *held = button;
-        }
+        self.shared.set(1, button);
     }
 
-    /// What the window procedure saw since the last call.
+    /// Where the minimize button is, as `set_maximize`.
+    pub fn set_minimize(&self, button: Option<(i32, i32, i32, i32)>) {
+        self.shared.set(0, button);
+    }
+
+    /// Where the close button is, as `set_maximize`.
+    pub fn set_close(&self, button: Option<(i32, i32, i32, i32)>) {
+        self.shared.set(2, button);
+    }
+
+    /// Where the pointer went since the last call, leaving out presses.
     pub fn take(&self) -> Vec<CaptionEvent> {
+        self.take_input()
+            .into_iter()
+            .filter_map(|input| match input {
+                CaptionInput::Hover(x, y) => Some(CaptionEvent::Hover(x, y)),
+                CaptionInput::Left => Some(CaptionEvent::Left),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// What the window procedure saw since the last call, in order.
+    pub fn take_input(&self) -> Vec<CaptionInput> {
         self.shared
             .seen
             .lock()
@@ -139,8 +213,8 @@ impl Drop for Caption {
     }
 }
 
-/// The window procedure. It answers where the maximize button is and reports
-/// what happens over it; everything else goes on to whoever came before.
+/// The window procedure. It answers where the caption buttons are and reports
+/// what happens over them; everything else goes on to whoever came before.
 ///
 /// # Safety
 ///
@@ -166,37 +240,52 @@ unsafe extern "system" fn caption(
             // The default answer first, so borders and everything else keep
             // working; only the button's own rectangle is overridden.
             let hit = forward();
-            let mut point = POINT {
-                x: (lparam & 0xffff) as i16 as i32,
-                y: ((lparam >> 16) & 0xffff) as i16 as i32,
-            };
-            // SAFETY: `point` is a live local, and `window` is this window.
-            if unsafe { ScreenToClient(window, &raw mut point) } == 0 {
-                return hit;
-            }
-            if shared.contains(point.x, point.y) {
-                HTMAXBUTTON as LRESULT
-            } else {
-                hit
-            }
+            client_point(window, lparam)
+                .and_then(|(x, y)| shared.hit(x, y))
+                .map_or(hit, |button| button as LRESULT)
         }
-        WM_NCMOUSEMOVE if wparam == HTMAXBUTTON as WPARAM => {
-            let mut point = POINT {
-                x: (lparam & 0xffff) as i16 as i32,
-                y: ((lparam >> 16) & 0xffff) as i16 as i32,
-            };
-            // SAFETY: as above.
-            if unsafe { ScreenToClient(window, &raw mut point) } != 0 {
-                shared.saw(CaptionEvent::Hover(point.x, point.y));
+        WM_NCMOUSEMOVE if is_button(wparam) => {
+            if let Some((x, y)) = client_point(window, lparam) {
+                shared.saw(CaptionInput::Hover(x, y));
             }
             // Forwarded, because this is the message Windows itself watches
             // to decide when to offer its window layouts.
             forward()
         }
+        // Kept from Windows, which would otherwise start a move or track a
+        // caption button the window does not have.
+        WM_NCLBUTTONDOWN | WM_NCLBUTTONDBLCLK if is_button(wparam) => {
+            if let Some((x, y)) = client_point(window, lparam) {
+                shared.saw(CaptionInput::Down(x, y));
+            }
+            0
+        }
+        WM_NCLBUTTONUP if is_button(wparam) => {
+            if let Some((x, y)) = client_point(window, lparam) {
+                shared.saw(CaptionInput::Up(x, y));
+            }
+            0
+        }
         WM_NCMOUSELEAVE => {
-            shared.saw(CaptionEvent::Left);
+            shared.saw(CaptionInput::Left);
             forward()
         }
         _ => forward(),
     }
+}
+
+/// The screen point a non-client message carries, in client pixels.
+fn client_point(window: HWND, lparam: LPARAM) -> Option<(i32, i32)> {
+    let mut point = POINT {
+        x: (lparam & 0xffff) as i16 as i32,
+        y: ((lparam >> 16) & 0xffff) as i16 as i32,
+    };
+    // SAFETY: `point` is a live local, and `window` is the window the
+    // message was sent to.
+    (unsafe { ScreenToClient(window, &raw mut point) } != 0).then_some((point.x, point.y))
+}
+
+/// Whether a hit-test code a message carries is one of the caption buttons.
+fn is_button(wparam: WPARAM) -> bool {
+    HITS.iter().any(|&hit| wparam == hit as WPARAM)
 }

@@ -203,3 +203,40 @@ from_text!(Label);
 from_text!(Button<M>);
 from_text!(TextInput<M>);
 from_text!(ComboBox);
+
+/// The title bar of a window that draws its own: the window's title, an
+/// optional menu, and the buttons that minimize, maximize and close it.
+/// Place it first in the view, with [`Ui::app_bar`](crate::Ui::app_bar); what
+/// comes after it is the body. A window with the system's title bar has that
+/// turned off for as long as an app bar is placed.
+///
+/// ```ignore
+/// ui.app_bar(AppBar::new().menu(menu));
+/// ui.menu_bar(&other); // a second bar, in the body
+/// ```
+#[derive(Clone, Debug, Default)]
+pub struct AppBar {
+    pub(crate) title: Option<String>,
+    pub(crate) menu: Option<crate::Menu>,
+}
+
+impl AppBar {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Shows this instead of the window's title.
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    /// Draws `menu` as flat headings in the bar, after the title. Declare the
+    /// same menu with `Ui::set_menu` where the platform has a menu of its own
+    /// for it: the window's own menu bar on Windows is left out then, since
+    /// the menu is already drawn here.
+    pub fn menu(mut self, menu: crate::Menu) -> Self {
+        self.menu = Some(menu);
+        self
+    }
+}

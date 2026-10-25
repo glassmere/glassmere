@@ -794,6 +794,17 @@ struct Application {
     options: AppOptions,
     view: desktop::View,
     context: Context,
+    /// The platform's menu, kept alive while it is shown. It comes before the
+    /// window, which drops after it, so that a menu bar is detached from a
+    /// window that is still there.
+    menu: Option<platform::NativeMenu>,
+    /// The menu the view declared with `Ui::set_menu`, and whether the
+    /// platform's menu bar was tried for it.
+    declared_menu: Option<glassmere_core::Menu>,
+    menu_attempted: bool,
+    /// The system's title bar was turned off because the view placed one of
+    /// its own.
+    frameless: bool,
     state: Option<WindowState>,
     modifiers: ModifiersState,
     error: Option<Box<dyn Error>>,
@@ -825,8 +836,7 @@ struct Application {
     pub(crate) drag_escaped: bool,
     /// Font families already reported as missing, so each is said once.
     families_seen: std::collections::HashSet<String>,
-    /// The platform's menu and tray icon, kept alive while they are shown.
-    menu: Option<platform::NativeMenu>,
+    /// The platform's tray icon, kept alive while it is shown.
     tray: Option<platform::NativeTray>,
     /// Where Windows is told the application's own maximize button is, so
     /// that it offers its snap layouts over it.
@@ -852,6 +862,7 @@ impl Application {
         context.set_reduced_motion(reduced_motion(options.reduced_motion));
         context.set_caret_movement(options.caret_movement);
         context.set_direction(options.direction.resolve());
+        context.set_window_title(&options.title);
         // `ToastSender::send` from any thread wakes the loop; the next frame shows the toast.
         let toast_wake = wake.clone();
         context.set_toast_wake(move || {
@@ -861,6 +872,10 @@ impl Application {
             options,
             view,
             context,
+            menu: None,
+            declared_menu: None,
+            menu_attempted: false,
+            frameless: false,
             state: Some(state),
             modifiers: ModifiersState::empty(),
             error: None,
@@ -884,7 +899,6 @@ impl Application {
             os_drag: None,
             drag_escaped: false,
             families_seen: std::collections::HashSet::new(),
-            menu: None,
             tray: None,
             #[cfg(windows)]
             caption: None,
@@ -1046,10 +1060,38 @@ impl Application {
         for notification in self.context.take_notifications() {
             platform::notify(&notification);
         }
+        // Only a menu the view declared differently comes out of the context,
+        // so the platform's one is not rebuilt every frame.
         if let Some(menu) = self.context.take_menu() {
+            self.declared_menu = Some(menu);
             // Dropping the old one first: two menus is one too many.
             self.menu = None;
-            self.menu = platform::NativeMenu::install(&menu);
+            self.menu_attempted = false;
+        }
+        if self.context.wants_frameless() {
+            self.turn_frame_off();
+        }
+        // The window's own menu bar is for a menu the view does not draw
+        // itself, in an app bar or with `Ui::menu_bar`, and for a window that
+        // has the system's frame: a Win32 menu bar sits under it.
+        let native = cfg!(not(windows))
+            || (self.options.decorations && !self.frameless && !self.context.menu_drawn());
+        if !native {
+            self.menu = None;
+            self.menu_attempted = false;
+        } else if !self.menu_attempted
+            && let (Some(menu), Some(state)) = (&self.declared_menu, &self.state)
+        {
+            self.menu_attempted = true;
+            self.menu = platform::NativeMenu::install(
+                menu,
+                &state.window,
+                self.options.decorations && !self.frameless,
+                self.context.theme(),
+            );
+        }
+        if let Some(menu) = &mut self.menu {
+            menu.set_theme(self.context.theme());
         }
         if let Some(tray) = self.context.take_tray() {
             self.tray = None;
@@ -1062,6 +1104,55 @@ impl Application {
             let paths = platform::choose_files(&window, request);
             self.context.set_chosen_files(paths);
             self.request_redraw();
+        }
+    }
+
+    /// Turns the system's frame off, for a view that placed a title bar of
+    /// its own.
+    fn turn_frame_off(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+        if self.frameless || !self.options.decorations {
+            return;
+        }
+        self.frameless = true;
+        // Without the frame the window would keep its outer size and so gain
+        // the room the frame took; it keeps the client area instead.
+        let (size, at) = (state.window.inner_size(), state.window.inner_position());
+        state.window.set_decorations(false);
+        // The shadow and rounded corners the frame gave it stay.
+        #[cfg(target_os = "windows")]
+        {
+            use winit::platform::windows::{CornerPreference, WindowExtWindows};
+            frame_shadow(&state.window);
+            state.window.set_corner_preference(CornerPreference::Round);
+        }
+        if !state.window.is_maximized() {
+            let _ = state.window.request_inner_size(size);
+            if let Ok(at) = at {
+                state.window.set_outer_position(at);
+            }
+            state.resize();
+        }
+    }
+
+    /// Shows a window that was created hidden, because its view may place a
+    /// title bar of its own and the system's must not be seen first: it draws
+    /// the frame its view declares, takes what that asked of the platform,
+    /// which is where the system's frame goes, draws again, and only then
+    /// appears.
+    fn show_settled(&mut self, event_loop: &ActiveEventLoop) {
+        for _ in 0..2 {
+            if let Err(error) = self.redraw(event_loop) {
+                self.fail(event_loop, error);
+                return;
+            }
+            self.platform_requests();
+        }
+        if let Some(state) = &self.state {
+            state.window.set_visible(true);
+            state.window.request_redraw();
         }
     }
 
@@ -1087,28 +1178,47 @@ impl Application {
         let Some(caption) = &self.caption else {
             return;
         };
-        caption.set_maximize(self.context.maximize_button().map(|button| {
-            (
-                (button.x * scale) as i32,
-                (button.y * scale) as i32,
-                ((button.x + button.width) * scale) as i32,
-                ((button.y + button.height) * scale) as i32,
-            )
-        }));
-        let seen = caption.take();
+        let pixels = |button: Option<glassmere_scene::Rect>| {
+            button.map(|button| {
+                (
+                    (button.x * scale) as i32,
+                    (button.y * scale) as i32,
+                    ((button.x + button.width) * scale) as i32,
+                    ((button.y + button.height) * scale) as i32,
+                )
+            })
+        };
+        caption.set_minimize(pixels(self.context.minimize_button()));
+        caption.set_maximize(pixels(self.context.maximize_button()));
+        caption.set_close(pixels(self.context.close_button()));
+        let seen = caption.take_input();
         for event in seen {
             match event {
-                glassmere_win32::CaptionEvent::Hover(x, y) => {
-                    self.pointer = Point {
-                        x: x as f32 / scale,
-                        y: y as f32 / scale,
-                    };
-                    self.input(Event::PointerMoved(self.pointer));
+                glassmere_win32::CaptionInput::Hover(x, y) => self.caption_pointer(x, y, scale),
+                glassmere_win32::CaptionInput::Left => self.input(Event::PointerLeft),
+                glassmere_win32::CaptionInput::Down(x, y) => {
+                    self.caption_pointer(x, y, scale);
+                    self.input(Event::PointerDown);
                 }
-                glassmere_win32::CaptionEvent::Left => self.input(Event::PointerLeft),
+                glassmere_win32::CaptionInput::Up(x, y) => {
+                    self.caption_pointer(x, y, scale);
+                    self.input(Event::PointerUp);
+                }
+                _ => {}
             }
             self.request_redraw();
         }
+    }
+
+    /// The pointer over the maximize button, which Windows reports in client
+    /// pixels outside the usual mouse messages.
+    #[cfg(windows)]
+    fn caption_pointer(&mut self, x: i32, y: i32, scale: f32) {
+        self.pointer = Point {
+            x: x as f32 / scale,
+            y: y as f32 / scale,
+        };
+        self.input(Event::PointerMoved(self.pointer));
     }
 
     #[cfg(not(windows))]
@@ -1270,6 +1380,13 @@ impl Application {
             .context
             .hovered()
             .and_then(|id| self.context.resize_grip(id));
+        // The window buttons keep the arrow, as the system's do. Windows sets
+        // it over them itself, and a hand from here would fight it.
+        let caption = [
+            self.context.minimize_button(),
+            self.context.maximize_button(),
+            self.context.close_button(),
+        ];
         state.window.set_cursor(if let Some(edge) = grip {
             resize_cursor(edge)
         } else {
@@ -1290,6 +1407,7 @@ impl Application {
                         _ => CursorIcon::ColResize,
                     }
                 }
+                Some(node) if caption.contains(&Some(node.bounds)) => CursorIcon::Default,
                 Some(node) if node.semantics.focusable => CursorIcon::Pointer,
                 _ => CursorIcon::Default,
             }
@@ -1785,5 +1903,15 @@ impl Application {
             },
             _ => {}
         }
+    }
+}
+
+/// Draws the system's shadow around a window without the system's frame.
+#[cfg(windows)]
+fn frame_shadow(window: &winit::window::Window) {
+    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    if let Ok(RawWindowHandle::Win32(handle)) = window.window_handle().map(|handle| handle.as_raw())
+    {
+        glassmere_win32::frame_shadow(isize::from(handle.hwnd));
     }
 }

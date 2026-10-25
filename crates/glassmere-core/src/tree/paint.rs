@@ -173,7 +173,9 @@ impl Context {
     /// state: theme defaults for the widget kind, then the style's overrides.
     pub(super) fn appearance(&self, id: NodeId, node: &Node) -> crate::animation::Shown {
         let theme = &self.theme;
-        let pressed = self.pressed(id);
+        // A menu is held down while its dropdown is open.
+        let pressed = self.pressed(id)
+            || (node.kind == Kind::MenuButton && self.popup.is_some_and(|popup| popup.owner == id));
         let hovered = self.hovered == Some(id);
         let focused = self.focused == Some(id);
         let mut background = node.style.background.or(match node.kind {
@@ -282,7 +284,7 @@ impl Context {
         // bounds the node's own painting.
         paint_shadow(node, radius, false, &mut scene);
         scene.primitives.push(Primitive::PushClip(node.bounds));
-        let focused = self.focused == Some(id);
+        let focused = self.focused == Some(id) && self.quiet_focus != Some(id);
         self.paint_fill(node, focused, background, radius, &mut scene);
         self.paint_background_image(node, &mut scene, foreground, radius);
         if node.kind == Kind::RichText {

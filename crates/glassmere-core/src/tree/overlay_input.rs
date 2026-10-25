@@ -35,6 +35,16 @@ impl Context {
     /// The node's tooltip, or for an editor the diagnostic under the pointer.
     fn tooltip_text(&self, id: NodeId) -> Option<String> {
         let node = self.nodes.get(&id)?;
+        // Windows shows its own over a title bar's buttons, after its own
+        // delay, so that it does not come before the snap layouts.
+        if cfg!(windows)
+            && matches!(
+                node.control,
+                Control::MinimizeButton | Control::MaximizeButton | Control::CloseButton
+            )
+        {
+            return None;
+        }
         node.tooltip.clone().or_else(|| self.area_diagnostic(id))
     }
 

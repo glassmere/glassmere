@@ -1,11 +1,19 @@
 //! What the desktop itself provides: a menu, a tray icon, file dialogs,
 //! notifications, and the files the system started the application with.
 //!
+//! The menu is in the app bar, on the row with the window's title and its
+//! buttons. `--separate-menu` leaves the menu out of the app bar and draws it
+//! with `Ui::menu_bar` in the body, as a second bar under it. `--native-menu`
+//! has no app bar at all: the window keeps the system's title bar and, on
+//! Windows, the menu is its own menu bar.
+//!
 //! ```sh
 //! cargo run -p glassmere-examples --example platform --features platform
+//! cargo run -p glassmere-examples --example platform --features platform -- --separate-menu
+//! cargo run -p glassmere-examples --example platform --features platform -- --native-menu
 //! ```
 use glassmere::{
-    App, AppOptions, Color, Command, Effects, FileRequest, Label, Length, Menu, MenuEntry,
+    App, AppBar, AppOptions, Color, Command, Effects, FileRequest, Label, Length, Menu, MenuEntry,
     Notification, Shortcut, Size, Style, TextWrap, Tray, Ui, run,
 };
 use std::path::PathBuf;
@@ -52,8 +60,19 @@ enum Msg {
     Chosen(Vec<PathBuf>),
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum Bar {
+    /// The menu in the app bar.
+    Inside,
+    /// An app bar, and the menu as a bar of its own under it.
+    Separate,
+    /// The system's title bar and the platform's menu bar.
+    Native,
+}
+
 struct Platform {
     smoke: bool,
+    bar: Bar,
     chosen: Vec<String>,
     saved: bool,
     said: u32,
@@ -116,6 +135,18 @@ impl App for Platform {
         ui.set_tray(Some(
             Tray::new("Glassmere desktop example").with_menu(menu(self.saved)),
         ));
+        match self.bar {
+            Bar::Inside => ui.app_bar(AppBar::new().menu(menu(self.saved))),
+            // Together, so the page's gap does not open between the two bars.
+            Bar::Separate => ui.column(
+                Style::default().gap(0.0).width(Length::Percent(1.0)),
+                |ui| {
+                    ui.app_bar(AppBar::new());
+                    ui.menu_bar(&menu(self.saved));
+                },
+            ),
+            Bar::Native => {}
+        }
         let page = Style {
             padding: 20.0,
             gap: 14.0,
@@ -123,10 +154,6 @@ impl App for Platform {
             ..Style::default()
         };
         ui.column(page, |ui| {
-            // On Windows and Linux a menu bar belongs to the window, and
-            // this draws it. Choosing an item activates the same command
-            // the platform's menu does.
-            ui.menu_bar(&menu(self.saved));
             ui.label(Label::new("Desktop integration").style(Style {
                 font_size: Some(26.0),
                 font_weight: Some(700),
@@ -134,7 +161,7 @@ impl App for Platform {
             }));
             ui.label(
                 Label::new(
-                    "The menu above, the tray icon and the buttons below all go through the same \
+                    "The menu, the tray icon and the buttons below all go through the same \
                  commands. Start the example with a file name to see it arrive.",
                 )
                 .style(Style {
@@ -200,6 +227,13 @@ impl App for Platform {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
+    let bar = if std::env::args().any(|arg| arg == "--separate-menu") {
+        Bar::Separate
+    } else if std::env::args().any(|arg| arg == "--native-menu") {
+        Bar::Native
+    } else {
+        Bar::Inside
+    };
     run(
         AppOptions {
             title: "Glassmere / Desktop".into(),
@@ -209,6 +243,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         Platform {
             smoke,
+            bar,
             chosen: Vec::new(),
             saved: false,
             said: 0,

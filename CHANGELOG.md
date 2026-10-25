@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- On Windows with the `platform` feature, the window's own menu bar shows the app menu. Windows with a custom title bar keep the drawn one.
+  - `Ui::app_bar(AppBar::new().menu(menu))` is a title bar the view places itself, with the window's title, the menu, the window buttons and the resize edges, and it turns the system's title bar off. A `Ui::menu_bar` in the body is a second bar under it, and the native bar is used only when the view draws the menu neither way.
+  - On Windows a window without the system's title bar keeps the system's shadow and rounded corners, and a click on its own maximize button maximizes it.
+  - Its minimize, maximize and close buttons show the system's tooltips and arrow cursor, and its maximize button offers the snap layouts from the first hover.
+  - `Ui::title_bar` is as tall as the system's caption unless its style sets a height, and its window buttons sit side by side with no gap.
+  - A press in a title bar takes focus without drawing a focus ring; the keyboard brings the ring back.
+  - A window without the system's title bar closes on the first request.
+  - `Ui::menu_bar` draws flat headings with a hover and open highlight, and `MenuItem::separator()` is a rule in a dropdown.
+  - Inside a title bar `Ui::menu_bar` is flat; in the body it is a strip across the window.
 - Path styles, drawn the same way by the CPU and GPU renderers:
   - Stroke joins (`Join`: miter with `miter_limit`, round, bevel) and caps (`Cap`: butt, round, square).
   - Dashes with an offset (`Dash`). A pattern that would cut a path into more than `Dash::MAX_COUNT` dashes draws solid.

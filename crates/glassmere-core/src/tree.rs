@@ -356,6 +356,9 @@ pub struct Context {
     focused: Option<NodeId>,
     captured: Option<NodeId>,
     keyboard_pressed: Option<(NodeId, Key)>,
+    /// A node in a title bar that took focus from a press, which shows no
+    /// focus ring: a desktop's title bar never does.
+    quiet_focus: Option<NodeId>,
     pointer: Option<Point>,
     clicks: HashSet<NodeId>,
     /// The clicks a pointer made, as opposed to keys or assistive
@@ -417,6 +420,14 @@ pub struct Context {
     /// What the host has been given, so that declaring the same menu or
     /// tray again asks for nothing.
     menu_shown: Option<crate::Menu>,
+    /// The view drew `menu_shown` itself in the last frame, in an app bar or
+    /// with `Ui::menu_bar`.
+    menu_drawn: bool,
+    /// The view placed a title bar of its own in the last frame, so the
+    /// window has no use for the system's.
+    frameless: bool,
+    /// The window's title, which an app bar shows unless it is given another.
+    window_title: String,
     tray_shown: Option<crate::Tray>,
     /// What a title bar of the application's own asked the window to do,
     /// what the host says about the window, and the size it was last given.
@@ -426,9 +437,11 @@ pub struct Context {
     /// When and where the title bar was last pressed, for telling a second
     /// press that means "maximize" from two separate ones.
     last_title_press: Option<(Duration, Point)>,
-    /// Where the maximize button of a title bar the view draws itself is,
-    /// for a host that has to tell the platform.
-    maximize_button: Option<Rect>,
+    /// Minimize, maximize and close of a title bar the view draws, for a
+    /// host that has to tell the platform where they are. The nodes rather
+    /// than their rectangles, because they are found when the tree is
+    /// reconciled and only laid out after.
+    caption_buttons: [Option<NodeId>; 3],
     /// What the overlays painted straight into the last scene. They are not
     /// nodes, so nothing invalidates them: the frame one appears, moves or
     /// goes has to name its rectangle itself.
@@ -578,6 +591,7 @@ impl Default for Context {
             focused: None,
             captured: None,
             keyboard_pressed: None,
+            quiet_focus: None,
             pointer: None,
             clicks: HashSet::new(),
             pointer_clicks: HashSet::new(),
@@ -616,12 +630,15 @@ impl Default for Context {
             menu_out: None,
             tray_out: None,
             menu_shown: None,
+            menu_drawn: false,
+            frameless: false,
+            window_title: String::new(),
             tray_shown: None,
             window_commands: Vec::new(),
             window_info: crate::WindowInfo::default(),
             size: Size::default(),
             last_title_press: None,
-            maximize_button: None,
+            caption_buttons: [None; 3],
             painted_overlays: Vec::new(),
             redraw_requested: false,
             caret_movement: crate::CaretMovement::Visual,
@@ -917,11 +934,43 @@ impl Context {
         self.window_info
     }
 
+    /// Whether a node is a title bar or inside one.
+    fn in_title_bar(&self, id: NodeId) -> bool {
+        let mut at = Some(id);
+        while let Some(id) = at {
+            let Some(node) = self.nodes.get(&id) else {
+                return false;
+            };
+            if node.control == Control::TitleBar {
+                return true;
+            }
+            at = node.parent;
+        }
+        false
+    }
+
     /// Where the maximize button of a title bar the view draws itself sits,
     /// in logical coordinates, for a host that tells the platform so that it
     /// can offer its own window layouts over it.
     pub fn maximize_button(&self) -> Option<Rect> {
-        self.maximize_button
+        self.caption_button(1)
+    }
+
+    /// Where its minimize button sits, as `maximize_button`.
+    pub fn minimize_button(&self) -> Option<Rect> {
+        self.caption_button(0)
+    }
+
+    /// Where its close button sits, as `maximize_button`.
+    pub fn close_button(&self) -> Option<Rect> {
+        self.caption_button(2)
+    }
+
+    /// Where a caption button was last laid out.
+    fn caption_button(&self, index: usize) -> Option<Rect> {
+        self.nodes
+            .get(&self.caption_buttons[index]?)
+            .map(|node| node.bounds)
     }
 
     /// The logical size the window was last declared at.
@@ -969,6 +1018,33 @@ impl Context {
     /// rebuilds it only when it changes.
     pub fn take_menu(&mut self) -> Option<crate::Menu> {
         self.menu_out.take()
+    }
+
+    /// Whether the view drew the menu it declared with `Ui::set_menu` itself
+    /// in the last frame, in an app bar or with `Ui::menu_bar`. A host that
+    /// has a menu bar of its own for the window leaves it out then, so the
+    /// menu is not shown twice.
+    pub fn menu_drawn(&self) -> bool {
+        self.menu_drawn
+    }
+
+    /// Whether the view placed a title bar of its own in the last frame,
+    /// with `Ui::app_bar` or `Ui::title_bar`. A host turns the system's
+    /// title bar off for a window that did.
+    pub fn wants_frameless(&self) -> bool {
+        self.frameless
+    }
+
+    pub(crate) fn window_title(&self) -> &str {
+        &self.window_title
+    }
+
+    /// The window's title, for an app bar that is not given one.
+    pub fn set_window_title(&mut self, title: &str) {
+        if self.window_title != title {
+            self.window_title = title.to_owned();
+            self.view_stale = true;
+        }
     }
 
     /// The tray icon a view last declared, or `Some(None)` to take it away.

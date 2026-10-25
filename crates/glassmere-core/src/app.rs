@@ -90,6 +90,9 @@ pub(crate) enum Handler<M> {
     /// Sent as it is, and the focus goes back to the text of the editor the
     /// button belongs to: a toolbar button.
     Refocus(M),
+    /// A click asks the window itself, with no message: the buttons of a
+    /// title bar the framework draws.
+    Window(crate::WindowCommand),
 }
 
 impl<M: 'static> Handler<M> {
@@ -142,6 +145,7 @@ impl<M: 'static> Handler<M> {
             }
             Self::Step(steps) => Handler::Step(steps),
             Self::Refocus(message) => Handler::Refocus(f(message)),
+            Self::Window(command) => Handler::Window(command),
         }
     }
 }

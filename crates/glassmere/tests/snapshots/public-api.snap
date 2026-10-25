@@ -521,6 +521,9 @@ glassmere-core   fn App::update(&mut self, message: Self::Message, effects: &mut
 glassmere-core   fn App::view(&self, ui: &mut Ui<'_, Self::Message>)
 glassmere-core   fn App::view_window(&self, _window: WindowId, ui: &mut Ui<'_, Self::Message>) (provided)
 glassmere-core   fn App::window_closed(&mut self, _window: WindowId, _effects: &mut Effects<'_, Self::Message>) (provided)
+glassmere-core   fn AppBar::menu(mut self, menu: crate::Menu) -> Self
+glassmere-core   fn AppBar::new() -> Self
+glassmere-core   fn AppBar::title(mut self, title: impl Into<String>) -> Self
 glassmere-core   fn AppDriver::awaiting(&self) -> Vec<WindowId> [impl<M: Clone + 'static> AppDriver<M>]
 glassmere-core   fn AppDriver::batch<A: App<Message = M>>(&mut self, app: &mut A, context: &mut Context) -> (usize, bool) [impl<M: Clone + 'static> AppDriver<M>]
 glassmere-core   fn AppDriver::batch_in<A: App<Message = M>>(&mut self, window: WindowId, app: &mut A, context: &mut Context) -> (usize, bool) [impl<M: Clone + 'static> AppDriver<M>]
@@ -581,6 +584,7 @@ glassmere-core   fn Context::captured(&self) -> Option<NodeId>
 glassmere-core   fn Context::caret_movement(&self) -> crate::CaretMovement
 glassmere-core   fn Context::clear_bindings(&mut self)
 glassmere-core   fn Context::clear_diagnostics(&mut self)
+glassmere-core   fn Context::close_button(&self) -> Option<Rect>
 glassmere-core   fn Context::composing_text(&self) -> bool
 glassmere-core   fn Context::damage_regions(&self) -> &[Rect]
 glassmere-core   fn Context::details(&self, id: NodeId) -> Option<NodeDetails>
@@ -609,6 +613,8 @@ glassmere-core   fn Context::ime_cursor_rect(&self) -> Option<Rect>
 glassmere-core   fn Context::locale(&self) -> &str
 glassmere-core   fn Context::maximize_button(&self) -> Option<Rect>
 glassmere-core   fn Context::memory(&self) -> MemoryReport
+glassmere-core   fn Context::menu_drawn(&self) -> bool
+glassmere-core   fn Context::minimize_button(&self) -> Option<Rect>
 glassmere-core   fn Context::missing_messages(&self) -> Vec<String>
 glassmere-core   fn Context::new() -> Self
 glassmere-core   fn Context::next_wake(&self) -> Option<Duration>
@@ -644,6 +650,7 @@ glassmere-core   fn Context::set_theme(&mut self, theme: Theme)
 glassmere-core   fn Context::set_toast_wake(&mut self, wake: impl Fn() + Send + 'static)
 glassmere-core   fn Context::set_watched_file(&mut self, path: &std::path::Path, content: std::result::Result<Vec<u8>, String>) -> bool
 glassmere-core   fn Context::set_window_info(&mut self, info: crate::WindowInfo)
+glassmere-core   fn Context::set_window_title(&mut self, title: &str)
 glassmere-core   fn Context::size(&self) -> Size
 glassmere-core   fn Context::snapshots(&self) -> Vec<NodeSnapshot>
 glassmere-core   fn Context::state_graph(&self) -> &[crate::GraphNode]
@@ -662,6 +669,7 @@ glassmere-core   fn Context::theme(&self) -> &Theme
 glassmere-core   fn Context::toasts(&self) -> impl Iterator<Item = (ToastId, &Toast)>
 glassmere-core   fn Context::touches(&self) -> impl Iterator<Item = (u64, Point, Option<f32>, Option<Pen>)> + '_
 glassmere-core   fn Context::tr(&self, key: &str, args: &[(&str, MessageArg)]) -> String
+glassmere-core   fn Context::wants_frameless(&self) -> bool
 glassmere-core   fn Context::watch_error(&self, path: &std::path::Path) -> Option<&str>
 glassmere-core   fn Context::watched_known(&self, path: &std::path::Path) -> bool
 glassmere-core   fn Context::watched_paths(&self) -> &[std::path::PathBuf]
@@ -840,6 +848,7 @@ glassmere-core   fn MenuEntry::submenu(label: impl Into<String>, entries: impl I
 glassmere-core   fn MenuItem::command(command: &crate::Command) -> Self
 glassmere-core   fn MenuItem::disabled(label: impl Into<String>) -> Self
 glassmere-core   fn MenuItem::new(label: impl Into<String>) -> Self
+glassmere-core   fn MenuItem::separator() -> Self
 glassmere-core   fn MessageSender::send_blocking(&self, message: T) -> Result<(), SendError<T>> [impl<T> MessageSender<T>]
 glassmere-core   fn MessageSender::try_send(&self, message: T) -> Result<(), TrySendError<T>> [impl<T> MessageSender<T>]
 glassmere-core   fn MessageSender::wake(&self) -> bool [impl<T> MessageSender<T>]
@@ -1110,6 +1119,7 @@ glassmere-core   fn Tray::with_icon(mut self, icon: Image) -> Self
 glassmere-core   fn Tray::with_menu(mut self, menu: Menu) -> Self
 glassmere-core   fn TreeModel::item(&self, id: ItemId) -> Option<&TreeItem>
 glassmere-core   fn TreeModel::new(items: Vec<TreeItem>) -> Result<Self, ModelError>
+glassmere-core   fn Ui::app_bar(&mut self, bar: AppBar) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::autocomplete<S: AsRef<str>>(&mut self, label: impl Into<String>, value: &str, suggestions: &[S], on_change: impl Fn(String) -> M + 'static) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::autocomplete_with<S: AsRef<str>>(&mut self, label: impl Into<String>, value: &str, suggestions: &[S], on_change: impl Fn(String) -> M + 'static, extra: Autocomplete<M>) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::button(&mut self, button: impl Into<Button<M>>) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
@@ -1726,6 +1736,7 @@ glassmere-core impl<T> std::fmt::Debug for Memo<T>
 glassmere-core impl<T> std::fmt::Debug for Signal<T>
 glassmere-core mod app
 glassmere-core struct Animation #[derive(Clone, Debug, PartialEq)]
+glassmere-core struct AppBar #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct AppDriver<M: 'static> (private fields)
 glassmere-core struct AreaBuilder<M = ()> (private fields)
 glassmere-core struct Autocomplete<M = ()> (private fields)
@@ -1863,6 +1874,7 @@ glassmere-core use Action = tree::Action
 glassmere-core use Align = style::Align
 glassmere-core use Animation = animation::Animation
 glassmere-core use App = app::App
+glassmere-core use AppBar = ui::AppBar
 glassmere-core use AppDriver = app::AppDriver
 glassmere-core use AreaBuilder = ui::AreaBuilder
 glassmere-core use AutoFlow = style::AutoFlow
@@ -2589,15 +2601,30 @@ glassmere-image   fn Loader::request(&self, path: PathBuf)
 glassmere-image fn decode(bytes: &[u8]) -> Result<Image, String>
 glassmere-image fn load(path: &Path) -> Result<Image, String>
 glassmere-image struct Loader (private fields)
+glassmere-win32   fn Caption::set_close(&self, button: Option<(i32, i32, i32, i32)>)
 glassmere-win32   fn Caption::set_maximize(&self, button: Option<(i32, i32, i32, i32)>)
+glassmere-win32   fn Caption::set_minimize(&self, button: Option<(i32, i32, i32, i32)>)
 glassmere-win32   fn Caption::take(&self) -> Vec<CaptionEvent>
+glassmere-win32   fn Caption::take_input(&self) -> Vec<CaptionInput>
+glassmere-win32   fn MenuBar::set_dark(&mut self, dark: bool) #[cfg(feature = "menu")]
 glassmere-win32   variant CaptionEvent::Hover(i32, i32)
 glassmere-win32   variant CaptionEvent::Left
+glassmere-win32   variant CaptionInput::Down(i32, i32)
+glassmere-win32   variant CaptionInput::Hover(i32, i32)
+glassmere-win32   variant CaptionInput::Left
+glassmere-win32   variant CaptionInput::Up(i32, i32)
 glassmere-win32 enum CaptionEvent #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+glassmere-win32 enum CaptionInput #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
 glassmere-win32 fn animations_disabled() -> Option<bool>
 glassmere-win32 fn attach(window: isize) -> Option<Caption>
+glassmere-win32 fn attach_menu(window: isize, menu: Menu, dark: bool) -> Option<MenuBar> #[cfg(feature = "menu")]
+glassmere-win32 fn frame_shadow(window: isize)
 glassmere-win32 impl Drop for Caption
+glassmere-win32 impl Drop for MenuBar #[cfg(feature = "menu")]
 glassmere-win32 struct Caption (private fields)
+glassmere-win32 struct MenuBar #[cfg(feature = "menu")] (private fields)
+glassmere-win32 use MenuBar = menu::MenuBar #[cfg(feature = "menu")]
+glassmere-win32 use attach_menu = menu::attach_menu #[cfg(feature = "menu")]
 glassmere-derive fn properties(input: TokenStream) -> TokenStream #[proc_macro_derive(Properties, attributes(property))]
 glassmere-derive fn style_sheet(input: TokenStream) -> TokenStream #[proc_macro]
 glassmere-derive fn tr(input: TokenStream) -> TokenStream #[proc_macro]

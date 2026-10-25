@@ -13,7 +13,9 @@ pub(crate) use enabled::*;
 
 #[cfg(feature = "platform")]
 mod enabled {
-    use glassmere_core::{Command, FileKind, FileRequest, Menu, MenuEntry, Notification, Tray};
+    use glassmere_core::{
+        Command, FileKind, FileRequest, Menu, MenuEntry, Notification, Theme, Tray,
+    };
     use glassmere_scene::Image;
     use std::path::PathBuf;
     use winit::window::Window;
@@ -62,21 +64,83 @@ mod enabled {
     }
 
     /// The application's menu where the platform has one of its own. That is
-    /// the menu bar on macOS; on Windows and Linux a menu bar belongs to the
-    /// window, and putting one there needs unsafe platform calls this
-    /// workspace does not make, so `Ui::menu_bar` draws it instead.
-    pub(crate) struct NativeMenu(#[allow(dead_code)] muda::Menu);
+    /// the menu bar on macOS and, for a window with the system's frame whose
+    /// view does not draw the menu itself, the window's own menu bar on
+    /// Windows. A window that draws its own title bar has no room for a
+    /// Win32 menu bar, and on Linux a menu bar belongs to the window as well
+    /// and is not put there, so `Ui::menu_bar` or an `AppBar` draws it
+    /// instead.
+    ///
+    /// The Windows bar is attached to the window and detached when this is
+    /// dropped. Windows opens it on Alt or F10, as it does for any window
+    /// with a menu bar. The framework does not use a lone Alt or F10, but a
+    /// shortcut with Alt in it is offered to the bar's mnemonics by Windows
+    /// as well; none of this has been tried on a real desktop.
+    pub(crate) struct NativeMenu(#[allow(dead_code)] Held);
+
+    #[cfg(windows)]
+    type Held = glassmere_win32::MenuBar;
+    #[cfg(not(windows))]
+    type Held = muda::Menu;
 
     impl NativeMenu {
-        pub(crate) fn install(menu: &Menu) -> Option<Self> {
+        /// `framed` is whether the window has the system's frame, and
+        /// `theme` the one the window follows, for a bar that is drawn dark
+        /// or light with it.
+        pub(crate) fn install(
+            menu: &Menu,
+            window: &Window,
+            framed: bool,
+            theme: &Theme,
+        ) -> Option<Self> {
+            #[cfg(not(windows))]
+            let _ = (window, framed, theme);
             let native = build(&menu.entries)?;
             #[cfg(target_os = "macos")]
             native.init_for_nsapp();
-            #[cfg(not(target_os = "macos"))]
-            return Some(Self(native));
-            #[cfg(target_os = "macos")]
+            #[cfg(windows)]
+            return framed
+                .then(|| attach(window, native, theme))
+                .flatten()
+                .map(Self);
+            #[cfg(not(windows))]
             Some(Self(native))
         }
+
+        /// The bar follows the window's theme.
+        pub(crate) fn set_theme(&mut self, theme: &Theme) {
+            #[cfg(windows)]
+            self.0.set_dark(is_dark(theme));
+            #[cfg(not(windows))]
+            let _ = theme;
+        }
+    }
+
+    #[cfg(windows)]
+    fn attach(window: &Window, menu: muda::Menu, theme: &Theme) -> Option<Held> {
+        let bar =
+            hwnd(window).and_then(|hwnd| glassmere_win32::attach_menu(hwnd, menu, is_dark(theme)));
+        if bar.is_none() {
+            tracing::warn!("menu bar not attached to the window");
+        }
+        bar
+    }
+
+    /// The window as Windows knows it.
+    #[cfg(windows)]
+    fn hwnd(window: &Window) -> Option<isize> {
+        use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+        match window.window_handle().ok()?.as_raw() {
+            RawWindowHandle::Win32(handle) => Some(isize::from(handle.hwnd)),
+            _ => None,
+        }
+    }
+
+    /// Whether a theme is a dark one, by how light its window is.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    fn is_dark(theme: &Theme) -> bool {
+        let glassmere_scene::Color(r, g, b, _) = theme.window;
+        0.299 * f32::from(r) + 0.587 * f32::from(g) + 0.114 * f32::from(b) < 128.0
     }
 
     /// An icon in the notification area, with the menu it opens. Dropping it
@@ -159,11 +223,22 @@ mod enabled {
         }
         chosen
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn the_bar_is_dark_with_the_dark_theme_and_light_with_the_light_one() {
+            assert!(is_dark(&Theme::dark()));
+            assert!(!is_dark(&Theme::light()));
+        }
+    }
 }
 
 #[cfg(not(feature = "platform"))]
 mod disabled {
-    use glassmere_core::{FileRequest, Menu, Notification, Tray};
+    use glassmere_core::{FileRequest, Menu, Notification, Theme, Tray};
     use std::path::PathBuf;
     use winit::window::Window;
 
@@ -179,9 +254,11 @@ mod disabled {
     pub(crate) struct NativeMenu;
 
     impl NativeMenu {
-        pub(crate) fn install(_: &Menu) -> Option<Self> {
+        pub(crate) fn install(_: &Menu, _: &Window, _: bool, _: &Theme) -> Option<Self> {
             None
         }
+
+        pub(crate) fn set_theme(&mut self, _: &Theme) {}
     }
 
     pub(crate) struct NativeTray;

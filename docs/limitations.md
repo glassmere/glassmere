@@ -74,9 +74,9 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - Windows share one graphics policy. Window-to-window drags of `Item` payloads are not possible.
 - Outgoing OS drags work for files on Windows and macOS, always as a copy, with a fixed icon. Linux has none; the drag crate needs a GTK window. The system drag itself has not been exercised with a real pointer.
 - A file dialog blocks all windows. Notifications report nothing back. A tray icon without an image can be invisible.
-- The native menu bar exists on macOS only; elsewhere `Ui::menu_bar` draws one in the window.
+- The menu is the application's menu bar on macOS. On Windows it is the window's own menu bar only in a window with the system's frame whose view does not draw the menu itself; otherwise `Ui::app_bar` or `Ui::menu_bar` draws it, and that is all Linux has. An app bar has no icon and no system menu, and a window that is not resizable still gets its maximize button and edges. Linux has not been run with an app bar.
 - Touch has been tested with injected input only, not on a touch screen or pen. There is no overscroll bounce, scroll chaining or inertia for a gesture-area pan.
-- `AppOptions::decorations` is read when the window opens.
+- `AppOptions::decorations` is read when the window opens; a view that places an app bar turns the system's frame off after that.
 
 ## Tooling
 

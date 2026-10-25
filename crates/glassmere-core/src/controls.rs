@@ -20,6 +20,16 @@ impl MenuItem {
             ..Self::new(label)
         }
     }
+    /// A line between groups of items. It is disabled, so it is skipped by
+    /// the keyboard and cannot be chosen, and a menu draws it as a rule.
+    pub fn separator() -> Self {
+        Self::disabled("")
+    }
+    /// Whether this is [`MenuItem::separator`]: an empty label and nothing
+    /// that could be chosen.
+    pub(crate) fn is_separator(&self) -> bool {
+        !self.enabled && self.label.is_empty() && self.hint.is_empty()
+    }
     /// A menu item for a command: its label, whether it is enabled, and its
     /// shortcut as the hint. Pass `Ui::command(&command)` to honour a binding
     /// the user changed.
@@ -181,9 +191,12 @@ pub(crate) enum Control {
     EventArea(crate::EventArea),
     /// A strip that moves the window, and maximizes it when pressed twice.
     TitleBar,
-    /// The maximize button of a title bar the application draws. Windows
-    /// asks where it is, to offer its snap layouts over it.
+    /// The buttons of a title bar the application draws. Windows asks where
+    /// they are, to show their tooltips and offer its snap layouts over the
+    /// maximize one.
+    MinimizeButton,
     MaximizeButton,
+    CloseButton,
     /// An edge or a corner that resizes the window.
     ResizeGrip(crate::ResizeEdge),
     /// The track of a grid's sideways scrollbar. The grid scrolls its own
