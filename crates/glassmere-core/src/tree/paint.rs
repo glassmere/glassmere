@@ -173,7 +173,9 @@ impl Context {
     /// state: theme defaults for the widget kind, then the style's overrides.
     pub(super) fn appearance(&self, id: NodeId, node: &Node) -> crate::animation::Shown {
         let theme = &self.theme;
-        let pressed = self.pressed(id);
+        // A menu is held down while its dropdown is open.
+        let pressed = self.pressed(id)
+            || (node.kind == Kind::MenuButton && self.popup.is_some_and(|popup| popup.owner == id));
         let hovered = self.hovered == Some(id);
         let focused = self.focused == Some(id);
         let mut background = node.style.background.or(match node.kind {

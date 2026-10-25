@@ -1,12 +1,17 @@
 //! What the desktop itself provides: a menu, a tray icon, file dialogs,
 //! notifications, and the files the system started the application with.
 //!
+//! The menu is in the title bar, on the row with the window's title and its
+//! buttons. `--separate-menu` puts it in a bar of its own under the system's
+//! title bar instead.
+//!
 //! ```sh
 //! cargo run -p glassmere-examples --example platform --features platform
+//! cargo run -p glassmere-examples --example platform --features platform -- --separate-menu
 //! ```
 use glassmere::{
-    App, AppOptions, Color, Command, Effects, FileRequest, Label, Length, Menu, MenuEntry,
-    Notification, Shortcut, Size, Style, TextWrap, Tray, Ui, run,
+    App, AppOptions, Color, Command, Effects, FileRequest, Label, Length, Menu, MenuBarPlacement,
+    MenuEntry, Notification, Shortcut, Size, Style, TextWrap, Tray, Ui, run,
 };
 use std::path::PathBuf;
 
@@ -123,9 +128,10 @@ impl App for Platform {
             ..Style::default()
         };
         ui.column(page, |ui| {
-            // Where the window has no menu bar of its own for the menu above,
-            // this draws it; where it has, this draws nothing. Choosing an
-            // item activates the same command the platform's menu does.
+            // Where the window shows the menu above somewhere else, in its
+            // title bar or in a native menu bar, this draws nothing; where it
+            // does not, this draws it. Choosing an item activates the same
+            // command the platform's menu does.
             ui.menu_bar(&menu(self.saved));
             ui.label(Label::new("Desktop integration").style(Style {
                 font_size: Some(26.0),
@@ -200,11 +206,17 @@ impl App for Platform {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
+    let separate = std::env::args().any(|arg| arg == "--separate-menu");
     run(
         AppOptions {
             title: "Glassmere / Desktop".into(),
             size: Size::new(640.0, 460.0),
             frame_limit: smoke.then_some(20),
+            menu_bar: if separate {
+                MenuBarPlacement::Separate
+            } else {
+                MenuBarPlacement::TitleBar
+            },
             ..AppOptions::default()
         },
         Platform {

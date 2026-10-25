@@ -102,6 +102,26 @@ pub enum ThemeChoice {
     Fixed(Theme),
 }
 
+/// Where a window's menu, declared with `Ui::set_menu`, is shown on Windows
+/// and Linux. On macOS the menu is always the application's menu bar.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum MenuBarPlacement {
+    /// Inside the title bar, on the row with the window's title and its
+    /// buttons. A window that has the system's frame and declares a menu
+    /// gets a title bar the framework draws in the app's theme, in place of
+    /// the system's: the system's frame is turned off for that window, and
+    /// the window's buttons, its title, moving it by the bar and resizing it
+    /// by its edges are the framework's. A window that draws its own title
+    /// bar, or has no menu, is left as it is.
+    #[default]
+    TitleBar,
+    /// A bar of its own under the system's title bar: the window's native
+    /// menu bar on Windows, and the bar `Ui::menu_bar` draws in the view on
+    /// Linux.
+    Separate,
+}
+
 /// Where the window's reading and layout direction comes from.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
@@ -161,6 +181,30 @@ mod direction_tests {
         }
         assert_eq!(DirectionChoice::Rtl.resolve(), Direction::Rtl);
         assert_eq!(DirectionChoice::Ltr.resolve(), Direction::Ltr);
+    }
+}
+
+#[cfg(test)]
+mod menu_bar_tests {
+    use super::{AppOptions, MenuBarPlacement};
+
+    #[test]
+    fn the_menu_goes_in_a_title_bar_of_the_frameworks_unless_the_window_says_otherwise() {
+        let default = AppOptions::default();
+        assert_eq!(default.menu_bar, MenuBarPlacement::TitleBar);
+        // On macOS the menu belongs to the application, whatever is asked.
+        assert_eq!(default.may_draw_title_bar(), !cfg!(target_os = "macos"));
+        let separate = AppOptions {
+            menu_bar: MenuBarPlacement::Separate,
+            ..AppOptions::default()
+        };
+        assert!(!separate.may_draw_title_bar());
+        // A window that draws its own title bar keeps the menu where it put it.
+        let own = AppOptions {
+            decorations: false,
+            ..AppOptions::default()
+        };
+        assert!(!own.may_draw_title_bar());
     }
 }
 
@@ -233,6 +277,21 @@ pub struct AppOptions {
     /// to be moved or resized but the one the application draws.
     pub decorations: bool,
     pub resizable: bool,
+    /// Where the menu a view declares with `Ui::set_menu` is shown. Only a
+    /// window with the system's frame (`decorations`) has a choice.
+    pub menu_bar: MenuBarPlacement,
+}
+
+impl AppOptions {
+    /// Whether a window may end up with the title bar the framework draws,
+    /// once its view declares a menu: it has the system's frame, wants the
+    /// menu in the title bar, and is not on macOS, where the menu belongs to
+    /// the application.
+    pub(crate) fn may_draw_title_bar(&self) -> bool {
+        self.decorations
+            && self.menu_bar == MenuBarPlacement::TitleBar
+            && !cfg!(target_os = "macos")
+    }
 }
 
 impl Default for AppOptions {
@@ -253,6 +312,7 @@ impl Default for AppOptions {
             direction: DirectionChoice::Auto,
             decorations: true,
             resizable: true,
+            menu_bar: MenuBarPlacement::default(),
         }
     }
 }
@@ -798,6 +858,9 @@ struct Application {
     /// window, which drops after it, so that a menu bar is detached from a
     /// window that is still there.
     menu: Option<platform::NativeMenu>,
+    /// The framework draws this window's title bar, because it declared a
+    /// menu and the system's one is off.
+    title_bar: bool,
     state: Option<WindowState>,
     modifiers: ModifiersState,
     error: Option<Box<dyn Error>>,
@@ -865,6 +928,7 @@ impl Application {
             view,
             context,
             menu: None,
+            title_bar: false,
             state: Some(state),
             modifiers: ModifiersState::empty(),
             error: None,
@@ -1054,7 +1118,9 @@ impl Application {
         if let Some(menu) = self.context.take_menu() {
             // Dropping the old one first: two menus is one too many.
             self.menu = None;
-            if let Some(state) = &self.state {
+            if self.options.may_draw_title_bar() {
+                self.draw_title_bar();
+            } else if let Some(state) = &self.state {
                 self.menu = platform::NativeMenu::install(
                     &menu,
                     &state.window,
@@ -1084,6 +1150,48 @@ impl Application {
             let paths = platform::choose_files(&window, request);
             self.context.set_chosen_files(paths);
             self.request_redraw();
+        }
+    }
+
+    /// Swaps the system's title bar for the one the framework draws, which
+    /// has the menu in it.
+    fn draw_title_bar(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+        if self.title_bar {
+            return;
+        }
+        self.title_bar = true;
+        // Without the frame the window would keep its outer size and so gain
+        // the room the frame took; it keeps the client area instead.
+        let (size, at) = (state.window.inner_size(), state.window.inner_position());
+        state.window.set_decorations(false);
+        if !state.window.is_maximized() {
+            let _ = state.window.request_inner_size(size);
+            if let Ok(at) = at {
+                state.window.set_outer_position(at);
+            }
+            state.resize();
+        }
+        self.context.set_title_bar(Some(self.options.title.clone()));
+    }
+
+    /// Shows a window that was created hidden, because it may swap the
+    /// system's title bar for its own: it draws the frame its view declares
+    /// first, takes what that asked of the platform, which is where the swap
+    /// happens, draws again, and only then appears.
+    fn show_settled(&mut self, event_loop: &ActiveEventLoop) {
+        for _ in 0..2 {
+            if let Err(error) = self.redraw(event_loop) {
+                self.fail(event_loop, error);
+                return;
+            }
+            self.platform_requests();
+        }
+        if let Some(state) = &self.state {
+            state.window.set_visible(true);
+            state.window.request_redraw();
         }
     }
 

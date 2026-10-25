@@ -51,6 +51,15 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// it out.
     #[track_caller]
     pub fn window_buttons(&mut self, on_command: impl Fn(crate::WindowCommand) -> M) {
+        self.caption_buttons(|command| crate::app::Handler::Message(on_command(command)));
+    }
+
+    /// `window_buttons` whose clicks go to the handler `handler` makes.
+    #[track_caller]
+    fn caption_buttons(
+        &mut self,
+        handler: impl Fn(crate::WindowCommand) -> crate::app::Handler<M>,
+    ) {
         let maximized = self.window().maximized;
         let foreground = self.theme().text;
         // A wash of the text colour, which is how a desktop marks a caption
@@ -117,7 +126,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                     pressed
                 }));
                 ui.button_at(key, glyph, true, style);
-                ui.set_handler(crate::app::Handler::Message(on_command(command)));
+                ui.set_handler(handler(command));
                 // The glyph is what is drawn; the name is what is announced.
                 let label = ui.tr(name);
                 ui.tooltip(label);
@@ -190,21 +199,50 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// activates that command, exactly as the platform's own menu does, so a
     /// view handles both the same way: through the command it declared.
     ///
-    /// Two levels are shown. A submenu inside a submenu is drawn as a
-    /// heading with its items under it, because the framework's own menus
+    /// The bar is a row of flat headings, each opening its items in a
+    /// dropdown. Two levels are shown. A submenu inside a submenu is drawn as
+    /// a heading with its items under it, because the framework's own menus
     /// do not nest.
     ///
-    /// Where the host shows this same menu, declared with `Ui::set_menu`, in
-    /// a menu bar of the window's own, nothing is drawn. A host does that
-    /// only when the window has the system's frame, so a menu bar inside a
-    /// title bar the view draws itself stays where it is.
+    /// Where the host shows this same menu, declared with `Ui::set_menu`,
+    /// somewhere else, nothing is drawn: in a menu bar of the window's own,
+    /// or in the title bar the framework draws for a window with a menu (see
+    /// `AppOptions::menu_bar`). A window that draws its own title bar has
+    /// neither, so a menu bar inside the title bar the view draws itself
+    /// stays where it is.
     #[track_caller]
     pub fn menu_bar(&mut self, menu: &crate::Menu) {
         if self.context.menu_bar_is_native(menu) {
             return;
         }
+        self.draw_menu_bar(menu);
+    }
+
+    #[track_caller]
+    fn draw_menu_bar(&mut self, menu: &crate::Menu) {
+        let foreground = self.theme().text;
+        // A wash of the text colour, as the caption buttons use but fainter,
+        // for a heading is no button: light over a dark bar, dark over a
+        // light one.
+        let wash = |alpha: u8| Color(foreground.0, foreground.1, foreground.2, alpha);
+        let heading = Style {
+            padding: 5.0,
+            radius: 4.0,
+            background: Some(Color(0, 0, 0, 0)),
+            ..Style::default()
+        }
+        .on_hover(crate::Paint {
+            background: Some(wash(8)),
+            ..crate::Paint::default()
+        })
+        // A heading is pressed while its dropdown is open.
+        .on_pressed(crate::Paint {
+            background: Some(wash(14)),
+            ..crate::Paint::default()
+        });
         let style = Style {
-            gap: 4.0,
+            gap: 2.0,
+            align_items: crate::Align::Center,
             ..Style::default()
         };
         let mut chosen = None;
@@ -227,21 +265,14 @@ impl<'a, M: 'static> Ui<'a, M> {
                                 .map(crate::Shortcut::describe)
                                 .unwrap_or_default(),
                         },
-                        None => crate::MenuItem {
-                            label: "─".repeat(12),
-                            enabled: false,
-                            hint: String::new(),
-                        },
+                        None => crate::MenuItem::separator(),
                     })
                     .collect();
                 if let Some(picked) = ui.menu_pick(
                     WidgetKey::named(format!("menu{index}")),
                     label.clone(),
                     &items,
-                    Style {
-                        padding: 8.0,
-                        ..Style::button()
-                    },
+                    heading.clone(),
                     crate::Length::Px(260.0),
                 ) && let Some((_, Some(command))) = flat.get(picked)
                 {
@@ -252,6 +283,67 @@ impl<'a, M: 'static> Ui<'a, M> {
         if let Some(id) = chosen {
             self.host.commands.push(id);
         }
+    }
+
+    /// Declares `content` under the title bar the framework draws for a
+    /// window whose system title bar is off, or as it is where there is none.
+    /// The bar has the window's title, the menu the view declared, a gap that
+    /// moves the window, and the window's buttons; the edges that resize the
+    /// window lie over everything.
+    #[track_caller]
+    pub(crate) fn chrome(&mut self, content: impl FnOnce(&mut Ui<'_, M>)) {
+        let Some((title, menu)) = self
+            .context
+            .framework_title_bar()
+            .map(|(title, menu)| (title.to_owned(), menu.cloned()))
+        else {
+            content(self);
+            return;
+        };
+        let theme = self.theme().clone();
+        let focused = self.window().focused;
+        let bar = Style {
+            width: crate::Length::Percent(1.0),
+            height: crate::Length::Px(caption::HEIGHT),
+            align_items: crate::Align::Center,
+            background: Some(theme.surface),
+            ..Style::default()
+        };
+        self.group(WidgetKey::named("$title-bar"), Kind::Row, bar, |ui| {
+            ui.keyed("$title", |ui| {
+                ui.label(crate::Label::new(title).style(Style {
+                    padding: 10.0,
+                    foreground: Some(if focused {
+                        theme.text
+                    } else {
+                        theme.text_muted
+                    }),
+                    ..Style::default()
+                }))
+            });
+            if let Some(menu) = &menu {
+                ui.keyed("$menu", |ui| ui.draw_menu_bar(menu));
+            }
+            // Everything after this sits at the far end.
+            ui.keyed("$gap", |ui| {
+                ui.container(Style::default().grow(1.0), |_| {})
+            });
+            ui.keyed("$buttons", |ui| {
+                ui.caption_buttons(crate::app::Handler::Window);
+            });
+        });
+        self.set_control(Control::TitleBar);
+        self.keyed("$content", |ui| {
+            ui.column(
+                Style {
+                    width: crate::Length::Percent(1.0),
+                    grow: 1.0,
+                    ..Style::default()
+                },
+                content,
+            );
+        });
+        self.resize_frame(6.0);
     }
 
     /// The application's tray icon, or `None` to take it away.

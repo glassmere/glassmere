@@ -419,6 +419,9 @@ pub struct Context {
     menu_shown: Option<crate::Menu>,
     /// The host shows `menu_shown` in a menu bar of the window's own.
     native_menu_bar: bool,
+    /// The title the framework draws a title bar with, which carries
+    /// `menu_shown`, for a window whose system title bar is off.
+    title_bar: Option<String>,
     tray_shown: Option<crate::Tray>,
     /// What a title bar of the application's own asked the window to do,
     /// what the host says about the window, and the size it was last given.
@@ -619,6 +622,7 @@ impl Default for Context {
             tray_out: None,
             menu_shown: None,
             native_menu_bar: false,
+            title_bar: None,
             tray_shown: None,
             window_commands: Vec::new(),
             window_info: crate::WindowInfo::default(),
@@ -983,9 +987,26 @@ impl Context {
         }
     }
 
-    /// Whether `menu` is the one the host shows in the window's menu bar.
+    /// Whether the framework draws a title bar of its own above the view,
+    /// with this title, the window's buttons, and the menu the view declared
+    /// with `Ui::set_menu` in it. The host turns the system's title bar off
+    /// for a window that asks for this. `None` takes the bar away.
+    pub fn set_title_bar(&mut self, title: Option<String>) {
+        if self.title_bar != title {
+            self.title_bar = title;
+            self.view_stale = true;
+        }
+    }
+
+    /// The title of the title bar the framework draws, and the menu in it.
+    pub(crate) fn framework_title_bar(&self) -> Option<(&str, Option<&crate::Menu>)> {
+        Some((self.title_bar.as_deref()?, self.menu_shown.as_ref()))
+    }
+
+    /// Whether `menu` is the one the host shows, in a menu bar of the
+    /// window's own or in the title bar the framework draws.
     pub(crate) fn menu_bar_is_native(&self, menu: &crate::Menu) -> bool {
-        self.native_menu_bar && self.menu_shown.as_ref() == Some(menu)
+        (self.native_menu_bar || self.title_bar.is_some()) && self.menu_shown.as_ref() == Some(menu)
     }
 
     /// The tray icon a view last declared, or `Some(None)` to take it away.

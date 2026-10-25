@@ -381,6 +381,10 @@ impl<'a, M: 'static> Ui<'a, M> {
             return Vec::new();
         };
         let selection = self.context.theme().selection;
+        let rule = {
+            let Color(r, g, b, _) = self.context.theme().text;
+            Color(r, g, b, 48)
+        };
         let mut child = self.scope(owner);
         child.group(
             WidgetKey::named("$popup"),
@@ -388,13 +392,46 @@ impl<'a, M: 'static> Ui<'a, M> {
             Style {
                 // Percent widths match the owner; compact owners pass pixels.
                 width,
-                height: Length::Px((items.len() as f32 * 34.0 + 8.0).min(280.0)),
+                height: Length::Px(
+                    (items
+                        .iter()
+                        .map(|item| if item.is_separator() { 11.0 } else { 34.0 })
+                        .sum::<f32>()
+                        + 8.0)
+                        .min(280.0),
+                ),
                 gap: 2.0,
                 padding: 4.0,
                 ..Style::default()
             },
             |ui| {
                 for (index, item) in items.iter().enumerate() {
+                    if item.is_separator() {
+                        // A rule across the middle of a short row. The row
+                        // keeps its index, so the keyboard and the highlight
+                        // count it like any other, and it is no choice, so
+                        // nothing can pick it.
+                        ui.push(Element {
+                            style: Style {
+                                width: Length::Percent(1.0),
+                                height: Length::Px(9.0),
+                                justify_content: crate::Justify::Center,
+                                ..Style::default()
+                            },
+                            enabled: false,
+                            children: vec![Element {
+                                style: Style {
+                                    width: Length::Percent(1.0),
+                                    height: Length::Px(1.0),
+                                    background: Some(rule),
+                                    ..Style::default()
+                                },
+                                ..Element::new(WidgetKey::named("$rule"), Kind::Container)
+                            }],
+                            ..Element::new(WidgetKey::Named(index.to_string()), Kind::Container)
+                        });
+                        continue;
+                    }
                     ui.push(Element {
                         text: item.label.clone(),
                         style: Style {

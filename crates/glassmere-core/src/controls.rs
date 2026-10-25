@@ -20,6 +20,16 @@ impl MenuItem {
             ..Self::new(label)
         }
     }
+    /// A line between groups of items. It is disabled, so it is skipped by
+    /// the keyboard and cannot be chosen, and a menu draws it as a rule.
+    pub fn separator() -> Self {
+        Self::disabled("")
+    }
+    /// Whether this is [`MenuItem::separator`]: an empty label and nothing
+    /// that could be chosen.
+    pub(crate) fn is_separator(&self) -> bool {
+        !self.enabled && self.label.is_empty() && self.hint.is_empty()
+    }
     /// A menu item for a command: its label, whether it is enabled, and its
     /// shortcut as the hint. Pass `Ui::command(&command)` to honour a binding
     /// the user changed.

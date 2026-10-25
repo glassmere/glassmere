@@ -64,11 +64,14 @@ mod enabled {
     }
 
     /// The application's menu where the platform has one of its own. That is
-    /// the menu bar on macOS and, for a window with the system's frame, the
-    /// window's own menu bar on Windows. A window that draws its own title
-    /// bar has no room for a Win32 menu bar, and on Linux a menu bar belongs
-    /// to the window as well and is not put there, so `Ui::menu_bar` draws it
-    /// instead.
+    /// the menu bar on macOS and, for a window that keeps the system's frame
+    /// (`MenuBarPlacement::Separate`), the window's own menu bar on Windows.
+    /// A window that draws its own title bar has no room for a Win32 menu
+    /// bar, and on Linux a menu bar belongs to the window as well and is not
+    /// put there, so `Ui::menu_bar` draws it instead. With the default
+    /// `MenuBarPlacement::TitleBar` the host does not install one on Windows
+    /// or Linux at all: the framework draws the menu in a title bar of its
+    /// own.
     ///
     /// The Windows bar is attached to the window and detached when this is
     /// dropped. Windows opens it on Alt or F10, as it does for any window

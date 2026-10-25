@@ -90,6 +90,9 @@ pub(crate) enum Handler<M> {
     /// Sent as it is, and the focus goes back to the text of the editor the
     /// button belongs to: a toolbar button.
     Refocus(M),
+    /// A click asks the window itself, with no message: the buttons of a
+    /// title bar the framework draws.
+    Window(crate::WindowCommand),
 }
 
 impl<M: 'static> Handler<M> {
@@ -142,6 +145,7 @@ impl<M: 'static> Handler<M> {
             }
             Self::Step(steps) => Handler::Step(steps),
             Self::Refocus(message) => Handler::Refocus(f(message)),
+            Self::Window(command) => Handler::Window(command),
         }
     }
 }
@@ -872,8 +876,10 @@ impl<M: Clone + 'static> AppDriver<M> {
         if declare {
             pacing.declared = true;
             match window {
-                None => context.run_app(size, measurer, |ui| app.view(ui)),
-                Some(id) => context.run_app(size, measurer, |ui| app.view_window(id, ui)),
+                None => context.run_app(size, measurer, |ui| ui.chrome(|ui| app.view(ui))),
+                Some(id) => context.run_app(size, measurer, |ui| {
+                    ui.chrome(|ui| app.view_window(id, ui));
+                }),
             };
         } else {
             context.refresh(size, measurer);

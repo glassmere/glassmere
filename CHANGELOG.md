@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - On Windows with the `platform` feature, the window's own menu bar shows the app menu. Windows with a custom title bar keep the drawn one.
+  - By default the menu sits inside the title bar, on the row with the window's title and buttons: a window with the system frame that declares a menu gets a title bar the framework draws in the app's theme. `AppOptions::menu_bar` is `MenuBarPlacement::TitleBar` (the default) or `Separate`, which keeps the native bar under the system's title bar, and on Linux the bar `Ui::menu_bar` draws in the view.
+  - `Ui::menu_bar` draws flat headings with a hover and open highlight, and `MenuItem::separator()` is a rule in a dropdown.
 - Path styles, drawn the same way by the CPU and GPU renderers:
   - Stroke joins (`Join`: miter with `miter_limit`, round, bevel) and caps (`Cap`: butt, round, square).
   - Dashes with an offset (`Dash`). A pattern that would cut a path into more than `Dash::MAX_COUNT` dashes draws solid.

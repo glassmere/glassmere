@@ -17,6 +17,7 @@ glassmere use GraphicsBackend = glassmere_winit::GraphicsBackend #[cfg(feature =
 glassmere use GraphicsOptions = glassmere_winit::GraphicsOptions #[cfg(feature = "desktop")]
 glassmere use Image = glassmere_scene::Image
 glassmere use Join = glassmere_scene::Join
+glassmere use MenuBarPlacement = glassmere_winit::MenuBarPlacement #[cfg(feature = "desktop")]
 glassmere use Path = glassmere_scene::Path
 glassmere use Placement = glassmere_winit::Placement #[cfg(feature = "desktop")]
 glassmere use Point = glassmere_scene::Point
@@ -642,6 +643,7 @@ glassmere-core   fn Context::set_opened_files(&mut self, paths: Vec<std::path::P
 glassmere-core   fn Context::set_reduced_motion(&mut self, reduced: bool)
 glassmere-core   fn Context::set_stylesheet(&mut self, sheet: StyleSheet)
 glassmere-core   fn Context::set_theme(&mut self, theme: Theme)
+glassmere-core   fn Context::set_title_bar(&mut self, title: Option<String>)
 glassmere-core   fn Context::set_toast_wake(&mut self, wake: impl Fn() + Send + 'static)
 glassmere-core   fn Context::set_watched_file(&mut self, path: &std::path::Path, content: std::result::Result<Vec<u8>, String>) -> bool
 glassmere-core   fn Context::set_window_info(&mut self, info: crate::WindowInfo)
@@ -841,6 +843,7 @@ glassmere-core   fn MenuEntry::submenu(label: impl Into<String>, entries: impl I
 glassmere-core   fn MenuItem::command(command: &crate::Command) -> Self
 glassmere-core   fn MenuItem::disabled(label: impl Into<String>) -> Self
 glassmere-core   fn MenuItem::new(label: impl Into<String>) -> Self
+glassmere-core   fn MenuItem::separator() -> Self
 glassmere-core   fn MessageSender::send_blocking(&self, message: T) -> Result<(), SendError<T>> [impl<T> MessageSender<T>]
 glassmere-core   fn MessageSender::try_send(&self, message: T) -> Result<(), TrySendError<T>> [impl<T> MessageSender<T>]
 glassmere-core   fn MessageSender::wake(&self) -> bool [impl<T> MessageSender<T>]
@@ -2397,6 +2400,7 @@ glassmere-winit   field AppOptions::direction: DirectionChoice
 glassmere-winit   field AppOptions::frame_limit: Option<u64>
 glassmere-winit   field AppOptions::gpu: Option<GpuSetup>
 glassmere-winit   field AppOptions::graphics: GraphicsOptions
+glassmere-winit   field AppOptions::menu_bar: MenuBarPlacement
 glassmere-winit   field AppOptions::placement: Placement
 glassmere-winit   field AppOptions::reduced_motion: bool
 glassmere-winit   field AppOptions::resizable: bool
@@ -2425,6 +2429,8 @@ glassmere-winit   variant GraphicsBackend::Direct3D12
 glassmere-winit   variant GraphicsBackend::Metal
 glassmere-winit   variant GraphicsBackend::OpenGl
 glassmere-winit   variant GraphicsBackend::Vulkan
+glassmere-winit   variant MenuBarPlacement::Separate
+glassmere-winit   variant MenuBarPlacement::TitleBar
 glassmere-winit   variant Placement::Centered
 glassmere-winit   variant Placement::Named(String)
 glassmere-winit   variant Placement::System
@@ -2436,6 +2442,7 @@ glassmere-winit const hot::STOP_ENV: &str
 glassmere-winit enum DirectionChoice #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
 glassmere-winit enum GpuMemoryPolicy #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
 glassmere-winit enum GraphicsBackend #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
+glassmere-winit enum MenuBarPlacement #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
 glassmere-winit enum Placement #[derive(Clone, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
 glassmere-winit enum ThemeChoice #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
 glassmere-winit fn hot::active() -> bool
