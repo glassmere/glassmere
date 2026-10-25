@@ -30,7 +30,7 @@ Features are additive: turning one on adds items and never changes what the othe
 
 Nothing is removed without a release that still has it, marked `#[deprecated]` with the replacement named in the message. A deprecated item keeps working until the next minor version at the earliest, and the release notes say what to write instead.
 
-That promise starts with `0.2`; nothing in `0.1` is deprecated.
+`0.1.1` deprecates `TextDocument::rope` and `Harness::state_mut`; both go in `0.2`.
 
 ## What the compiler already checks
 
