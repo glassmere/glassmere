@@ -872,7 +872,7 @@ checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
 
 [[package]]
 name = "dial-widget"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "glassmere",
  "glassmere-testing",
@@ -1593,7 +1593,7 @@ dependencies = [
 
 [[package]]
 name = "glassmere"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "glassmere-core",
  "glassmere-derive",
@@ -1614,7 +1614,7 @@ dependencies = [
 
 [[package]]
 name = "glassmere-allocations"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "glassmere-core",
  "glassmere-scene",
@@ -1622,7 +1622,7 @@ dependencies = [
 
 [[package]]
 name = "glassmere-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "bitflags 2.13.2",
  "glassmere-scene",
@@ -1636,7 +1636,7 @@ dependencies = [
 
 [[package]]
 name = "glassmere-derive"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "fluent-syntax",
  "glassmere-core",
@@ -1647,11 +1647,11 @@ dependencies = [
 
 [[package]]
 name = "glassmere-dev"
-version = "0.1.1"
+version = "0.1.2"
 
 [[package]]
 name = "glassmere-devtools"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "glassmere-core",
  "glassmere-scene",
@@ -1659,14 +1659,14 @@ dependencies = [
 
 [[package]]
 name = "glassmere-examples"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "glassmere",
 ]
 
 [[package]]
 name = "glassmere-fluent"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "fluent-bundle",
  "glassmere-core",
@@ -1676,7 +1676,7 @@ dependencies = [
 
 [[package]]
 name = "glassmere-icu"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "glassmere-core",
  "glassmere-scene",
@@ -1685,7 +1685,7 @@ dependencies = [
 
 [[package]]
 name = "glassmere-image"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "glassmere-scene",
  "image",
@@ -1694,7 +1694,7 @@ dependencies = [
 
 [[package]]
 name = "glassmere-render-cpu"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "glassmere-core",
  "glassmere-render-wgpu",
@@ -1707,7 +1707,7 @@ dependencies = [
 
 [[package]]
 name = "glassmere-render-wgpu"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "bytemuck",
  "glassmere-scene",
@@ -1720,14 +1720,14 @@ dependencies = [
 
 [[package]]
 name = "glassmere-scene"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "unicode-segmentation",
 ]
 
 [[package]]
 name = "glassmere-syntax"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "glassmere-core",
  "glassmere-scene",
@@ -1736,7 +1736,7 @@ dependencies = [
 
 [[package]]
 name = "glassmere-testing"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "glassmere-core",
  "glassmere-scene",
@@ -1744,7 +1744,7 @@ dependencies = [
 
 [[package]]
 name = "glassmere-text"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cosmic-text",
  "glassmere-scene",
@@ -1753,14 +1753,14 @@ dependencies = [
 
 [[package]]
 name = "glassmere-win32"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "glassmere-winit"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "accesskit",
  "accesskit_winit",
