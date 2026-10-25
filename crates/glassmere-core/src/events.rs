@@ -9,6 +9,7 @@ use glassmere_scene::Point;
 
 /// What reached an area, in the order it arrived.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum UiEvent {
     PointerDown(Point),
     PointerUp(Point),

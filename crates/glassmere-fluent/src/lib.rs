@@ -14,6 +14,7 @@ use unic_langid::LanguageIdentifier;
 
 /// A catalog that could not be read or parsed.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct FluentError {
     pub locale: String,
     pub file: Option<PathBuf>,

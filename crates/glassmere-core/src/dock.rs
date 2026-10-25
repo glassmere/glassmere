@@ -24,6 +24,7 @@ use std::fmt::Write as _;
 pub struct DockWindowId(pub u64);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DockZone {
     Left,
     Right,
@@ -34,6 +35,7 @@ pub enum DockZone {
 
 /// One dock surface: the main window's dock or a detached window's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DockArea {
     Main,
     Window(DockWindowId),
@@ -41,6 +43,7 @@ pub enum DockArea {
 
 /// Where a panel currently lives.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DockPlace {
     Main,
     Float(usize),
@@ -48,6 +51,7 @@ pub enum DockPlace {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum DockTarget {
     /// Beside (or, for `Center`, into) the group that contains `anchor`.
     Group { anchor: String, zone: DockZone },
@@ -75,6 +79,7 @@ pub struct DockTabs {
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
 pub enum DockNode {
     Tabs(DockTabs),
     /// `Axis::Horizontal` places `first` left of `second`; `fraction` is the
@@ -118,6 +123,7 @@ pub struct DockLayout {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct DockLayoutError {
     pub line: usize,
     pub message: String,

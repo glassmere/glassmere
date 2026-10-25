@@ -21,6 +21,7 @@ pub struct Time {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DateStyle {
     /// All numbers, such as 21. 9. 2026 or 9/21/26.
     Short,

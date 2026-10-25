@@ -49,6 +49,7 @@ impl ResizeEdge {
 
 /// What a view asks its window to do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum WindowCommand {
     /// Moves the window with the pointer until it is released. Ask on a
     /// press; the platform runs the drag itself, so no move or release

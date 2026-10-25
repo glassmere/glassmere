@@ -164,6 +164,7 @@ impl LocaleFormat for IcuFormat {
             DateStyle::Short => 0,
             DateStyle::Medium => 1,
             DateStyle::Long => 2,
+            _ => 1,
         }];
         formatter.format(&date).to_string()
     }

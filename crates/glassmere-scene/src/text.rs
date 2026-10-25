@@ -3,6 +3,7 @@ use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum FontFamily {
     #[default]
     SansSerif,
@@ -12,6 +13,7 @@ pub enum FontFamily {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum TextWrap {
     #[default]
     None,

@@ -11,6 +11,7 @@ use std::path::PathBuf;
 
 /// What a file dialog is for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FileKind {
     #[default]
     Open,
@@ -121,6 +122,7 @@ impl Notification {
 /// enabled state, and choosing it sends `Event::Command` with its id, so a
 /// menu item and a button do the same thing by the same route.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum MenuEntry {
     Command(Command),
     Separator,

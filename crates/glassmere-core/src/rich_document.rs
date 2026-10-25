@@ -14,6 +14,7 @@ pub struct Marks {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Mark {
     Bold,
     Italic,
@@ -50,6 +51,7 @@ pub struct InlineRun {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BlockKind {
     #[default]
     Paragraph,
@@ -76,6 +78,7 @@ pub struct RichPosition {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RichMotion {
     Left,
     Right,

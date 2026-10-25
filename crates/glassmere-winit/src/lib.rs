@@ -75,6 +75,7 @@ impl std::fmt::Debug for GpuSetup {
 
 /// Which screen a window opens on, and where.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Placement {
     /// Wherever the system puts it, which is usually sensible.
     #[default]
@@ -94,6 +95,7 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 /// Which theme a window starts with and follows.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum ThemeChoice {
     /// The OS light/dark preference, re-applied when the OS switches.
     System,
@@ -102,6 +104,7 @@ pub enum ThemeChoice {
 
 /// Where the window's reading and layout direction comes from.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DirectionChoice {
     /// Right-to-left when the OS locale's language is written that way.
     #[default]
@@ -1037,6 +1040,7 @@ impl Application {
                     state.window.set_maximized(!state.window.is_maximized());
                 }
                 glassmere_core::WindowCommand::Close => self.close_requested = true,
+                other => debug_assert!(false, "unhandled window command {other:?}"),
             }
         }
         for notification in self.context.take_notifications() {

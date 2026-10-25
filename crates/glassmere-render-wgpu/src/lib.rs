@@ -97,6 +97,7 @@ pub type CustomDrawFn = Box<dyn FnMut(CustomDraw<'_>)>;
 /// What an application's own wgpu code is handed for a `Primitive::Custom`
 /// (see `Renderer::set_custom_draw`). The pass is scissored to the primitive's
 /// clipped rectangle and the renderer restores its own state afterwards.
+#[non_exhaustive]
 pub struct CustomDraw<'a> {
     pub device: &'a wgpu::Device,
     pub queue: &'a wgpu::Queue,
@@ -433,6 +434,7 @@ impl Recording {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
+#[non_exhaustive]
 pub struct RenderStats {
     pub preparations: u64,
     pub quad_buffer_allocations: u64,
@@ -964,6 +966,7 @@ impl Renderer {
                 Primitive::Text { .. }
                 | Primitive::StyledText { .. }
                 | Primitive::RichText { .. } => self.record_text(rec, clip, primitive),
+                _ => debug_assert!(false, "unhandled primitive {primitive:?}"),
             }
         }
     }

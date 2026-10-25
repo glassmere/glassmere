@@ -2,6 +2,7 @@ use std::fmt;
 
 /// Automatic selection probes one platform-compatible backend at a time.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum GraphicsBackend {
     #[default]
     Auto,
@@ -15,6 +16,7 @@ pub enum GraphicsBackend {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum GpuMemoryPolicy {
     /// Small allocation blocks for UI workloads; larger resources still get
     /// dedicated allocations. Backend/driver support for this hint varies.

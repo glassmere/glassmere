@@ -4,6 +4,7 @@ use std::time::Duration;
 /// What a toast is about; it picks the accent colour and how urgently
 /// assistive technology announces it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ToastKind {
     #[default]
     Info,

@@ -18,6 +18,7 @@ use std::{
 
 /// One presented frame: core phase timings plus the host's render and total time.
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub struct FrameRecord {
     pub stats: FrameStats,
     pub render: Duration,
@@ -138,6 +139,7 @@ fn millis(duration: Duration) -> f64 {
 }
 
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct EventRecord {
     pub sequence: u64,
     pub frame: u64,
@@ -237,6 +239,7 @@ impl Recorder {
 }
 
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct InspectedNode {
     pub snapshot: NodeSnapshot,
     pub details: NodeDetails,
@@ -364,6 +367,7 @@ impl InspectorModel {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Tab {
     Tree,
     Accessibility,
@@ -379,6 +383,7 @@ pub enum Tab {
 /// and composites back. Layers cost a texture and a pass each, so a view
 /// that makes many of them is worth seeing.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct LayerRow {
     /// How many layers it sits inside.
     pub depth: usize,
@@ -424,6 +429,7 @@ fn layers(primitives: &[Primitive]) -> Vec<LayerRow> {
 
 /// Requests the inspector makes of the inspected window.
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct InspectorResponse {
     pub export_csv: bool,
     pub focus: Option<NodeId>,
@@ -434,6 +440,7 @@ pub struct InspectorResponse {
 /// [`Inspector::view`], and the host calls [`Inspector::sync`] after it
 /// replaces the model.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum InspectorMsg {
     Tab(Tab),
     Damage(bool),
@@ -1418,6 +1425,7 @@ fn state_tab(ui: &mut Ui<'_, InspectorMsg>, model: &InspectorModel, mono: &Style
                     let kind = match node.kind {
                         StateKind::Signal => "signal",
                         StateKind::Memo => "memo  ",
+                        _ => "state ",
                     };
                     let mut row = format!(
                         "{kind}  {:width$}  v{}",

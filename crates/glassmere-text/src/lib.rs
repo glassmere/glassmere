@@ -38,6 +38,7 @@ fn family(family: &FontFamily) -> Family<'_> {
         FontFamily::Serif => Family::Serif,
         FontFamily::Monospace => Family::Monospace,
         FontFamily::Named(name) => Family::Name(name),
+        _ => Family::SansSerif,
     }
 }
 

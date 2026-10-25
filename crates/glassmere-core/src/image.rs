@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 /// How an image fills a box whose shape differs from its own.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ImageFit {
     /// Scaled to fit inside the box, centred, aspect ratio kept.
     #[default]
@@ -19,6 +20,7 @@ pub enum ImageFit {
 /// Recolouring for single-colour images such as icons: the image's alpha is
 /// kept and its colour replaced.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ImageTint {
     #[default]
     None,
@@ -66,6 +68,7 @@ impl ImageOptions {
 
 /// Where a background image comes from.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum ImageSource {
     Image(Image),
     /// Loaded by the host like `Ui::image_file`; nothing is painted until it

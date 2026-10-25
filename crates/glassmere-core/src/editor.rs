@@ -4,6 +4,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 /// What the Left and Right arrow keys mean in bidirectional text.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum CaretMovement {
     /// Left is left on screen, across direction boundaries.
     #[default]
@@ -13,6 +14,7 @@ pub enum CaretMovement {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum TextMove {
     Left,
     Right,
@@ -25,6 +27,7 @@ pub enum TextMove {
 }
 
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum TextEdit {
     Insert(String),
     Backspace {

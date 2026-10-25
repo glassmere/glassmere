@@ -28,6 +28,7 @@ impl Selection {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Motion {
     Left,
     Right,
@@ -156,10 +157,6 @@ impl TextDocument {
         }
     }
 
-    #[deprecated(note = "removed in 0.2: it exposes the ropey type")]
-    pub fn rope(&self) -> &Rope {
-        &self.rope
-    }
     pub fn len_chars(&self) -> usize {
         self.rope.len_chars()
     }

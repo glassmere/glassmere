@@ -38,6 +38,7 @@ const MAX_SIDE: u32 = 8192;
 pub const MAX_GRADIENT_STOPS: usize = 8;
 
 #[derive(Clone, Copy, Debug, Default)]
+#[non_exhaustive]
 pub struct CpuStats {
     pub frames: u64,
     /// Pixels of the target the last frame painted: all of them, or the
@@ -239,6 +240,7 @@ fn skia_path(path: &Path) -> Option<tiny_skia::Path> {
             Segment::Quad(a, b) => builder.quad_to(a.x, a.y, b.x, b.y),
             Segment::Cubic(a, b, c) => builder.cubic_to(a.x, a.y, b.x, b.y, c.x, c.y),
             Segment::Close => builder.close(),
+            _ => debug_assert!(false, "unhandled path segment {segment:?}"),
         }
     }
     builder.finish()
@@ -701,6 +703,7 @@ impl CpuRenderer {
                         self.glyphs(surface, &key, *rect, visible, *color);
                     }
                 }
+                _ => debug_assert!(false, "unhandled primitive {primitive:?}"),
             }
         }
         self.text.retain(&active_text);

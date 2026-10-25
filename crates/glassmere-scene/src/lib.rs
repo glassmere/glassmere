@@ -196,6 +196,7 @@ impl Affine {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Primitive {
     Quad {
         rect: Rect,

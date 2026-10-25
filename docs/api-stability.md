@@ -26,11 +26,20 @@ The workspace is at `0.1`. Before `1.0` a breaking change raises the minor versi
 
 Features are additive: turning one on adds items and never changes what the others do. The default set can gain a feature in a minor release; taking one out of the defaults is a breaking change.
 
+## What a release can add
+
+Whether an addition breaks an application depends on how the application uses the type, so each kind of type says which uses are covered:
+
+- An enum marked `#[non_exhaustive]` can gain a variant in any release. A `match` on it needs a `_` arm. Closed sets stay exhaustive and gain a variant only in a minor version: `Axis`, `Direction`, `SortDirection`, `SwipeDirection`, `ResizeEdge`, `Live`, `Affinity`, and `MessageArg`, which every message catalog has to format in full.
+- A struct marked `#[non_exhaustive]` is one the framework fills in and the application reads: `FrameStats`, `NodeSnapshot`, `RenderStats`, `GestureResponse`, the error types and the like. It can gain a field in any release, and it cannot be built outside its crate.
+- A struct with public fields that implements `Default` is built with `..Default::default()`, or with `..` from another value such as `Theme::dark()`: `Style`, `AppOptions`, the `*Options` structs, `Semantics`, `Stroke`. It can gain a field in any release. A literal that names every field and has no `..` is not covered.
+- Any other struct with public fields, such as `Command`, `MenuItem`, `Tab`, `TreeItem`, `Toast`, `Shadow` or `Gradient`, is a record written out in full. A new field in one is a breaking change and waits for a minor version.
+
 ## Deprecation
 
 Nothing is removed without a release that still has it, marked `#[deprecated]` with the replacement named in the message. A deprecated item keeps working until the next minor version at the earliest, and the release notes say what to write instead.
 
-`0.1.1` deprecates `TextDocument::rope` and `Harness::state_mut`; both go in `0.2`.
+`0.2` removes `TextDocument::rope` and `Harness::state_mut`, which `0.1.1` deprecated: read the text through `TextDocument`'s own methods, and write `Harness::app_mut`.
 
 ## What the compiler already checks
 

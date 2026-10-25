@@ -34,6 +34,7 @@ pub trait Highlighter {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum Severity {
     Hint,
     Info,
@@ -65,6 +66,7 @@ pub struct Diagnostic {
 /// (the desktop host maps Ctrl+F, Ctrl+H, F3, Shift+F3, Ctrl+D,
 /// Ctrl+Alt+Up/Down and Alt+click); apps may send them from menus.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum EditorCommand {
     Find,
     Replace,
@@ -319,6 +321,7 @@ pub enum Granularity {
 
 /// One edit to a text area's document, as a message carries it.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum TextOp {
     Insert(String),
     /// Typing an opening bracket or quote, with its partner (auto-close).
@@ -361,6 +364,7 @@ pub enum TextOp {
 /// What the find bar of a code editor sends when the user changes it. Search
 /// steps and closing the bar travel as `EditorCommand`s.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum FindEdit {
     Query(String),
     Replacement(String),

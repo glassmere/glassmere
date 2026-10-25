@@ -3,6 +3,7 @@ use crate::animation::{Animation, Effect, Transform, Transition};
 use glassmere_scene::{Color, FontFamily, TextStyle, TextWrap};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[non_exhaustive]
 pub enum Length {
     #[default]
     Auto,
@@ -13,6 +14,7 @@ pub enum Length {
 
 /// Cross-axis alignment of children, or of one child through `align_self`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Align {
     #[default]
     Start,
@@ -25,6 +27,7 @@ pub enum Align {
 
 /// Main-axis distribution of children.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Justify {
     #[default]
     Start,
@@ -38,6 +41,7 @@ pub enum Justify {
 
 /// One bound of a grid track.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum TrackSize {
     Px(f32),
     Percent(f32),
@@ -48,6 +52,7 @@ pub enum TrackSize {
 
 /// A grid track template entry.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Track {
     Px(f32),
     Percent(f32),
@@ -648,6 +653,7 @@ impl Style {
 
 /// Concrete text properties after inheritance; what measurement and paint use.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct ResolvedText {
     pub foreground: Color,
     pub font_size: f32,

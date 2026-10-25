@@ -5,6 +5,7 @@ use std::collections::HashSet;
 /// names its row by path, such as `Layout/Width`; the grid's own state (the
 /// filter, a collapsed group) is applied with [`PropertyGridState::apply`].
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum PropertyMsg {
     /// The filter box changed to this text.
     Filter(String),

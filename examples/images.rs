@@ -91,7 +91,7 @@ impl App for Gallery {
             Msg::Exported(DragOutcome::Dropped) => {
                 self.exported = "Dropped outside the window.";
             }
-            Msg::Exported(DragOutcome::Cancelled) => {
+            Msg::Exported(_) => {
                 self.exported = "The drag was cancelled.";
             }
         }

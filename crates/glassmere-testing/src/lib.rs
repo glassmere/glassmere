@@ -403,6 +403,7 @@ impl<S> Harness<S> {
                     t.f
                 ),
                 Primitive::PopLayer => "PopLayer".into(),
+                other => format!("{other:?}"),
             };
             out.push('\n');
             if matches!(
@@ -459,11 +460,6 @@ impl<A: App> Harness<A> {
             driver.invalidate();
         }
         &mut self.state
-    }
-    /// Same as [`app_mut`](Self::app_mut): the next batch declares the view.
-    #[deprecated(note = "use `app_mut`")]
-    pub fn state_mut(&mut self) -> &mut A {
-        self.app_mut()
     }
     fn driver(&mut self) -> Option<&mut AppDriver<A::Message>> {
         self.runner.driver.downcast_mut()

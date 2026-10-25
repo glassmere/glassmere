@@ -17,6 +17,7 @@ const READY: u8 = 2;
 const FAILED: u8 = 3;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct GpuPassTime {
     /// `main` for the target, `layer WIDTHxHEIGHT` for an offscreen layer.
     /// Layer composites are draws inside their parent's pass, not passes.
@@ -27,6 +28,7 @@ pub struct GpuPassTime {
 /// GPU times of the most recent frame whose timestamps have come back, which
 /// is usually two or three frames behind the one being drawn.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct GpuProfile {
     /// `RenderStats::frames` of the frame these times belong to.
     pub frame: u64,
@@ -40,6 +42,7 @@ pub struct GpuProfile {
 /// what is listed; it cannot see driver overhead, alignment or other users of
 /// the device (see `Renderer::driver_memory`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct MemoryStats {
     /// The retained quad and image vertex buffers.
     pub buffers: u64,
@@ -81,6 +84,7 @@ impl MemoryStats {
 /// surface and other user of it, not just this renderer. Only some backends
 /// have one (Vulkan and Direct3D 12 through gpu-allocator).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct DriverMemory {
     /// Bytes in live allocations.
     pub allocated: u64,

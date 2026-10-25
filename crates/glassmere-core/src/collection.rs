@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 /// `Sort`, `filter` on `FiltersApplied`, `set_cell` on `Edit` and
 /// `set_expanded` on `Expand`.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum GridMsg {
     /// Sort the model by a column. Apply it only where `sort` returned true.
     Sort(usize, SortDirection),
@@ -103,6 +104,7 @@ impl ItemOrder {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ModelError {
     Duplicate(ItemId),
     MissingParent(ItemId),
@@ -416,6 +418,7 @@ pub enum SortDirection {
 }
 /// What a cell holds, as its editor sees it.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum CellValue {
     Text(String),
     Number(f64),
@@ -426,6 +429,7 @@ pub enum CellValue {
 
 /// How the cells of a column are edited in place.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum CellEditor {
     Text,
     /// Typed as text; committing parses, clamps and snaps it like a number

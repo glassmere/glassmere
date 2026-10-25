@@ -21,6 +21,7 @@ pub struct CustomWidget {
 /// last painted. Everything here is of the last frame, because that is what
 /// there is to know when this one is being declared.
 #[derive(Clone, Debug, Default, PartialEq)]
+#[non_exhaustive]
 pub struct WidgetInput {
     /// What the node was laid out at, and zero on the frame it appears.
     pub size: Size,

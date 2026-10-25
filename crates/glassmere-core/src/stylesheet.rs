@@ -54,6 +54,7 @@ pub struct StyleSheet {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct StyleSheetError {
     pub line: usize,
     pub message: String,

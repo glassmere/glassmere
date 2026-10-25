@@ -58,6 +58,10 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     CoreRole::SpinButton => Role::SpinButton,
                     CoreRole::Status => Role::Status,
                     CoreRole::Alert => Role::Alert,
+                    other => {
+                        debug_assert!(false, "no AccessKit role for {other:?}");
+                        Role::GenericContainer
+                    }
                 }
             };
             let mut node = Node::new(role);
