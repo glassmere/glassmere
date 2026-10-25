@@ -2,7 +2,7 @@
 //! by character, and where the selection is.
 
 use super::*;
-use crate::{EditorCharacter, EditorLine, EditorPoint, EditorText};
+use crate::{EditorCharacter, EditorLine, EditorPoint, EditorSelection, EditorText};
 use glassmere_scene::{TextCluster, TextGeometry, TextLine};
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
@@ -51,8 +51,9 @@ fn extent(clusters: &[&TextCluster], bytes: &Range<usize>) -> Option<(f32, f32)>
     result
 }
 
-/// Byte offsets where a word starts. Spaces belong to the word before them,
-/// except at the start of the line, where they are a word of their own.
+/// Byte offsets in a paragraph where a word starts. Spaces belong to the word
+/// before them, except at the start of the paragraph, where they are a word of
+/// their own.
 fn word_starts(text: &str) -> Vec<usize> {
     text.split_word_bound_indices()
         .enumerate()
@@ -61,8 +62,8 @@ fn word_starts(text: &str) -> Vec<usize> {
         .collect()
 }
 
-/// The shaped lines of `paragraphs`, which are numbered from `first`.
-/// Positions outside them move to the nearest edge.
+/// The shaped lines of `paragraphs`, which are numbered from `first`. The
+/// selection is left out when an end of it is in another paragraph.
 pub(super) fn build(
     first: usize,
     paragraphs: &[Paragraph],
@@ -93,6 +94,7 @@ pub(super) fn build(
             .filter(|cluster| !cluster.bytes.is_empty())
             .collect();
         clusters.sort_by_key(|cluster| cluster.bytes.start);
+        let words = word_starts(&paragraph.text);
         for (position, line) in shaped.iter().enumerate() {
             let text = paragraph.text.get(line.bytes.clone())?;
             // Length, and where it starts and ends on screen.
@@ -148,7 +150,11 @@ pub(super) fn build(
             lines.push(EditorLine {
                 paragraph: first + index,
                 start: line.bytes.start,
-                word_starts: word_starts(&text),
+                word_starts: words
+                    .iter()
+                    .filter(|start| line.bytes.contains(start))
+                    .map(|start| start - line.bytes.start)
+                    .collect(),
                 text,
                 bounds: Rect {
                     x: paragraph.origin.x + left,
@@ -161,37 +167,30 @@ pub(super) fn build(
             });
         }
     }
-    let clamp = |point: EditorPoint| {
-        if point.paragraph < first {
-            EditorPoint {
-                paragraph: first,
-                byte: 0,
-            }
-        } else if point.paragraph > first + last {
-            EditorPoint {
-                paragraph: first + last,
-                byte: paragraphs[last].text.len(),
-            }
-        } else {
-            EditorPoint {
+    let inside = |point: EditorPoint| {
+        (first..=first + last)
+            .contains(&point.paragraph)
+            .then(|| EditorPoint {
                 byte: point
                     .byte
                     .min(paragraphs[point.paragraph - first].text.len()),
                 ..point
-            }
-        }
+            })
     };
     Some(EditorText {
         lines,
-        anchor: clamp(anchor),
-        focus: clamp(focus),
+        selection: inside(anchor)
+            .zip(inside(focus))
+            .map(|(anchor, focus)| EditorSelection { anchor, focus }),
     })
 }
 
 impl Context {
-    /// The lines of the editor `id` and its selection, when it has been
-    /// shaped as it is declared. A password has none.
-    pub(super) fn editor_text(&self, id: NodeId) -> Option<EditorText> {
+    /// The lines of the editor `id` as assistive technology reads them, and
+    /// its selection, when it has been shaped as it is declared. A password
+    /// has none. This walks every shaped line, so it is asked for by the
+    /// accessibility adapter and not part of a node's snapshot.
+    pub fn editor_text(&self, id: NodeId) -> Option<EditorText> {
         let node = self.nodes.get(&id)?;
         match node.kind {
             Kind::TextInput => {
@@ -236,27 +235,48 @@ impl Context {
                 let Some(editor) = self.nodes.get(&id).and_then(|node| node.editor.as_ref()) else {
                     return false;
                 };
-                if editor.masked || editor.composing() {
+                if editor.masked
+                    || editor.composing()
+                    || anchor.paragraph != 0
+                    || focus.paragraph != 0
+                {
                     return false;
                 }
+                let len = editor.text.len();
                 self.focus_control(id);
                 self.edit(
                     id,
                     TextEdit::Select {
-                        anchor: anchor.byte,
-                        cursor: focus.byte,
+                        anchor: anchor.byte.min(len),
+                        cursor: focus.byte.min(len),
                     },
                 );
                 true
             }
-            Kind::TextArea => {
+            Kind::TextArea | Kind::RichEditor => {
+                // Offsets include text being composed, and an end outside the
+                // declared lines cannot be told from the edge of them.
+                let declared = |point: EditorPoint| {
+                    self.editor_text(id).is_some_and(|text| {
+                        text.lines
+                            .iter()
+                            .any(|line| line.paragraph == point.paragraph)
+                    })
+                };
+                let composing = if kind == Kind::TextArea {
+                    self.area_composing_in(id)
+                } else {
+                    self.rich_composing_in(id)
+                };
+                if composing || !declared(anchor) || !declared(focus) {
+                    return false;
+                }
                 self.focus_control(id);
-                self.area_select(id, anchor, focus);
-                true
-            }
-            Kind::RichEditor => {
-                self.focus_control(id);
-                self.rich_select(id, anchor, focus);
+                if kind == Kind::TextArea {
+                    self.area_select(id, anchor, focus);
+                } else {
+                    self.rich_select(id, anchor, focus);
+                }
                 true
             }
             _ => false,

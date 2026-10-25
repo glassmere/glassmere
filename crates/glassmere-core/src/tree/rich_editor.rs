@@ -933,6 +933,14 @@ impl Context {
         editor_text::build(0, &paragraphs, anchor, focus)
     }
 
+    /// Whether a block holds text being composed.
+    pub(super) fn rich_composing_in(&self, id: NodeId) -> bool {
+        self.nodes
+            .get(&id)
+            .and_then(|node| node.rich_editor.as_ref())
+            .is_some_and(|state| state.preedit.is_some())
+    }
+
     /// Selects from `anchor` to `focus` in blocks and bytes.
     pub(super) fn rich_select(
         &mut self,

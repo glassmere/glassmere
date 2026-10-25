@@ -135,9 +135,10 @@ glassmere-core   field EditorLine::text: String
 glassmere-core   field EditorLine::word_starts: Vec<usize>
 glassmere-core   field EditorPoint::byte: usize
 glassmere-core   field EditorPoint::paragraph: usize
-glassmere-core   field EditorText::anchor: EditorPoint
-glassmere-core   field EditorText::focus: EditorPoint
+glassmere-core   field EditorSelection::anchor: EditorPoint
+glassmere-core   field EditorSelection::focus: EditorPoint
 glassmere-core   field EditorText::lines: Vec<EditorLine>
+glassmere-core   field EditorText::selection: Option<EditorSelection>
 glassmere-core   field Effect::opacity: f32
 glassmere-core   field Effect::transform: Transform
 glassmere-core   field Effect::transition: Transition
@@ -280,7 +281,6 @@ glassmere-core   field NodeSnapshot::clip: Rect
 glassmere-core   field NodeSnapshot::collection: Option<CollectionInfo>
 glassmere-core   field NodeSnapshot::description: Option<String>
 glassmere-core   field NodeSnapshot::drag: Option<crate::DragInfo>
-glassmere-core   field NodeSnapshot::editor_text: Option<EditorText>
 glassmere-core   field NodeSnapshot::expanded: Option<bool>
 glassmere-core   field NodeSnapshot::focused: bool
 glassmere-core   field NodeSnapshot::id: NodeId
@@ -580,6 +580,7 @@ glassmere-core   fn Context::dismiss_toast(&mut self, id: ToastId)
 glassmere-core   fn Context::dock_dragging(&self) -> bool
 glassmere-core   fn Context::dragging(&self) -> Option<&DragPayload>
 glassmere-core   fn Context::editor_focused(&self) -> bool
+glassmere-core   fn Context::editor_text(&self, id: NodeId) -> Option<EditorText>
 glassmere-core   fn Context::event(&mut self, event: Event) -> bool
 glassmere-core   fn Context::export_drag(&mut self) -> Option<DragPayload>
 glassmere-core   fn Context::find(&self, path: &[&str]) -> Option<NodeId>
@@ -1732,6 +1733,7 @@ glassmere-core struct DropTargetBuilder<M = ()> (private fields)
 glassmere-core struct EditorCharacter #[derive(Clone, Copy, Debug, PartialEq)] #[non_exhaustive]
 glassmere-core struct EditorLine #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
 glassmere-core struct EditorPoint #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+glassmere-core struct EditorSelection #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 glassmere-core struct EditorText #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
 glassmere-core struct Effect #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-core struct Effects<'a, M> (private fields)
@@ -1889,6 +1891,7 @@ glassmere-core use EditorCharacter = tree::EditorCharacter
 glassmere-core use EditorCommand = text_area::EditorCommand
 glassmere-core use EditorLine = tree::EditorLine
 glassmere-core use EditorPoint = tree::EditorPoint
+glassmere-core use EditorSelection = tree::EditorSelection
 glassmere-core use EditorText = tree::EditorText
 glassmere-core use Effect = animation::Effect
 glassmere-core use Effects = app::Effects

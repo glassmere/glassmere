@@ -8,9 +8,16 @@ use glassmere_core::{
 use std::ops::Range;
 
 /// Text runs take ids no node of the tree has: the top bit, the editor they
-/// belong to and their number in it.
+/// belong to, the paragraph, the wrapped line of the paragraph and the piece
+/// of the line. They name text, not a place in the list, so a line keeps its
+/// id when others scroll out of the declared window or are inserted around it.
+/// A part that does not fit its bits stops at the largest value, and runs
+/// that then share an id are left out.
 const RUN_ID: u64 = 1 << 63;
-const RUN_BITS: u32 = 24;
+const OWNER_BITS: u32 = 24;
+const PARAGRAPH_BITS: u32 = 22;
+const WRAP_BITS: u32 = 9;
+const PIECE_BITS: u32 = 8;
 
 /// The platform tree indexes the characters and word starts of a run in a
 /// byte, so a longer line is cut into several runs.
@@ -18,41 +25,53 @@ const RUN_CHARACTERS: usize = 255;
 
 /// A stretch of the characters of one line of an editor.
 struct Run {
+    id: NodeId,
     line: usize,
     characters: Range<usize>,
 }
 
-fn runs(text: &EditorText) -> Vec<Run> {
-    let mut runs = Vec::new();
+fn run_id(owner: CoreNodeId, paragraph: usize, wrap: usize, piece: usize) -> NodeId {
+    let part = |value: u64, bits: u32| value.min((1 << bits) - 1);
+    let mut id = part(owner.0, OWNER_BITS);
+    id = id << PARAGRAPH_BITS | part(paragraph as u64, PARAGRAPH_BITS);
+    id = id << WRAP_BITS | part(wrap as u64, WRAP_BITS);
+    id = id << PIECE_BITS | part(piece as u64, PIECE_BITS);
+    NodeId(RUN_ID | id)
+}
+
+fn runs(owner: CoreNodeId, text: &EditorText) -> Vec<Run> {
+    let mut runs: Vec<Run> = Vec::new();
+    let mut wrap = 0;
     for (line, entry) in text.lines.iter().enumerate() {
+        wrap = match line.checked_sub(1).map(|before| &text.lines[before]) {
+            Some(before) if before.paragraph == entry.paragraph => wrap + 1,
+            _ => 0,
+        };
         let count = entry.characters.len();
         let mut from = 0;
+        let mut piece = 0;
         loop {
             let to = (from + RUN_CHARACTERS).min(count);
-            runs.push(Run {
-                line,
-                characters: from..to,
-            });
+            let id = run_id(owner, entry.paragraph, wrap, piece);
+            if runs.last().is_none_or(|last| last.id != id) {
+                runs.push(Run {
+                    id,
+                    line,
+                    characters: from..to,
+                });
+            }
             if to == count {
                 break;
             }
             from = to;
+            piece += 1;
         }
     }
     runs
 }
 
-fn run_id(owner: CoreNodeId, index: usize) -> NodeId {
-    NodeId(RUN_ID | owner.0 << RUN_BITS | index as u64)
-}
-
-/// Where the run nodes of `owner` are, as the platform expects a selection.
-fn text_position(
-    owner: CoreNodeId,
-    text: &EditorText,
-    runs: &[Run],
-    point: EditorPoint,
-) -> Option<TextPosition> {
+/// Where the run nodes are, as the platform expects a selection.
+fn text_position(text: &EditorText, runs: &[Run], point: EditorPoint) -> Option<TextPosition> {
     let of_paragraph = |line: &&glassmere_core::EditorLine| line.paragraph == point.paragraph;
     let line = text
         .lines
@@ -76,33 +95,40 @@ fn text_position(
             && (index < run.characters.end || run.characters.end == count)
     })?;
     Some(TextPosition {
-        node: run_id(owner, run),
+        node: runs[run].id,
         character_index: index - runs[run].characters.start,
     })
 }
 
 /// The place in the editor a position of the platform stands for.
-fn editor_point(
-    owner: CoreNodeId,
-    text: &EditorText,
-    runs: &[Run],
-    position: TextPosition,
-) -> Option<EditorPoint> {
-    let id = position.node.0;
-    if id & RUN_ID == 0 || (id & !RUN_ID) >> RUN_BITS != owner.0 {
-        return None;
-    }
-    let run = runs.get((id & ((1 << RUN_BITS) - 1)) as usize)?;
-    let entry = &text.lines[run.line];
+fn editor_point(text: &EditorText, runs: &[Run], position: TextPosition) -> Option<EditorPoint> {
+    let run = runs.iter().find(|run| run.id == position.node)?;
+    let line = run.line;
+    let entry = &text.lines[line];
     let index = (run.characters.start + position.character_index).min(entry.characters.len());
-    Some(EditorPoint {
-        paragraph: entry.paragraph,
-        byte: entry.start
-            + entry.characters[..index]
-                .iter()
-                .map(|character| character.len)
-                .sum::<usize>(),
-    })
+    let byte: usize = entry.characters[..index]
+        .iter()
+        .map(|character| character.len)
+        .sum();
+    // The line break that ends a paragraph is a character of its last line,
+    // and the place after it is the start of the next paragraph.
+    let last_of_paragraph = text
+        .lines
+        .get(line + 1)
+        .is_none_or(|next| next.paragraph != entry.paragraph);
+    Some(
+        if last_of_paragraph && entry.text.ends_with('\n') && byte == entry.text.len() {
+            EditorPoint {
+                paragraph: entry.paragraph + 1,
+                byte: 0,
+            }
+        } else {
+            EditorPoint {
+                paragraph: entry.paragraph,
+                byte: entry.start + byte,
+            }
+        },
+    )
 }
 
 /// The text run nodes of an editor and the selection in them.
@@ -111,7 +137,7 @@ fn text_runs(
     text: &EditorText,
     scale: f64,
 ) -> (Vec<(NodeId, Node)>, Option<TextSelection>) {
-    let runs = runs(text);
+    let runs = runs(owner, text);
     let nodes = runs
         .iter()
         .enumerate()
@@ -186,19 +212,24 @@ fn text_runs(
                 TextDirection::LeftToRight
             });
             if index > 0 && runs[index - 1].line == run.line {
-                node.set_previous_on_line(run_id(owner, index - 1));
+                node.set_previous_on_line(runs[index - 1].id);
             }
             if runs
                 .get(index + 1)
                 .is_some_and(|next| next.line == run.line)
             {
-                node.set_next_on_line(run_id(owner, index + 1));
+                node.set_next_on_line(runs[index + 1].id);
             }
-            (run_id(owner, index), node)
+            (run.id, node)
         })
         .collect();
-    let selection = text_position(owner, text, &runs, text.anchor)
-        .zip(text_position(owner, text, &runs, text.focus));
+    let selection = text.selection.and_then(|selection| {
+        text_position(text, &runs, selection.anchor).zip(text_position(
+            text,
+            &runs,
+            selection.focus,
+        ))
+    });
     (
         nodes,
         selection.map(|(anchor, focus)| TextSelection { anchor, focus }),
@@ -225,10 +256,9 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
     let nodes = snapshots
         .into_iter()
         .flat_map(|snapshot| {
-            let (runs, selection) = snapshot
-                .editor_text
-                .as_ref()
-                .map(|text| text_runs(snapshot.id, text, scale))
+            let (runs, selection) = context
+                .editor_text(snapshot.id)
+                .map(|text| text_runs(snapshot.id, &text, scale))
                 .unwrap_or_default();
             let role = if snapshot.id == root {
                 Role::Window
@@ -528,13 +558,13 @@ pub(crate) fn action(context: &mut Context, request: ActionRequest, scale: f64) 
             let Some(ActionData::SetTextSelection(selection)) = request.data else {
                 return false;
             };
-            let Some(text) = context.node(target).and_then(|node| node.editor_text) else {
+            let Some(text) = context.editor_text(target) else {
                 return false;
             };
-            let runs = runs(&text);
+            let runs = runs(target, &text);
             let (Some(anchor), Some(focus)) = (
-                editor_point(target, &text, &runs, selection.anchor),
-                editor_point(target, &text, &runs, selection.focus),
+                editor_point(&text, &runs, selection.anchor),
+                editor_point(&text, &runs, selection.focus),
             ) else {
                 return false;
             };
@@ -595,10 +625,12 @@ pub(crate) fn action(context: &mut Context, request: ActionRequest, scale: f64) 
 mod tests {
     use super::*;
     use glassmere_core::{
-        Button, CodeEditorOptions, ItemId, Length, ListModel, ListState, MonospaceMeasurer, Style,
-        TextDocument, TextEdit, TextInput, TreeItem, TreeModel, VirtualListOptions,
+        Button, CodeEditorOptions, EditorPoint, ItemId, Length, ListModel, ListState,
+        MonospaceMeasurer, Style, TextDocument, TextEdit, TextInput, TreeItem, TreeModel,
+        VirtualListOptions,
     };
     use glassmere_scene::Size;
+    use std::{cell::RefCell, rc::Rc};
 
     fn node_in(update: &TreeUpdate, id: NodeId) -> &Node {
         &update.nodes.iter().find(|(key, _)| *key == id).unwrap().1
@@ -871,6 +903,119 @@ mod tests {
         );
     }
 
+    /// A text area of about ten lines, whose operations go to `document`.
+    fn run_long_area(context: &mut Context, document: &Rc<RefCell<TextDocument>>) {
+        // The second run knows how much of the text the area shows.
+        for _ in 0..2 {
+            let target = Rc::clone(document);
+            let document = document.borrow();
+            context.run(
+                Size::new(600.0, 400.0),
+                &mut MonospaceMeasurer,
+                |ui: &mut glassmere_core::Ui<'_>| {
+                    ui.keyed("notes", |ui| {
+                        ui.text_area(
+                            &document,
+                            CodeEditorOptions {
+                                label: "Notes".into(),
+                                style: Style::default()
+                                    .width(Length::Px(400.0))
+                                    .height(Length::Px(200.0)),
+                                ..CodeEditorOptions::default()
+                            },
+                            move |op| target.borrow_mut().apply(op),
+                        )
+                    });
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn a_run_keeps_its_id_while_the_window_of_a_long_text_area_scrolls() {
+        let text: Vec<_> = (0..1000).map(|n| format!("line {n}")).collect();
+        let document = Rc::new(RefCell::new(TextDocument::from_text(&text.join("\n"))));
+        let mut context = Context::new();
+        run_long_area(&mut context, &document);
+        let notes = context.find(&["notes"]).unwrap();
+        let id_of = |context: &Context, value: &str| {
+            let update = tree(context, "Notes", 1.0);
+            let editor = node_in(&update, NodeId(notes.0));
+            runs_in(&update, editor)
+                .into_iter()
+                .find(|(_, run)| run.value() == Some(value))
+                .map(|(id, _)| id)
+        };
+        let before = id_of(&context, "line 20\n").unwrap();
+        assert!(id_of(&context, "line 0\n").is_some());
+
+        context.event(glassmere_core::Event::PointerMoved(
+            glassmere_scene::Point { x: 100.0, y: 100.0 },
+        ));
+        context.event(glassmere_core::Event::Scroll {
+            delta_x: 0.0,
+            delta_y: 14.0 * 1.4 * 10.0,
+        });
+        run_long_area(&mut context, &document);
+        // Lines went out of the window, so the list of runs starts later, but
+        // the line has the id it had.
+        assert!(id_of(&context, "line 0\n").is_none());
+        assert_eq!(id_of(&context, "line 20\n"), Some(before));
+        // Lines with other numbers have other ids.
+        assert_ne!(id_of(&context, "line 21\n"), Some(before));
+    }
+
+    #[test]
+    fn the_place_after_a_paragraph_break_is_the_start_of_the_next_paragraph() {
+        let document = Rc::new(RefCell::new(TextDocument::from_text("ab\ncd")));
+        let mut context = Context::new();
+        run_long_area(&mut context, &document);
+        let notes = context.find(&["notes"]).unwrap();
+        let text = context.editor_text(notes).unwrap();
+        let runs = runs(notes, &text);
+        let at = |run: usize, character_index| TextPosition {
+            node: runs[run].id,
+            character_index,
+        };
+        let point = |paragraph, byte| EditorPoint { paragraph, byte };
+        // "ab" and its break are three characters.
+        assert_eq!(editor_point(&text, &runs, at(0, 2)), Some(point(0, 2)));
+        assert_eq!(editor_point(&text, &runs, at(0, 3)), Some(point(1, 0)));
+        // The last line has no break after it.
+        assert_eq!(editor_point(&text, &runs, at(1, 2)), Some(point(1, 2)));
+        // A run of another editor is not one of this.
+        let other = TextPosition {
+            node: NodeId(RUN_ID | 1),
+            character_index: 0,
+        };
+        assert_eq!(editor_point(&text, &runs, other), None);
+    }
+
+    #[test]
+    fn a_position_past_a_single_line_field_stays_inside_it() {
+        let mut context = Context::new();
+        run_fields(&mut context, "héllo");
+        let field = context.find(&["field"]).unwrap();
+        let text = context.editor_text(field).unwrap();
+        let runs = runs(field, &text);
+        let past = TextPosition {
+            node: runs[0].id,
+            character_index: 40,
+        };
+        let request = ActionRequest {
+            action: Action::SetTextSelection,
+            target_tree: TreeId::ROOT,
+            target_node: NodeId(field.0),
+            data: Some(ActionData::SetTextSelection(TextSelection {
+                anchor: past,
+                focus: past,
+            })),
+        };
+        assert!(action(&mut context, request, 1.0));
+        run_fields(&mut context, "héllo");
+        let selection = context.node(field).unwrap().text_selection.unwrap();
+        assert_eq!((selection.anchor, selection.cursor), (6, 6));
+    }
     #[test]
     fn expanded_state_reaches_combo_boxes_and_tree_rows_with_children() {
         let item = |id, parent: Option<u64>| TreeItem {

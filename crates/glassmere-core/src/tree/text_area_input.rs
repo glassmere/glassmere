@@ -1004,6 +1004,14 @@ impl Context {
         editor_text::build(*first_line, &paragraphs, point(anchor), point(focus))
     }
 
+    /// Whether the area holds text being composed.
+    pub(super) fn area_composing_in(&self, id: NodeId) -> bool {
+        self.nodes
+            .get(&id)
+            .and_then(|node| node.area.as_ref())
+            .is_some_and(|area| area.preedit.is_some())
+    }
+
     /// Selects from `anchor` to `focus` in document lines and bytes.
     pub(super) fn area_select(
         &mut self,

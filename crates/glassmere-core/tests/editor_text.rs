@@ -2,9 +2,9 @@ mod support;
 
 use glassmere_core::app::Action as Message;
 use glassmere_core::{
-    Action, Block, BlockKind, CodeEditorOptions, Context, EditorPoint, Length, MonospaceMeasurer,
-    NodeId, RichDocument, RichEditorOptions, RichOp, RichPosition, Role, Style, TextDocument,
-    TextInput, TextOp, Ui,
+    Action, Block, BlockKind, CodeEditorOptions, Context, EditorPoint, EditorText, Event, Length,
+    MonospaceMeasurer, NodeId, RichDocument, RichEditorOptions, RichOp, RichPosition, Role, Style,
+    TextDocument, TextInput, TextOp, Ui,
 };
 use glassmere_scene::Size;
 use support::{Driven, on};
@@ -24,6 +24,12 @@ fn editor_named(context: &Context, label: &str) -> NodeId {
         stack.extend(node.children.iter().rev());
     }
     panic!("no editor labelled {label}");
+}
+
+/// The ends of the selection of `text`, which must have one.
+fn selection_of(text: &EditorText) -> (EditorPoint, EditorPoint) {
+    let selection = text.selection.unwrap();
+    (selection.anchor, selection.focus)
 }
 
 fn point(paragraph: usize, byte: usize) -> EditorPoint {
@@ -63,7 +69,7 @@ fn a_text_area_reads_its_lines_and_moves_its_caret_for_assistive_technology() {
     let editor = app.context.find(&["editor"]).unwrap();
     let node = app.context.node(editor).unwrap();
     assert_eq!(node.semantics.role, Role::MultilineTextInput);
-    let text = node.editor_text.unwrap();
+    let text = app.context.editor_text(editor).unwrap();
     let lines: Vec<_> = text.lines.iter().map(|line| line.text.as_str()).collect();
     assert_eq!(lines, ["one\n", "twö\n", "three"]);
     assert_eq!(
@@ -94,8 +100,8 @@ fn a_text_area_reads_its_lines_and_moves_its_caret_for_assistive_technology() {
     app.frame();
     app.frame();
     assert_eq!(app.state().document.selected_text(), "wö\nthr");
-    let text = app.context.node(editor).unwrap().editor_text.unwrap();
-    assert_eq!((text.anchor, text.focus), (point(1, 1), point(2, 3)));
+    let text = app.context.editor_text(editor).unwrap();
+    assert_eq!(selection_of(&text), (point(1, 1), point(2, 3)));
 
     // A caret is a selection that starts and ends in the same place.
     assert!(app.context.action(
@@ -107,8 +113,8 @@ fn a_text_area_reads_its_lines_and_moves_its_caret_for_assistive_technology() {
     ));
     app.frame();
     app.frame();
-    let text = app.context.node(editor).unwrap().editor_text.unwrap();
-    assert_eq!((text.anchor, text.focus), (point(0, 2), point(0, 2)));
+    let text = app.context.editor_text(editor).unwrap();
+    assert_eq!(selection_of(&text), (point(0, 2), point(0, 2)));
     assert_eq!(app.state().document.selected_text(), "");
 }
 
@@ -151,7 +157,7 @@ fn a_rich_editor_splits_a_wrapped_block_into_lines_and_selects_across_blocks() {
     let editor = editor_named(&app.context, "Pages");
     let node = app.context.node(editor).unwrap();
     assert_eq!(node.semantics.role, Role::MultilineTextInput);
-    let text = node.editor_text.unwrap();
+    let text = app.context.editor_text(editor).unwrap();
     let wrapped: Vec<_> = text
         .lines
         .iter()
@@ -193,8 +199,8 @@ fn a_rich_editor_splits_a_wrapped_block_into_lines_and_selects_across_blocks() {
             }
         )
     );
-    let text = app.context.node(editor).unwrap().editor_text.unwrap();
-    assert_eq!((text.anchor, text.focus), (point(0, 45), point(1, 2)));
+    let text = app.context.editor_text(editor).unwrap();
+    assert_eq!(selection_of(&text), (point(0, 45), point(1, 2)));
 }
 
 #[test]
@@ -214,7 +220,7 @@ fn a_password_has_no_text_for_assistive_technology_and_a_field_can_be_selected_i
         context.node(secret).unwrap().semantics.role,
         Role::PasswordInput
     );
-    assert!(context.node(secret).unwrap().editor_text.is_none());
+    assert!(context.editor_text(secret).is_none());
     assert!(!context.action(
         secret,
         Action::SetSelection {
@@ -223,11 +229,11 @@ fn a_password_has_no_text_for_assistive_technology_and_a_field_can_be_selected_i
         },
     ));
 
-    let text = context.node(name).unwrap().editor_text.unwrap();
+    let text = context.editor_text(name).unwrap();
     assert_eq!(text.lines.len(), 1);
     assert_eq!(text.lines[0].text, "héllo");
     // The caret starts at the end.
-    assert_eq!((text.anchor, text.focus), (point(0, 6), point(0, 6)));
+    assert_eq!(selection_of(&text), (point(0, 6), point(0, 6)));
     assert!(context.action(
         name,
         Action::SetSelection {
@@ -239,6 +245,219 @@ fn a_password_has_no_text_for_assistive_technology_and_a_field_can_be_selected_i
     let node = context.node(name).unwrap();
     let selection = node.text_selection.unwrap();
     assert_eq!((selection.anchor, selection.cursor), (1, 3));
-    let text = node.editor_text.unwrap();
-    assert_eq!((text.anchor, text.focus), (point(0, 1), point(0, 3)));
+    let text = context.editor_text(name).unwrap();
+    assert_eq!(selection_of(&text), (point(0, 1), point(0, 3)));
+}
+
+/// A document of `count` lines in an editor of ten lines.
+fn long_notes(count: usize) -> Driven<Notes> {
+    let text: Vec<_> = (0..count).map(|n| format!("line {n}")).collect();
+    Driven::new(
+        ROOT,
+        Notes {
+            document: TextDocument::from_text(&text.join("\n")),
+        },
+        notes,
+    )
+}
+
+#[test]
+fn a_selection_end_outside_the_declared_lines_is_not_reported_or_accepted() {
+    let mut app = long_notes(1000);
+    app.frame();
+    let editor = app.context.find(&["editor"]).unwrap();
+    let text = app.context.editor_text(editor).unwrap();
+    assert_eq!(selection_of(&text), (point(0, 0), point(0, 0)));
+
+    app.context
+        .event(Event::PointerMoved(glassmere_scene::Point {
+            x: 100.0,
+            y: 100.0,
+        }));
+    app.context.event(Event::Scroll {
+        delta_x: 0.0,
+        delta_y: 20.0 * 100.0,
+    });
+    app.frame();
+    let text = app.context.editor_text(editor).unwrap();
+    let first = text.lines[0].paragraph;
+    assert!(first > 10, "{first}");
+    // The caret is still on the first line, which is not declared: the lines
+    // are reported without a selection instead of one at the window's edge.
+    assert_eq!(text.selection, None);
+    assert!(!app.context.action(
+        editor,
+        Action::SetSelection {
+            anchor: point(0, 0),
+            focus: point(first, 2),
+        },
+    ));
+    assert_eq!(app.state().document.selected_text(), "");
+
+    assert!(app.context.action(
+        editor,
+        Action::SetSelection {
+            anchor: point(first, 1),
+            focus: point(first + 1, 2),
+        },
+    ));
+    app.frame();
+    app.frame();
+    assert_eq!(
+        app.state().document.selected_text(),
+        format!("ine {first}\nli")
+    );
+}
+
+#[test]
+fn a_selection_cannot_be_set_while_text_is_being_composed() {
+    let mut app = long_notes(3);
+    app.frame();
+    let editor = app.context.find(&["editor"]).unwrap();
+    assert!(app.context.action(editor, Action::Focus));
+    app.context
+        .event(Event::Text(glassmere_core::TextEdit::Preedit {
+            text: "にほ".into(),
+            selection: None,
+        }));
+    app.frame();
+    assert!(app.context.composing_text());
+    assert!(!app.context.action(
+        editor,
+        Action::SetSelection {
+            anchor: point(1, 0),
+            focus: point(1, 2),
+        },
+    ));
+
+    let mut app = Driven::new(
+        ROOT,
+        Pages {
+            document: RichDocument::from_blocks(vec![
+                Block::new(BlockKind::Paragraph, "first"),
+                Block::new(BlockKind::Paragraph, "second"),
+            ]),
+        },
+        pages,
+    );
+    app.frame();
+    let editor = editor_named(&app.context, "Pages");
+    assert!(app.context.action(editor, Action::Focus));
+    app.context
+        .event(Event::Text(glassmere_core::TextEdit::Preedit {
+            text: "にほ".into(),
+            selection: None,
+        }));
+    app.frame();
+    assert!(app.context.composing_text());
+    assert!(!app.context.action(
+        editor,
+        Action::SetSelection {
+            anchor: point(1, 0),
+            focus: point(1, 2),
+        },
+    ));
+}
+
+#[test]
+fn the_start_of_a_wrapped_line_in_the_middle_of_a_word_is_not_a_word_start() {
+    let mut app = Driven::new(
+        ROOT,
+        Pages {
+            document: RichDocument::from_blocks(vec![Block::new(
+                BlockKind::Paragraph,
+                &"x".repeat(100),
+            )]),
+        },
+        pages,
+    );
+    app.frame();
+    let editor = editor_named(&app.context, "Pages");
+    let text = app.context.editor_text(editor).unwrap();
+    assert!(text.lines.len() >= 3, "{} lines", text.lines.len());
+    assert_eq!(text.lines[0].word_starts, [0]);
+    assert!(
+        text.lines[1..]
+            .iter()
+            .all(|line| line.word_starts.is_empty())
+    );
+
+    // Where a line starts in the middle of a word, only the words after the
+    // rest of it start; the others are as in the whole block.
+    let mut app = Driven::new(
+        ROOT,
+        Pages {
+            document: RichDocument::from_blocks(vec![Block::new(
+                BlockKind::Paragraph,
+                &"word ".repeat(20),
+            )]),
+        },
+        pages,
+    );
+    app.frame();
+    let editor = editor_named(&app.context, "Pages");
+    let text = app.context.editor_text(editor).unwrap();
+    let starts = |line: &glassmere_core::EditorLine| -> Vec<usize> {
+        line.word_starts
+            .iter()
+            .map(|start| start + line.start)
+            .collect()
+    };
+    assert_eq!(text.lines[0].word_starts[0], 0);
+    for line in &text.lines {
+        // A word start in the block is a multiple of five.
+        assert!(starts(line).iter().all(|start| start % 5 == 0), "{line:?}");
+    }
+    // The second line starts with the space that ends a word, then a word.
+    assert_eq!(text.lines[1].word_starts[0], 1);
+}
+
+#[test]
+fn an_empty_document_and_an_empty_line_are_lines_of_their_own() {
+    let mut app = Driven::new(
+        ROOT,
+        Notes {
+            document: TextDocument::from_text(""),
+        },
+        notes,
+    );
+    app.frame();
+    let editor = app.context.find(&["editor"]).unwrap();
+    let text = app.context.editor_text(editor).unwrap();
+    assert_eq!(text.lines.len(), 1);
+    assert_eq!(text.lines[0].text, "");
+    assert!(text.lines[0].characters.is_empty());
+    assert_eq!(selection_of(&text), (point(0, 0), point(0, 0)));
+
+    let mut app = Driven::new(
+        ROOT,
+        Notes {
+            document: TextDocument::from_text("a\n\nb"),
+        },
+        notes,
+    );
+    app.frame();
+    let text = app.context.editor_text(editor).unwrap();
+    let lines: Vec<_> = text.lines.iter().map(|line| line.text.as_str()).collect();
+    assert_eq!(lines, ["a\n", "\n", "b"]);
+    assert_eq!(text.lines[1].characters.len(), 1);
+}
+
+#[test]
+fn a_grapheme_longer_than_a_length_can_say_is_split_into_characters() {
+    let mut context = Context::new();
+    // One cluster of 401 bytes.
+    let long = format!("e{}!", "\u{301}".repeat(200));
+    let view = |ui: &mut Ui<'_>| {
+        ui.keyed("name", |ui| ui.text_input("Name", &long, |_| ()));
+    };
+    context.run(ROOT, &mut MonospaceMeasurer, view);
+    context.run(ROOT, &mut MonospaceMeasurer, view);
+    let name = context.find(&["name"]).unwrap();
+    let text = context.editor_text(name).unwrap();
+    let lengths: Vec<usize> = text.lines[0].characters.iter().map(|c| c.len).collect();
+    assert!(lengths.iter().all(|&len| (1..=255).contains(&len)));
+    assert_eq!(lengths.iter().sum::<usize>(), long.len());
+    assert!(lengths.len() >= 3);
+    assert_eq!(*lengths.last().unwrap(), 1);
 }

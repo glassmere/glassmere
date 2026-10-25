@@ -141,7 +141,6 @@ impl Context {
                     node.children.iter().find(|id| matches!(self.nodes[id].control, Control::CollectionRow { item, .. } if item == selected)).copied()
                 } else { None }),
             text_selection: node.editor.as_ref().map(|editor| editor.selection),
-            editor_text: self.editor_text(id),
             is_popup: matches!(node.kind, Kind::Popup | Kind::Popover),
             modal: matches!(node.control, Control::Dialog { modal: true, .. }),
             description: node.tooltip.clone(),

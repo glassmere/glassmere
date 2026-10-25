@@ -96,9 +96,6 @@ pub struct NodeSnapshot {
     pub expanded: Option<bool>,
     pub active_descendant: Option<NodeId>,
     pub text_selection: Option<TextSelection>,
-    /// What assistive technology reads of an editor, line by line. A password
-    /// field has none.
-    pub editor_text: Option<EditorText>,
     pub is_popup: bool,
     /// A modal dialog layer; assistive technology treats it as modal.
     pub modal: bool,
@@ -126,6 +123,13 @@ pub struct EditorPoint {
 #[non_exhaustive]
 pub struct EditorText {
     pub lines: Vec<EditorLine>,
+    /// Absent when an end of the selection is in a line that is not declared.
+    pub selection: Option<EditorSelection>,
+}
+
+/// The ends of a selection; a caret has both in one place.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EditorSelection {
     pub anchor: EditorPoint,
     pub focus: EditorPoint,
 }
