@@ -2,7 +2,7 @@
 
 ## Fields
 
-`Ui::text_input(label, &value, |text| Msg::Name(text))` is a single-line field. The application owns the string; the field keeps the caret, selection, IME composition and a bounded undo history. `Ui::number_input(label, value, NumberOptions, |n| ..)` commits a parsed `f64` on Enter, on leaving the field, on a stepper click and on Up and Down. `NumberOptions` has `range`, `step`, `decimals` and `suffix`; Escape does not revert a draft. Values beyond 2^53 lose precision. There is no password field.
+`Ui::text_input(label, &value, |text| Msg::Name(text))` is a single-line field. The application owns the string; the field keeps the caret, selection, IME composition and a bounded undo history. `Ui::number_input(label, value, NumberOptions, |n| ..)` commits a parsed `f64` on Enter, on leaving the field, on a stepper click and on Up and Down. `NumberOptions` has `range`, `step`, `decimals` and `suffix`; Escape does not revert a draft. Values beyond 2^53 lose precision. `.password()` on a text input shows bullets instead of the text and turns off copy and cut; see [limitations](limitations.md#text) for what it lacks.
 
 `Autocomplete` and `suggest` back a field with a list of candidates; `ComboBox` and `Ui::menu` take indices rather than values.
 
