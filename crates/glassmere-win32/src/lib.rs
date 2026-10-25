@@ -19,8 +19,9 @@ use windows_sys::Win32::{
     UI::{
         Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
         WindowsAndMessaging::{
-            HTMAXBUTTON, SPI_GETCLIENTAREAANIMATION, SystemParametersInfoW, WM_NCHITTEST,
-            WM_NCMOUSELEAVE, WM_NCMOUSEMOVE,
+            HTMAXBUTTON, IsZoomed, SC_MAXIMIZE, SC_RESTORE, SPI_GETCLIENTAREAANIMATION,
+            SendMessageW, SystemParametersInfoW, WM_NCHITTEST, WM_NCLBUTTONDBLCLK,
+            WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_SYSCOMMAND,
         },
     },
 };
@@ -28,8 +29,8 @@ use windows_sys::Win32::{
 /// What the window procedure saw over the maximize button. The framework
 /// does not hear of it otherwise: while the button is part of the caption as
 /// far as Windows is concerned, no ordinary mouse message arrives there.
-/// Pressing it is left to Windows, which maximizes the window itself, and
-/// offers its layouts while the pointer rests there.
+/// Pressing it maximizes or restores the window as the system's button would,
+/// and Windows offers its layouts while the pointer rests there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CaptionEvent {
     /// The pointer is over the button, at this point in client pixels.
@@ -192,6 +193,22 @@ unsafe extern "system" fn caption(
             // Forwarded, because this is the message Windows itself watches
             // to decide when to offer its window layouts.
             forward()
+        }
+        // Windows does not press the caption button of a window without its
+        // own caption, so the press is kept from it and released here.
+        WM_NCLBUTTONDOWN | WM_NCLBUTTONDBLCLK if wparam == HTMAXBUTTON as WPARAM => 0,
+        WM_NCLBUTTONUP if wparam == HTMAXBUTTON as WPARAM => {
+            // SAFETY: `window` is this window, and the command is one the
+            // system menu sends it.
+            unsafe {
+                let command = if IsZoomed(window) != 0 {
+                    SC_RESTORE
+                } else {
+                    SC_MAXIMIZE
+                };
+                SendMessageW(window, WM_SYSCOMMAND, command as WPARAM, 0);
+            }
+            0
         }
         WM_NCMOUSELEAVE => {
             shared.saw(CaptionEvent::Left);

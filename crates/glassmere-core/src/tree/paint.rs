@@ -282,7 +282,7 @@ impl Context {
         // bounds the node's own painting.
         paint_shadow(node, radius, false, &mut scene);
         scene.primitives.push(Primitive::PushClip(node.bounds));
-        let focused = self.focused == Some(id);
+        let focused = self.focused == Some(id) && self.quiet_focus != Some(id);
         self.paint_fill(node, focused, background, radius, &mut scene);
         self.paint_background_image(node, &mut scene, foreground, radius);
         if node.kind == Kind::RichText {

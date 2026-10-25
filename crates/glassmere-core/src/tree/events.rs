@@ -331,6 +331,7 @@ impl Context {
             Event::PointerDown | Event::PointerDownWithShift => {
                 self.captured = self.hovered;
                 self.focused = self.hovered.filter(|id| self.nodes[id].focusable());
+                self.quiet_focus = self.focused.filter(|&id| self.in_title_bar(id));
                 self.keyboard_pressed = None;
                 self.press_window_frame();
             }

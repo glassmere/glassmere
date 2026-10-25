@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - On Windows, the maximize button of a title bar the view draws offers the snap layouts from the first hover. Before, the window told Windows where the button was only once the view had been declared a second time, so a fresh window offered none until it was clicked or activated.
 - On Windows, the cursor no longer flickers between the arrow and the hand over that maximize button.
+- On Windows, a click on that maximize button maximizes or restores the window. Once Windows treated it as its own caption button, it took the click and did nothing.
+- A press in a title bar takes focus without drawing a focus ring, as the system's caption shows none; moving focus by keyboard shows it again.
 - `Ui::window_buttons` sits the three buttons side by side with no gap, as the system's are, and the title bar example reaches the window's top and right edges.
 - The yanked `clipboard-win` 5.4.1 in `Cargo.lock` is replaced with 5.4.3.
 

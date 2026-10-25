@@ -429,6 +429,9 @@ pub struct Context {
     /// rectangle, because it is found when the tree is reconciled and only
     /// laid out after.
     maximize_button: Option<NodeId>,
+    /// Focus a press in a title bar gave, which draws no ring: the system's
+    /// caption shows none. Moving focus by keyboard shows it again.
+    quiet_focus: Option<NodeId>,
     /// What the overlays painted straight into the last scene. They are not
     /// nodes, so nothing invalidates them: the frame one appears, moves or
     /// goes has to name its rectangle itself.
@@ -622,6 +625,7 @@ impl Default for Context {
             size: Size::default(),
             last_title_press: None,
             maximize_button: None,
+            quiet_focus: None,
             painted_overlays: Vec::new(),
             redraw_requested: false,
             caret_movement: crate::CaretMovement::Visual,
@@ -924,6 +928,21 @@ impl Context {
         self.nodes
             .get(&self.maximize_button?)
             .map(|node| node.bounds)
+    }
+
+    /// Whether a node is a title bar or inside one.
+    fn in_title_bar(&self, id: NodeId) -> bool {
+        let mut at = Some(id);
+        while let Some(id) = at {
+            let Some(node) = self.nodes.get(&id) else {
+                return false;
+            };
+            if node.control == Control::TitleBar {
+                return true;
+            }
+            at = node.parent;
+        }
+        false
     }
 
     /// The logical size the window was last declared at.
