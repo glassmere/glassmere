@@ -3,7 +3,7 @@ use glassmere_core::{
     Action, App, AppDriver, Context, Event, FrameStats, Key, MonospaceMeasurer, NodeId,
     NodeSnapshot, TextEdit,
 };
-use glassmere_scene::{Color, Point, Primitive, Rect, Size};
+use glassmere_scene::{Brush, Cap, Color, FillRule, Join, Point, Primitive, Rect, Size};
 use std::{any::Any, path::Path};
 
 /// Erases the app's message type, so `Harness<S>` needs no bound on `S`.
@@ -330,11 +330,38 @@ impl<S> Harness<S> {
                     "Path {} segments={}{}{}",
                     rect(path.bounds()),
                     path.segments().len(),
-                    fill.map_or_else(String::new, |fill| format!(" fill={}", hex(fill))),
-                    stroke.map_or_else(String::new, |stroke| format!(
-                        " stroke={:.1} {}",
+                    fill.as_ref().map_or_else(String::new, |fill| format!(
+                        " fill={}{}",
+                        match &fill.brush {
+                            Brush::Solid(color) => hex(*color),
+                            Brush::Linear { .. } => "linear".to_string(),
+                            Brush::Radial { .. } => "radial".to_string(),
+                            _ => "unknown".to_string(),
+                        },
+                        if fill.rule == FillRule::EvenOdd {
+                            " even-odd"
+                        } else {
+                            ""
+                        }
+                    )),
+                    stroke.as_ref().map_or_else(String::new, |stroke| format!(
+                        " stroke={:.1} {}{}{}{}",
                         stroke.width,
-                        hex(stroke.color)
+                        hex(stroke.color),
+                        if stroke.join == Join::Miter {
+                            String::new()
+                        } else {
+                            format!(" join={:?}", stroke.join)
+                        },
+                        if stroke.cap == Cap::Butt {
+                            String::new()
+                        } else {
+                            format!(" cap={:?}", stroke.cap)
+                        },
+                        stroke
+                            .dash
+                            .as_ref()
+                            .map_or_else(String::new, |dash| format!(" dash={:?}", dash.lengths))
                     ))
                 ),
                 Primitive::Text {

@@ -2,7 +2,9 @@
 // arrive in linear light, so mixing them here is linear too. The ramp's ends
 // are in the rectangle's own units, where (1, 1) is its bottom right corner,
 // and a radial ramp measures distance in those units: it is an ellipse in a
-// rectangle that is not square.
+// rectangle that is not square. A path is triangles over its bounds, which
+// are the rectangle, with the coverage of each corner in place of the
+// rounded box.
 struct VertexInput {
     @location(0) position: vec2<f32>,
     // Position inside the rectangle, then its size, in logical pixels.
@@ -12,8 +14,9 @@ struct VertexInput {
     // Where the stops sit along the ramp. Slots past the last stop repeat it.
     @location(3) offsets_low: vec4<f32>,
     @location(4) offsets_high: vec4<f32>,
-    // Corner radius, and 1 for a radial ramp.
-    @location(5) shape: vec2<f32>,
+    // Corner radius, 1 for a radial ramp, then 1 where the shape is a path and
+    // its coverage is in the last component.
+    @location(5) shape: vec4<f32>,
     @location(6) color0: vec4<f32>,
     @location(7) color1: vec4<f32>,
     @location(8) color2: vec4<f32>,
@@ -30,7 +33,7 @@ struct VertexOutput {
     @location(1) ends: vec4<f32>,
     @location(2) offsets_low: vec4<f32>,
     @location(3) offsets_high: vec4<f32>,
-    @location(4) shape: vec2<f32>,
+    @location(4) shape: vec4<f32>,
     @location(5) color0: vec4<f32>,
     @location(6) color1: vec4<f32>,
     @location(7) color2: vec4<f32>,
@@ -69,14 +72,22 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let radius = min(max(input.shape.x, 0.0), min(size.x, size.y) * 0.5);
     let q = abs(local - size * 0.5) - size * 0.5 + vec2<f32>(radius);
     let distance = length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) - radius;
-    let coverage = 1.0 - smoothstep(-fwidth(distance), fwidth(distance), distance);
+    var coverage = 1.0 - smoothstep(-fwidth(distance), fwidth(distance), distance);
+    if input.shape.z > 0.5 {
+        coverage = input.shape.w;
+    }
 
     let unit = local / size;
     let origin = input.ends.xy;
     let axis = input.ends.zw - origin;
-    var at = dot(unit - origin, axis) / max(dot(axis, axis), 1e-12);
-    if input.shape.y > 0.5 {
-        at = length(unit - origin) / max(length(axis), 1e-6);
+    // A ramp with no length is all its last colour.
+    var at = 1.0;
+    if dot(axis, axis) > 1.1920929e-7 {
+        if input.shape.y > 0.5 {
+            at = length(unit - origin) / length(axis);
+        } else {
+            at = dot(unit - origin, axis) / dot(axis, axis);
+        }
     }
     var offsets = array<f32, 8>(
         input.offsets_low.x,

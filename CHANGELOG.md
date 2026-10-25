@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Path styles, drawn the same way by the CPU and GPU renderers:
+  - Stroke joins (`Join`: miter with `miter_limit`, round, bevel) and caps (`Cap`: butt, round, square).
+  - Dashes with an offset (`Dash`). A pattern that would cut a path into more than `Dash::MAX_COUNT` dashes draws solid.
+  - The even-odd fill rule (`FillRule`).
+  - Linear and radial gradient fills (`Brush`), placed relative to the path's bounds.
+  - See `examples/paths.rs`.
+
 - Screen readers can read and move through editor text. Text fields, text areas, the code editor and the rich editor publish one text run per visual line, with character extents and word starts, and they publish the caret and the selection.
   - The platform can move the caret or set the selection, as `Action::SetSelection` in core.
   - `Context::editor_text` returns what is published.
@@ -24,6 +31,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- `Stroke` is no longer `Copy`, because its dash pattern is a `Vec`. `Primitive::Path`'s `fill` is an `Option<Fill>`, which holds a brush and a fill rule; `Some(color.into())` gives a solid fill.
+- A gradient whose start and end are the same point paints its last stop on the GPU as well as on the CPU. The GPU used to paint the first stop.
 - A `GridArea` line of 0 leaves that axis to auto-flow. It used to mean line 1.
 - Text areas, the code editor and the rich editor report `Role::MultilineTextInput` instead of `Role::TextInput`.
 - wgpu 30. It is part of the public API through `AppOptions::gpu`, `CustomDraw` and the renderer, so an application that draws with wgpu itself needs wgpu 30 too.

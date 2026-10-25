@@ -74,6 +74,10 @@ name = "panes"
 path = "panes.rs"
 
 [[example]]
+name = "paths"
+path = "paths.rs"
+
+[[example]]
 name = "platform"
 path = "platform.rs"
 required-features = ["platform"]

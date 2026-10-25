@@ -17,6 +17,7 @@ Primitives are drawn in order. They are:
 | --- | --- |
 | `Quad` | A rounded rectangle in one colour. `radius` of half the shorter side is a circle. |
 | `Gradient` | A rounded rectangle filled with a ramp, linear or radial, in the rectangle's own units. At most eight stops. |
+| `Path` | Lines and curves, filled by the non-zero or even-odd rule with a colour or a linear or radial ramp laid over the path's bounds, and stroked with a width, joins, caps and a dash pattern. The outline is drawn over the fill. |
 | `Shadow` | A blurred rounded rectangle, outside the shape or inset. `blur` is a Gaussian standard deviation in logical pixels. |
 | `Text`, `StyledText`, `RichText` | A block of text to shape and draw. The measurer the framework used is the one to shape with, or the geometry will not match the layout. |
 | `Image` | A part of an image into a rectangle, with an optional tint and rounded corners. |
