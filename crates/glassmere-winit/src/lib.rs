@@ -1191,19 +1191,20 @@ impl Application {
         caption.set_minimize(pixels(self.context.minimize_button()));
         caption.set_maximize(pixels(self.context.maximize_button()));
         caption.set_close(pixels(self.context.close_button()));
-        let seen = caption.take();
+        let seen = caption.take_input();
         for event in seen {
             match event {
-                glassmere_win32::CaptionEvent::Hover(x, y) => self.caption_pointer(x, y, scale),
-                glassmere_win32::CaptionEvent::Left => self.input(Event::PointerLeft),
-                glassmere_win32::CaptionEvent::Down(x, y) => {
+                glassmere_win32::CaptionInput::Hover(x, y) => self.caption_pointer(x, y, scale),
+                glassmere_win32::CaptionInput::Left => self.input(Event::PointerLeft),
+                glassmere_win32::CaptionInput::Down(x, y) => {
                     self.caption_pointer(x, y, scale);
                     self.input(Event::PointerDown);
                 }
-                glassmere_win32::CaptionEvent::Up(x, y) => {
+                glassmere_win32::CaptionInput::Up(x, y) => {
                     self.caption_pointer(x, y, scale);
                     self.input(Event::PointerUp);
                 }
+                _ => {}
             }
             self.request_redraw();
         }

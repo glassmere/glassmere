@@ -33,6 +33,15 @@ use windows_sys::Win32::{
     },
 };
 
+/// Where the pointer went over the caption buttons: [`CaptionInput`] without
+/// the presses, as [`Caption::take`] reports it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CaptionEvent {
+    /// The pointer is over a button, at this point in client pixels.
+    Hover(i32, i32),
+    Left,
+}
+
 /// What the window procedure saw over the caption buttons. The framework
 /// does not hear of it otherwise: while the buttons are part of the caption
 /// as far as Windows is concerned, no ordinary mouse message arrives there.
@@ -40,7 +49,8 @@ use windows_sys::Win32::{
 /// button, but does not press the buttons of a window without its own
 /// caption, so presses are handed on for the framework's buttons to act on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CaptionEvent {
+#[non_exhaustive]
+pub enum CaptionInput {
     /// The pointer is over a button, at this point in client pixels.
     Hover(i32, i32),
     Left,
@@ -59,7 +69,7 @@ const HITS: [u32; 3] = [HTMINBUTTON, HTMAXBUTTON, HTCLOSE];
 struct Shared {
     /// Minimize, maximize and close.
     buttons: Mutex<[Option<Button>; 3]>,
-    seen: Mutex<Vec<CaptionEvent>>,
+    seen: Mutex<Vec<CaptionInput>>,
 }
 
 impl Shared {
@@ -81,7 +91,7 @@ impl Shared {
         }
     }
 
-    fn saw(&self, event: CaptionEvent) {
+    fn saw(&self, event: CaptionInput) {
         if let Ok(mut seen) = self.seen.lock() {
             seen.push(event);
         }
@@ -170,8 +180,20 @@ impl Caption {
         self.shared.set(2, button);
     }
 
-    /// What the window procedure saw since the last call.
+    /// Where the pointer went since the last call, leaving out presses.
     pub fn take(&self) -> Vec<CaptionEvent> {
+        self.take_input()
+            .into_iter()
+            .filter_map(|input| match input {
+                CaptionInput::Hover(x, y) => Some(CaptionEvent::Hover(x, y)),
+                CaptionInput::Left => Some(CaptionEvent::Left),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// What the window procedure saw since the last call, in order.
+    pub fn take_input(&self) -> Vec<CaptionInput> {
         self.shared
             .seen
             .lock()
@@ -224,7 +246,7 @@ unsafe extern "system" fn caption(
         }
         WM_NCMOUSEMOVE if is_button(wparam) => {
             if let Some((x, y)) = client_point(window, lparam) {
-                shared.saw(CaptionEvent::Hover(x, y));
+                shared.saw(CaptionInput::Hover(x, y));
             }
             // Forwarded, because this is the message Windows itself watches
             // to decide when to offer its window layouts.
@@ -234,18 +256,18 @@ unsafe extern "system" fn caption(
         // caption button the window does not have.
         WM_NCLBUTTONDOWN | WM_NCLBUTTONDBLCLK if is_button(wparam) => {
             if let Some((x, y)) = client_point(window, lparam) {
-                shared.saw(CaptionEvent::Down(x, y));
+                shared.saw(CaptionInput::Down(x, y));
             }
             0
         }
         WM_NCLBUTTONUP if is_button(wparam) => {
             if let Some((x, y)) = client_point(window, lparam) {
-                shared.saw(CaptionEvent::Up(x, y));
+                shared.saw(CaptionInput::Up(x, y));
             }
             0
         }
         WM_NCMOUSELEAVE => {
-            shared.saw(CaptionEvent::Left);
+            shared.saw(CaptionInput::Left);
             forward()
         }
         _ => forward(),

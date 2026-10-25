@@ -2605,12 +2605,16 @@ glassmere-win32   fn Caption::set_close(&self, button: Option<(i32, i32, i32, i3
 glassmere-win32   fn Caption::set_maximize(&self, button: Option<(i32, i32, i32, i32)>)
 glassmere-win32   fn Caption::set_minimize(&self, button: Option<(i32, i32, i32, i32)>)
 glassmere-win32   fn Caption::take(&self) -> Vec<CaptionEvent>
+glassmere-win32   fn Caption::take_input(&self) -> Vec<CaptionInput>
 glassmere-win32   fn MenuBar::set_dark(&mut self, dark: bool) #[cfg(feature = "menu")]
-glassmere-win32   variant CaptionEvent::Down(i32, i32)
 glassmere-win32   variant CaptionEvent::Hover(i32, i32)
 glassmere-win32   variant CaptionEvent::Left
-glassmere-win32   variant CaptionEvent::Up(i32, i32)
+glassmere-win32   variant CaptionInput::Down(i32, i32)
+glassmere-win32   variant CaptionInput::Hover(i32, i32)
+glassmere-win32   variant CaptionInput::Left
+glassmere-win32   variant CaptionInput::Up(i32, i32)
 glassmere-win32 enum CaptionEvent #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+glassmere-win32 enum CaptionInput #[derive(Clone, Copy, Debug, Eq, PartialEq)] #[non_exhaustive]
 glassmere-win32 fn animations_disabled() -> Option<bool>
 glassmere-win32 fn attach(window: isize) -> Option<Caption>
 glassmere-win32 fn attach_menu(window: isize, menu: Menu, dark: bool) -> Option<MenuBar> #[cfg(feature = "menu")]
