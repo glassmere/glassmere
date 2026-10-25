@@ -23,7 +23,10 @@
 //! align-items, align-self, justify-self (`start`, `center`, `end`, `stretch`,
 //! `baseline`), justify-content (also `space-between`, `space-around`,
 //! `space-evenly`), columns, rows, auto-columns, auto-rows (`120 50% 1fr auto
-//! minmax(100, 1fr) repeat(3, 1fr)`), area (`column row [colspan rowspan]`),
+//! minmax(100, 1fr) repeat(3, 1fr) repeat(auto-fill, minmax(120, 1fr))`),
+//! row-gap, column-gap (`gap` sets both), auto-flow (`row`, `column`, `row
+//! dense`, `column dense`), areas (`"header header" "nav main"`, `.` for an
+//! empty cell), area (`column row [colspan rowspan]`, `auto` for a line left to auto-flow, or the name of an area),
 //! background, foreground (`#rrggbb` or `#rrggbbaa`), background-image
 //! (`url(panel.png)`, relative to the sheet's file once the host has called
 //! `rebase`, or `none`), background-fit (`cover`, `contain`, `fill`, `none`),
@@ -39,7 +42,8 @@
 //! `focused.`/`disabled.` prefixed background, foreground, radius, opacity,
 //! translate, scale and rotate. One property per line or `;`-separated.
 use crate::animation::{Easing, Effect, Transform, Transition};
-use crate::{Align, GridArea, Justify, Length, Paint, Style, Theme, Track, TrackSize};
+use crate::style::template_areas;
+use crate::{Align, AutoFlow, GridArea, Justify, Length, Paint, Style, Theme, Track, TrackSize};
 use glassmere_scene::{Color, FontFamily, TextWrap};
 use std::collections::HashMap;
 use std::time::Duration;
@@ -274,12 +278,45 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         "rows" => style.rows = tracks(value)?,
         "auto-columns" => style.auto_columns = tracks(value)?,
         "auto-rows" => style.auto_rows = tracks(value)?,
+        "auto-flow" => {
+            let words = value.split_whitespace().collect::<Vec<_>>().join(" ");
+            style.auto_flow = match words.as_str() {
+                "row" => AutoFlow::Row,
+                "column" => AutoFlow::Column,
+                "row dense" | "dense row" => AutoFlow::RowDense,
+                "column dense" | "dense column" => AutoFlow::ColumnDense,
+                "dense" => AutoFlow::RowDense,
+                _ => {
+                    return Err(format!(
+                        "auto-flow is `row`, `column`, `row dense` or `column dense`, got `{value}`"
+                    ));
+                }
+            };
+        }
+        // `areas: "header header" "nav main"`, one quoted string per row.
+        "areas" => {
+            let rows = quoted_rows(value)?;
+            template_areas(&rows)?;
+            style.areas = rows;
+        }
+        // A name picks one of the parent's `areas`; numbers place by line.
+        "area"
+            if value.split_whitespace().count() == 1
+                && value.starts_with(char::is_alphabetic)
+                && value != "auto" =>
+        {
+            style.area = None;
+            style.area_name = Some(value.to_owned());
+        }
         "area" => {
+            style.area_name = None;
             let numbers: Vec<u16> = value
                 .split_whitespace()
-                .map(|part| {
-                    part.parse::<u16>()
-                        .map_err(|_| format!("invalid area `{value}`"))
+                .map(|part| match part {
+                    "auto" => Ok(0),
+                    part => part
+                        .parse::<u16>()
+                        .map_err(|_| format!("invalid area `{value}`")),
                 })
                 .collect::<Result<_, _>>()?;
             style.area = Some(match numbers[..] {
@@ -313,7 +350,13 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
             effect(&mut style.exit, &key[5..], value)?;
         }
         "padding" => style.padding = number(value)?,
-        "gap" => style.gap = number(value)?,
+        "gap" => {
+            style.gap = number(value)?;
+            style.row_gap = None;
+            style.column_gap = None;
+        }
+        "row-gap" => style.row_gap = Some(number(value)?),
+        "column-gap" => style.column_gap = Some(number(value)?),
         "grow" => style.grow = number(value)?,
         "radius" => style.radius = number(value)?,
         "background" => style.background = Some(color(value)?),
@@ -575,6 +618,26 @@ fn split_tracks(value: &str) -> Vec<&str> {
     parts
 }
 
+/// The strings of `"header header" "nav main"`.
+fn quoted_rows(value: &str) -> Result<Vec<String>, String> {
+    let mut rows = Vec::new();
+    let mut rest = value.trim();
+    while !rest.is_empty() {
+        let inner = rest
+            .strip_prefix('"')
+            .and_then(|after| after.split_once('"'))
+            .ok_or_else(|| {
+                format!("areas needs quoted rows like `\"a b\" \"c d\"`, got `{value}`")
+            })?;
+        rows.push(inner.0.to_owned());
+        rest = inner.1.trim_start();
+    }
+    if rows.is_empty() {
+        return Err("areas needs at least one quoted row".to_owned());
+    }
+    Ok(rows)
+}
+
 fn track_size(value: &str) -> Result<TrackSize, String> {
     Ok(match value.trim() {
         "auto" => TrackSize::Auto,
@@ -599,14 +662,19 @@ fn tracks(value: &str) -> Result<Vec<Track>, String> {
                 let (count, rest) = inner
                     .split_once(',')
                     .ok_or_else(|| format!("repeat needs `repeat(count, tracks)`, got `{part}`"))?;
-                let count: u16 = count
-                    .trim()
-                    .parse()
-                    .map_err(|_| format!("invalid repeat count in `{part}`"))?;
                 if rest.contains("repeat(") {
                     return Err(format!("nested repeat is not supported in `{part}`"));
                 }
-                return Ok(Track::Repeat(count, tracks(rest)?));
+                return Ok(match count.trim() {
+                    "auto-fill" => Track::AutoFill(tracks(rest)?),
+                    "auto-fit" => Track::AutoFit(tracks(rest)?),
+                    count => {
+                        let count: u16 = count
+                            .parse()
+                            .map_err(|_| format!("invalid repeat count in `{part}`"))?;
+                        Track::Repeat(count, tracks(rest)?)
+                    }
+                });
             }
             if let Some(inner) = part
                 .strip_prefix("minmax(")

@@ -123,6 +123,30 @@ impl App for Layout {
 
             ui.label(
                 Label::new(
+                    "Named areas · a head over side and body over a foot, each child placed by name",
+                )
+                .style(heading.clone()),
+            );
+            let shell = full
+                .clone()
+                .columns(vec![Track::Px(120.0), Track::Fr(1.0)])
+                .auto_rows(vec![Track::Px(44.0)])
+                .areas(["head head", "side body", "foot foot"])
+                .align_items(Align::Stretch)
+                .row_gap(6.0)
+                .column_gap(12.0);
+            ui.grid(shell, |ui| {
+                for name in ["foot", "body", "side", "head"] {
+                    ui.keyed(name, |ui| {
+                        ui.container(card.clone().area_name(name.to_owned()), |ui| {
+                            ui.label(name);
+                        })
+                    });
+                }
+            });
+
+            ui.label(
+                Label::new(
                     "Form · columns [auto, 1fr], rows centered; auto-width items stretch to their cell",
                 )
                 .style(heading.clone()),

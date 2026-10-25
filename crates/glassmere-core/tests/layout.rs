@@ -1,7 +1,7 @@
 use glassmere_core::Label;
 use glassmere_core::{
-    Align, Context, GridArea, Justify, Length, MonospaceMeasurer, NodeId, Style, StyleSheet, Track,
-    TrackSize, Ui,
+    Align, AutoFlow, Context, GridArea, Justify, Length, MonospaceMeasurer, NodeId, Style,
+    StyleSheet, Track, TrackSize, Ui,
 };
 use glassmere_scene::{Primitive, Rect, Size};
 
@@ -13,6 +13,17 @@ fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) -> glassmere_cor
 
 fn bounds(context: &Context, path: &[&str]) -> Rect {
     context.node(find(context, path)).unwrap().bounds
+}
+
+/// A child's rectangle relative to its grid's origin.
+fn within(context: &Context, path: &[&str]) -> Rect {
+    let grid = bounds(context, &path[..path.len() - 1]);
+    let child = bounds(context, path);
+    Rect {
+        x: child.x - grid.x,
+        y: child.y - grid.y,
+        ..child
+    }
 }
 
 fn find(context: &Context, path: &[&str]) -> NodeId {
@@ -116,6 +127,228 @@ fn repeat_minmax_and_percent_tracks_size_as_specified() {
     assert_rect(bounds(&context, &["grid", "b"]), 110.0, 0.0, 110.0, 10.0);
     assert_rect(bounds(&context, &["grid", "c"]), 220.0, 0.0, 80.0, 10.0);
     assert_rect(bounds(&context, &["grid", "d"]), 300.0, 0.0, 100.0, 10.0);
+}
+
+fn cells(ui: &mut Ui<'_>, keys: &[&str]) {
+    for key in keys {
+        ui.keyed(*key, |ui| {
+            ui.label(Label::new(*key).style(Style::default().height(Length::Px(10.0))))
+        });
+    }
+}
+
+#[test]
+fn row_and_column_gaps_are_separate_and_gap_sets_both() {
+    let mut context = Context::new();
+    frame(&mut context, |ui| {
+        ui.keyed("grid", |ui| {
+            ui.grid(
+                Style::default()
+                    .width(Length::Px(400.0))
+                    .columns(vec![Track::repeat(2, vec![Track::Px(100.0)])])
+                    .gap(8.0)
+                    .row_gap(5.0)
+                    .column_gap(20.0),
+                |ui| cells(ui, &["a", "b", "c", "d"]),
+            )
+        });
+        ui.keyed("both", |ui| {
+            ui.grid(
+                Style::default()
+                    .width(Length::Px(400.0))
+                    .columns(vec![Track::repeat(2, vec![Track::Px(100.0)])])
+                    .row_gap(5.0)
+                    .gap(8.0),
+                |ui| cells(ui, &["a", "b", "c"]),
+            )
+        });
+    });
+    assert_rect(bounds(&context, &["grid", "b"]), 120.0, 0.0, 100.0, 10.0);
+    assert_rect(bounds(&context, &["grid", "c"]), 0.0, 15.0, 100.0, 10.0);
+    assert_rect(bounds(&context, &["grid", "d"]), 120.0, 15.0, 100.0, 10.0);
+    // `gap` after `row_gap` replaces it, so both gaps are 8.
+    assert_rect(within(&context, &["both", "b"]), 108.0, 0.0, 100.0, 10.0);
+    assert_rect(within(&context, &["both", "c"]), 0.0, 18.0, 100.0, 10.0);
+}
+
+#[test]
+fn auto_fill_keeps_empty_tracks_and_auto_fit_collapses_them() {
+    let mut context = Context::new();
+    let grid = |tracks: Vec<Track>| {
+        Style::default()
+            .width(Length::Px(400.0))
+            .gap(0.0)
+            .columns(tracks)
+    };
+    let fluid = || vec![Track::MinMax(TrackSize::Px(100.0), TrackSize::Fr(1.0))];
+    frame(&mut context, |ui| {
+        ui.keyed("fill", |ui| {
+            ui.grid(grid(vec![Track::auto_fill(fluid())]), |ui| {
+                cells(ui, &["a", "b", "c", "d", "e"])
+            })
+        });
+        ui.keyed("fit", |ui| {
+            ui.grid(grid(vec![Track::auto_fit(fluid())]), |ui| {
+                cells(ui, &["a", "b"])
+            })
+        });
+        ui.keyed("fill-two", |ui| {
+            ui.grid(grid(vec![Track::auto_fill(fluid())]), |ui| {
+                cells(ui, &["a", "b"])
+            })
+        });
+    });
+    // 400 wide holds four 100 tracks; the fifth child wraps to a second row.
+    assert_rect(within(&context, &["fill", "d"]), 300.0, 0.0, 100.0, 10.0);
+    assert_rect(within(&context, &["fill", "e"]), 0.0, 10.0, 100.0, 10.0);
+    // Two children leave two empty tracks: auto-fill keeps them, auto-fit
+    // collapses them and lets the two 1fr tracks take the whole width.
+    assert_rect(
+        within(&context, &["fill-two", "b"]),
+        100.0,
+        0.0,
+        100.0,
+        10.0,
+    );
+    assert_rect(within(&context, &["fit", "a"]), 0.0, 0.0, 200.0, 10.0);
+    assert_rect(within(&context, &["fit", "b"]), 200.0, 0.0, 200.0, 10.0);
+}
+
+#[test]
+fn counted_repeat_takes_minmax_tracks() {
+    let mut context = Context::new();
+    frame(&mut context, |ui| {
+        ui.keyed("grid", |ui| {
+            ui.grid(
+                Style::default()
+                    .width(Length::Px(400.0))
+                    .gap(0.0)
+                    .columns(vec![
+                        Track::Px(100.0),
+                        Track::repeat(
+                            2,
+                            vec![Track::MinMax(TrackSize::Px(50.0), TrackSize::Fr(1.0))],
+                        ),
+                    ]),
+                |ui| cells(ui, &["a", "b", "c"]),
+            )
+        });
+    });
+    assert_rect(bounds(&context, &["grid", "b"]), 100.0, 0.0, 150.0, 10.0);
+    assert_rect(bounds(&context, &["grid", "c"]), 250.0, 0.0, 150.0, 10.0);
+}
+
+#[test]
+fn dense_flow_fills_holes_that_sparse_flow_leaves() {
+    let mut context = Context::new();
+    let span = |columns| {
+        Style::default()
+            .height(Length::Px(10.0))
+            .area(GridArea::auto_span(columns, 1))
+    };
+    let view = |flow: AutoFlow| {
+        move |ui: &mut Ui<'_>| {
+            ui.keyed("grid", |ui| {
+                ui.grid(
+                    Style::default()
+                        .width(Length::Px(300.0))
+                        .gap(0.0)
+                        .columns(vec![Track::repeat(3, vec![Track::Px(100.0)])])
+                        .auto_flow(flow),
+                    |ui| {
+                        for (key, columns) in [("a", 2), ("b", 2), ("c", 1)] {
+                            ui.keyed(key, |ui| ui.label(Label::new(key).style(span(columns))));
+                        }
+                    },
+                )
+            });
+        }
+    };
+    frame(&mut context, view(AutoFlow::Row));
+    // `b` does not fit beside `a`, so it starts row two and `c` follows it.
+    assert_rect(bounds(&context, &["grid", "b"]), 0.0, 10.0, 200.0, 10.0);
+    assert_rect(bounds(&context, &["grid", "c"]), 200.0, 10.0, 100.0, 10.0);
+    frame(&mut context, view(AutoFlow::RowDense));
+    // Dense packing sends `c` back to the hole beside `a`.
+    assert_rect(bounds(&context, &["grid", "b"]), 0.0, 10.0, 200.0, 10.0);
+    assert_rect(bounds(&context, &["grid", "c"]), 200.0, 0.0, 100.0, 10.0);
+}
+
+#[test]
+fn column_flow_fills_columns_before_rows() {
+    let mut context = Context::new();
+    frame(&mut context, |ui| {
+        ui.keyed("grid", |ui| {
+            ui.grid(
+                Style::default()
+                    .width(Length::Px(400.0))
+                    .gap(0.0)
+                    .rows(vec![Track::repeat(2, vec![Track::Px(10.0)])])
+                    .auto_columns(vec![Track::Px(100.0)])
+                    .auto_flow(AutoFlow::ColumnDense),
+                |ui| cells(ui, &["a", "b", "c", "d"]),
+            )
+        });
+    });
+    assert_rect(bounds(&context, &["grid", "b"]), 0.0, 10.0, 100.0, 10.0);
+    assert_rect(bounds(&context, &["grid", "c"]), 100.0, 0.0, 100.0, 10.0);
+    assert_rect(bounds(&context, &["grid", "d"]), 100.0, 10.0, 100.0, 10.0);
+}
+
+#[test]
+fn children_are_placed_in_the_named_areas_of_the_template() {
+    let mut context = Context::new();
+    frame(&mut context, |ui| {
+        ui.keyed("page", |ui| {
+            ui.grid(
+                Style::default()
+                    .width(Length::Px(400.0))
+                    .gap(0.0)
+                    .align_items(Align::Stretch)
+                    .columns(vec![Track::Px(100.0), Track::Fr(1.0)])
+                    .rows(vec![Track::Px(30.0), Track::Px(50.0), Track::Px(20.0)])
+                    .areas(["head head", "side body", "foot ."]),
+                |ui| {
+                    // Declared out of template order on purpose.
+                    for name in ["foot", "body", "side", "head"] {
+                        ui.keyed(name, |ui| {
+                            ui.label(
+                                Label::new(name).style(Style::default().area_name(name.to_owned())),
+                            )
+                        });
+                    }
+                },
+            )
+        });
+    });
+    assert_rect(bounds(&context, &["page", "head"]), 0.0, 0.0, 400.0, 30.0);
+    assert_rect(bounds(&context, &["page", "side"]), 0.0, 30.0, 100.0, 50.0);
+    assert_rect(
+        bounds(&context, &["page", "body"]),
+        100.0,
+        30.0,
+        300.0,
+        50.0,
+    );
+    assert_rect(bounds(&context, &["page", "foot"]), 0.0, 80.0, 100.0, 20.0);
+}
+
+#[test]
+#[should_panic(expected = "same number of cells")]
+fn a_ragged_area_template_is_misuse() {
+    let mut context = Context::new();
+    frame(&mut context, |ui| {
+        ui.grid(Style::default().areas(["a a", "b"]), |_| {});
+    });
+}
+
+#[test]
+#[should_panic(expected = "not a rectangle")]
+fn an_l_shaped_area_is_misuse() {
+    let mut context = Context::new();
+    frame(&mut context, |ui| {
+        ui.grid(Style::default().areas(["a a", "a b"]), |_| {});
+    });
 }
 
 #[test]
@@ -394,6 +627,16 @@ fn stylesheets_express_layout_constraints_tracks_and_alignment() {
         }
         class hero { area: 1 2 3 1 }
         class cell { area: 2 3 }
+        class fluid {
+            columns: repeat(auto-fill, minmax(120, 1fr)) repeat(auto-fit, 80)
+            row-gap: 4; column-gap: 8
+            auto-flow: row dense
+            areas: "head head" "side ."
+        }
+        class both { row-gap: 4; gap: 10 }
+        class head { area: head }
+        class flowing { area: auto 2 3 1 }
+        class down { auto-flow: column }
         "#,
     )
     .unwrap();
@@ -431,7 +674,38 @@ fn stylesheets_express_layout_constraints_tracks_and_alignment() {
         sheet.class("cell").unwrap().area,
         Some(GridArea::cell(2, 3))
     );
+    let fluid = sheet.class("fluid").unwrap();
+    assert_eq!(
+        fluid.columns,
+        vec![
+            Track::AutoFill(vec![Track::MinMax(
+                TrackSize::Px(120.0),
+                TrackSize::Fr(1.0)
+            )]),
+            Track::AutoFit(vec![Track::Px(80.0)]),
+        ]
+    );
+    assert_eq!((fluid.row_gap, fluid.column_gap), (Some(4.0), Some(8.0)));
+    assert_eq!(fluid.auto_flow, AutoFlow::RowDense);
+    assert_eq!(fluid.areas, vec!["head head", "side ."]);
+    let both = sheet.class("both").unwrap();
+    assert_eq!(
+        (both.gap, both.row_gap, both.column_gap),
+        (10.0, None, None)
+    );
+    let head = sheet.class("head").unwrap();
+    assert_eq!((head.area, head.area_name.as_deref()), (None, Some("head")));
+    assert_eq!(
+        sheet.class("flowing").unwrap().area,
+        Some(GridArea::span(0, 2, 3, 1))
+    );
+    assert_eq!(sheet.class("down").unwrap().auto_flow, AutoFlow::Column);
     let error = |text: &str| StyleSheet::parse(text).unwrap_err().message;
+    assert!(error("class a { columns: repeat(some, 1fr) }").contains("invalid repeat count"));
+    assert!(error("class a { auto-flow: dense column row }").contains("auto-flow is"));
+    assert!(error("class a { areas: a b }").contains("quoted rows"));
+    assert!(error("class a { areas: \"a a\" \"b\" }").contains("same number of cells"));
+    assert!(error("class a { areas: \"a b\" \"b b\" }").contains("not a rectangle"));
     assert!(error("class a { columns: 1fr bogus }").contains("invalid number"));
     assert!(error("class a { columns: repeat(2, repeat(2, 1fr)) }").contains("nested repeat"));
     assert!(error("class a { align-items: middle }").contains("unknown alignment"));
