@@ -2073,6 +2073,7 @@ glassmere-core use text_matches = collection::text_matches
 glassmere-scene   const Affine::IDENTITY: Self
 glassmere-scene   const Color::TRANSPARENT: Self
 glassmere-scene   const Color::WHITE: Self
+glassmere-scene   const Dash::MAX_COUNT: usize
 glassmere-scene   const fn Color::rgb(r: u8, g: u8, b: u8) -> Self
 glassmere-scene   const fn Size::new(width: f32, height: f32) -> Self
 glassmere-scene   field Affine::a: f32

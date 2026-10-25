@@ -21,7 +21,8 @@
 //! is filtered on sRGB-encoded values here and in linear light there. Both show
 //! at edges, never across a flat area.
 use glassmere_scene::{
-    Affine, Brush, Color, GradientStop, Image, Path, Point, Primitive, Rect, Scene, Segment, Stroke,
+    Affine, Brush, Color, Dash, GradientStop, Image, Path, Point, Primitive, Rect, Scene, Segment,
+    Stroke,
 };
 use glassmere_text::cosmic_text::{SwashCache, SwashContent};
 use glassmere_text::{TextKey, TextSystem};
@@ -235,7 +236,12 @@ fn skia_stroke(stroke: &Stroke) -> tiny_skia::Stroke {
     use glassmere_scene::{Cap, Join};
     tiny_skia::Stroke {
         width: stroke.width,
-        miter_limit: stroke.miter_limit,
+        // A limit that is not a number bevels every corner.
+        miter_limit: if stroke.miter_limit.is_finite() {
+            stroke.miter_limit
+        } else {
+            0.0
+        },
         line_cap: match stroke.cap {
             Cap::Round => tiny_skia::LineCap::Round,
             Cap::Square => tiny_skia::LineCap::Square,
@@ -250,10 +256,69 @@ fn skia_stroke(stroke: &Stroke) -> tiny_skia::Stroke {
     }
 }
 
-/// The stroke's dashes, if it has a pattern that draws any.
-fn skia_dash(stroke: &Stroke) -> Option<tiny_skia::StrokeDash> {
+/// The stroke's dashes, if it has a pattern that draws any and the path is
+/// not cut into more of them than `Dash::MAX_COUNT`.
+fn skia_dash(stroke: &Stroke, path: &Path) -> Option<tiny_skia::StrokeDash> {
     let dash = stroke.dash.as_ref()?;
-    tiny_skia::StrokeDash::new(dash.pattern()?, dash.offset)
+    let pattern = dash.pattern()?;
+    let cycle: f32 = pattern.iter().sum();
+    let count = length(path) / cycle * pattern.len() as f32 / 2.0;
+    if count.is_nan() || count > Dash::MAX_COUNT as f32 {
+        return None;
+    }
+    tiny_skia::StrokeDash::new(pattern, dash.offset)
+}
+
+/// How long the path is, its curves measured at sixteen points each.
+fn length(path: &Path) -> f32 {
+    let mut total = 0.0;
+    let (mut start, mut last) = (Point::default(), Point::default());
+    let mut step = |from: Point, to: Point| {
+        total += (to.x - from.x).hypot(to.y - from.y);
+        to
+    };
+    for segment in path.segments() {
+        match *segment {
+            Segment::Move(to) => {
+                start = to;
+                last = to;
+            }
+            Segment::Line(to) => last = step(last, to),
+            Segment::Quad(control, to) => {
+                let from = last;
+                for index in 1..=16 {
+                    let t = index as f32 / 16.0;
+                    let u = 1.0 - t;
+                    let at = Point {
+                        x: u * u * from.x + 2.0 * u * t * control.x + t * t * to.x,
+                        y: u * u * from.y + 2.0 * u * t * control.y + t * t * to.y,
+                    };
+                    last = step(last, at);
+                }
+            }
+            Segment::Cubic(first, second, to) => {
+                let from = last;
+                for index in 1..=16 {
+                    let t = index as f32 / 16.0;
+                    let u = 1.0 - t;
+                    let at = Point {
+                        x: u * u * u * from.x
+                            + 3.0 * u * u * t * first.x
+                            + 3.0 * u * t * t * second.x
+                            + t * t * t * to.x,
+                        y: u * u * u * from.y
+                            + 3.0 * u * u * t * first.y
+                            + 3.0 * u * t * t * second.y
+                            + t * t * t * to.y,
+                    };
+                    last = step(last, at);
+                }
+            }
+            Segment::Close => last = step(last, start),
+            _ => {}
+        }
+    }
+    total
 }
 
 fn skia_path(path: &Path) -> Option<tiny_skia::Path> {
@@ -723,8 +788,9 @@ impl CpuRenderer {
                     }
                     if let Some(stroke) = stroke
                         // tiny-skia cuts the dashes in the painter, not the stroker.
-                        && let Some(along) = match skia_dash(stroke) {
-                            Some(dash) => shape.dash(&dash, surface.scale),
+                        // Past the most dashes, or with none to draw, it is solid.
+                        && let Some(along) = match skia_dash(stroke, path) {
+                            Some(dash) => shape.dash(&dash, surface.scale).or(Some(shape)),
                             None => Some(shape),
                         }
                         && let Some(outline) = along.stroke(&skia_stroke(stroke), surface.scale)

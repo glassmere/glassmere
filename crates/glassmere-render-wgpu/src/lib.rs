@@ -6,7 +6,7 @@ pub use glassmere_text::TextSystem;
 pub use profile::{DriverMemory, GpuPassTime, GpuProfile, MAX_TIMED_PASSES, MemoryStats};
 pub use wgpu;
 
-use glassmere_scene::{Brush, Color, GradientStop, Join, Point, Primitive, Rect, Scene};
+use glassmere_scene::{Brush, Color, GradientStop, Point, Primitive, Rect, Scene};
 use glyphon::{
     Cache, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
 };
@@ -277,16 +277,7 @@ impl Recording {
             return;
         };
         let surface = &mut self.surfaces[self.current];
-        // A mitre is at most the limit's worth of widths long; the other
-        // joins and the caps stay within one.
-        let reach = stroke.as_ref().map_or(0.0, |stroke| {
-            let widths = if stroke.join == Join::Miter {
-                stroke.miter_limit.max(1.0)
-            } else {
-                1.0
-            };
-            stroke.width * widths
-        }) + 1.0 / surface.scale;
+        let reach = stroke.as_ref().map_or(0.0, path::reach) + 1.0 / surface.scale;
         let bounds = path.bounds();
         let bounds = Rect {
             x: bounds.x - reach,
@@ -294,7 +285,8 @@ impl Recording {
             width: bounds.width + reach * 2.0,
             height: bounds.height + reach * 2.0,
         };
-        let scissor = scissor(clip.intersect(bounds), surface);
+        let visible = clip.intersect(bounds);
+        let scissor = scissor(visible, surface);
         if scissor[2] == 0 || scissor[3] == 0 {
             return;
         }
@@ -319,7 +311,7 @@ impl Recording {
             .filter(|line| line.color.3 > 0 && line.width > 0.0)
         {
             self.corners.clear();
-            let faint = path::stroke(path, line, pixel, &mut self.corners);
+            let faint = path::stroke(path, line, visible, pixel, &mut self.corners);
             self.push_path(line.color, faint, scissor);
         }
     }
@@ -842,7 +834,7 @@ impl Renderer {
         };
     }
 
-    /// Brush in display-list order. `physical_size` and `scale` describe the target;
+    /// Paint in display-list order. `physical_size` and `scale` describe the target;
     /// scene geometry remains in logical pixels. Targets must be nonzero and sRGB.
     #[allow(clippy::too_many_arguments)]
     pub fn render(

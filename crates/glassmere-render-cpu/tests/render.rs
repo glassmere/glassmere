@@ -778,3 +778,153 @@ fn a_gradient_fill_ramps_across_the_bounds_of_the_path() {
     assert_eq!(pixel(&pixels, 32, 12), pixel(&pixels, 32, 52));
     assert_near(pixel(&pixels, 4, 32), WHITE);
 }
+
+fn dotted(path: Path, cap: Cap) -> Vec<u8> {
+    stroked(
+        path,
+        Stroke {
+            width: 8.0,
+            color: BLUE,
+            cap,
+            ..Stroke::default()
+        },
+    )
+}
+
+#[test]
+fn a_stroke_that_goes_nowhere_is_a_dot_where_the_caps_draw_one() {
+    let ink = [0, 0, 255, 255];
+    let point = || polyline(&[(32.0, 32.0), (32.0, 32.0)]);
+    assert_near(pixel(&dotted(point(), Cap::Butt), 32, 32), WHITE);
+    let round = dotted(point(), Cap::Round);
+    assert_near(pixel(&round, 32, 32), ink);
+    assert_near(pixel(&round, 28, 28), WHITE);
+    let square = dotted(point(), Cap::Square);
+    assert_near(pixel(&square, 29, 29), ink);
+    let mut closed = Path::new();
+    closed.move_to(Point { x: 32.0, y: 32.0 }).close();
+    assert_near(pixel(&dotted(closed, Cap::Round), 32, 32), ink);
+    // A move that never draws is nothing.
+    let mut lone = Path::new();
+    lone.move_to(Point { x: 32.0, y: 32.0 });
+    assert_near(pixel(&dotted(lone, Cap::Round), 32, 32), WHITE);
+}
+
+#[test]
+fn a_closed_line_is_joined_at_its_ends_not_capped() {
+    let mut line = polyline(&[(16.0, 32.0), (48.0, 32.0)]);
+    line.close();
+    let pixels = stroked(
+        line,
+        Stroke {
+            width: 8.0,
+            color: BLUE,
+            join: Join::Bevel,
+            cap: Cap::Square,
+            ..Stroke::default()
+        },
+    );
+    // A square cap would reach 4 past the end; a bevel does not.
+    assert_near(pixel(&pixels, 50, 32), WHITE);
+}
+
+#[test]
+fn a_dash_of_no_length_is_a_dot_for_round_caps_and_nothing_for_butt() {
+    let line = || polyline(&[(8.0, 32.0), (56.0, 32.0)]);
+    let with = |cap| {
+        stroked(
+            line(),
+            Stroke {
+                width: 6.0,
+                color: BLUE,
+                cap,
+                dash: Some(Dash::new([0.0, 16.0])),
+                ..Stroke::default()
+            },
+        )
+    };
+    assert_near(pixel(&with(Cap::Round), 24, 32), [0, 0, 255, 255]);
+    assert_near(pixel(&with(Cap::Round), 16, 32), WHITE);
+    assert_near(pixel(&with(Cap::Butt), 24, 32), WHITE);
+}
+
+#[test]
+fn dash_offsets_wrap_the_pattern_either_way_and_too_many_dashes_draw_solid() {
+    let line = || polyline(&[(4.0, 32.0), (60.0, 32.0)]);
+    let with = |lengths: Vec<f32>, offset| {
+        stroked(
+            line(),
+            Stroke {
+                width: 4.0,
+                color: BLUE,
+                dash: Some(Dash { lengths, offset }),
+                ..Stroke::default()
+            },
+        )
+    };
+    let base = with(vec![8.0, 8.0], 8.0);
+    for offset in [-8.0, 24.0, -40.0] {
+        assert_eq!(with(vec![8.0, 8.0], offset), base, "{offset}");
+    }
+    assert_ne!(with(vec![8.0, 8.0], 0.0), base);
+    // 56 long in pieces of 0.01 is far past the most dashes: solid.
+    let fine = with(vec![0.01, 0.01], 0.0);
+    assert_near(pixel(&fine, 32, 32), [0, 0, 255, 255]);
+}
+
+#[test]
+fn a_ramp_with_no_length_is_its_last_colour() {
+    let stops = vec![
+        GradientStop {
+            at: 0.0,
+            color: RED,
+        },
+        GradientStop {
+            at: 1.0,
+            color: BLUE,
+        },
+    ];
+    let same = Point { x: 0.5, y: 0.5 };
+    let mut square = polyline(&[(8.0, 8.0), (56.0, 8.0), (56.0, 56.0), (8.0, 56.0)]);
+    square.close();
+    for brush in [
+        Brush::Linear {
+            from: same,
+            to: same,
+            stops: stops.clone(),
+        },
+        Brush::Radial {
+            from: same,
+            to: same,
+            stops: stops.clone(),
+        },
+    ] {
+        let pixels = render(
+            &mut renderer(),
+            1.0,
+            vec![Primitive::Path {
+                path: square.clone(),
+                fill: Some(Fill {
+                    brush,
+                    rule: FillRule::NonZero,
+                }),
+                stroke: None,
+            }],
+        );
+        assert_near(pixel(&pixels, 32, 32), [0, 0, 255, 255]);
+        assert_near(pixel(&pixels, 12, 12), [0, 0, 255, 255]);
+    }
+    let pixels = render(
+        &mut renderer(),
+        1.0,
+        vec![Primitive::Gradient {
+            rect: rect(8.0, 8.0, 48.0, 48.0),
+            radius: 0.0,
+            from: same,
+            to: same,
+            stops,
+            radial: false,
+        }],
+    );
+    assert_near(pixel(&pixels, 12, 12), [0, 0, 255, 255]);
+}

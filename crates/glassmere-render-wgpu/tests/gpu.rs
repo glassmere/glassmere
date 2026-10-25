@@ -1752,6 +1752,60 @@ fn paths_take_gradients_fill_rules_and_dashes() {
     }
 }
 
+/// A ramp with no length is all its last colour, as a path's and a
+/// rectangle's alike; a stroke cut into more dashes than the most is solid.
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn a_ramp_with_no_length_is_its_last_colour_and_too_fine_a_dash_is_solid() {
+    let mut gpu = Gpu::new();
+    let same = point(0.5, 0.5);
+    let stops = vec![stop(0.0, RED), stop(1.0, BLUE)];
+    let mut square = polygon(&[(24.0, 24.0), (60.0, 24.0), (60.0, 60.0), (24.0, 60.0)]);
+    square.close();
+    let mut line = Path::new();
+    line.move_to(point(24.0, 100.0))
+        .line_to(point(120.0, 100.0));
+    let pixels = gpu.render(
+        1.0,
+        &[
+            Primitive::Gradient {
+                rect: rect(70.0, 24.0, 36.0, 36.0),
+                radius: 0.0,
+                from: same,
+                to: same,
+                stops: stops.clone(),
+                radial: false,
+            },
+            Primitive::Path {
+                path: square,
+                fill: Some(Fill {
+                    brush: Brush::Radial {
+                        from: same,
+                        to: same,
+                        stops,
+                    },
+                    rule: FillRule::NonZero,
+                }),
+                stroke: None,
+            },
+            Primitive::Path {
+                path: line,
+                fill: None,
+                stroke: Some(Stroke {
+                    width: 4.0,
+                    color: BLUE,
+                    dash: Some(Dash::new([0.01, 0.01])),
+                    ..Stroke::default()
+                }),
+            },
+        ],
+        true,
+    );
+    assert_pixel(&pixels, 80, 40, [0, 0, 255]);
+    assert_pixel(&pixels, 40, 40, [0, 0, 255]);
+    assert_pixel(&pixels, 60, 100, [0, 0, 255]);
+}
+
 /// A shadow darkens around its rectangle, out to the spread and three standard
 /// deviations, and no further.
 #[test]

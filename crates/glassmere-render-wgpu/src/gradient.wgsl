@@ -80,9 +80,14 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let unit = local / size;
     let origin = input.ends.xy;
     let axis = input.ends.zw - origin;
-    var at = dot(unit - origin, axis) / max(dot(axis, axis), 1e-12);
-    if input.shape.y > 0.5 {
-        at = length(unit - origin) / max(length(axis), 1e-6);
+    // A ramp with no length is all its last colour.
+    var at = 1.0;
+    if dot(axis, axis) > 1.1920929e-7 {
+        if input.shape.y > 0.5 {
+            at = length(unit - origin) / length(axis);
+        } else {
+            at = dot(unit - origin, axis) / dot(axis, axis);
+        }
     }
     var offsets = array<f32, 8>(
         input.offsets_low.x,

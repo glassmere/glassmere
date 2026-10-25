@@ -139,6 +139,11 @@ pub struct Dash {
 }
 
 impl Dash {
+    /// The most dashes a renderer cuts a stroke into. A stroke that would
+    /// have more, counting its whole length however little of it is in view,
+    /// is drawn solid.
+    pub const MAX_COUNT: usize = 2048;
+
     pub fn new(lengths: impl Into<Vec<f32>>) -> Self {
         Self {
             lengths: lengths.into(),
@@ -177,7 +182,8 @@ pub struct Stroke {
     pub join: Join,
     /// The longest a mitred corner may be, in stroke widths, from the inside
     /// of the corner to its tip; past it the corner is bevelled. A limit of 1
-    /// or less bevels every corner.
+    /// or less, or one that is not a number or is infinite, bevels every
+    /// corner.
     pub miter_limit: f32,
     pub cap: Cap,
     pub dash: Option<Dash>,

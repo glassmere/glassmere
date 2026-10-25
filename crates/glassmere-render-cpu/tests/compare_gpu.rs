@@ -622,3 +622,102 @@ fn path_styles_look_the_same_on_both_renderers() {
         agree(&pixels, &reference, scale);
     }
 }
+
+/// Where a stroke is nearly nothing: dashes of no length and under a pixel,
+/// strokes that go nowhere, a line closed on itself, and a pattern too fine
+/// to cut.
+fn path_edges() -> Scene {
+    let at = |x: f32, y: f32| Point { x, y };
+    let line = |y: f32| {
+        let mut path = Path::new();
+        path.move_to(at(16.0, y)).line_to(at(240.0, y));
+        path
+    };
+    let white = Color::rgb(255, 255, 255);
+    let styled = |path: Path, width: f32, cap, dash: Option<Dash>| Primitive::Path {
+        path,
+        fill: None,
+        stroke: Some(Stroke {
+            width,
+            color: white,
+            cap,
+            dash,
+            ..Stroke::default()
+        }),
+    };
+    let mut primitives = vec![
+        styled(line(20.0), 6.0, Cap::Butt, Some(Dash::new([0.0, 14.0]))),
+        styled(line(40.0), 6.0, Cap::Round, Some(Dash::new([0.0, 14.0]))),
+        styled(line(60.0), 6.0, Cap::Square, Some(Dash::new([0.0, 14.0]))),
+        styled(line(80.0), 4.0, Cap::Butt, Some(Dash::new([0.4, 0.6]))),
+        styled(line(100.0), 4.0, Cap::Butt, Some(Dash::new([1.5, 1.5]))),
+        styled(
+            line(120.0),
+            4.0,
+            Cap::Butt,
+            Some(Dash {
+                lengths: vec![9.0, 5.0],
+                offset: -23.0,
+            }),
+        ),
+        styled(line(140.0), 4.0, Cap::Butt, Some(Dash::new([0.01, 0.01]))),
+    ];
+    for (index, cap) in [Cap::Butt, Cap::Round, Cap::Square].into_iter().enumerate() {
+        let x = 30.0 + 40.0 * index as f32;
+        let mut point = Path::new();
+        point.move_to(at(x, 170.0)).line_to(at(x, 170.0));
+        primitives.push(styled(point, 12.0, cap, None));
+        let mut closed = Path::new();
+        closed.move_to(at(x, 200.0)).close();
+        primitives.push(styled(closed, 12.0, cap, None));
+    }
+    for (index, join) in [Join::Miter, Join::Round, Join::Bevel]
+        .into_iter()
+        .enumerate()
+    {
+        let x = 150.0 + 30.0 * index as f32;
+        let mut closed = Path::new();
+        closed.move_to(at(x, 160.0)).line_to(at(x, 200.0)).close();
+        primitives.push(Primitive::Path {
+            path: closed,
+            fill: None,
+            stroke: Some(Stroke {
+                width: 10.0,
+                color: white,
+                join,
+                cap: Cap::Square,
+                ..Stroke::default()
+            }),
+        });
+    }
+    Scene {
+        size: Size::new(SIDE as f32, SIDE as f32),
+        primitives,
+    }
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn path_edges_look_the_same_on_both_renderers() {
+    let clear = Color::rgb(16, 23, 34);
+    for scale in [1.0, 1.25, 2.0] {
+        let scene = path_edges();
+        let reference = gpu(&scene, scale, clear);
+        let mut renderer = CpuRenderer::new();
+        let pixels = renderer.render([SIDE; 2], scale, &scene, clear).to_vec();
+        if let Some(directory) = std::env::var_os("COMPARE_DUMP") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::write(
+                directory.join(format!("cpu-path-edges-{scale}.rgba")),
+                &pixels,
+            )
+            .unwrap();
+            std::fs::write(
+                directory.join(format!("gpu-path-edges-{scale}.rgba")),
+                &reference,
+            )
+            .unwrap();
+        }
+        agree(&pixels, &reference, scale);
+    }
+}
