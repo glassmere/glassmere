@@ -57,4 +57,6 @@ Fill in `Semantics` and it is announced like anything else: `focusable` puts it 
 
 ## What has not been checked
 
-The tree is checked by tests and by UI Automation scripts on Windows. Speech and navigation with a real screen reader, and the platform layers on macOS and Linux, have not been exercised by hand; [limitations](limitations.md) lists the rest.
+The tree is checked by tests, by UI Automation scripts on Windows, and over AT-SPI on Linux. Speech and navigation with a real screen reader, and the platform layer on macOS, have not been exercised by hand; [limitations](limitations.md) lists the rest.
+
+On Linux the tree is published only while the desktop says a screen reader is running. To inspect it with Accerciser or a script and no screen reader, set `org.a11y.Status.ScreenReaderEnabled` (and `IsEnabled`) on the session's `org.a11y.Bus` to true before starting the application, and back to false afterwards.

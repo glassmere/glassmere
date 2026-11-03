@@ -44,9 +44,13 @@ mod enabled {
         }
     }
 
-    pub(crate) fn notify(notification: &Notification) {
+    /// Posts under the application's id, so the notification server can find
+    /// its `.desktop` file; notify-rust would use the executable's name.
+    pub(crate) fn notify(notification: &Notification, app_id: &str) {
         let mut post = notify_rust::Notification::new();
-        post.summary(&notification.title).body(&notification.body);
+        post.appname(app_id)
+            .summary(&notification.title)
+            .body(&notification.body);
         // macOS notifications have no urgency.
         #[cfg(not(target_os = "macos"))]
         if notification.urgent {
@@ -135,21 +139,42 @@ mod enabled {
     }
 
     /// The shortcut goes in the label, because the framework dispatches its
-    /// own shortcuts and a platform accelerator would fire them twice.
+    /// own shortcuts and a platform accelerator would fire them twice. The
+    /// tab puts it in the accelerator column on Windows and macOS. A Linux
+    /// tray menu travels over D-Bus, where a tab is shown as it is and there
+    /// is no column for it, so the shortcut is left out there: it does not
+    /// work from a tray menu anyway.
     fn label(command: &Command) -> String {
         match &command.shortcut {
-            Some(shortcut) => format!("{}\t{}", command.label, shortcut.describe()),
-            None => command.label.clone(),
+            Some(shortcut) if !cfg!(unix) || cfg!(target_os = "macos") => {
+                format!("{}\t{}", command.label, shortcut.describe())
+            }
+            _ => command.label.clone(),
         }
+    }
+
+    /// Commands chosen in a platform menu and not yet taken.
+    static CHOSEN: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+    /// Has a choice in a platform menu wake the event loop. On Linux the tray
+    /// menu is served over D-Bus from a thread of its own, so nothing else
+    /// would wake the loop and a chosen command would wait for unrelated
+    /// input. Once a handler is set, muda's own channel stays empty.
+    pub(crate) fn wake_on_menu_events(wake: crate::wakeup::WakeHandle) {
+        muda::MenuEvent::set_event_handler(Some(move |event: muda::MenuEvent| {
+            if let Ok(mut chosen) = CHOSEN.lock() {
+                chosen.push(event.id.0);
+            }
+            wake.request_redraw();
+        }));
     }
 
     /// Commands chosen in a platform menu since the last call.
     pub(crate) fn chosen_commands() -> Vec<String> {
-        let mut chosen = Vec::new();
-        while let Ok(event) = muda::MenuEvent::receiver().try_recv() {
-            chosen.push(event.id.0);
-        }
-        chosen
+        CHOSEN
+            .lock()
+            .map(|mut chosen| std::mem::take(&mut *chosen))
+            .unwrap_or_default()
     }
 }
 
@@ -164,7 +189,7 @@ mod disabled {
         Vec::new()
     }
 
-    pub(crate) fn notify(_: &Notification) {
+    pub(crate) fn notify(_: &Notification, _: &str) {
         tracing::warn!("a notification was asked for without the `platform` feature");
     }
 
@@ -183,6 +208,8 @@ mod disabled {
             None
         }
     }
+
+    pub(crate) fn wake_on_menu_events(_: crate::wakeup::WakeHandle) {}
 
     pub(crate) fn chosen_commands() -> Vec<String> {
         Vec::new()

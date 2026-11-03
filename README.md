@@ -55,7 +55,7 @@ Green is used and tested by hand, yellow builds and passes tests but has gaps or
 
 ![Windows](https://img.shields.io/badge/Windows-tested-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-CI%20only-yellow)
-![Linux](https://img.shields.io/badge/Linux-CI%20only-yellow)
+![Linux](https://img.shields.io/badge/Linux-KDE%20tested%2C%20scaling%20untested-yellow)
 
 **Rendering**
 
@@ -165,7 +165,7 @@ cargo run -p glassmere-dev -- -p glassmere-examples --example counter
 
 ## Building
 
-Rust 1.90 or newer. Linux needs the usual winit packages (X11 or Wayland and xkbcommon), and GTK, the app indicator and libxdo for the `platform` feature.
+Rust 1.90 or newer. Linux needs the usual winit packages (X11 or Wayland and xkbcommon). The `platform` feature needs nothing more: file dialogs go through the XDG desktop portal, and notifications and the tray icon (a StatusNotifierItem) over D-Bus.
 
 ```sh
 cargo fmt --all -- --check

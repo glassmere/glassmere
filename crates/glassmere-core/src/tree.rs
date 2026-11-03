@@ -327,6 +327,13 @@ impl Node {
                 Control::Choice { hint, .. } | Control::Hint(hint) if !hint.is_empty() => {
                     format!("{}, {hint}", self.text)
                 }
+                // The arrow after a menu button's text is drawn, not read:
+                // the role already says a menu opens. A button that is only
+                // the arrow keeps it, and is named by its tooltip.
+                Control::Menu { .. } => {
+                    let name = self.text.trim_end_matches('▾').trim_end();
+                    if name.is_empty() { &self.text } else { name }.to_owned()
+                }
                 _ => self.text.clone(),
             },
             disabled: !self.enabled,
