@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- `AppOptions::app_id`, the name the desktop knows the application by: the Wayland `app_id` and X11 `WM_CLASS`, matched against a `.desktop` file for the taskbar icon and grouping, and the name notifications are posted under. It defaults to the executable's file name. `AppOptions::resolved_app_id` returns the name in use.
+- `AppOptions::icon`, the window's icon on Windows and X11.
+
+### Fixed
+
+- On Linux, screen readers can read text fields. A field exposes its text over AT-SPI as characters and words, with the caret and selection in it; before, Orca heard only the field's name.
+- On Linux, an application with the `platform` feature no longer panics at start when the appindicator library is not installed. The tray icon is now a StatusNotifierItem served over D-Bus, so the feature needs no GTK, libappindicator or libxdo, at build time or at run time.
+- A command chosen in a tray or application menu is handled at once. On Linux it waited for some other input to wake the window.
+- On Linux, tray menu items no longer show a tab and the shortcut in their label.
+- Windows on Wayland are no longer shown with the compositor's generic icon when a matching `.desktop` file is installed, and notifications no longer go out under the executable's name when an `app_id` is set.
+- A menu button's accessible name no longer ends in the arrow drawn after its text.
+
 ## [0.1.2] - 2026-10-25
 
 ### Added

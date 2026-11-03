@@ -3,6 +3,7 @@ use accesskit::{
     TreeUpdate,
 };
 use glassmere_core::{Action as CoreAction, Context, NodeId as CoreNodeId, Role as CoreRole};
+use unicode_segmentation::UnicodeSegmentation;
 
 pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
     let root = context.root();
@@ -23,7 +24,7 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
         .unwrap_or(root);
     let nodes = snapshots
         .into_iter()
-        .map(|snapshot| {
+        .flat_map(|snapshot| {
             let role = if snapshot.id == root {
                 Role::Window
             } else {
@@ -146,8 +147,8 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     });
                 }
             }
-            if let Some(value) = snapshot.value {
-                node.set_value(value);
+            if let Some(value) = &snapshot.value {
+                node.set_value(value.as_str());
             }
             if let Some(drag) = snapshot.drag {
                 let mut actions = Vec::new();
@@ -282,7 +283,32 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                 }
                 node.add_action(Action::SetScrollOffset);
             }
-            (NodeId(snapshot.id.0), node)
+            // A field's text as a run of characters, which is how AT-SPI
+            // (and UI Automation's text pattern) read text, the caret and
+            // the selection: a value alone gives Orca nothing to read.
+            let run = matches!(role, Role::TextInput | Role::PasswordInput).then(|| {
+                let text = snapshot.value.as_deref().unwrap_or_default();
+                let id = text_run_id(snapshot.id);
+                node.push_child(id);
+                // A password's run is its bullets, which the byte
+                // offsets of the selection do not index.
+                if role == Role::TextInput
+                    && let Some(selection) = snapshot.text_selection
+                {
+                    node.set_text_selection(accesskit::TextSelection {
+                        anchor: accesskit::TextPosition {
+                            node: id,
+                            character_index: character_index(text, selection.anchor),
+                        },
+                        focus: accesskit::TextPosition {
+                            node: id,
+                            character_index: character_index(text, selection.cursor),
+                        },
+                    });
+                }
+                (id, text_run(text, node.bounds()))
+            });
+            std::iter::once((NodeId(snapshot.id.0), node)).chain(run)
         })
         .collect();
     TreeUpdate {
@@ -291,6 +317,48 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
         tree_id: TreeId::ROOT,
         focus: NodeId(focus.0),
     }
+}
+
+/// The id of a field's text run. The framework numbers its nodes upwards
+/// from one, so the top bit is never one of its own.
+fn text_run_id(field: CoreNodeId) -> NodeId {
+    NodeId(field.0 | 1 << 63)
+}
+
+/// How many characters (grapheme clusters) come before a byte offset.
+fn character_index(text: &str, offset: usize) -> usize {
+    text.grapheme_indices(true)
+        .take_while(|(start, _)| *start < offset)
+        .count()
+}
+
+/// One line of text in the field's bounds. AccessKit wants a run even for an
+/// empty field, so that a caret has somewhere to be.
+fn text_run(text: &str, bounds: Option<Rect>) -> Node {
+    let mut run = Node::new(Role::TextRun);
+    if let Some(bounds) = bounds {
+        run.set_bounds(bounds);
+    }
+    run.set_value(text);
+    let graphemes: Vec<(usize, &str)> = text.grapheme_indices(true).collect();
+    run.set_character_lengths(
+        graphemes
+            .iter()
+            .map(|(_, grapheme)| u8::try_from(grapheme.len()).unwrap_or(u8::MAX))
+            .collect::<Vec<_>>(),
+    );
+    let mut words = Vec::new();
+    for (start, word) in text.split_word_bound_indices() {
+        if word.chars().any(char::is_alphanumeric) {
+            words.push(u8::try_from(character_index(text, start)).unwrap_or(u8::MAX));
+        }
+    }
+    // Word starts are character indices kept in a byte; past 255 characters
+    // they are left out rather than wrapped.
+    if graphemes.len() <= usize::from(u8::MAX) {
+        run.set_word_starts(words);
+    }
+    run
 }
 
 pub(crate) fn action(context: &mut Context, request: ActionRequest, scale: f64) -> bool {
@@ -362,6 +430,57 @@ mod tests {
     use super::*;
     use glassmere_core::{Button, Length, MonospaceMeasurer, Style};
     use glassmere_scene::Size;
+
+    #[test]
+    fn text_fields_carry_their_text_as_a_run_with_the_caret_in_it() {
+        let mut context = Context::new();
+        let view = |ui: &mut glassmere_core::Ui<'_>| {
+            ui.keyed("input", |ui| {
+                ui.text_input("Name", "Hi wörld 👩\u{200d}💻", |_| ())
+            });
+            ui.keyed("empty", |ui| ui.text_input("City", "", |_| ()));
+            ui.keyed("password", |ui| {
+                ui.text_input(
+                    glassmere_core::TextInput::new("Password").password(),
+                    "secret",
+                    |_| (),
+                )
+            });
+            ui.keyed("menu", |ui| {
+                ui.menu("Actions", &[glassmere_core::MenuItem::new("Copy")], |_| ())
+            });
+        };
+        context.run(Size::new(600.0, 800.0), &mut MonospaceMeasurer, view);
+        let update = tree(&context, "Text", 1.0);
+        let node = |id: NodeId| &update.nodes.iter().find(|(key, _)| *key == id).unwrap().1;
+        let field = |key| NodeId(context.find(&[key]).unwrap().0);
+
+        let input = node(field("input"));
+        let run_id = *input.children().last().unwrap();
+        let run = node(run_id);
+        assert_eq!(run.role(), Role::TextRun);
+        assert_eq!(run.value(), Some("Hi wörld 👩\u{200d}💻"));
+        // "ö" is two bytes and the technologist one character of eleven bytes.
+        assert_eq!(run.character_lengths(), &[1, 1, 1, 1, 2, 1, 1, 1, 1, 11]);
+        assert_eq!(run.word_starts(), &[0, 3]);
+        let selection = input.text_selection().unwrap();
+        assert_eq!(selection.focus.node, run_id);
+        // The caret is at the end of the text: after all ten characters.
+        assert_eq!(selection.focus.character_index, 10);
+
+        let empty = node(field("empty"));
+        let run = node(*empty.children().last().unwrap());
+        assert_eq!(run.role(), Role::TextRun);
+        assert_eq!(run.value(), Some(""));
+
+        let password = node(field("password"));
+        let run = node(*password.children().last().unwrap());
+        assert_eq!(run.role(), Role::TextRun);
+        assert!(!run.value().unwrap().contains("secret"));
+        assert!(password.text_selection().is_none());
+
+        assert_eq!(node(field("menu")).label(), Some("Actions"));
+    }
 
     #[test]
     fn controls_expose_values_actions_and_unclipped_popup_focus() {

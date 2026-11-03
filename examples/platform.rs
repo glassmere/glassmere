@@ -5,7 +5,7 @@
 //! cargo run -p glassmere-examples --example platform --features platform
 //! ```
 use glassmere::{
-    App, AppOptions, Color, Command, Effects, FileRequest, Label, Length, Menu, MenuEntry,
+    App, AppOptions, Color, Command, Effects, FileRequest, Image, Label, Length, Menu, MenuEntry,
     Notification, Shortcut, Size, Style, TextWrap, Tray, Ui, run,
 };
 use std::path::PathBuf;
@@ -41,6 +41,24 @@ fn menu(saved: bool) -> Menu {
             ))],
         ),
     ])
+}
+
+/// A teal disc, drawn here so the example needs no image file. The window
+/// and the tray icon both use it.
+fn icon() -> Image {
+    const SIZE: u32 = 32;
+    let mut rgba = Vec::with_capacity((SIZE * SIZE * 4) as usize);
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let dx = x as f32 + 0.5 - SIZE as f32 / 2.0;
+            let dy = y as f32 + 0.5 - SIZE as f32 / 2.0;
+            // One pixel of soft edge.
+            let coverage =
+                (SIZE as f32 / 2.0 - 1.0 - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0);
+            rgba.extend_from_slice(&[103, 232, 206, (coverage * 255.0) as u8]);
+        }
+    }
+    Image::from_rgba8(SIZE, SIZE, rgba).expect("the size matches the pixels")
 }
 
 #[derive(Clone)]
@@ -114,7 +132,9 @@ impl App for Platform {
         // everywhere. Both send the commands declared below.
         ui.set_menu(menu(self.saved));
         ui.set_tray(Some(
-            Tray::new("Glassmere desktop example").with_menu(menu(self.saved)),
+            Tray::new("Glassmere desktop example")
+                .with_icon(icon())
+                .with_menu(menu(self.saved)),
         ));
         let page = Style {
             padding: 20.0,
@@ -204,6 +224,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         AppOptions {
             title: "Glassmere / Desktop".into(),
             size: Size::new(640.0, 460.0),
+            // How the desktop knows the application: on Linux a
+            // `glassmere-platform-example.desktop` file would give it its
+            // taskbar icon. Notifications are posted under this name too.
+            app_id: Some("glassmere-platform-example".into()),
+            icon: Some(icon()),
             frame_limit: smoke.then_some(20),
             ..AppOptions::default()
         },
