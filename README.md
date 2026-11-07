@@ -55,7 +55,7 @@ Green is used and tested by hand, yellow builds and passes tests but has gaps or
 
 ![Windows](https://img.shields.io/badge/Windows-tested-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-CI%20only-yellow)
-![Linux](https://img.shields.io/badge/Linux-KDE%20tested%2C%20scaling%20untested-yellow)
+![Linux](https://img.shields.io/badge/Linux-KDE%20tested-brightgreen)
 
 **Rendering**
 

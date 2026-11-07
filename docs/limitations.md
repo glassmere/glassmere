@@ -4,10 +4,10 @@ What does not work, is partial, or has not been tried. Grouped by area.
 
 ## Platforms
 
-- Windows is the platform used day to day. macOS and Linux build and run the test suite in CI, but nobody has used applications on them by hand.
+- Windows is the platform used day to day. Linux has been used by hand on KDE Plasma, on Wayland and X11, at scale factors of 1, 1.25, 1.5 and 2 and through a scale change while a window was open. macOS builds and runs the test suite in CI, but nobody has used applications on it by hand.
 - On Linux the tray icon is a StatusNotifierItem. KDE Plasma, XFCE and most panels show one; GNOME needs the AppIndicator extension. Its menu shows no shortcuts.
 - A Wayland window takes its icon from the `.desktop` file named by `AppOptions::app_id`; `AppOptions::icon` is used on Windows and X11 only.
-- The clipboard in a pure Wayland session (`wayland-data-control`) has not been tried by hand. On X11 it has.
+- On Linux the clipboard has been tried by hand on KDE Plasma, in a pure Wayland session (`ext-data-control`) and on X11, for text only. Compositors without a data-control protocol, such as GNOME's Mutter, have not been tried.
 - The `platform` feature (file dialogs, notifications, tray, menus) has not been exercised on macOS. On Linux it has been tried on KDE Plasma (Wayland and X11) only.
 - Windows 10 lacks the snap layout flyout on the maximize button; only Windows 11 has it. There is no equivalent for other platforms.
 - Fonts come from the system. The check for a missing family knows whether it is installed, not whether it has the glyphs a text needs.
