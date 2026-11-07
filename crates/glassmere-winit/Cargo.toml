@@ -38,10 +38,23 @@ accesskit.workspace = true
 accesskit_winit.workspace = true
 arboard.workspace = true
 sys-locale.workspace = true
+# Characters and words of a text field's accessibility text run.
+unicode-segmentation.workspace = true
 rfd = { version = "0.17.2", optional = true }
 notify-rust = { version = "4.18.0", optional = true }
-muda = { version = "0.20.0", optional = true }
-tray-icon = { version = "0.25.1", optional = true }
+# muda's and tray-icon's default features (GTK 3, libxdo, libappindicator)
+# only apply to Linux, which uses KSNI instead: see below.
+muda = { version = "0.20.0", optional = true, default-features = false }
+tray-icon = { version = "0.25.1", optional = true, default-features = false }
+
+# On Linux and the BSDs the tray is a StatusNotifierItem served over D-Bus
+# (KSNI), with its menu sent as a snapshot of the muda menu. That needs no GTK
+# main loop and no libappindicator or libxdo, which an application could not
+# count on finding: a missing appindicator library made the default backend
+# panic. It is declared for these targets only, because the snapshot feature
+# changes how muda shares menu state on every platform.
+[target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
+tray-icon = { version = "0.25.1", optional = true, default-features = false, features = ["ksni"] }
 
 # Outgoing file drags. On Linux the crate wants a GTK window, which winit is not.
 [target.'cfg(any(windows, target_os = "macos"))'.dependencies]

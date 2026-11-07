@@ -4,17 +4,18 @@ What does not work, is partial, or has not been tried. Grouped by area.
 
 ## Platforms
 
-- Windows is the platform used day to day. macOS and Linux build and run the test suite in CI, but nobody has used applications on them by hand.
-- Linux needs the GTK development packages for the `platform` feature.
-- The clipboard in a pure Wayland session (`wayland-data-control`) has not been tried by hand.
-- The `platform` feature (file dialogs, notifications, tray, menus) has not been exercised on macOS or Linux.
+- Windows is the platform used day to day. Linux has been used by hand on KDE Plasma, on Wayland and X11, at scale factors of 1, 1.25, 1.5 and 2 and through a scale change while a window was open. macOS builds and runs the test suite in CI, but nobody has used applications on it by hand.
+- On Linux the tray icon is a StatusNotifierItem. KDE Plasma, XFCE and most panels show one; GNOME needs the AppIndicator extension. Its menu shows no shortcuts.
+- A Wayland window takes its icon from the `.desktop` file named by `AppOptions::app_id`; `AppOptions::icon` is used on Windows and X11 only.
+- On Linux the clipboard has been tried by hand on KDE Plasma, in a pure Wayland session (`ext-data-control`) and on X11, for text only. Compositors without a data-control protocol, such as GNOME's Mutter, have not been tried.
+- The `platform` feature (file dialogs, notifications, tray, menus) has not been exercised on macOS. On Linux it has been tried on KDE Plasma (Wayland and X11) only.
 - Windows 10 lacks the snap layout flyout on the maximize button; only Windows 11 has it. There is no equivalent for other platforms.
 - Fonts come from the system. The check for a missing family knows whether it is installed, not whether it has the glyphs a text needs.
 
 ## Accessibility
 
-- The accessibility tree is checked by tests and by UI Automation scripts on Windows. Nobody has listened to it with a screen reader (Narrator, NVDA, VoiceOver, Orca).
-- Editable text exposes its value and caret but not full character-level selection and navigation.
+- The accessibility tree is checked by tests, by UI Automation scripts on Windows, and over AT-SPI on Linux (KDE Plasma), where its actions were driven as well. Nobody has listened to it with a screen reader (Narrator, NVDA, VoiceOver, Orca).
+- A single-line field exposes its text as a run of characters and words, with the caret and selection in it, but not the bounds of each character. A password field exposes its bullets without the caret. The code editor and the rich text editor expose only the caret's line, without the caret in it.
 - AccessKit's Windows adapter has no UI Automation ExpandCollapse pattern. The tree exposes expand and collapse actions, but combo boxes and menus open from automation only through focus and keyboard or pointer input.
 - IME routing and preedit geometry are covered by model-level tests. Real candidate windows for Japanese, Chinese and Korean, and dead-key input, have not been tried.
 - Accessibility checks cover names, not contrast, focus order or target size.

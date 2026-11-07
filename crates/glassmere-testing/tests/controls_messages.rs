@@ -96,7 +96,7 @@ fn a_radio_sends_its_option_and_shows_it_selected() {
 #[test]
 fn a_menu_sends_the_index_picked_and_shows_it() {
     let mut harness = harness();
-    harness.click(harness.by_label("Actions  ▾"));
+    harness.click(harness.by_label("Actions"));
     let stats = harness.click(harness.by_label("Beta"));
     assert_eq!((stats.messages, stats.declared), (1, true));
     assert_eq!(harness.state().messages, [Msg::Menu(1)]);
