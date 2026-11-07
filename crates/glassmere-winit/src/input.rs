@@ -258,7 +258,6 @@ impl HostClipboard {
 
 /// Undoes the premultiplication scenes carry, which is what the platform
 /// clipboards and icons want.
-#[cfg(any(feature = "images", feature = "platform"))]
 pub(crate) fn straight_rgba(premultiplied: &[u8]) -> Vec<u8> {
     let mut straight = Vec::with_capacity(premultiplied.len());
     for pixel in premultiplied.as_chunks::<4>().0 {
