@@ -2400,6 +2400,7 @@ glassmere-render-cpu const MAX_GRADIENT_STOPS: usize
 glassmere-render-cpu impl Default for CpuRenderer
 glassmere-render-cpu struct CpuRenderer (private fields)
 glassmere-render-cpu struct CpuStats #[derive(Clone, Copy, Debug, Default)] #[non_exhaustive]
+glassmere-winit   field AppOptions::app_id: Option<String>
 glassmere-winit   field AppOptions::background: Option<Color>
 glassmere-winit   field AppOptions::caret_movement: glassmere_core::CaretMovement
 glassmere-winit   field AppOptions::decorations: bool
@@ -2408,6 +2409,7 @@ glassmere-winit   field AppOptions::direction: DirectionChoice
 glassmere-winit   field AppOptions::frame_limit: Option<u64>
 glassmere-winit   field AppOptions::gpu: Option<GpuSetup>
 glassmere-winit   field AppOptions::graphics: GraphicsOptions
+glassmere-winit   field AppOptions::icon: Option<glassmere_scene::Image>
 glassmere-winit   field AppOptions::placement: Placement
 glassmere-winit   field AppOptions::reduced_motion: bool
 glassmere-winit   field AppOptions::resizable: bool
@@ -2423,6 +2425,7 @@ glassmere-winit   field hot::SavedWindow::height: f32
 glassmere-winit   field hot::SavedWindow::width: f32
 glassmere-winit   field hot::SavedWindow::x: i32
 glassmere-winit   field hot::SavedWindow::y: i32
+glassmere-winit   fn AppOptions::resolved_app_id(&self) -> String
 glassmere-winit   fn DirectionChoice::resolve(self) -> glassmere_core::Direction
 glassmere-winit   fn GpuSetup::new(setup: impl FnMut(&mut Renderer) + Send + 'static) -> Self
 glassmere-winit   variant DirectionChoice::Auto

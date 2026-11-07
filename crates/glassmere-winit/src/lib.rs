@@ -233,6 +233,34 @@ pub struct AppOptions {
     /// to be moved or resized but the one the application draws.
     pub decorations: bool,
     pub resizable: bool,
+    /// The name the desktop knows the application by: the Wayland `app_id`
+    /// and the X11 `WM_CLASS` on Linux, which a `<app_id>.desktop` file is
+    /// matched against for the taskbar icon and grouping, and the
+    /// application name notifications are posted under. `None` uses the
+    /// executable's file name. Read when a window opens.
+    pub app_id: Option<String>,
+    /// The window's icon, on Windows and X11. A Wayland compositor takes the
+    /// icon from the `.desktop` file that `app_id` names instead, and macOS
+    /// from the application bundle. A vector image is not used. Read when a
+    /// window opens.
+    pub icon: Option<glassmere_scene::Image>,
+}
+
+impl AppOptions {
+    /// `app_id`, or the executable's file name when it is not set.
+    pub fn resolved_app_id(&self) -> String {
+        self.app_id
+            .clone()
+            .filter(|id| !id.is_empty())
+            .or_else(|| {
+                std::env::current_exe()
+                    .ok()?
+                    .file_stem()?
+                    .to_str()
+                    .map(str::to_owned)
+            })
+            .unwrap_or_else(|| "glassmere".to_owned())
+    }
 }
 
 impl Default for AppOptions {
@@ -253,6 +281,8 @@ impl Default for AppOptions {
             direction: DirectionChoice::Auto,
             decorations: true,
             resizable: true,
+            app_id: None,
+            icon: None,
         }
     }
 }
@@ -1058,7 +1088,7 @@ impl Application {
             }
         }
         for notification in self.context.take_notifications() {
-            platform::notify(&notification);
+            platform::notify(&notification, &self.options.resolved_app_id());
         }
         // Only a menu the view declared differently comes out of the context,
         // so the platform's one is not rebuilt every frame.

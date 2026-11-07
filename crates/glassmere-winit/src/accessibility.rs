@@ -394,8 +394,8 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     });
                 }
             }
-            if let Some(value) = snapshot.value {
-                node.set_value(value);
+            if let Some(value) = &snapshot.value {
+                node.set_value(value.as_str());
             }
             if let Some(drag) = snapshot.drag {
                 let mut actions = Vec::new();
@@ -1067,6 +1067,20 @@ mod tests {
         assert!(node_in(&update, NodeId(combo.0)).supports_action(Action::Collapse));
         assert_eq!(expanded(parent), Some(true));
         assert_eq!(expanded(leaf), None);
+    }
+
+    #[test]
+    fn a_menu_button_is_named_without_its_arrow() {
+        let mut context = Context::new();
+        context.run(Size::new(600.0, 800.0), &mut MonospaceMeasurer, |ui| {
+            ui.keyed("menu", |ui| {
+                ui.menu("Actions", &[glassmere_core::MenuItem::new("Copy")], |_| ())
+            });
+        });
+        let update = tree(&context, "Menu", 1.0);
+        let id = NodeId(context.find(&["menu"]).unwrap().0);
+        let node = &update.nodes.iter().find(|(key, _)| *key == id).unwrap().1;
+        assert_eq!(node.label(), Some("Actions"));
     }
 
     #[test]

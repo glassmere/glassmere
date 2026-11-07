@@ -31,6 +31,7 @@ pub(crate) fn run_single(
     let proxy = event_loop.create_proxy();
     let wake = WakeHandle::new(proxy.clone());
     let (view, hosting) = setup(wake.clone());
+    crate::platform::wake_on_menu_events(wake.clone());
     diagnostics::checkpoint("event_loop", None);
     let graphics = options.graphics.clone();
     let mut desktop = Desktop::new(proxy, wake, Arc::new(AtomicU64::new(2)), graphics);
@@ -67,6 +68,14 @@ fn window_options(main: &AppOptions, request: glassmere_core::WindowRequest) -> 
         placement: Placement::System,
         ..main.clone()
     }
+}
+
+/// A raster image as winit's window icon, which takes straight alpha.
+fn window_icon(image: &glassmere_scene::Image) -> Option<winit::window::Icon> {
+    let (width, height, pixels) = image.pixels()?;
+    winit::window::Icon::from_rgba(crate::input::straight_rgba(pixels), width, height)
+        .inspect_err(|error| tracing::warn!("window icon not used: {error}"))
+        .ok()
 }
 
 struct Pending {
@@ -572,6 +581,24 @@ impl Desktop {
             .with_decorations(options.decorations)
             .with_resizable(options.resizable)
             .with_inner_size(LogicalSize::new(options.size.width, options.size.height));
+        if let Some(icon) = options.icon.as_ref().and_then(window_icon) {
+            attributes = attributes.with_window_icon(Some(icon));
+        }
+        // What the desktop matches against a `.desktop` file for the
+        // taskbar icon and grouping. Without it a Wayland compositor has
+        // nothing to go on and shows a generic icon.
+        #[cfg(all(
+            unix,
+            not(any(target_os = "macos", target_os = "ios", target_os = "android"))
+        ))]
+        {
+            let id = options.resolved_app_id();
+            attributes = winit::platform::wayland::WindowAttributesExtWayland::with_name(
+                attributes, &id, "",
+            );
+            attributes =
+                winit::platform::x11::WindowAttributesExtX11::with_name(attributes, &id, &id);
+        }
         // A window without the system's frame keeps the system's rounded
         // corners on Windows 11, and its shadow once it exists.
         #[cfg(target_os = "windows")]

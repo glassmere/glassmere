@@ -4,16 +4,17 @@ What does not work, is partial, or has not been tried. Grouped by area.
 
 ## Platforms
 
-- Windows is the platform used day to day. macOS and Linux build and run the test suite in CI, but nobody has used applications on them by hand.
-- Linux needs the GTK development packages for the `platform` feature.
-- The clipboard in a pure Wayland session (`wayland-data-control`) has not been tried by hand.
-- The `platform` feature (file dialogs, notifications, tray, menus) has not been exercised on macOS or Linux.
+- Windows is the platform used day to day. Linux has been used by hand on KDE Plasma, on Wayland and X11, at scale factors of 1, 1.25, 1.5 and 2 and through a scale change while a window was open. macOS builds and runs the test suite in CI, but nobody has used applications on it by hand.
+- On Linux the tray icon is a StatusNotifierItem. KDE Plasma, XFCE and most panels show one; GNOME needs the AppIndicator extension. Its menu shows no shortcuts.
+- A Wayland window takes its icon from the `.desktop` file named by `AppOptions::app_id`; `AppOptions::icon` is used on Windows and X11 only.
+- On Linux the clipboard has been tried by hand on KDE Plasma, in a pure Wayland session (`ext-data-control`) and on X11, for text only. Compositors without a data-control protocol, such as GNOME's Mutter, have not been tried.
+- The `platform` feature (file dialogs, notifications, tray, menus) has not been exercised on macOS. On Linux it has been tried on KDE Plasma (Wayland and X11) only.
 - Windows 10 lacks the snap layout flyout on the maximize button; only Windows 11 has it. There is no equivalent for other platforms.
 - Fonts come from the system. The check for a missing family knows whether it is installed, not whether it has the glyphs a text needs.
 
 ## Accessibility
 
-- The accessibility tree is checked by tests and by UI Automation scripts on Windows. Nobody has run NVDA, Narrator, VoiceOver or Orca against it, so everything below is what the tree contains, not what a screen reader was heard to say.
+- The accessibility tree is checked by tests, by UI Automation scripts on Windows, and over AT-SPI on Linux (KDE Plasma). Nobody has run NVDA, Narrator, VoiceOver or Orca against it, so everything below is what the tree contains, not what a screen reader was heard to say.
 - Text fields, number fields, text areas, code editors and rich editors publish text runs with the length, position and width of each character, word starts, direction, and the caret or selection, and accept `SetTextSelection`. Multi-line editors have the multiline role. The tests check the tree and the round trip of a selection; reading by character, word and line, braille and the highlight cursor have not been tried. Word starts come from Unicode word boundaries, which may differ from where Ctrl+Arrow stops.
 - A text area and a code editor expose only the lines they declare (the visible ones and a few around them). Text scrolled out of that window cannot be read or selected by the platform until it is scrolled in. A selection with an end outside the window is not reported, so the caret is unknown to the platform until it is scrolled in, and a selection that extends outside is refused. With several cursors only the primary one is reported.
 - A line that mixes directions is one run with the direction of the line. The positions of its characters are measured from the edge the line starts at, in logical order, so across the change of direction they are not increasing, which AccessKit assumes when it turns a range of text into rectangles. Highlighting and the position of a caret inside such a line may be wrong on the platform side. Splitting the line into runs of one direction needs the level of each cluster, which `EditorLine` does not carry.
