@@ -112,10 +112,19 @@ fn strings_and_comments_are_reported_so_brackets_in_them_do_not_pair_with_code()
         highlighter.strings_and_comments(&document, 0),
         [11..14, 19..23]
     );
-    assert_eq!(highlighter.strings_and_comments(&document, 1), [0..7]);
+    assert_eq!(
+        highlighter.strings_and_comments(&document, 1),
+        std::slice::from_ref(&(0..7))
+    );
     // A block comment left open covers the start of the next line.
-    assert_eq!(highlighter.strings_and_comments(&document, 2), [6..13]);
-    assert_eq!(highlighter.strings_and_comments(&document, 3), [0..5]);
+    assert_eq!(
+        highlighter.strings_and_comments(&document, 2),
+        std::slice::from_ref(&(6..13))
+    );
+    assert_eq!(
+        highlighter.strings_and_comments(&document, 3),
+        std::slice::from_ref(&(0..5))
+    );
     assert!(highlighter.strings_and_comments(&document, 99).is_empty());
 
     let mut pair = |offset| {
