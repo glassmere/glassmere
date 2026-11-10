@@ -211,6 +211,11 @@ pub(crate) enum Control {
     },
     /// A button the keyboard skips because the field beside it has the keys.
     Stepper,
+    /// The button beside a password field that shows or hides its text. Its
+    /// name is what it does next, which is read instead of its short text.
+    Reveal {
+        name: String,
+    },
     Toast {
         label: String,
         /// Errors interrupt a screen reader; the rest wait their turn.

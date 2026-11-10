@@ -513,3 +513,100 @@ fn a_click_in_a_password_field_lands_between_the_bullets() {
     app.frame();
     assert_eq!(app.state().password, "a_ñb");
 }
+
+/// Every text drawn, the field's and the button's.
+fn all_text(context: &Context) -> Vec<String> {
+    context
+        .scene()
+        .primitives
+        .iter()
+        .filter_map(|primitive| match primitive {
+            Primitive::StyledText { text, .. } | Primitive::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn login_with_reveal() -> Driven<Login> {
+    Driven::new(
+        ROOT,
+        Login::default(),
+        |state: &Login, ui: &mut Ui<'_, Msg<Login>>| {
+            ui.keyed("password", |ui| {
+                ui.text_input(
+                    TextInput::new("Password").password_with_reveal(),
+                    &state.password,
+                    on(|s: &mut Login, text: String| s.password = text),
+                );
+            });
+        },
+    )
+}
+
+#[test]
+fn a_reveal_button_shows_a_password_and_hides_it_again() {
+    let mut app = login_with_reveal();
+    let field = app.context.find(&["password", "$field"]).unwrap();
+    let reveal = app.context.find(&["password", "$reveal"]).unwrap();
+    app.context.action(field, Action::Focus);
+    app.context
+        .event(Event::Text(TextEdit::Insert("hunter 2".into())));
+    app.frame();
+    let bullets = "\u{2022}".repeat(8);
+    assert_eq!(all_text(&app.context), [bullets.as_str(), "Show"]);
+    assert_eq!(
+        app.context.node(reveal).unwrap().semantics.label,
+        "Show password"
+    );
+
+    click(&mut app.context, reveal);
+    app.frame();
+    assert_eq!(all_text(&app.context), ["hunter 2", "Hide"]);
+    let node = app.context.node(field).unwrap();
+    assert_eq!(node.semantics.role, Role::PasswordInput);
+    assert_eq!(node.value.as_deref(), Some("hunter 2"));
+    assert_eq!(
+        app.context.node(reveal).unwrap().semantics.label,
+        "Hide password"
+    );
+    // Shown text is plain text: it can be copied.
+    app.context.action(field, Action::Focus);
+    app.context.event(Event::Text(TextEdit::SelectAll));
+    assert_eq!(app.context.selected_text(), Some("hunter 2"));
+    // The application never heard of it, and typing still reaches it.
+    app.context.event(Event::Text(TextEdit::Insert("x".into())));
+    app.frame();
+    assert_eq!(app.state().password, "x");
+    assert_eq!(all_text(&app.context), ["x", "Hide"]);
+
+    // The keyboard reaches the button too.
+    app.context.action(reveal, Action::Activate);
+    app.frame();
+    assert_eq!(all_text(&app.context), ["\u{2022}", "Show"]);
+    app.context.action(field, Action::Focus);
+    app.context.event(Event::Text(TextEdit::SelectAll));
+    assert_eq!(app.context.selected_text(), None);
+}
+
+#[test]
+fn a_password_field_and_its_reveal_button_fill_the_width_of_a_plain_field() {
+    let app = login_with_reveal();
+    let row = app.context.find(&["password"]).unwrap();
+    let field = app.context.find(&["password", "$field"]).unwrap();
+    let reveal = app.context.find(&["password", "$reveal"]).unwrap();
+    let (row, field, reveal) = (
+        app.context.node(row).unwrap().bounds,
+        app.context.node(field).unwrap().bounds,
+        app.context.node(reveal).unwrap().bounds,
+    );
+    assert_eq!(row.width, 280.0);
+    assert_eq!(field.height, reveal.height);
+    assert_eq!(field.width + 4.0 + reveal.width, row.width);
+    assert!(
+        app.context
+            .node(app.context.find(&["password", "$reveal"]).unwrap())
+            .unwrap()
+            .semantics
+            .focusable
+    );
+}

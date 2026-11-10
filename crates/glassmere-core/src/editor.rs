@@ -95,6 +95,9 @@ pub(crate) struct Editor {
     /// A password field: every character is drawn as a bullet, and the
     /// geometry, so every offset into it, is of the bullets.
     pub masked: bool,
+    /// A password field whose text the user asked to see. It is the field's
+    /// own state, like the caret: the application does not hear of it.
+    pub revealed: bool,
 }
 
 /// What a password field draws for each character of its text.
@@ -139,6 +142,7 @@ impl Editor {
             visual: true,
             align_x: 0.0,
             masked: false,
+            revealed: false,
         }
     }
 
