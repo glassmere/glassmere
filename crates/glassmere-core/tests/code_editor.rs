@@ -446,8 +446,10 @@ impl Highlighter for Quoted {
         let text = document.line(line);
         let quotes: Vec<usize> = text.match_indices('"').map(|(at, _)| at).collect();
         quotes
-            .chunks_exact(2)
-            .map(|pair| pair[0]..pair[1] + 1)
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|[open, close]| *open..*close + 1)
             .collect()
     }
 }
