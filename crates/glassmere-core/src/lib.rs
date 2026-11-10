@@ -70,7 +70,7 @@ pub use rich_document::{
 pub use rich_editor::{RichEditorOptions, RichEditorResponse, RichOp};
 pub use rich_text::{RichRun, RichText};
 pub use style::{
-    Align, Direction, Gradient, GridArea, Justify, Length, Paint, ResolvedText, Shadow,
+    Align, AutoFlow, Direction, Gradient, GridArea, Justify, Length, Paint, ResolvedText, Shadow,
     StateStyles, Style, Track, TrackSize,
 };
 pub use stylesheet::{StyleSheet, StyleSheetError};
