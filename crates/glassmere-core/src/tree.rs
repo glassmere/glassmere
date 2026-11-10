@@ -322,6 +322,7 @@ impl Node {
                 Control::Toast { label, .. } => label.clone(),
                 Control::Divider { .. } => "Splitter".into(),
                 Control::Sizer { label, .. } => label.clone(),
+                Control::Reveal { name } => name.clone(),
                 Control::DockFloat => "Floating panel".into(),
                 Control::DockHandle { resize: false, .. } => "Move floating panel".into(),
                 Control::DockHandle { resize: true, .. } => "Resize floating panel".into(),

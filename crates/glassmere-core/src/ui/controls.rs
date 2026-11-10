@@ -55,25 +55,78 @@ impl<'a, M: 'static> Ui<'a, M> {
         let input = input.into();
         let key = self.next_key();
         let style = input.style.unwrap_or_else(Self::field_style);
-        let response = self.text_field(
-            key,
-            input.label,
-            value,
-            &input.placeholder,
-            style,
-            FieldExtra {
-                password: input.password,
-                ..FieldExtra::default()
-            },
-        );
-        self.set_handler(Handler::Field {
+        let extra = FieldExtra {
+            password: input.password,
+            ..FieldExtra::default()
+        };
+        let handler = Handler::Field {
             change: Some(Box::new(move |update| match update {
                 ControlUpdate::Text(text) => Some(on_change(single_line(&text))),
                 _ => None,
             })),
             submit: input.on_submit,
+        };
+        if !input.reveal {
+            let response =
+                self.text_field(key, input.label, value, &input.placeholder, style, extra);
+            self.set_handler(handler);
+            return response;
+        }
+        // The row takes the place the field would have had; the field fills
+        // what the button leaves.
+        let row = Style {
+            width: style.width,
+            height: Length::Auto,
+            padding: 0.0,
+            gap: 4.0,
+            grow: style.grow,
+            shrink: style.shrink,
+            ..Style::default()
+        };
+        let field_style = Style {
+            width: Length::Auto,
+            grow: 1.0,
+            ..style
+        };
+        let mut result = Response::default();
+        let context = self.context;
+        self.group(key, Kind::Row, row, |ui| {
+            let revealed = ui
+                .context
+                .child(ui.parent, &WidgetKey::named("$field"), Kind::TextInput)
+                .and_then(|id| ui.context.field_state(id))
+                .is_some_and(|state| state.revealed);
+            result = ui
+                .text_field(
+                    WidgetKey::named("$field"),
+                    input.label,
+                    value,
+                    &input.placeholder,
+                    field_style.clone(),
+                    extra,
+                )
+                .rebind(context);
+            ui.set_handler(handler);
+            let (text, name) = if revealed {
+                ("glassmere-password-hide", "glassmere-password-hide-name")
+            } else {
+                ("glassmere-password-show", "glassmere-password-show-name")
+            };
+            let name = ui.context.tr(name, &[]);
+            ui.push(Element {
+                text: ui.context.tr(text, &[]),
+                style: Style {
+                    height: field_style.height,
+                    padding: 10.0,
+                    ..Style::button()
+                },
+                enabled: ui.enabled,
+                tooltip: Some(name.clone()),
+                control: Control::Reveal { name },
+                ..Element::new(WidgetKey::named("$reveal"), Kind::Button)
+            });
         });
-        response
+        result
     }
 
     /// The look of a default text field.

@@ -8,6 +8,8 @@ pub(crate) struct FieldState {
     pub draft: bool,
     pub number: Option<NumericValue>,
     pub focused: bool,
+    /// A password field showing its text.
+    pub revealed: bool,
 }
 
 impl Context {
@@ -290,8 +292,10 @@ impl Context {
         else {
             return None;
         };
-        let text = node.editor.as_ref()?.text.clone();
+        let editor = node.editor.as_ref()?;
+        let (text, revealed) = (editor.text.clone(), editor.revealed);
         Some(FieldState {
+            revealed,
             // Typed since the field last declared its text, or still being typed.
             draft: *draft || text != *value,
             text,
@@ -323,6 +327,34 @@ impl Context {
         true
     }
 
+    /// Shows or hides the text of the password field beside the reveal
+    /// button `id`. The button has no handler, so its click makes the view
+    /// stale and the next declaration names the button for what it now does.
+    fn toggle_reveal(&mut self, id: NodeId) {
+        let field = self
+            .nodes
+            .get(&id)
+            .and_then(|node| node.parent)
+            .and_then(|row| self.nodes.get(&row))
+            .and_then(|row| {
+                row.children_by_key
+                    .get(&WidgetKey::named("$field"))
+                    .copied()
+            });
+        let Some(field) = field else {
+            return;
+        };
+        if let Some(editor) = self
+            .nodes
+            .get_mut(&field)
+            .and_then(|node| node.editor.as_mut())
+        {
+            editor.revealed = !editor.revealed;
+            editor.masked = !editor.revealed;
+            self.invalidate_paint(field);
+        }
+    }
+
     pub(super) fn activate(&mut self, id: NodeId) -> bool {
         if let Some(handled) = self.collection_action(id, &Action::Activate) {
             return handled;
@@ -345,6 +377,12 @@ impl Context {
                 self.choose(owner, index)
             }
             Control::Tab { .. } => self.select_tab(id),
+            Control::Reveal { .. } => {
+                self.toggle_reveal(id);
+                self.queue_click(id);
+                self.invalidate_paint(id);
+                true
+            }
             Control::Radio { .. } => {
                 let siblings = self.nodes[&node.parent.unwrap()].children.clone();
                 for sibling in siblings {

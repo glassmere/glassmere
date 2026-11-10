@@ -564,7 +564,7 @@ impl Context {
                 .editor
                 .get_or_insert_with(|| Box::new(Editor::new(value)));
             editor.synchronize(value);
-            editor.masked = *password;
+            editor.masked = *password && !editor.revealed;
         }
         node.control = element.control;
         if paint_changed {

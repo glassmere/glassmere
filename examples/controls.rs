@@ -203,8 +203,8 @@ impl App for Controls {
                     ui.label("Password");
                     ui.text_input(
                         TextInput::new("Password")
-                            .password()
-                            .placeholder("Never shown or copied"),
+                            .password_with_reveal()
+                            .placeholder("Hidden until you show it"),
                         &self.password,
                         Msg::Password,
                     );

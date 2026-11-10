@@ -49,7 +49,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 
 ## Text
 
-- A password field has no button that shows the text. Input methods stay on in it, and macOS secure input is not turned on.
+- Input methods stay on in a password field, and macOS secure input is not turned on. The button that shows its text is an opt-in (`TextInput::password_with_reveal`) and is labelled with a word, not an icon.
 - Visual-line and visual-caret moves in the document editors resolve against the last shaped frame, so several arrow presses between two frames move one step. Several cursors in the code editor move logically.
 - Rich documents have one font size per block, no images, tables, nested lists, alignment or colours, are shaped in full on each change, and paste as plain text.
 - Dragging a selection past the edge of a single-line text input only follows the pointer as it moves; it does not keep scrolling while the pointer rests. The code editor's horizontal range comes from the widest line declared around the view, so the scrollbar can change length as the view scrolls vertically through lines of different widths.

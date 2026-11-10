@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - The platform can move the caret or set the selection, as `Action::SetSelection` in core.
   - `Context::editor_text` returns what is published.
   - Password fields publish no text.
+- `TextInput::password_with_reveal`, a password field with a button beside it that shows the text and hides it again. The button's texts are the catalog keys `glassmere-password-show`, `-hide`, `-show-name` and `-hide-name`, with German and Czech in `glassmere-fluent`.
 - Grid layout features:
   - `Style::row_gap` and `column_gap`. `gap` still sets both.
   - `Track::AutoFill` and `Track::AutoFit`, written `repeat(auto-fill, ...)` in a stylesheet.

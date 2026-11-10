@@ -1075,6 +1075,7 @@ glassmere-core   fn TextDocument::word_at(&self, offset: usize) -> Range<usize>
 glassmere-core   fn TextInput::new(label: impl Into<String>) -> Self [impl<M> TextInput<M>]
 glassmere-core   fn TextInput::on_submit(mut self, message: M) -> Self [impl<M> TextInput<M>]
 glassmere-core   fn TextInput::password(mut self) -> Self [impl<M> TextInput<M>]
+glassmere-core   fn TextInput::password_with_reveal(mut self) -> Self [impl<M> TextInput<M>]
 glassmere-core   fn TextInput::placeholder(mut self, placeholder: impl Into<String>) -> Self [impl<M> TextInput<M>]
 glassmere-core   fn TextInput::style(mut self, style: Style) -> Self [impl<M> TextInput<M>]
 glassmere-core   fn TextSelection::range(self) -> Range<usize>
