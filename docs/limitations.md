@@ -53,7 +53,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - Visual-line and visual-caret moves in the document editors resolve against the last shaped frame, so several arrow presses between two frames move one step. Several cursors in the code editor move logically.
 - Rich documents have one font size per block, no images, tables, nested lists, alignment or colours, are shaped in full on each change, and paste as plain text.
 - Dragging a selection past the edge of a single-line text input only follows the pointer as it moves; it does not keep scrolling while the pointer rests. The code editor's horizontal range comes from the widest line declared around the view, so the scrollbar can change length as the view scrolls vertically through lines of different widths.
-- Bracket matching ignores strings and comments. Find is line by line.
+- Bracket matching tells strings and comments from code only when the highlighter reports them (`Highlighter::strings_and_comments`, which `SyntectHighlighter` implements); without one, or on lines its parsing has not reached yet, every bracket counts. Auto-close does not look at them. Find is line by line.
 - The base direction of a paragraph is taken from its first strong character and cannot be forced in an editor. Left and Right in tree rows keep their left-to-right meanings (Left collapses, Right expands) in a right-to-left window.
 - Fluent formats numbers plainly; use `Ui::format_number` for locale notation. Only the default catalog is checked by `tr!`.
 - No text selection handles or magnifier for touch.

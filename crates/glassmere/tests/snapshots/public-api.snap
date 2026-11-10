@@ -793,6 +793,7 @@ glassmere-core   fn GridState::refuse_edit(&mut self, row: ItemId, column: usize
 glassmere-core   fn Highlighter::begin(&mut self, _document: &TextDocument) (provided)
 glassmere-core   fn Highlighter::highlight(&mut self, document: &TextDocument, line: usize) -> Vec<HighlightSpan>
 glassmere-core   fn Highlighter::pending(&self) -> bool (provided)
+glassmere-core   fn Highlighter::strings_and_comments(&mut self, _document: &TextDocument, _line: usize) -> Vec<Range<usize>> (provided)
 glassmere-core   fn ImageOptions::fit(mut self, fit: ImageFit) -> Self
 glassmere-core   fn ImageOptions::new(alt: impl Into<String>) -> Self
 glassmere-core   fn ImageOptions::style(mut self, style: Style) -> Self
@@ -1051,6 +1052,7 @@ glassmere-core   fn TextDocument::line(&self, line: usize) -> String
 glassmere-core   fn TextDocument::line_range(&self, line: usize) -> Range<usize>
 glassmere-core   fn TextDocument::mark_saved(&mut self)
 glassmere-core   fn TextDocument::matching_bracket(&self, offset: usize) -> Option<(usize, usize)>
+glassmere-core   fn TextDocument::matching_bracket_in(&self, offset: usize, quiet: &mut dyn FnMut(usize) -> Vec<Range<usize>>) -> Option<(usize, usize)>
 glassmere-core   fn TextDocument::move_cursors(&mut self, motion: Motion, select: bool)
 glassmere-core   fn TextDocument::new() -> Self
 glassmere-core   fn TextDocument::newline(&mut self) -> bool
