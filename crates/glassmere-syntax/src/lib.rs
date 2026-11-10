@@ -3,11 +3,13 @@
 use glassmere_core::{HighlightSpan, Highlighter, TextDocument};
 use glassmere_scene::Color;
 use std::collections::HashMap;
+use std::ops::Range;
 use std::sync::OnceLock;
+use syntect::easy::ScopeRangeIterator;
 use syntect::highlighting::{
     FontStyle, HighlightState, Highlighter as ThemeHighlighter, RangedHighlightIterator, ThemeSet,
 };
-use syntect::parsing::{ParseState, ScopeStack, SyntaxSet};
+use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxSet};
 
 /// Parser state is kept at the start of every `CHECKPOINT`th line.
 const CHECKPOINT: usize = 32;
@@ -39,6 +41,8 @@ pub struct SyntectHighlighter {
     /// State at the start of `cursor.0`, continuing the last parsed line.
     cursor: Option<(usize, State)>,
     spans: HashMap<usize, Vec<HighlightSpan>>,
+    /// The strings and comments of the lines in `spans`, as byte ranges.
+    quiet: HashMap<usize, Vec<Range<usize>>>,
     revision: u64,
     /// Catch-up lines left in this declaration.
     budget: usize,
@@ -67,6 +71,7 @@ impl SyntectHighlighter {
             checkpoints: Vec::new(),
             cursor: None,
             spans: HashMap::new(),
+            quiet: HashMap::new(),
             revision: 0,
             budget: BUDGET,
             pending: false,
@@ -122,16 +127,44 @@ impl SyntectHighlighter {
             self.cursor = None;
         }
         self.spans.retain(|cached, _| *cached < line);
+        self.quiet.retain(|cached, _| *cached < line);
     }
 
-    /// Parses `line` from `state`, leaving `state` at the start of the next line.
-    fn parse(&self, document: &TextDocument, line: usize, state: &mut State) -> Vec<HighlightSpan> {
+    /// Parses `line` from `state`, leaving `state` at the start of the next
+    /// line. Returns its spans and its strings and comments.
+    fn parse(
+        &self,
+        document: &TextDocument,
+        line: usize,
+        state: &mut State,
+    ) -> (Vec<HighlightSpan>, Vec<Range<usize>>) {
         let mut text = document.line(line);
         let len = text.len();
         text.push('\n');
         let Ok(ops) = state.0.parse_line(&text, syntaxes()) else {
-            return Vec::new();
+            return (Vec::new(), Vec::new());
         };
+        let mut quiet: Vec<Range<usize>> = Vec::new();
+        let mut scopes = state.1.path.clone();
+        let (string, comment) = quiet_scopes();
+        for (range, op) in ScopeRangeIterator::new(&ops, &text) {
+            if scopes.apply(op).is_err() {
+                break;
+            }
+            let range = range.start.min(len)..range.end.min(len);
+            if range.is_empty()
+                || !scopes
+                    .as_slice()
+                    .iter()
+                    .any(|scope| string.is_prefix_of(*scope) || comment.is_prefix_of(*scope))
+            {
+                continue;
+            }
+            match quiet.last_mut() {
+                Some(last) if last.end == range.start => last.end = range.end,
+                _ => quiet.push(range),
+            }
+        }
         let mut spans: Vec<HighlightSpan> = Vec::new();
         for (style, _, range) in
             RangedHighlightIterator::new(&mut state.1, &ops, &text, &self.theme)
@@ -165,8 +198,19 @@ impl SyntectHighlighter {
                 }),
             }
         }
-        spans
+        (spans, quiet)
     }
+}
+
+/// The scopes every Sublime grammar puts strings and comments under.
+fn quiet_scopes() -> (Scope, Scope) {
+    static SCOPES: OnceLock<(Scope, Scope)> = OnceLock::new();
+    *SCOPES.get_or_init(|| {
+        (
+            Scope::new("string").expect("a valid scope"),
+            Scope::new("comment").expect("a valid scope"),
+        )
+    })
 }
 
 impl Highlighter for SyntectHighlighter {
@@ -209,13 +253,25 @@ impl Highlighter for SyntectHighlighter {
         if at % CHECKPOINT == 0 && at / CHECKPOINT == self.checkpoints.len() {
             self.checkpoints.push(state.clone());
         }
-        let spans = self.parse(document, line, &mut state);
+        let (spans, quiet) = self.parse(document, line, &mut state);
         self.cursor = Some((line + 1, state));
         if self.spans.len() >= SPAN_CACHE {
             self.spans.clear();
+            self.quiet.clear();
         }
         self.spans.insert(line, spans.clone());
+        self.quiet.insert(line, quiet);
         spans
+    }
+
+    fn strings_and_comments(&mut self, document: &TextDocument, line: usize) -> Vec<Range<usize>> {
+        if line >= document.len_lines() {
+            return Vec::new();
+        }
+        // Parsing the line fills both caches. A line that parsing has not
+        // reached within this frame's budget has none yet.
+        self.highlight(document, line);
+        self.quiet.get(&line).cloned().unwrap_or_default()
     }
 
     fn pending(&self) -> bool {

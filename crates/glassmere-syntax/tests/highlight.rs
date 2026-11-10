@@ -99,3 +99,52 @@ fn unknown_languages_are_plain_text_and_themes_are_listed() {
     assert!(SyntectHighlighter::languages().contains(&"JSON"));
     assert!(SyntectHighlighter::with_theme("rs", "missing").is_none());
 }
+
+#[test]
+fn strings_and_comments_are_reported_so_brackets_in_them_do_not_pair_with_code() {
+    let document = TextDocument::from_text(
+        "fn f() { g(\")\"); } // )\n/* ( */ fn h() {\n    1 /* open\n ) */ }\n",
+    );
+    let mut highlighter = SyntectHighlighter::new("rs", true);
+    highlighter.begin(&document);
+    // The string with its quotes, and the comment to the end of the line.
+    assert_eq!(
+        highlighter.strings_and_comments(&document, 0),
+        [11..14, 19..23]
+    );
+    assert_eq!(
+        highlighter.strings_and_comments(&document, 1),
+        std::slice::from_ref(&(0..7))
+    );
+    // A block comment left open covers the start of the next line.
+    assert_eq!(
+        highlighter.strings_and_comments(&document, 2),
+        std::slice::from_ref(&(6..13))
+    );
+    assert_eq!(
+        highlighter.strings_and_comments(&document, 3),
+        std::slice::from_ref(&(0..5))
+    );
+    assert!(highlighter.strings_and_comments(&document, 99).is_empty());
+
+    let mut pair = |offset| {
+        document.matching_bracket_in(offset, &mut |line| {
+            highlighter.strings_and_comments(&document, line)
+        })
+    };
+    // `g(` closes after the string, not at the bracket in it.
+    assert_eq!(pair(10), Some((10, 14)));
+    // The `{` of `h` closes on the last line, past the `)` in the comment.
+    let open = document.text().rfind('{').unwrap();
+    let close = document.text().rfind('}').unwrap();
+    assert_eq!(pair(open), Some((open, close)));
+    assert_eq!(pair(close + 1), Some((close, open)));
+}
+
+#[test]
+fn a_plain_text_document_has_no_strings_or_comments() {
+    let document = TextDocument::from_text("say \"(hi)\" // there\n");
+    let mut highlighter = SyntectHighlighter::new("txt", true);
+    highlighter.begin(&document);
+    assert!(highlighter.strings_and_comments(&document, 0).is_empty());
+}
