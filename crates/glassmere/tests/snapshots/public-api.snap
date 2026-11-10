@@ -123,6 +123,22 @@ glassmere-core   field DockWindowId::0: u64
 glassmere-core   field DragInfo::can_drop: bool
 glassmere-core   field DragInfo::dragging: bool
 glassmere-core   field DragInfo::source: bool
+glassmere-core   field EditorCharacter::len: usize
+glassmere-core   field EditorCharacter::position: f32
+glassmere-core   field EditorCharacter::width: f32
+glassmere-core   field EditorLine::bounds: Rect
+glassmere-core   field EditorLine::characters: Vec<EditorCharacter>
+glassmere-core   field EditorLine::paragraph: usize
+glassmere-core   field EditorLine::rtl: bool
+glassmere-core   field EditorLine::start: usize
+glassmere-core   field EditorLine::text: String
+glassmere-core   field EditorLine::word_starts: Vec<usize>
+glassmere-core   field EditorPoint::byte: usize
+glassmere-core   field EditorPoint::paragraph: usize
+glassmere-core   field EditorSelection::anchor: EditorPoint
+glassmere-core   field EditorSelection::focus: EditorPoint
+glassmere-core   field EditorText::lines: Vec<EditorLine>
+glassmere-core   field EditorText::selection: Option<EditorSelection>
 glassmere-core   field Effect::opacity: f32
 glassmere-core   field Effect::transform: Transform
 glassmere-core   field Effect::transition: Transition
@@ -371,12 +387,16 @@ glassmere-core   field Style::align_items: Align
 glassmere-core   field Style::align_self: Option<Align>
 glassmere-core   field Style::animation: Option<Animation>
 glassmere-core   field Style::area: Option<GridArea>
+glassmere-core   field Style::area_name: Option<String>
+glassmere-core   field Style::areas: Vec<String>
 glassmere-core   field Style::aspect_ratio: Option<f32>
 glassmere-core   field Style::auto_columns: Vec<Track>
+glassmere-core   field Style::auto_flow: AutoFlow
 glassmere-core   field Style::auto_rows: Vec<Track>
 glassmere-core   field Style::background: Option<Color>
 glassmere-core   field Style::background_image: Option<crate::BackgroundImage>
 glassmere-core   field Style::base_direction: Option<Direction>
+glassmere-core   field Style::column_gap: Option<f32>
 glassmere-core   field Style::columns: Vec<Track>
 glassmere-core   field Style::direction: Option<Direction>
 glassmere-core   field Style::enter: Option<Effect>
@@ -401,6 +421,7 @@ glassmere-core   field Style::offset: Option<(f32, f32)>
 glassmere-core   field Style::opacity: f32
 glassmere-core   field Style::padding: f32
 glassmere-core   field Style::radius: f32
+glassmere-core   field Style::row_gap: Option<f32>
 glassmere-core   field Style::rows: Vec<Track>
 glassmere-core   field Style::shadow: Option<Box<Shadow>>
 glassmere-core   field Style::shrink: f32
@@ -565,6 +586,7 @@ glassmere-core   fn Context::dismiss_toast(&mut self, id: ToastId)
 glassmere-core   fn Context::dock_dragging(&self) -> bool
 glassmere-core   fn Context::dragging(&self) -> Option<&DragPayload>
 glassmere-core   fn Context::editor_focused(&self) -> bool
+glassmere-core   fn Context::editor_text(&self, id: NodeId) -> Option<EditorText>
 glassmere-core   fn Context::event(&mut self, event: Event) -> bool
 glassmere-core   fn Context::export_drag(&mut self) -> Option<DragPayload>
 glassmere-core   fn Context::find(&self, path: &[&str]) -> Option<NodeId>
@@ -743,6 +765,7 @@ glassmere-core   fn Gradient::down(from: Color, to: Color) -> Self
 glassmere-core   fn Gradient::linear(from: (f32, f32), to: (f32, f32), start: Color, end: Color) -> Self
 glassmere-core   fn Gradient::radial(centre: Color, edge: Color) -> Self
 glassmere-core   fn Gradient::stops(mut self, stops: Vec<glassmere_scene::GradientStop>) -> Self
+glassmere-core   fn GridArea::auto_span(column_span: u16, row_span: u16) -> Self
 glassmere-core   fn GridArea::cell(column: u16, row: u16) -> Self
 glassmere-core   fn GridArea::span(column: u16, row: u16, column_span: u16, row_span: u16) -> Self
 glassmere-core   fn GridColumn::editor(mut self, editor: CellEditor) -> Self
@@ -935,13 +958,17 @@ glassmere-core   fn Style::align_items(mut self, value: Align) -> Self
 glassmere-core   fn Style::align_self(mut self, value: Align) -> Self
 glassmere-core   fn Style::animation(mut self, value: Animation) -> Self
 glassmere-core   fn Style::area(mut self, value: GridArea) -> Self
+glassmere-core   fn Style::area_name(mut self, value: String) -> Self
+glassmere-core   fn Style::areas<I>(mut self, rows: I) -> Self where I: IntoIterator, I::Item: Into<String>
 glassmere-core   fn Style::aspect_ratio(mut self, value: f32) -> Self
 glassmere-core   fn Style::auto_columns(mut self, value: Vec<Track>) -> Self
+glassmere-core   fn Style::auto_flow(mut self, value: AutoFlow) -> Self
 glassmere-core   fn Style::auto_rows(mut self, value: Vec<Track>) -> Self
 glassmere-core   fn Style::background(mut self, value: Color) -> Self
 glassmere-core   fn Style::background_image(mut self, value: crate::BackgroundImage) -> Self
 glassmere-core   fn Style::base_direction(mut self, direction: Direction) -> Self
 glassmere-core   fn Style::button() -> Self
+glassmere-core   fn Style::column_gap(mut self, value: f32) -> Self
 glassmere-core   fn Style::columns(mut self, value: Vec<Track>) -> Self
 glassmere-core   fn Style::direction(mut self, value: Direction) -> Self
 glassmere-core   fn Style::enter(mut self, value: Effect) -> Self
@@ -971,6 +998,7 @@ glassmere-core   fn Style::opacity(mut self, value: f32) -> Self
 glassmere-core   fn Style::padding(mut self, value: f32) -> Self
 glassmere-core   fn Style::radius(mut self, value: f32) -> Self
 glassmere-core   fn Style::resolve_text(&self, inherited: &ResolvedText) -> ResolvedText
+glassmere-core   fn Style::row_gap(mut self, value: f32) -> Self
 glassmere-core   fn Style::rows(mut self, value: Vec<Track>) -> Self
 glassmere-core   fn Style::shadow(mut self, shadow: Shadow) -> Self
 glassmere-core   fn Style::shrink(mut self, value: f32) -> Self
@@ -1064,6 +1092,8 @@ glassmere-core   fn Toast::success(text: impl Into<String>) -> Self
 glassmere-core   fn Toast::tag(mut self, tag: impl Into<String>) -> Self
 glassmere-core   fn Toast::warning(text: impl Into<String>) -> Self
 glassmere-core   fn ToastSender::send(&self, toast: Toast)
+glassmere-core   fn Track::auto_fill(tracks: Vec<Track>) -> Self
+glassmere-core   fn Track::auto_fit(tracks: Vec<Track>) -> Self
 glassmere-core   fn Track::repeat(count: u16, tracks: Vec<Track>) -> Self
 glassmere-core   fn Transform::is_identity(&self) -> bool
 glassmere-core   fn Transform::rotate(degrees: f32) -> Self
@@ -1169,6 +1199,7 @@ glassmere-core   variant Action::ScrollIntoView
 glassmere-core   variant Action::ScrollTo(f32)
 glassmere-core   variant Action::ScrollToX(f32)
 glassmere-core   variant Action::SetNumber(f64)
+glassmere-core   variant Action::SetSelection { anchor: EditorPoint, focus: EditorPoint }
 glassmere-core   variant Action::SetText(String)
 glassmere-core   variant Action::StartDrag
 glassmere-core   variant Align::Baseline
@@ -1176,6 +1207,10 @@ glassmere-core   variant Align::Center
 glassmere-core   variant Align::End
 glassmere-core   variant Align::Start
 glassmere-core   variant Align::Stretch
+glassmere-core   variant AutoFlow::Column
+glassmere-core   variant AutoFlow::ColumnDense
+glassmere-core   variant AutoFlow::Row
+glassmere-core   variant AutoFlow::RowDense
 glassmere-core   variant Axis::Horizontal
 glassmere-core   variant Axis::Vertical
 glassmere-core   variant BlockKind::Bullet
@@ -1416,6 +1451,7 @@ glassmere-core   variant Role::ListBox
 glassmere-core   variant Role::Menu
 glassmere-core   variant Role::MenuButton
 glassmere-core   variant Role::MenuItem
+glassmere-core   variant Role::MultilineTextInput
 glassmere-core   variant Role::Option
 glassmere-core   variant Role::PasswordInput
 glassmere-core   variant Role::Radio
@@ -1489,6 +1525,8 @@ glassmere-core   variant TouchPhase::Ended
 glassmere-core   variant TouchPhase::Moved
 glassmere-core   variant TouchPhase::Started
 glassmere-core   variant Track::Auto
+glassmere-core   variant Track::AutoFill(Vec<Track>)
+glassmere-core   variant Track::AutoFit(Vec<Track>)
 glassmere-core   variant Track::Fr(f32)
 glassmere-core   variant Track::MinMax(TrackSize, TrackSize)
 glassmere-core   variant Track::Percent(f32)
@@ -1527,6 +1565,7 @@ glassmere-core const TOOLTIP_DELAY: Duration
 glassmere-core const UNSTABLE_ID_FRAMES: u8
 glassmere-core enum Action #[derive(Clone, Debug)]
 glassmere-core enum Align #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+glassmere-core enum AutoFlow #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] #[non_exhaustive]
 glassmere-core enum Axis #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 glassmere-core enum BlockKind #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-core enum CaretMovement #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -1713,6 +1752,11 @@ glassmere-core struct DockWindowId #[cfg_attr(feature = "serde", derive(serde::S
 glassmere-core struct DragInfo #[derive(Clone, Copy, Debug)]
 glassmere-core struct DragSourceBuilder<M = ()> (private fields)
 glassmere-core struct DropTargetBuilder<M = ()> (private fields)
+glassmere-core struct EditorCharacter #[derive(Clone, Copy, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core struct EditorLine #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
+glassmere-core struct EditorPoint #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+glassmere-core struct EditorSelection #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+glassmere-core struct EditorText #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
 glassmere-core struct Effect #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-core struct Effects<'a, M> (private fields)
 glassmere-core struct EventArea #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -1817,6 +1861,7 @@ glassmere-core use Animation = animation::Animation
 glassmere-core use App = app::App
 glassmere-core use AppDriver = app::AppDriver
 glassmere-core use AreaBuilder = ui::AreaBuilder
+glassmere-core use AutoFlow = style::AutoFlow
 glassmere-core use Autocomplete = ui::Autocomplete
 glassmere-core use Axis = panes::Axis
 glassmere-core use BUILTIN_MESSAGES = messages::BUILTIN_MESSAGES
@@ -1865,7 +1910,12 @@ glassmere-core use DragSourceBuilder = ui::DragSourceBuilder
 glassmere-core use DropKind = drag::DropKind
 glassmere-core use DropTargetBuilder = ui::DropTargetBuilder
 glassmere-core use Easing = animation::Easing
+glassmere-core use EditorCharacter = tree::EditorCharacter
 glassmere-core use EditorCommand = text_area::EditorCommand
+glassmere-core use EditorLine = tree::EditorLine
+glassmere-core use EditorPoint = tree::EditorPoint
+glassmere-core use EditorSelection = tree::EditorSelection
+glassmere-core use EditorText = tree::EditorText
 glassmere-core use Effect = animation::Effect
 glassmere-core use Effects = app::Effects
 glassmere-core use Event = tree::Event

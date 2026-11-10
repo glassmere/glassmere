@@ -682,6 +682,9 @@ impl Context {
                 };
                 Some(self.set_number(target, value + if up { step } else { -step }))
             }
+            Action::SetSelection { anchor, focus } => {
+                Some(self.set_selection(target, *anchor, *focus))
+            }
             Action::Expand => Some(self.open_popup(target)),
             Action::Collapse => {
                 Some(self.popup.is_some_and(|popup| popup.owner == target) && self.close_popup())

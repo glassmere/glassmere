@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- Screen readers can read and move through editor text. Text fields, text areas, the code editor and the rich editor publish one text run per visual line, with character extents and word starts, and they publish the caret and the selection.
+  - The platform can move the caret or set the selection, as `Action::SetSelection` in core.
+  - `Context::editor_text` returns what is published.
+  - Password fields publish no text.
+- Grid layout features:
+  - `Style::row_gap` and `column_gap`. `gap` still sets both.
+  - `Track::AutoFill` and `Track::AutoFit`, written `repeat(auto-fill, ...)` in a stylesheet.
+  - Dense auto-flow through `Style::auto_flow` and `AutoFlow`.
+  - Named template areas: `Style::areas` on the grid, `Style::area_name` on a child.
+  - `GridArea::auto_span` for a child that auto-flow places across several tracks.
+
+  The stylesheet has the same properties: `row-gap`, `column-gap`, `auto-flow`, `areas`, and `area: <name>`.
+
+### Changed
+
+- A `GridArea` line of 0 leaves that axis to auto-flow. Lines are 1-based, and 0 used to be read as line 1.
+- Text areas, the code editor and the rich editor report `Role::MultilineTextInput` instead of `Role::TextInput`.
+
 ## [0.1.3] - 2026-11-07
 
 ### Added

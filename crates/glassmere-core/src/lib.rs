@@ -70,7 +70,7 @@ pub use rich_document::{
 pub use rich_editor::{RichEditorOptions, RichEditorResponse, RichOp};
 pub use rich_text::{RichRun, RichText};
 pub use style::{
-    Align, Direction, Gradient, GridArea, Justify, Length, Paint, ResolvedText, Shadow,
+    Align, AutoFlow, Direction, Gradient, GridArea, Justify, Length, Paint, ResolvedText, Shadow,
     StateStyles, Style, Track, TrackSize,
 };
 pub use stylesheet::{StyleSheet, StyleSheetError};
@@ -86,9 +86,10 @@ pub use tree::diagnostics::{
     REPAINT_MIN_NODES, UNSTABLE_ID_FRAMES,
 };
 pub use tree::{
-    Action, CollectionInfo, Context, Dirty, Event, FrameStats, GestureResponse, Key, Live,
-    MemoryReport, NodeDetails, NodeId, NodeSnapshot, NumericValue, Pen, Role, ScrollState,
-    Semantics, Swipe, SwipeDirection, TouchPhase,
+    Action, CollectionInfo, Context, Dirty, EditorCharacter, EditorLine, EditorPoint,
+    EditorSelection, EditorText, Event, FrameStats, GestureResponse, Key, Live, MemoryReport,
+    NodeDetails, NodeId, NodeSnapshot, NumericValue, Pen, Role, ScrollState, Semantics, Swipe,
+    SwipeDirection, TouchPhase,
 };
 pub use ui::{
     AreaBuilder, Autocomplete, Button, ComboBox, CommandPalette, DockOptions, DockPanel,
