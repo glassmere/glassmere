@@ -136,7 +136,9 @@ impl<'a, M: 'static> Ui<'a, M> {
                     if fill {
                         strip.width(Length::Percent(1.0))
                     } else {
-                        strip
+                        // As wide as its tabs, up to the width there is:
+                        // past that the strip scrolls.
+                        strip.max_width(Length::Percent(1.0))
                     },
                     |ui| {
                         for (index, tab) in tabs.iter().enumerate() {

@@ -818,3 +818,139 @@ mod detached {
         assert_eq!(app.state().layout.windows.len(), 1);
     }
 }
+
+/// A dock of one group with more tabs than fit its strip.
+fn crowded() -> Driven<DockLayout> {
+    let ids: Vec<String> = (0..30).map(|n| format!("panel-{n}")).collect();
+    Driven::new(ROOT, DockLayout::new(DockNode::tabs(ids)), |layout, ui| {
+        let panels: Vec<DockPanel> = (0..30)
+            .map(|n| DockPanel::new(format!("panel-{n}"), format!("Panel {n}")))
+            .collect();
+        ui.keyed("dock", |ui| {
+            ui.dock(
+                layout,
+                &panels,
+                DockOptions::default(),
+                |action| {
+                    act(move |layout: &mut DockLayout| {
+                        layout.apply(action.clone());
+                    })
+                },
+                |ui, id| ui.label(format!("content:{id}")),
+            )
+        });
+    })
+}
+
+const STRIP: [&str; 4] = ["dock", "$group", "$tabs", "$strip"];
+
+fn in_strip(context: &Context, key: &str) -> Rect {
+    let path: Vec<&str> = STRIP.iter().copied().chain([key]).collect();
+    context.node(context.find(&path).unwrap()).unwrap().bounds
+}
+
+fn clip_in_strip(context: &Context, key: &str) -> Rect {
+    let path: Vec<&str> = STRIP.iter().copied().chain([key]).collect();
+    context.node(context.find(&path).unwrap()).unwrap().clip
+}
+
+#[test]
+fn a_tab_strip_with_more_tabs_than_fit_scrolls_and_keeps_its_menu_in_place() {
+    let mut app = crowded();
+    let strip = app
+        .context
+        .node(app.context.find(&STRIP).unwrap())
+        .unwrap()
+        .bounds;
+    let end = strip.x + strip.width;
+    // The menu sits at the end of the strip, and the tabs stop where it starts.
+    let menu = in_strip(&app.context, "$menu");
+    assert!((menu.x + menu.width - end).abs() < 0.5, "{menu:?}");
+    assert_eq!(in_strip(&app.context, "0").x, strip.x);
+    let last = in_strip(&app.context, "29");
+    assert!(last.x > end, "the last tab is past the edge: {last:?}");
+    assert_eq!(clip_in_strip(&app.context, "29").width, 0.0);
+    let cut = app
+        .context
+        .node(app.context.find(&STRIP).unwrap())
+        .unwrap()
+        .children
+        .into_iter()
+        .map(|id| app.context.node(id).unwrap())
+        .filter(|node| node.semantics.role == Role::Tab && node.clip.width > 0.0)
+        .map(|node| node.clip.x + node.clip.width)
+        .fold(0.0_f32, f32::max);
+    assert!(cut <= menu.x + 0.5, "tabs are drawn under the menu: {cut}");
+
+    // A wheel turned over the strip moves the tabs, not the menu.
+    app.context.event(Event::PointerMoved(center(strip)));
+    app.context.event(Event::Scroll {
+        delta_x: 0.0,
+        delta_y: 120.0,
+    });
+    app.frame();
+    assert_eq!(in_strip(&app.context, "0").x, strip.x - 120.0);
+    assert_eq!(in_strip(&app.context, "$menu"), menu);
+    assert_eq!(clip_in_strip(&app.context, "0").width, 0.0);
+
+    // Choosing a panel that is out of sight brings its tab in, whole and
+    // with its close button, beside the menu.
+    app.state_mut()
+        .apply(glassmere_core::DockAction::Select("panel-29".into()));
+    app.frame();
+    let last = in_strip(&app.context, "29");
+    let close = in_strip(&app.context, "$close-29");
+    assert!(last.x >= strip.x && close.x + close.width <= menu.x + 0.5);
+    let shown = clip_in_strip(&app.context, "$close-29");
+    assert!((shown.width - close.width).abs() < 0.01, "{shown:?}");
+    // The range ends a gap further on, and the wheel stops there.
+    for _ in 0..2 {
+        app.context.event(Event::Scroll {
+            delta_x: 0.0,
+            delta_y: 500.0,
+        });
+        app.frame();
+    }
+    let end_of_range = in_strip(&app.context, "29");
+    assert!(last.x - end_of_range.x <= 4.5, "{end_of_range:?}");
+    app.context.event(Event::Scroll {
+        delta_x: 0.0,
+        delta_y: 500.0,
+    });
+    app.frame();
+    assert_eq!(in_strip(&app.context, "29"), end_of_range);
+
+    // The keyboard walks back to the first tab and the strip follows.
+    let tab = app
+        .context
+        .find(&["dock", "$group", "$tabs", "$strip", "29"])
+        .unwrap();
+    app.context.action(tab, glassmere_core::Action::Focus);
+    app.context.event(Event::KeyDown {
+        key: Key::Home,
+        shift: false,
+        repeat: false,
+    });
+    app.frame();
+    assert_eq!(app.state().group_of("panel-0").unwrap().len(), 30);
+    assert_eq!(in_strip(&app.context, "0").x, strip.x);
+    assert_eq!(in_strip(&app.context, "$menu"), menu);
+}
+
+#[test]
+fn a_tab_strip_whose_tabs_fit_does_not_scroll() {
+    let mut app = App::start(false);
+    app.frame();
+    let path = ["dock", "$split", "$first", "$group", "$tabs", "$strip"];
+    let strip = app.context().find(&path).unwrap();
+    let before = app.context().node(strip).unwrap().bounds;
+    let context = app.context();
+    context.event(Event::PointerMoved(center(before)));
+    context.event(Event::Scroll {
+        delta_x: 0.0,
+        delta_y: 120.0,
+    });
+    app.frame();
+    let first = app.context().node(strip).unwrap().children[0];
+    assert_eq!(app.context().node(first).unwrap().bounds.x, before.x);
+}

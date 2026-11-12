@@ -182,8 +182,8 @@ impl GridModel for People {
             .copied()
             .filter(|row| passes(&self.everyone[*row]))
             .collect();
-        for row in 0..self.everyone.len() {
-            if passes(&self.everyone[row]) && !rows.contains(&row) {
+        for (row, person) in self.everyone.iter().enumerate() {
+            if passes(person) && !rows.contains(&row) {
                 rows.push(row);
             }
         }

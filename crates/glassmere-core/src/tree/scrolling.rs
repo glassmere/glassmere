@@ -33,7 +33,10 @@ impl Context {
         let Some(node) = self.nodes.get_mut(&id) else {
             return false;
         };
-        if !matches!(node.kind, Kind::Scroll | Kind::Collection | Kind::TextArea) {
+        if !matches!(
+            node.kind,
+            Kind::Scroll | Kind::Collection | Kind::TextArea | Kind::TabList
+        ) {
             return false;
         }
         let offset = offset.clamp(0.0, node.scroll.maximum_x);
@@ -96,8 +99,10 @@ impl Context {
         self.order(self.root, &mut order);
         order.into_iter().rev().any(|id| {
             let node = &self.nodes[&id];
-            matches!(node.kind, Kind::Scroll | Kind::Collection | Kind::TextArea)
-                && node.clip.contains(pointer)
+            matches!(
+                node.kind,
+                Kind::Scroll | Kind::Collection | Kind::TextArea | Kind::TabList
+            ) && node.clip.contains(pointer)
                 && self.scroll_x_by(id, delta)
         })
     }
@@ -132,6 +137,9 @@ impl Context {
         let mut parent = self.nodes.get(&target).and_then(|node| node.parent);
         let mut changed = false;
         while let Some(id) = parent {
+            if self.nodes[&id].kind == Kind::TabList {
+                changed |= self.reveal_in_strip(id, target);
+            }
             let node = &self.nodes[&id];
             if matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection) {
                 let bounds = self.nodes[&target].bounds;
@@ -170,5 +178,66 @@ impl Context {
             parent = self.nodes[&id].parent;
         }
         changed
+    }
+
+    /// The tab strip under the pointer, when its tabs do not fit and it can
+    /// still move by `delta`: a wheel turned up or down over it moves it
+    /// sideways.
+    pub(super) fn scroll_strip_at_pointer(&mut self, delta: f32) -> bool {
+        let Some(pointer) = self.pointer else {
+            return false;
+        };
+        let mut order = Vec::new();
+        self.order(self.root, &mut order);
+        let strip = order.into_iter().rev().find(|id| {
+            let node = &self.nodes[id];
+            node.kind == Kind::TabList && node.scroll.maximum_x > 0.0 && node.clip.contains(pointer)
+        });
+        strip.is_some_and(|strip| {
+            let node = &self.nodes[&strip];
+            let offset = node.scroll.offset_x;
+            self.set_scroll_x(strip, offset + delta)
+        })
+    }
+
+    /// Scrolls the tab strip `strip` until `target`, one of its children, is
+    /// in the part that shows tabs. A tab comes with its close button.
+    pub(super) fn reveal_in_strip(&mut self, strip: NodeId, target: NodeId) -> bool {
+        let node = &self.nodes[&strip];
+        if node.scroll.maximum_x <= 0.0 {
+            return false;
+        }
+        let menu = node
+            .children_by_key
+            .get(&WidgetKey::named(STRIP_MENU))
+            .copied();
+        if menu == Some(target) {
+            return false;
+        }
+        let pinned = menu.map_or(0.0, |menu| self.nodes[&menu].bounds.width);
+        let rtl = node.resolved.rtl();
+        let (left, right) = if rtl {
+            (node.bounds.x + pinned, node.bounds.x + node.bounds.width)
+        } else {
+            (node.bounds.x, node.bounds.x + node.bounds.width - pinned)
+        };
+        let mut shown = self.nodes[&target].bounds;
+        if let Control::Tab { index, .. } = self.nodes[&target].control
+            && let Some(close) = node
+                .children_by_key
+                .get(&WidgetKey::named(format!("$close-{index}")))
+        {
+            shown = shown.union(self.nodes[close].bounds);
+        }
+        // The start edge wins when the tab is wider than the strip.
+        let (before, after) = (shown.x - left, shown.x + shown.width - right);
+        let sideways = if rtl {
+            if after > 0.0 { after } else { before.min(0.0) }
+        } else if before < 0.0 {
+            before
+        } else {
+            after.max(0.0)
+        };
+        self.scroll_x_by(strip, sideways)
     }
 }
