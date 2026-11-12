@@ -470,6 +470,12 @@ impl Editor {
             )
     }
 
+    /// The furthest a field `width` wide scrolls: its text's end, with room
+    /// for the caret after it.
+    pub(crate) fn scroll_limit(&self, width: f32) -> f32 {
+        (self.geometry.size.width - width + 2.0).max(0.0)
+    }
+
     pub fn prepare(
         &mut self,
         measurer: &mut impl TextMeasurer,
@@ -495,9 +501,7 @@ impl Editor {
                 self.scroll_x = x - width + 2.0;
             }
         }
-        self.scroll_x = self
-            .scroll_x
-            .clamp(0.0, (self.geometry.size.width - width + 2.0).max(0.0));
+        self.scroll_x = self.scroll_x.clamp(0.0, self.scroll_limit(width));
         let old_align = self.align_x;
         self.align_x = if rtl {
             (width - 2.0 - self.geometry.size.width).max(0.0)
