@@ -268,6 +268,7 @@ impl Node {
                 Control::TabPanel => Role::TabPanel,
                 Control::Divider { .. } | Control::Sizer { .. } => Role::Splitter,
                 Control::TextInput { password: true, .. } => Role::PasswordInput,
+                Control::Submenu { .. } => Role::MenuItem,
                 Control::TextInput {
                     number: Some(_), ..
                 } => Role::SpinButton,
@@ -408,6 +409,9 @@ pub struct Context {
     spare: std::cell::RefCell<Vec<Vec<Element>>>,
     submitted: HashSet<NodeId>,
     pub(crate) popup: Option<PopupState>,
+    /// The menus the open popup is a submenu of, outermost first. `popup`
+    /// is the innermost, which has the keyboard.
+    pub(crate) popup_parents: Vec<PopupState>,
     drag: Option<Box<crate::drag::DragState>>,
     /// Source of a drag the host handed to the operating system.
     exported_drag: Option<NodeId>,
@@ -619,6 +623,7 @@ impl Default for Context {
             spare: std::cell::RefCell::new(Vec::new()),
             submitted: HashSet::new(),
             popup: None,
+            popup_parents: Vec::new(),
             drag: None,
             exported_drag: None,
             dock_drag: None,

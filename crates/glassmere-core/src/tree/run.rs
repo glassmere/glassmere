@@ -361,13 +361,7 @@ impl Context {
         for popover in self.popovers() {
             self.paint(popover).append_to(&mut scene.primitives);
         }
-        if let Some(popup) = self.popup
-            && let Some(panel) = self
-                .nodes
-                .get(&popup.owner)
-                .and_then(|node| node.children.first())
-                .copied()
-        {
+        for panel in self.popup_panels() {
             self.paint(panel).append_to(&mut scene.primitives);
         }
         self.paint_ghosts(&mut scene);
@@ -747,13 +741,17 @@ impl Context {
     }
 
     pub(super) fn repair_interaction(&mut self) {
-        if self.popup.is_some_and(|popup| {
+        // A menu whose owner went away or was disabled closes, and every
+        // submenu opened from it with it.
+        let gone = self.popup_levels().position(|popup| {
             !self
                 .nodes
                 .get(&popup.owner)
                 .is_some_and(|node| node.enabled)
-        }) {
-            self.popup = None;
+        });
+        if let Some(depth) = gone {
+            self.popup = (depth > 0).then(|| self.popup_parents[depth - 1]);
+            self.popup_parents.truncate(depth.saturating_sub(1));
         }
         let valid = |id: NodeId| self.nodes.get(&id).is_some_and(Node::focusable);
         if self.focused.is_some_and(|id| !valid(id)) {
