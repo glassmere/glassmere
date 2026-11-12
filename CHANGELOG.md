@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- A tab strip with more tabs than fit scrolls instead of cutting them off, in `Ui::tabs` and in dock groups. The wheel (turned either way), a touch pan and the arrow, Home and End keys move it, and a tab that becomes selected is brought into view with its close button. A dock group's panel menu stays at the end of the strip.
 - Dragging a selection past the edge of a single-line text input keeps scrolling it while the pointer rests there, faster the further out it is, as the multi-line editors do. Before, the text moved only as the pointer did.
 - The code editor no longer marks a bracket inside a string or a comment as the partner of one in code. `Highlighter::strings_and_comments` reports where they are, `SyntectHighlighter` implements it, and `TextDocument::matching_bracket_in` is the search that takes them. A bracket inside a string or comment pairs only within it. Without a highlighter every bracket counts, as before.
 

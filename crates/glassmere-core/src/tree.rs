@@ -52,6 +52,8 @@ pub use types::*;
 
 /// A second press on a title bar this soon and this near the first means
 /// "maximize" rather than another move.
+/// The key of the panel menu a dock puts at the end of a tab strip.
+const STRIP_MENU: &str = "$menu";
 const TITLE_DOUBLE_PRESS: Duration = Duration::from_millis(400);
 const TITLE_DOUBLE_PRESS_NEAR: f32 = 24.0;
 
@@ -376,6 +378,9 @@ pub struct Context {
     scene: Scene,
     stats: FrameStats,
     geometry_dirty: bool,
+    /// Tabs that became selected in this declaration; layout scrolls their
+    /// strips to show them.
+    reveal_tabs: Vec<NodeId>,
     pending_damage: Option<Rect>,
     damage: Vec<Rect>,
     updates: HashMap<NodeId, ControlUpdate>,
@@ -599,6 +604,7 @@ impl Default for Context {
             scene: Scene::default(),
             stats: FrameStats::default(),
             geometry_dirty: false,
+            reveal_tabs: Vec::new(),
             pending_damage: None,
             damage: Vec::new(),
             updates: HashMap::new(),

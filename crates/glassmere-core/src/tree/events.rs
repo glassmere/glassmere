@@ -488,6 +488,10 @@ impl Context {
         {
             return true;
         }
+        // A wheel that only turns up and down moves a tab strip sideways.
+        if delta_x == 0.0 && delta_y != 0.0 && self.scroll_strip_at_pointer(delta_y) {
+            return true;
+        }
         let vertical = delta_y != 0.0 && self.scroll_at_pointer(delta_y);
         let horizontal = delta_x != 0.0 && self.scroll_x_at_pointer(delta_x);
         vertical || horizontal

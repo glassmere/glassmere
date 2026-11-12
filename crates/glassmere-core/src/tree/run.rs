@@ -326,6 +326,12 @@ impl Context {
         if self.geometry_dirty {
             self.refresh_bounds(size);
         }
+        // A tab that became the selected one is brought into its strip.
+        for tab in std::mem::take(&mut self.reveal_tabs) {
+            if let Some(strip) = self.nodes.get(&tab).and_then(|node| node.parent) {
+                self.reveal_in_strip(strip, tab);
+            }
+        }
         drop(layout_span);
         self.stats.layout = layout_started.elapsed();
         self.diagnose_layout(layout_ran);
@@ -541,6 +547,11 @@ impl Context {
         if node.enabled != element.enabled {
             self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
         }
+        if matches!(element.control, Control::Tab { selected: true, .. })
+            && !matches!(node.control, Control::Tab { selected: true, .. })
+        {
+            self.reveal_tabs.push(id);
+        }
         node.text = element.text;
         node.style = element.style;
         node.resolved = resolved;
@@ -601,6 +612,9 @@ impl Context {
             .next_id
             .checked_add(1)
             .expect("node identity exhausted");
+        if matches!(element.control, Control::Tab { selected: true, .. }) {
+            self.reveal_tabs.push(id);
+        }
         self.nodes.insert(
             id,
             Node {

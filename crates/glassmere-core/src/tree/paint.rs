@@ -93,7 +93,7 @@ impl Context {
             node.scroll.offset = node.scroll.offset.clamp(0.0, node.scroll.maximum);
         }
         let rtl = node.resolved.rtl();
-        if matches!(node.kind, Kind::Scroll | Kind::Collection) {
+        if matches!(node.kind, Kind::Scroll | Kind::Collection | Kind::TabList) {
             // Content overflows at the end side: past the right edge, or past
             // the left edge in a right-to-left container.
             let padding = node.style.padding.max(0.0);
@@ -117,6 +117,21 @@ impl Context {
         };
         let clip = node.clip;
         let children = node.children.clone();
+        // A tab strip that scrolls keeps its panel menu at the end edge, and
+        // the tabs stop where the menu starts.
+        let bounds = node.bounds;
+        let pinned = (node.kind == Kind::TabList && node.scroll.maximum_x > 0.0)
+            .then(|| {
+                node.children_by_key
+                    .get(&WidgetKey::named(STRIP_MENU))
+                    .copied()
+            })
+            .flatten()
+            .map(|menu| {
+                let layout = self.layout.layout(self.nodes[&menu].layout_id).unwrap();
+                (menu, layout.location.x, layout.size.width)
+            });
+        let node = self.nodes.get_mut(&id).unwrap();
         if old_bounds != node.bounds {
             self.diagnostic.bounds_changed = true;
         }
@@ -126,7 +141,29 @@ impl Context {
         }
         self.note_layout_change(id, old_layout_rect, layout_rect);
         for child in children {
-            self.update_bounds(child, origin, clip);
+            match pinned {
+                Some((menu, x, width)) if menu == child => {
+                    let edge = if rtl {
+                        bounds.x
+                    } else {
+                        bounds.x + bounds.width - width
+                    };
+                    let origin = Point {
+                        x: edge - x,
+                        y: origin.y,
+                    };
+                    self.update_bounds(child, origin, clip);
+                }
+                Some((_, _, width)) => {
+                    let tabs = Rect {
+                        x: if rtl { bounds.x + width } else { bounds.x },
+                        width: (bounds.width - width).max(0.0),
+                        ..bounds
+                    };
+                    self.update_bounds(child, origin, clip.intersect(tabs));
+                }
+                None => self.update_bounds(child, origin, clip),
+            }
         }
     }
 
