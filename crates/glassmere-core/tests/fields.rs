@@ -610,3 +610,82 @@ fn a_password_field_and_its_reveal_button_fill_the_width_of_a_plain_field() {
             .focusable
     );
 }
+
+#[test]
+fn a_drag_held_past_the_edge_of_a_field_keeps_scrolling_it_until_release() {
+    #[derive(Default)]
+    struct Form {
+        text: String,
+    }
+    let mut app = Driven::new(
+        ROOT,
+        Form {
+            text: "x".repeat(200),
+        },
+        |state: &Form, ui: &mut Ui<'_, Msg<Form>>| {
+            ui.keyed("field", |ui| {
+                ui.text_input(
+                    "Text",
+                    &state.text,
+                    on(|s: &mut Form, text: String| s.text = text),
+                );
+            });
+        },
+    );
+    let field = app.context.find(&["field"]).unwrap();
+    let bounds = app.context.node(field).unwrap().bounds;
+    let middle = bounds.y + bounds.height / 2.0;
+    let selected = |app: &Driven<Form>| app.context.selected_text().map_or(0, |text| text.len());
+    let at = |app: &mut Driven<Form>, milliseconds: u64| {
+        app.context
+            .set_now(std::time::Duration::from_millis(milliseconds));
+        app.frame();
+    };
+
+    // The field shows the end of its text. Press there and hold to its left.
+    at(&mut app, 0);
+    app.context.event(Event::PointerMoved(Point {
+        x: bounds.x + bounds.width - 20.0,
+        y: middle,
+    }));
+    app.context.event(Event::PointerDown);
+    app.context.event(Event::PointerMoved(Point {
+        x: bounds.x - 30.0,
+        y: middle,
+    }));
+    at(&mut app, 0);
+    let first = selected(&app);
+    assert!(first > 0 && first < 100, "{first}");
+    // The pointer rests; the clock scrolls and the selection follows.
+    assert!(app.context.next_wake().is_some());
+    at(&mut app, 100);
+    at(&mut app, 200);
+    let second = selected(&app);
+    assert!(second > first, "{second} > {first}");
+    at(&mut app, 300);
+    assert!(selected(&app) > second);
+    // At the start of the text there is nowhere left to scroll.
+    for step in 4..80 {
+        at(&mut app, step * 100);
+    }
+    let all = selected(&app);
+    assert!(all > 190, "{all}");
+    assert_eq!(app.context.next_wake(), None);
+
+    // Held past the right edge it scrolls back the other way.
+    app.context.event(Event::PointerMoved(Point {
+        x: bounds.x + bounds.width + 30.0,
+        y: middle,
+    }));
+    at(&mut app, 8000);
+    let back = selected(&app);
+    assert!(app.context.next_wake().is_some());
+    at(&mut app, 8100);
+    at(&mut app, 8200);
+    assert!(selected(&app) < back);
+    app.context.event(Event::PointerUp);
+    at(&mut app, 8300);
+    assert_eq!(app.context.next_wake(), None);
+    // Nothing was typed, so the application's text is as it was.
+    assert_eq!(app.state().text.len(), 200);
+}
