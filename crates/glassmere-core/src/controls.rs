@@ -209,8 +209,23 @@ pub(crate) enum Control {
         draft: bool,
         password: bool,
     },
+    /// A row of a menu that opens a menu of its own beside it. It is an
+    /// item of the menu it is in and the owner of the one it opens.
+    Submenu {
+        items: Vec<MenuItem>,
+        /// The mark at its end edge that says it opens.
+        hint: String,
+    },
     /// A button the keyboard skips because the field beside it has the keys.
     Stepper,
+    /// The button beside a password field that shows or hides its text. Its
+    /// name is what it does next, which is read instead of its short text.
+    Reveal {
+        name: String,
+        /// The text it shows in its other state. The button is as wide as
+        /// the wider of the two, so the field beside it keeps its width.
+        other: String,
+    },
     Toast {
         label: String,
         /// Errors interrupt a screen reader; the rest wait their turn.
@@ -397,6 +412,9 @@ pub(crate) enum ControlUpdate {
     Text(String),
     Number(f64),
     Choice(usize),
+    /// A pick inside a submenu: the index at each level, from the menu's own
+    /// items down to the item picked.
+    Path(Vec<usize>),
     Collection(Vec<crate::collection::CollectionInput>),
     Drop(crate::DragPayload),
     DragEnded(crate::DragOutcome),

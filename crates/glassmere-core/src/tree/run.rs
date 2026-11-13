@@ -167,7 +167,11 @@ impl Context {
             self.misuse(node, message);
         }
         for id in std::mem::take(&mut host.commands) {
-            self.event(crate::Event::Command(id));
+            // The command's button reports this on the next declaration, and
+            // no input follows a menu pick to bring one.
+            if self.event(crate::Event::Command(id)) {
+                self.redraw_requested = true;
+            }
         }
         self.watch_requests = host.watched;
         if let Some(menu) = host.menu
@@ -326,6 +330,12 @@ impl Context {
         if self.geometry_dirty {
             self.refresh_bounds(size);
         }
+        // A tab that became the selected one is brought into its strip.
+        for tab in std::mem::take(&mut self.reveal_tabs) {
+            if let Some(strip) = self.nodes.get(&tab).and_then(|node| node.parent) {
+                self.reveal_in_strip(strip, tab);
+            }
+        }
         drop(layout_span);
         self.stats.layout = layout_started.elapsed();
         self.diagnose_layout(layout_ran);
@@ -355,13 +365,7 @@ impl Context {
         for popover in self.popovers() {
             self.paint(popover).append_to(&mut scene.primitives);
         }
-        if let Some(popup) = self.popup
-            && let Some(panel) = self
-                .nodes
-                .get(&popup.owner)
-                .and_then(|node| node.children.first())
-                .copied()
-        {
+        for panel in self.popup_panels() {
             self.paint(panel).append_to(&mut scene.primitives);
         }
         self.paint_ghosts(&mut scene);
@@ -541,6 +545,11 @@ impl Context {
         if node.enabled != element.enabled {
             self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
         }
+        if matches!(element.control, Control::Tab { selected: true, .. })
+            && !matches!(node.control, Control::Tab { selected: true, .. })
+        {
+            self.reveal_tabs.push(id);
+        }
         node.text = element.text;
         node.style = element.style;
         node.resolved = resolved;
@@ -564,7 +573,7 @@ impl Context {
                 .editor
                 .get_or_insert_with(|| Box::new(Editor::new(value)));
             editor.synchronize(value);
-            editor.masked = *password;
+            editor.masked = *password && !editor.revealed;
         }
         node.control = element.control;
         if paint_changed {
@@ -601,6 +610,9 @@ impl Context {
             .next_id
             .checked_add(1)
             .expect("node identity exhausted");
+        if matches!(element.control, Control::Tab { selected: true, .. }) {
+            self.reveal_tabs.push(id);
+        }
         self.nodes.insert(
             id,
             Node {
@@ -733,13 +745,17 @@ impl Context {
     }
 
     pub(super) fn repair_interaction(&mut self) {
-        if self.popup.is_some_and(|popup| {
+        // A menu whose owner went away or was disabled closes, and every
+        // submenu opened from it with it.
+        let gone = self.popup_levels().position(|popup| {
             !self
                 .nodes
                 .get(&popup.owner)
                 .is_some_and(|node| node.enabled)
-        }) {
-            self.popup = None;
+        });
+        if let Some(depth) = gone {
+            self.popup = (depth > 0).then(|| self.popup_parents[depth - 1]);
+            self.popup_parents.truncate(depth.saturating_sub(1));
         }
         let valid = |id: NodeId| self.nodes.get(&id).is_some_and(Node::focusable);
         if self.focused.is_some_and(|id| !valid(id)) {

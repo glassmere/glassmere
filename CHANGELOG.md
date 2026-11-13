@@ -4,6 +4,37 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [0.1.4] - 2026-11-14
+
+### Added
+
+- Screen readers can read and move through editor text. Text fields, text areas, the code editor and the rich editor publish one text run per visual line, with character extents and word starts, and they publish the caret and the selection.
+  - The platform can move the caret or set the selection, as `Action::SetSelection` in core.
+  - `Context::editor_text` returns what is published.
+  - Password fields publish no text.
+- `TextInput::password_with_reveal`, a password field with a button beside it that shows the text and hides it again. A press on the button leaves the keyboard with the field. The button is as wide for one word as for the other, so the field keeps its width. The button's texts are the catalog keys `glassmere-password-show`, `-hide`, `-show-name` and `-hide-name`, with German and Czech in `glassmere-fluent`.
+- Grid layout features:
+  - `Style::row_gap` and `column_gap`. `gap` still sets both.
+  - `Track::AutoFill` and `Track::AutoFit`, written `repeat(auto-fill, ...)` in a stylesheet.
+  - Dense auto-flow through `Style::auto_flow` and `AutoFlow`.
+  - Named template areas: `Style::areas` on the grid, `Style::area_name` on a child.
+  - `GridArea::auto_span` for a child that auto-flow places across several tracks.
+
+  The stylesheet has the same properties: `row-gap`, `column-gap`, `auto-flow`, `areas`, and `area: <name>`.
+
+### Changed
+
+- A `GridArea` line of 0 leaves that axis to auto-flow. Lines are 1-based, and 0 used to be read as line 1.
+- Text areas, the code editor and the rich editor report `Role::MultilineTextInput` instead of `Role::TextInput`.
+
+### Fixed
+
+- A command picked in a `Ui::menu_bar` menu takes effect at once. Before, the application heard of it only with the next input, such as a pointer move.
+- A submenu inside a menu of `Ui::menu_bar` opens beside its row, to any depth, instead of being drawn as a heading with its items indented under it. It opens on hover, on a click, on Enter and on the arrow key that points the reading way; the other arrow key and Escape go back out one level. It opens on the other side of its row where the window ends.
+- A tab strip with more tabs than fit scrolls instead of cutting them off, in `Ui::tabs` and in dock groups. The wheel (turned either way), a touch pan and the arrow, Home and End keys move it, and a tab that becomes selected is brought into view with its close button. A dock group's panel menu stays at the end of the strip.
+- Dragging a selection past the edge of a single-line text input keeps scrolling it while the pointer rests there, faster the further out it is, as the multi-line editors do. Before, the text moved only as the pointer did.
+- The code editor no longer marks a bracket inside a string or a comment as the partner of one in code. `Highlighter::strings_and_comments` reports where they are, `SyntectHighlighter` implements it, and `TextDocument::matching_bracket_in` is the search that takes them. A bracket inside a string or comment pairs only within it. Without a highlighter every bracket counts, as before.
+
 ## [0.1.3] - 2026-11-07
 
 ### Added

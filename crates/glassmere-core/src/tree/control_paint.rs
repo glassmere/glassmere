@@ -112,13 +112,18 @@ impl Context {
             .filter_map(|(id, node)| {
                 (node.changed_frame == self.frame
                     && matches!(&node.control,
-                        Control::Choice { hint, .. } | Control::Hint(hint) if !hint.is_empty()))
+                        Control::Choice { hint, .. }
+                        | Control::Submenu { hint, .. }
+                        | Control::Hint(hint) if !hint.is_empty()))
                 .then_some(*id)
             })
             .collect();
         for id in hinted {
             let node = &self.nodes[&id];
-            let (Control::Choice { hint, .. } | Control::Hint(hint)) = &node.control else {
+            let (Control::Choice { hint, .. }
+            | Control::Submenu { hint, .. }
+            | Control::Hint(hint)) = &node.control
+            else {
                 continue;
             };
             let width = measurer

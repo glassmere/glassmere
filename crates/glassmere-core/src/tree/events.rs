@@ -183,13 +183,9 @@ impl Context {
         for popover in self.popovers() {
             self.order(popover, &mut order);
         }
-        if let Some(popup) = self.popup
-            && let Some(panel) = self
-                .nodes
-                .get(&popup.owner)
-                .and_then(|node| node.children.first())
-        {
-            self.order(*panel, &mut order);
+        // A submenu is over the menu it opened from.
+        for panel in self.popup_panels() {
+            self.order(panel, &mut order);
         }
         order.into_iter().rev().find(|id| {
             let node = &self.nodes[id];
@@ -330,7 +326,12 @@ impl Context {
             }
             Event::PointerDown | Event::PointerDownWithShift => {
                 self.captured = self.hovered;
-                self.focused = self.hovered.filter(|id| self.nodes[id].focusable());
+                self.focused = self
+                    .hovered
+                    // A press on a reveal button leaves the keyboard with
+                    // its password field, so typing goes on.
+                    .map(|id| self.reveal_field(id).unwrap_or(id))
+                    .filter(|id| self.nodes[id].focusable());
                 self.quiet_focus = self.focused.filter(|&id| self.in_title_bar(id));
                 self.keyboard_pressed = None;
                 self.press_window_frame();
@@ -486,6 +487,10 @@ impl Context {
             && delta_y != 0.0
             && self.step_number(id, if delta_y < 0.0 { 1.0 } else { -1.0 })
         {
+            return true;
+        }
+        // A wheel that only turns up and down moves a tab strip sideways.
+        if delta_x == 0.0 && delta_y != 0.0 && self.scroll_strip_at_pointer(delta_y) {
             return true;
         }
         let vertical = delta_y != 0.0 && self.scroll_at_pointer(delta_y);
