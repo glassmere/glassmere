@@ -466,21 +466,24 @@ impl Context {
         true
     }
 
+    /// The password field beside the reveal button `id`.
+    pub(super) fn reveal_field(&self, id: NodeId) -> Option<NodeId> {
+        let node = self.nodes.get(&id)?;
+        if !matches!(node.control, Control::Reveal { .. }) {
+            return None;
+        }
+        self.nodes
+            .get(&node.parent?)?
+            .children_by_key
+            .get(&WidgetKey::named("$field"))
+            .copied()
+    }
+
     /// Shows or hides the text of the password field beside the reveal
     /// button `id`. The button has no handler, so its click makes the view
     /// stale and the next declaration names the button for what it now does.
     fn toggle_reveal(&mut self, id: NodeId) {
-        let field = self
-            .nodes
-            .get(&id)
-            .and_then(|node| node.parent)
-            .and_then(|row| self.nodes.get(&row))
-            .and_then(|row| {
-                row.children_by_key
-                    .get(&WidgetKey::named("$field"))
-                    .copied()
-            });
-        let Some(field) = field else {
+        let Some(field) = self.reveal_field(id) else {
             return;
         };
         if let Some(editor) = self

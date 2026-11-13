@@ -274,8 +274,10 @@ fn the_menu_bar_activates_the_command_its_item_names() {
         .unwrap();
     assert!(driven.context.action(item, Action::Activate));
     // Choosing it closes the menu and activates the command, which the
-    // button reports on the next declaration.
+    // button reports on the next declaration. The host is asked for that
+    // declaration, since no input follows to bring it.
     driven.frame();
+    assert!(driven.context.animating());
     driven.frame();
     assert_eq!((driven.state().opened, driven.state().saved), (0, 1));
 }

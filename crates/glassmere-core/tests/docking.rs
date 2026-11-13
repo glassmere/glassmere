@@ -5,7 +5,7 @@ use glassmere_core::{
     Axis, Context, DockArea, DockLayout, DockNode, DockOptions, DockPanel, DockPlace, DockTarget,
     DockWindowId, DockZone, Event, Key, Role, Ui,
 };
-use glassmere_scene::{Point, Rect, Size};
+use glassmere_scene::{Point, Primitive, Rect, Size};
 use support::{Driven, act, labelled, shows};
 
 const ROOT: Size = Size::new(800.0, 600.0);
@@ -881,6 +881,38 @@ fn a_tab_strip_with_more_tabs_than_fit_scrolls_and_keeps_its_menu_in_place() {
         .map(|node| node.clip.x + node.clip.width)
         .fold(0.0_f32, f32::max);
     assert!(cut <= menu.x + 0.5, "tabs are drawn under the menu: {cut}");
+    // That holds for what is painted: a tab the menu covers in part is cut
+    // there, and one past it is not drawn.
+    let primitives = &app.context.scene().primitives;
+    let straddling = app
+        .context
+        .node(app.context.find(&STRIP).unwrap())
+        .unwrap()
+        .children
+        .into_iter()
+        .map(|id| app.context.node(id).unwrap())
+        .find(|node| node.bounds.x < menu.x && node.bounds.x + node.bounds.width > menu.x + 0.5)
+        .expect("a tab or its close button under the menu");
+    assert!(
+        primitives.iter().any(
+            |primitive| matches!(primitive, Primitive::PushClip(rect) if *rect == straddling.clip)
+        ),
+        "{:?} is not cut at the menu",
+        straddling.semantics.label
+    );
+    let texts: Vec<&str> = primitives
+        .iter()
+        .filter_map(|primitive| match primitive {
+            Primitive::StyledText { text, .. } | Primitive::Text { text, .. } => {
+                Some(text.as_str())
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(
+        texts.contains(&"Panel 0") && !texts.contains(&"Panel 29"),
+        "{texts:?}"
+    );
 
     // A wheel turned over the strip moves the tabs, not the menu.
     app.context.event(Event::PointerMoved(center(strip)));
@@ -953,4 +985,41 @@ fn a_tab_strip_whose_tabs_fit_does_not_scroll() {
     app.frame();
     let first = app.context().node(strip).unwrap().children[0];
     assert_eq!(app.context().node(first).unwrap().bounds.x, before.x);
+}
+
+#[test]
+fn a_tab_brought_into_view_on_the_first_frame_leaves_the_window_drawn() {
+    // The left group is too narrow for its first tab and the close button,
+    // so the strip scrolls as it is first laid out.
+    let layout = DockLayout::new(DockNode::row(
+        0.14,
+        DockNode::tabs(["files", "search"]),
+        DockNode::tabs(["editor"]),
+    ));
+    let app = Driven::new(ROOT, layout, |layout, ui| {
+        let panels = [
+            DockPanel::new("files", "Files"),
+            DockPanel::new("search", "Search"),
+            DockPanel::new("editor", "Editor"),
+        ];
+        ui.keyed("dock", |ui| {
+            ui.dock(
+                layout,
+                &panels,
+                DockOptions::default(),
+                |action| {
+                    act(move |layout: &mut DockLayout| {
+                        layout.apply(action.clone());
+                    })
+                },
+                |ui, id| ui.label(format!("content:{id}")),
+            )
+        });
+    });
+    let group = app
+        .context
+        .find(&["dock", "$split", "$first", "$group"])
+        .unwrap();
+    let group = app.context.node(group).unwrap();
+    assert_eq!(group.clip, group.bounds);
 }

@@ -326,7 +326,12 @@ impl Context {
             }
             Event::PointerDown | Event::PointerDownWithShift => {
                 self.captured = self.hovered;
-                self.focused = self.hovered.filter(|id| self.nodes[id].focusable());
+                self.focused = self
+                    .hovered
+                    // A press on a reveal button leaves the keyboard with
+                    // its password field, so typing goes on.
+                    .map(|id| self.reveal_field(id).unwrap_or(id))
+                    .filter(|id| self.nodes[id].focusable());
                 self.quiet_focus = self.focused.filter(|&id| self.in_title_bar(id));
                 self.keyboard_pressed = None;
                 self.press_window_frame();

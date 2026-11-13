@@ -562,6 +562,8 @@ fn a_reveal_button_shows_a_password_and_hides_it_again() {
     click(&mut app.context, reveal);
     app.frame();
     assert_eq!(all_text(&app.context), ["hunter 2", "Hide"]);
+    // A press on the button leaves the keyboard with the field.
+    assert_eq!(app.context.focused(), Some(field));
     let node = app.context.node(field).unwrap();
     assert_eq!(node.semantics.role, Role::PasswordInput);
     assert_eq!(node.value.as_deref(), Some("hunter 2"));
