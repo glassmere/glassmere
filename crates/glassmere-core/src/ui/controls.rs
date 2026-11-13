@@ -107,12 +107,21 @@ impl<'a, M: 'static> Ui<'a, M> {
                 )
                 .rebind(context);
             ui.set_handler(handler);
-            let (text, name) = if revealed {
-                ("glassmere-password-hide", "glassmere-password-hide-name")
+            let (text, name, other) = if revealed {
+                (
+                    "glassmere-password-hide",
+                    "glassmere-password-hide-name",
+                    "glassmere-password-show",
+                )
             } else {
-                ("glassmere-password-show", "glassmere-password-show-name")
+                (
+                    "glassmere-password-show",
+                    "glassmere-password-show-name",
+                    "glassmere-password-hide",
+                )
             };
             let name = ui.context.tr(name, &[]);
+            let other = ui.context.tr(other, &[]);
             ui.push(Element {
                 text: ui.context.tr(text, &[]),
                 style: Style {
@@ -122,7 +131,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                 },
                 enabled: ui.enabled,
                 tooltip: Some(name.clone()),
-                control: Control::Reveal { name },
+                control: Control::Reveal { name, other },
                 ..Element::new(WidgetKey::named("$reveal"), Kind::Button)
             });
         });
