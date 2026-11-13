@@ -82,7 +82,7 @@ impl Context {
         self.invalidate_paint(id);
         self.geometry_dirty = true;
         self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
-        self.refresh_bounds(self.scene.size);
+        self.refresh_bounds(self.size);
         let hovered = self.pointer.and_then(|position| self.hit_test(position));
         for id in [self.hovered, hovered].into_iter().flatten() {
             self.invalidate_paint(id);

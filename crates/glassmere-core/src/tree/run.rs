@@ -167,7 +167,11 @@ impl Context {
             self.misuse(node, message);
         }
         for id in std::mem::take(&mut host.commands) {
-            self.event(crate::Event::Command(id));
+            // The command's button reports this on the next declaration, and
+            // no input follows a menu pick to bring one.
+            if self.event(crate::Event::Command(id)) {
+                self.redraw_requested = true;
+            }
         }
         self.watch_requests = host.watched;
         if let Some(menu) = host.menu

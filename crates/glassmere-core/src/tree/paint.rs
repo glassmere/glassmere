@@ -321,6 +321,23 @@ impl Context {
         }
         self.stats.paint_nodes += 1;
         self.nodes.get_mut(&id).unwrap().painted_frame = self.frame;
+        // A child of a tab strip is drawn only where the strip shows tabs,
+        // which stops short of a pinned panel menu.
+        let node = &self.nodes[&id];
+        let strip_clip = node
+            .parent
+            .filter(|parent| self.nodes[parent].kind == Kind::TabList)
+            .map(|_| node.clip)
+            .filter(|clip| *clip != node.bounds);
+        if strip_clip.is_some_and(|clip| clip.width <= 0.0 || clip.height <= 0.0) {
+            let chunk = Arc::new(PaintChunk {
+                before: Vec::new(),
+                children: Vec::new(),
+                after: Vec::new(),
+            });
+            self.nodes.get_mut(&id).unwrap().paint_cache = Some(chunk.clone());
+            return chunk;
+        }
         let target = self.appearance(id, &self.nodes[&id]);
         let animation_state::Displayed { shown, layer } = self.displayed(id, target);
         let crate::animation::Shown {
@@ -335,6 +352,9 @@ impl Context {
         }
         let node = &self.nodes[&id];
         let mut scene = Scene::default();
+        if let Some(clip) = strip_clip {
+            scene.primitives.push(Primitive::PushClip(clip));
+        }
         if let Some((opacity, transform)) = layer {
             scene.primitives.push(Primitive::PushLayer {
                 bounds: node.bounds,
@@ -383,6 +403,9 @@ impl Context {
         scene.primitives.push(Primitive::PopClip);
         if layer.is_some() {
             scene.primitives.push(Primitive::PopLayer);
+        }
+        if strip_clip.is_some() {
+            scene.primitives.push(Primitive::PopClip);
         }
         let after = scene.primitives;
         let children = children
