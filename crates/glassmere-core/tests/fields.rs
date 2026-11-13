@@ -543,6 +543,43 @@ fn login_with_reveal() -> Driven<Login> {
     )
 }
 
+/// Texts where the reveal button's two words differ in length.
+struct Uneven;
+
+impl glassmere_core::Messages for Uneven {
+    fn locale(&self) -> &str {
+        "en"
+    }
+    fn text(&self, key: &str, _: &[(&str, glassmere_core::MessageArg)]) -> Option<String> {
+        match key {
+            "glassmere-password-show" => Some("Show the text".into()),
+            "glassmere-password-hide" => Some("Hide".into()),
+            _ => None,
+        }
+    }
+}
+
+#[test]
+fn a_reveal_button_is_as_wide_for_one_word_as_for_the_other() {
+    let mut app = login_with_reveal();
+    app.context.set_messages(Some(Box::new(Uneven)));
+    app.frame();
+    let field = app.context.find(&["password", "$field"]).unwrap();
+    let reveal = app.context.find(&["password", "$reveal"]).unwrap();
+    let bounds = |app: &Driven<Login>| {
+        (
+            app.context.node(field).unwrap().bounds,
+            app.context.node(reveal).unwrap().bounds,
+        )
+    };
+    let shown = bounds(&app);
+    click(&mut app.context, reveal);
+    app.frame();
+    assert_eq!(all_text(&app.context), ["", "Hide"]);
+    // The field beside it does not move when the word changes.
+    assert_eq!(bounds(&app), shown);
+}
+
 #[test]
 fn a_reveal_button_shows_a_password_and_hides_it_again() {
     let mut app = login_with_reveal();

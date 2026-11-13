@@ -222,6 +222,9 @@ pub(crate) enum Control {
     /// name is what it does next, which is read instead of its short text.
     Reveal {
         name: String,
+        /// The text it shows in its other state. The button is as wide as
+        /// the wider of the two, so the field beside it keeps its width.
+        other: String,
     },
     Toast {
         label: String,
