@@ -64,7 +64,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - A grid selects one cell at a time, with no range selection or block copy. Number cells are edited as text.
 - Filters are text only. There are no pinned data rows (totals).
 - Property grid rows are declared, not virtualized; filter or split thousands of properties. There is no multi-object editing. Enums are edited through a `usize` index with `choices(..)`, and `Option<T>` and collection fields are not supported by `#[derive(Properties)]`.
-- Menus are two levels deep; a deeper submenu is drawn as a heading with its items under it. Tooltips are pointer-only, with one delay and one placement.
+- Submenus nest to any depth in `Ui::menu_bar` only: `Ui::menu`, context menus and combo boxes take a flat list. A submenu opens as soon as the pointer is on its row, with no delay, and closes when the pointer crosses another row on the way to it. Tooltips are pointer-only, with one delay and one placement.
 
 ## Windows and docking
 

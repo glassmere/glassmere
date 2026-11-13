@@ -183,13 +183,9 @@ impl Context {
         for popover in self.popovers() {
             self.order(popover, &mut order);
         }
-        if let Some(popup) = self.popup
-            && let Some(panel) = self
-                .nodes
-                .get(&popup.owner)
-                .and_then(|node| node.children.first())
-        {
-            self.order(*panel, &mut order);
+        // A submenu is over the menu it opened from.
+        for panel in self.popup_panels() {
+            self.order(panel, &mut order);
         }
         order.into_iter().rev().find(|id| {
             let node = &self.nodes[id];

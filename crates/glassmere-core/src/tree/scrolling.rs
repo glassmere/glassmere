@@ -111,9 +111,11 @@ impl Context {
         let Some(pointer) = self.pointer else {
             return false;
         };
-        if let Some(popup) = self.popup
-            && let Some(panel) = self.nodes[&popup.owner].children.first().copied()
-            && self.nodes[&panel].clip.contains(pointer)
+        if let Some(panel) = self
+            .popup_panels()
+            .into_iter()
+            .rev()
+            .find(|panel| self.nodes[panel].clip.contains(pointer))
         {
             return self.set_scroll(panel, self.nodes[&panel].scroll.offset + delta);
         }

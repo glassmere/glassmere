@@ -139,19 +139,44 @@ impl MenuEntry {
     }
 }
 
-/// One level of a menu, flattened for a menu that cannot nest: each entry
-/// with how deep it was, and `None` for a separator.
-pub(crate) fn flatten<'a>(
-    entries: &'a [MenuEntry],
-    depth: usize,
-    flat: &mut Vec<(usize, Option<&'a Command>)>,
-) {
-    for entry in entries {
-        match entry {
-            MenuEntry::Command(command) => flat.push((depth, Some(command))),
-            MenuEntry::Separator => flat.push((depth, None)),
-            MenuEntry::Submenu { label: _, entries } => flatten(entries, depth + 1, flat),
-        }
+/// One level of a menu as the items of a popup: a command with its
+/// shortcut, a rule for a separator, and a submenu by its label, enabled
+/// while anything in it is.
+pub(crate) fn level_items(entries: &[MenuEntry]) -> Vec<crate::MenuItem> {
+    fn any_enabled(entries: &[MenuEntry]) -> bool {
+        entries.iter().any(|entry| match entry {
+            MenuEntry::Command(command) => command.enabled,
+            MenuEntry::Separator => false,
+            MenuEntry::Submenu { entries, .. } => any_enabled(entries),
+        })
+    }
+    entries
+        .iter()
+        .map(|entry| match entry {
+            MenuEntry::Command(command) => crate::MenuItem::command(command),
+            MenuEntry::Separator => crate::MenuItem::disabled("─".repeat(12)),
+            MenuEntry::Submenu { label, entries } => crate::MenuItem {
+                label: label.clone(),
+                enabled: any_enabled(entries),
+                hint: String::new(),
+            },
+        })
+        .collect()
+}
+
+/// The command at the end of a way down through submenus, when it can be
+/// chosen.
+pub(crate) fn command_at<'a>(mut entries: &'a [MenuEntry], path: &[usize]) -> Option<&'a Command> {
+    let (last, down) = path.split_last()?;
+    for index in down {
+        let MenuEntry::Submenu { entries: inner, .. } = entries.get(*index)? else {
+            return None;
+        };
+        entries = inner;
+    }
+    match entries.get(*last)? {
+        MenuEntry::Command(command) if command.enabled => Some(command),
+        _ => None,
     }
 }
 

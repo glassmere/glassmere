@@ -368,29 +368,6 @@ impl<'a, M: 'static> Ui<'a, M> {
         }
     }
 
-    /// A menu over picks the framework handles itself: the index of the
-    /// item picked since the last declaration, if it is enabled.
-    #[track_caller]
-    pub(super) fn menu_pick(
-        &mut self,
-        key: WidgetKey,
-        text: impl Into<String>,
-        items: &[MenuItem],
-        style: Style,
-        popup_width: Length,
-    ) -> Option<usize> {
-        let choice = match self.take_update(&key, Kind::MenuButton) {
-            Some(ControlUpdate::Choice(index))
-                if items.get(index).is_some_and(|item| item.enabled) =>
-            {
-                Some(index)
-            }
-            _ => None,
-        };
-        self.menu_shown(key, text, items, style, popup_width);
-        choice
-    }
-
     /// A menu with a caller-chosen button look and popup width.
     #[track_caller]
     pub(super) fn menu_shown(
@@ -426,10 +403,9 @@ impl<'a, M: 'static> Ui<'a, M> {
         width: Length,
     ) -> Vec<Element> {
         let owner = self.context.child(self.parent, key, kind);
-        let Some(popup) = self
-            .context
-            .popup
-            .filter(|popup| Some(popup.owner) == owner && self.enabled)
+        let Some(popup) = owner
+            .and_then(|owner| self.context.popup_of(owner))
+            .filter(|_| self.enabled)
         else {
             return Vec::new();
         };

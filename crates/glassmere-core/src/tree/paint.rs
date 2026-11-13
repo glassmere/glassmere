@@ -40,6 +40,13 @@ impl Context {
                     )
                 },
             );
+        // The row a submenu's panel opens beside.
+        let beside = node
+            .parent
+            .filter(|_| node.kind == Kind::Popup)
+            .map(|parent| &self.nodes[&parent])
+            .filter(|parent| matches!(parent.control, Control::Submenu { .. }))
+            .map(|parent| (parent.bounds, parent.resolved.rtl()));
         let node = self.nodes.get_mut(&id).unwrap();
         let layout = self.layout.layout(node.layout_id).unwrap();
         node.bounds = Rect {
@@ -59,8 +66,11 @@ impl Context {
             // Context menus anchor at the request point instead of below the owner.
             let anchored = (node.kind == Kind::Popup)
                 .then(|| {
-                    self.popup
-                        .filter(|popup| Some(popup.owner) == node.parent)
+                    self.popup_parents
+                        .iter()
+                        .copied()
+                        .chain(self.popup)
+                        .find(|popup| Some(popup.owner) == node.parent)
                         .and_then(|popup| popup.anchor)
                 })
                 .flatten();
@@ -74,11 +84,28 @@ impl Context {
             }
             node.bounds.width = node.bounds.width.min(viewport.width);
             node.bounds.height = node.bounds.height.min(viewport.height);
+            if let Some((row, rtl)) = beside {
+                // At the end side of its row, lapping it slightly, or at the
+                // other side when the window ends first; level with the row.
+                const LAP: f32 = 2.0;
+                let after = row.x + row.width - LAP;
+                let before = row.x - node.bounds.width + LAP;
+                let fits_after = after + node.bounds.width <= viewport.width;
+                let fits_before = before >= 0.0;
+                node.bounds.x = match (rtl, fits_after, fits_before) {
+                    (false, true, _) | (true, true, false) => after,
+                    (true, _, true) | (false, false, true) => before,
+                    _ => after,
+                };
+                node.bounds.y = (row.y - node.style.padding.max(0.0))
+                    .min(viewport.height - node.bounds.height)
+                    .max(0.0);
+            }
             node.bounds.x = node
                 .bounds
                 .x
                 .clamp(0.0, (viewport.width - node.bounds.width).max(0.0));
-            if node.bounds.y + node.bounds.height > viewport.height {
+            if beside.is_none() && node.bounds.y + node.bounds.height > viewport.height {
                 let above = anchored.map_or(origin.y, |anchor| anchor.y);
                 node.bounds.y = (above - node.bounds.height).max(0.0);
             }
@@ -555,7 +582,8 @@ impl Context {
 
     /// A menu item's shortcut, along the edge the text ends at.
     fn paint_hint(&self, node: &Node, scene: &mut Scene) {
-        if let Control::Choice { hint, .. } | Control::Hint(hint) = &node.control
+        if let Control::Choice { hint, .. } | Control::Submenu { hint, .. } | Control::Hint(hint) =
+            &node.control
             && !hint.is_empty()
             && node.hint_width > 0.0
         {
