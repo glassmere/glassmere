@@ -35,6 +35,10 @@ pub(super) struct AreaState {
     affinity: Affinity,
     /// Affinity for the position the queued operations will lead to.
     pending_affinity: Option<Affinity>,
+    /// Where the moves queued since the last frame lead, as `(line, byte)`, so
+    /// that a visual move queued after them starts there and not at the last
+    /// shaped cursor.
+    pending: Option<(usize, usize)>,
 }
 
 /// What a declaration needs to know about the previous frame.
@@ -162,6 +166,17 @@ impl Context {
                 TextOp::Pointer { .. } => area.pending_affinity,
                 _ => None,
             };
+            // Any other operation leaves the cursor where only the document knows.
+            area.pending = match op {
+                TextOp::Pointer {
+                    line,
+                    byte,
+                    granularity: Granularity::Char,
+                    add: false,
+                    ..
+                } => Some((line, byte)),
+                _ => None,
+            };
         }
         match self.updates.get_mut(&id) {
             Some(ControlUpdate::TextOps(ops)) => ops.push(op),
@@ -252,11 +267,17 @@ impl Context {
             return None;
         };
         let area = node.area.as_ref()?;
+        // Where the moves queued before this one lead, if any, else the cursor
+        // the last frame shaped.
+        let (primary, from) = match area.pending {
+            Some(position) => (position, area.pending_affinity.unwrap_or_default()),
+            None => (primary, area.affinity),
+        };
         let layout = area.layouts.get(primary.0.checked_sub(first_line)?)?;
         if layout.preedit.is_some() || !layout.geometry.clusters.iter().any(|cluster| cluster.rtl) {
             return None;
         }
-        let step = layout.geometry.visual_step(primary.1, area.affinity, right);
+        let step = layout.geometry.visual_step(primary.1, from, right);
         let rtl_line = layout.geometry.lines.first().is_some_and(|line| line.rtl);
         let Some((byte, affinity)) = step else {
             // Leaving the line: its right end is the logical end only when LTR.
@@ -536,6 +557,8 @@ impl Context {
             .filter_map(|(id, node)| (node.kind == Kind::TextArea).then_some(*id))
             .collect();
         for id in ids {
+            // Operations still queued have not reached the document.
+            let queued = self.updates.contains_key(&id);
             let node = self.nodes.get_mut(&id).unwrap();
             let Control::TextArea {
                 lines,
@@ -551,6 +574,9 @@ impl Context {
                 continue;
             };
             let mut area = node.area.take().unwrap_or_default();
+            if !queued {
+                area.pending = None;
+            }
             let style = text_style(*font_size);
             let line_height = font_size * 1.4;
             let digit = measurer.measure_styled("0", &style, None).width;

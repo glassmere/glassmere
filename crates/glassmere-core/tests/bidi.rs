@@ -341,3 +341,53 @@ fn the_rich_editor_follows_direction_in_blocks_and_flags_the_caret() {
         .count();
     assert_eq!(flags, 1);
 }
+
+#[test]
+fn visual_steps_queued_between_frames_add_up_in_the_code_and_rich_editors() {
+    // The same presses with a frame after each and with none until the end.
+    let code_cursor = |frames_between: bool| {
+        let mut app = Driven::new(
+            ROOT,
+            TextDocument::from_text(&format!("let s = \"{MIXED}\";\nnext")),
+            code,
+        );
+        app.frame();
+        click(&mut app.context, Point { x: 9.0, y: 12.0 });
+        app.frame();
+        for _ in 0..15 {
+            key(&mut app.context, Key::ArrowRight, false);
+            if frames_between {
+                app.frame();
+            }
+        }
+        app.frame();
+        app.frame();
+        app.state().primary().cursor
+    };
+    let stepped = code_cursor(true);
+    assert!(stepped > 12, "{stepped}");
+    assert_eq!(code_cursor(false), stepped);
+
+    let rich_cursor = |frames_between: bool| {
+        let mut app = Driven::new(
+            ROOT,
+            RichDocument::from_blocks(vec![Block::new(BlockKind::Paragraph, MIXED)]),
+            rich,
+        );
+        app.frame();
+        click(&mut app.context, Point { x: 13.0, y: 16.0 });
+        app.frame();
+        for _ in 0..9 {
+            key(&mut app.context, Key::ArrowRight, false);
+            if frames_between {
+                app.frame();
+            }
+        }
+        app.frame();
+        app.frame();
+        app.state().cursor()
+    };
+    let stepped = rich_cursor(true);
+    assert!(stepped.offset > 8, "{stepped:?}");
+    assert_eq!(rich_cursor(false), stepped);
+}

@@ -50,7 +50,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 ## Text
 
 - Input methods stay on in a password field, and macOS secure input is not turned on. The button that shows its text is an opt-in (`TextInput::password_with_reveal`) and is labelled with a word, not an icon.
-- Visual-line and visual-caret moves in the document editors resolve against the last shaped frame, so several arrow presses between two frames move one step. Several cursors in the code editor move logically.
+- A visual-line or visual-caret move in the document editors starts from where the visual moves and clicks queued before it in the same frame lead. After any other queued operation (a logical move such as Left in left-to-right text, typing, a command) it starts from the last shaped frame, so it can step from a stale cursor. Several cursors in the code editor move logically.
 - Rich documents have one font size per block, no images, tables, nested lists, alignment or colours, are shaped in full on each change, and paste as plain text.
 - The code editor's horizontal range comes from the line with the most columns in the document (a tab counts as its tab width, every other character as one), shaped once per edit. A line that shapes wider than that one, such as wide or fallback-font characters, still stretches the range while it is declared, so the scrollbar can then change length as the view scrolls past it.
 - Bracket matching tells strings and comments from code only when the highlighter reports them (`Highlighter::strings_and_comments`, which `SyntectHighlighter` implements); without one, or on lines its parsing has not reached yet, every bracket counts. Auto-close does not look at them.
