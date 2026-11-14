@@ -270,6 +270,13 @@ pub(crate) enum Control {
         selected: usize,
     },
     TabList,
+    /// A button over the start or the end edge of a tab strip that scrolls
+    /// it by a tab. It shows only while tabs are hidden on its side, takes
+    /// presses without taking the keyboard, and scrolls toward the end when
+    /// `end`.
+    StripScroll {
+        end: bool,
+    },
     Tab {
         index: usize,
         selected: bool,

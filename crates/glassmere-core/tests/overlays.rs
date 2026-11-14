@@ -504,3 +504,331 @@ fn a_plain_tab_strip_with_more_tabs_than_fit_scrolls_to_the_selected_tab() {
     driven.frame();
     assert_eq!(bounds(&driven.context, &["tabs", "$strip", "0"]).x, strip.x);
 }
+
+/// A plain tab strip of `count` tabs, in a 500 px wide window.
+fn strip_of(count: usize) -> Driven<Tabs> {
+    Driven::new(ROOT, Tabs::default(), move |state: &Tabs, ui| {
+        let tabs: Vec<Tab> = (0..count).map(|n| Tab::new(format!("Tab {n}"))).collect();
+        ui.keyed("tabs", |ui| {
+            ui.tabs(
+                state.selected,
+                &tabs,
+                on(|s: &mut Tabs, index: usize| s.selected = index),
+                |ui, index| ui.label(format!("panel {index}")),
+            );
+        });
+    })
+}
+
+const START: [&str; 3] = ["tabs", "$strip", "$scroll-start"];
+const END: [&str; 3] = ["tabs", "$strip", "$scroll-end"];
+
+/// Whether the strip shows this scroll button: it takes room, and is both
+/// reported to assistive technology and reachable by the pointer.
+fn button_shown(context: &Context, path: &[&str]) -> bool {
+    let id = context.find(path).unwrap();
+    let node = context.node(id).unwrap();
+    let shown = node.clip.width > 0.0 && node.clip.height > 0.0;
+    let reported = context.snapshots().iter().any(|snapshot| snapshot.id == id);
+    let reachable = context.hit_test(center(context, path)) == Some(id);
+    assert_eq!(shown, reported, "{path:?} is reported only while shown");
+    assert_eq!(shown, reachable, "{path:?} is reachable only while shown");
+    if shown {
+        // Nothing of a tab is drawn under a button, so none shows through
+        // its edge.
+        let strip = context.find(&["tabs", "$strip"]).unwrap();
+        for child in context.node(strip).unwrap().children {
+            let other = context.node(child).unwrap();
+            let (left, right) = (other.clip.x, other.clip.x + other.clip.width);
+            let drawn = other.clip.width > 0.0 && other.clip.height > 0.0 && child != id;
+            assert!(
+                !drawn
+                    || right <= node.bounds.x + 0.001
+                    || left >= node.bounds.x + node.bounds.width - 0.001,
+                "{:?} is drawn under {path:?}: {:?} over {:?}",
+                other.semantics.label,
+                other.clip,
+                node.bounds
+            );
+        }
+    }
+    shown
+}
+
+fn shades(context: &Context) -> usize {
+    context
+        .scene()
+        .primitives
+        .iter()
+        .filter(|primitive| matches!(primitive, Primitive::Gradient { .. }))
+        .count()
+}
+
+fn first_tab_x(context: &Context) -> f32 {
+    bounds(context, &["tabs", "$strip", "0"]).x
+}
+
+#[test]
+fn a_tab_strip_whose_tabs_fit_has_no_scroll_buttons_or_shades() {
+    let driven = strip_of(3);
+    assert!(!button_shown(&driven.context, &START));
+    assert!(!button_shown(&driven.context, &END));
+    assert_eq!(shades(&driven.context), 0);
+    assert!(!scene_text(&driven.context, "‹") && !scene_text(&driven.context, "›"));
+    // The buttons take no room: the tabs are as wide as ever.
+    let strip = bounds(&driven.context, &["tabs", "$strip"]);
+    let last = bounds(&driven.context, &["tabs", "$strip", "2"]);
+    assert!(last.x + last.width <= strip.x + strip.width);
+}
+
+#[test]
+fn scroll_buttons_and_shades_show_only_on_the_sides_with_hidden_tabs_and_are_named() {
+    let mut driven = strip_of(30);
+    let strip = bounds(&driven.context, &["tabs", "$strip"]);
+    // At the start only the end has tabs past it.
+    assert!(!button_shown(&driven.context, &START));
+    assert!(button_shown(&driven.context, &END));
+    assert_eq!(shades(&driven.context), 1);
+    let end = bounds(&driven.context, &END);
+    // The button ends exactly where the strip does, with nothing beyond it.
+    assert!(
+        (end.x + end.width - (strip.x + strip.width)).abs() < 0.001,
+        "{end:?}"
+    );
+    assert!((end.height - strip.height).abs() < 0.001, "{end:?}");
+    assert!(scene_text(&driven.context, "›") && !scene_text(&driven.context, "‹"));
+    let named = |context: &Context, path: &[&str]| {
+        let node = context.node(context.find(path).unwrap()).unwrap();
+        (
+            node.semantics.role,
+            node.semantics.label,
+            node.semantics.focusable,
+        )
+    };
+    assert_eq!(
+        named(&driven.context, &END),
+        (Role::Button, "Show later tabs".into(), false)
+    );
+
+    // In the middle both have.
+    let point = center(&driven.context, &["tabs", "$strip"]);
+    driven.context.event(Event::PointerMoved(point));
+    driven.context.event(Event::Scroll {
+        delta_x: 0.0,
+        delta_y: 200.0,
+    });
+    driven.frame();
+    assert!(button_shown(&driven.context, &START));
+    assert!(button_shown(&driven.context, &END));
+    assert_eq!(shades(&driven.context), 2);
+    assert_eq!(
+        named(&driven.context, &START),
+        (Role::Button, "Show earlier tabs".into(), false)
+    );
+    let start = bounds(&driven.context, &START);
+    assert!((start.x - strip.x).abs() < 0.001, "{start:?}");
+
+    // At the end only the start has.
+    driven.context.event(Event::Scroll {
+        delta_x: 0.0,
+        delta_y: 100_000.0,
+    });
+    driven.frame();
+    assert!(button_shown(&driven.context, &START));
+    assert!(!button_shown(&driven.context, &END));
+    assert_eq!(shades(&driven.context), 1);
+    assert!(scene_text(&driven.context, "‹") && !scene_text(&driven.context, "›"));
+}
+
+#[test]
+fn a_click_on_a_scroll_button_scrolls_by_about_a_tab_and_neither_selects_nor_takes_focus() {
+    let mut driven = strip_of(30);
+    let tab = driven.context.find(&["tabs", "$strip", "0"]).unwrap();
+    driven.context.action(tab, Action::Focus);
+    assert_eq!(focused_key(&driven.context), "0");
+    let width = bounds(&driven.context, &["tabs", "$strip", "29"]).width;
+    let strip = bounds(&driven.context, &["tabs", "$strip"]);
+
+    click_at(&mut driven.context, &END);
+    driven.frame();
+    let moved = strip.x - first_tab_x(&driven.context);
+    assert!(
+        moved > 0.0 && moved <= width + 2.0,
+        "moved {moved} for tabs {width} wide"
+    );
+    assert_eq!(driven.state().selected, 0, "no tab was selected");
+    assert_eq!(
+        focused_key(&driven.context),
+        "0",
+        "the strip keeps the keyboard"
+    );
+    assert!(
+        button_shown(&driven.context, &START),
+        "tabs are hidden before now"
+    );
+
+    // The start button goes back.
+    click_at(&mut driven.context, &START);
+    driven.frame();
+    assert_eq!(first_tab_x(&driven.context), strip.x);
+    assert!(!button_shown(&driven.context, &START));
+    assert_eq!(driven.state().selected, 0);
+    assert_eq!(focused_key(&driven.context), "0");
+}
+
+#[test]
+fn the_scroll_buttons_are_not_in_the_tab_order_and_assistive_technology_can_press_them() {
+    let mut driven = strip_of(30);
+    let tab = driven.context.find(&["tabs", "$strip", "0"]).unwrap();
+    driven.context.action(tab, Action::Focus);
+    key(&mut driven.context, Key::Tab);
+    assert_ne!(focused_key(&driven.context), "$scroll-end");
+    assert_ne!(focused_key(&driven.context), "$scroll-start");
+    let end = driven.context.find(&END).unwrap();
+    assert!(!driven.context.action(end, Action::Focus));
+    assert!(driven.context.action(end, Action::Activate));
+    driven.frame();
+    assert!(first_tab_x(&driven.context) < bounds(&driven.context, &["tabs", "$strip"]).x);
+}
+
+#[test]
+fn scroll_buttons_reach_both_ends_and_then_give_way() {
+    let mut driven = strip_of(30);
+    let strip = bounds(&driven.context, &["tabs", "$strip"]);
+    let mut clicks = 0;
+    while button_shown(&driven.context, &END) {
+        click_at(&mut driven.context, &END);
+        driven.frame();
+        clicks += 1;
+        assert!(clicks < 40, "the end button never went away");
+    }
+    assert!(
+        clicks > 3,
+        "a click moves by about a tab, not the whole strip"
+    );
+    let last = bounds(&driven.context, &["tabs", "$strip", "29"]);
+    assert!(
+        last.x + last.width <= strip.x + strip.width + 0.5,
+        "{last:?}"
+    );
+    assert!(last.x >= strip.x);
+    assert!(button_shown(&driven.context, &START));
+    assert_eq!(driven.state().selected, 0);
+
+    while button_shown(&driven.context, &START) {
+        click_at(&mut driven.context, &START);
+        driven.frame();
+        clicks -= 1;
+        assert!(clicks > -40, "the start button never went away");
+    }
+    assert_eq!(first_tab_x(&driven.context), strip.x);
+    assert!(button_shown(&driven.context, &END));
+    assert_eq!(driven.state().selected, 0);
+}
+
+#[test]
+fn a_tab_beside_a_scroll_button_still_takes_the_click() {
+    let mut driven = strip_of(30);
+    let end = bounds(&driven.context, &END);
+    // The tab just before the button, cut by it.
+    let beside = Point {
+        x: end.x - 3.0,
+        y: end.y + end.height / 2.0,
+    };
+    let under = (0..30)
+        .find(|n| {
+            let tab = bounds(&driven.context, &["tabs", "$strip", &n.to_string()]);
+            tab.x <= beside.x && beside.x < tab.x + tab.width
+        })
+        .expect("a tab ends under the button");
+    click(&mut driven.context, beside);
+    driven.frame();
+    assert_eq!(driven.state().selected, under);
+    // The selected tab is brought clear of the button, and a click on the
+    // button itself selects nothing.
+    let tab = bounds(&driven.context, &["tabs", "$strip", &under.to_string()]);
+    if button_shown(&driven.context, &END) {
+        let end = bounds(&driven.context, &END);
+        assert!(tab.x + tab.width <= end.x + 0.5, "{tab:?} under {end:?}");
+        click_at(&mut driven.context, &END);
+        driven.frame();
+        assert_eq!(driven.state().selected, under);
+    }
+}
+
+#[test]
+fn a_press_held_on_a_scroll_button_repeats_like_a_scrollbar_track() {
+    let mut driven = strip_of(30);
+    let at = |driven: &mut Driven<Tabs>, milliseconds: u64| {
+        driven.context.set_now(Duration::from_millis(milliseconds));
+        driven.frame();
+    };
+    at(&mut driven, 1000);
+    let point = center(&driven.context, &END);
+    driven.context.event(Event::PointerMoved(point));
+    driven.context.event(Event::PointerDown);
+    driven.frame();
+    let once = first_tab_x(&driven.context);
+    assert!(once < bounds(&driven.context, &["tabs", "$strip"]).x);
+    assert_eq!(
+        driven.context.next_wake(),
+        Some(Duration::from_millis(1400))
+    );
+    at(&mut driven, 1399);
+    assert_eq!(
+        first_tab_x(&driven.context),
+        once,
+        "nothing before the delay"
+    );
+    at(&mut driven, 1400);
+    let twice = first_tab_x(&driven.context);
+    assert!(twice < once, "scrolled again after the delay");
+    at(&mut driven, 1450);
+    assert!(
+        first_tab_x(&driven.context) < twice,
+        "then at a steady interval"
+    );
+    driven.context.event(Event::PointerUp);
+    assert_eq!(driven.context.next_wake(), None);
+    let held = first_tab_x(&driven.context);
+    at(&mut driven, 5000);
+    assert_eq!(first_tab_x(&driven.context), held, "release stops it");
+    assert_eq!(driven.state().selected, 0);
+
+    // It stops where the button goes away: the end of the strip.
+    let point = center(&driven.context, &END);
+    driven.context.event(Event::PointerMoved(point));
+    driven.context.event(Event::PointerDown);
+    for step in 0..60 {
+        at(&mut driven, 6000 + step * 50);
+    }
+    assert!(!button_shown(&driven.context, &END));
+    assert_eq!(driven.context.next_wake(), None);
+}
+
+#[test]
+fn a_right_to_left_strip_mirrors_its_buttons_and_arrows() {
+    let mut driven = strip_of(30);
+    driven.context.set_direction(glassmere_core::Direction::Rtl);
+    driven.frame();
+    let strip = bounds(&driven.context, &["tabs", "$strip"]);
+    // The first tab is at the right, so the hidden ones are past the left.
+    assert!(!button_shown(&driven.context, &START));
+    assert!(button_shown(&driven.context, &END));
+    let end = bounds(&driven.context, &END);
+    assert!((end.x - strip.x).abs() < 0.001, "{end:?} in {strip:?}");
+    assert!(scene_text(&driven.context, "‹") && !scene_text(&driven.context, "›"));
+    click_at(&mut driven.context, &END);
+    driven.frame();
+    assert!(button_shown(&driven.context, &START));
+    let start = bounds(&driven.context, &START);
+    assert!(
+        (start.x + start.width - (strip.x + strip.width)).abs() < 0.001,
+        "{start:?}"
+    );
+    click_at(&mut driven.context, &START);
+    driven.frame();
+    assert!(!button_shown(&driven.context, &START));
+    let first = bounds(&driven.context, &["tabs", "$strip", "0"]);
+    assert!((first.x + first.width - (strip.x + strip.width)).abs() < 0.5);
+}
