@@ -82,6 +82,7 @@ pub const BUILTIN_MESSAGES: &[(&str, &str)] = &[
     ("glassmere-property-expand", "Expand { $name }"),
     ("glassmere-property-collapse", "Collapse { $name }"),
     ("glassmere-property-reset", "Reset { $name }"),
+    ("glassmere-property-mixed", "Mixed"),
     ("glassmere-splitter", "Splitter"),
     ("glassmere-dock-floating", "Floating panel"),
     ("glassmere-dock-move", "Move floating panel"),

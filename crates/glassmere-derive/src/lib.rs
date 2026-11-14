@@ -46,6 +46,14 @@
 //! ) { /* declare widgets, `on(next)` as their messages */ }
 //! ```
 //!
+//! `Card::properties_many(&[&a, &b], grid, on)` edits several cards at once:
+//! a row shows the first card's value where all of them agree and "Mixed"
+//! where they differ, so the fields need `PartialEq` (a `readonly` field is
+//! compared as the text it shows). The application applies each message to
+//! every card: `for card in &mut cards { card.apply(message.clone()) }`. A
+//! `with` editor is given the first card's value and cannot show a mixed one.
+//! `properties` is `properties_many` over one card.
+//!
 //! A struct with generics cannot derive it.
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as Tokens;
@@ -230,6 +238,9 @@ fn expand(input: &DeriveInput) -> syn::Result<Tokens> {
     let declares = format!(
         "Declares the rows of `{name}` in `Ui::property_grid`'s grid: each edit sends the `{message}` of its property through `on`, which `apply` stores."
     );
+    let declares_many = format!(
+        "Declares the rows of several `{name}` at once: a row shows the first one's value, or \"Mixed\" where they differ, and each edit sends the `{message}` that the application applies to all of them. Nothing is declared for no objects."
+    );
     Ok(quote! {
             #[doc = #doc]
             #[derive(Clone, Debug, PartialEq)]
@@ -246,12 +257,25 @@ fn expand(input: &DeriveInput) -> syn::Result<Tokens> {
                 }
 
                 #[doc = #declares]
-                #[allow(unused_variables)]
                 pub fn properties<M: 'static>(
                     &self,
                     grid: &mut ::glassmere::PropertyGrid<'_, '_, M>,
                     on: impl Fn(#message) -> M + 'static,
                 ) {
+                    Self::properties_many(&[self], grid, on);
+                }
+
+                #[doc = #declares_many]
+                #[allow(unused_variables)]
+                pub fn properties_many<M: 'static>(
+                    objects: &[&Self],
+                    grid: &mut ::glassmere::PropertyGrid<'_, '_, M>,
+                    on: impl Fn(#message) -> M + 'static,
+                ) {
+                    let Some(&__first) = objects.first() else {
+                        return;
+                    };
+                    let __others = &objects[1..];
                     let __on = ::std::rc::Rc::new(on);
                     #(#message_body)*
                 }
@@ -366,7 +390,13 @@ fn message_row(
                 inner,
                 quote! { #message::#variant(__value) => self.#ident.apply(__value), },
             )),
-            quote! { grid.group(#name, |grid| self.#ident.properties(grid, #send)); },
+            quote! {
+                grid.group(#name, |grid| {
+                    let __inner: ::std::vec::Vec<&#ty> =
+                        objects.iter().map(|__object| &__object.#ident).collect();
+                    <#ty>::properties_many(&__inner, grid, #send);
+                });
+            },
         ));
     }
     let carried = Some((
@@ -377,15 +407,28 @@ fn message_row(
     if options.readonly {
         return Ok((
             None,
-            quote! { grid.readonly(#name, ::std::format!("{}", self.#ident)); },
+            quote! {
+                {
+                    let __text = ::std::format!("{}", __first.#ident);
+                    grid.mixed(
+                        __others
+                            .iter()
+                            .any(|__other| ::std::format!("{}", __other.#ident) != __text),
+                    );
+                    grid.readonly(#name, __text);
+                }
+            },
         ));
     }
     if let Some(with) = &options.with {
         return Ok((
             carried,
-            quote! { grid.custom(#name, |ui, label| #with(ui, label, &self.#ident, #send)); },
+            quote! { grid.custom(#name, |ui, label| #with(ui, label, &__first.#ident, #send)); },
         ));
     }
+    // Where the objects disagree about this field.
+    let mixed =
+        quote! { grid.mixed(__others.iter().any(|__other| __other.#ident != __first.#ident)); };
     let kind = match ty {
         Type::Path(path) => path
             .path
@@ -433,7 +476,8 @@ fn message_row(
             carried,
             quote! {
                 #default
-                grid.choice_with(#name, self.#ident, &[#(#choices),*], #send);
+                #mixed
+                grid.choice_with(#name, __first.#ident, &[#(#choices),*], #send);
             },
         ));
     }
@@ -453,20 +497,21 @@ fn message_row(
             carried,
             quote! {
                 #default
-                grid.number_with(#name, self.#ident as f64, #number, #send);
+                #mixed
+                grid.number_with(#name, __first.#ident as f64, #number, #send);
             },
         ));
     }
     let (row, default) = match kind.as_str() {
         "bool" => (
-            quote! { grid.bool_with(#name, self.#ident, #send); },
+            quote! { grid.bool_with(#name, __first.#ident, #send); },
             options
                 .default
                 .as_ref()
                 .map(|default| quote! { grid.default::<bool>(#default); }),
         ),
         "String" => (
-            quote! { grid.text_with(#name, &self.#ident, #send); },
+            quote! { grid.text_with(#name, &__first.#ident, #send); },
             options.default.as_ref().map(|default| {
                 quote! {
                     grid.default::<::std::string::String>(
@@ -476,7 +521,7 @@ fn message_row(
             }),
         ),
         "Color" => (
-            quote! { grid.color_with(#name, self.#ident, #send); },
+            quote! { grid.color_with(#name, __first.#ident, #send); },
             options
                 .default
                 .as_ref()
@@ -490,5 +535,5 @@ fn message_row(
             ));
         }
     };
-    Ok((carried, quote! { #default #row }))
+    Ok((carried, quote! { #default #mixed #row }))
 }

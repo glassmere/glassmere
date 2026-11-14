@@ -766,3 +766,279 @@ fn tab_walks_the_rows_of_a_scrolled_grid_and_keeps_the_focus_in_view() {
         0.0
     );
 }
+
+/// Two shapes edited together, as a grid over a selection of several.
+struct Pair {
+    shapes: [Shape; 2],
+    grid: PropertyGridState,
+}
+
+fn pair(change: impl FnOnce(&mut Shape)) -> Driven<Pair> {
+    let mut other = settings().shape;
+    change(&mut other);
+    let state = Pair {
+        shapes: [settings().shape, other],
+        grid: PropertyGridState::default(),
+    };
+    let mut driven = Driven::new(ROOT, state, pair_view);
+    driven.frame();
+    driven
+}
+
+/// An edit goes to every shape, as a selection's edit does.
+fn pair_msg(message: PropertyMsg) -> Message<Pair> {
+    act(move |s: &mut Pair| {
+        s.grid.apply(&message);
+        for shape in &mut s.shapes {
+            match &message {
+                PropertyMsg::Number { value, .. } => shape.width = *value,
+                PropertyMsg::Bool { value, .. } => shape.visible = *value,
+                PropertyMsg::Text { value, .. } => shape.name.clone_from(value),
+                PropertyMsg::Choice { value, .. } => shape.align = *value,
+                PropertyMsg::Color { value, .. } => shape.fill = *value,
+                _ => {}
+            }
+        }
+    })
+}
+
+fn pair_view(state: &Pair, ui: &mut Ui<'_, Message<Pair>>) {
+    let first = &state.shapes[0];
+    let differs = |same: fn(&Shape, &Shape) -> bool| {
+        state.shapes[1..].iter().any(|shape| !same(first, shape))
+    };
+    ui.keyed("grid", |ui| {
+        ui.property_grid(
+            &state.grid,
+            PropertyGridOptions::new("Shapes"),
+            pair_msg,
+            |grid| {
+                grid.default(100.0)
+                    .mixed(differs(|a, b| a.width == b.width))
+                    .number("Width", first.width, NumberOptions::default());
+                grid.mixed(differs(|a, b| a.visible == b.visible))
+                    .bool("Visible", first.visible);
+                grid.mixed(differs(|a, b| a.name == b.name))
+                    .text("Name", &first.name);
+                grid.mixed(differs(|a, b| a.align == b.align)).choice(
+                    "Align",
+                    first.align,
+                    &["Start", "Center", "End"],
+                );
+                grid.mixed(differs(|a, b| a.fill == b.fill))
+                    .color("Fill", first.fill);
+                grid.mixed(differs(|a, b| a.name.len() == b.name.len()))
+                    .readonly("Name length", first.name.len().to_string());
+            },
+        )
+    });
+}
+
+fn pair_node(driven: &Driven<Pair>, path: &[&str]) -> NodeId {
+    let mut full = vec!["grid", "$rows"];
+    full.extend(path);
+    driven
+        .context
+        .find(&full)
+        .unwrap_or_else(|| panic!("{path:?}"))
+}
+
+/// How many texts the context draws that contain `needle`.
+fn drawn(driven: &Driven<Pair>, needle: &str) -> usize {
+    driven
+        .context
+        .scene()
+        .primitives
+        .iter()
+        .filter(|primitive| match primitive {
+            glassmere_scene::Primitive::StyledText { text, .. }
+            | glassmere_scene::Primitive::Text { text, .. } => text.contains(needle),
+            _ => false,
+        })
+        .count()
+}
+
+fn press(driven: &mut Driven<Pair>, key: Key) {
+    driven.context.event(Event::KeyDown {
+        key,
+        shift: false,
+        repeat: false,
+    });
+    driven.frame();
+}
+
+fn retype_pair(driven: &mut Driven<Pair>, id: NodeId, text: &str) {
+    driven.context.action(id, Action::Focus);
+    driven.context.event(Event::Text(TextEdit::SelectAll));
+    driven
+        .context
+        .event(Event::Text(TextEdit::Insert(text.into())));
+    driven.frame();
+}
+
+fn click_pair(driven: &mut Driven<Pair>, id: NodeId) {
+    let bounds = driven.context.node(id).unwrap().bounds;
+    driven.context.event(Event::PointerMoved(Point {
+        x: bounds.x + bounds.width / 2.0,
+        y: bounds.y + bounds.height / 2.0,
+    }));
+    driven.context.event(Event::PointerDown);
+    driven.context.event(Event::PointerUp);
+    driven.frame();
+}
+
+fn widths(driven: &Driven<Pair>) -> [f64; 2] {
+    driven.state().shapes.each_ref().map(|shape| shape.width)
+}
+
+#[test]
+fn rows_over_several_objects_show_a_value_where_all_agree_and_mixed_where_they_differ() {
+    // Width and name differ; the rest agree.
+    let driven = pair(|shape| {
+        shape.width = 80.0;
+        shape.name = "Badge".into();
+    });
+    let node = |path: &[&str]| driven.context.node(pair_node(&driven, path)).unwrap();
+    assert_eq!(
+        node(&["row:Width", "$editor", "$value", "$field"])
+            .value
+            .as_deref(),
+        Some("")
+    );
+    assert_eq!(
+        node(&["row:Name", "$editor", "$value"]).value.as_deref(),
+        Some("")
+    );
+    assert_eq!(
+        node(&["row:Visible", "$editor", "$value"]).checked,
+        Some(true)
+    );
+    assert_eq!(
+        node(&["row:Align", "$editor", "$value"]).value.as_deref(),
+        Some("Center")
+    );
+    assert_eq!(
+        node(&["row:Fill", "$editor", "$value", "$hex"])
+            .value
+            .as_deref(),
+        Some("#1a9c8f")
+    );
+    // The width, the name and the read-only length (4 against 5) say so.
+    assert_eq!(drawn(&driven, "Mixed"), 3);
+    // A reset is enabled while mixed, though the first value is the default.
+    assert!(!node(&["row:Width", "$reset"]).semantics.disabled);
+
+    // Visible, align and fill differ; the width and the name agree.
+    let driven = pair(|shape| {
+        shape.visible = false;
+        shape.align = 2;
+        shape.fill = Color::rgb(1, 2, 3);
+    });
+    let node = |path: &[&str]| driven.context.node(pair_node(&driven, path)).unwrap();
+    assert_eq!(
+        node(&["row:Visible", "$editor", "$value"]).checked,
+        Some(false)
+    );
+    assert_eq!(
+        node(&["row:Fill", "$editor", "$value", "$hex"])
+            .value
+            .as_deref(),
+        Some("")
+    );
+    assert_eq!(
+        node(&["row:Width", "$editor", "$value", "$field"])
+            .value
+            .as_deref(),
+        Some("120")
+    );
+    assert_eq!(drawn(&driven, "Mixed"), 3);
+}
+
+#[test]
+fn an_edit_of_a_mixed_row_applies_to_every_object_even_when_it_equals_the_first_value() {
+    let mut driven = pair(|shape| {
+        shape.width = 80.0;
+        shape.name = "Badge".into();
+        shape.visible = false;
+        shape.align = 2;
+        shape.fill = Color::rgb(1, 2, 3);
+    });
+
+    // The first shape is 120 wide; typing 120 still sets the other one.
+    let width = pair_node(&driven, &["row:Width", "$editor", "$value", "$field"]);
+    retype_pair(&mut driven, width, "120");
+    press(&mut driven, Key::Enter);
+    assert_eq!(widths(&driven), [120.0, 120.0]);
+    // The shapes agree now, so the field shows the number.
+    driven.frame();
+    assert_eq!(
+        driven.context.node(width).unwrap().value.as_deref(),
+        Some("120")
+    );
+
+    let name = pair_node(&driven, &["row:Name", "$editor", "$value"]);
+    retype_pair(&mut driven, name, "Card");
+    let names = driven.state().shapes.each_ref().map(|s| s.name.clone());
+    assert_eq!(names, ["Card", "Card"]);
+
+    // A click on a mixed checkbox checks it for both.
+    let visible = pair_node(&driven, &["row:Visible", "$editor", "$value"]);
+    click_pair(&mut driven, visible);
+    assert_eq!(
+        driven.state().shapes.each_ref().map(|s| s.visible),
+        [true; 2]
+    );
+
+    // A choice from the drop-down, and a whole colour.
+    let align = pair_node(&driven, &["row:Align", "$editor", "$value"]);
+    driven.context.action(align, Action::Activate);
+    driven.frame();
+    let item = pair_node(&driven, &["row:Align", "$editor", "$value", "$popup", "1"]);
+    click_pair(&mut driven, item);
+    assert_eq!(driven.state().shapes.each_ref().map(|s| s.align), [1; 2]);
+    let fill = pair_node(&driven, &["row:Fill", "$editor", "$value", "$hex"]);
+    retype_pair(&mut driven, fill, "#ff8000");
+    assert_eq!(
+        driven.state().shapes.each_ref().map(|s| s.fill),
+        [Color::rgb(0xff, 0x80, 0x00); 2]
+    );
+
+    // Nothing is mixed any more but the lengths, which follow the names.
+    driven.frame();
+    assert_eq!(drawn(&driven, "Mixed"), 0);
+    let reset = pair_node(&driven, &["row:Width", "$reset"]);
+    click_pair(&mut driven, reset);
+    assert_eq!(widths(&driven), [100.0, 100.0]);
+}
+
+#[test]
+fn mixed_numbers_step_from_the_first_value_and_ignore_text_that_is_no_number() {
+    let mut driven = pair(|shape| shape.width = 80.0);
+    let field = pair_node(&driven, &["row:Width", "$editor", "$value", "$field"]);
+    // Enter on an untouched field and on text that is no number send nothing.
+    driven.context.action(field, Action::Focus);
+    press(&mut driven, Key::Enter);
+    retype_pair(&mut driven, field, "wide");
+    press(&mut driven, Key::Enter);
+    assert_eq!(widths(&driven), [120.0, 80.0]);
+    // The more button steps the first value, 120, for both.
+    let more = pair_node(&driven, &["row:Width", "$editor", "$value", "$more"]);
+    click_pair(&mut driven, more);
+    assert_eq!(widths(&driven), [121.0, 121.0]);
+}
+
+#[test]
+#[should_panic(expected = "PropertyGrid::mixed was not followed by a row")]
+fn mixed_before_a_group_or_a_custom_row_is_a_programming_error() {
+    let mut driven = Driven::new(ROOT, settings(), |_, ui| {
+        ui.property_grid(
+            &PropertyGridState::default(),
+            PropertyGridOptions::new("Shape"),
+            property_msg,
+            |grid| {
+                grid.mixed(true).custom("Clicks", |_, _| {});
+            },
+        )
+    });
+    driven.frame();
+}

@@ -27,6 +27,7 @@ glassmere-value-column = Wert
 glassmere-property-expand = Gruppe { $name } ausklappen
 glassmere-property-collapse = Gruppe { $name } einklappen
 glassmere-property-reset = { $name } zurücksetzen
+glassmere-property-mixed = Gemischt
 glassmere-splitter = Trennleiste
 glassmere-dock-floating = Schwebendes Panel
 glassmere-dock-move = Schwebendes Panel verschieben

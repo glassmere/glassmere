@@ -116,6 +116,8 @@ pub struct PropertyGrid<'a, 'u, M: 'static = ()> {
     /// An enclosing group matched the filter, so all its rows show.
     shown_by_group: bool,
     default: Option<(Box<dyn Any>, &'static str)>,
+    /// The next row edits several objects whose values differ.
+    mixed: bool,
     /// Which rows exist; `None` declares them all.
     window: Option<&'a Window>,
     /// Rows and headers passed over since the last one declared here.
@@ -134,6 +136,10 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         if self.default.take().is_some() {
             self.ui
                 .misuse("PropertyGrid::default was not followed by a row".to_owned());
+        }
+        if std::mem::take(&mut self.mixed) {
+            self.ui
+                .misuse("PropertyGrid::mixed was not followed by a row".to_owned());
         }
     }
 
@@ -183,16 +189,29 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         self
     }
 
-    /// Whether the pending default differs from `value`, and the message that
-    /// restores it.
+    /// Marks the next row as editing several objects whose values differ, as
+    /// `PropertyGrid::default` marks its default. The row shows "Mixed" for a
+    /// value, and what it sends is meant for all of them: the application
+    /// stores it in each object. A number, text or colour row shows no value
+    /// and sends what is typed even when it equals the first object's value, a
+    /// checkbox sends `true`, and a reset button is enabled. A row of
+    /// [`custom`](Self::custom) cannot be mixed.
+    pub fn mixed(&mut self, mixed: bool) -> &mut Self {
+        self.mixed = mixed;
+        self
+    }
+
+    /// Whether the pending default differs from `value`, or the row is
+    /// `mixed`, and the message that restores it.
     fn reset<T: Any + Clone + PartialEq>(
         &mut self,
         name: &str,
         value: &T,
+        mixed: bool,
         on: &Rc<dyn Fn(T) -> M>,
     ) -> Option<(bool, M)> {
         let default = take_default_from::<T, M>(&mut self.default, self.ui, name)?;
-        Some((default != *value, on(default.clone())))
+        Some((mixed || default != *value, on(default.clone())))
     }
 
     /// A collapsible group of rows. The header sends the toggled state, which
@@ -225,6 +244,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
                 path,
                 shown_by_group,
                 default: None,
+                mixed: false,
                 window,
                 skipped: carried,
                 shown: false,
@@ -352,10 +372,11 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
     ) {
         let options = options.style(Style::default().width(Length::Percent(1.0)));
         let on: Rc<dyn Fn(f64) -> M> = Rc::new(on);
-        let reset = self.reset(name, &value, &on);
+        let mixed = std::mem::take(&mut self.mixed);
+        let reset = self.reset(name, &value, mixed, &on);
         self.row(name, reset, |ui, label| {
             ui.at("$value")
-                .number_input(label, value, options, move |number| on(number));
+                .number_field(label, value, options, mixed, move |number| on(number));
         });
     }
 
@@ -373,12 +394,19 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
     /// A checkbox row: a click sends `on` of the opposite of `value`.
     pub fn bool_with(&mut self, name: &str, value: bool, on: impl Fn(bool) -> M + 'static) {
         let on: Rc<dyn Fn(bool) -> M> = Rc::new(on);
-        let reset = self.reset(name, &value, &on);
+        let mixed = std::mem::take(&mut self.mixed);
+        let reset = self.reset(name, &value, mixed, &on);
         self.row(name, reset, |ui, label| {
-            // The name is already in the first column; the box alone shows.
+            // The name is already in the first column; the box alone shows,
+            // and an unchecked one with the hint while the values are mixed.
+            let hint = if mixed {
+                ui.context.tr("glassmere-property-mixed", &[])
+            } else {
+                String::new()
+            };
             let checkbox = ui.at("$value");
-            checkbox.checkbox_shown(label, "", value);
-            checkbox.set_handler(Handler::Message(on(!value)));
+            checkbox.checkbox_shown(label, &hint, value && !mixed);
+            checkbox.set_handler(Handler::Message(on(mixed || !value)));
         });
     }
 
@@ -396,12 +424,19 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
     /// A text row: edits send `on` of the text.
     pub fn text_with(&mut self, name: &str, value: &str, on: impl Fn(String) -> M + 'static) {
         let on: Rc<dyn Fn(String) -> M> = Rc::new(on);
-        let reset = self.reset(name, &value.to_owned(), &on);
+        let mixed = std::mem::take(&mut self.mixed);
+        let reset = self.reset(name, &value.to_owned(), mixed, &on);
         self.row(name, reset, |ui, label| {
-            ui.at("$value")
-                .text_input(TextInput::new(label).style(fill()), value, move |text| {
-                    on(text)
-                });
+            let hint = if mixed {
+                ui.context.tr("glassmere-property-mixed", &[])
+            } else {
+                String::new()
+            };
+            ui.at("$value").text_input(
+                TextInput::new(label).placeholder(hint).style(fill()),
+                if mixed { "" } else { value },
+                move |text| on(text),
+            );
         });
     }
 
@@ -425,14 +460,27 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         on: impl Fn(usize) -> M + 'static,
     ) {
         let on: Rc<dyn Fn(usize) -> M> = Rc::new(on);
-        let reset = self.reset(name, &value, &on);
+        let mixed = std::mem::take(&mut self.mixed);
+        let reset = self.reset(name, &value, mixed, &on);
         self.row(name, reset, |ui, label| {
-            ui.at("$value").combo_box(
+            let (selected, hint) = if mixed {
+                (usize::MAX, ui.context.tr("glassmere-property-mixed", &[]))
+            } else {
+                (value.min(choices.len().saturating_sub(1)), String::new())
+            };
+            let combo = ui.at("$value");
+            let key = combo.next_key();
+            combo.combo_shown(
                 ComboBox::new(label).style(fill()),
-                value,
+                key,
+                selected,
                 choices,
-                move |index| on(index),
+                &hint,
             );
+            combo.set_handler(Handler::Map(Box::new(move |update| match update {
+                ControlUpdate::Choice(index) => Some(on(index)),
+                _ => None,
+            })));
         });
     }
 
@@ -452,7 +500,8 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
     /// keeps what was typed until the colour changes.
     pub fn color_with(&mut self, name: &str, value: Color, on: impl Fn(Color) -> M + 'static) {
         let on: Rc<dyn Fn(Color) -> M> = Rc::new(on);
-        let reset = self.reset(name, &value, &on);
+        let mixed = std::mem::take(&mut self.mixed);
+        let reset = self.reset(name, &value, mixed, &on);
         self.row(name, reset, |ui, label| {
             let row = Style {
                 width: Length::Percent(1.0),
@@ -467,12 +516,19 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
                         width: Length::Px(28.0),
                         height: Length::Px(28.0),
                         radius: 6.0,
-                        background: Some(value),
+                        background: (!mixed).then_some(value),
                         ..Style::default()
                     },
                     |_| {},
                 );
-                let mut shown = hex(value);
+                let (mut shown, hint) = if mixed {
+                    (
+                        String::new(),
+                        ui.context.tr("glassmere-property-mixed", &[]),
+                    )
+                } else {
+                    (hex(value), "#rrggbb".to_owned())
+                };
                 let field = Style {
                     grow: 1.0,
                     shrink: 1.0,
@@ -498,7 +554,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
                     key,
                     label.to_owned(),
                     &shown,
-                    "#rrggbb",
+                    &hint,
                     field,
                     FieldExtra {
                         draft: drafting,
@@ -536,9 +592,13 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
 
     /// A value that is shown, not edited.
     pub fn readonly(&mut self, name: &str, text: impl Into<String>) {
-        let text = text.into();
+        let mut text = text.into();
+        let mixed = std::mem::take(&mut self.mixed);
         self.finish();
         self.row(name, None, |ui, _| {
+            if mixed {
+                text = ui.context.tr("glassmere-property-mixed", &[]);
+            }
             let muted = ui.context.theme().text_muted;
             ui.label_at(
                 "$value",
@@ -661,6 +721,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                     path: Vec::new(),
                     shown_by_group: false,
                     default: None,
+                    mixed: false,
                     window: window.as_ref(),
                     skipped: 0,
                     shown: false,

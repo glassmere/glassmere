@@ -25,6 +25,8 @@ A property grid with a `height` declares only the rows in view, however many pro
 
 `#[derive(Properties)]` turns a struct into property grid rows. Fields get an editor by type, and `#[property(..)]` sets `group`, `name`, `min`, `max`, `step`, `suffix`, `default`, `choices(..)`, `readonly`, `flatten`, `with` and `skip`.
 
+A grid can edit several objects at once: the view shows the first one's values and marks the rows where they differ with `PropertyGrid::mixed`, which shows "Mixed" instead of a value, and the application stores each message in every object. `Card::properties_many(&[&a, &b], grid, on)` does it for a derived struct.
+
 ## A function
 
 Most "widgets" are a function that declares built-in ones. It needs no trait, no state of its own and no registration:

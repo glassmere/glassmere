@@ -869,6 +869,7 @@ glassmere-core   fn PropertyGrid::color_with(&mut self, name: &str, value: Color
 glassmere-core   fn PropertyGrid::custom(&mut self, name: &str, editor: impl FnOnce(&mut Ui<'_, M>, &str)) [impl<M: 'static> PropertyGrid<'_, '_, M>]
 glassmere-core   fn PropertyGrid::default<T: Any>(&mut self, value: T) -> &mut Self [impl<M: 'static> PropertyGrid<'_, '_, M>]
 glassmere-core   fn PropertyGrid::group(&mut self, name: &str, content: impl FnOnce(&mut PropertyGrid<'_, '_, M>)) [impl<M: 'static> PropertyGrid<'_, '_, M>]
+glassmere-core   fn PropertyGrid::mixed(&mut self, mixed: bool) -> &mut Self [impl<M: 'static> PropertyGrid<'_, '_, M>]
 glassmere-core   fn PropertyGrid::number(&mut self, name: &str, value: f64, options: NumberOptions) [impl<M: 'static> PropertyGrid<'_, '_, M>]
 glassmere-core   fn PropertyGrid::number_with(&mut self, name: &str, value: f64, options: NumberOptions, on: impl Fn(f64) -> M + 'static) [impl<M: 'static> PropertyGrid<'_, '_, M>]
 glassmere-core   fn PropertyGrid::readonly(&mut self, name: &str, text: impl Into<String>) [impl<M: 'static> PropertyGrid<'_, '_, M>]

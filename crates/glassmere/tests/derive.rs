@@ -355,3 +355,126 @@ fn a_derived_checkbox_click_sends_the_opposite_value() {
     );
     assert_eq!(harness.state().lamp.visible, !visible);
 }
+
+/// Every lamp of a selection, edited together: each message is applied to all.
+struct LampsApp {
+    state: PropertyGridState,
+    lamps: Vec<Lamp>,
+}
+
+impl glassmere::App for LampsApp {
+    type Message = Msg;
+
+    fn update(&mut self, message: Msg, _effects: &mut Effects<'_, Msg>) {
+        match message {
+            Msg::Grid(grid) => self.state.apply(&grid),
+            Msg::Lamp(lamp) => {
+                for each in &mut self.lamps {
+                    each.apply(lamp.clone());
+                }
+            }
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        let lamps: Vec<&Lamp> = self.lamps.iter().collect();
+        ui.keyed("grid", |ui| {
+            ui.property_grid(
+                &self.state,
+                PropertyGridOptions::new("Lamps"),
+                Msg::Grid,
+                |grid| Lamp::properties_many(&lamps, grid, Msg::Lamp),
+            )
+        });
+    }
+}
+
+fn lamp(brightness: f32, tone: usize, id: u32) -> Lamp {
+    Lamp {
+        brightness,
+        color: Color::rgb(255, 255, 255),
+        tone,
+        text: "Desk".into(),
+        visible: true,
+        id,
+        cache: Vec::new(),
+    }
+}
+
+#[test]
+fn a_derived_struct_edits_several_objects_showing_mixed_where_they_differ() {
+    let mut harness = Harness::app(
+        Size::new(640.0, 1000.0),
+        LampsApp {
+            state: PropertyGridState::default(),
+            lamps: vec![lamp(2.0, 0, 9), lamp(4.0, 1, 10)],
+        },
+    );
+    let find = |harness: &Harness<LampsApp>, path: &[&str]| {
+        let mut full = vec!["grid", "$rows", "group:Light"];
+        full.extend(path);
+        harness
+            .context()
+            .find(&full)
+            .unwrap_or_else(|| panic!("{path:?}"))
+    };
+    let value = |harness: &Harness<LampsApp>, path: &[&str]| {
+        let node = harness.context().node(find(harness, path)).unwrap();
+        (node.value, node.checked, node.semantics.label)
+    };
+
+    // The brightness, the tone and the id differ; the rest agree.
+    let brightness = ["row:Brightness", "$editor", "$value", "$field"];
+    assert_eq!(value(&harness, &brightness).0.as_deref(), Some(""));
+    assert_eq!(value(&harness, &["row:Tone", "$editor", "$value"]).0, None);
+    assert_eq!(value(&harness, &["row:Id", "$editor", "$value"]).2, "Mixed");
+    assert_eq!(
+        value(&harness, &["row:Label", "$editor", "$value"])
+            .0
+            .as_deref(),
+        Some("Desk")
+    );
+    assert_eq!(
+        value(&harness, &["row:Visible", "$editor", "$value"]).1,
+        Some(true)
+    );
+    assert_eq!(
+        value(&harness, &["row:Color", "$editor", "$value", "$hex"])
+            .0
+            .as_deref(),
+        Some("#ffffff")
+    );
+
+    // Typing what the first lamp already has still sets the second.
+    let field = find(&harness, &brightness);
+    harness.focus(field);
+    harness.event(Event::Text(TextEdit::SelectAll));
+    harness.type_text("2");
+    let stats = harness.press(Key::Enter);
+    assert_eq!(stats.messages, 1);
+    assert_eq!(
+        harness
+            .state()
+            .lamps
+            .iter()
+            .map(|l| l.brightness)
+            .collect::<Vec<_>>(),
+        [2.0, 2.0]
+    );
+    // Now they agree, and the field shows the value again.
+    harness.run();
+    assert_eq!(value(&harness, &brightness).0.as_deref(), Some("2.0"));
+
+    // One lamp declares what `properties` does, and none declares nothing.
+    harness.app_mut().lamps.truncate(1);
+    harness.run();
+    assert_eq!(value(&harness, &brightness).0.as_deref(), Some("2.0"));
+    harness.app_mut().lamps.clear();
+    harness.run();
+    assert!(
+        harness
+            .context()
+            .find(&["grid", "$rows", "group:Light"])
+            .is_none()
+    );
+}

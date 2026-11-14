@@ -146,6 +146,21 @@ impl<'a, M: 'static> Ui<'a, M> {
         options: NumberOptions,
         on: impl Fn(f64) -> M + 'static,
     ) -> Response<'a> {
+        self.number_field(label, value, options, false, on)
+    }
+
+    /// A number field; one that is `mixed` shows no number, only a hint that
+    /// there are several, and what it commits always sends. `value` is what
+    /// the steppers step from.
+    #[track_caller]
+    pub(super) fn number_field(
+        &mut self,
+        label: impl Into<String>,
+        value: f64,
+        options: NumberOptions,
+        mixed: bool,
+        on: impl Fn(f64) -> M + 'static,
+    ) -> Response<'a> {
         let label = label.into();
         let shown = options.constrain(value);
         let mut row = options.style.clone();
@@ -162,7 +177,16 @@ impl<'a, M: 'static> Ui<'a, M> {
                 .child(ui.parent, &WidgetKey::named("$field"), Kind::TextInput);
             // The app answering with the same number keeps a draft; any other
             // number replaces it.
-            let mut text = options.format_in(ui.context, shown);
+            let mut text = if mixed {
+                String::new()
+            } else {
+                options.format_in(ui.context, shown)
+            };
+            let hint = if mixed {
+                ui.context.tr("glassmere-property-mixed", &[])
+            } else {
+                String::new()
+            };
             let mut drafting = false;
             if let Some(state) = field.and_then(|id| ui.context.field_state(id))
                 && state.draft
@@ -185,7 +209,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                     WidgetKey::named("$field"),
                     label,
                     &text,
-                    "",
+                    &hint,
                     style,
                     FieldExtra {
                         number: Some(number),
@@ -198,6 +222,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             ui.set_handler(Handler::Number {
                 on: Box::new(on),
                 options: Box::new(options.clone()),
+                mixed,
             });
             for (key, symbol, name, enabled, steps) in [
                 (
@@ -349,7 +374,13 @@ impl<'a, M: 'static> Ui<'a, M> {
             *selected = index;
         }
         *selected = (*selected).min(items.len().saturating_sub(1));
-        let response = self.combo_shown(ComboBox::new(label).style(style), key, *selected, items);
+        let response = self.combo_shown(
+            ComboBox::new(label).style(style),
+            key,
+            *selected,
+            items,
+            "—",
+        );
         (response, old != *selected)
     }
 
