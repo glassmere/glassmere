@@ -1123,10 +1123,11 @@ fn square_images_that_abut_leave_no_seam() {
 fn large_images_get_their_own_texture_and_the_budget_evicts_idle_ones() {
     let mut gpu = Gpu::new();
     let small = raster(8, 8, |_, _| [255, 0, 0, 255]);
-    // A new large image each frame, as a slideshow would produce.
+    // A new large image each frame, as a slideshow would produce, drawn at its
+    // own size: drawn far smaller, it would be filtered down into the atlas.
     let frame = |gpu: &mut Gpu| {
         let large = raster(1024, 1024, |x, _| {
-            if x < 512 {
+            if x < 32 {
                 [0, 0, 255, 255]
             } else {
                 [0, 255, 0, 255]
@@ -1135,7 +1136,7 @@ fn large_images_get_their_own_texture_and_the_budget_evicts_idle_ones() {
         let pixels = gpu.render(
             1.0,
             &[
-                picture(rect(0.0, 0.0, 64.0, 64.0), &large),
+                picture(rect(0.0, 0.0, 1024.0, 1024.0), &large),
                 picture(rect(70.0, 0.0, 20.0, 20.0), &small),
             ],
             true,
@@ -1157,6 +1158,58 @@ fn large_images_get_their_own_texture_and_the_budget_evicts_idle_ones() {
     let stats = frame(&mut gpu);
     assert_eq!((stats.atlas_pages, stats.image_textures), (1, 2));
     assert_eq!(stats.image_uploads, 5, "the small image was uploaded once");
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn images_drawn_far_below_their_size_are_filtered_and_one_to_one_is_not() {
+    let mut gpu = Gpu::new();
+    // White where `x + y` is even, black elsewhere: detail one pixel wide.
+    let checkerboard = |side| {
+        raster(side, side, |x, y| {
+            if (x + y) % 2 == 0 {
+                [255; 4]
+            } else {
+                [0, 0, 0, 255]
+            }
+        })
+    };
+    let (medium, large, one) = (checkerboard(512), checkerboard(1024), checkerboard(32));
+    let neighbour = raster(8, 8, |_, _| [255, 0, 0, 255]);
+    let pixels = gpu.render(
+        1.0,
+        &[
+            picture(rect(2.0, 2.0, 60.0, 60.0), &medium),
+            picture(rect(66.0, 2.0, 60.0, 60.0), &large),
+            picture(rect(2.0, 70.0, 32.0, 32.0), &one),
+            picture(rect(40.0, 70.0, 20.0, 20.0), &neighbour),
+        ],
+        true,
+    );
+    // 512 and 1024 texels in 60 pixels: the sampling phase drifts from pixel
+    // to pixel, so unfiltered one-pixel detail comes out as noise. Filtered, it
+    // is half black and half white in linear light: sRGB 188 to the very edge,
+    // with no red from the neighbour sharing the page.
+    for x in (2..62).chain(66..126) {
+        for y in 2..62 {
+            let pixel = &pixels[(y * SIDE + x) * 4..][..3];
+            assert!(
+                pixel.iter().all(|channel| channel.abs_diff(188) <= 8),
+                "pixel ({x}, {y}) is {pixel:?}"
+            );
+        }
+    }
+    // Drawn at its own size the same pattern is left alone.
+    assert_pixel(&pixels, 2, 70, [255; 3]);
+    assert_pixel(&pixels, 3, 70, [0; 3]);
+    assert_pixel(&pixels, 3, 71, [255; 3]);
+    assert_pixel(&pixels, 45, 80, [255, 0, 0]);
+    // Only the sizes that were drawn are uploaded, all into the one page: the
+    // 1024 by 1024 original, over the atlas limit, never reaches the GPU.
+    let stats = gpu.renderer.stats();
+    assert_eq!((stats.atlas_pages, stats.image_textures), (1, 0));
+    assert_eq!(stats.image_bytes, 2048 * 2048 * 4);
+    assert_eq!(stats.image_uploads, 4);
 }
 
 struct Solid(std::sync::Arc<std::sync::Mutex<Vec<(u32, u32)>>>);
@@ -1353,7 +1406,7 @@ fn memory_is_counted_by_category_and_the_peak_survives_eviction() {
         gpu.render(
             1.0,
             &[
-                picture(rect(0.0, 0.0, 64.0, 64.0), &large),
+                picture(rect(0.0, 0.0, 1024.0, 1024.0), &large),
                 picture(rect(70.0, 0.0, 20.0, 20.0), &small),
             ],
             true,
