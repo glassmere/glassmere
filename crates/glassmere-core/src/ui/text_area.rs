@@ -296,6 +296,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                 lines,
                 first_line: first,
                 total_lines: total,
+                widest: document.line(document.widest_line()),
                 selections,
                 selection_count: document.selections().len(),
                 primary,

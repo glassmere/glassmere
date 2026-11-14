@@ -20,6 +20,9 @@ pub(super) struct AreaState {
     /// Advance of one digit, for right-aligned line numbers.
     digit: f32,
     line_height: f32,
+    /// The widest line of the document with the font size and width it was
+    /// shaped at, kept while the same line is declared.
+    widest: Option<(String, f32, f32)>,
     /// The primary cursor the last preparation saw, as `(line, byte)`.
     primary: Option<(usize, usize)>,
     preedit: Option<String>,
@@ -538,6 +541,7 @@ impl Context {
                 lines,
                 first_line,
                 total_lines,
+                widest,
                 primary,
                 font_size,
                 line_numbers,
@@ -621,13 +625,23 @@ impl Context {
                     .max(caret.x - text_width + digit * 2.0)
                     .max(0.0);
             }
-            // Lines are not wrapped; the widest one declared sets the range,
-            // with room for the caret after its last character.
+            // Lines are not wrapped; the widest one sets the range, with room
+            // for the caret after its last character. The widest of the whole
+            // document is shaped too, so that the range does not depend on
+            // which lines are declared; a declared line wider still counts.
+            let document_widest = match &area.widest {
+                Some((text, size, width)) if text == widest && size == font_size => *width,
+                _ => {
+                    let width = measurer.measure_styled(widest, &style, None).width;
+                    area.widest = Some((widest.clone(), *font_size, width));
+                    width
+                }
+            };
             let widest = area
                 .layouts
                 .iter()
                 .map(|layout| layout.geometry.size.width)
-                .fold(0.0, f32::max);
+                .fold(document_widest, f32::max);
             let maximum_x = if widest > text_width {
                 widest + digit * 2.0 - text_width
             } else {

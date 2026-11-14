@@ -3,6 +3,7 @@
 use ropey::Rope;
 use std::collections::{HashMap, VecDeque};
 use std::ops::Range;
+use std::sync::OnceLock;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// A caret (`anchor == cursor`) or a directed range, in chars.
@@ -94,6 +95,8 @@ pub struct TextDocument {
     saved: u64,
     changes: VecDeque<(u64, usize)>,
     crlf: bool,
+    /// The line with the most display columns, found on first use after an edit.
+    widest: OnceLock<usize>,
     pub indentation: Indentation,
 }
 
@@ -133,6 +136,7 @@ impl TextDocument {
             saved: 0,
             changes: VecDeque::new(),
             crlf,
+            widest: OnceLock::new(),
             indentation: Indentation::default(),
         }
     }
@@ -187,6 +191,34 @@ impl TextDocument {
         } else {
             len
         }
+    }
+
+    /// The line with the most display columns (the first of equals), for sizing
+    /// a view's horizontal range. Found by one pass over the text, then kept
+    /// until the next edit.
+    pub(crate) fn widest_line(&self) -> usize {
+        *self.widest.get_or_init(|| {
+            let tab = self.indentation.tab_width.max(1);
+            let (mut widest, mut most) = (0, 0);
+            let (mut line, mut columns) = (0, 0);
+            for ch in self.rope.chars() {
+                match ch {
+                    '\n' => {
+                        if columns > most {
+                            (widest, most) = (line, columns);
+                        }
+                        line += 1;
+                        columns = 0;
+                    }
+                    '\t' => columns += tab - columns % tab,
+                    _ => columns += 1,
+                }
+            }
+            if columns > most {
+                widest = line;
+            }
+            widest
+        })
     }
 
     /// Bumped by every content change, undo and redo included.
@@ -435,6 +467,7 @@ impl TextDocument {
 
     fn touch(&mut self, line: usize) {
         self.revision += 1;
+        self.widest.take();
         self.changes.push_back((self.revision, line));
         if self.changes.len() > CHANGE_LOG {
             self.changes.pop_front();
