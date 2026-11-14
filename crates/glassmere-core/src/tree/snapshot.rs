@@ -124,17 +124,22 @@ impl Context {
             expanded: if let Control::CollectionRow { expanded, .. } = node.control { expanded } else {
                 let suggests = matches!(node.control, Control::TextInput { suggestions: Some(_), .. });
                 // An autocomplete list is open only while it has rows to show.
-                (suggests || matches!(node.kind, Kind::ComboBox | Kind::MenuButton)).then_some(
-                    self.popup.is_some_and(|popup| popup.owner == id)
+                let submenu = matches!(node.control, Control::Submenu { .. });
+                (suggests || submenu || matches!(node.kind, Kind::ComboBox | Kind::MenuButton)).then_some(
+                    self.popup_of(id).is_some()
                         && (!suggests || !node.children.is_empty()),
                 )
             },
+            // The row with the keyboard is in the innermost menu, and is
+            // reported on the owner of the outermost, which has the focus.
             active_descendant: self
                 .popup
-                .filter(|popup| popup.owner == id)
+                .filter(|_| self.popup_levels().next().is_some_and(|outer| outer.owner == id))
                 .and_then(|popup| {
-                    node.children
-                        .first()
+                    self.nodes[&popup.owner]
+                        .children
+                        .iter()
+                        .find(|child| self.nodes[*child].kind == Kind::Popup)
                         .and_then(|panel| self.nodes[panel].children.get(popup.highlighted))
                         .copied()
                 }).or_else(|| if let Control::Collection { selected: Some(selected), .. } = node.control {

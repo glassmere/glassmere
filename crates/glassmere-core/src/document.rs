@@ -1,7 +1,7 @@
 //! The app-owned text document behind code and rich text editors: a rope,
 //! one or more selections and edit-based undo. Offsets are `char` indexes.
 use ropey::Rope;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -1081,9 +1081,26 @@ impl TextDocument {
     }
 
     /// The bracket at or just before `offset` and its partner, when both exist
-    /// within a bounded scan. Brackets in strings and comments count too.
+    /// within a bounded scan. Brackets in strings and comments count too; see
+    /// `matching_bracket_in` for a match that knows about them.
     pub fn matching_bracket(&self, offset: usize) -> Option<(usize, usize)> {
+        self.matching_bracket_in(offset, &mut |_| Vec::new())
+    }
+
+    /// `matching_bracket`, told where strings and comments are: `quiet`
+    /// returns their byte ranges in a line, ascending. A bracket in code
+    /// pairs only with one in code. A bracket in a string or comment pairs
+    /// only with one in the same string or comment, which may run over
+    /// several lines.
+    pub fn matching_bracket_in(
+        &self,
+        offset: usize,
+        quiet: &mut dyn FnMut(usize) -> Vec<Range<usize>>,
+    ) -> Option<(usize, usize)> {
         const SCAN: usize = 20_000;
+        /// Lines asked for at once when scanning up, so that `quiet` is
+        /// asked in ascending order, which is the cheap one for a parser.
+        const BATCH: usize = 32;
         let len = self.len_chars();
         let bracket = |at: usize| {
             (at < len)
@@ -1104,16 +1121,48 @@ impl TextDocument {
             ']' => ('[', false),
             _ => ('{', false),
         };
+        let mut known: HashMap<usize, Vec<Range<usize>>> = HashMap::new();
+        let mut is_quiet = |index: usize| {
+            let (line, byte) = self.position(index);
+            if !known.contains_key(&line) {
+                let from = if forward {
+                    line
+                } else {
+                    line.saturating_sub(BATCH - 1)
+                };
+                for line in from..=line {
+                    known.entry(line).or_insert_with(|| quiet(line));
+                }
+            }
+            known[&line].iter().any(|range| range.contains(&byte))
+        };
+        let inside = is_quiet(at);
         let mut depth = 0usize;
         let mut index = at;
         for _ in 0..SCAN {
             let current = self.rope.char(index);
-            if current == ch {
-                depth += 1;
-            } else if current == partner {
-                depth -= 1;
-                if depth == 0 {
-                    return Some((at, index));
+            if inside {
+                // Leaving the string or comment ends the search. A line
+                // ending belongs to no range, and to any that spans it.
+                if !matches!(current, '\n' | '\r') && !is_quiet(index) {
+                    return None;
+                }
+                if current == ch {
+                    depth += 1;
+                } else if current == partner {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some((at, index));
+                    }
+                }
+            } else if (current == ch || current == partner) && !is_quiet(index) {
+                if current == ch {
+                    depth += 1;
+                } else {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some((at, index));
+                    }
                 }
             }
             if forward {
@@ -1359,6 +1408,74 @@ mod tests {
         document.set_selection(2, 5);
         document.insert_paired("[");
         assert_eq!(document.text(), "f([\"x\"]) ");
+    }
+
+    /// Double-quoted strings and `//` comments, enough for these tests; a
+    /// line that is all `#` is one comment running over the lines around it.
+    fn quiet(document: &TextDocument) -> impl FnMut(usize) -> Vec<Range<usize>> + '_ {
+        |line| {
+            let text = document.line(line);
+            if text.starts_with('#') {
+                return std::iter::once(0..text.len()).collect();
+            }
+            let mut ranges = Vec::new();
+            let mut open = None;
+            for (at, ch) in text.char_indices() {
+                match (ch, open) {
+                    ('"', None) => open = Some(at),
+                    ('"', Some(start)) => {
+                        ranges.push(start..at + 1);
+                        open = None;
+                    }
+                    ('/', None) if text[at..].starts_with("//") => {
+                        ranges.push(at..text.len());
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+            ranges
+        }
+    }
+
+    #[test]
+    fn brackets_in_strings_and_comments_pair_only_among_themselves() {
+        let document = TextDocument::from_text("call(\")\", x) // )\n");
+        // Unaware of strings, the first `)` closes the call.
+        assert_eq!(document.matching_bracket(4), Some((4, 6)));
+        let mut strings = quiet(&document);
+        assert_eq!(document.matching_bracket_in(4, &mut strings), Some((4, 11)));
+        assert_eq!(
+            document.matching_bracket_in(12, &mut strings),
+            Some((11, 4))
+        );
+        // A bracket in a string or a comment has no partner in code.
+        assert_eq!(document.matching_bracket_in(6, &mut strings), None);
+        assert_eq!(document.matching_bracket_in(16, &mut strings), None);
+
+        // Inside one string brackets pair; the search ends where it does.
+        let document = TextDocument::from_text("a = \"(b) (\" + \")\"");
+        let mut strings = quiet(&document);
+        assert_eq!(document.matching_bracket_in(5, &mut strings), Some((5, 7)));
+        assert_eq!(document.matching_bracket_in(8, &mut strings), Some((7, 5)));
+        assert_eq!(document.matching_bracket_in(9, &mut strings), None);
+
+        // A comment over several lines is one place, and code around it another.
+        let document = TextDocument::from_text("f(\n# (\n# )\n)");
+        let mut comments = quiet(&document);
+        assert_eq!(
+            document.matching_bracket_in(1, &mut comments),
+            Some((1, 11))
+        );
+        assert_eq!(
+            document.matching_bracket_in(12, &mut comments),
+            Some((11, 1))
+        );
+        assert_eq!(document.matching_bracket_in(5, &mut comments), Some((5, 9)));
+        assert_eq!(
+            document.matching_bracket_in(10, &mut comments),
+            Some((9, 5))
+        );
     }
 
     #[test]

@@ -55,25 +55,87 @@ impl<'a, M: 'static> Ui<'a, M> {
         let input = input.into();
         let key = self.next_key();
         let style = input.style.unwrap_or_else(Self::field_style);
-        let response = self.text_field(
-            key,
-            input.label,
-            value,
-            &input.placeholder,
-            style,
-            FieldExtra {
-                password: input.password,
-                ..FieldExtra::default()
-            },
-        );
-        self.set_handler(Handler::Field {
+        let extra = FieldExtra {
+            password: input.password,
+            ..FieldExtra::default()
+        };
+        let handler = Handler::Field {
             change: Some(Box::new(move |update| match update {
                 ControlUpdate::Text(text) => Some(on_change(single_line(&text))),
                 _ => None,
             })),
             submit: input.on_submit,
+        };
+        if !input.reveal {
+            let response =
+                self.text_field(key, input.label, value, &input.placeholder, style, extra);
+            self.set_handler(handler);
+            return response;
+        }
+        // The row takes the place the field would have had; the field fills
+        // what the button leaves.
+        let row = Style {
+            width: style.width,
+            height: Length::Auto,
+            padding: 0.0,
+            gap: 4.0,
+            grow: style.grow,
+            shrink: style.shrink,
+            ..Style::default()
+        };
+        let field_style = Style {
+            width: Length::Auto,
+            grow: 1.0,
+            ..style
+        };
+        let mut result = Response::default();
+        let context = self.context;
+        self.group(key, Kind::Row, row, |ui| {
+            let revealed = ui
+                .context
+                .child(ui.parent, &WidgetKey::named("$field"), Kind::TextInput)
+                .and_then(|id| ui.context.field_state(id))
+                .is_some_and(|state| state.revealed);
+            result = ui
+                .text_field(
+                    WidgetKey::named("$field"),
+                    input.label,
+                    value,
+                    &input.placeholder,
+                    field_style.clone(),
+                    extra,
+                )
+                .rebind(context);
+            ui.set_handler(handler);
+            let (text, name, other) = if revealed {
+                (
+                    "glassmere-password-hide",
+                    "glassmere-password-hide-name",
+                    "glassmere-password-show",
+                )
+            } else {
+                (
+                    "glassmere-password-show",
+                    "glassmere-password-show-name",
+                    "glassmere-password-hide",
+                )
+            };
+            let name = ui.context.tr(name, &[]);
+            let other = ui.context.tr(other, &[]);
+            ui.push(Element {
+                text: ui.context.tr(text, &[]),
+                style: Style {
+                    height: field_style.height,
+                    padding: 10.0,
+                    ..Style::button()
+                },
+                enabled: ui.enabled,
+                tooltip: Some(name.clone()),
+                control: Control::Reveal { name, other },
+                ..Element::new(WidgetKey::named("$reveal"), Kind::Button)
+            });
         });
-        response
+        result
     }
 
     /// The look of a default text field.
@@ -315,29 +377,6 @@ impl<'a, M: 'static> Ui<'a, M> {
         }
     }
 
-    /// A menu over picks the framework handles itself: the index of the
-    /// item picked since the last declaration, if it is enabled.
-    #[track_caller]
-    pub(super) fn menu_pick(
-        &mut self,
-        key: WidgetKey,
-        text: impl Into<String>,
-        items: &[MenuItem],
-        style: Style,
-        popup_width: Length,
-    ) -> Option<usize> {
-        let choice = match self.take_update(&key, Kind::MenuButton) {
-            Some(ControlUpdate::Choice(index))
-                if items.get(index).is_some_and(|item| item.enabled) =>
-            {
-                Some(index)
-            }
-            _ => None,
-        };
-        self.menu_shown(key, text, items, style, popup_width);
-        choice
-    }
-
     /// A menu with a caller-chosen button look and popup width.
     #[track_caller]
     pub(super) fn menu_shown(
@@ -373,10 +412,9 @@ impl<'a, M: 'static> Ui<'a, M> {
         width: Length,
     ) -> Vec<Element> {
         let owner = self.context.child(self.parent, key, kind);
-        let Some(popup) = self
-            .context
-            .popup
-            .filter(|popup| Some(popup.owner) == owner && self.enabled)
+        let Some(popup) = owner
+            .and_then(|owner| self.context.popup_of(owner))
+            .filter(|_| self.enabled)
         else {
             return Vec::new();
         };

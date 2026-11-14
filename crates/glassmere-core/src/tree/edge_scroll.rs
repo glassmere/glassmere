@@ -1,4 +1,5 @@
-//! Scrolling an editor while a selection drag is held outside its viewport.
+//! Scrolling an editor or a single-line field while a selection drag is held
+//! outside its viewport.
 
 use super::*;
 
@@ -86,17 +87,71 @@ impl Context {
         (over.x != 0.0 || over.y != 0.0).then_some((id, over))
     }
 
-    /// When the scrolling of a drag held outside an editor is next due.
+    /// The single-line field a held pointer is selecting in, and how far the
+    /// pointer is past its text box (negative to the left of it), while the
+    /// field can still scroll that way.
+    fn field_drag(&self) -> Option<(NodeId, f32)> {
+        let id = self.captured?;
+        let pointer = self.pointer?;
+        let node = self.nodes.get(&id)?;
+        if node.kind != Kind::TextInput {
+            return None;
+        }
+        let editor = node.editor.as_ref()?;
+        let view = node.content_box();
+        let maximum = editor.scroll_limit(view.width);
+        let over = if pointer.x < view.x && editor.scroll_x > 0.0 {
+            pointer.x - view.x
+        } else if pointer.x > view.x + view.width && editor.scroll_x < maximum {
+            pointer.x - view.x - view.width
+        } else {
+            return None;
+        };
+        Some((id, over))
+    }
+
+    /// When the scrolling of a drag held outside an editor or a field is
+    /// next due.
     pub(super) fn edge_scroll_wake(&self) -> Option<Duration> {
-        self.edge_drag()?;
+        if self.edge_drag().is_none() && self.field_drag().is_none() {
+            return None;
+        }
         Some(self.edge_scroll_at.unwrap_or(self.now) + TICK)
+    }
+
+    /// Scrolls the field under a held drag by `step` and extends the
+    /// selection to the character now at the edge the pointer is past.
+    fn scroll_field(&mut self, id: NodeId, step: f32) {
+        let Some(node) = self.nodes.get_mut(&id) else {
+            return;
+        };
+        let view = node.content_box();
+        let Some(editor) = node.editor.as_mut() else {
+            return;
+        };
+        let maximum = editor.scroll_limit(view.width);
+        editor.scroll_x = (editor.scroll_x + step).clamp(0.0, maximum);
+        let edge = Point {
+            x: if step < 0.0 {
+                view.x
+            } else {
+                (view.x + view.width - 1.0).max(view.x)
+            },
+            y: view.y + view.height / 2.0,
+        };
+        self.editor_pointer(id, edge, true);
+        self.invalidate_paint(id);
     }
 
     /// Scrolls the editor under a held drag toward the pointer by the time
     /// since it last did, faster the further out the pointer is, and extends
     /// the selection to the text that comes into view.
     pub(crate) fn update_edge_scroll(&mut self) {
-        let Some((id, over)) = self.edge_drag() else {
+        let field = self.field_drag();
+        let Some((id, over)) = self
+            .edge_drag()
+            .or(field.map(|(id, over)| (id, Point { x: over, y: 0.0 })))
+        else {
             self.edge_scroll_at = None;
             return;
         };
@@ -114,6 +169,10 @@ impl Context {
             let speed = (BASE_SPEED + SPEED_PER_PIXEL * distance.abs()).min(TOP_SPEED);
             distance.signum() * speed * seconds
         };
+        if field.is_some() {
+            self.scroll_field(id, step(over.x));
+            return;
+        }
         let offset = self.nodes[&id].scroll.offset;
         let offset_x = self.nodes[&id].scroll.offset_x;
         let vertical = over.y != 0.0 && self.set_scroll(id, offset + step(over.y));
