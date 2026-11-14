@@ -289,6 +289,62 @@ fn vector_images_are_rasterized_for_the_pixels_they_cover() {
     assert_eq!(pixel(&pixels, 40, 40), [32, 32, 0, 255]);
 }
 
+/// White where `x + y` is even, black elsewhere: detail one pixel wide.
+fn checkerboard(side: u32) -> Image {
+    let mut rgba = Vec::new();
+    for y in 0..side {
+        for x in 0..side {
+            let shade = if (x + y) % 2 == 0 { 255 } else { 0 };
+            rgba.extend([shade, shade, shade, 255]);
+        }
+    }
+    Image::from_rgba8(side, side, rgba).unwrap()
+}
+
+#[test]
+fn an_image_drawn_far_below_its_size_is_filtered_and_one_to_one_is_not() {
+    let mut renderer = renderer();
+    let picture = |rect: Rect, image: &Image, side: f32| Primitive::Image {
+        rect,
+        image: image.clone(),
+        source: Rect {
+            x: 0.0,
+            y: 0.0,
+            width: side,
+            height: side,
+        },
+        tint: None,
+        radius: 0.0,
+    };
+    // 512 texels in 60 pixels, an eighth and a bit: the sampling phase drifts
+    // from pixel to pixel, so unfiltered one-pixel detail comes out as noise.
+    let large = checkerboard(512);
+    let pixels = render(
+        &mut renderer,
+        1.0,
+        vec![picture(rect(2.0, 2.0, 60.0, 60.0), &large, 512.0)],
+    );
+    let inside: Vec<u8> = (4..60)
+        .flat_map(|y| (4..60).map(move |x| (x, y)))
+        .map(|(x, y)| pixel(&pixels, x, y)[0])
+        .collect();
+    let mean = inside.iter().map(|v| f32::from(*v)).sum::<f32>() / inside.len() as f32;
+    let spread = inside.iter().map(|v| v.abs_diff(mean as u8)).max().unwrap();
+    assert!(spread <= 8, "pixels stray {spread} from the mean");
+    // Half black and half white, averaged in linear light: sRGB 188.
+    assert!((mean - 188.0).abs() <= 3.0, "mean {mean}");
+    // Drawn at its own size the same pattern is left alone.
+    let small = checkerboard(64);
+    let pixels = render(
+        &mut renderer,
+        1.0,
+        vec![picture(rect(0.0, 0.0, 64.0, 64.0), &small, 64.0)],
+    );
+    assert_eq!(pixel(&pixels, 10, 10), [255, 255, 255, 255]);
+    assert_eq!(pixel(&pixels, 11, 10), [0, 0, 0, 255]);
+    assert_eq!(pixel(&pixels, 11, 11), [255, 255, 255, 255]);
+}
+
 #[test]
 fn text_is_drawn_where_it_was_measured_in_its_colour_and_clipped() {
     let mut renderer = renderer();

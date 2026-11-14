@@ -27,6 +27,20 @@ fn checker() -> Image {
     Image::from_rgba8(size, size, rgba).expect("64 by 64 pixels")
 }
 
+/// A 512 by 512 checkerboard of one-pixel squares: shown at 64 pixels it must
+/// come out an even grey rather than a shimmering moire.
+fn fine() -> Image {
+    let size = 512u32;
+    let mut rgba = Vec::with_capacity((size * size * 4) as usize);
+    for y in 0..size {
+        for x in 0..size {
+            let shade = if (x + y) % 2 == 0 { 255 } else { 0 };
+            rgba.extend([shade, shade, shade, 255]);
+        }
+    }
+    Image::from_rgba8(size, size, rgba).expect("512 by 512 pixels")
+}
+
 /// A 24 by 24 button skin: a lit top edge, a dark rim and rounded corners that
 /// must survive stretching.
 fn skin() -> Image {
@@ -77,6 +91,7 @@ enum Msg {
 struct Gallery {
     smoke: bool,
     made: Image,
+    fine: Image,
     skin: Image,
     liked: bool,
     exported: &'static str,
@@ -194,7 +209,8 @@ impl App for Gallery {
             caption(
                 ui,
                 "made-caption",
-                "Pixels made in code, translucent over a panel; a file that does not exist",
+                "Pixels made in code, translucent over a panel; a 512 px checkerboard shown at \
+                 64 px; a file that does not exist",
             );
             ui.row(Style::default().gap(16.0), |ui| {
                 let backing = Style {
@@ -211,6 +227,14 @@ impl App for Gallery {
                         }),
                     );
                 });
+                ui.image(
+                    &self.fine,
+                    ImageOptions::new("Fine checkerboard").style(Style {
+                        width: Length::Px(64.0),
+                        radius: 8.0,
+                        ..Style::default()
+                    }),
+                );
                 let missing = ImageOptions::new("not-there.png is missing").style(Style {
                     width: Length::Px(220.0),
                     height: Length::Px(120.0),
@@ -283,6 +307,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Gallery {
             smoke,
             made: checker(),
+            fine: fine(),
             skin: skin(),
             liked: false,
             exported: "Drag the card out of the window to copy the file somewhere.",

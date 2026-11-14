@@ -33,7 +33,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - `Primitive::Custom` is a wgpu callback. A window painted by the CPU renderer leaves it empty.
 - Damage is the union of the changed rectangles, so two changes far apart redraw the box between them. A window with an exiting animation repaints entirely for its length.
 - The glyph atlas size is not reported: glyphon does not expose it, so no memory total includes it.
-- Images have no mipmaps. Animated GIF and WebP show the first frame; colour profiles are ignored.
+- Images have no mipmap chain. A photo drawn at under half its size is box-filtered down in halving steps, once per step, on the render thread the first time it is drawn there, so a large photo shown small can cost one slow frame; between steps it is sampled bilinearly, without blending two steps. Animated GIF and WebP show the first frame; colour profiles are ignored.
 - The window waits for the graphics stack before it shows anything. Startup is dominated by the driver's adapter enumeration.
 - The pixel comparison between the two renderers was tuned on one Direct3D 12 adapter. It also passes on OpenGL on Windows; tolerances on other drivers are unverified.
 

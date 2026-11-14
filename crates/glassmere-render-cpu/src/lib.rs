@@ -150,6 +150,15 @@ impl Gamma {
     }
 }
 
+/// `side` halved, rounding up, for as long as the result still covers `drawn`
+/// pixels: what is left is under twice what is drawn.
+fn halved_side(mut side: u32, drawn: f32) -> u32 {
+    while side > 1 && side.div_ceil(2) as f32 >= drawn {
+        side = side.div_ceil(2);
+    }
+    side
+}
+
 impl Default for CpuRenderer {
     fn default() -> Self {
         Self::new()
@@ -1039,13 +1048,20 @@ impl CpuRenderer {
         if natural.width <= 0.0 || natural.height <= 0.0 {
             return;
         }
-        // The pixels to draw from: a raster image's own, or a vector image
-        // rasterized for the device pixels `rect` covers.
+        // The pixels to draw from: a raster image's own, filtered down when it
+        // is drawn at under half its size so that sampling never shrinks it by
+        // more than two, or a vector image rasterized for the device pixels
+        // `rect` covers.
+        let drawn =
+            |natural: f32, rect: f32, source: f32| natural * rect / source.abs() * surface.scale;
         let size = match image.pixels() {
-            Some((width, height, _)) => [width, height],
+            Some((width, height, _)) => [
+                halved_side(width, drawn(natural.width, rect.width, source.width)),
+                halved_side(height, drawn(natural.height, rect.height, source.height)),
+            ],
             None => {
                 let side = |natural: f32, rect: f32, source: f32| {
-                    let pixels = (natural * rect / source.abs() * surface.scale).ceil();
+                    let pixels = drawn(natural, rect, source).ceil();
                     if pixels.is_finite() {
                         (pixels.min(MAX_SIDE as f32) as u32).max(1)
                     } else {
@@ -1061,7 +1077,7 @@ impl CpuRenderer {
         let (width, height) = (size[0], size[1]);
         let prepared = self.prepare(image, size);
         let pixels = match image.pixels() {
-            Some((_, _, pixels)) if !prepared => pixels,
+            Some((width, height, pixels)) if !prepared && [width, height] == size => pixels,
             _ => match self.rasters.get(&(image.id(), size)) {
                 Some((texels, _)) => texels.data(),
                 None => return,
@@ -1190,8 +1206,9 @@ impl CpuRenderer {
     }
 
     /// Makes the image's texels ready to sample and marks them used: a vector
-    /// image rasterized at `size`, and a translucent image premultiplied in
-    /// linear light. True when they are in the cache rather than in the image.
+    /// image rasterized at `size`, a translucent image premultiplied in linear
+    /// light, and a photo filtered down to `size`. True when they are in the
+    /// cache rather than in the image.
     fn prepare(&mut self, image: &Image, size: [u32; 2]) -> bool {
         let frame = self.stats.frames;
         if let Some(entry) = self.rasters.get_mut(&(image.id(), size)) {
@@ -1202,7 +1219,11 @@ impl CpuRenderer {
         let mut texels = match image.pixels() {
             // Texels that are opaque or clear need no conversion, which is
             // most images: only their alpha would have been divided out.
-            Some((_, _, pixels)) if pixels.as_chunks::<4>().0.iter().all(settled) => return false,
+            Some((width, height, pixels))
+                if [width, height] == size && pixels.as_chunks::<4>().0.iter().all(settled) =>
+            {
+                return false;
+            }
             Some((width, height, pixels)) => {
                 let Some(mut texels) = Pixmap::new(width, height) else {
                     return false;
@@ -1239,8 +1260,51 @@ impl CpuRenderer {
                 *channel = self.gamma.back[light.round().clamp(0.0, 4095.0) as usize];
             }
         }
+        while texels.width() > size[0] || texels.height() > size[1] {
+            let axes = [texels.width() > size[0], texels.height() > size[1]];
+            let Some(smaller) = self.halved(&texels, axes) else {
+                return false;
+            };
+            texels = smaller;
+        }
         self.rasters.insert((image.id(), size), (texels, frame));
         true
+    }
+
+    /// A box filter over `texels` that halves the flagged axes, in linear
+    /// light. Odd trailing rows and columns repeat their last texel.
+    fn halved(&self, texels: &Pixmap, axes: [bool; 2]) -> Option<Pixmap> {
+        let (width, height) = (texels.width(), texels.height());
+        let (across, down) = (1 + u32::from(axes[0]), 1 + u32::from(axes[1]));
+        let mut halved = Pixmap::new(width.div_ceil(across), height.div_ceil(down))?;
+        let taps = across * down;
+        let mean = |total: u32| ((total + taps / 2) / taps) as usize;
+        let row = halved.width() as usize * 4;
+        for (y, line) in halved.data_mut().chunks_exact_mut(row).enumerate() {
+            for (x, pixel) in line.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+                let mut sum = [0u32; 4];
+                for (dx, dy) in (0..across).flat_map(|dx| (0..down).map(move |dy| (dx, dy))) {
+                    let x = (across * x as u32 + dx).min(width - 1);
+                    let y = (down * y as u32 + dy).min(height - 1);
+                    let texel =
+                        &texels.data()[(y as usize * width as usize + x as usize) * 4..][..4];
+                    let light = [
+                        self.gamma.linear[usize::from(texel[0])],
+                        self.gamma.linear[usize::from(texel[1])],
+                        self.gamma.linear[usize::from(texel[2])],
+                        u16::from(texel[3]),
+                    ];
+                    for (total, value) in sum.iter_mut().zip(light) {
+                        *total += u32::from(value);
+                    }
+                }
+                for (channel, total) in pixel[..3].iter_mut().zip(sum) {
+                    *channel = self.gamma.back[mean(total)];
+                }
+                pixel[3] = mean(sum[3]) as u8;
+            }
+        }
+        Some(halved)
     }
 
     /// Lays a shaped block's glyph images over the surface, within `visible`.
