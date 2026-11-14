@@ -98,6 +98,9 @@ pub(crate) struct Editor {
     /// A password field: every character is drawn as a bullet, and the
     /// geometry, so every offset into it, is of the bullets.
     pub masked: bool,
+    /// A password field whose text the user asked to see. It is the field's
+    /// own state, like the caret: the application does not hear of it.
+    pub revealed: bool,
 }
 
 /// What a password field draws for each character of its text.
@@ -142,6 +145,7 @@ impl Editor {
             visual: true,
             align_x: 0.0,
             masked: false,
+            revealed: false,
         }
     }
 
@@ -469,6 +473,12 @@ impl Editor {
             )
     }
 
+    /// The furthest a field `width` wide scrolls: its text's end, with room
+    /// for the caret after it.
+    pub(crate) fn scroll_limit(&self, width: f32) -> f32 {
+        (self.geometry.size.width - width + 2.0).max(0.0)
+    }
+
     pub fn prepare(
         &mut self,
         measurer: &mut impl TextMeasurer,
@@ -494,9 +504,7 @@ impl Editor {
                 self.scroll_x = x - width + 2.0;
             }
         }
-        self.scroll_x = self
-            .scroll_x
-            .clamp(0.0, (self.geometry.size.width - width + 2.0).max(0.0));
+        self.scroll_x = self.scroll_x.clamp(0.0, self.scroll_limit(width));
         let old_align = self.align_x;
         self.align_x = if rtl {
             (width - 2.0 - self.geometry.size.width).max(0.0)

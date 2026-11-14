@@ -147,7 +147,8 @@ impl App for Layout {
 
             ui.label(
                 Label::new(
-                    "Auto-fill · repeat(auto-fill, minmax(110px, 1fr)) adds a column whenever                      another 110 px fits",
+                    "Auto-fill · repeat(auto-fill, minmax(110px, 1fr)) adds a column whenever \
+                     another 110 px fits",
                 )
                 .style(heading.clone()),
             );

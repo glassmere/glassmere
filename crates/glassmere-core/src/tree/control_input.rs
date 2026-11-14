@@ -8,6 +8,8 @@ pub(crate) struct FieldState {
     pub draft: bool,
     pub number: Option<NumericValue>,
     pub focused: bool,
+    /// A password field showing its text.
+    pub revealed: bool,
 }
 
 impl Context {
@@ -51,6 +53,7 @@ impl Context {
             );
             self.queue_update(id, ControlUpdate::Text(text));
             if suggests {
+                self.popup_parents.clear();
                 self.popup = Some(PopupState {
                     owner: id,
                     highlighted: usize::MAX,
@@ -156,6 +159,7 @@ impl Context {
         match &self.nodes.get(&owner)?.control {
             Control::Combo { items, .. }
             | Control::Menu { items }
+            | Control::Submenu { items, .. }
             | Control::ContextMenu { items }
             | Control::TextInput {
                 suggestions: Some(items),
@@ -165,8 +169,97 @@ impl Context {
         }
     }
 
+    /// The open menus, outermost first.
+    pub(super) fn popup_levels(&self) -> impl Iterator<Item = PopupState> + '_ {
+        self.popup_parents.iter().copied().chain(self.popup)
+    }
+
+    /// The open popup `owner` owns, at whatever depth.
+    pub(crate) fn popup_of(&self, owner: NodeId) -> Option<PopupState> {
+        self.popup_levels().find(|popup| popup.owner == owner)
+    }
+
+    /// The panel of each open menu, outermost first.
+    pub(super) fn popup_panels(&self) -> Vec<NodeId> {
+        self.popup_levels()
+            .filter_map(|popup| {
+                self.nodes
+                    .get(&popup.owner)?
+                    .children
+                    .iter()
+                    .copied()
+                    .find(|child| self.nodes[child].kind == Kind::Popup)
+            })
+            .collect()
+    }
+
+    /// The owner of the popup `row` is a row of, and its place among the rows.
+    pub(super) fn row_place(&self, row: NodeId) -> Option<(NodeId, usize)> {
+        let node = self.nodes.get(&row)?;
+        if node.kind != Kind::Choice {
+            return None;
+        }
+        let panel = self.nodes.get(&node.parent?)?;
+        if panel.kind != Kind::Popup {
+            return None;
+        }
+        let index = panel.children.iter().position(|child| *child == row)?;
+        Some((panel.parent?, index))
+    }
+
+    fn is_submenu(&self, id: NodeId) -> bool {
+        self.nodes
+            .get(&id)
+            .is_some_and(|node| matches!(node.control, Control::Submenu { .. }))
+    }
+
+    /// The row a popup has highlighted.
+    fn highlighted_row(&self, popup: PopupState) -> Option<NodeId> {
+        let panel = self
+            .nodes
+            .get(&popup.owner)?
+            .children
+            .iter()
+            .find(|child| self.nodes[*child].kind == Kind::Popup)?;
+        self.nodes[panel].children.get(popup.highlighted).copied()
+    }
+
+    /// Closes the submenus opened from `owner`'s menu, so that it is the
+    /// innermost one. False when `owner` has no open menu.
+    fn close_levels_below(&mut self, owner: NodeId) -> bool {
+        if self.popup_of(owner).is_none() {
+            return false;
+        }
+        let mut changed = false;
+        while self.popup.is_some_and(|popup| popup.owner != owner) {
+            self.popup = self.popup_parents.pop();
+            changed = true;
+        }
+        if changed {
+            self.invalidate_paint(owner);
+            self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
+            self.view_stale = true;
+        }
+        changed
+    }
+
+    /// Closes the innermost menu: a submenu gives the keyboard back to the
+    /// menu it opened from, and the outermost closes the popup.
+    fn close_submenu(&mut self) -> bool {
+        let Some(parent) = self.popup_parents.pop() else {
+            return self.close_popup();
+        };
+        self.popup = Some(parent);
+        self.invalidate_paint(parent.owner);
+        self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
+        self.view_stale = true;
+        true
+    }
+
     fn close_popup(&mut self) -> bool {
-        let Some(popup) = self.popup.take() else {
+        let innermost = self.popup.take();
+        // Focus goes back to where the outermost menu took it from.
+        let Some(popup) = self.popup_parents.drain(..).next().or(innermost) else {
             return false;
         };
         if self.nodes.get(&popup.owner).is_some_and(Node::focusable) {
@@ -202,6 +295,27 @@ impl Context {
         } else {
             return false;
         };
+        // A row of an open menu opens its own beside it, and that menu stays.
+        if let Some((parent, index)) = self
+            .row_place(owner)
+            .filter(|(parent, _)| self.is_submenu(owner) && self.popup_of(*parent).is_some())
+        {
+            self.close_levels_below(parent);
+            let mut outer = self.popup.take().expect("the parent menu is open");
+            outer.highlighted = index;
+            self.popup_parents.push(outer);
+            self.popup = Some(PopupState {
+                owner,
+                highlighted,
+                reveal_highlight: true,
+                anchor: None,
+                return_focus: None,
+            });
+            self.invalidate_paint(parent);
+            self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
+            self.view_stale = true;
+            return true;
+        }
         let return_focus = self.focused;
         self.close_popup();
         self.popup = Some(PopupState {
@@ -234,7 +348,34 @@ impl Context {
             self.edit(owner, TextEdit::SelectAll);
             self.edit(owner, TextEdit::Insert(label));
         }
-        self.queue_update(owner, ControlUpdate::Choice(index));
+        // A row that opens a submenu is not a pick.
+        if let Some(row) = self
+            .popup_of(owner)
+            .map(|popup| PopupState {
+                highlighted: index,
+                ..popup
+            })
+            .and_then(|popup| self.highlighted_row(popup))
+            .filter(|row| self.is_submenu(*row))
+        {
+            return self.open_popup(row);
+        }
+        // A pick in a submenu is told to the menu it all hangs from, as
+        // the way down to it.
+        let mut path = vec![index];
+        let mut top = owner;
+        while self.is_submenu(top)
+            && let Some((parent, place)) = self.row_place(top)
+        {
+            path.push(place);
+            top = parent;
+        }
+        if path.len() == 1 {
+            self.queue_update(top, ControlUpdate::Choice(index));
+        } else {
+            path.reverse();
+            self.queue_update(top, ControlUpdate::Path(path));
+        }
         self.close_popup();
         true
     }
@@ -290,8 +431,10 @@ impl Context {
         else {
             return None;
         };
-        let text = node.editor.as_ref()?.text.clone();
+        let editor = node.editor.as_ref()?;
+        let (text, revealed) = (editor.text.clone(), editor.revealed);
         Some(FieldState {
+            revealed,
             // Typed since the field last declared its text, or still being typed.
             draft: *draft || text != *value,
             text,
@@ -323,6 +466,37 @@ impl Context {
         true
     }
 
+    /// The password field beside the reveal button `id`.
+    pub(super) fn reveal_field(&self, id: NodeId) -> Option<NodeId> {
+        let node = self.nodes.get(&id)?;
+        if !matches!(node.control, Control::Reveal { .. }) {
+            return None;
+        }
+        self.nodes
+            .get(&node.parent?)?
+            .children_by_key
+            .get(&WidgetKey::named("$field"))
+            .copied()
+    }
+
+    /// Shows or hides the text of the password field beside the reveal
+    /// button `id`. The button has no handler, so its click makes the view
+    /// stale and the next declaration names the button for what it now does.
+    fn toggle_reveal(&mut self, id: NodeId) {
+        let Some(field) = self.reveal_field(id) else {
+            return;
+        };
+        if let Some(editor) = self
+            .nodes
+            .get_mut(&field)
+            .and_then(|node| node.editor.as_mut())
+        {
+            editor.revealed = !editor.revealed;
+            editor.masked = !editor.revealed;
+            self.invalidate_paint(field);
+        }
+    }
+
     pub(super) fn activate(&mut self, id: NodeId) -> bool {
         if let Some(handled) = self.collection_action(id, &Action::Activate) {
             return handled;
@@ -332,8 +506,16 @@ impl Context {
         };
         match node.control {
             Control::Combo { .. } | Control::Menu { .. } => {
-                if self.popup.is_some_and(|popup| popup.owner == id) {
+                if self.popup_of(id).is_some() {
                     self.close_popup()
+                } else {
+                    self.open_popup(id)
+                }
+            }
+            Control::Submenu { .. } => {
+                if self.popup_of(id).is_some() {
+                    // Its menu is open already: pressing it again leaves it so.
+                    false
                 } else {
                     self.open_popup(id)
                 }
@@ -345,6 +527,12 @@ impl Context {
                 self.choose(owner, index)
             }
             Control::Tab { .. } => self.select_tab(id),
+            Control::Reveal { .. } => {
+                self.toggle_reveal(id);
+                self.queue_click(id);
+                self.invalidate_paint(id);
+                true
+            }
             Control::Radio { .. } => {
                 let siblings = self.nodes[&node.parent.unwrap()].children.clone();
                 for sibling in siblings {
@@ -390,8 +578,27 @@ impl Context {
             }
         }
         let popup = self.popup?;
+        // The arrow that points the reading way opens the submenu of the
+        // highlighted row, and the other one goes back out of a submenu.
+        if matches!(key, Key::ArrowLeft | Key::ArrowRight)
+            && self.popup_items(popup.owner).is_some()
+            && self.nodes[&popup.owner].editor.is_none()
+        {
+            let rtl = self.nodes[&popup.owner].resolved.rtl();
+            let inward = (key == Key::ArrowRight) != rtl;
+            if inward {
+                let row = self
+                    .highlighted_row(popup)
+                    .filter(|row| self.is_submenu(*row) && self.nodes[row].enabled)?;
+                return Some(self.open_popup(row));
+            }
+            if self.popup_parents.is_empty() {
+                return None;
+            }
+            return Some(self.close_submenu());
+        }
         match key {
-            Key::Escape => Some(self.close_popup()),
+            Key::Escape => Some(self.close_submenu()),
             Key::Tab => {
                 self.close_popup();
                 None
@@ -456,21 +663,37 @@ impl Context {
                     }
                 }
                 if let Some(id) = self.hit_test(*position)
-                    && let Control::Choice { index, .. } = self.nodes[&id].control
-                    && let Some(popup) = &mut self.popup
+                    && let Some((owner, index)) = self.row_place(id)
+                    && self.popup_of(owner).is_some()
+                    // The row whose submenu is open keeps it; any other row
+                    // of that menu closes it and takes the highlight.
+                    && self.popup_of(id).is_none()
                 {
-                    popup.highlighted = index;
-                    popup.reveal_highlight = false;
+                    let opens = self.is_submenu(id) && self.nodes[&id].enabled;
+                    let mut changed = self.close_levels_below(owner);
+                    if let Some(popup) = &mut self.popup {
+                        popup.highlighted = index;
+                        popup.reveal_highlight = false;
+                    }
+                    if opens {
+                        self.pointer = Some(*position);
+                        changed |= self.open_popup(id);
+                    }
+                    if changed {
+                        self.pointer = Some(*position);
+                        return Some(true);
+                    }
                 }
             }
             Event::PointerDown | Event::PointerDownWithShift => {
                 let position = self.pointer?;
                 let target = self.hit_test(position);
-                if let Some(popup) = self.popup {
-                    let inside = self.nodes[&popup.owner]
-                        .children
-                        .first()
-                        .is_some_and(|panel| self.nodes[panel].clip.contains(position));
+                let outermost = self.popup_levels().next();
+                if let Some(popup) = outermost {
+                    let inside = self
+                        .popup_panels()
+                        .iter()
+                        .any(|panel| self.nodes[panel].clip.contains(position));
                     if target != Some(popup.owner) && !inside {
                         self.close_popup();
                     }
@@ -686,9 +909,7 @@ impl Context {
                 Some(self.set_selection(target, *anchor, *focus))
             }
             Action::Expand => Some(self.open_popup(target)),
-            Action::Collapse => {
-                Some(self.popup.is_some_and(|popup| popup.owner == target) && self.close_popup())
-            }
+            Action::Collapse => Some(self.popup_of(target).is_some() && self.close_popup()),
             Action::Focus => {
                 if node.focusable() {
                     self.focus_control(target);

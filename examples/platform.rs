@@ -34,10 +34,15 @@ fn menu(saved: bool) -> Menu {
                     Some(Shortcut::primary('s')),
                 )),
                 MenuEntry::Separator,
-                MenuEntry::Command(Command {
-                    enabled: saved,
-                    ..Command::with_id("notify", "Say it was saved", None)
-                }),
+                // A submenu opens beside its row, in the drawn menu bar as
+                // in a native one.
+                MenuEntry::submenu(
+                    "After saving",
+                    [MenuEntry::Command(Command {
+                        enabled: saved,
+                        ..Command::with_id("notify", "Say it was saved", None)
+                    })],
+                ),
             ],
         ),
         MenuEntry::submenu(

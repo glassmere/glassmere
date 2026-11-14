@@ -72,7 +72,8 @@ impl Context {
         let bounds = node.bounds;
         let rtl = node.resolved.rtl();
         let mut bars = [None, None];
-        if node.scroll.maximum_x > 0.0 {
+        // A tab strip scrolls without a bar: there is no room for one.
+        if node.scroll.maximum_x > 0.0 && node.kind != Kind::TabList {
             let track = bounds.width;
             let length = (track * track / (track + node.scroll.maximum_x))
                 .max(12.0)

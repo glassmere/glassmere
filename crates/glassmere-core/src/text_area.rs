@@ -26,6 +26,18 @@ pub trait Highlighter {
     /// Ascending, non-overlapping spans over `document.line(line)`.
     fn highlight(&mut self, document: &TextDocument, line: usize) -> Vec<HighlightSpan>;
 
+    /// The byte ranges of `document.line(line)` that are strings or comments,
+    /// ascending, so that a bracket in code is not paired with one in them.
+    /// Asked in ascending order for the lines a bracket search crosses.
+    /// Nothing, the default, pairs brackets wherever they are.
+    fn strings_and_comments(
+        &mut self,
+        _document: &TextDocument,
+        _line: usize,
+    ) -> Vec<Range<usize>> {
+        Vec::new()
+    }
+
     /// True while lines were returned plain because parsing has not reached
     /// them yet; the editor keeps asking for frames until it turns false.
     fn pending(&self) -> bool {

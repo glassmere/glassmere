@@ -450,3 +450,57 @@ fn popovers_anchor_below_their_widget_take_focus_and_dismiss_on_escape_or_outsid
         "but it is outside the other popover"
     );
 }
+
+#[test]
+fn a_plain_tab_strip_with_more_tabs_than_fit_scrolls_to_the_selected_tab() {
+    let mut driven = Driven::new(ROOT, Tabs::default(), |state: &Tabs, ui| {
+        let tabs: Vec<Tab> = (0..30).map(|n| Tab::new(format!("Tab {n}"))).collect();
+        ui.keyed("tabs", |ui| {
+            ui.tabs(
+                state.selected,
+                &tabs,
+                on(|s: &mut Tabs, index: usize| s.selected = index),
+                |ui, index| ui.label(format!("panel {index}")),
+            );
+        });
+    });
+    let strip = bounds(&driven.context, &["tabs", "$strip"]);
+    assert!(strip.width <= ROOT.width);
+    assert_eq!(bounds(&driven.context, &["tabs", "$strip", "0"]).x, strip.x);
+    let last = bounds(&driven.context, &["tabs", "$strip", "29"]);
+    assert!(last.x > strip.x + strip.width);
+    // No scrollbar is drawn for it.
+    let bars = |context: &Context| {
+        let color = context.theme().scrollbar;
+        context
+            .scene()
+            .primitives
+            .iter()
+            .filter(
+                |primitive| matches!(primitive, Primitive::Quad { color: c, .. } if *c == color),
+            )
+            .count()
+    };
+    assert_eq!(bars(&driven.context), 0);
+
+    // The app selects the last tab: it is shown, up to the end of the strip.
+    driven.state_mut().selected = 29;
+    driven.frame();
+    let last = bounds(&driven.context, &["tabs", "$strip", "29"]);
+    assert!(last.x >= strip.x && last.x + last.width <= strip.x + strip.width + 0.5);
+    assert!(bounds(&driven.context, &["tabs", "$strip", "0"]).x < strip.x);
+    assert_eq!(bars(&driven.context), 0);
+    assert!(scene_text(&driven.context, "panel 29"));
+
+    // A sideways wheel moves it back too.
+    let point = center(&driven.context, &["tabs", "$strip"]);
+    driven
+        .context
+        .event(glassmere_core::Event::PointerMoved(point));
+    driven.context.event(glassmere_core::Event::Scroll {
+        delta_x: -100_000.0,
+        delta_y: 0.0,
+    });
+    driven.frame();
+    assert_eq!(bounds(&driven.context, &["tabs", "$strip", "0"]).x, strip.x);
+}

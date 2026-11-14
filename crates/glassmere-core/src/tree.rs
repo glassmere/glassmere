@@ -52,6 +52,8 @@ pub use types::*;
 
 /// A second press on a title bar this soon and this near the first means
 /// "maximize" rather than another move.
+/// The key of the panel menu a dock puts at the end of a tab strip.
+const STRIP_MENU: &str = "$menu";
 const TITLE_DOUBLE_PRESS: Duration = Duration::from_millis(400);
 const TITLE_DOUBLE_PRESS_NEAR: f32 = 24.0;
 
@@ -266,6 +268,7 @@ impl Node {
                 Control::TabPanel => Role::TabPanel,
                 Control::Divider { .. } | Control::Sizer { .. } => Role::Splitter,
                 Control::TextInput { password: true, .. } => Role::PasswordInput,
+                Control::Submenu { .. } => Role::MenuItem,
                 Control::TextInput {
                     number: Some(_), ..
                 } => Role::SpinButton,
@@ -322,6 +325,7 @@ impl Node {
                 Control::Toast { label, .. } => label.clone(),
                 Control::Divider { .. } => "Splitter".into(),
                 Control::Sizer { label, .. } => label.clone(),
+                Control::Reveal { name, .. } => name.clone(),
                 Control::DockFloat => "Floating panel".into(),
                 Control::DockHandle { resize: false, .. } => "Move floating panel".into(),
                 Control::DockHandle { resize: true, .. } => "Resize floating panel".into(),
@@ -375,6 +379,9 @@ pub struct Context {
     scene: Scene,
     stats: FrameStats,
     geometry_dirty: bool,
+    /// Tabs that became selected in this declaration; layout scrolls their
+    /// strips to show them.
+    reveal_tabs: Vec<NodeId>,
     pending_damage: Option<Rect>,
     damage: Vec<Rect>,
     updates: HashMap<NodeId, ControlUpdate>,
@@ -402,6 +409,9 @@ pub struct Context {
     spare: std::cell::RefCell<Vec<Vec<Element>>>,
     submitted: HashSet<NodeId>,
     pub(crate) popup: Option<PopupState>,
+    /// The menus the open popup is a submenu of, outermost first. `popup`
+    /// is the innermost, which has the keyboard.
+    pub(crate) popup_parents: Vec<PopupState>,
     drag: Option<Box<crate::drag::DragState>>,
     /// Source of a drag the host handed to the operating system.
     exported_drag: Option<NodeId>,
@@ -606,6 +616,7 @@ impl Default for Context {
             scene: Scene::default(),
             stats: FrameStats::default(),
             geometry_dirty: false,
+            reveal_tabs: Vec::new(),
             pending_damage: None,
             damage: Vec::new(),
             updates: HashMap::new(),
@@ -620,6 +631,7 @@ impl Default for Context {
             spare: std::cell::RefCell::new(Vec::new()),
             submitted: HashSet::new(),
             popup: None,
+            popup_parents: Vec::new(),
             drag: None,
             exported_drag: None,
             dock_drag: None,

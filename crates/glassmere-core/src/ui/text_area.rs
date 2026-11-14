@@ -229,7 +229,14 @@ impl<'a, M: 'static> Ui<'a, M> {
         }
         if options.match_brackets
             && document.primary().is_caret()
-            && let Some((here, partner)) = document.matching_bracket(document.primary().cursor)
+            && let Some((here, partner)) = {
+                let mut highlighter = options.highlighter.map(|cell| cell.borrow_mut());
+                document.matching_bracket_in(document.primary().cursor, &mut |line| {
+                    highlighter.as_mut().map_or_else(Vec::new, |highlighter| {
+                        highlighter.strings_and_comments(document, line)
+                    })
+                })
+            }
         {
             for at in [here, partner] {
                 marks_for(

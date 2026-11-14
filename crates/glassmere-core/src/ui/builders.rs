@@ -98,6 +98,7 @@ pub struct TextInput<M = ()> {
     pub(crate) style: Option<Style>,
     pub(crate) on_submit: Option<M>,
     pub(crate) password: bool,
+    pub(crate) reveal: bool,
 }
 
 impl<M> Default for TextInput<M> {
@@ -115,6 +116,7 @@ impl<M> TextInput<M> {
             style: None,
             on_submit: None,
             password: false,
+            reveal: false,
         }
     }
 
@@ -123,6 +125,16 @@ impl<M> TextInput<M> {
     /// then reads neither the text nor where its words are.
     pub fn password(mut self) -> Self {
         self.password = true;
+        self
+    }
+
+    /// A password field with a button beside it that shows the text and
+    /// hides it again. While the text is shown the field behaves as a plain
+    /// one: it can be copied, and assistive technology reads it. The field
+    /// and its button are then a row, which takes the field's key and width.
+    pub fn password_with_reveal(mut self) -> Self {
+        self.password = true;
+        self.reveal = true;
         self
     }
 

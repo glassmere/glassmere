@@ -40,6 +40,13 @@ impl Context {
                     )
                 },
             );
+        // The row a submenu's panel opens beside.
+        let beside = node
+            .parent
+            .filter(|_| node.kind == Kind::Popup)
+            .map(|parent| &self.nodes[&parent])
+            .filter(|parent| matches!(parent.control, Control::Submenu { .. }))
+            .map(|parent| (parent.bounds, parent.resolved.rtl()));
         let node = self.nodes.get_mut(&id).unwrap();
         let layout = self.layout.layout(node.layout_id).unwrap();
         node.bounds = Rect {
@@ -59,8 +66,11 @@ impl Context {
             // Context menus anchor at the request point instead of below the owner.
             let anchored = (node.kind == Kind::Popup)
                 .then(|| {
-                    self.popup
-                        .filter(|popup| Some(popup.owner) == node.parent)
+                    self.popup_parents
+                        .iter()
+                        .copied()
+                        .chain(self.popup)
+                        .find(|popup| Some(popup.owner) == node.parent)
                         .and_then(|popup| popup.anchor)
                 })
                 .flatten();
@@ -74,11 +84,28 @@ impl Context {
             }
             node.bounds.width = node.bounds.width.min(viewport.width);
             node.bounds.height = node.bounds.height.min(viewport.height);
+            if let Some((row, rtl)) = beside {
+                // At the end side of its row, lapping it slightly, or at the
+                // other side when the window ends first; level with the row.
+                const LAP: f32 = 2.0;
+                let after = row.x + row.width - LAP;
+                let before = row.x - node.bounds.width + LAP;
+                let fits_after = after + node.bounds.width <= viewport.width;
+                let fits_before = before >= 0.0;
+                node.bounds.x = match (rtl, fits_after, fits_before) {
+                    (false, true, _) | (true, true, false) => after,
+                    (true, _, true) | (false, false, true) => before,
+                    _ => after,
+                };
+                node.bounds.y = (row.y - node.style.padding.max(0.0))
+                    .min(viewport.height - node.bounds.height)
+                    .max(0.0);
+            }
             node.bounds.x = node
                 .bounds
                 .x
                 .clamp(0.0, (viewport.width - node.bounds.width).max(0.0));
-            if node.bounds.y + node.bounds.height > viewport.height {
+            if beside.is_none() && node.bounds.y + node.bounds.height > viewport.height {
                 let above = anchored.map_or(origin.y, |anchor| anchor.y);
                 node.bounds.y = (above - node.bounds.height).max(0.0);
             }
@@ -93,7 +120,7 @@ impl Context {
             node.scroll.offset = node.scroll.offset.clamp(0.0, node.scroll.maximum);
         }
         let rtl = node.resolved.rtl();
-        if matches!(node.kind, Kind::Scroll | Kind::Collection) {
+        if matches!(node.kind, Kind::Scroll | Kind::Collection | Kind::TabList) {
             // Content overflows at the end side: past the right edge, or past
             // the left edge in a right-to-left container.
             let padding = node.style.padding.max(0.0);
@@ -117,6 +144,21 @@ impl Context {
         };
         let clip = node.clip;
         let children = node.children.clone();
+        // A tab strip that scrolls keeps its panel menu at the end edge, and
+        // the tabs stop where the menu starts.
+        let bounds = node.bounds;
+        let pinned = (node.kind == Kind::TabList && node.scroll.maximum_x > 0.0)
+            .then(|| {
+                node.children_by_key
+                    .get(&WidgetKey::named(STRIP_MENU))
+                    .copied()
+            })
+            .flatten()
+            .map(|menu| {
+                let layout = self.layout.layout(self.nodes[&menu].layout_id).unwrap();
+                (menu, layout.location.x, layout.size.width)
+            });
+        let node = self.nodes.get_mut(&id).unwrap();
         if old_bounds != node.bounds {
             self.diagnostic.bounds_changed = true;
         }
@@ -126,7 +168,29 @@ impl Context {
         }
         self.note_layout_change(id, old_layout_rect, layout_rect);
         for child in children {
-            self.update_bounds(child, origin, clip);
+            match pinned {
+                Some((menu, x, width)) if menu == child => {
+                    let edge = if rtl {
+                        bounds.x
+                    } else {
+                        bounds.x + bounds.width - width
+                    };
+                    let origin = Point {
+                        x: edge - x,
+                        y: origin.y,
+                    };
+                    self.update_bounds(child, origin, clip);
+                }
+                Some((_, _, width)) => {
+                    let tabs = Rect {
+                        x: if rtl { bounds.x + width } else { bounds.x },
+                        width: (bounds.width - width).max(0.0),
+                        ..bounds
+                    };
+                    self.update_bounds(child, origin, clip.intersect(tabs));
+                }
+                None => self.update_bounds(child, origin, clip),
+            }
         }
     }
 
@@ -259,6 +323,23 @@ impl Context {
         }
         self.stats.paint_nodes += 1;
         self.nodes.get_mut(&id).unwrap().painted_frame = self.frame;
+        // A child of a tab strip is drawn only where the strip shows tabs,
+        // which stops short of a pinned panel menu.
+        let node = &self.nodes[&id];
+        let strip_clip = node
+            .parent
+            .filter(|parent| self.nodes[parent].kind == Kind::TabList)
+            .map(|_| node.clip)
+            .filter(|clip| *clip != node.bounds);
+        if strip_clip.is_some_and(|clip| clip.width <= 0.0 || clip.height <= 0.0) {
+            let chunk = Arc::new(PaintChunk {
+                before: Vec::new(),
+                children: Vec::new(),
+                after: Vec::new(),
+            });
+            self.nodes.get_mut(&id).unwrap().paint_cache = Some(chunk.clone());
+            return chunk;
+        }
         let target = self.appearance(id, &self.nodes[&id]);
         let animation_state::Displayed { shown, layer } = self.displayed(id, target);
         let crate::animation::Shown {
@@ -273,6 +354,9 @@ impl Context {
         }
         let node = &self.nodes[&id];
         let mut scene = Scene::default();
+        if let Some(clip) = strip_clip {
+            scene.primitives.push(Primitive::PushClip(clip));
+        }
         if let Some((opacity, transform)) = layer {
             scene.primitives.push(Primitive::PushLayer {
                 bounds: node.bounds,
@@ -321,6 +405,9 @@ impl Context {
         scene.primitives.push(Primitive::PopClip);
         if layer.is_some() {
             scene.primitives.push(Primitive::PopLayer);
+        }
+        if strip_clip.is_some() {
+            scene.primitives.push(Primitive::PopClip);
         }
         let after = scene.primitives;
         let children = children
@@ -520,7 +607,8 @@ impl Context {
 
     /// A menu item's shortcut, along the edge the text ends at.
     fn paint_hint(&self, node: &Node, scene: &mut Scene) {
-        if let Control::Choice { hint, .. } | Control::Hint(hint) = &node.control
+        if let Control::Choice { hint, .. } | Control::Submenu { hint, .. } | Control::Hint(hint) =
+            &node.control
             && !hint.is_empty()
             && node.hint_width > 0.0
         {

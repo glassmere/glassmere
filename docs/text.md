@@ -2,7 +2,7 @@
 
 ## Fields
 
-`Ui::text_input(label, &value, |text| Msg::Name(text))` is a single-line field. The application owns the string; the field keeps the caret, selection, IME composition and a bounded undo history. `Ui::number_input(label, value, NumberOptions, |n| ..)` commits a parsed `f64` on Enter, on leaving the field, on a stepper click and on Up and Down. `NumberOptions` has `range`, `step`, `decimals` and `suffix`; Escape does not revert a draft. Values beyond 2^53 lose precision. `.password()` on a text input shows bullets instead of the text and turns off copy and cut; see [limitations](limitations.md#text) for what it lacks.
+`Ui::text_input(label, &value, |text| Msg::Name(text))` is a single-line field. The application owns the string; the field keeps the caret, selection, IME composition and a bounded undo history. `Ui::number_input(label, value, NumberOptions, |n| ..)` commits a parsed `f64` on Enter, on leaving the field, on a stepper click and on Up and Down. `NumberOptions` has `range`, `step`, `decimals` and `suffix`; Escape does not revert a draft. Values beyond 2^53 lose precision. `.password()` on a text input shows bullets instead of the text and turns off copy and cut. `.password_with_reveal()` adds a button beside the field that shows the text and hides it again; whether it is shown is the field's own state, and while it is shown the field copies and is read like a plain one; see [limitations](limitations.md#text) for what it lacks.
 
 `Autocomplete` and `suggest` back a field with a list of candidates; `ComboBox` and `Ui::menu` take indices rather than values.
 
@@ -23,7 +23,7 @@ ui.code_editor(&self.document, CodeEditorOptions::default(), Msg::Edit);
 
 `apply_with` takes `Effects` because a copy or cut goes to the clipboard in the same batch. `TextDocument::apply` and `RichDocument::apply` do the same without a clipboard.
 
-`CodeEditorOptions` carries `label`, `style`, `font_size`, `line_numbers`, `read_only`, `auto_close`, `match_brackets`, `highlighter`, `diagnostics` and `find`. `text_area` is the same editor without the frame, and has no find bar.
+`CodeEditorOptions` carries `label`, `style`, `font_size`, `line_numbers`, `read_only`, `auto_close`, `match_brackets`, `highlighter`, `diagnostics` and `find`. `text_area` is the same editor without the frame, and has no find bar. With a highlighter that implements `Highlighter::strings_and_comments`, as `SyntectHighlighter` does, `match_brackets` pairs a bracket in code only with one in code, and one in a string or comment only within it; `TextDocument::matching_bracket_in` is the same search for your own use.
 
 - **Find and replace.** Give `CodeEditorOptions::find` a `FindState` the application owns and apply every `TextOp` with `FindState::apply` instead. Ctrl+F opens the bar and Ctrl+H adds replace. `FindState::matches` and `error` are read by the view. Searching is by line; with the `regex` feature (on by default) a pattern cannot match across a newline.
 - **Highlighting.** `glassmere::syntax::SyntectHighlighter::new("rs", dark)` implements `Highlighter`. The grammars load on the first highlight.

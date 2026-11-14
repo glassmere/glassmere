@@ -430,6 +430,70 @@ fn highlighters_colour_visible_lines_only() {
     );
 }
 
+/// Says that everything between double quotes is a string.
+struct Quoted;
+
+impl Highlighter for Quoted {
+    fn highlight(&mut self, _document: &TextDocument, _line: usize) -> Vec<HighlightSpan> {
+        Vec::new()
+    }
+
+    fn strings_and_comments(
+        &mut self,
+        document: &TextDocument,
+        line: usize,
+    ) -> Vec<std::ops::Range<usize>> {
+        let text = document.line(line);
+        let quotes: Vec<usize> = text.match_indices('"').map(|(at, _)| at).collect();
+        quotes
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|[open, close]| *open..*close + 1)
+            .collect()
+    }
+}
+
+#[test]
+fn a_bracket_in_a_string_is_not_marked_as_the_partner_of_one_in_code() {
+    struct Highlighted {
+        document: TextDocument,
+        highlighter: Option<RefCell<Quoted>>,
+    }
+    let mut app = Driven::new(
+        ROOT,
+        Highlighted {
+            document: TextDocument::from_text("(\")\""),
+            highlighter: None,
+        },
+        |state: &Highlighted, ui| {
+            ui.keyed("editor", |ui| {
+                ui.code_editor(
+                    &state.document,
+                    CodeEditorOptions {
+                        highlighter: state
+                            .highlighter
+                            .as_ref()
+                            .map(|cell| cell as &RefCell<dyn Highlighter>),
+                        ..CodeEditorOptions::default()
+                    },
+                    on(|s: &mut Highlighted, op: TextOp| s.document.apply(op)),
+                )
+            });
+        },
+    );
+    // The caret after `(`: without a highlighter the `)` in the string pairs.
+    click(&mut app.context, cell(0, 1));
+    app.frame();
+    app.frame();
+    let text = app.context.theme().text;
+    let mark = Color(text.0, text.1, text.2, 56);
+    assert_eq!(quads(&app.context, mark), 2);
+    app.state_mut().highlighter = Some(RefCell::new(Quoted));
+    app.frame();
+    assert_eq!(quads(&app.context, mark), 0);
+}
+
 #[test]
 fn composition_shows_inline_and_escape_then_tab_leaves_the_editor() {
     let mut app = started("ab");

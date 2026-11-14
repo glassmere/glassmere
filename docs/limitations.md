@@ -21,7 +21,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - A rich editor publishes every block as text runs on every accessibility update, wherever it is scrolled to, because it declares all its blocks. For a large document that is many nodes per update. There is no cache and no window for it.
 - The rich editor's block kinds, marks, links and the code editor's line numbers, diagnostics and find matches are not exposed as text attributes. A custom widget has no way to publish text runs.
 - A password field reads as bullets and has no runs, selection or word boundaries. The platform cannot read or move through it by character.
-- Combo boxes, menu buttons, autocomplete fields and tree rows that have children report expanded or collapsed and take expand and collapse. The framework's menus do not nest, so there are no submenu items to report: `Ui::menu_bar` flattens a submenu inside a submenu.
+- Combo boxes, menu buttons, autocomplete fields and tree rows that have children report expanded or collapsed and take expand and collapse.
 - AccessKit's Windows adapter (0.35) does implement the UI Automation ExpandCollapse pattern and routes it to those actions. The Linux (AT-SPI, 0.21) and macOS (0.27) adapters have no handling of the expanded state at all, so there it is not reported. Both send `SetTextSelection`, but nobody has run them.
 - IME routing and preedit geometry are covered by model-level tests. Real candidate windows for Japanese, Chinese and Korean, and dead-key input, have not been tried.
 - Accessibility checks cover names, not contrast, focus order or target size.
@@ -50,11 +50,11 @@ What does not work, is partial, or has not been tried. Grouped by area.
 
 ## Text
 
-- A password field has no button that shows the text. Input methods stay on in it, and macOS secure input is not turned on.
+- Input methods stay on in a password field, and macOS secure input is not turned on. The button that shows its text is an opt-in (`TextInput::password_with_reveal`) and is labelled with a word, not an icon.
 - Visual-line and visual-caret moves in the document editors resolve against the last shaped frame, so several arrow presses between two frames move one step. Several cursors in the code editor move logically.
 - Rich documents have one font size per block, no images, tables, nested lists, alignment or colours, are shaped in full on each change, and paste as plain text.
-- Dragging a selection past the edge of a single-line text input only follows the pointer as it moves; it does not keep scrolling while the pointer rests. The code editor's horizontal range comes from the widest line declared around the view, so the scrollbar can change length as the view scrolls vertically through lines of different widths.
-- Bracket matching ignores strings and comments. Find is line by line.
+- The code editor's horizontal range comes from the widest line declared around the view, so the scrollbar can change length as the view scrolls vertically through lines of different widths.
+- Bracket matching tells strings and comments from code only when the highlighter reports them (`Highlighter::strings_and_comments`, which `SyntectHighlighter` implements); without one, or on lines its parsing has not reached yet, every bracket counts. Auto-close does not look at them. Find is line by line.
 - The base direction of a paragraph is taken from its first strong character and cannot be forced in an editor. Left and Right in tree rows keep their left-to-right meanings (Left collapses, Right expands) in a right-to-left window.
 - Fluent formats numbers plainly; use `Ui::format_number` for locale notation. Only the default catalog is checked by `tr!`.
 - No text selection handles or magnifier for touch.
@@ -65,13 +65,13 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - A grid selects one cell at a time, with no range selection or block copy. Number cells are edited as text.
 - Filters are text only. There are no pinned data rows (totals).
 - Property grid rows are declared, not virtualized; filter or split thousands of properties. There is no multi-object editing. Enums are edited through a `usize` index with `choices(..)`, and `Option<T>` and collection fields are not supported by `#[derive(Properties)]`.
-- Menus are two levels deep; a deeper submenu is drawn as a heading with its items under it. Tooltips are pointer-only, with one delay and one placement.
+- Submenus nest to any depth in `Ui::menu_bar` only: `Ui::menu`, context menus and combo boxes take a flat list. A submenu opens as soon as the pointer is on its row, with no delay, and closes when the pointer crosses another row on the way to it. Tooltips are pointer-only, with one delay and one placement.
 
 ## Windows and docking
 
 - Detached dock windows open where the OS puts them, and resizing them is not written back to the layout. A tab cannot be dragged from one OS window into another.
 - Retained widget state under a panel (focus, scroll, undo history) resets when a structural change re-parents its group.
-- Floating dock groups are clipped to the dock and cannot split. Tab strips do not scroll.
+- Floating dock groups are clipped to the dock and cannot split. A tab strip with more tabs than fit scrolls by the wheel, a touch pan and the keyboard, and to the tab that becomes selected, but it has no scroll buttons and nothing marks that tabs are hidden past an edge.
 - Windows share one graphics policy. Window-to-window drags of `Item` payloads are not possible.
 - Outgoing OS drags work for files on Windows and macOS, always as a copy, with a fixed icon. Linux has none; the drag crate needs a GTK window. The system drag itself has not been exercised with a real pointer.
 - A file dialog blocks all windows. Notifications report nothing back. A tray icon without an image can be invisible.

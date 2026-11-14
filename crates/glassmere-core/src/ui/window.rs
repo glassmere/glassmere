@@ -223,6 +223,9 @@ impl<'a, M: 'static> Ui<'a, M> {
     ///
     /// When `menu` is also the one given to `Ui::set_menu`, the host leaves
     /// out the window's own menu bar on Windows, so that it is shown once.
+    /// A submenu inside a menu is a row that opens it beside the menu, to
+    /// any depth: on hover, on a click, on Enter and on the arrow key that
+    /// points the reading way. The other arrow key and Escape go back out.
     #[track_caller]
     pub fn menu_bar(&mut self, menu: &crate::Menu) {
         // In a title bar it is part of that bar. Anywhere else it is a strip
@@ -322,38 +325,161 @@ impl<'a, M: 'static> Ui<'a, M> {
                 let crate::MenuEntry::Submenu { label, entries } = entry else {
                     continue;
                 };
-                let mut flat = Vec::new();
-                crate::platform::flatten(entries, 0, &mut flat);
-                let items: Vec<crate::MenuItem> = flat
-                    .iter()
-                    .map(|(depth, command)| match command {
-                        Some(command) => crate::MenuItem {
-                            label: format!("{}{}", "  ".repeat(*depth), command.label),
-                            enabled: command.enabled,
-                            hint: command
-                                .shortcut
-                                .as_ref()
-                                .map(crate::Shortcut::describe)
-                                .unwrap_or_default(),
-                        },
-                        None => crate::MenuItem::separator(),
-                    })
-                    .collect();
-                if let Some(picked) = ui.menu_pick(
+                if let Some(command) = ui.menu_tree(
                     WidgetKey::named(format!("menu{index}")),
                     label.clone(),
-                    &items,
+                    entries,
                     heading.clone(),
                     crate::Length::Px(260.0),
-                ) && let Some((_, Some(command))) = flat.get(picked)
-                {
-                    chosen = Some(command.id.clone());
+                ) {
+                    chosen = Some(command);
                 }
             }
         });
         if let Some(id) = chosen {
             self.host.commands.push(id);
         }
+    }
+
+    /// A menu button over `entries`, whose submenus open beside the menu
+    /// they are in. Returns the id of the command picked since the last
+    /// declaration.
+    #[track_caller]
+    fn menu_tree(
+        &mut self,
+        key: WidgetKey,
+        text: String,
+        entries: &[crate::MenuEntry],
+        style: Style,
+        popup_width: crate::Length,
+    ) -> Option<String> {
+        let path = match self.take_update(&key, Kind::MenuButton) {
+            Some(ControlUpdate::Choice(index)) => vec![index],
+            Some(ControlUpdate::Path(path)) => path,
+            _ => Vec::new(),
+        };
+        let chosen = crate::platform::command_at(entries, &path).map(|command| command.id.clone());
+        let items = crate::platform::level_items(entries);
+        let owner = self.context.child(self.parent, &key, Kind::MenuButton);
+        let children = self.menu_level(owner, entries, &items, popup_width);
+        self.push(Element {
+            text,
+            style,
+            enabled: self.enabled && items.iter().any(|item| item.enabled),
+            children,
+            control: Control::Menu { items },
+            ..Element::new(key, Kind::MenuButton)
+        });
+        chosen
+    }
+
+    /// The popup of one level of a menu while `owner` has it open, with the
+    /// popups of the submenus open under it.
+    #[track_caller]
+    fn menu_level(
+        &mut self,
+        owner: Option<NodeId>,
+        entries: &[crate::MenuEntry],
+        items: &[crate::MenuItem],
+        width: crate::Length,
+    ) -> Vec<Element> {
+        let Some(popup) = owner
+            .and_then(|owner| self.context.popup_of(owner))
+            .filter(|_| self.enabled)
+        else {
+            return Vec::new();
+        };
+        let selection = self.context.theme().selection;
+        let rule = {
+            let Color(r, g, b, _) = self.context.theme().text;
+            Color(r, g, b, 48)
+        };
+        let mut child = self.scope(owner);
+        child.group(
+            WidgetKey::named("$popup"),
+            Kind::Popup,
+            Style {
+                width,
+                height: crate::Length::Px(
+                    (items
+                        .iter()
+                        .map(|item| if item.is_separator() { 11.0 } else { 34.0 })
+                        .sum::<f32>()
+                        + 8.0)
+                        .min(280.0),
+                ),
+                gap: 2.0,
+                padding: 4.0,
+                ..Style::default()
+            },
+            |ui| {
+                for (index, (entry, item)) in entries.iter().zip(items).enumerate() {
+                    let key = WidgetKey::Named(index.to_string());
+                    if item.is_separator() {
+                        // A rule, as in a flat menu: the row keeps its index
+                        // and nothing can pick it.
+                        ui.push(Element {
+                            style: Style {
+                                width: crate::Length::Percent(1.0),
+                                height: crate::Length::Px(9.0),
+                                justify_content: crate::Justify::Center,
+                                ..Style::default()
+                            },
+                            enabled: false,
+                            children: vec![Element {
+                                style: Style {
+                                    width: crate::Length::Percent(1.0),
+                                    height: crate::Length::Px(1.0),
+                                    background: Some(rule),
+                                    ..Style::default()
+                                },
+                                ..Element::new(WidgetKey::named("$rule"), Kind::Container)
+                            }],
+                            ..Element::new(key, Kind::Container)
+                        });
+                        continue;
+                    }
+                    let style = Style {
+                        width: crate::Length::Percent(1.0),
+                        height: crate::Length::Px(32.0),
+                        padding: 5.0,
+                        background: (index == popup.highlighted).then_some(selection),
+                        ..Style::default()
+                    };
+                    let (children, control) = match entry {
+                        crate::MenuEntry::Submenu { entries, .. } => {
+                            let row = ui.context.child(ui.parent, &key, Kind::Choice);
+                            let inner = crate::platform::level_items(entries);
+                            let children = ui.menu_level(row, entries, &inner, width);
+                            let control = Control::Submenu {
+                                items: inner,
+                                hint: "\u{25b8}".into(),
+                            };
+                            (children, control)
+                        }
+                        _ => (
+                            Vec::new(),
+                            Control::Choice {
+                                hint: item.hint.clone(),
+                                index,
+                                selected: false,
+                                menu: true,
+                            },
+                        ),
+                    };
+                    ui.push(Element {
+                        text: item.label.clone(),
+                        style,
+                        enabled: item.enabled,
+                        children,
+                        control,
+                        ..Element::new(key, Kind::Choice)
+                    });
+                }
+            },
+        );
+        child.elements[0].control = Control::Popup { menu: true };
+        child.elements
     }
 
     /// The application's tray icon, or `None` to take it away.

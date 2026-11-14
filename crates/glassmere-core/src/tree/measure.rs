@@ -152,6 +152,12 @@ impl Measurement {
         text_style: TextStyle,
         measurer: &mut impl TextMeasurer,
     ) -> Self {
+        if let Control::Reveal { other, .. } = &element.control {
+            let width = measurer.measure_styled(other, &text_style, None).width;
+            let mut measured = Self::text(&element.text, text_style, measurer);
+            measured.size.width = measured.size.width.max(width);
+            return measured;
+        }
         let Control::RichText { runs, .. } = &element.control else {
             return Self::text(&element.text, text_style, measurer);
         };

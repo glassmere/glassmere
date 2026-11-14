@@ -38,6 +38,8 @@ accesskit.workspace = true
 accesskit_winit.workspace = true
 arboard.workspace = true
 sys-locale.workspace = true
+# Characters and words of a text field's accessibility text run.
+unicode-segmentation.workspace = true
 rfd = { version = "0.17.2", optional = true }
 notify-rust = { version = "4.18.2", optional = true }
 # muda's and tray-icon's default features (GTK 3, libxdo, libappindicator)
