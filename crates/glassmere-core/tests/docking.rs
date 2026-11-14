@@ -880,8 +880,18 @@ fn a_tab_strip_with_more_tabs_than_fit_scrolls_and_keeps_its_menu_in_place() {
         .filter(|node| node.semantics.role == Role::Tab && node.clip.width > 0.0)
         .map(|node| node.clip.x + node.clip.width)
         .fold(0.0_f32, f32::max);
-    assert!(cut <= menu.x + 0.5, "tabs are drawn under the menu: {cut}");
-    // That holds for what is painted: a tab the menu covers in part is cut
+    // The scroll button fills the end of the area the menu leaves, and the
+    // tabs are cut where it starts: nothing of one is drawn under it.
+    let button = in_strip(&app.context, "$scroll-end");
+    assert!(
+        (button.x + button.width - menu.x).abs() < 0.001,
+        "{button:?} {menu:?}"
+    );
+    assert!(
+        cut <= button.x + 0.001,
+        "tabs are drawn under the button: {cut}"
+    );
+    // That holds for what is painted: a tab the button covers in part is cut
     // there, and one past it is not drawn.
     let primitives = &app.context.scene().primitives;
     let straddling = app
@@ -891,13 +901,17 @@ fn a_tab_strip_with_more_tabs_than_fit_scrolls_and_keeps_its_menu_in_place() {
         .children
         .into_iter()
         .map(|id| app.context.node(id).unwrap())
-        .find(|node| node.bounds.x < menu.x && node.bounds.x + node.bounds.width > menu.x + 0.5)
-        .expect("a tab or its close button under the menu");
+        .find(|node| {
+            node.semantics.role != Role::Button
+                && node.bounds.x < button.x
+                && node.bounds.x + node.bounds.width > button.x + 0.5
+        })
+        .expect("a tab or its close button under the button");
     assert!(
         primitives.iter().any(
             |primitive| matches!(primitive, Primitive::PushClip(rect) if *rect == straddling.clip)
         ),
-        "{:?} is not cut at the menu",
+        "{:?} is not cut at the button",
         straddling.semantics.label
     );
     let texts: Vec<&str> = primitives

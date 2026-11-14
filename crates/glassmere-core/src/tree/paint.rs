@@ -151,6 +151,7 @@ impl Context {
         // the tabs stop where the menu starts.
         let bounds = node.bounds;
         let (offset_x, maximum_x) = (node.scroll.offset_x, node.scroll.maximum_x);
+        let strip = node.kind == Kind::TabList;
         let pinned = (node.kind == Kind::TabList && node.scroll.maximum_x > 0.0)
             .then(|| {
                 node.children_by_key
@@ -162,6 +163,26 @@ impl Context {
                 let layout = self.layout.layout(self.nodes[&menu].layout_id).unwrap();
                 (menu, layout.location.x, layout.size.width)
             });
+        // What a scrolling strip shows of its tabs: its box, less the menu and
+        // less the button over each side with tabs hidden past it, so nothing
+        // of a tab is drawn under a button.
+        let tabs = (strip && maximum_x > 0.0).then(|| {
+            let menu = pinned.map_or(0.0, |(_, _, width)| width);
+            let (start, end) = (offset_x >= 0.5, maximum_x - offset_x >= 0.5);
+            // The start side is on the right in a right-to-left strip.
+            let (left_button, right_button) = if rtl { (end, start) } else { (start, end) };
+            let left = bounds.x
+                + if rtl { menu } else { 0.0 }
+                + if left_button { STRIP_BUTTON } else { 0.0 };
+            let right = bounds.x + bounds.width
+                - if rtl { 0.0 } else { menu }
+                - if right_button { STRIP_BUTTON } else { 0.0 };
+            Rect {
+                x: left,
+                width: (right - left).max(0.0),
+                ..bounds
+            }
+        });
         let node = self.nodes.get_mut(&id).unwrap();
         if old_bounds != node.bounds {
             self.diagnostic.bounds_changed = true;
@@ -210,8 +231,8 @@ impl Context {
                 self.update_bounds(child, origin, shown);
                 continue;
             }
-            match pinned {
-                Some((menu, x, width)) if menu == child => {
+            match (pinned, tabs) {
+                (Some((menu, x, width)), _) if menu == child => {
                     let edge = if rtl {
                         bounds.x
                     } else {
@@ -223,15 +244,8 @@ impl Context {
                     };
                     self.update_bounds(child, origin, clip);
                 }
-                Some((_, _, width)) => {
-                    let tabs = Rect {
-                        x: if rtl { bounds.x + width } else { bounds.x },
-                        width: (bounds.width - width).max(0.0),
-                        ..bounds
-                    };
-                    self.update_bounds(child, origin, clip.intersect(tabs));
-                }
-                None => self.update_bounds(child, origin, clip),
+                (_, Some(tabs)) => self.update_bounds(child, origin, clip.intersect(tabs)),
+                _ => self.update_bounds(child, origin, clip),
             }
         }
     }
@@ -699,8 +713,7 @@ impl Context {
         }
         let (left, right) = self.strip_area(id);
         let rtl = node.resolved.rtl();
-        let Color(red, green, blue, alpha) = self.theme.scrim;
-        let shade = Color(red, green, blue, alpha / 2);
+        let shade = self.theme.scrim;
         let scroll = node.scroll;
         // The start side is on the right in a right-to-left strip.
         for (hidden, at_left) in [

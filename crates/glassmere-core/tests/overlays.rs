@@ -533,6 +533,25 @@ fn button_shown(context: &Context, path: &[&str]) -> bool {
     let reachable = context.hit_test(center(context, path)) == Some(id);
     assert_eq!(shown, reported, "{path:?} is reported only while shown");
     assert_eq!(shown, reachable, "{path:?} is reachable only while shown");
+    if shown {
+        // Nothing of a tab is drawn under a button, so none shows through
+        // its edge.
+        let strip = context.find(&["tabs", "$strip"]).unwrap();
+        for child in context.node(strip).unwrap().children {
+            let other = context.node(child).unwrap();
+            let (left, right) = (other.clip.x, other.clip.x + other.clip.width);
+            let drawn = other.clip.width > 0.0 && other.clip.height > 0.0 && child != id;
+            assert!(
+                !drawn
+                    || right <= node.bounds.x + 0.001
+                    || left >= node.bounds.x + node.bounds.width - 0.001,
+                "{:?} is drawn under {path:?}: {:?} over {:?}",
+                other.semantics.label,
+                other.clip,
+                node.bounds
+            );
+        }
+    }
     shown
 }
 
@@ -571,11 +590,12 @@ fn scroll_buttons_and_shades_show_only_on_the_sides_with_hidden_tabs_and_are_nam
     assert!(button_shown(&driven.context, &END));
     assert_eq!(shades(&driven.context), 1);
     let end = bounds(&driven.context, &END);
+    // The button ends exactly where the strip does, with nothing beyond it.
     assert!(
-        (end.x + end.width - (strip.x + strip.width)).abs() < 0.5,
+        (end.x + end.width - (strip.x + strip.width)).abs() < 0.001,
         "{end:?}"
     );
-    assert!((end.height - strip.height).abs() < 0.5, "{end:?}");
+    assert!((end.height - strip.height).abs() < 0.001, "{end:?}");
     assert!(scene_text(&driven.context, "›") && !scene_text(&driven.context, "‹"));
     let named = |context: &Context, path: &[&str]| {
         let node = context.node(context.find(path).unwrap()).unwrap();
@@ -606,7 +626,7 @@ fn scroll_buttons_and_shades_show_only_on_the_sides_with_hidden_tabs_and_are_nam
         (Role::Button, "Show earlier tabs".into(), false)
     );
     let start = bounds(&driven.context, &START);
-    assert!((start.x - strip.x).abs() < 0.5, "{start:?}");
+    assert!((start.x - strip.x).abs() < 0.001, "{start:?}");
 
     // At the end only the start has.
     driven.context.event(Event::Scroll {
@@ -796,14 +816,14 @@ fn a_right_to_left_strip_mirrors_its_buttons_and_arrows() {
     assert!(!button_shown(&driven.context, &START));
     assert!(button_shown(&driven.context, &END));
     let end = bounds(&driven.context, &END);
-    assert!((end.x - strip.x).abs() < 0.5, "{end:?} in {strip:?}");
+    assert!((end.x - strip.x).abs() < 0.001, "{end:?} in {strip:?}");
     assert!(scene_text(&driven.context, "‹") && !scene_text(&driven.context, "›"));
     click_at(&mut driven.context, &END);
     driven.frame();
     assert!(button_shown(&driven.context, &START));
     let start = bounds(&driven.context, &START);
     assert!(
-        (start.x + start.width - (strip.x + strip.width)).abs() < 0.5,
+        (start.x + start.width - (strip.x + strip.width)).abs() < 0.001,
         "{start:?}"
     );
     click_at(&mut driven.context, &START);
