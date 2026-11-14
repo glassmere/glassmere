@@ -391,6 +391,8 @@ impl Context {
         mut elements: Vec<Element>,
         measurer: &mut impl TextMeasurer,
     ) {
+        // A dock's panels are found by id while its subtree is reconciled.
+        let outer = (self.nodes[&parent].kind == Kind::Dock).then(|| self.enter_dock(Some(parent)));
         let old_children = self.nodes[&parent].children.clone();
         let inherited = self.nodes[&parent].resolved.clone();
         let mut available: HashMap<_, _> = old_children
@@ -400,15 +402,18 @@ impl Context {
         let mut children = Vec::with_capacity(elements.len());
         let (mut created_here, mut removed_here) = (0usize, 0usize);
         for element in elements.drain(..) {
-            let existing = available.remove(&element.key).filter(|id| {
-                if self.nodes[id].kind == element.kind {
-                    true
-                } else {
-                    self.remove(*id);
-                    removed_here += 1;
-                    false
-                }
-            });
+            let existing = available
+                .remove(&element.key)
+                .or_else(|| self.claim_panel(parent, &element))
+                .filter(|id| {
+                    if self.nodes[id].kind == element.kind {
+                        true
+                    } else {
+                        self.remove(*id);
+                        removed_here += 1;
+                        false
+                    }
+                });
             let resolved = element.style.resolve_text(&inherited);
             // A memoized container that was not declared again keeps the
             // children it has, so its subtree is never visited.
@@ -437,14 +442,86 @@ impl Context {
             children.push(id);
         }
         self.give_spare(elements);
-        removed_here += available.len();
         for id in available.into_values() {
-            self.remove_with_exit(id);
+            // A dock panel another parent claimed is no longer a child here.
+            if self
+                .nodes
+                .get(&id)
+                .is_some_and(|node| node.parent == Some(parent))
+            {
+                removed_here += 1;
+                self.remove_with_exit(id);
+            }
         }
         if old_children != children {
             self.adopt_children(parent, children);
         }
+        if let Some(outer) = outer {
+            self.release_panels(parent);
+            self.leave_dock(outer);
+        }
         self.diagnose_children(parent, created_here, removed_here);
+    }
+
+    /// The content of the panel `element` declares, when the dock being
+    /// reconciled has it in another place: it moves under `parent` with its
+    /// whole subtree, which is what keeps focus, scroll offsets and editing
+    /// history across a change in the dock's structure.
+    fn claim_panel(&mut self, parent: NodeId, element: &Element) -> Option<NodeId> {
+        let WidgetKey::Panel(panel) = &element.key else {
+            return None;
+        };
+        let id = *self.panels.get(&self.dock.get()?)?.get(panel)?;
+        if let Some(old) = self.nodes[&id].parent {
+            let siblings = self.nodes[&old]
+                .children
+                .iter()
+                .copied()
+                .filter(|child| *child != id)
+                .collect();
+            self.adopt_children(old, siblings);
+        }
+        self.nodes.get_mut(&id)?.parent = Some(parent);
+        Some(id)
+    }
+
+    /// Whether `id` is panel content that the dock being reconciled keeps
+    /// instead of removing it with the place it was in, because the dock may
+    /// put it somewhere else. [`Context::release_panels`] removes what no
+    /// one took.
+    fn park_panel(&mut self, id: NodeId) -> bool {
+        let Some(dock) = self.dock.get() else {
+            return false;
+        };
+        let WidgetKey::Panel(panel) = &self.nodes[&id].key else {
+            return false;
+        };
+        let kept = self
+            .panels
+            .get(&dock)
+            .is_some_and(|panels| panels.get(panel) == Some(&id));
+        if kept {
+            self.nodes.get_mut(&id).unwrap().parent = None;
+        }
+        kept
+    }
+
+    /// Removes the panels of `dock` that no group declared this time.
+    fn release_panels(&mut self, dock: NodeId) {
+        let Some(panels) = self.panels.get_mut(&dock) else {
+            return;
+        };
+        let mut gone = Vec::new();
+        panels.retain(|_, id| {
+            let parked = self.nodes[id].parent.is_none();
+            if parked {
+                gone.push(*id);
+            }
+            !parked
+        });
+        for id in gone {
+            self.remove_with_exit(id);
+        }
     }
 
     /// Brings a node that was declared again up to date with its element,
@@ -610,6 +687,12 @@ impl Context {
             .next_id
             .checked_add(1)
             .expect("node identity exhausted");
+        if let (WidgetKey::Panel(panel), Some(dock)) = (&element.key, self.dock.get()) {
+            self.panels
+                .entry(dock)
+                .or_default()
+                .insert(panel.clone(), id);
+        }
         if matches!(element.control, Control::Tab { selected: true, .. }) {
             self.reveal_tabs.push(id);
         }
@@ -711,7 +794,13 @@ impl Context {
     }
 
     pub(super) fn remove(&mut self, id: NodeId) {
+        if self.park_panel(id) {
+            return;
+        }
         let node = self.nodes.remove(&id).unwrap();
+        if node.kind == Kind::Dock {
+            self.panels.remove(&id);
+        }
         // Popovers fall back to their anchor when nothing was focused before them.
         if let Some(state) = &node.scope
             && let Some(target) = state.restore_to.or((node.kind == Kind::Popover)

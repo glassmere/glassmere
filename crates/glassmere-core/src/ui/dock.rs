@@ -229,6 +229,9 @@ impl<'a, M: 'static> Ui<'a, M> {
         let mut style = options.style.clone();
         style.gap = 0.0;
         let min_pane = options.min_pane;
+        // The panels the dock had last time are found by id, wherever they sat.
+        let dock = self.context.child(self.parent, &key, Kind::Dock);
+        let outer = self.context.enter_dock(dock);
         self.group(key, Kind::Dock, style, |ui| {
             let root = match area {
                 DockArea::Main => layout.root.as_ref(),
@@ -295,6 +298,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                 ui.set_control(Control::DockFloat);
             }
         });
+        self.context.leave_dock(outer);
         self.set_control(Control::Dock {
             area,
             native: options.native_windows,
@@ -397,7 +401,7 @@ fn group<M: 'static>(
         strip.tabs_with(
             selected,
             &labels,
-            true,
+            Some(&ids[selected]),
             None,
             |ui, current| {
                 menu(

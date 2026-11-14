@@ -1023,3 +1023,255 @@ fn a_tab_brought_into_view_on_the_first_frame_leaves_the_window_drawn() {
     let group = app.context.node(group).unwrap();
     assert_eq!(group.clip, group.bounds);
 }
+
+mod retained {
+    //! What a panel keeps while the dock is rearranged around it: its
+    //! content is the same nodes before and after, so focus, scroll offsets
+    //! and the undo history of an editor carry over.
+    use super::*;
+    use glassmere_core::{Action, CodeEditorOptions, Length, NodeId, Style, TextDocument};
+    use glassmere_core::{TextEdit, TextInput, TextOp};
+    use support::on;
+
+    struct Retained {
+        layout: DockLayout,
+        notes: String,
+        source: TextDocument,
+    }
+
+    fn view(state: &Retained, ui: &mut Ui<'_, Message<Retained>>) {
+        ui.keyed("dock", |ui| {
+            ui.dock(
+                &state.layout,
+                &panels(),
+                DockOptions::default(),
+                |action| {
+                    act(move |s: &mut Retained| {
+                        s.layout.apply(action.clone());
+                    })
+                },
+                |ui, id| {
+                    if id != "editor" {
+                        ui.label(format!("content:{id}"));
+                        return;
+                    }
+                    ui.column(Style::default().gap(4.0), |ui| {
+                        ui.scroll(
+                            Style::default().height(Length::Px(40.0)).shrink(0.0),
+                            |ui| {
+                                for row in 0..30 {
+                                    ui.label(format!("row {row}"));
+                                }
+                            },
+                        );
+                        ui.text_input(
+                            TextInput::new("Notes"),
+                            &state.notes,
+                            on(|s: &mut Retained, text: String| s.notes = text),
+                        );
+                        ui.code_editor(
+                            &state.source,
+                            CodeEditorOptions {
+                                label: "Source".into(),
+                                style: Style::default()
+                                    .width(Length::Percent(1.0))
+                                    .height(Length::Px(80.0))
+                                    .padding(8.0),
+                                line_numbers: false,
+                                ..CodeEditorOptions::default()
+                            },
+                            on(|s: &mut Retained, op: TextOp| s.source.apply(op)),
+                        );
+                    });
+                },
+            )
+        });
+    }
+
+    /// The nodes of the editor panel, found by what they are.
+    #[derive(Debug, PartialEq)]
+    struct Content {
+        scroll: NodeId,
+        input: NodeId,
+        area: NodeId,
+    }
+
+    fn find(context: &Context, role: Role) -> NodeId {
+        let mut stack = vec![context.root()];
+        while let Some(id) = stack.pop() {
+            let node = context.node(id).unwrap();
+            if node.semantics.role == role {
+                return id;
+            }
+            stack.extend(node.children.iter().rev());
+        }
+        panic!("no {role:?}");
+    }
+
+    fn content(context: &Context) -> Content {
+        Content {
+            scroll: find(context, Role::ScrollView),
+            input: find(context, Role::TextInput),
+            area: find(context, Role::MultilineTextInput),
+        }
+    }
+
+    /// The first line the text area declares, and where it is drawn from the
+    /// area's own top edge: what the area scrolled to.
+    fn top_line(context: &Context) -> (String, f32) {
+        let area = context.node(content(context).area).unwrap().bounds;
+        context
+            .scene()
+            .primitives
+            .iter()
+            .find_map(|primitive| match primitive {
+                Primitive::RichText { rect, spans, .. } => {
+                    let text: String = spans.iter().map(|span| span.text.as_str()).collect();
+                    Some((text, rect.y - area.y))
+                }
+                _ => None,
+            })
+            .expect("the text area draws lines")
+    }
+
+    fn scrolled(context: &Context, id: NodeId) -> f32 {
+        context.node(id).unwrap().scroll.unwrap().offset
+    }
+
+    fn edit(app: &mut Driven<Retained>, edit: TextEdit) {
+        app.context.event(Event::Text(edit));
+        app.frame();
+    }
+
+    /// What the panel has: the editor scrolled, a field with two edits and
+    /// the keyboard in it.
+    fn start() -> (Driven<Retained>, Content) {
+        let source: String = (0..60).map(|line| format!("line {line}\n")).collect();
+        let state = Retained {
+            layout: workspace(),
+            notes: String::new(),
+            source: TextDocument::from_text(&source),
+        };
+        let mut app = Driven::new(ROOT, state, view);
+        app.frame();
+        let nodes = content(&app.context);
+        for id in [nodes.scroll, nodes.area] {
+            let bounds = app.context.node(id).unwrap().bounds;
+            app.context.event(Event::PointerMoved(center(bounds)));
+            app.context.event(Event::Scroll {
+                delta_x: 0.0,
+                delta_y: 60.0,
+            });
+            app.frame();
+        }
+        assert!(scrolled(&app.context, nodes.scroll) > 0.0);
+        assert_ne!(top_line(&app.context).0.trim_end(), "line 0");
+        app.context.action(nodes.input, Action::Focus);
+        edit(&mut app, TextEdit::Insert("one".into()));
+        edit(&mut app, TextEdit::Insert("two".into()));
+        assert_eq!(app.state().notes, "onetwo");
+        (app, nodes)
+    }
+
+    /// Applies each change to the layout and checks, after every one, that
+    /// the panel is the node it was and still has what the user gave it.
+    fn survives(changes: &[&dyn Fn(&mut DockLayout)]) {
+        let (mut app, nodes) = start();
+        let offset = scrolled(&app.context, nodes.scroll);
+        let line = top_line(&app.context);
+        // The nodes the panel hangs from: they change when it is re-parented.
+        let hung = |app: &Driven<Retained>| {
+            let mut chain = Vec::new();
+            let mut next = Some(nodes.scroll);
+            while let Some(id) = next {
+                chain.push(id);
+                next = app.context.node(id).and_then(|node| node.parent);
+            }
+            chain
+        };
+        let mut at = hung(&app);
+        for (n, change) in changes.iter().enumerate() {
+            change(&mut app.state_mut().layout);
+            app.frame();
+            app.frame();
+            assert_eq!(content(&app.context), nodes, "change {n}");
+            let now = hung(&app);
+            assert_ne!(now, at, "change {n} re-parents the panel");
+            at = now;
+            assert_eq!(scrolled(&app.context, nodes.scroll), offset, "change {n}");
+            let now = top_line(&app.context);
+            assert_eq!(now.0, line.0, "change {n}");
+            assert!((now.1 - line.1).abs() < 0.01, "change {n}: {now:?}");
+            assert_eq!(app.context.focused(), Some(nodes.input), "change {n}");
+            // The history is the one the user made: undo and redo walk it.
+            edit(&mut app, TextEdit::Undo);
+            assert_eq!(app.state().notes, "one", "change {n}");
+            edit(&mut app, TextEdit::Redo);
+            assert_eq!(app.state().notes, "onetwo", "change {n}");
+        }
+    }
+
+    #[test]
+    fn a_panel_keeps_its_state_when_its_group_moves_into_a_new_split() {
+        survives(&[&|layout| {
+            layout.move_panel(
+                "preview",
+                DockTarget::Group {
+                    anchor: "editor".into(),
+                    zone: DockZone::Right,
+                },
+            );
+        }]);
+    }
+
+    #[test]
+    fn a_panel_keeps_its_state_when_its_tab_moves_to_another_group() {
+        survives(&[&|layout| {
+            layout.move_panel(
+                "editor",
+                DockTarget::Group {
+                    anchor: "output".into(),
+                    zone: DockZone::Center,
+                },
+            );
+        }]);
+    }
+
+    #[test]
+    fn a_panel_keeps_its_state_when_it_floats_and_docks_back() {
+        survives(&[
+            &|layout| {
+                layout.move_panel(
+                    "editor",
+                    DockTarget::Float {
+                        x: 40.0,
+                        y: 40.0,
+                        width: 360.0,
+                        height: 260.0,
+                    },
+                );
+            },
+            &|layout| {
+                layout.move_panel(
+                    "editor",
+                    DockTarget::Edge {
+                        area: DockArea::Main,
+                        zone: DockZone::Left,
+                    },
+                );
+            },
+        ]);
+    }
+
+    #[test]
+    fn a_panel_keeps_its_state_when_a_sibling_closes_and_its_split_collapses() {
+        survives(&[
+            &|layout| {
+                layout.close("output");
+            },
+            &|layout| {
+                layout.close("files");
+            },
+        ]);
+    }
+}
