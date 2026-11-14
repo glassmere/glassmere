@@ -36,7 +36,7 @@ The CPU renderer does it by hand through a twelve-bit gamma table, which round-t
 
 ## Damage
 
-`Context::damage_regions` gives the rectangles that changed. A renderer that can, paints only those: the wgpu one keeps a canvas texture, loads it, scissors to the damage and blits; the CPU one seeds its clip stack with the damage union and clears only those pixels. Both fall back to the whole surface when the window is resized or the scene is new.
+`Context::damage_regions` gives the rectangles that changed. A renderer that can, paints only those: the wgpu one keeps a canvas texture, loads it, clears and draws each region under its own scissor and blits; the CPU one clears and paints each region in turn, with its clip stack seeded with that region. Both join rectangles that overlap or lie within 8 logical pixels and keep at most eight regions, so two changes far apart cost two small passes and not the box between them. A custom draw is called once for each region it meets. Both fall back to the whole surface when the window is resized or the scene is new.
 
 The way to be sure damage is complete is not to reason about it. `glassmere-render-cpu/tests/damage.rs` paints every frame twice, once incrementally and once in full, and compares byte for byte.
 

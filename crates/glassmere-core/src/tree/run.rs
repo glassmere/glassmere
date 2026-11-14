@@ -379,9 +379,7 @@ impl Context {
         self.paint_tooltip(&mut scene, measurer);
         self.scene = scene;
         self.stats.scene_rebuilt = true;
-        if let Some(damage) = self.pending_damage.take() {
-            self.damage.push(damage);
-        }
+        self.damage.append(&mut self.pending_damage);
         self.stats.paint = paint_started.elapsed();
     }
 

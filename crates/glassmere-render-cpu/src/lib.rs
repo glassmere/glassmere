@@ -33,6 +33,11 @@ use tiny_skia::{
 
 /// The longest side a vector image or a layer is rasterized at.
 const MAX_SIDE: u32 = 8192;
+/// A damaged frame is painted as at most this many regions, one pass each.
+const DAMAGE_REGIONS: usize = 8;
+/// Damaged rectangles this close, in logical pixels, are painted as one: a
+/// second pass over a thin gap costs more than painting the gap.
+const DAMAGE_GAP: f32 = 8.0;
 /// Stops of a gradient past this are dropped, as on the GPU, where the shader
 /// holds a fixed number of them.
 pub const MAX_GRADIENT_STOPS: usize = 8;
@@ -303,6 +308,43 @@ fn toward(transform: Transform, corner: [u32; 4]) -> Transform {
     transform.post_translate(-(corner[0] as f32), -(corner[1] as f32))
 }
 
+/// The rectangles to paint for `damage`: those that overlap or nearly touch
+/// are one, and past `DAMAGE_REGIONS` the pair that costs the least extra
+/// area is joined. Each is cleared and painted over on its own, so what lies
+/// between them is left alone.
+fn coalesce(damage: &[Rect]) -> Vec<Rect> {
+    let near = |a: Rect, b: Rect| {
+        a.x - DAMAGE_GAP <= b.x + b.width
+            && b.x - DAMAGE_GAP <= a.x + a.width
+            && a.y - DAMAGE_GAP <= b.y + b.height
+            && b.y - DAMAGE_GAP <= a.y + a.height
+    };
+    let area = |rect: Rect| rect.width * rect.height;
+    let mut regions: Vec<Rect> = Vec::new();
+    for mut rect in damage
+        .iter()
+        .copied()
+        .filter(|rect| rect.width > 0.0 && rect.height > 0.0)
+    {
+        while let Some(at) = regions.iter().position(|region| near(*region, rect)) {
+            rect = rect.union(regions.swap_remove(at));
+        }
+        regions.push(rect);
+        while regions.len() > DAMAGE_REGIONS {
+            let waste = |a: usize, b: usize| {
+                area(regions[a].union(regions[b])) - area(regions[a]) - area(regions[b])
+            };
+            let (a, b) = (0..regions.len())
+                .flat_map(|a| (a + 1..regions.len()).map(move |b| (a, b)))
+                .min_by(|x, y| waste(x.0, x.1).total_cmp(&waste(y.0, y.1)))
+                .unwrap();
+            let joined = regions[a].union(regions.swap_remove(b));
+            regions[a] = joined;
+        }
+    }
+    regions
+}
+
 impl CpuRenderer {
     pub fn new() -> Self {
         Self::with_text_system(TextSystem::default())
@@ -375,18 +417,14 @@ impl CpuRenderer {
         // Only a frame this renderer painted at the same size and scale can
         // be painted over rather than replaced.
         let kept = self.painted == Some((physical_size, scale.to_bits()));
-        let region = match (kept, damage.is_empty()) {
-            (true, false) => damage
-                .iter()
-                .copied()
-                .reduce(|region, rect| region.union(rect))
-                .unwrap_or_default(),
-            _ => Rect {
+        let regions = match (kept, damage.is_empty()) {
+            (true, false) => coalesce(damage),
+            _ => vec![Rect {
                 x: 0.0,
                 y: 0.0,
                 width: physical_size[0] as f32 / scale,
                 height: physical_size[1] as f32 / scale,
-            },
+            }],
         };
         self.painted = Some((physical_size, scale.to_bits()));
         self.stats.frames += 1;
@@ -397,19 +435,23 @@ impl CpuRenderer {
             origin: [0.0; 2],
             scale,
         };
-        // Clearing only the damaged pixels is what keeps the rest.
-        let cleared = root.pixels(region);
-        self.stats.redrawn = u64::from(cleared[2]) * u64::from(cleared[3]);
+        self.stats.redrawn = 0;
         let stride = root.pixmap.width() as usize * 4;
         let clear = [clear.0, clear.1, clear.2, clear.3];
-        let data = root.pixmap.data_mut();
-        for row in 0..cleared[3] {
-            let start = (cleared[1] + row) as usize * stride + cleared[0] as usize * 4;
-            for pixel in data[start..].as_chunks_mut::<4>().0[..cleared[2] as usize].iter_mut() {
-                *pixel = clear;
+        for region in regions {
+            // Clearing only the damaged pixels is what keeps the rest.
+            let cleared = root.pixels(region);
+            self.stats.redrawn += u64::from(cleared[2]) * u64::from(cleared[3]);
+            let data = root.pixmap.data_mut();
+            for row in 0..cleared[3] {
+                let start = (cleared[1] + row) as usize * stride + cleared[0] as usize * 4;
+                for pixel in data[start..].as_chunks_mut::<4>().0[..cleared[2] as usize].iter_mut()
+                {
+                    *pixel = clear;
+                }
             }
+            root = self.paint(scene, region, root);
         }
-        let root = self.paint(scene, region, root);
         let frame = self.stats.frames;
         self.rasters.retain(|_, (_, used)| frame - *used < 2);
         self.stats.render = started.elapsed();
