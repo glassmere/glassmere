@@ -473,6 +473,8 @@ pub struct Context {
     watch_requests: Vec<std::path::PathBuf>,
     images: HashMap<std::path::PathBuf, image::LoadedImage>,
     image_requests: Vec<std::path::PathBuf>,
+    /// Animated images being shown, by the node that shows them.
+    image_plays: HashMap<NodeId, image::Play>,
     hot_save: bool,
     /// How many theme, messages and format requests of the app this context
     /// has applied.
@@ -671,6 +673,7 @@ impl Default for Context {
             watched: HashMap::new(),
             images: HashMap::new(),
             image_requests: Vec::new(),
+            image_plays: HashMap::new(),
             watch_requests: Vec::new(),
             hot_save: false,
             settings: (0, 0, 0),
