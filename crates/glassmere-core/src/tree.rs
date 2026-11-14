@@ -524,6 +524,12 @@ pub struct Context {
     observed_new: std::cell::RefCell<Vec<u32>>,
     /// Something the view reads may have changed since it last declared.
     view_stale: bool,
+    /// The dock being declared or reconciled, whose panels are found by id
+    /// wherever they sit. A cell because `Ui` only holds a shared reference
+    /// to the context.
+    dock: std::cell::Cell<Option<NodeId>>,
+    /// The node of each panel's content, by dock and panel id.
+    panels: HashMap<NodeId, HashMap<String, NodeId>>,
 }
 
 /// What reached a node, in the order of `Context::queued`.
@@ -695,6 +701,8 @@ impl Default for Context {
             queued: Vec::new(),
             observed_new: std::cell::RefCell::new(Vec::new()),
             view_stale: true,
+            dock: std::cell::Cell::new(None),
+            panels: HashMap::new(),
         }
     }
 }
@@ -883,7 +891,9 @@ impl Context {
         for node in self.nodes.values() {
             report.text_bytes += node.text.len()
                 + match &node.key {
-                    crate::ui::WidgetKey::Named(key) => key.len(),
+                    crate::ui::WidgetKey::Named(key) | crate::ui::WidgetKey::Panel(key) => {
+                        key.len()
+                    }
                     crate::ui::WidgetKey::Site(..) => 0,
                 };
             if let Some(chunk) = &node.paint_cache {
@@ -1213,7 +1223,21 @@ impl Context {
         key: &WidgetKey,
         kind: Kind,
     ) -> Option<NodeId> {
-        let id = *self.nodes.get(&parent?)?.children_by_key.get(key)?;
+        let id = match key {
+            // A panel's content is wherever the dock last put it.
+            WidgetKey::Panel(panel) => *self.panels.get(&self.dock.get()?)?.get(panel)?,
+            _ => *self.nodes.get(&parent?)?.children_by_key.get(key)?,
+        };
         (self.nodes[&id].kind == kind).then_some(id)
+    }
+
+    /// Declares the panels of `dock` to be the ones `child` finds, until
+    /// [`Context::leave_dock`] is given what this returns.
+    pub(crate) fn enter_dock(&self, dock: Option<NodeId>) -> Option<NodeId> {
+        self.dock.replace(dock)
+    }
+
+    pub(crate) fn leave_dock(&self, outer: Option<NodeId>) {
+        self.dock.set(outer);
     }
 }
