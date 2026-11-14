@@ -62,7 +62,7 @@ pub use mailbox::{Mailbox, MessageSender, message_channel};
 pub use messages::{BUILTIN_MESSAGES, MessageArg, Messages};
 pub use panes::{Axis, PopoverOptions, SplitOptions, TOOLTIP_DELAY, Tab};
 pub use platform::{FileKind, FileRequest, Menu, MenuEntry, Notification, Tray};
-pub use property_grid::{PropertyGridOptions, PropertyGridState, PropertyMsg};
+pub use property_grid::{PropertyChoice, PropertyGridOptions, PropertyGridState, PropertyMsg};
 pub use reactive::{GraphNode, Memo, Signal, StateKind, Store};
 pub use rich_document::{
     Block, BlockKind, InlineRun, Mark, Marks, RichDocument, RichMotion, RichPosition,

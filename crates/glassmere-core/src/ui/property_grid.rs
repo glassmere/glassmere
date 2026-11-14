@@ -54,9 +54,12 @@ fn parse_hex(text: &str) -> Option<Color> {
 /// A percentage because styles have no one-sided padding.
 const BESIDE_SCROLLBAR: f32 = 0.97;
 
+/// The editors fill the value column, and give way to the toggle that an
+/// optional row puts before them.
 fn fill() -> Style {
     Style {
         width: Length::Percent(1.0),
+        shrink: 1.0,
         ..Ui::<()>::field_style()
     }
 }
@@ -118,6 +121,9 @@ pub struct PropertyGrid<'a, 'u, M: 'static = ()> {
     default: Option<(Box<dyn Any>, &'static str)>,
     /// The next row edits several objects whose values differ.
     mixed: bool,
+    /// Whether the next row's property has a value, and the message that
+    /// flips it.
+    optional: Option<(bool, M)>,
     /// Which rows exist; `None` declares them all.
     window: Option<&'a Window>,
     /// Rows and headers passed over since the last one declared here.
@@ -140,6 +146,10 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         if std::mem::take(&mut self.mixed) {
             self.ui
                 .misuse("PropertyGrid::mixed was not followed by a row".to_owned());
+        }
+        if self.optional.take().is_some() {
+            self.ui
+                .misuse("PropertyGrid::optional was not followed by a row".to_owned());
         }
     }
 
@@ -201,6 +211,17 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         self
     }
 
+    /// Marks the next row as a property that may have no value, such as an
+    /// `Option`: a checkbox beside the editor is checked while `set`, and a
+    /// click sends `on` of the opposite. The editor is disabled while the
+    /// property has no value, and then shows the value that a click on the
+    /// checkbox is meant to give it. A row of [`custom`](Self::custom) or
+    /// [`readonly`](Self::readonly) cannot be optional.
+    pub fn optional(&mut self, set: bool, on: impl Fn(bool) -> M) -> &mut Self {
+        self.optional = Some((set, on(!set)));
+        self
+    }
+
     /// Whether the pending default differs from `value`, or the row is
     /// `mixed`, and the message that restores it.
     fn reset<T: Any + Clone + PartialEq>(
@@ -245,6 +266,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
                 shown_by_group,
                 default: None,
                 mixed: false,
+                optional: None,
                 window,
                 skipped: carried,
                 shown: false,
@@ -311,6 +333,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         reset: Option<(bool, M)>,
         editor: impl FnOnce(&mut Ui<'_, M>, &str),
     ) {
+        let optional = self.optional.take();
         let filter = self.filter();
         if !(filter.is_empty() || self.shown_by_group || contains(name, &filter)) {
             return;
@@ -334,15 +357,30 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
                 shown,
                 Style::default().width(Length::Percent(share)),
             );
-            ui.container_at(
-                "$editor",
-                Style {
-                    grow: 1.0,
-                    shrink: 1.0,
-                    ..Style::default()
-                },
-                |ui| editor(ui, name),
-            );
+            let editor_style = Style {
+                grow: 1.0,
+                shrink: 1.0,
+                ..Style::default()
+            };
+            match optional {
+                None => ui.container_at("$editor", editor_style, |ui| editor(ui, name)),
+                Some((set, toggle)) => {
+                    let beside = Style {
+                        gap: COLUMN_GAP,
+                        align_items: Align::Center,
+                        ..editor_style
+                    };
+                    ui.row_at("$editor", beside, |ui| {
+                        let label = ui
+                            .context
+                            .tr("glassmere-property-set", &[("name", name.into())]);
+                        let checkbox = ui.at("$set");
+                        checkbox.checkbox_shown(label, "", set);
+                        checkbox.set_handler(Handler::Message(toggle));
+                        ui.enabled(set, |ui| editor(ui, name));
+                    });
+                }
+            }
             if let Some((differs, message)) = reset {
                 let compact = Style {
                     padding: 8.0,
@@ -370,7 +408,11 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         options: NumberOptions,
         on: impl Fn(f64) -> M + 'static,
     ) {
-        let options = options.style(Style::default().width(Length::Percent(1.0)));
+        let options = options.style(Style {
+            width: Length::Percent(1.0),
+            shrink: 1.0,
+            ..Style::default()
+        });
         let on: Rc<dyn Fn(f64) -> M> = Rc::new(on);
         let mixed = std::mem::take(&mut self.mixed);
         let reset = self.reset(name, &value, mixed, &on);
@@ -505,6 +547,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         self.row(name, reset, |ui, label| {
             let row = Style {
                 width: Length::Percent(1.0),
+                shrink: 1.0,
                 gap: COLUMN_GAP,
                 align_items: Align::Center,
                 ..Style::default()
@@ -722,6 +765,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                     shown_by_group: false,
                     default: None,
                     mixed: false,
+                    optional: None,
                     window: window.as_ref(),
                     skipped: 0,
                     shown: false,

@@ -2,11 +2,21 @@
 //! messages come from `#[derive(Properties)]` on the card; two more rows are
 //! added by hand through the builder, which is what the derive expands to.
 //! Tick several cards and the grid edits them together: a property where
-//! they differ shows "Mixed", and an edit sets it on all of them.
+//! they differ shows "Mixed", and an edit sets it on all of them. An enum
+//! field is a drop-down of its variants, and an `Option` field has a box that
+//! sets it.
 use glassmere::{
-    Align, App, AppOptions, Button, Color, Effects, Justify, Length, Properties,
-    PropertyGridOptions, PropertyGridState, PropertyMsg, Size, Style, Ui, run,
+    Align, App, AppOptions, Button, Color, Effects, FontFamily, Justify, Length, Properties,
+    PropertyChoice, PropertyGridOptions, PropertyGridState, PropertyMsg, Size, Style, Ui, run,
 };
+
+/// A drop-down of these three, named from the variants.
+#[derive(Clone, Copy, Debug, PartialEq, PropertyChoice)]
+pub enum Typeface {
+    Sans,
+    Serif,
+    Mono,
+}
 
 #[derive(Properties)]
 struct Corners {
@@ -22,6 +32,11 @@ struct Card {
     title: String,
     #[property(default = true)]
     bold: bool,
+    #[property(default = Typeface::Sans)]
+    typeface: Typeface,
+    /// Unset keeps the default size.
+    #[property(min = 10, max = 40, suffix = " px", default = 18)]
+    size: Option<f64>,
     #[property(choices("Start", "Center", "End"))]
     align: usize,
     #[property(
@@ -126,6 +141,12 @@ impl App for Gallery {
                                 background: Some(card.fill),
                                 foreground: Some(card.text),
                                 font_weight: card.bold.then_some(700),
+                                font_family: Some(match card.typeface {
+                                    Typeface::Sans => FontFamily::SansSerif,
+                                    Typeface::Serif => FontFamily::Serif,
+                                    Typeface::Mono => FontFamily::Monospace,
+                                }),
+                                font_size: card.size.map(|size| size as f32),
                                 justify_content: Justify::Center,
                                 align_items: [Align::Start, Align::Center, Align::End][card.align],
                                 ..Style::default()
@@ -171,6 +192,8 @@ impl Gallery {
 fn card(title: &str, width: f64, height: f64, fill: Color) -> Card {
     Card {
         title: title.into(),
+        typeface: Typeface::Sans,
+        size: None,
         width,
         height,
         corners: Corners {
@@ -199,8 +222,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             state: PropertyGridState::default(),
             cards: [
                 card("Hello, properties", 260.0, 100.0, Color::rgb(22, 105, 99)),
-                card("Second", 200.0, 100.0, Color::rgb(22, 105, 99)),
-                card("Third", 160.0, 80.0, Color::rgb(90, 70, 160)),
+                Card {
+                    typeface: Typeface::Serif,
+                    size: Some(22.0),
+                    ..card("Second", 200.0, 100.0, Color::rgb(22, 105, 99))
+                },
+                Card {
+                    typeface: Typeface::Mono,
+                    ..card("Third", 160.0, 80.0, Color::rgb(90, 70, 160))
+                },
             ],
             selected: [true, true, false],
             last: String::from("nothing yet"),

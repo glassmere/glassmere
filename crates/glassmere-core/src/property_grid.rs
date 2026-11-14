@@ -38,6 +38,26 @@ pub enum PropertyMsg {
     },
 }
 
+/// A fieldless enum that a property grid edits as a drop-down of its
+/// variants. `#[derive(PropertyChoice)]` implements it, and
+/// `#[derive(Properties)]` edits a field of such a type through it.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` has no property editor",
+    label = "no editor for a field of this type",
+    note = "derive `PropertyChoice` for an enum, or mark the field `#[property(skip)]`, \
+            `#[property(readonly)]`, `#[property(flatten)]` or `#[property(with = function)]`"
+)]
+pub trait PropertyChoice: Sized {
+    /// What the drop-down lists, one name per variant in declaration order.
+    const NAMES: &'static [&'static str];
+
+    /// The position of this variant in `NAMES`.
+    fn index(&self) -> usize;
+
+    /// The variant at `index` in `NAMES`, and the last one past the end.
+    fn from_index(index: usize) -> Self;
+}
+
 /// What a property grid remembers between frames. The app owns it, so it can
 /// be saved with the rest of a workspace.
 #[derive(Clone, Debug, PartialEq)]

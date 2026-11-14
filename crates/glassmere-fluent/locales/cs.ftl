@@ -28,6 +28,7 @@ glassmere-property-expand = Rozbalit skupinu { $name }
 glassmere-property-collapse = Sbalit skupinu { $name }
 glassmere-property-reset = Obnovit výchozí hodnotu: { $name }
 glassmere-property-mixed = Různé
+glassmere-property-set = Nastavit hodnotu: { $name }
 glassmere-splitter = Oddělovač
 glassmere-dock-floating = Plovoucí panel
 glassmere-dock-move = Přesunout plovoucí panel

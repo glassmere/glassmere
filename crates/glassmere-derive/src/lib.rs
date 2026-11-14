@@ -25,8 +25,12 @@
 //! ```
 //!
 //! Field types decide the editor: `bool`, `String`, `Color`, the number types
-//! (integers step by one and keep their type's range), and `usize` with
-//! `choices(...)`. `group` stays in force for the fields that follow until
+//! (integers step by one and keep their type's range), `usize` with
+//! `choices(...)`, and an enum that derives [`PropertyChoice`] (a drop-down of
+//! its variants). `Option<T>` of any of these is edited as `T` beside a
+//! checkbox that sets or clears it: setting gives the value `default` names,
+//! or else `false`, an empty text, white, the first variant, or zero within
+//! the range. `group` stays in force for the fields that follow until
 //! another one is given; `group = ""` returns to the top level. Names default
 //! to the field name with spaces and a capital.
 //!
@@ -49,7 +53,8 @@
 //! `Card::properties_many(&[&a, &b], grid, on)` edits several cards at once:
 //! a row shows the first card's value where all of them agree and "Mixed"
 //! where they differ, so the fields need `PartialEq` (a `readonly` field is
-//! compared as the text it shows). The application applies each message to
+//! compared as the text it shows, and a choice by its position). The
+//! application applies each message to
 //! every card: `for card in &mut cards { card.apply(message.clone()) }`. A
 //! `with` editor is given the first card's value and cannot show a mixed one.
 //! `properties` is `properties_many` over one card.
@@ -105,6 +110,29 @@ pub fn tr(input: TokenStream) -> TokenStream {
 pub fn properties(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     expand(&input)
+        .unwrap_or_else(Error::into_compile_error)
+        .into()
+}
+
+/// Makes a fieldless enum a choice that `#[derive(Properties)]` can edit: the
+/// property grid shows a drop-down of its variants.
+///
+/// ```ignore
+/// #[derive(Clone, Copy, PartialEq, PropertyChoice)]
+/// enum Anchor {
+///     Top,
+///     #[property(name = "Bottom edge")]
+///     Bottom,
+///     TopLeft,        // listed as "Top left"
+/// }
+/// ```
+///
+/// Names default to the variant name in words; `#[property(name = "..")]` on
+/// a variant gives its own.
+#[proc_macro_derive(PropertyChoice, attributes(property))]
+pub fn property_choice(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    expand_choice(&input)
         .unwrap_or_else(Error::into_compile_error)
         .into()
 }
@@ -426,10 +454,12 @@ fn message_row(
             quote! { grid.custom(#name, |ui, label| #with(ui, label, &__first.#ident, #send)); },
         ));
     }
-    // Where the objects disagree about this field.
-    let mixed =
-        quote! { grid.mixed(__others.iter().any(|__other| __other.#ident != __first.#ident)); };
-    let kind = match ty {
+    // `Option<T>` is edited as `T`, beside a toggle for whether it is there.
+    let (inner, optional) = match option_inner(ty) {
+        Some(inner) => (inner, true),
+        None => (ty, false),
+    };
+    let kind = match inner {
         Type::Path(path) => path
             .path
             .segments
@@ -460,6 +490,47 @@ fn message_row(
             "`suffix` applies to number fields only",
         ));
     }
+    // What the editor sends as the message's value: `Some` of it for an `Option`.
+    let sender = |param: Tokens, value: Tokens| {
+        let value = if optional {
+            quote! { ::std::option::Option::Some(#value) }
+        } else {
+            value
+        };
+        quote! {
+            {
+                let __on = __on.clone();
+                move |__value: #param| (*__on)(#message::#variant(#value))
+            }
+        }
+    };
+    // The toggle of an optional property: on gives it `starts`, off removes it.
+    let toggle = |starts: Tokens| {
+        optional.then(|| {
+            quote! {
+                grid.optional(
+                    objects.iter().all(|__object| __object.#ident.is_some()),
+                    {
+                        let __on = __on.clone();
+                        move |__set| {
+                            (*__on)(#message::#variant(if __set {
+                                ::std::option::Option::Some(#starts)
+                            } else {
+                                ::std::option::Option::None
+                            }))
+                        }
+                    },
+                );
+            }
+        })
+    };
+    // Where the objects disagree about this field.
+    let mixed = quote! {
+        grid.mixed(__others.iter().any(|__other| __other.#ident != __first.#ident));
+    };
+    // The value the editor shows: that of the field, or `initial` while an
+    // optional field has none.
+    let shown = |plain: Tokens, some: Tokens| if optional { some } else { plain };
     if !options.choices.is_empty() {
         if kind != "usize" {
             return Err(Error::new_spanned(
@@ -468,72 +539,270 @@ fn message_row(
             ));
         }
         let choices = &options.choices;
+        let initial = options
+            .default
+            .as_ref()
+            .map_or(quote! { 0usize }, |d| quote! { #d });
         let default = options
             .default
             .as_ref()
             .map(|default| quote! { grid.default::<usize>(#default); });
+        let toggle = toggle(initial.clone());
+        let shown = shown(
+            quote! { __first.#ident },
+            quote! { __first.#ident.unwrap_or(#initial) },
+        );
+        let send = sender(quote! { usize }, quote! { __value });
         return Ok((
             carried,
             quote! {
                 #default
+                #toggle
                 #mixed
-                grid.choice_with(#name, __first.#ident, &[#(#choices),*], #send);
+                grid.choice_with(#name, #shown, &[#(#choices),*], #send);
             },
         ));
     }
     if numeric {
         let number = number_options(options, &kind);
+        let initial = match &options.default {
+            Some(default) => quote! { (#default) as f64 },
+            None => quote! { (#number).constrain(0.0) },
+        };
         let default = options
             .default
             .as_ref()
             .map(|default| quote! { grid.default::<f64>((#default) as f64); });
-        let send = quote! {
-            {
-                let __on = __on.clone();
-                move |__value: f64| (*__on)(#message::#variant(__value as #ty))
-            }
-        };
+        let toggle = toggle(quote! { (#initial) as #inner });
+        let shown = shown(
+            quote! { __first.#ident as f64 },
+            quote! { __first.#ident.map_or(#initial, |__number| __number as f64) },
+        );
+        let send = sender(quote! { f64 }, quote! { __value as #inner });
         return Ok((
             carried,
             quote! {
                 #default
+                #toggle
                 #mixed
-                grid.number_with(#name, __first.#ident as f64, #number, #send);
+                grid.number_with(#name, #shown, #number, #send);
             },
         ));
     }
-    let (row, default) = match kind.as_str() {
-        "bool" => (
-            quote! { grid.bool_with(#name, __first.#ident, #send); },
-            options
+    let (row, default, toggle, mixed) = match kind.as_str() {
+        "bool" => {
+            let initial = options
                 .default
                 .as_ref()
-                .map(|default| quote! { grid.default::<bool>(#default); }),
-        ),
-        "String" => (
-            quote! { grid.text_with(#name, &__first.#ident, #send); },
-            options.default.as_ref().map(|default| {
-                quote! {
-                    grid.default::<::std::string::String>(
-                        ::std::string::String::from(#default)
-                    );
-                }
-            }),
-        ),
-        "Color" => (
-            quote! { grid.color_with(#name, __first.#ident, #send); },
-            options
+                .map_or(quote! { false }, |d| quote! { #d });
+            let shown = shown(
+                quote! { __first.#ident },
+                quote! { __first.#ident.unwrap_or(#initial) },
+            );
+            let send = sender(quote! { bool }, quote! { __value });
+            (
+                quote! { grid.bool_with(#name, #shown, #send); },
+                options
+                    .default
+                    .as_ref()
+                    .map(|default| quote! { grid.default::<bool>(#default); }),
+                toggle(initial),
+                mixed,
+            )
+        }
+        "String" => {
+            let initial = options
                 .default
                 .as_ref()
-                .map(|default| quote! { grid.default::<::glassmere::Color>(#default); }),
-        ),
+                .map_or(quote! { "" }, |d| quote! { #d });
+            let shown = shown(
+                quote! { &__first.#ident },
+                quote! { __first.#ident.as_deref().unwrap_or(#initial) },
+            );
+            let send = sender(quote! { ::std::string::String }, quote! { __value });
+            (
+                quote! { grid.text_with(#name, #shown, #send); },
+                options.default.as_ref().map(|default| {
+                    quote! {
+                        grid.default::<::std::string::String>(
+                            ::std::string::String::from(#default)
+                        );
+                    }
+                }),
+                toggle(quote! { ::std::string::String::from(#initial) }),
+                mixed,
+            )
+        }
+        "Color" => {
+            let initial = options
+                .default
+                .as_ref()
+                .map_or(quote! { ::glassmere::Color::WHITE }, |d| quote! { #d });
+            let shown = shown(
+                quote! { __first.#ident },
+                quote! { __first.#ident.unwrap_or(#initial) },
+            );
+            let send = sender(quote! { ::glassmere::Color }, quote! { __value });
+            (
+                quote! { grid.color_with(#name, #shown, #send); },
+                options
+                    .default
+                    .as_ref()
+                    .map(|default| quote! { grid.default::<::glassmere::Color>(#default); }),
+                toggle(initial),
+                mixed,
+            )
+        }
+        // Any other type is an enum that derives `PropertyChoice`.
         _ => {
-            return Err(Error::new_spanned(
-                &field.ty,
-                "no property editor for this type; add #[property(skip)], #[property(flatten)] for \
-                 a nested Properties struct, #[property(readonly)], or #[property(with = function)]",
-            ));
+            let choice = quote! { <#inner as ::glassmere::PropertyChoice> };
+            let initial = options
+                .default
+                .as_ref()
+                .map_or(quote! { 0usize }, |d| quote! { #choice::index(&(#d)) });
+            let shown = shown(
+                quote! { #choice::index(&__first.#ident) },
+                quote! { __first.#ident.as_ref().map_or(#initial, #choice::index) },
+            );
+            let send = sender(quote! { usize }, quote! { #choice::from_index(__value) });
+            // Compared by position, which needs no `PartialEq`.
+            let mixed = if optional {
+                quote! {
+                    grid.mixed(__others.iter().any(|__other| {
+                        __other.#ident.as_ref().map(#choice::index)
+                            != __first.#ident.as_ref().map(#choice::index)
+                    }));
+                }
+            } else {
+                quote! {
+                    grid.mixed(__others.iter().any(|__other| {
+                        #choice::index(&__other.#ident) != #choice::index(&__first.#ident)
+                    }));
+                }
+            };
+            (
+                quote! { grid.choice_with(#name, #shown, #choice::NAMES, #send); },
+                options
+                    .default
+                    .as_ref()
+                    .map(|_| quote! { grid.default::<usize>(#initial); }),
+                toggle(quote! { #choice::from_index(#initial) }),
+                mixed,
+            )
         }
     };
-    Ok((carried, quote! { #default #mixed #row }))
+    Ok((carried, quote! { #default #toggle #mixed #row }))
+}
+
+/// `T` of `Option<T>`.
+fn option_inner(ty: &Type) -> Option<&Type> {
+    let Type::Path(path) = ty else {
+        return None;
+    };
+    let segment = path.path.segments.last()?;
+    if segment.ident != "Option" {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return None;
+    };
+    match arguments.args.first()? {
+        syn::GenericArgument::Type(inner) => Some(inner),
+        _ => None,
+    }
+}
+
+/// `TopLeft` becomes `Top left`.
+fn words(variant: &str) -> String {
+    let mut text = String::new();
+    let mut previous = None::<char>;
+    for character in variant.trim_start_matches("r#").chars() {
+        let boundary =
+            previous.is_some_and(|before: char| before.is_lowercase() || before.is_ascii_digit());
+        if character.is_uppercase() && boundary {
+            text.push(' ');
+            text.extend(character.to_lowercase());
+        } else {
+            text.push(character);
+        }
+        previous = Some(character);
+    }
+    text
+}
+
+fn expand_choice(input: &DeriveInput) -> syn::Result<Tokens> {
+    let Data::Enum(data) = &input.data else {
+        return Err(Error::new_spanned(
+            input,
+            "PropertyChoice can be derived for enums whose variants have no fields",
+        ));
+    };
+    if !input.generics.params.is_empty() {
+        return Err(Error::new_spanned(
+            &input.generics,
+            "PropertyChoice cannot be derived for an enum with generics",
+        ));
+    }
+    let Some(last) = data.variants.last() else {
+        return Err(Error::new_spanned(
+            input,
+            "PropertyChoice needs at least one variant",
+        ));
+    };
+    let mut names = Vec::new();
+    for variant in &data.variants {
+        if !matches!(variant.fields, Fields::Unit) {
+            return Err(Error::new_spanned(
+                variant,
+                "PropertyChoice can be derived for enums whose variants have no fields",
+            ));
+        }
+        let mut name = words(&variant.ident.to_string());
+        for attribute in &variant.attrs {
+            if attribute.path().is_ident("property") {
+                attribute.parse_nested_meta(|meta| {
+                    if meta.path.is_ident("name") {
+                        name = meta.value()?.parse::<LitStr>()?.value();
+                        Ok(())
+                    } else {
+                        Err(meta.error("unknown property option; a variant takes name"))
+                    }
+                })?;
+            }
+        }
+        names.push(name);
+    }
+    let name = &input.ident;
+    let last = &last.ident;
+    let index = data.variants.iter().enumerate().map(|(position, variant)| {
+        let variant = &variant.ident;
+        quote! { Self::#variant => #position, }
+    });
+    let from = data
+        .variants
+        .iter()
+        .enumerate()
+        .take(data.variants.len() - 1)
+        .map(|(position, variant)| {
+            let variant = &variant.ident;
+            quote! { #position => Self::#variant, }
+        });
+    Ok(quote! {
+        impl ::glassmere::PropertyChoice for #name {
+            const NAMES: &'static [&'static str] = &[#(#names),*];
+
+            fn index(&self) -> usize {
+                match self {
+                    #(#index)*
+                }
+            }
+
+            fn from_index(index: usize) -> Self {
+                match index {
+                    #(#from)*
+                    _ => Self::#last,
+                }
+            }
+        }
+    })
 }

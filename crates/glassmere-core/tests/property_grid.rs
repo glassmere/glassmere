@@ -1042,3 +1042,77 @@ fn mixed_before_a_group_or_a_custom_row_is_a_programming_error() {
     });
     driven.frame();
 }
+
+#[test]
+fn an_optional_row_has_a_toggle_and_an_editor_that_is_off_while_the_property_is_unset() {
+    // The shape's `visible` stands for whether the width is set.
+    let mut driven = Driven::new(ROOT, settings(), |state: &Settings, ui| {
+        ui.keyed("grid", |ui| {
+            ui.property_grid(
+                &state.grid,
+                PropertyGridOptions::new("Shape"),
+                property_msg,
+                |grid| {
+                    grid.optional(state.shape.visible, |on| {
+                        act(move |s: &mut Settings| s.shape.visible = on)
+                    })
+                    .number(
+                        "Width",
+                        state.shape.width,
+                        NumberOptions::default(),
+                    );
+                },
+            )
+        });
+    });
+    driven.frame();
+    let find = |driven: &Driven<Settings>, path: &[&str]| {
+        let mut full = vec!["grid", "$rows", "row:Width", "$editor"];
+        full.extend(path);
+        driven.context.find(&full).unwrap()
+    };
+    let (set, field) = (
+        find(&driven, &["$set"]),
+        find(&driven, &["$value", "$field"]),
+    );
+    let node = driven.context.node(set).unwrap();
+    assert_eq!(
+        (node.checked, node.semantics.label.as_str()),
+        (Some(true), "Set Width")
+    );
+    assert!(!driven.context.node(field).unwrap().semantics.disabled);
+
+    // A click on the box sends the opposite, and the editor goes off.
+    let bounds = driven.context.node(set).unwrap().bounds;
+    driven.context.event(Event::PointerMoved(Point {
+        x: bounds.x + bounds.width / 2.0,
+        y: bounds.y + bounds.height / 2.0,
+    }));
+    driven.context.event(Event::PointerDown);
+    driven.context.event(Event::PointerUp);
+    driven.frame();
+    assert!(!driven.state().shape.visible);
+    driven.frame();
+    assert_eq!(driven.context.node(set).unwrap().checked, Some(false));
+    let node = driven.context.node(field).unwrap();
+    assert!(node.semantics.disabled);
+    // The editor still shows the value, which setting gives back.
+    assert_eq!(node.value.as_deref(), Some("120"));
+}
+
+#[test]
+#[should_panic(expected = "PropertyGrid::optional was not followed by a row")]
+fn optional_before_a_group_is_a_programming_error() {
+    let mut driven = Driven::new(ROOT, settings(), |_, ui| {
+        ui.property_grid(
+            &PropertyGridState::default(),
+            PropertyGridOptions::new("Shape"),
+            property_msg,
+            |grid| {
+                grid.optional(true, |_| act(|_: &mut Settings| {}));
+                grid.group("Layout", |_| {});
+            },
+        )
+    });
+    driven.frame();
+}
