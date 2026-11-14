@@ -19,7 +19,7 @@ All of them are methods of `Ui`, take a value and a message constructor, and are
 | Input | `drag_source`, `drop_target`, `gesture_area`, `event_area` |
 | Your own | `component`, `widget`, `custom`, `map`, `keyed`, `memo` |
 
-Collections take a model rather than data: `ListModel` answers by index and by `ItemId`, only the visible range is declared, and `ListState` and `GridState` hold selection and scroll. A grid's columns can be resized, reordered, hidden and frozen through `GridColumns`, filtered per column, and edited in place through typed cell editors whose values the model may refuse with a message.
+Collections take a model rather than data: `ListModel` answers by index and by `ItemId`, only the visible range is declared, and `ListState` and `GridState` hold selection and scroll. A grid's columns can be resized, reordered, hidden and frozen through `GridColumns`, filtered per column, pinned under the body with total rows from `GridModel::footer`, and edited in place through typed cell editors whose values the model may refuse with a message.
 
 `#[derive(Properties)]` turns a struct into property grid rows. Fields get an editor by type, and `#[property(..)]` sets `group`, `name`, `min`, `max`, `step`, `suffix`, `default`, `choices(..)`, `readonly`, `flatten`, `with` and `skip`.
 

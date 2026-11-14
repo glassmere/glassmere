@@ -784,6 +784,7 @@ glassmere-core   fn GridColumns::width(&self, column: usize, default: f32) -> f3
 glassmere-core   fn GridModel::cell(&self, row: usize, column: usize) -> String
 glassmere-core   fn GridModel::columns(&self) -> &[GridColumn]
 glassmere-core   fn GridModel::filter(&mut self, filters: &[(usize, &str)]) -> bool (provided)
+glassmere-core   fn GridModel::footer(&self) -> Vec<Vec<String>> (provided)
 glassmere-core   fn GridModel::set_cell(&mut self, row: usize, column: usize, value: CellValue) -> Result<(), String> (provided)
 glassmere-core   fn GridModel::sort(&mut self, column: usize, direction: SortDirection) -> bool
 glassmere-core   fn GridModel::value(&self, row: usize, column: usize) -> CellValue (provided)

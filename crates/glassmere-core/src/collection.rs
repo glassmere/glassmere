@@ -511,6 +511,15 @@ pub trait GridModel: ListModel {
         let _ = filters;
         false
     }
+    /// Pinned rows under the body, for totals: the text of each row's cells,
+    /// by model column; a missing cell is empty. They stay in view while the
+    /// body scrolls, follow the frozen columns and the sideways scroll, and
+    /// sit outside the model: they are not sorted, filtered, selected, edited
+    /// or copied, and count after the model's rows for assistive technology.
+    /// Read at every declaration of the grid, so compute what is costly once.
+    fn footer(&self) -> Vec<Vec<String>> {
+        Vec::new()
+    }
 }
 
 /// Whether `cell` contains `filter`, ignoring case: the usual test for

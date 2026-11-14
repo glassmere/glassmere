@@ -106,7 +106,8 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
     /// filter field sends `Filter`, which the grid turns into
     /// `FiltersApplied` once typing pauses; filter text the application set
     /// itself applies at once. Committing a cell edit sends `Edit`, and Enter
-    /// on a cell that cannot be edited sends `Activate`.
+    /// on a cell that cannot be edited sends `Activate`. The model's
+    /// [`footer`](GridModel::footer) rows are pinned under the body.
     ///
     /// The cell cursor, the sideways scroll and the cell being edited belong
     /// to the grid's node, not to `state`. An edit stays open, showing its
@@ -316,10 +317,12 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
         );
         let rows_focused = rows.is_some_and(|rows| self.context.focused() == Some(rows));
         let theme = self.context.theme();
-        let (cursor_fill, error_fill) = (
+        let (cursor_fill, error_fill, footer_fill) = (
             theme.control_hover,
             glassmere_scene::Color::rgb(120, 40, 48),
+            theme.control,
         );
+        let footer = model.footer();
         let layout = Rc::new(state.columns.clone());
         let visible_shared = Rc::new(visible.clone());
         // Set by the editor in its cell, applied after the rows are declared:
@@ -583,7 +586,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                     &state.rows,
                     VirtualListOptions {
                         height: (options.height
-                            - options.row_height * header_rows
+                            - options.row_height * (header_rows + footer.len() as f32)
                             - plan.bar_height())
                         .max(1.0),
                         ..options.clone()
@@ -716,6 +719,40 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                     },
                 );
                 ui.set_handler(rows_handler(on.clone(), nav));
+                if !footer.is_empty() {
+                    // Pinned under the body, in the same columns.
+                    ui.column_at("$footer", Style::default().gap(0.0), |ui| {
+                        for (index, texts) in footer.iter().enumerate() {
+                            spread(
+                                ui,
+                                &index.to_string(),
+                                options.row_height,
+                                &plan,
+                                &mut |ui, position, column, width| {
+                                    let text = texts.get(column).cloned().unwrap_or_default();
+                                    ui.label_at(
+                                        column.to_string(),
+                                        text,
+                                        Style {
+                                            width: Length::Px(width),
+                                            height: Length::Px(options.row_height),
+                                            padding: 6.0,
+                                            background: Some(footer_fill),
+                                            font_weight: Some(700),
+                                            ..Style::default()
+                                        },
+                                    );
+                                    ui.set_control(Control::GridCell {
+                                        row: model.len() + index,
+                                        column: position,
+                                        header: false,
+                                        sort: None,
+                                    });
+                                },
+                            );
+                        }
+                    });
+                }
                 plan.scrollbar(ui, rtl);
                 if focus_rows || std::mem::take(&mut grid.refocus) {
                     ui.request_focus("$rows");
@@ -781,7 +818,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
         }
         self.set_control(Control::Grid {
             label: options.label,
-            rows: model.len(),
+            rows: model.len() + footer.len(),
             columns: visible.len(),
         });
     }
