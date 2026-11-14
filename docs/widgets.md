@@ -21,6 +21,8 @@ All of them are methods of `Ui`, take a value and a message constructor, and are
 
 Collections take a model rather than data: `ListModel` answers by index and by `ItemId`, only the visible range is declared, and `ListState` and `GridState` hold selection and scroll. A grid's columns can be resized, reordered, hidden and frozen through `GridColumns`, filtered per column, and edited in place through typed cell editors whose values the model may refuse with a message.
 
+A property grid with a `height` declares only the rows in view, however many properties the view names; groups, the filter and Tab to the next editor work over all of them.
+
 `#[derive(Properties)]` turns a struct into property grid rows. Fields get an editor by type, and `#[property(..)]` sets `group`, `name`, `min`, `max`, `step`, `suffix`, `default`, `choices(..)`, `readonly`, `flatten`, `with` and `skip`.
 
 ## A function

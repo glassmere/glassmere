@@ -448,3 +448,321 @@ fn colours_follow_whole_hex_values_and_drop_drafts_when_the_field_is_left() {
     app.frame();
     assert_eq!(shown(&app).as_deref(), Some("#ff800080"));
 }
+
+/// Rows are 44 px with 4 px between them, so row `n` starts at `n * PITCH`.
+const PITCH: f32 = 48.0;
+const VIEWPORT: f32 = 300.0;
+
+/// What a grid of `items` rows and headers is tall to scroll through.
+fn scrollable(items: usize) -> f32 {
+    items as f32 * PITCH - 4.0 - VIEWPORT
+}
+
+fn tall_view(state: &Settings, ui: &mut Ui<'_, Message<Settings>>) {
+    ui.keyed("grid", |ui| {
+        let options = PropertyGridOptions::new("Tall").height(VIEWPORT);
+        ui.property_grid(&state.grid, options, property_msg, |grid| {
+            for index in 0..10_000 {
+                grid.number(
+                    &format!("Value {index}"),
+                    index as f64,
+                    NumberOptions::default(),
+                );
+            }
+        })
+    });
+}
+
+fn grouped_view(state: &Settings, ui: &mut Ui<'_, Message<Settings>>) {
+    ui.keyed("grid", |ui| {
+        let options = PropertyGridOptions::new("Groups").height(VIEWPORT);
+        ui.property_grid(&state.grid, options, property_msg, |grid| {
+            for group in 0..100 {
+                grid.group(&format!("Group {group}"), |grid| {
+                    for row in 0..100 {
+                        grid.number(&format!("Row {row}"), 0.0, NumberOptions::default());
+                    }
+                });
+            }
+        })
+    });
+}
+
+fn scroll_to(driven: &mut Driven<Settings>, offset: f32) {
+    let scroll = driven.context.find(&["grid", "$scroll"]).unwrap();
+    driven.context.action(scroll, Action::ScrollTo(offset));
+    driven.frame();
+}
+
+fn bounds(driven: &Driven<Settings>, path: &[&str]) -> glassmere_scene::Rect {
+    let id = driven.context.find(path).unwrap();
+    driven.context.node(id).unwrap().bounds
+}
+
+#[test]
+fn ten_thousand_properties_declare_only_a_screenful_of_nodes() {
+    let mut driven = Driven::new(ROOT, settings(), tall_view);
+    // The first declaration learns the width, the second uses it.
+    driven.frame();
+    let scroll = driven.context.find(&["grid", "$scroll"]).unwrap();
+    let maximum =
+        |driven: &Driven<Settings>| driven.context.node(scroll).unwrap().scroll.unwrap().maximum;
+    // The scrollbar is as long as if every row were there.
+    assert_eq!(maximum(&driven), scrollable(10_000));
+    let has = |driven: &Driven<Settings>, index: usize| {
+        let row = format!("row:Value {index}");
+        driven
+            .context
+            .find(&["grid", "$scroll", "$rows", &row])
+            .is_some()
+    };
+    assert!(has(&driven, 0) && has(&driven, 8));
+    assert!(!has(&driven, 20));
+    assert!(
+        driven.context.node_count() < 150,
+        "{}",
+        driven.context.node_count()
+    );
+
+    // Scrolled to the middle, only the rows there exist, and row 5000 is
+    // exactly where its place in the full list puts it.
+    scroll_to(&mut driven, 5000.0 * PITCH);
+    assert!(has(&driven, 5000) && !has(&driven, 0) && !has(&driven, 4990));
+    assert!(
+        driven.context.node_count() < 150,
+        "{}",
+        driven.context.node_count()
+    );
+    let top = bounds(&driven, &["grid", "$scroll"]).y;
+    let row = bounds(&driven, &["grid", "$scroll", "$rows", "row:Value 5000"]);
+    assert_eq!((row.y, row.height), (top, 44.0));
+    let field = driven
+        .context
+        .find(&[
+            "grid",
+            "$scroll",
+            "$rows",
+            "row:Value 5000",
+            "$editor",
+            "$value",
+            "$field",
+        ])
+        .unwrap();
+    assert_eq!(
+        driven.context.node(field).unwrap().value.as_deref(),
+        Some("5000")
+    );
+
+    // The end of the list is reachable, flush with the bottom.
+    scroll_to(&mut driven, f32::MAX);
+    assert!(has(&driven, 9999) && !has(&driven, 9980));
+    let last = bounds(&driven, &["grid", "$scroll", "$rows", "row:Value 9999"]);
+    let view = bounds(&driven, &["grid", "$scroll"]);
+    assert_eq!(last.y + last.height, view.y + view.height);
+}
+
+#[test]
+fn groups_scroll_as_if_every_row_were_there_and_declare_only_those_in_view() {
+    let mut driven = Driven::new(ROOT, settings(), grouped_view);
+    driven.frame();
+    let maximum = |driven: &Driven<Settings>| {
+        let scroll = driven.context.find(&["grid", "$scroll"]).unwrap();
+        driven.context.node(scroll).unwrap().scroll.unwrap().maximum
+    };
+    // A header is a row too: a hundred groups of a hundred rows and a header.
+    assert_eq!(maximum(&driven), scrollable(100 * 101));
+    assert!(
+        driven
+            .context
+            .find(&["grid", "$scroll", "$rows", "group:Group 0", "$header"])
+            .is_some()
+    );
+    assert!(
+        driven
+            .context
+            .find(&["grid", "$scroll", "$rows", "group:Group 40"])
+            .is_none()
+    );
+
+    // Item 5100 is row 49 of group 50. The group's header and its first rows
+    // are out of view, so it starts with a spacer for them and the groups
+    // before it are gone; what follows the view is one spacer at the end.
+    scroll_to(&mut driven, 5100.0 * PITCH);
+    let group = ["grid", "$scroll", "$rows", "group:Group 50"];
+    let at = |tail: &[&str]| {
+        let path: Vec<&str> = group.iter().chain(tail).copied().collect();
+        driven.context.find(&path)
+    };
+    assert!(at(&["$header"]).is_none());
+    assert!(at(&["row:Row 49"]).is_some() && at(&["row:Row 40"]).is_none());
+    assert!(
+        driven
+            .context
+            .find(&["grid", "$scroll", "$rows", "group:Group 49"])
+            .is_none()
+    );
+    assert!(
+        driven
+            .context
+            .find(&["grid", "$scroll", "$rows", "group:Group 51"])
+            .is_none()
+    );
+    let top = bounds(&driven, &["grid", "$scroll"]).y;
+    let row = bounds(
+        &driven,
+        &["grid", "$scroll", "$rows", "group:Group 50", "row:Row 49"],
+    );
+    assert_eq!(row.y, top);
+    let before = bounds(
+        &driven,
+        &["grid", "$scroll", "$rows", "group:Group 50", "$before"],
+    );
+    assert_eq!(before.height, 5098.0 * PITCH - 4.0);
+    assert!(
+        driven
+            .context
+            .find(&["grid", "$scroll", "$rows", "$after"])
+            .is_some()
+    );
+    assert!(
+        driven.context.node_count() < 150,
+        "{}",
+        driven.context.node_count()
+    );
+
+    // A header is declared when it is in view, with the rows under it.
+    scroll_to(&mut driven, 5050.0 * PITCH);
+    let header = bounds(
+        &driven,
+        &["grid", "$scroll", "$rows", "group:Group 50", "$header"],
+    );
+    assert_eq!(header.y, top);
+    assert!(
+        driven
+            .context
+            .find(&["grid", "$scroll", "$rows", "group:Group 50", "row:Row 0"])
+            .is_some()
+    );
+}
+
+#[test]
+fn collapsing_and_filtering_change_what_the_scrollbar_covers_and_a_scrolled_grid_follows() {
+    let mut driven = Driven::new(ROOT, settings(), grouped_view);
+    driven.frame();
+    let scroll = driven.context.find(&["grid", "$scroll"]).unwrap();
+    let node = |driven: &Driven<Settings>| driven.context.node(scroll).unwrap().scroll.unwrap();
+
+    // A collapsed group is its header alone: the one after it comes next.
+    driven.state_mut().grid.collapsed.insert("Group 3".into());
+    driven.frame();
+    assert_eq!(node(&driven).maximum, scrollable(100 * 101 - 100));
+    scroll_to(&mut driven, 303.0 * PITCH);
+    let rows = ["grid", "$scroll", "$rows"];
+    let find = |driven: &Driven<Settings>, tail: &[&str]| {
+        let path: Vec<&str> = rows.iter().chain(tail).copied().collect();
+        driven.context.find(&path)
+    };
+    assert!(find(&driven, &["group:Group 3", "$header"]).is_some());
+    assert!(find(&driven, &["group:Group 3", "row:Row 0"]).is_none());
+    assert!(find(&driven, &["group:Group 4", "$header"]).is_some());
+    let header = bounds(
+        &driven,
+        &["grid", "$scroll", "$rows", "group:Group 3", "$header"],
+    );
+    let next = bounds(
+        &driven,
+        &["grid", "$scroll", "$rows", "group:Group 4", "$header"],
+    );
+    assert_eq!(next.y - header.y, PITCH);
+    driven.state_mut().grid.collapsed.clear();
+
+    // The filter keeps one row of each group: a hundred groups of two. A grid
+    // scrolled far past the end of that declares nothing for a frame, then
+    // shows the end.
+    scroll_to(&mut driven, 5000.0 * PITCH);
+    driven.state_mut().grid.filter = "row 99".into();
+    driven.frame();
+    driven.frame();
+    assert_eq!(node(&driven).maximum, scrollable(200));
+    assert_eq!(node(&driven).offset, scrollable(200));
+    assert!(
+        driven
+            .context
+            .find(&["grid", "$scroll", "$rows", "group:Group 99", "row:Row 99"])
+            .is_some()
+    );
+    assert!(
+        driven
+            .context
+            .find(&["grid", "$scroll", "$rows", "group:Group 0"])
+            .is_none()
+    );
+    scroll_to(&mut driven, 0.0);
+    assert!(
+        driven
+            .context
+            .find(&["grid", "$scroll", "$rows", "group:Group 0", "row:Row 99"])
+            .is_some()
+    );
+    assert!(
+        driven
+            .context
+            .find(&["grid", "$scroll", "$rows", "group:Group 0", "row:Row 98"])
+            .is_none()
+    );
+}
+
+#[test]
+fn tab_walks_the_rows_of_a_scrolled_grid_and_keeps_the_focus_in_view() {
+    let mut driven = Driven::new(ROOT, settings(), tall_view);
+    driven.frame();
+    let field = |index: usize| {
+        let row = format!("row:Value {index}");
+        driven.context.find(&[
+            "grid", "$scroll", "$rows", &row, "$editor", "$value", "$field",
+        ])
+    };
+    driven.context.action(field(0).unwrap(), Action::Focus);
+    let press = |driven: &mut Driven<Settings>, shift: bool| {
+        driven.context.event(Event::KeyDown {
+            key: Key::Tab,
+            shift,
+            repeat: false,
+        });
+        driven.frame();
+    };
+    let focused_row = |driven: &Driven<Settings>| {
+        let node = driven
+            .context
+            .node(driven.context.focused().unwrap())
+            .unwrap();
+        (node.semantics.label.clone(), node.bounds)
+    };
+    let view = bounds(&driven, &["grid", "$scroll"]);
+    for step in 1..=60 {
+        press(&mut driven, false);
+        let (label, bounds) = focused_row(&driven);
+        assert!(label.starts_with("Value "), "step {step}: {label}");
+        assert!(
+            bounds.y >= view.y && bounds.y + bounds.height <= view.y + view.height,
+            "step {step}: {label} at {bounds:?} outside {view:?}"
+        );
+    }
+    let (label, _) = focused_row(&driven);
+    let reached: usize = label["Value ".len()..].parse().unwrap();
+    assert!(reached >= 20, "reached only {label}");
+    let scroll = driven.context.find(&["grid", "$scroll"]).unwrap();
+    assert!(driven.context.node(scroll).unwrap().scroll.unwrap().offset > 0.0);
+    assert!(driven.context.node_count() < 150);
+
+    // And back up to the first.
+    for _ in 0..60 {
+        press(&mut driven, true);
+    }
+    let (label, _) = focused_row(&driven);
+    assert_eq!(label, "Value 0");
+    assert_eq!(
+        driven.context.node(scroll).unwrap().scroll.unwrap().offset,
+        0.0
+    );
+}

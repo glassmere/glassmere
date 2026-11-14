@@ -87,7 +87,8 @@ pub struct PropertyGridOptions {
     pub label: String,
     /// Whether the filter box shows.
     pub filter: bool,
-    /// Rows scroll inside this height; `None` lets the grid grow.
+    /// Rows scroll inside this height, and only the ones in view are
+    /// declared; `None` lets the grid grow and declares every row.
     pub height: Option<f32>,
     /// Style of the whole grid; full width unless it says otherwise.
     pub style: Style,

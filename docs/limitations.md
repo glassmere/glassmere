@@ -63,7 +63,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - Rows have one fixed height per collection.
 - A grid selects one cell at a time, with no range selection or block copy.
 - Filters are text only. There are no pinned data rows (totals).
-- Property grid rows are declared, not virtualized; filter or split thousands of properties. There is no multi-object editing. Enums are edited through a `usize` index with `choices(..)`, and `Option<T>` and collection fields are not supported by `#[derive(Properties)]`.
+- A property grid with a `height` declares only the rows in view and a few beyond, but the view still names every property on each frame, so keep that closure cheap. Its rows and group headers share one fixed height, a grid without a `height` declares every row, and the editor that has focus goes when its row scrolls out of the declared window. There is no multi-object editing. Enums are edited through a `usize` index with `choices(..)`, and `Option<T>` and collection fields are not supported by `#[derive(Properties)]`.
 - Submenus nest to any depth in `Ui::menu_bar` only: `Ui::menu`, context menus and combo boxes take a flat list. A submenu opens as soon as the pointer is on its row, with no delay, and closes when the pointer crosses another row on the way to it. Tooltips are pointer-only, with one delay and one placement.
 
 ## Windows and docking
