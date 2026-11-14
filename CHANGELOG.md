@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Changed
+
+- Regex find matches across lines, and `^` and `$` match at the edges of every line. Before, `$` matched only at the end of the last line. A class that excludes a character, such as `[^x]*`, can now run over a line break. A plain query that contains a line break matches across lines too.
+- Damage from `Context::damage_regions` is up to eight rectangles; changes that overlap or lie within 8 px share one. Both renderers repaint each on its own, so a custom wgpu draw is called once for each region it meets.
+- An image drawn at under half its size is filtered down in halving steps, in linear light, before it is sampled, in both renderers. It no longer shimmers, and a large image shown small takes a small texture.
+
+### Fixed
+
+- A dock panel keeps its focus, scroll position and undo history when the layout changes around it: when its group moves into a split, its tab moves to another group, it floats or docks, or a neighbour closes. Before, any of these rebuilt the panel's content.
+- A tab strip with more tabs than fit shows a scroll button and a shade at each side that has hidden tabs, in `Ui::tabs` and in dock groups. A held button keeps scrolling.
+- In a data grid, Up, Down, PageUp, PageDown and the wheel step a number cell being edited by the column's step, and the editor reports as a spin button.
+- `TextDocument::find_all_regex` returns char ranges. It returned byte offsets, so matches after any non-ASCII character were misplaced.
+- The code editor's horizontal scrollbar no longer changes length as the view scrolls past lines of different widths.
+- Several arrow, Home, End or page presses between two frames each move the caret in the rich editor, and visual left and right in a text area. Before, they moved it one step in total.
+- `Style::base_direction` forces the paragraph direction in text fields, text areas, the code editor and the rich editor. Before, editors ignored it.
+- The rich editor reshapes only the blocks an edit changed, also after a block is inserted or removed before them.
+- Two changes far apart no longer repaint the box between them, and an exit animation repaints only where it is drawn instead of the whole window.
+
 ## [0.1.4] - 2026-11-14
 
 ### Added
