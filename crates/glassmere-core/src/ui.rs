@@ -36,6 +36,10 @@ pub(crate) enum WidgetKey {
     /// Where in the source the widget was declared, and how many siblings
     /// declared from the same place came before it.
     Site(&'static Location<'static>, u32),
+    /// The content of a dock panel, named by the panel's id. It is identified
+    /// by the dock that shows it, not by the group it is in, so it follows
+    /// the panel when the dock moves it.
+    Panel(String),
 }
 
 impl WidgetKey {
@@ -53,6 +57,7 @@ impl WidgetKey {
                 let at = format!("{file}:{}:{}", site.line(), site.column());
                 if *nth == 0 { at } else { format!("{at}#{nth}") }
             }
+            Self::Panel(id) => format!("$panel:{id}"),
         }
     }
 }
@@ -398,7 +403,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         element.seq = self.context.count_element(
             element.text.len()
                 + match &element.key {
-                    WidgetKey::Named(key) => key.len(),
+                    WidgetKey::Named(key) | WidgetKey::Panel(key) => key.len(),
                     WidgetKey::Site(..) => 0,
                 },
         );

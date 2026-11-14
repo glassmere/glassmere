@@ -49,6 +49,20 @@ pub(super) struct RichEditorState {
     /// offsets.
     affinity: Affinity,
     pending_affinity: Option<Affinity>,
+    /// Where the moves queued since the last frame lead, so that a visual
+    /// move queued after them starts there and not at the last shaped cursor.
+    pending: Option<RichPosition>,
+}
+
+impl RichEditorState {
+    /// The cursor a visual move starts from, with its affinity: where the
+    /// queued moves lead, or else the one the last frame shaped.
+    fn origin(&self, shaped: RichPosition) -> (RichPosition, Affinity) {
+        match self.pending {
+            Some(position) => (position, self.pending_affinity.unwrap_or_default()),
+            None => (shaped, self.affinity),
+        }
+    }
 }
 
 fn block_style(base: &TextStyle, kind: BlockKind, font_size: f32) -> TextStyle {
@@ -115,6 +129,15 @@ impl Context {
                 // Typed text keeps the caret with the character just entered.
                 RichOp::Insert(_) => Some(Affinity::Upstream),
                 RichOp::SetCursor { .. } => state.pending_affinity,
+                _ => None,
+            };
+            // Any other operation leaves the cursor where only the document knows.
+            state.pending = match op {
+                RichOp::SetCursor {
+                    position,
+                    granularity: RichGranularity::Char,
+                    ..
+                } => Some(position),
                 _ => None,
             };
         }
@@ -209,13 +232,14 @@ impl Context {
             return None;
         };
         let state = node.rich_editor.as_ref()?;
+        let (cursor, from) = state.origin(cursor);
         let layout = state.layouts.get(cursor.block)?;
         if layout.preedit.is_some() || !layout.geometry.clusters.iter().any(|cluster| cluster.rtl) {
             return None;
         }
         let rtl_line = layout
             .geometry
-            .line_at(cursor.offset, state.affinity)
+            .line_at(cursor.offset, from)
             .is_some_and(|line| line.rtl);
         let logical = |forward: bool, word: bool| RichOp::Move {
             motion: match (forward, word) {
@@ -226,10 +250,7 @@ impl Context {
             },
             select,
         };
-        let Some((offset, affinity)) =
-            layout
-                .geometry
-                .visual_step(cursor.offset, state.affinity, right)
+        let Some((offset, affinity)) = layout.geometry.visual_step(cursor.offset, from, right)
         else {
             // Leaving the visual line: its right end is the logical end only when LTR.
             return Some(logical(right != rtl_line, word));
@@ -256,8 +277,9 @@ impl Context {
             return None;
         };
         let state = node.rich_editor.as_ref()?;
+        let (cursor, from) = state.origin(cursor);
         let layout = state.layouts.get(cursor.block)?;
-        let caret = layout.geometry.caret_at(cursor.offset, state.affinity);
+        let caret = layout.geometry.caret_at(cursor.offset, from);
         let x = state.goal_x.unwrap_or(caret.x + layout.left);
         let page = node.content_box().height;
         let in_block = |block: usize, x: f32, y: f32| {
@@ -277,9 +299,7 @@ impl Context {
         // Logical start and end of the visual line; the end keeps an upstream
         // affinity, so the caret stays on this line when the text wraps.
         let edge = |end: bool| {
-            let (offset, affinity) = layout
-                .geometry
-                .line_edge(cursor.offset, state.affinity, end);
+            let (offset, affinity) = layout.geometry.line_edge(cursor.offset, from, end);
             (
                 RichPosition {
                     block: cursor.block,
@@ -311,14 +331,17 @@ impl Context {
                 Affinity::Upstream,
             ),
             Key::PageUp | Key::PageDown => {
-                let caret = state.caret?;
                 let delta = if key == Key::PageUp { -page } else { page };
-                let origin = node.content_box().x;
+                let origin = node.content_box();
+                // The caret's middle on screen, from the cursor: the last
+                // frame's caret rectangle is not where queued moves lead.
+                let middle =
+                    origin.y + layout.y + caret.y + caret.height / 2.0 - node.scroll.offset;
                 self.rich_position(
                     id,
                     Point {
-                        x: origin + x,
-                        y: caret.y + caret.height / 2.0 + delta,
+                        x: origin.x + x,
+                        y: middle + delta,
                     },
                 )?
             }
@@ -553,6 +576,8 @@ impl Context {
             .filter_map(|(id, node)| (node.kind == Kind::RichEditor).then_some(*id))
             .collect();
         for id in ids {
+            // Operations still queued have not reached the document.
+            let queued = self.updates.contains_key(&id);
             let node = self.nodes.get_mut(&id).unwrap();
             let Control::RichEditor {
                 blocks,
@@ -566,6 +591,9 @@ impl Context {
             let base = node.text_style();
             let area = node.content_box();
             let mut state = node.rich_editor.take().unwrap_or_default();
+            if !queued {
+                state.pending = None;
+            }
             let same_frame =
                 state.width == area.width && state.font_size == *font_size && state.rtl == base.rtl;
             let mut old: Vec<Option<BlockLayout>> = std::mem::take(&mut state.layouts)

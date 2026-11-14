@@ -393,7 +393,7 @@ pub struct Context {
     /// Tabs that became selected in this declaration; layout scrolls their
     /// strips to show them.
     reveal_tabs: Vec<NodeId>,
-    pending_damage: Option<Rect>,
+    pending_damage: Vec<Rect>,
     damage: Vec<Rect>,
     updates: HashMap<NodeId, ControlUpdate>,
     bindings: HashMap<String, Option<Shortcut>>,
@@ -535,6 +535,12 @@ pub struct Context {
     observed_new: std::cell::RefCell<Vec<u32>>,
     /// Something the view reads may have changed since it last declared.
     view_stale: bool,
+    /// The dock being declared or reconciled, whose panels are found by id
+    /// wherever they sit. A cell because `Ui` only holds a shared reference
+    /// to the context.
+    dock: std::cell::Cell<Option<NodeId>>,
+    /// The node of each panel's content, by dock and panel id.
+    panels: HashMap<NodeId, HashMap<String, NodeId>>,
 }
 
 /// What reached a node, in the order of `Context::queued`.
@@ -620,7 +626,7 @@ impl Default for Context {
             stats: FrameStats::default(),
             geometry_dirty: false,
             reveal_tabs: Vec::new(),
-            pending_damage: None,
+            pending_damage: Vec::new(),
             damage: Vec::new(),
             updates: HashMap::new(),
             bindings: HashMap::new(),
@@ -706,6 +712,8 @@ impl Default for Context {
             queued: Vec::new(),
             observed_new: std::cell::RefCell::new(Vec::new()),
             view_stale: true,
+            dock: std::cell::Cell::new(None),
+            panels: HashMap::new(),
         }
     }
 }
@@ -894,7 +902,9 @@ impl Context {
         for node in self.nodes.values() {
             report.text_bytes += node.text.len()
                 + match &node.key {
-                    crate::ui::WidgetKey::Named(key) => key.len(),
+                    crate::ui::WidgetKey::Named(key) | crate::ui::WidgetKey::Panel(key) => {
+                        key.len()
+                    }
                     crate::ui::WidgetKey::Site(..) => 0,
                 };
             if let Some(chunk) = &node.paint_cache {
@@ -1118,7 +1128,8 @@ impl Context {
     }
 
     /// Conservative logical damage from the most recent declaration, which the
-    /// renderers use to limit what they redraw.
+    /// renderers use to limit what they redraw. Changes that overlap or nearly
+    /// touch share a rectangle, and there are never more than eight.
     pub fn damage_regions(&self) -> &[Rect] {
         &self.damage
     }
@@ -1224,7 +1235,21 @@ impl Context {
         key: &WidgetKey,
         kind: Kind,
     ) -> Option<NodeId> {
-        let id = *self.nodes.get(&parent?)?.children_by_key.get(key)?;
+        let id = match key {
+            // A panel's content is wherever the dock last put it.
+            WidgetKey::Panel(panel) => *self.panels.get(&self.dock.get()?)?.get(panel)?,
+            _ => *self.nodes.get(&parent?)?.children_by_key.get(key)?,
+        };
         (self.nodes[&id].kind == kind).then_some(id)
+    }
+
+    /// Declares the panels of `dock` to be the ones `child` finds, until
+    /// [`Context::leave_dock`] is given what this returns.
+    pub(crate) fn enter_dock(&self, dock: Option<NodeId>) -> Option<NodeId> {
+        self.dock.replace(dock)
+    }
+
+    pub(crate) fn leave_dock(&self, outer: Option<NodeId>) {
+        self.dock.set(outer);
     }
 }
