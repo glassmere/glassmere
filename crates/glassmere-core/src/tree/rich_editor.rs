@@ -542,10 +542,11 @@ impl Context {
         true
     }
 
-    /// Shapes every block at the content width, stacks them, keeps the caret
-    /// in view and publishes the scroll range.
-    // Every block is shaped, not just the visible ones, so documents of
-    // thousands of paragraphs would need per-block virtualization.
+    /// Shapes the blocks that changed at the content width, stacks all of
+    /// them, keeps the caret in view and publishes the scroll range.
+    // The first frame and a change of width shape every block, not just the
+    // visible ones, so documents of thousands of paragraphs would need
+    // per-block virtualization.
     pub(super) fn prepare_rich_editors(&mut self, measurer: &mut impl TextMeasurer) {
         let ids: Vec<_> = self
             .nodes
@@ -568,24 +569,46 @@ impl Context {
             let mut state = node.rich_editor.take().unwrap_or_default();
             let same_frame =
                 state.width == area.width && state.font_size == *font_size && state.rtl == base.rtl;
-            let mut old: Vec<Option<BlockLayout>> = std::mem::take(&mut state.layouts)
-                .into_iter()
-                .map(Some)
-                .collect();
+            let old = std::mem::take(&mut state.layouts);
             let mut changed = !same_frame || old.len() != blocks.len();
+            // What shapes a block is its kind and spans; the number and the
+            // rules are only painted, and come from the declared view again.
+            let composing = state.preedit.as_ref().map(|_| cursor.block);
+            let fits = |layout: &BlockLayout, index: usize, view: &RichBlockView| {
+                same_frame
+                    && layout.preedit.is_none()
+                    && composing != Some(index)
+                    && layout.view.kind == view.kind
+                    && layout.view.spans == view.spans
+            };
+            // An edit touches one run of blocks, so the layouts before it and
+            // after it carry over even when blocks were inserted or removed.
+            let prefix = old
+                .iter()
+                .zip(blocks)
+                .enumerate()
+                .take_while(|(index, (layout, view))| fits(layout, *index, view))
+                .count();
+            let suffix = (0..old.len().min(blocks.len()) - prefix)
+                .take_while(|back| {
+                    let (was, now) = (old.len() - 1 - back, blocks.len() - 1 - back);
+                    fits(&old[was], now, &blocks[now])
+                })
+                .count();
+            let mut old: Vec<Option<BlockLayout>> = old.into_iter().map(Some).collect();
             let mut y = 0.0;
             for (index, view) in blocks.iter().enumerate() {
                 let preedit = (index == cursor.block)
                     .then_some(state.preedit.as_ref())
                     .flatten();
-                let reused = old.get_mut(index).and_then(|slot| {
-                    slot.take_if(|layout| {
-                        same_frame
-                            && layout.view == *view
-                            && layout.preedit.is_none()
-                            && preedit.is_none()
-                    })
-                });
+                let carried = if index < prefix {
+                    Some(index)
+                } else if index >= blocks.len() - suffix {
+                    Some(old.len() - (blocks.len() - index))
+                } else {
+                    None
+                };
+                let reused = carried.and_then(|was| old[was].take());
                 let indent = RichBlockView::indent(view.kind);
                 let mut layout = reused.unwrap_or_else(|| {
                     changed = true;
@@ -618,7 +641,7 @@ impl Context {
                 } else {
                     indent
                 };
-                // Reused layouts compare against the declared view again next frame.
+                // A reused layout takes the number and rules declared now.
                 if layout.preedit.is_none() {
                     layout.view = view.clone();
                 }

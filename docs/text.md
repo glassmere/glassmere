@@ -30,7 +30,7 @@ ui.code_editor(&self.document, CodeEditorOptions::default(), Msg::Edit);
 - **Diagnostics.** `CodeEditorOptions::diagnostics` takes `Diagnostic`s the application computed; the severity colours are fixed.
 - **Keys.** Tab indents and Escape followed by Tab leaves the editor. Ctrl+D selects the next occurrence, Alt+click adds a cursor, Ctrl+Alt+Up and Down add cursors by line, F3 finds the next match.
 
-Rich editors shape every block on each change, so very long documents slow down. Paste is plain text, and links can be set from code but there is no link dialog.
+Rich editors shape every block when they first appear and when the width, font size or direction changes, and after that only the blocks an edit changed, though each change still compares every block, so very long documents open and resize slowly. Paste is plain text, and links can be set from code but there is no link dialog.
 
 ## Caret and IME
 
