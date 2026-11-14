@@ -69,7 +69,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 ## Windows and docking
 
 - Detached dock windows open where the OS puts them, and resizing them is not written back to the layout. A tab cannot be dragged from one OS window into another.
-- A dock panel keeps its retained widget state (focus, scroll, undo history) through any change of the layout inside one window. It resets when the panel moves to another OS window, which has its own tree, and while its tab is not the selected one, because only the selected tab's content is declared.
+- A dock panel keeps its retained widget state (focus, scroll, undo history) through any change of the layout inside one window. While its tab is not the selected one its content is not declared, drawn or reachable, but its scroll offsets, undo history and the like are kept for the next selection; the keyboard focus is not. The state resets when the panel is closed or moves to another OS window, which has its own tree. `Ui::tabs` has no panel ids to keep state by and drops the content of a tab it leaves.
 - Floating dock groups are clipped to the dock and cannot split.
 - Windows share one graphics policy. A drag carries its payload, `Item` payloads included, to another window of the same application only where the platform reports where windows are on the screen, which Wayland does not. That path is covered by tests that drive two windows; nobody has dragged between two real windows by hand. A dock tab does not cross windows.
 - Outgoing OS drags work for files on Windows and macOS, always as a copy, with a fixed icon. Linux has none; the drag crate needs a GTK window. The system drag itself has not been exercised with a real pointer.

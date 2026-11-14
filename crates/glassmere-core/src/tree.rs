@@ -539,7 +539,9 @@ pub struct Context {
     /// wherever they sit. A cell because `Ui` only holds a shared reference
     /// to the context.
     dock: std::cell::Cell<Option<NodeId>>,
-    /// The node of each panel's content, by dock and panel id.
+    /// The node of each panel's content, by dock and panel id. The content
+    /// of a panel whose tab is not selected stays here, parked: its nodes
+    /// have no parent and the tree does not reach them.
     panels: HashMap<NodeId, HashMap<String, NodeId>>,
 }
 

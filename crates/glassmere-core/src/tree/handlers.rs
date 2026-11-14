@@ -548,8 +548,10 @@ impl Context {
     /// Focuses the focusable widget declared with this key, wherever it is.
     pub(crate) fn focus_named(&mut self, key: &str) {
         let target = self.nodes.iter().find_map(|(id, node)| {
-            (matches!(&node.key, WidgetKey::Named(name) if name == key) && node.focusable())
-                .then_some(*id)
+            (matches!(&node.key, WidgetKey::Named(name) if name == key)
+                && node.focusable()
+                && self.attached(*id))
+            .then_some(*id)
         });
         if let Some(target) = target {
             self.focus_control(target);
