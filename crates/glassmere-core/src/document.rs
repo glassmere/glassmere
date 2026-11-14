@@ -3,6 +3,7 @@
 use ropey::Rope;
 use std::collections::{HashMap, VecDeque};
 use std::ops::Range;
+use std::sync::OnceLock;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// A caret (`anchor == cursor`) or a directed range, in chars.
@@ -94,6 +95,8 @@ pub struct TextDocument {
     saved: u64,
     changes: VecDeque<(u64, usize)>,
     crlf: bool,
+    /// The line with the most display columns, found on first use after an edit.
+    widest: OnceLock<usize>,
     pub indentation: Indentation,
 }
 
@@ -133,6 +136,7 @@ impl TextDocument {
             saved: 0,
             changes: VecDeque::new(),
             crlf,
+            widest: OnceLock::new(),
             indentation: Indentation::default(),
         }
     }
@@ -187,6 +191,34 @@ impl TextDocument {
         } else {
             len
         }
+    }
+
+    /// The line with the most display columns (the first of equals), for sizing
+    /// a view's horizontal range. Found by one pass over the text, then kept
+    /// until the next edit.
+    pub(crate) fn widest_line(&self) -> usize {
+        *self.widest.get_or_init(|| {
+            let tab = self.indentation.tab_width.max(1);
+            let (mut widest, mut most) = (0, 0);
+            let (mut line, mut columns) = (0, 0);
+            for ch in self.rope.chars() {
+                match ch {
+                    '\n' => {
+                        if columns > most {
+                            (widest, most) = (line, columns);
+                        }
+                        line += 1;
+                        columns = 0;
+                    }
+                    '\t' => columns += tab - columns % tab,
+                    _ => columns += 1,
+                }
+            }
+            if columns > most {
+                widest = line;
+            }
+            widest
+        })
     }
 
     /// Bumped by every content change, undo and redo included.
@@ -435,6 +467,7 @@ impl TextDocument {
 
     fn touch(&mut self, line: usize) {
         self.revision += 1;
+        self.widest.take();
         self.changes.push_back((self.revision, line));
         if self.changes.len() > CHANGE_LOG {
             self.changes.pop_front();
@@ -932,8 +965,9 @@ impl TextDocument {
         from..to
     }
 
-    /// Every match of a regular expression, ascending, or why the pattern
-    /// could not be used. Matches never cross a line.
+    /// Every match of a regular expression, ascending, as char ranges, or why
+    /// the pattern could not be used. A match may cross lines, and `^` and `$`
+    /// match at the edges of lines.
     pub fn find_all_regex(
         &self,
         pattern: &str,
@@ -951,6 +985,7 @@ impl TextDocument {
         {
             let expression = regex::RegexBuilder::new(pattern)
                 .case_insensitive(!case_sensitive)
+                .multi_line(true)
                 .size_limit(1 << 20)
                 .build()
                 .map_err(|error| {
@@ -963,25 +998,23 @@ impl TextDocument {
                         .trim()
                         .to_owned()
                 })?;
+            let text = String::from(&self.rope);
             let mut matches = Vec::new();
-            let mut start = 0;
-            for line in self.rope.lines() {
-                let text = line.to_string();
-                for found in expression.find_iter(&text) {
-                    // An empty match would never move on, and highlights nothing.
-                    if !found.is_empty() {
-                        matches.push(start + found.start()..start + found.end());
-                    }
+            for found in expression.find_iter(&text) {
+                // An empty match would never move on, and highlights nothing.
+                if !found.is_empty() {
+                    matches.push(
+                        self.rope.byte_to_char(found.start())..self.rope.byte_to_char(found.end()),
+                    );
                 }
-                start += text.len();
             }
             Ok(matches)
         }
     }
 
     /// All occurrences of `query`, ascending and non-overlapping, as char
-    /// ranges. Matches do not span lines.
-    // Compares lowercased chars line by line; move to a streaming
+    /// ranges. A query with line breaks matches across lines.
+    // Compares lowercased chars of the whole text; move to a streaming
     // searcher if documents reach tens of megabytes.
     pub fn find_all(
         &self,
@@ -997,30 +1030,26 @@ impl TextDocument {
             }
         };
         let needle: Vec<char> = query.chars().map(fold).collect();
-        if needle.is_empty() || needle.contains(&'\n') {
+        if needle.is_empty() {
             return Vec::new();
         }
         let mut matches = Vec::new();
-        let mut start = 0;
-        for line in self.rope.lines() {
-            let chars: Vec<char> = line.chars().map(fold).collect();
-            let mut at = 0;
-            while at + needle.len() <= chars.len() {
-                let word = |index: Option<usize>| {
-                    index
-                        .and_then(|index| chars.get(index))
-                        .is_some_and(|ch| word_class(*ch) == 2)
-                };
-                if chars[at..at + needle.len()] == needle[..]
-                    && !(whole_word && (word(at.checked_sub(1)) || word(Some(at + needle.len()))))
-                {
-                    matches.push(start + at..start + at + needle.len());
-                    at += needle.len();
-                } else {
-                    at += 1;
-                }
+        let chars: Vec<char> = self.rope.chars().map(fold).collect();
+        let mut at = 0;
+        while at + needle.len() <= chars.len() {
+            let word = |index: Option<usize>| {
+                index
+                    .and_then(|index| chars.get(index))
+                    .is_some_and(|ch| word_class(*ch) == 2)
+            };
+            if chars[at..at + needle.len()] == needle[..]
+                && !(whole_word && (word(at.checked_sub(1)) || word(Some(at + needle.len()))))
+            {
+                matches.push(at..at + needle.len());
+                at += needle.len();
+            } else {
+                at += 1;
             }
-            start += chars.len();
         }
         matches
     }
@@ -1519,6 +1548,46 @@ mod tests {
         assert_eq!(document.matching_bracket(31), Some((30, 18)));
         assert_eq!(document.matching_bracket(23), Some((22, 24)));
         assert_eq!(document.matching_bracket(5), None);
+    }
+
+    #[test]
+    #[allow(clippy::single_range_in_vec_init)]
+    fn plain_search_matches_across_line_breaks() {
+        let document = TextDocument::from_text("xa\nb\nA\nB\na\nb\nbb");
+        assert_eq!(document.find_all("a\nb", true, false), [1..4, 9..12]);
+        assert_eq!(document.find_all("a\nb", false, false), [1..4, 5..8, 9..12]);
+        // The characters around a match still decide whole words.
+        assert_eq!(document.find_all("a\nb", true, true), [9..12]);
+        assert_eq!(document.find_all("b\n", true, false).len(), 2);
+        // Matches do not overlap.
+        let document = TextDocument::from_text("a\na\na");
+        assert_eq!(document.find_all("a\na", true, false), [0..3]);
+    }
+
+    #[cfg(feature = "regex")]
+    #[test]
+    #[allow(clippy::single_range_in_vec_init)]
+    fn regex_matches_are_char_ranges_and_may_cross_line_breaks() {
+        // Ranges count chars, not bytes, on the first line and after it.
+        let document = TextDocument::from_text("é a\nçç a");
+        assert_eq!(document.find_all_regex("a", true).unwrap(), [2..3, 7..8]);
+        assert_eq!(document.find_all_regex("ç+", true).unwrap(), [4..6]);
+
+        let document = TextDocument::from_text("foo\nbar\nfoo\n\nbaz");
+        assert_eq!(document.find_all_regex("o\nb", true).unwrap(), [2..5]);
+        assert_eq!(
+            document.find_all_regex(r"foo\s+b", true).unwrap(),
+            [0..5, 8..14]
+        );
+        // `^` and `$` stay at the edges of lines.
+        assert_eq!(document.find_all_regex("^bar$", true).unwrap(), [4..7]);
+        assert_eq!(
+            document.find_all_regex("foo$", true).unwrap(),
+            [0..3, 8..11]
+        );
+        assert_eq!(document.find_all_regex("^b", true).unwrap(), [4..5, 13..14]);
+        // An empty match highlights nothing.
+        assert!(document.find_all_regex("^$", true).unwrap().is_empty());
     }
 
     #[test]

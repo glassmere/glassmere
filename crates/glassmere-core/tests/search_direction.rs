@@ -29,7 +29,7 @@ fn the_find_bar_searches_by_pattern_and_says_why_a_bad_one_found_nothing() {
     state.case_sensitive = true;
     assert_eq!(matches(&document, &mut state), ["alpha"]);
 
-    // A match never crosses a line, so an anchor means the line's edge.
+    // An anchor means the edge of a line.
     state.query = "^Alpha".into();
     assert_eq!(matches(&document, &mut state), ["Alpha"]);
 
