@@ -1014,3 +1014,27 @@ fn the_horizontal_range_comes_from_the_widest_line_wherever_the_view_is_scrolled
     let longer = 508.0 * ADVANCE - (600.0 - PADDING * 2.0);
     assert!((range_x(&mut app) - longer).abs() < 1.0);
 }
+
+#[test]
+fn find_steps_through_and_replaces_matches_that_span_lines() {
+    let mut rig = Rig::new("one\ntwo\nthree\none\ntwo");
+    rig.app.find.query = "e\ntw".into();
+    click(&mut rig.context, cell(0, 1));
+    rig.context.event(Event::Editor(EditorCommand::Find));
+    rig.frame();
+    rig.frame();
+    rig.context.event(Event::Editor(EditorCommand::FindNext));
+    rig.frame();
+    assert_eq!(rig.app.document.primary().range(), 2..6);
+    rig.context.event(Event::Editor(EditorCommand::FindNext));
+    rig.frame();
+    assert_eq!(rig.app.document.primary().range(), 16..20);
+    assert_eq!(rig.app.find.matches(), [2..6, 16..20]);
+
+    rig.app.find.replacement = "-".into();
+    rig.context.event(Event::Editor(EditorCommand::Replace));
+    rig.frame();
+    rig.frame();
+    press(&mut rig, Role::Button, "Replace all");
+    assert_eq!(rig.app.document.text(), "on-o\nthree\non-o");
+}
