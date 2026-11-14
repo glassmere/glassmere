@@ -188,6 +188,31 @@ impl<'a, M: 'static> Ui<'a, M> {
                             }
                         }
                         strip_extra(ui, current);
+                        // The strip puts these over its edges while tabs are
+                        // hidden past them, and hides them otherwise.
+                        let rtl = ui.context.direction() == crate::Direction::Rtl;
+                        for (key, end, name) in [
+                            ("$scroll-start", false, "glassmere-tab-scroll-start"),
+                            ("$scroll-end", true, "glassmere-tab-scroll-end"),
+                        ] {
+                            let name = ui.context.tr(name, &[]);
+                            ui.push(Element {
+                                text: if end == rtl { "‹" } else { "›" }.into(),
+                                style: Style {
+                                    width: Length::Px(crate::tree::STRIP_BUTTON),
+                                    height: Length::Percent(1.0),
+                                    padding: 4.0,
+                                    radius: 6.0,
+                                    justify_content: crate::Justify::Center,
+                                    align_items: Align::Center,
+                                    offset: Some((0.0, 0.0)),
+                                    ..Style::button()
+                                },
+                                tooltip: Some(name),
+                                control: Control::StripScroll { end },
+                                ..Element::new(WidgetKey::Named(key.into()), Kind::Button)
+                            });
+                        }
                     },
                 );
                 ui.set_control(Control::TabList);

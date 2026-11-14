@@ -54,6 +54,10 @@ pub use types::*;
 /// "maximize" rather than another move.
 /// The key of the panel menu a dock puts at the end of a tab strip.
 const STRIP_MENU: &str = "$menu";
+/// How wide the buttons that scroll an overflowing tab strip are.
+pub(crate) const STRIP_BUTTON: f32 = 22.0;
+/// How far the shade beside a scroll button reaches over the tabs.
+const STRIP_SHADE: f32 = 14.0;
 const TITLE_DOUBLE_PRESS: Duration = Duration::from_millis(400);
 const TITLE_DOUBLE_PRESS_NEAR: f32 = 24.0;
 
@@ -156,7 +160,7 @@ impl Node {
 
     fn focusable(&self) -> bool {
         self.enabled
-            && self.control != Control::Stepper
+            && !matches!(self.control, Control::Stepper | Control::StripScroll { .. })
             // Pointer-only helpers: a column sizer, whose keyboard path is its
             // header's menu, and drag sources or drop targets without a name.
             && !matches!(
@@ -192,6 +196,13 @@ impl Node {
                     .custom
                     .as_ref()
                     .is_some_and(|widget| widget.semantics.focusable))
+    }
+
+    /// A tab strip's scroll button while no tabs are hidden on its side: it
+    /// is laid out but neither drawn nor reachable, and not reported.
+    fn parked(&self) -> bool {
+        matches!(self.control, Control::StripScroll { .. })
+            && (self.clip.width <= 0.0 || self.clip.height <= 0.0)
     }
 
     /// Whether a press can land on this node: anything focusable or

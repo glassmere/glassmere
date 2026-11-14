@@ -970,6 +970,57 @@ fn a_tab_strip_with_more_tabs_than_fit_scrolls_and_keeps_its_menu_in_place() {
 }
 
 #[test]
+fn a_dock_group_strip_has_scroll_buttons_beside_its_menu_that_leave_the_layout_alone() {
+    let mut app = crowded();
+    let strip = app
+        .context
+        .node(app.context.find(&STRIP).unwrap())
+        .unwrap()
+        .bounds;
+    let menu = in_strip(&app.context, "$menu");
+    let shown = |app: &Driven<DockLayout>, key: &str| clip_in_strip(&app.context, key).width > 0.0;
+    let gradients = |app: &Driven<DockLayout>| {
+        app.context
+            .scene()
+            .primitives
+            .iter()
+            .filter(|primitive| matches!(primitive, Primitive::Gradient { .. }))
+            .count()
+    };
+
+    // Tabs are hidden past the end, so that button shows, next to the menu
+    // rather than over it.
+    assert!(!shown(&app, "$scroll-start") && shown(&app, "$scroll-end"));
+    assert_eq!(gradients(&app), 1);
+    let end = in_strip(&app.context, "$scroll-end");
+    assert!((end.x + end.width - menu.x).abs() < 0.5, "{end:?} {menu:?}");
+    let path: Vec<&str> = STRIP.iter().copied().chain(["$scroll-end"]).collect();
+    let named = app.context.node(app.context.find(&path).unwrap()).unwrap();
+    assert_eq!(named.semantics.label, "Show later tabs");
+    assert_eq!(named.semantics.role, Role::Button);
+    let layout = app.state().clone();
+    let before = in_strip(&app.context, "0").x;
+
+    // A click moves the tabs and nothing else: no panel is chosen, none
+    // moves, and the menu stays where it was.
+    let point = center(end);
+    press(&mut app.context, point);
+    app.context.event(Event::PointerUp);
+    app.frame();
+    assert!(in_strip(&app.context, "0").x < before);
+    assert_eq!(*app.state(), layout);
+    assert_eq!(in_strip(&app.context, "$menu"), menu);
+    assert!(shown(&app, "$scroll-start"));
+    assert_eq!(gradients(&app), 2);
+    assert!(
+        !app.context.snapshots().iter().any(|node| node.is_popup),
+        "no menu opened"
+    );
+    let start = in_strip(&app.context, "$scroll-start");
+    assert!((start.x - strip.x).abs() < 0.5, "{start:?}");
+}
+
+#[test]
 fn a_tab_strip_whose_tabs_fit_does_not_scroll() {
     let mut app = App::start(false);
     app.frame();
