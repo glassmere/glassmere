@@ -288,6 +288,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         style.background = options.style.background;
         // Source code reads left to right whatever the UI direction is.
         style.direction = Some(crate::Direction::Ltr);
+        style.base_direction = options.style.base_direction;
         self.push(Element {
             style,
             enabled: self.enabled,
@@ -296,6 +297,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                 lines,
                 first_line: first,
                 total_lines: total,
+                widest: document.line(document.widest_line()),
                 selections,
                 selection_count: document.selections().len(),
                 primary,

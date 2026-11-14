@@ -14,12 +14,17 @@ struct LineLayout {
 #[derive(Default)]
 pub(super) struct AreaState {
     layouts: Vec<LineLayout>,
+    /// The paragraph direction the layouts were shaped with.
+    base: Option<bool>,
     first_line: usize,
     /// Width of the line numbers and marks left of the text.
     pub(super) gutter: f32,
     /// Advance of one digit, for right-aligned line numbers.
     digit: f32,
     line_height: f32,
+    /// The widest line of the document with the font size and width it was
+    /// shaped at, kept while the same line is declared.
+    widest: Option<(String, f32, f32)>,
     /// The primary cursor the last preparation saw, as `(line, byte)`.
     primary: Option<(usize, usize)>,
     preedit: Option<String>,
@@ -32,6 +37,10 @@ pub(super) struct AreaState {
     affinity: Affinity,
     /// Affinity for the position the queued operations will lead to.
     pending_affinity: Option<Affinity>,
+    /// Where the moves queued since the last frame lead, as `(line, byte)`, so
+    /// that a visual move queued after them starts there and not at the last
+    /// shaped cursor.
+    pending: Option<(usize, usize)>,
 }
 
 /// What a declaration needs to know about the previous frame.
@@ -42,11 +51,12 @@ pub(crate) struct AreaView {
     pub primary: Option<(usize, usize)>,
 }
 
-fn text_style(font_size: f32) -> TextStyle {
+fn text_style(font_size: f32, base: Option<bool>) -> TextStyle {
     TextStyle {
         font_size,
         family: FontFamily::Monospace,
         wrap: TextWrap::None,
+        base,
         ..TextStyle::default()
     }
 }
@@ -159,6 +169,17 @@ impl Context {
                 TextOp::Pointer { .. } => area.pending_affinity,
                 _ => None,
             };
+            // Any other operation leaves the cursor where only the document knows.
+            area.pending = match op {
+                TextOp::Pointer {
+                    line,
+                    byte,
+                    granularity: Granularity::Char,
+                    add: false,
+                    ..
+                } => Some((line, byte)),
+                _ => None,
+            };
         }
         match self.updates.get_mut(&id) {
             Some(ControlUpdate::TextOps(ops)) => ops.push(op),
@@ -249,11 +270,17 @@ impl Context {
             return None;
         };
         let area = node.area.as_ref()?;
+        // Where the moves queued before this one lead, if any, else the cursor
+        // the last frame shaped.
+        let (primary, from) = match area.pending {
+            Some(position) => (position, area.pending_affinity.unwrap_or_default()),
+            None => (primary, area.affinity),
+        };
         let layout = area.layouts.get(primary.0.checked_sub(first_line)?)?;
         if layout.preedit.is_some() || !layout.geometry.clusters.iter().any(|cluster| cluster.rtl) {
             return None;
         }
-        let step = layout.geometry.visual_step(primary.1, area.affinity, right);
+        let step = layout.geometry.visual_step(primary.1, from, right);
         let rtl_line = layout.geometry.lines.first().is_some_and(|line| line.rtl);
         let Some((byte, affinity)) = step else {
             // Leaving the line: its right end is the logical end only when LTR.
@@ -533,11 +560,14 @@ impl Context {
             .filter_map(|(id, node)| (node.kind == Kind::TextArea).then_some(*id))
             .collect();
         for id in ids {
+            // Operations still queued have not reached the document.
+            let queued = self.updates.contains_key(&id);
             let node = self.nodes.get_mut(&id).unwrap();
             let Control::TextArea {
                 lines,
                 first_line,
                 total_lines,
+                widest,
                 primary,
                 font_size,
                 line_numbers,
@@ -546,8 +576,12 @@ impl Context {
             else {
                 continue;
             };
+            let base = node.text_style().base;
             let mut area = node.area.take().unwrap_or_default();
-            let style = text_style(*font_size);
+            if !queued {
+                area.pending = None;
+            }
+            let style = text_style(*font_size, base);
             let line_height = font_size * 1.4;
             let digit = measurer.measure_styled("0", &style, None).width;
             let gutter = if *line_numbers {
@@ -561,6 +595,7 @@ impl Context {
                 .map(Some)
                 .collect();
             let old_first = area.first_line;
+            let same_base = area.base == base;
             let mut changed = gutter != area.gutter || *first_line != old_first;
             for (index, line) in lines.iter().enumerate() {
                 let number = first_line + index;
@@ -572,7 +607,10 @@ impl Context {
                     .and_then(|slot| old.get_mut(slot))
                     .and_then(|slot| {
                         slot.take_if(|layout| {
-                            layout.line == *line && layout.preedit.is_none() && preedit.is_none()
+                            same_base
+                                && layout.line == *line
+                                && layout.preedit.is_none()
+                                && preedit.is_none()
                         })
                     });
                 area.layouts.push(reused.unwrap_or_else(|| {
@@ -594,6 +632,7 @@ impl Context {
                 }));
             }
             area.first_line = *first_line;
+            area.base = base;
             area.gutter = gutter;
             area.digit = digit;
             area.line_height = line_height;
@@ -621,13 +660,23 @@ impl Context {
                     .max(caret.x - text_width + digit * 2.0)
                     .max(0.0);
             }
-            // Lines are not wrapped; the widest one declared sets the range,
-            // with room for the caret after its last character.
+            // Lines are not wrapped; the widest one sets the range, with room
+            // for the caret after its last character. The widest of the whole
+            // document is shaped too, so that the range does not depend on
+            // which lines are declared; a declared line wider still counts.
+            let document_widest = match &area.widest {
+                Some((text, size, width)) if text == widest && size == font_size => *width,
+                _ => {
+                    let width = measurer.measure_styled(widest, &style, None).width;
+                    area.widest = Some((widest.clone(), *font_size, width));
+                    width
+                }
+            };
             let widest = area
                 .layouts
                 .iter()
                 .map(|layout| layout.geometry.size.width)
-                .fold(0.0, f32::max);
+                .fold(document_widest, f32::max);
             let maximum_x = if widest > text_width {
                 widest + digit * 2.0 - text_width
             } else {
@@ -681,7 +730,7 @@ impl Context {
         let origin_y = content.y - node.scroll.offset;
         let row = |line: usize| origin_y + line as f32 * line_height;
         let visible = |y: f32| y + line_height > content.y && y < content.y + content.height;
-        let style = text_style(*font_size);
+        let style = text_style(*font_size, node.text_style().base);
         scene.primitives.push(Primitive::PushClip(content));
         let caret_only = selections
             .iter()

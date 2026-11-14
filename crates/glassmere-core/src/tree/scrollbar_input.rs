@@ -201,9 +201,21 @@ impl Context {
         Some(self.press_track(track, false, point.x > thumb.x))
     }
 
+    /// The tab strip and the side of the scroll button under `point`.
+    fn strip_button_at(&self, point: Point) -> Option<(NodeId, bool)> {
+        let node = &self.nodes[&self.hit_test(point)?];
+        let Control::StripScroll { end } = node.control else {
+            return None;
+        };
+        Some((node.parent?, end))
+    }
+
     /// Pages `node` toward an end, a view at a time. For a grid's bar, `node`
-    /// is the track and pages the columns.
+    /// is the track and pages the columns. A tab strip moves by a tab.
     fn page_track(&mut self, node: NodeId, vertical: bool, toward_end: bool) -> bool {
+        if self.nodes[&node].kind == Kind::TabList {
+            return self.scroll_strip_step(node, toward_end);
+        }
         let sign = if toward_end { 1.0 } else { -1.0 };
         let bounds = self.nodes[&node].bounds;
         if matches!(self.nodes[&node].control, Control::GridScrollbar { .. }) {
@@ -232,9 +244,16 @@ impl Context {
     }
 
     /// Which way the held press would page from `point`, or `None` where it
-    /// would not: off its track, or on the thumb, which has reached it.
+    /// would not: off its track, or on the thumb, which has reached it. A
+    /// press on a tab strip's button goes on while the pointer is over it.
     fn hold_direction(&self, hold: &TrackHold, point: Point) -> Option<bool> {
         let node = self.nodes.get(&hold.node)?;
+        if node.kind == Kind::TabList {
+            return self
+                .strip_button_at(point)
+                .filter(|(strip, _)| *strip == hold.node)
+                .map(|(_, end)| end);
+        }
         if matches!(node.control, Control::GridScrollbar { .. }) {
             let thumb = self.nodes[node.children.first()?].bounds;
             return (node.bounds.contains(point)
@@ -287,6 +306,11 @@ impl Context {
         match event {
             Event::PointerDown | Event::PointerDownWithShift => {
                 let point = self.pointer?;
+                // A tab strip's scroll buttons page like a track, and a
+                // press on one leaves the keyboard where it was.
+                if let Some((strip, end)) = self.strip_button_at(point) {
+                    return Some(self.press_track(strip, false, end));
+                }
                 let Some((id, bar)) = self.bar_under(point) else {
                     return self.grid_bar_press(point);
                 };
