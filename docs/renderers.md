@@ -30,7 +30,7 @@ Coordinates are logical; the renderer multiplies by the scale factor. Nothing in
 
 This is the part that takes a day to find. Surfaces are sRGB, and blending happens in **linear light**: half of red over blue is 188, not 128. A renderer that blends in sRGB space comes out visibly wrong wherever anything is translucent.
 
-Images are premultiplied in **sRGB** space, as decoders produce them. Both renderers convert them to the sRGB encoding of their premultiplied *linear* colour before sampling; skipping that makes translucent images dark.
+Images are premultiplied in **sRGB** space, as decoders produce them. Both renderers convert them to the sRGB encoding of their premultiplied *linear* colour before sampling; skipping that makes translucent images dark. An image drawn at under half its pixel size is first box-filtered down, in linear light, to the smallest halving that still covers the pixels it fills; that is once per image and size, so sampling never shrinks it by more than two.
 
 The CPU renderer does it by hand through a twelve-bit gamma table, which round-trips exactly, and uses tiny-skia for geometry only, because tiny-skia mixes premultiplied channels in its own space.
 

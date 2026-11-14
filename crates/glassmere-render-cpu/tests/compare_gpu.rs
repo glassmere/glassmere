@@ -442,3 +442,50 @@ fn paths_look_the_same_on_both_renderers() {
         agree(&pixels, &reference, scale);
     }
 }
+
+/// A large image with detail one pixel wide and a translucent half, drawn
+/// well below its size, squashed and cropped.
+fn shrunken() -> Scene {
+    let mut rgba = Vec::new();
+    for y in 0..512u32 {
+        for x in 0..512u32 {
+            let alpha = if x + y < 512 { 255 } else { 120 };
+            let blue = if (x + y) % 2 == 0 { 255 } else { 0 };
+            rgba.extend([(x / 2) as u8, (y / 2) as u8, blue, alpha]);
+        }
+    }
+    let photo = Image::from_rgba8(512, 512, rgba).unwrap();
+    let draw = |rect: Rect, source: Rect| Primitive::Image {
+        rect,
+        image: photo.clone(),
+        source,
+        tint: None,
+        radius: 0.0,
+    };
+    let whole = rect(0.0, 0.0, 512.0, 512.0);
+    Scene {
+        size: Size::new(160.0, 160.0),
+        primitives: vec![
+            draw(rect(4.0, 4.0, 88.0, 88.0), whole),
+            draw(rect(100.0, 4.0, 40.0, 40.0), whole),
+            draw(rect(4.0, 100.0, 140.0, 20.0), whole),
+            draw(
+                rect(100.0, 52.0, 48.0, 48.0),
+                rect(128.0, 128.0, 256.0, 256.0),
+            ),
+        ],
+    }
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn shrunken_images_look_the_same_on_both_renderers() {
+    let clear = Color::rgb(16, 23, 34);
+    for scale in [1.0, 1.25] {
+        let scene = shrunken();
+        let reference = gpu(&scene, scale, clear);
+        let mut renderer = CpuRenderer::new();
+        let pixels = renderer.render([SIDE; 2], scale, &scene, clear).to_vec();
+        agree(&pixels, &reference, scale);
+    }
+}

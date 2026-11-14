@@ -89,7 +89,7 @@ Ancestors clip to their bounds, so a node that slides or scales needs room insid
 
 `Style::background_image(BackgroundImage)` paints an image over the background colour and under the content, fitted like an image widget or nine-sliced with `BackgroundImage::slice` so one small frame skins boxes of any size. One background image per node; no tiling, and no position other than centred.
 
-There are no mipmaps: an image drawn far below its natural size aliases, so shrink large photos first or use an SVG. A vector image is rasterised on the render thread the first time each size is drawn.
+There is no mipmap chain, but a photo drawn at under half its natural size is box-filtered down in halving steps, so it does not alias; shrinking large photos first only saves that work, which runs on the render thread the first time each step is drawn. A vector image is rasterised on the render thread the first time each size is drawn.
 
 ## Direction
 
