@@ -222,6 +222,62 @@ fn enter_effects_play_once_and_exit_effects_leave_a_fading_ghost() {
 }
 
 #[test]
+fn an_exiting_node_damages_where_its_ghost_is_and_not_the_window() {
+    let mut context = Context::new();
+    let view = |shown: bool| {
+        move |ui: &mut Ui<'_>| {
+            ui.keyed("panel", |ui| {
+                ui.column(
+                    Style {
+                        width: Length::Px(200.0),
+                        height: Length::Px(100.0),
+                        ..Style::default()
+                    },
+                    |ui| {
+                        ui.label("always");
+                        if shown {
+                            ui.keyed("toast", |ui| {
+                                ui.label(Label::new("Saved").style(Style::default().exit(Effect {
+                                    transition: Transition::new(200).easing(Easing::Linear),
+                                    ..Effect::slide(0.0, 20.0, 200)
+                                })))
+                            });
+                        }
+                    },
+                )
+            });
+            ui.label("elsewhere");
+        }
+    };
+    frame_at(&mut context, 0, view(true));
+    let panel = bounds(&context, &["panel"]);
+    let toast = context
+        .node(context.find(&["panel", "toast"]).unwrap())
+        .unwrap();
+    let (toast_bounds, toast_clip) = (toast.bounds, toast.clip);
+    // The frame it is removed on: its parent is declared again.
+    frame_at(&mut context, 1000, view(false));
+    assert!(
+        context
+            .damage_regions()
+            .iter()
+            .all(|damage| damage.intersect(panel) == *damage)
+    );
+    // Two in flight, then the one it ends on, which repaints what the ghost
+    // drew the frame before. The slide moves the ghost 20 px, which stays
+    // under its clip.
+    for at in [1100, 1199, 1200] {
+        frame_at(&mut context, at, view(false));
+        let damage = context.damage_regions();
+        assert_eq!(damage, &[toast_clip], "at {at} ms");
+        assert!(damage[0].intersect(toast_bounds) == damage[0]);
+    }
+    assert!(!context.animating());
+    frame_at(&mut context, 1300, view(false));
+    assert!(context.damage_regions().is_empty());
+}
+
+#[test]
 fn layout_transitions_draw_from_the_old_rectangle_toward_the_new_one() {
     let mut context = Context::new();
     let view = |spacer: bool| {

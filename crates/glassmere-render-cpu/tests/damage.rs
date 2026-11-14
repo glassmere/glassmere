@@ -2,11 +2,11 @@
 //! real input, painted once with damage and once in full, must agree pixel for
 //! pixel. A rectangle the core forgets shows up here as a stale pixel.
 use glassmere_core::{
-    App, AppDriver, Button, Context, Effects, Event, Key, Length, MonospaceMeasurer, Style,
-    TextEdit, Ui,
+    App, AppDriver, Button, Context, Easing, Effect, Effects, Event, Key, Label, Length,
+    MonospaceMeasurer, Style, TextEdit, Transition, Ui,
 };
 use glassmere_render_cpu::CpuRenderer;
-use glassmere_scene::{Color, Point, Size};
+use glassmere_scene::{Color, Point, Primitive, Rect, Scene, Size};
 use glassmere_text::TextSystem;
 
 const SIZE: Size = Size::new(320.0, 360.0);
@@ -511,4 +511,158 @@ fn every_overlay_leaves_the_window_as_it_found_it() {
         tick,
         "after the dialog",
     );
+}
+
+/// A change at the top of the window and one at the bottom: two rectangles
+/// are painted, not the box around them and the page between.
+#[test]
+fn changes_far_apart_repaint_two_regions_and_not_the_page_between_them() {
+    let view = |ui: &mut Ui<'_>, color: Color| {
+        ui.keyed("page", |ui| {
+            ui.column(Style::default().padding(8.0), |ui| {
+                for (key, height, color) in [
+                    ("top", 16.0, Some(color)),
+                    ("middle", 240.0, None),
+                    ("bottom", 16.0, Some(color)),
+                ] {
+                    ui.keyed(key, |ui| {
+                        ui.label(Label::new(key).style(Style {
+                            foreground: color,
+                            height: Length::Px(height),
+                            ..Style::default()
+                        }))
+                    });
+                }
+            })
+        });
+    };
+    let mut context = Context::new();
+    let mut incremental = CpuRenderer::with_text_system(fonts());
+    let mut whole = CpuRenderer::with_text_system(fonts());
+    let physical = [SIZE.width as u32, SIZE.height as u32];
+    let mut frame = |context: &mut Context, color: Color| {
+        context.run(SIZE, &mut MonospaceMeasurer, |ui| view(ui, color));
+        let damage: Vec<_> = context.damage_regions().to_vec();
+        let scene = context.scene();
+        let partial = incremental
+            .render_damaged(physical, 1.0, scene, CLEAR, &damage)
+            .to_vec();
+        let full = whole.render(physical, 1.0, scene, CLEAR).to_vec();
+        assert_frames_match(&partial, &full, physical[0] as usize, "a change");
+        (damage, incremental.stats().redrawn)
+    };
+    frame(&mut context, Color::WHITE);
+    let (damage, redrawn) = frame(&mut context, Color::rgb(200, 0, 0));
+    assert_eq!(damage.len(), 2, "{damage:?}");
+    let enclosing = damage[0].union(damage[1]);
+    let between = (enclosing.width * enclosing.height) as u64;
+    assert!(
+        redrawn * 4 < between,
+        "repainted {redrawn} pixels, the box around both is {between}"
+    );
+}
+
+/// Whatever lies in the damage is painted, however many rectangles name it:
+/// thirty scattered ones become a few regions, and none of them is lost.
+#[test]
+fn many_scattered_and_overlapping_rectangles_still_repaint_what_they_name() {
+    let squares = |color: Color| Scene {
+        size: SIZE,
+        primitives: (0..30)
+            .map(|index| Primitive::Quad {
+                rect: Rect {
+                    x: (index % 6) as f32 * 50.0,
+                    y: (index / 6) as f32 * 60.0,
+                    width: 6.0,
+                    height: 6.0,
+                },
+                color,
+                radius: 0.0,
+            })
+            .collect(),
+    };
+    let (before, after) = (
+        squares(Color::rgb(200, 0, 0)),
+        squares(Color::rgb(0, 0, 200)),
+    );
+    let mut incremental = CpuRenderer::with_text_system(fonts());
+    let mut whole = CpuRenderer::with_text_system(fonts());
+    let physical = [SIZE.width as u32, SIZE.height as u32];
+    incremental.render_damaged(physical, 1.0, &before, CLEAR, &[]);
+    let mut damage: Vec<Rect> = after
+        .primitives
+        .iter()
+        .map(|primitive| match primitive {
+            Primitive::Quad { rect, .. } => *rect,
+            _ => unreachable!(),
+        })
+        .collect();
+    // Two that overlap, and one that is empty.
+    damage.push(Rect {
+        x: 3.0,
+        y: 3.0,
+        width: 20.0,
+        height: 20.0,
+    });
+    damage.push(Rect::default());
+    let partial = incremental
+        .render_damaged(physical, 1.0, &after, CLEAR, &damage)
+        .to_vec();
+    let redrawn = incremental.stats().redrawn;
+    let full = whole.render(physical, 1.0, &after, CLEAR).to_vec();
+    assert_frames_match(&partial, &full, physical[0] as usize, "thirty squares");
+    assert!(redrawn < u64::from(physical[0]) * u64::from(physical[1]) / 4);
+}
+
+/// A node that leaves with an effect is repainted where its ghost is, frame
+/// by frame, and the window around it is kept.
+#[test]
+fn an_exiting_node_repaints_its_ghost_and_not_the_window() {
+    use std::time::Duration;
+
+    let view = |ui: &mut Ui<'_>, shown: bool| {
+        ui.keyed("page", |ui| {
+            ui.column(Style::default().padding(8.0).gap(6.0), |ui| {
+                ui.keyed("title", |ui| ui.label("Exit"));
+                if shown {
+                    ui.keyed("toast", |ui| {
+                        ui.label(Label::new("Saved").style(Style {
+                            background: Some(Color::rgb(40, 120, 60)),
+                            exit: Some(Effect {
+                                transition: Transition::new(200).easing(Easing::Linear),
+                                ..Effect::slide(0.0, 12.0, 200)
+                            }),
+                            ..Style::default()
+                        }))
+                    });
+                }
+                ui.keyed("rest", |ui| ui.label(Label::new("The rest of the page")));
+            })
+        });
+    };
+    let mut context = Context::new();
+    let mut incremental = CpuRenderer::with_text_system(fonts());
+    let mut whole = CpuRenderer::with_text_system(fonts());
+    let physical = [SIZE.width as u32, SIZE.height as u32];
+    let area = u64::from(physical[0]) * u64::from(physical[1]);
+    let mut frame = |context: &mut Context, at: u64, shown: bool| {
+        context.set_now(Duration::from_millis(at));
+        context.run(SIZE, &mut MonospaceMeasurer, |ui| view(ui, shown));
+        let damage: Vec<_> = context.damage_regions().to_vec();
+        let scene = context.scene();
+        let partial = incremental
+            .render_damaged(physical, 1.0, scene, CLEAR, &damage)
+            .to_vec();
+        let full = whole.render(physical, 1.0, scene, CLEAR).to_vec();
+        assert_frames_match(&partial, &full, physical[0] as usize, &format!("{at} ms"));
+        incremental.stats().redrawn
+    };
+    frame(&mut context, 0, true);
+    frame(&mut context, 16, true);
+    // Removed at 1000, gone at 1200: every frame up to there draws the ghost.
+    for at in (1000..1200).step_by(16).chain([1200]) {
+        let redrawn = frame(&mut context, at, false);
+        assert!(redrawn < area / 4, "{at} ms repainted {redrawn} of {area}");
+    }
+    assert!(!context.animating());
 }
