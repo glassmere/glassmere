@@ -88,7 +88,13 @@ impl Context {
         }
         if !self.ghosts.is_empty() {
             self.pending |= Dirty::PAINT;
-            self.damage_scene();
+            // A ghost is clipped before its layer is transformed, so whatever
+            // it draws, moved or faded, lands inside its clip. That includes
+            // the frame it ends on: it was drawn there last time.
+            let clips: Vec<_> = self.ghosts.iter().map(|ghost| ghost.clip).collect();
+            for clip in clips {
+                self.add_damage(clip);
+            }
         }
     }
 
