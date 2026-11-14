@@ -55,7 +55,7 @@ A click produces the button's message once per activation. A `Response` reports 
 
 Dirty flags aggregate subsystem work at context level. Taffy retains per-node layout caches and marks ancestors dirty when node inputs change. Paint uses shared subtree chunks: invalidation walks ancestors, while clean chunks are reused without regenerating descendants. Each node's own commands are stored once in the chunk tree rather than duplicating flattened scenes at every ancestor. The renderer-facing flat scene still copies all commands when painting changes, and declarations still traverse every widget. Counters distinguish root layout requests, newly painted nodes and reused cache roots.
 
-`Context::damage_regions` reports conservative logical damage from the latest declaration, merged into one enclosing rectangle. Changes include old and new bounds, removed content and interaction decoration. A host doing several declarations before presentation must accumulate damage across them. The desktop host hands the damage to its renderer only for a frame that was declared and did not resize the window; otherwise it passes none, which means the whole surface.
+`Context::damage_regions` reports conservative logical damage from the latest declaration, as at most eight rectangles; changes that overlap or lie within 8 logical pixels of each other share one. Changes include old and new bounds, removed content and interaction decoration. A host doing several declarations before presentation must accumulate damage across them. The desktop host hands the damage to its renderer only for a frame that was declared and did not resize the window; otherwise it passes none, which means the whole surface.
 
 ## Layout and text
 

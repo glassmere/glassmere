@@ -2,6 +2,8 @@
 //! through the `image` crate, SVG through `resvg`, and a background loader so
 //! files never decode on the UI thread.
 use glassmere_scene::{Image, Size, VectorImage};
+use image::{DynamicImage, ImageBuffer};
+use moxcms::{ColorProfile, DataColorSpace, Layout, TransformExecutor, TransformOptions};
 use resvg::{tiny_skia, usvg};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -36,11 +38,131 @@ fn raster(bytes: &[u8]) -> Result<Image, String> {
         .map_err(text)?;
     // Cameras store rotation as metadata instead of rotating the pixels.
     let orientation = decoder.orientation().map_err(text)?;
-    let mut decoded = image::DynamicImage::from_decoder(decoder).map_err(text)?;
+    // A profile that cannot be read counts as none.
+    let profile = decoder.icc_profile().ok().flatten();
+    let mut decoded = DynamicImage::from_decoder(decoder).map_err(text)?;
+    if let Some(converted) = profile.and_then(|icc| to_srgb(&decoded, &icc)) {
+        decoded = converted;
+    }
     decoded.apply_orientation(orientation);
     let rgba = decoded.into_rgba8();
     let (width, height) = rgba.dimensions();
     Image::from_rgba8(width, height, rgba.into_raw()).ok_or_else(|| "empty image".to_owned())
+}
+
+/// Converts pixels decoded in the embedded ICC profile `icc` to sRGB. `None`
+/// keeps them as they are: the profile is unreadable, is neither RGB nor grey
+/// (CMYK files arrive as RGB without it), or already behaves as sRGB.
+fn to_srgb(image: &DynamicImage, icc: &[u8]) -> Option<DynamicImage> {
+    // The profile is untrusted input; a panic in parsing it must not end the
+    // loader thread.
+    std::panic::catch_unwind(|| convert(image, icc))
+        .ok()
+        .flatten()
+}
+
+fn convert(image: &DynamicImage, icc: &[u8]) -> Option<DynamicImage> {
+    let source = ColorProfile::new_from_slice(icc).ok()?;
+    let grey = match source.color_space {
+        DataColorSpace::Rgb => false,
+        DataColorSpace::Gray => true,
+        _ => return None,
+    };
+    if grey && image.color().has_color() {
+        return None;
+    }
+    let srgb = ColorProfile::new_srgb();
+    let options = TransformOptions::default();
+    let layout = if grey {
+        Layout::GrayAlpha
+    } else {
+        Layout::Rgba
+    };
+    let transform = source
+        .create_transform_8bit(layout, &srgb, Layout::Rgba, options)
+        .ok()?;
+    if behaves_as_srgb(&*transform, layout) {
+        return None;
+    }
+    let (width, height) = (image.width(), image.height());
+    let wide = matches!(
+        image,
+        DynamicImage::ImageLuma16(_)
+            | DynamicImage::ImageLumaA16(_)
+            | DynamicImage::ImageRgb16(_)
+            | DynamicImage::ImageRgba16(_)
+    );
+    // Alpha passes through the transform untouched.
+    if wide {
+        // 16-bit files convert before they are reduced to 8 bits.
+        let transform = source
+            .create_transform_16bit(layout, &srgb, Layout::Rgba, options)
+            .ok()?;
+        let samples = if grey {
+            image.to_luma_alpha16().into_raw()
+        } else {
+            image.to_rgba16().into_raw()
+        };
+        let converted = transformed(&*transform, &samples, layout.channels())?;
+        Some(DynamicImage::ImageRgba16(ImageBuffer::from_raw(
+            width, height, converted,
+        )?))
+    } else {
+        let samples = if grey {
+            image.to_luma_alpha8().into_raw()
+        } else {
+            image.to_rgba8().into_raw()
+        };
+        let converted = transformed(&*transform, &samples, layout.channels())?;
+        Some(DynamicImage::ImageRgba8(ImageBuffer::from_raw(
+            width, height, converted,
+        )?))
+    }
+}
+
+/// Runs `samples` with `channels` per pixel through `transform` into RGBA.
+fn transformed<T: Copy + Default>(
+    transform: &dyn TransformExecutor<T>,
+    samples: &[T],
+    channels: usize,
+) -> Option<Vec<T>> {
+    let mut converted = vec![T::default(); samples.len() / channels * 4];
+    transform.transform(samples, &mut converted).ok()?;
+    Some(converted)
+}
+
+/// Whether the transform keeps a spread of colours within one code of where
+/// they were, as every sRGB profile does. Those images skip the conversion
+/// and stay byte for byte as decoded.
+fn behaves_as_srgb(transform: &dyn TransformExecutor<u8>, layout: Layout) -> bool {
+    const LEVELS: [u8; 5] = [0, 64, 128, 192, 255];
+    let grey = layout == Layout::GrayAlpha;
+    let mut colours = Vec::new();
+    if grey {
+        colours.extend(LEVELS.map(|level| [level; 3]));
+    } else {
+        for r in LEVELS {
+            for g in LEVELS {
+                colours.extend(LEVELS.map(|b| [r, g, b]));
+            }
+        }
+    }
+    let mut samples = Vec::new();
+    let mut expected = Vec::new();
+    for [r, g, b] in colours {
+        if grey {
+            samples.extend([r, 255]);
+        } else {
+            samples.extend([r, g, b, 255]);
+        }
+        expected.extend([r, g, b, 255]);
+    }
+    transformed(transform, &samples, layout.channels()).is_some_and(|actual| {
+        actual
+            .iter()
+            .zip(&expected)
+            .all(|(actual, expected)| actual.abs_diff(*expected) <= 1)
+    })
 }
 
 struct Svg(usvg::Tree);

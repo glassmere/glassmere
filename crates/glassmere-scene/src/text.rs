@@ -31,8 +31,8 @@ pub struct TextStyle {
     pub rtl: bool,
     /// The direction the paragraph starts in, whatever its first strong
     /// character is: `Some(true)` for right to left, `Some(false)` for left to
-    /// right, `None` to let the text decide. Editors leave it unset, because
-    /// forcing it shifts the byte offsets a caret is placed by.
+    /// right, `None` to let the text decide. Every line of the text takes it;
+    /// the geometry still indexes the text as it was given.
     pub base: Option<bool>,
 }
 
@@ -397,7 +397,9 @@ impl TextMeasurer for MonospaceMeasurer {
                 .iter()
                 .map(|(_, grapheme)| grapheme.chars().next().and_then(strong_rtl))
                 .collect();
-            let base = strong.iter().flatten().next().copied().unwrap_or(false);
+            let base = style
+                .base
+                .unwrap_or_else(|| strong.iter().flatten().next().copied().unwrap_or(false));
             let mut current = base;
             let directions: Vec<bool> = strong
                 .iter()

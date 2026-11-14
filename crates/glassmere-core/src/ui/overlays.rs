@@ -88,7 +88,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         on_close: Option<&dyn Fn(usize) -> M>,
         content: impl FnOnce(&mut Ui<'_, M>, usize),
     ) {
-        self.tabs_with(selected, tabs, false, on_close, |_, _| {}, content);
+        self.tabs_with(selected, tabs, None, on_close, |_, _| {}, content);
         // The strip's choices reach the tabs group, which `tabs` declared last.
         self.set_handler(crate::app::Handler::Map(Box::new(
             move |update| match update {
@@ -98,14 +98,15 @@ impl<'a, M: 'static> Ui<'a, M> {
         )));
     }
 
-    /// `tabs` with extra strip content after the tabs. `fill` stretches the
-    /// panel over the parent's remaining height, as dock groups need.
+    /// `tabs` with extra strip content after the tabs. A dock group gives the
+    /// id of the panel it shows: the panel then stretches over the parent's
+    /// remaining height, and follows the dock panel when the dock moves it.
     #[track_caller]
     pub(super) fn tabs_with(
         &mut self,
         selected: usize,
         tabs: &[Tab],
-        fill: bool,
+        dock_panel: Option<&str>,
         on_close: Option<&dyn Fn(usize) -> M>,
         strip_extra: impl FnOnce(&mut Ui<'_, M>, usize),
         content: impl FnOnce(&mut Ui<'_, M>, usize),
@@ -117,6 +118,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             (theme.surface, theme.control_hover)
         };
         let count = tabs.len();
+        let fill = dock_panel.is_some();
         let stretch = |style: Style| {
             if fill {
                 style.grow(1.0).shrink(1.0)
@@ -188,11 +190,39 @@ impl<'a, M: 'static> Ui<'a, M> {
                             }
                         }
                         strip_extra(ui, current);
+                        // The strip puts these over its edges while tabs are
+                        // hidden past them, and hides them otherwise.
+                        let rtl = ui.context.direction() == crate::Direction::Rtl;
+                        for (key, end, name) in [
+                            ("$scroll-start", false, "glassmere-tab-scroll-start"),
+                            ("$scroll-end", true, "glassmere-tab-scroll-end"),
+                        ] {
+                            let name = ui.context.tr(name, &[]);
+                            ui.push(Element {
+                                text: if end == rtl { "‹" } else { "›" }.into(),
+                                style: Style {
+                                    width: Length::Px(crate::tree::STRIP_BUTTON),
+                                    height: Length::Percent(1.0),
+                                    padding: 4.0,
+                                    radius: 6.0,
+                                    justify_content: crate::Justify::Center,
+                                    align_items: Align::Center,
+                                    offset: Some((0.0, 0.0)),
+                                    ..Style::button()
+                                },
+                                tooltip: Some(name),
+                                control: Control::StripScroll { end },
+                                ..Element::new(WidgetKey::Named(key.into()), Kind::Button)
+                            });
+                        }
                     },
                 );
                 ui.set_control(Control::TabList);
                 ui.group(
-                    WidgetKey::named("$panel"),
+                    dock_panel.map_or_else(
+                        || WidgetKey::named("$panel"),
+                        |id| WidgetKey::Panel(id.into()),
+                    ),
                     Kind::TabPanel,
                     stretch(
                         Style::default()
@@ -331,7 +361,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         // Dialogs need a plain name; a call-site key has none of its own.
         let name = match self.next_key() {
             WidgetKey::Named(name) => name,
-            WidgetKey::Site(..) => "$palette".to_owned(),
+            WidgetKey::Site(..) | WidgetKey::Panel(_) => "$palette".to_owned(),
         };
         // Nothing is there on the frame the palette appears on.
         let opened = self

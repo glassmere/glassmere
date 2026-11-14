@@ -37,6 +37,7 @@ pub(super) struct RichEditorState {
     width: f32,
     font_size: f32,
     rtl: bool,
+    base: Option<bool>,
     preedit: Option<String>,
     /// Absolute caret rectangle, for the IME and paging.
     caret: Option<Rect>,
@@ -49,6 +50,34 @@ pub(super) struct RichEditorState {
     /// offsets.
     affinity: Affinity,
     pending_affinity: Option<Affinity>,
+    /// Where the moves queued since the last frame lead, so that a visual
+    /// move queued after them starts there and not at the last shaped cursor.
+    pending: Option<RichPosition>,
+}
+
+impl RichEditorState {
+    /// The cursor a visual move starts from, with its affinity: where the
+    /// queued moves lead, or else the one the last frame shaped.
+    fn origin(&self, shaped: RichPosition) -> (RichPosition, Affinity) {
+        match self.pending {
+            Some(position) => (position, self.pending_affinity.unwrap_or_default()),
+            None => (shaped, self.affinity),
+        }
+    }
+}
+
+/// The editor's text style, aligned the way its paragraphs read: a forced
+/// base direction wins over the direction of the window.
+fn editor_style(node: &Node) -> TextStyle {
+    let mut style = node.text_style();
+    style.rtl = style.base.unwrap_or(style.rtl);
+    style
+}
+
+/// Whether a block of `kind` is laid out from the right. Code reads left to
+/// right whatever the UI direction is, unless a direction was forced.
+fn mirrored(base: &TextStyle, kind: BlockKind) -> bool {
+    base.rtl && (kind != BlockKind::Code || base.base.is_some())
 }
 
 fn block_style(base: &TextStyle, kind: BlockKind, font_size: f32) -> TextStyle {
@@ -67,8 +96,7 @@ fn block_style(base: &TextStyle, kind: BlockKind, font_size: f32) -> TextStyle {
         },
         italic: false,
         wrap: TextWrap::Word,
-        // Code reads left to right whatever the UI direction is.
-        rtl: base.rtl && kind != BlockKind::Code,
+        rtl: mirrored(base, kind),
     }
 }
 
@@ -115,6 +143,15 @@ impl Context {
                 // Typed text keeps the caret with the character just entered.
                 RichOp::Insert(_) => Some(Affinity::Upstream),
                 RichOp::SetCursor { .. } => state.pending_affinity,
+                _ => None,
+            };
+            // Any other operation leaves the cursor where only the document knows.
+            state.pending = match op {
+                RichOp::SetCursor {
+                    position,
+                    granularity: RichGranularity::Char,
+                    ..
+                } => Some(position),
                 _ => None,
             };
         }
@@ -209,13 +246,14 @@ impl Context {
             return None;
         };
         let state = node.rich_editor.as_ref()?;
+        let (cursor, from) = state.origin(cursor);
         let layout = state.layouts.get(cursor.block)?;
         if layout.preedit.is_some() || !layout.geometry.clusters.iter().any(|cluster| cluster.rtl) {
             return None;
         }
         let rtl_line = layout
             .geometry
-            .line_at(cursor.offset, state.affinity)
+            .line_at(cursor.offset, from)
             .is_some_and(|line| line.rtl);
         let logical = |forward: bool, word: bool| RichOp::Move {
             motion: match (forward, word) {
@@ -226,10 +264,7 @@ impl Context {
             },
             select,
         };
-        let Some((offset, affinity)) =
-            layout
-                .geometry
-                .visual_step(cursor.offset, state.affinity, right)
+        let Some((offset, affinity)) = layout.geometry.visual_step(cursor.offset, from, right)
         else {
             // Leaving the visual line: its right end is the logical end only when LTR.
             return Some(logical(right != rtl_line, word));
@@ -256,8 +291,9 @@ impl Context {
             return None;
         };
         let state = node.rich_editor.as_ref()?;
+        let (cursor, from) = state.origin(cursor);
         let layout = state.layouts.get(cursor.block)?;
-        let caret = layout.geometry.caret_at(cursor.offset, state.affinity);
+        let caret = layout.geometry.caret_at(cursor.offset, from);
         let x = state.goal_x.unwrap_or(caret.x + layout.left);
         let page = node.content_box().height;
         let in_block = |block: usize, x: f32, y: f32| {
@@ -277,9 +313,7 @@ impl Context {
         // Logical start and end of the visual line; the end keeps an upstream
         // affinity, so the caret stays on this line when the text wraps.
         let edge = |end: bool| {
-            let (offset, affinity) = layout
-                .geometry
-                .line_edge(cursor.offset, state.affinity, end);
+            let (offset, affinity) = layout.geometry.line_edge(cursor.offset, from, end);
             (
                 RichPosition {
                     block: cursor.block,
@@ -311,14 +345,17 @@ impl Context {
                 Affinity::Upstream,
             ),
             Key::PageUp | Key::PageDown => {
-                let caret = state.caret?;
                 let delta = if key == Key::PageUp { -page } else { page };
-                let origin = node.content_box().x;
+                let origin = node.content_box();
+                // The caret's middle on screen, from the cursor: the last
+                // frame's caret rectangle is not where queued moves lead.
+                let middle =
+                    origin.y + layout.y + caret.y + caret.height / 2.0 - node.scroll.offset;
                 self.rich_position(
                     id,
                     Point {
-                        x: origin + x,
-                        y: caret.y + caret.height / 2.0 + delta,
+                        x: origin.x + x,
+                        y: middle + delta,
                     },
                 )?
             }
@@ -542,10 +579,11 @@ impl Context {
         true
     }
 
-    /// Shapes every block at the content width, stacks them, keeps the caret
-    /// in view and publishes the scroll range.
-    // Every block is shaped, not just the visible ones, so documents of
-    // thousands of paragraphs would need per-block virtualization.
+    /// Shapes the blocks that changed at the content width, stacks all of
+    /// them, keeps the caret in view and publishes the scroll range.
+    // The first frame and a change of width shape every block, not just the
+    // visible ones, so documents of thousands of paragraphs would need
+    // per-block virtualization.
     pub(super) fn prepare_rich_editors(&mut self, measurer: &mut impl TextMeasurer) {
         let ids: Vec<_> = self
             .nodes
@@ -553,6 +591,8 @@ impl Context {
             .filter_map(|(id, node)| (node.kind == Kind::RichEditor).then_some(*id))
             .collect();
         for id in ids {
+            // Operations still queued have not reached the document.
+            let queued = self.updates.contains_key(&id);
             let node = self.nodes.get_mut(&id).unwrap();
             let Control::RichEditor {
                 blocks,
@@ -563,29 +603,56 @@ impl Context {
             else {
                 continue;
             };
-            let base = node.text_style();
+            let base = editor_style(node);
             let area = node.content_box();
             let mut state = node.rich_editor.take().unwrap_or_default();
-            let same_frame =
-                state.width == area.width && state.font_size == *font_size && state.rtl == base.rtl;
-            let mut old: Vec<Option<BlockLayout>> = std::mem::take(&mut state.layouts)
-                .into_iter()
-                .map(Some)
-                .collect();
+            if !queued {
+                state.pending = None;
+            }
+            let same_frame = state.width == area.width
+                && state.font_size == *font_size
+                && state.rtl == base.rtl
+                && state.base == base.base;
+            let old = std::mem::take(&mut state.layouts);
             let mut changed = !same_frame || old.len() != blocks.len();
+            // What shapes a block is its kind and spans; the number and the
+            // rules are only painted, and come from the declared view again.
+            let composing = state.preedit.as_ref().map(|_| cursor.block);
+            let fits = |layout: &BlockLayout, index: usize, view: &RichBlockView| {
+                same_frame
+                    && layout.preedit.is_none()
+                    && composing != Some(index)
+                    && layout.view.kind == view.kind
+                    && layout.view.spans == view.spans
+            };
+            // An edit touches one run of blocks, so the layouts before it and
+            // after it carry over even when blocks were inserted or removed.
+            let prefix = old
+                .iter()
+                .zip(blocks)
+                .enumerate()
+                .take_while(|(index, (layout, view))| fits(layout, *index, view))
+                .count();
+            let suffix = (0..old.len().min(blocks.len()) - prefix)
+                .take_while(|back| {
+                    let (was, now) = (old.len() - 1 - back, blocks.len() - 1 - back);
+                    fits(&old[was], now, &blocks[now])
+                })
+                .count();
+            let mut old: Vec<Option<BlockLayout>> = old.into_iter().map(Some).collect();
             let mut y = 0.0;
             for (index, view) in blocks.iter().enumerate() {
                 let preedit = (index == cursor.block)
                     .then_some(state.preedit.as_ref())
                     .flatten();
-                let reused = old.get_mut(index).and_then(|slot| {
-                    slot.take_if(|layout| {
-                        same_frame
-                            && layout.view == *view
-                            && layout.preedit.is_none()
-                            && preedit.is_none()
-                    })
-                });
+                let carried = if index < prefix {
+                    Some(index)
+                } else if index >= blocks.len() - suffix {
+                    Some(old.len() - (blocks.len() - index))
+                } else {
+                    None
+                };
+                let reused = carried.and_then(|was| old[was].take());
                 let indent = RichBlockView::indent(view.kind);
                 let mut layout = reused.unwrap_or_else(|| {
                     changed = true;
@@ -613,12 +680,12 @@ impl Context {
                         left: 0.0,
                     }
                 });
-                layout.left = if base.rtl && view.kind != BlockKind::Code {
+                layout.left = if mirrored(&base, view.kind) {
                     0.0
                 } else {
                     indent
                 };
-                // Reused layouts compare against the declared view again next frame.
+                // A reused layout takes the number and rules declared now.
                 if layout.preedit.is_none() {
                     layout.view = view.clone();
                 }
@@ -633,6 +700,7 @@ impl Context {
             state.width = area.width;
             state.font_size = *font_size;
             state.rtl = base.rtl;
+            state.base = base.base;
             let maximum = (y - area.height).max(0.0);
             changed |= node.scroll.maximum != maximum;
             node.scroll.maximum = maximum;
@@ -686,7 +754,7 @@ impl Context {
         let theme = &self.theme;
         let focused = self.focused == Some(id);
         let area = node.content_box();
-        let base = node.text_style();
+        let base = editor_style(node);
         let (start, end) = (*anchor.min(cursor), *anchor.max(cursor));
         scene.primitives.push(Primitive::PushClip(area));
         for (index, layout) in state.layouts.iter().enumerate() {

@@ -1,6 +1,7 @@
 //! GPU homes for scene images: small ones share atlas pages, large ones get a
 //! texture of their own. Entries are keyed by image id, plus the raster size
-//! for vector images, and uploaded once.
+//! for vector images and for photos drawn at under half their size, and
+//! uploaded once.
 use glassmere_scene::{Image, Rect};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
@@ -188,14 +189,26 @@ impl ImageCache {
     }
 
     /// Pixels a vector image is rasterized at so that `source` fills `rect` on a
-    /// surface of this scale. Raster images ignore it.
+    /// surface of this scale. A photo drawn at under half its size is filtered
+    /// down to the smallest halving that still covers them, so that linear
+    /// sampling never shrinks it by more than two; any other photo is `[0; 2]`
+    /// and keeps its own pixels.
     pub fn raster_size(&self, image: &Image, rect: Rect, source: Rect, scale: f32) -> [u32; 2] {
-        if !image.is_vector() {
-            return [0; 2];
-        }
         let natural = image.size();
+        let drawn = |natural: f32, rect: f32, source: f32| natural * rect / source.abs() * scale;
+        if let Some((width, height, _)) = image.pixels() {
+            let halved = [
+                halved_side(width, drawn(natural.width, rect.width, source.width)),
+                halved_side(height, drawn(natural.height, rect.height, source.height)),
+            ];
+            return if halved == [width, height] {
+                [0; 2]
+            } else {
+                halved
+            };
+        }
         let side = |natural: f32, rect: f32, source: f32| {
-            let pixels = (natural * rect / source.abs() * scale).ceil();
+            let pixels = drawn(natural, rect, source).ceil();
             if pixels.is_finite() {
                 (pixels.min(self.max_side as f32) as u32).max(1)
             } else {
@@ -222,7 +235,7 @@ impl ImageCache {
             self.textures.get_mut(&placement.texture)?.used = self.preparation;
             return Some(*placement);
         }
-        let (mut width, mut height, mut pixels) = match image.vector() {
+        let (mut width, mut height, pixels) = match image.vector() {
             // Rasterized on the render thread; a large SVG animating its
             // size stalls frames. Rasterize off-thread and draw the stale size
             // meanwhile if that shows up.
@@ -238,11 +251,22 @@ impl ImageCache {
         if pixels.len() != width as usize * height as usize * 4 {
             return None;
         }
-        // Photos beyond the device's texture limit are halved until they fit.
-        while width.max(height) > self.max_side {
-            (width, height, pixels) = halved(width, height, &pixels);
+        // Converted first: filtering below is done in linear light.
+        let mut pixels = linear_premultiplied(pixels);
+        // A photo drawn small comes down to the size `raster_size` chose; one
+        // beyond the device's texture limit is halved until it fits.
+        let target = if raster == [0; 2] {
+            [width, height]
+        } else {
+            raster
+        };
+        while width > target[0] || height > target[1] {
+            let axes = [width > target[0], height > target[1]];
+            (width, height, pixels) = halved(width, height, &pixels, axes);
         }
-        let pixels = linear_premultiplied(pixels);
+        while width.max(height) > self.max_side {
+            (width, height, pixels) = halved(width, height, &pixels, [true; 2]);
+        }
         let placement = if width.max(height) <= ATLAS_MAX_SIDE {
             self.place_in_atlas(device, queue, width, height, &pixels)
         } else {
@@ -390,23 +414,64 @@ impl ImageCache {
     }
 }
 
-/// A 2×2 box filter; odd trailing rows and columns repeat their last texel.
-fn halved(width: u32, height: u32, pixels: &[u8]) -> (u32, u32, Cow<'static, [u8]>) {
-    let (w, h) = (width.div_ceil(2), height.div_ceil(2));
+/// `side` halved, rounding up, for as long as the result still covers `drawn`
+/// pixels: what is left is under twice what is drawn.
+fn halved_side(mut side: u32, drawn: f32) -> u32 {
+    while side > 1 && side.div_ceil(2) as f32 >= drawn {
+        side = side.div_ceil(2);
+    }
+    side
+}
+
+/// A box filter that halves the flagged axes, in linear light: a texel's
+/// colour is sRGB-encoded and its alpha is not. Odd trailing rows and columns
+/// repeat their last texel.
+fn halved(
+    width: u32,
+    height: u32,
+    pixels: &[u8],
+    axes: [bool; 2],
+) -> (u32, u32, Cow<'static, [u8]>) {
+    let (across, down) = (1 + u32::from(axes[0]), 1 + u32::from(axes[1]));
+    let (w, h) = (width.div_ceil(across), height.div_ceil(down));
+    // Linear light in 12 bits, as the CPU renderer holds it.
+    let decode: [u16; 256] = std::array::from_fn(|byte| {
+        (glassmere_scene::Color(byte as u8, 0, 0, 255).linear()[0] * 4095.0).round() as u16
+    });
+    let encode: [u8; 4096] = std::array::from_fn(|light| {
+        let light = light as f32 / 4095.0;
+        let encoded = if light <= 0.003_130_8 {
+            light * 12.92
+        } else {
+            1.055 * light.powf(1.0 / 2.4) - 0.055
+        };
+        (encoded * 255.0).round() as u8
+    });
+    let taps = across * down;
+    let mean = |total: u32| ((total + taps / 2) / taps) as usize;
     let mut out = Vec::with_capacity(w as usize * h as usize * 4);
     for y in 0..h {
         for x in 0..w {
-            for channel in 0..4 {
-                let at = |x: u32, y: u32| {
-                    let (x, y) = (x.min(width - 1) as usize, y.min(height - 1) as usize);
-                    u32::from(pixels[(y * width as usize + x) * 4 + channel])
-                };
-                let sum = at(2 * x, 2 * y)
-                    + at(2 * x + 1, 2 * y)
-                    + at(2 * x, 2 * y + 1)
-                    + at(2 * x + 1, 2 * y + 1);
-                out.push(((sum + 2) / 4) as u8);
+            let mut sum = [0u32; 4];
+            for (dx, dy) in (0..across).flat_map(|dx| (0..down).map(move |dy| (dx, dy))) {
+                let (x, y) = (
+                    (across * x + dx).min(width - 1),
+                    (down * y + dy).min(height - 1),
+                );
+                let at = (y as usize * width as usize + x as usize) * 4;
+                let texel = &pixels[at..at + 4];
+                let light = [
+                    decode[usize::from(texel[0])],
+                    decode[usize::from(texel[1])],
+                    decode[usize::from(texel[2])],
+                    u16::from(texel[3]),
+                ];
+                for (total, value) in sum.iter_mut().zip(light) {
+                    *total += u32::from(value);
+                }
             }
+            out.extend(sum[..3].iter().map(|total| encode[mean(*total)]));
+            out.push(mean(sum[3]) as u8);
         }
     }
     (w, h, Cow::Owned(out))
@@ -484,10 +549,35 @@ mod tests {
     }
 
     #[test]
-    fn halving_averages_blocks_and_keeps_odd_edges() {
-        let (w, h, out) = halved(3, 1, &[0, 0, 0, 255, 100, 0, 0, 255, 50, 0, 0, 255]);
+    fn halving_averages_blocks_in_linear_light_and_keeps_odd_edges() {
+        let black = [0, 0, 0, 255];
+        let white = [255; 4];
+        let both = [black, white, white].concat();
+        let (w, h, out) = halved(3, 1, &both, [true; 2]);
         assert_eq!((w, h), (2, 1));
-        assert_eq!(out[0], 50);
-        assert_eq!(out[4], 50);
+        // Half of the light of black and white is sRGB 188, not 128.
+        assert!(out[0].abs_diff(188) <= 1, "{}", out[0]);
+        assert_eq!(out[3], 255);
+        assert_eq!(out[4..], white);
+        // One axis at a time.
+        let (w, h, out) = halved(2, 2, &[black, white, white, black].concat(), [true, false]);
+        assert_eq!((w, h), (1, 2));
+        assert!(out[0].abs_diff(188) <= 1 && out[4].abs_diff(188) <= 1);
+        // Alpha is averaged as it is.
+        let (_, _, out) = halved(2, 1, &[0, 0, 0, 0, 255, 255, 255, 255], [true, false]);
+        assert!(out[3].abs_diff(128) <= 1);
+    }
+
+    #[test]
+    fn a_side_is_halved_while_it_still_covers_what_is_drawn() {
+        assert_eq!(halved_side(512, 64.0), 64);
+        assert_eq!(halved_side(512, 65.0), 128);
+        // Never below what is drawn, and untouched drawn at or near its size.
+        assert_eq!(halved_side(512, 300.0), 512);
+        assert_eq!(halved_side(512, 512.0), 512);
+        assert_eq!(halved_side(512, 4000.0), 512);
+        assert_eq!(halved_side(1000, 100.0), 125);
+        assert_eq!(halved_side(1000, 0.0), 1);
+        assert_eq!(halved_side(512, f32::NAN), 512);
     }
 }

@@ -8,14 +8,23 @@ impl Context {
     pub fn snapshots(&self) -> Vec<NodeSnapshot> {
         let mut order = Vec::with_capacity(self.nodes.len());
         self.order(self.root, &mut order);
-        order.into_iter().filter_map(|id| self.node(id)).collect()
+        order
+            .into_iter()
+            .filter(|id| !self.nodes[id].parked())
+            .filter_map(|id| self.node(id))
+            .collect()
     }
 
     pub fn node(&self, id: NodeId) -> Option<NodeSnapshot> {
         self.nodes.get(&id).map(|node| NodeSnapshot {
             id,
             parent: node.parent,
-            children: node.children.clone(),
+            children: node
+                .children
+                .iter()
+                .copied()
+                .filter(|child| !self.nodes[child].parked())
+                .collect(),
             bounds: node.bounds,
             semantics: {
                 let mut semantics = node.semantics();

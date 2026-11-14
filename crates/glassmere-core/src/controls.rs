@@ -270,6 +270,13 @@ pub(crate) enum Control {
         selected: usize,
     },
     TabList,
+    /// A button over the start or the end edge of a tab strip that scrolls
+    /// it by a tab. It shows only while tabs are hidden on its side, takes
+    /// presses without taking the keyboard, and scrolls toward the end when
+    /// `end`.
+    StripScroll {
+        end: bool,
+    },
     Tab {
         index: usize,
         selected: bool,
@@ -317,6 +324,9 @@ pub(crate) enum Control {
         lines: Vec<crate::text_area::AreaLine>,
         first_line: usize,
         total_lines: usize,
+        /// The line of the whole document with the most columns, which sets
+        /// the horizontal range wherever the view is scrolled to.
+        widest: String,
         selections: Vec<crate::text_area::AreaSelection>,
         selection_count: usize,
         primary: (usize, usize),

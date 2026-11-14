@@ -6,7 +6,7 @@ use glassmere_core::{
     MonospaceMeasurer, RichDocument, RichEditorOptions, RichOp, RichPosition, Role, Style,
     TextEdit, TextMove, Ui,
 };
-use glassmere_scene::{Point, Primitive, Size};
+use glassmere_scene::{Point, Primitive, Size, TextGeometry, TextMeasurer, TextSpan, TextStyle};
 use std::time::Duration;
 use support::{Driven, click, labelled, on};
 
@@ -193,7 +193,7 @@ fn vertical_and_line_keys_follow_the_wrapped_lines_with_a_sticky_column() {
     // The sticky column returns once the line is long enough again.
     assert_eq!(app.state().document.cursor(), at(2, 20));
     assert_eq!(app.state().document.anchor(), at(1, 5));
-    // Visual moves resolve against the last shaped frame, one step per declaration.
+    // With a frame between them, each press starts from the cursor it shaped.
     key(&mut app.context, Key::ArrowUp, false);
     app.frame();
     key(&mut app.context, Key::ArrowUp, false);
@@ -440,4 +440,175 @@ fn a_drag_held_below_the_editor_scrolls_it_by_the_clock_and_extends_the_selectio
     let stopped = first(&app);
     tick(&mut app, 3000);
     assert_eq!(first(&app), stopped);
+}
+
+#[test]
+fn visual_moves_queued_before_a_frame_start_where_the_one_before_them_leads() {
+    let long = "x".repeat(COLUMNS * 3 + 10);
+    let mut app = started(RichDocument::from_blocks(vec![
+        Block::new(BlockKind::Paragraph, &long),
+        Block::new(BlockKind::Paragraph, "short"),
+        Block::new(BlockKind::Paragraph, &long),
+    ]));
+    click(&mut app.context, cell(0, 0));
+    app.frame();
+    app.state_mut().document.set_cursor(at(0, 5), false);
+    app.frame();
+    // Two presses between frames are two visual lines.
+    key(&mut app.context, Key::ArrowDown, false);
+    key(&mut app.context, Key::ArrowDown, false);
+    app.frame();
+    assert_eq!(app.state().document.cursor(), at(0, COLUMNS * 2 + 5));
+    // A line key goes to the end of the line the press before it reached.
+    key(&mut app.context, Key::ArrowDown, false);
+    key(&mut app.context, Key::End, false);
+    app.frame();
+    assert_eq!(app.state().document.cursor(), at(0, COLUMNS * 3 + 10));
+    // Across blocks and back, in the column the first press took.
+    key(&mut app.context, Key::ArrowDown, false);
+    key(&mut app.context, Key::ArrowDown, true);
+    app.frame();
+    assert_eq!(app.state().document.cursor(), at(2, 5));
+    assert_eq!(app.state().document.anchor(), at(1, 5));
+    key(&mut app.context, Key::ArrowUp, false);
+    key(&mut app.context, Key::ArrowUp, false);
+    key(&mut app.context, Key::ArrowUp, false);
+    app.frame();
+    assert_eq!(app.state().document.cursor(), at(0, COLUMNS * 2 + 5));
+}
+
+#[test]
+fn page_keys_queued_before_a_frame_page_twice() {
+    let blocks: Vec<Block> = (0..40)
+        .map(|n| Block::new(BlockKind::Paragraph, &format!("paragraph {n}")))
+        .collect();
+    let cursor = |frames_between: bool| {
+        let mut app = started(RichDocument::from_blocks(blocks.clone()));
+        click(&mut app.context, cell(0, 0));
+        app.frame();
+        for _ in 0..2 {
+            key(&mut app.context, Key::PageDown, false);
+            if frames_between {
+                app.frame();
+            }
+        }
+        app.frame();
+        app.frame();
+        app.state().document.cursor()
+    };
+    let stepped = cursor(true);
+    assert!(stepped.block > 12, "{stepped:?}");
+    assert_eq!(cursor(false), stepped);
+}
+
+/// The monospace measurer, counting the rich blocks it shapes.
+struct Counting(usize);
+
+impl TextMeasurer for Counting {
+    fn measure_styled(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> Size {
+        MonospaceMeasurer.measure_styled(text, style, width)
+    }
+
+    fn geometry(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> TextGeometry {
+        MonospaceMeasurer.geometry(text, style, width)
+    }
+
+    fn geometry_rich(
+        &mut self,
+        spans: &[TextSpan],
+        style: &TextStyle,
+        width: Option<f32>,
+    ) -> TextGeometry {
+        self.0 += 1;
+        MonospaceMeasurer.geometry_rich(spans, style, width)
+    }
+}
+
+/// Declares once more after a change made outside `update`, and returns how
+/// many blocks were shaped for it.
+fn shaped(
+    driver: &mut AppDriver<RichOp>,
+    notes: &mut Notes,
+    context: &mut Context,
+    measurer: &mut Counting,
+) -> usize {
+    measurer.0 = 0;
+    driver.invalidate();
+    driver.frame(notes, context, ROOT, measurer);
+    measurer.0
+}
+
+#[test]
+fn an_edit_reshapes_only_the_blocks_it_changed() {
+    let blocks = (0..200)
+        .map(|n| Block::new(BlockKind::Paragraph, &format!("paragraph {n}")))
+        .collect();
+    let mut notes = Notes {
+        document: RichDocument::from_blocks(blocks),
+        read_only: false,
+    };
+    let mut driver = AppDriver::new(|| true);
+    let mut context = Context::new();
+    let mut measurer = Counting(0);
+    let mut shaped = |notes: &mut Notes| shaped(&mut driver, notes, &mut context, &mut measurer);
+    assert_eq!(shaped(&mut notes), 200);
+    assert_eq!(shaped(&mut notes), 0);
+
+    // Moving the cursor shapes nothing; typing reshapes the one block.
+    notes.document.set_cursor(at(100, 3), false);
+    assert_eq!(shaped(&mut notes), 0);
+    notes.document.apply(RichOp::Insert("x".into()));
+    assert_eq!(shaped(&mut notes), 1);
+
+    // Enter splits it: two new blocks, and the 99 after it move down.
+    notes.document.apply(RichOp::Newline);
+    assert_eq!(notes.document.blocks().len(), 201);
+    assert!(shaped(&mut notes) <= 2);
+    // Backspace at the start of the second half joins them again.
+    notes.document.apply(RichOp::Backspace { word: false });
+    assert_eq!(notes.document.blocks().len(), 200);
+    assert!(shaped(&mut notes) <= 1);
+
+    // An empty paragraph is shaped once, and removing it reshapes nothing.
+    notes.document.set_cursor(at(150, 13), false);
+    notes.document.apply(RichOp::Newline);
+    assert_eq!(shaped(&mut notes), 1);
+    notes.document.apply(RichOp::Backspace { word: false });
+    assert_eq!(notes.document.blocks().len(), 200);
+    assert_eq!(shaped(&mut notes), 0);
+
+    // What the reused blocks show is what a fresh declaration shows.
+    let last = notes.document.blocks().len() - 1;
+    notes.document.set_cursor(at(last, 13), false);
+    shaped(&mut notes);
+    let mut fresh = Notes {
+        document: notes.document.clone(),
+        read_only: false,
+    };
+    let mut other = Context::new();
+    AppDriver::new(|| true).frame(&mut fresh, &mut other, ROOT, &mut MonospaceMeasurer);
+    assert_eq!(context.scene().primitives, other.scene().primitives);
+}
+
+#[test]
+fn renumbering_a_list_does_not_reshape_its_items() {
+    let items = (0..50)
+        .map(|n| Block::new(BlockKind::Numbered, &format!("item {n}")))
+        .collect();
+    let mut notes = Notes {
+        document: RichDocument::from_blocks(items),
+        read_only: false,
+    };
+    let mut driver = AppDriver::new(|| true);
+    let mut context = Context::new();
+    let mut measurer = Counting(0);
+    assert_eq!(
+        shaped(&mut driver, &mut notes, &mut context, &mut measurer),
+        50
+    );
+    // A new item in the middle renumbers every item after it.
+    notes.document.set_cursor(at(20, 4), false);
+    notes.document.apply(RichOp::Newline);
+    assert_eq!(notes.document.blocks().len(), 51);
+    assert!(shaped(&mut driver, &mut notes, &mut context, &mut measurer) <= 2);
 }

@@ -2,6 +2,13 @@
 
 use super::*;
 
+/// A frame names no more rectangles than this, so that a renderer does not
+/// draw an unbounded number of scissored passes.
+const DAMAGE_REGIONS: usize = 8;
+/// Rectangles this close, in logical pixels, are one: a second pass over a
+/// thin gap costs more than painting the gap.
+const DAMAGE_GAP: f32 = 8.0;
+
 impl Context {
     pub(super) fn refresh_bounds(&mut self, size: Size) {
         self.update_bounds(
@@ -28,7 +35,10 @@ impl Context {
         let (content_left, content_right, content_bottom) = node
             .children
             .iter()
-            .filter(|child| !matches!(self.nodes[child].kind, Kind::Popup | Kind::Popover))
+            .filter(|child| {
+                !matches!(self.nodes[child].kind, Kind::Popup | Kind::Popover)
+                    && !matches!(self.nodes[child].control, Control::StripScroll { .. })
+            })
             .map(|child| *self.layout.layout(self.nodes[child].layout_id).unwrap())
             .fold(
                 (0.0_f32, 0.0_f32, 0.0_f32),
@@ -147,6 +157,8 @@ impl Context {
         // A tab strip that scrolls keeps its panel menu at the end edge, and
         // the tabs stop where the menu starts.
         let bounds = node.bounds;
+        let (offset_x, maximum_x) = (node.scroll.offset_x, node.scroll.maximum_x);
+        let strip = node.kind == Kind::TabList;
         let pinned = (node.kind == Kind::TabList && node.scroll.maximum_x > 0.0)
             .then(|| {
                 node.children_by_key
@@ -158,6 +170,26 @@ impl Context {
                 let layout = self.layout.layout(self.nodes[&menu].layout_id).unwrap();
                 (menu, layout.location.x, layout.size.width)
             });
+        // What a scrolling strip shows of its tabs: its box, less the menu and
+        // less the button over each side with tabs hidden past it, so nothing
+        // of a tab is drawn under a button.
+        let tabs = (strip && maximum_x > 0.0).then(|| {
+            let menu = pinned.map_or(0.0, |(_, _, width)| width);
+            let (start, end) = (offset_x >= 0.5, maximum_x - offset_x >= 0.5);
+            // The start side is on the right in a right-to-left strip.
+            let (left_button, right_button) = if rtl { (end, start) } else { (start, end) };
+            let left = bounds.x
+                + if rtl { menu } else { 0.0 }
+                + if left_button { STRIP_BUTTON } else { 0.0 };
+            let right = bounds.x + bounds.width
+                - if rtl { 0.0 } else { menu }
+                - if right_button { STRIP_BUTTON } else { 0.0 };
+            Rect {
+                x: left,
+                width: (right - left).max(0.0),
+                ..bounds
+            }
+        });
         let node = self.nodes.get_mut(&id).unwrap();
         if old_bounds != node.bounds {
             self.diagnostic.bounds_changed = true;
@@ -168,8 +200,46 @@ impl Context {
         }
         self.note_layout_change(id, old_layout_rect, layout_rect);
         for child in children {
-            match pinned {
-                Some((menu, x, width)) if menu == child => {
+            // The scroll buttons sit over the edges of the part that shows
+            // tabs, and only on a side with tabs hidden past it.
+            if let Control::StripScroll { end } = self.nodes[&child].control {
+                let hidden = if end { maximum_x - offset_x } else { offset_x };
+                let menu = pinned.map_or(0.0, |(_, _, width)| width);
+                let (left, right) = if rtl {
+                    (bounds.x + menu, bounds.x + bounds.width)
+                } else {
+                    (bounds.x, bounds.x + bounds.width - menu)
+                };
+                // The start side is on the right in a right-to-left strip.
+                let x = if end == rtl {
+                    left
+                } else {
+                    right - STRIP_BUTTON
+                };
+                let layout_x = self
+                    .layout
+                    .layout(self.nodes[&child].layout_id)
+                    .unwrap()
+                    .location
+                    .x;
+                let origin = Point {
+                    x: x - layout_x,
+                    y: origin.y,
+                };
+                let shown = if hidden >= 0.5 {
+                    clip
+                } else {
+                    Rect {
+                        width: 0.0,
+                        height: 0.0,
+                        ..bounds
+                    }
+                };
+                self.update_bounds(child, origin, shown);
+                continue;
+            }
+            match (pinned, tabs) {
+                (Some((menu, x, width)), _) if menu == child => {
                     let edge = if rtl {
                         bounds.x
                     } else {
@@ -181,15 +251,8 @@ impl Context {
                     };
                     self.update_bounds(child, origin, clip);
                 }
-                Some((_, _, width)) => {
-                    let tabs = Rect {
-                        x: if rtl { bounds.x + width } else { bounds.x },
-                        width: (bounds.width - width).max(0.0),
-                        ..bounds
-                    };
-                    self.update_bounds(child, origin, clip.intersect(tabs));
-                }
-                None => self.update_bounds(child, origin, clip),
+                (_, Some(tabs)) => self.update_bounds(child, origin, clip.intersect(tabs)),
+                _ => self.update_bounds(child, origin, clip),
             }
         }
     }
@@ -201,9 +264,35 @@ impl Context {
         self.painted_overlays.push(rect);
     }
 
-    pub(super) fn add_damage(&mut self, rect: Rect) {
-        if rect.width > 0.0 && rect.height > 0.0 {
-            self.pending_damage = Some(self.pending_damage.map_or(rect, |old| old.union(rect)));
+    /// Records `rect` as changed. Rectangles that overlap or nearly touch
+    /// become one, and no more than `DAMAGE_REGIONS` are kept: past that the
+    /// pair that costs the least extra area is joined.
+    pub(super) fn add_damage(&mut self, mut rect: Rect) {
+        if !(rect.width > 0.0 && rect.height > 0.0) {
+            return;
+        }
+        let regions = &mut self.pending_damage;
+        let near = |a: Rect, b: Rect| {
+            a.x - DAMAGE_GAP <= b.x + b.width
+                && b.x - DAMAGE_GAP <= a.x + a.width
+                && a.y - DAMAGE_GAP <= b.y + b.height
+                && b.y - DAMAGE_GAP <= a.y + a.height
+        };
+        while let Some(at) = regions.iter().position(|region| near(*region, rect)) {
+            rect = rect.union(regions.swap_remove(at));
+        }
+        regions.push(rect);
+        let area = |rect: Rect| rect.width * rect.height;
+        while regions.len() > DAMAGE_REGIONS {
+            let waste = |a: usize, b: usize| {
+                area(regions[a].union(regions[b])) - area(regions[a]) - area(regions[b])
+            };
+            let (a, b) = (0..regions.len())
+                .flat_map(|a| (a + 1..regions.len()).map(move |b| (a, b)))
+                .min_by(|x, y| waste(x.0, x.1).total_cmp(&waste(y.0, y.1)))
+                .unwrap();
+            let joined = regions[a].union(regions.swap_remove(b));
+            regions[a] = joined;
         }
     }
 
@@ -400,6 +489,7 @@ impl Context {
             .collect::<Vec<_>>();
         let before = std::mem::take(&mut scene.primitives);
         self.paint_scrollbars(id, &mut scene);
+        self.paint_strip_edges(id, &mut scene);
         scene.primitives.push(Primitive::PopClip);
         if layer.is_some() {
             scene.primitives.push(Primitive::PopLayer);
@@ -643,6 +733,56 @@ impl Context {
                 rect: bar.thumb,
                 color: self.theme.scrollbar,
                 radius: width / 2.0,
+            });
+        }
+    }
+
+    /// A shade over each edge of a tab strip that has tabs hidden past it,
+    /// beside the button that scrolls there.
+    fn paint_strip_edges(&self, id: NodeId, scene: &mut Scene) {
+        let node = &self.nodes[&id];
+        if node.kind != Kind::TabList {
+            return;
+        }
+        let (left, right) = self.strip_area(id);
+        let rtl = node.resolved.rtl();
+        let shade = self.theme.scrim;
+        let scroll = node.scroll;
+        // The start side is on the right in a right-to-left strip.
+        for (hidden, at_left) in [
+            (scroll.offset_x, !rtl),
+            (scroll.maximum_x - scroll.offset_x, rtl),
+        ] {
+            if hidden < 0.5 {
+                continue;
+            }
+            let (x, from, to) = if at_left {
+                (left + STRIP_BUTTON, shade, Color::TRANSPARENT)
+            } else {
+                (
+                    right - STRIP_BUTTON - STRIP_SHADE,
+                    Color::TRANSPARENT,
+                    shade,
+                )
+            };
+            scene.primitives.push(Primitive::Gradient {
+                rect: Rect {
+                    x,
+                    y: node.bounds.y,
+                    width: STRIP_SHADE,
+                    height: node.bounds.height,
+                },
+                radius: 0.0,
+                from: Point { x: 0.0, y: 0.0 },
+                to: Point { x: 1.0, y: 0.0 },
+                stops: vec![
+                    glassmere_scene::GradientStop {
+                        at: 0.0,
+                        color: from,
+                    },
+                    glassmere_scene::GradientStop { at: 1.0, color: to },
+                ],
+                radial: false,
             });
         }
     }
