@@ -37,6 +37,7 @@ pub(super) struct RichEditorState {
     width: f32,
     font_size: f32,
     rtl: bool,
+    base: Option<bool>,
     preedit: Option<String>,
     /// Absolute caret rectangle, for the IME and paging.
     caret: Option<Rect>,
@@ -49,6 +50,20 @@ pub(super) struct RichEditorState {
     /// offsets.
     affinity: Affinity,
     pending_affinity: Option<Affinity>,
+}
+
+/// The editor's text style, aligned the way its paragraphs read: a forced
+/// base direction wins over the direction of the window.
+fn editor_style(node: &Node) -> TextStyle {
+    let mut style = node.text_style();
+    style.rtl = style.base.unwrap_or(style.rtl);
+    style
+}
+
+/// Whether a block of `kind` is laid out from the right. Code reads left to
+/// right whatever the UI direction is, unless a direction was forced.
+fn mirrored(base: &TextStyle, kind: BlockKind) -> bool {
+    base.rtl && (kind != BlockKind::Code || base.base.is_some())
 }
 
 fn block_style(base: &TextStyle, kind: BlockKind, font_size: f32) -> TextStyle {
@@ -67,8 +82,7 @@ fn block_style(base: &TextStyle, kind: BlockKind, font_size: f32) -> TextStyle {
         },
         italic: false,
         wrap: TextWrap::Word,
-        // Code reads left to right whatever the UI direction is.
-        rtl: base.rtl && kind != BlockKind::Code,
+        rtl: mirrored(base, kind),
     }
 }
 
@@ -542,10 +556,11 @@ impl Context {
         true
     }
 
-    /// Shapes every block at the content width, stacks them, keeps the caret
-    /// in view and publishes the scroll range.
-    // Every block is shaped, not just the visible ones, so documents of
-    // thousands of paragraphs would need per-block virtualization.
+    /// Shapes the blocks that changed at the content width, stacks all of
+    /// them, keeps the caret in view and publishes the scroll range.
+    // The first frame and a change of width shape every block, not just the
+    // visible ones, so documents of thousands of paragraphs would need
+    // per-block virtualization.
     pub(super) fn prepare_rich_editors(&mut self, measurer: &mut impl TextMeasurer) {
         let ids: Vec<_> = self
             .nodes
@@ -563,29 +578,53 @@ impl Context {
             else {
                 continue;
             };
-            let base = node.text_style();
+            let base = editor_style(node);
             let area = node.content_box();
             let mut state = node.rich_editor.take().unwrap_or_default();
-            let same_frame =
-                state.width == area.width && state.font_size == *font_size && state.rtl == base.rtl;
-            let mut old: Vec<Option<BlockLayout>> = std::mem::take(&mut state.layouts)
-                .into_iter()
-                .map(Some)
-                .collect();
+            let same_frame = state.width == area.width
+                && state.font_size == *font_size
+                && state.rtl == base.rtl
+                && state.base == base.base;
+            let old = std::mem::take(&mut state.layouts);
             let mut changed = !same_frame || old.len() != blocks.len();
+            // What shapes a block is its kind and spans; the number and the
+            // rules are only painted, and come from the declared view again.
+            let composing = state.preedit.as_ref().map(|_| cursor.block);
+            let fits = |layout: &BlockLayout, index: usize, view: &RichBlockView| {
+                same_frame
+                    && layout.preedit.is_none()
+                    && composing != Some(index)
+                    && layout.view.kind == view.kind
+                    && layout.view.spans == view.spans
+            };
+            // An edit touches one run of blocks, so the layouts before it and
+            // after it carry over even when blocks were inserted or removed.
+            let prefix = old
+                .iter()
+                .zip(blocks)
+                .enumerate()
+                .take_while(|(index, (layout, view))| fits(layout, *index, view))
+                .count();
+            let suffix = (0..old.len().min(blocks.len()) - prefix)
+                .take_while(|back| {
+                    let (was, now) = (old.len() - 1 - back, blocks.len() - 1 - back);
+                    fits(&old[was], now, &blocks[now])
+                })
+                .count();
+            let mut old: Vec<Option<BlockLayout>> = old.into_iter().map(Some).collect();
             let mut y = 0.0;
             for (index, view) in blocks.iter().enumerate() {
                 let preedit = (index == cursor.block)
                     .then_some(state.preedit.as_ref())
                     .flatten();
-                let reused = old.get_mut(index).and_then(|slot| {
-                    slot.take_if(|layout| {
-                        same_frame
-                            && layout.view == *view
-                            && layout.preedit.is_none()
-                            && preedit.is_none()
-                    })
-                });
+                let carried = if index < prefix {
+                    Some(index)
+                } else if index >= blocks.len() - suffix {
+                    Some(old.len() - (blocks.len() - index))
+                } else {
+                    None
+                };
+                let reused = carried.and_then(|was| old[was].take());
                 let indent = RichBlockView::indent(view.kind);
                 let mut layout = reused.unwrap_or_else(|| {
                     changed = true;
@@ -613,12 +652,12 @@ impl Context {
                         left: 0.0,
                     }
                 });
-                layout.left = if base.rtl && view.kind != BlockKind::Code {
+                layout.left = if mirrored(&base, view.kind) {
                     0.0
                 } else {
                     indent
                 };
-                // Reused layouts compare against the declared view again next frame.
+                // A reused layout takes the number and rules declared now.
                 if layout.preedit.is_none() {
                     layout.view = view.clone();
                 }
@@ -633,6 +672,7 @@ impl Context {
             state.width = area.width;
             state.font_size = *font_size;
             state.rtl = base.rtl;
+            state.base = base.base;
             let maximum = (y - area.height).max(0.0);
             changed |= node.scroll.maximum != maximum;
             node.scroll.maximum = maximum;
@@ -686,7 +726,7 @@ impl Context {
         let theme = &self.theme;
         let focused = self.focused == Some(id);
         let area = node.content_box();
-        let base = node.text_style();
+        let base = editor_style(node);
         let (start, end) = (*anchor.min(cursor), *anchor.max(cursor));
         scene.primitives.push(Primitive::PushClip(area));
         for (index, layout) in state.layouts.iter().enumerate() {

@@ -1,7 +1,9 @@
 //! Fonts, shaping and measuring, shared by every renderer so that layout and
 //! pixels agree whichever one draws. Built on cosmic-text.
 pub use cosmic_text;
-use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Wrap};
+use cosmic_text::{
+    Attrs, Buffer, Family, FontSystem, LineEnding, LineIter, Metrics, Shaping, Wrap,
+};
 use glassmere_scene::{
     CaretStop, FontFamily, Rect, Size, TextCluster, TextGeometry, TextLine, TextMeasurer, TextSpan,
     TextStyle, TextWrap,
@@ -19,6 +21,7 @@ pub struct TextKey {
     italic: bool,
     wrap: TextWrap,
     rtl: bool,
+    base: Option<bool>,
     width: Option<u32>,
     /// Byte length and overrides of each run of a rich block; empty for plain text.
     spans: Vec<SpanKey>,
@@ -50,6 +53,32 @@ fn attrs(font: &FontFamily, weight: u16, italic: bool) -> Attrs<'_> {
         } else {
             cosmic_text::Style::Normal
         })
+}
+
+/// Bytes of the mark that starts each line of a text whose direction is
+/// forced. The left-to-right and right-to-left marks are three bytes each.
+const MARK: usize = '\u{200f}'.len_utf8();
+
+/// A strong character of the forced direction, without width. It is the
+/// first strong character of its line, so the bidi algorithm takes the
+/// paragraph direction from it.
+fn mark(rtl: bool) -> &'static str {
+    if rtl { "\u{200f}" } else { "\u{200e}" }
+}
+
+/// Where each line of `text` starts, as cosmic-text splits it: after each
+/// line ending, so a text that ends with one has an empty last line.
+fn line_starts(text: &str) -> Vec<usize> {
+    let mut starts = Vec::new();
+    let mut ended = true;
+    for (range, ending) in LineIter::new(text) {
+        starts.push(range.start);
+        ended = ending != LineEnding::None;
+    }
+    if ended {
+        starts.push(text.len());
+    }
+    starts
 }
 
 /// System fonts and shared shaping buffers for measurement, painting and editing.
@@ -199,6 +228,7 @@ impl TextSystem {
             wrap: style.wrap,
             // Alignment needs a width, which only wrapped blocks have.
             rtl: style.rtl && width.is_some(),
+            base: style.base,
             width: width.map(f32::to_bits),
             spans: spans
                 .iter()
@@ -225,34 +255,68 @@ impl TextSystem {
             );
             buffer.set_size(&mut self.fonts, width, None);
             let base = attrs(&style.family, style.weight, style.italic);
+            // A forced paragraph direction is a mark that starts each line.
+            let forced = style.base.map(|rtl| (mark(rtl), line_starts(text)));
             if spans.is_empty() {
-                // A forced paragraph direction is an isolate around the text:
-                // the bidi algorithm then starts in that direction whatever
-                // the first strong character is.
-                let forced = style.base.map(|rtl| {
-                    let mark = if rtl { '\u{2067}' } else { '\u{2066}' };
-                    format!("{mark}{text}\u{2069}")
+                let marked = forced.as_ref().map(|(mark, starts)| {
+                    let mut marked = String::with_capacity(text.len() + MARK * starts.len());
+                    let mut at = 0;
+                    for &start in starts {
+                        marked.push_str(&text[at..start]);
+                        marked.push_str(mark);
+                        at = start;
+                    }
+                    marked.push_str(&text[at..]);
+                    marked
                 });
-                let text = forced.as_deref().unwrap_or(text);
+                let text = marked.as_deref().unwrap_or(text);
                 buffer.set_text(&mut self.fonts, text, &base, Shaping::Advanced, None);
             } else {
                 // A span colour overrides the text area's default colour per glyph.
-                let runs = spans.iter().map(|span| {
+                // A text that ends with a line ending has no empty last line here.
+                let mut starts = forced
+                    .as_ref()
+                    .map_or(&[][..], |(_, starts)| starts)
+                    .iter()
+                    .filter(|&&start| start < text.len() || text.is_empty())
+                    .peekable();
+                let mark = forced.as_ref().map_or("", |(mark, _)| mark);
+                let mut runs = Vec::new();
+                let mut at = 0;
+                for span in spans {
                     let run = attrs(
                         span.family.as_ref().unwrap_or(&style.family),
                         span.weight.unwrap_or(style.weight),
                         span.italic.unwrap_or(style.italic),
                     );
-                    (
-                        span.text.as_str(),
-                        match span.color {
-                            Some(color) => run.color(cosmic_text::Color::rgba(
-                                color.0, color.1, color.2, color.3,
-                            )),
-                            None => run,
-                        },
-                    )
-                });
+                    let run = match span.color {
+                        Some(color) => {
+                            run.color(cosmic_text::Color::rgba(color.0, color.1, color.2, color.3))
+                        }
+                        None => run,
+                    };
+                    // The mark of a line goes before its first run, which may
+                    // begin inside a span.
+                    let mut rest = span.text.as_str();
+                    loop {
+                        while starts.next_if_eq(&&at).is_some() {
+                            runs.push((mark, base.clone()));
+                        }
+                        match starts.peek() {
+                            Some(&&next) if next < at + rest.len() => {
+                                let (head, tail) = rest.split_at(next - at);
+                                runs.push((head, run.clone()));
+                                (at, rest) = (next, tail);
+                            }
+                            _ => break,
+                        }
+                    }
+                    runs.push((rest, run));
+                    at += rest.len();
+                }
+                while starts.next_if_eq(&&at).is_some() {
+                    runs.push((mark, base.clone()));
+                }
                 // cosmic-text shapes an ASCII word in one run when every explicit
                 // span overlapping it is compatible, and text with the default
                 // attributes is not an explicit span: "bold:" would be all bold.
@@ -295,7 +359,7 @@ impl TextMeasurer for TextSystem {
 
     fn geometry(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> TextGeometry {
         let key = self.ensure_styled(text, style, width);
-        Self::extract(&self.buffers[&key], text)
+        Self::extract(&self.buffers[&key], text, key.base.is_some())
     }
 
     /// The font's own ascent for this size, from a line shaped with it.
@@ -314,39 +378,49 @@ impl TextMeasurer for TextSystem {
         width: Option<f32>,
     ) -> TextGeometry {
         let key = self.ensure_rich(spans, style, width);
-        Self::extract(&self.buffers[&key], &key.text)
+        Self::extract(&self.buffers[&key], &key.text, key.base.is_some())
     }
 }
 
 impl TextSystem {
-    /// Grapheme clusters and caret stops of a shaped buffer over `text`.
-    fn extract(buffer: &Buffer, text: &str) -> TextGeometry {
+    /// Grapheme clusters and caret stops of a shaped buffer over `text`. A
+    /// buffer shaped with a forced direction has a mark at the start of each
+    /// line that `text` does not; offsets are those of `text`.
+    fn extract(buffer: &Buffer, text: &str, forced: bool) -> TextGeometry {
         let mut result = TextGeometry {
             size: Self::size(buffer),
             ..TextGeometry::default()
         };
-        let mut bases = vec![0];
-        for (byte, ch) in text.char_indices() {
-            if ch == '\n' {
-                bases.push(byte + 1);
-            }
-        }
+        let bases = line_starts(text);
         for run in buffer.layout_runs() {
             let base = bases.get(run.line_i).copied().unwrap_or(0);
+            let lead = if forced && run.line_i < bases.len() {
+                MARK
+            } else {
+                0
+            };
             let start = run
                 .glyphs
                 .iter()
                 .map(|glyph| glyph.start)
                 .min()
-                .unwrap_or(0);
-            let end = run.glyphs.iter().map(|glyph| glyph.end).max().unwrap_or(0);
+                .unwrap_or(0)
+                .saturating_sub(lead);
+            let end = run
+                .glyphs
+                .iter()
+                .map(|glyph| glyph.end)
+                .max()
+                .unwrap_or(0)
+                .saturating_sub(lead);
             result.lines.push(TextLine {
                 y: run.line_top,
                 height: run.line_height,
                 rtl: run.rtl,
                 bytes: base + start..base + end,
             });
-            for (byte, grapheme) in run.text.grapheme_indices(true) {
+            for (inner, grapheme) in run.text[lead..].grapheme_indices(true) {
+                let byte = lead + inner;
                 let Some(glyph) = run
                     .glyphs
                     .iter()
@@ -364,9 +438,10 @@ impl TextSystem {
                     left = left.min(part.x);
                     right = right.max(part.x + part.w);
                 }
-                let cluster_text = &run.text[glyph.start..glyph.end];
+                let first = glyph.start.max(lead);
+                let cluster_text = &run.text[first..glyph.end];
                 let count = cluster_text.graphemes(true).count().max(1);
-                let offset = run.text[glyph.start..byte].graphemes(true).count();
+                let offset = run.text[first..byte].graphemes(true).count();
                 let advance = (right - left) / count as f32;
                 let rtl = glyph.level.is_rtl();
                 let x = if rtl {
@@ -381,12 +456,12 @@ impl TextSystem {
                     height: run.line_height,
                 };
                 result.clusters.push(TextCluster {
-                    bytes: base + byte..base + byte + grapheme.len(),
+                    bytes: base + inner..base + inner + grapheme.len(),
                     rect,
                     rtl,
                 });
                 result.carets.push(CaretStop {
-                    byte: base + byte,
+                    byte: base + inner,
                     rect: Rect {
                         x: if rtl { x + advance } else { x },
                         width: 1.0,
@@ -394,7 +469,7 @@ impl TextSystem {
                     },
                 });
             }
-            if run.glyphs.is_empty() {
+            if run.glyphs.is_empty() || run.text.len() == lead {
                 result.carets.push(CaretStop {
                     byte: base,
                     rect: Rect {
@@ -430,6 +505,7 @@ impl TextSystem {
 mod tests {
     use super::*;
     use glassmere_scene::{Affinity, Point};
+    use std::ops::Range;
 
     #[test]
     fn shaped_bidirectional_text_steps_monotonically_and_reports_lines() {
@@ -551,6 +627,125 @@ mod tests {
                     .all(|rect| rect.width >= 0.0 && rect.height > 0.0)
             );
         }
+    }
+
+    /// Latin, Hebrew, Latin; the Hebrew run reads right to left.
+    const MIXED: &str = "abc \u{5d0}\u{5d1}\u{5d2} def";
+
+    fn forced(rtl: bool) -> TextStyle {
+        TextStyle {
+            base: Some(rtl),
+            ..TextStyle::default()
+        }
+    }
+
+    fn bytes(geometry: &TextGeometry) -> Vec<Range<usize>> {
+        geometry
+            .clusters
+            .iter()
+            .map(|cluster| cluster.bytes.clone())
+            .collect()
+    }
+
+    #[test]
+    fn a_forced_direction_orders_the_line_and_leaves_the_offsets_alone() {
+        let mut system = TextSystem::default();
+        let plain = system.geometry(MIXED, &TextStyle::default(), None);
+        if !plain.clusters.iter().any(|cluster| cluster.rtl) {
+            // No installed font shaped the Hebrew letters right to left.
+            return;
+        }
+        assert!(!plain.lines[0].rtl);
+        let rich = [
+            TextSpan::new("abc ").color(glassmere_scene::Color(255, 0, 0, 255)),
+            TextSpan::new(&MIXED[4..]),
+        ];
+        for geometry in [
+            system.geometry(MIXED, &forced(true), None),
+            system.geometry_rich(&rich, &forced(true), None),
+        ] {
+            // The marks that force the direction are not in the offsets.
+            assert_eq!(bytes(&geometry), bytes(&plain));
+            assert_eq!(
+                geometry
+                    .carets
+                    .iter()
+                    .map(|caret| caret.byte)
+                    .collect::<Vec<_>>(),
+                plain
+                    .carets
+                    .iter()
+                    .map(|caret| caret.byte)
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(geometry.lines.len(), 1);
+            assert_eq!(geometry.lines[0].bytes, 0..MIXED.len());
+            assert!(geometry.lines[0].rtl);
+            assert!((geometry.size.width - plain.size.width).abs() < 0.5);
+            // The first logical run is the rightmost one.
+            assert!(geometry.clusters[0].rect.x > geometry.clusters[4].rect.x);
+            assert!(plain.clusters[0].rect.x < plain.clusters[4].rect.x);
+            let start = geometry.caret_at(0, Affinity::Downstream).x;
+            let end = geometry.caret_at(MIXED.len(), Affinity::Downstream).x;
+            assert!(start > end + 10.0, "{start} {end}");
+        }
+        // Left to right over a line that starts with Hebrew.
+        let hebrew = "\u{5d0}\u{5d1}\u{5d2} abc";
+        let free = system.geometry(hebrew, &TextStyle::default(), None);
+        let ltr = system.geometry(hebrew, &forced(false), None);
+        assert!(free.lines[0].rtl && !ltr.lines[0].rtl);
+        assert_eq!(bytes(&ltr), bytes(&free));
+        assert_eq!(ltr.lines[0].bytes, 0..hebrew.len());
+        // Forced and free text do not share a shaped buffer.
+        assert_ne!(
+            system.ensure_styled(MIXED, &forced(true), None),
+            system.ensure_styled(MIXED, &TextStyle::default(), None)
+        );
+    }
+
+    #[test]
+    fn every_line_of_a_forced_text_takes_the_direction() {
+        let mut system = TextSystem::default();
+        for text in ["ab\ncd", "ab\n\ncd", "ab\r\ncd", "ab\n", ""] {
+            let free = system.geometry(text, &TextStyle::default(), None);
+            let geometry = system.geometry(text, &forced(true), None);
+            assert_eq!(bytes(&geometry), bytes(&free), "{text:?}");
+            assert_eq!(
+                geometry
+                    .carets
+                    .iter()
+                    .map(|caret| caret.byte)
+                    .collect::<Vec<_>>(),
+                free.carets
+                    .iter()
+                    .map(|caret| caret.byte)
+                    .collect::<Vec<_>>(),
+                "{text:?}"
+            );
+            assert_eq!(geometry.lines.len(), free.lines.len(), "{text:?}");
+            for (line, plain) in geometry.lines.iter().zip(&free.lines) {
+                assert!(line.rtl && !plain.rtl, "{text:?}");
+                assert_eq!(line.bytes, plain.bytes, "{text:?}");
+            }
+        }
+        let spans = [TextSpan::new("ab\nc").weight(700), TextSpan::new("d")];
+        let free = system.geometry_rich(&spans, &TextStyle::default(), None);
+        let geometry = system.geometry_rich(&spans, &forced(true), None);
+        assert_eq!(bytes(&geometry), bytes(&free));
+        assert_eq!(geometry.lines.len(), 2);
+        assert!(geometry.lines.iter().all(|line| line.rtl));
+        assert_eq!(geometry.lines[1].bytes, 3..5);
+        // A wrapped line covers the same bytes.
+        let wrapped = TextStyle {
+            wrap: TextWrap::Word,
+            ..forced(true)
+        };
+        let text = "one two three four five six seven eight nine ten";
+        let geometry = system.geometry(text, &wrapped, Some(120.0));
+        assert!(geometry.lines.len() > 2);
+        assert_eq!(geometry.lines[0].bytes.start, 0);
+        assert_eq!(geometry.lines.last().unwrap().bytes.end, text.len());
+        assert_eq!(bytes(&geometry).last(), Some(&(text.len() - 1..text.len())));
     }
 
     #[test]
