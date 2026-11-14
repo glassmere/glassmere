@@ -10,11 +10,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - On Windows with the `platform` feature, the window's own menu bar shows the app menu. Windows with a custom title bar keep the drawn one.
   - `Ui::app_bar(AppBar::new().menu(menu))` is a title bar the view places itself, with the window's title, the menu, the window buttons and the resize edges, and it turns the system's title bar off. A `Ui::menu_bar` in the body is a second bar under it, and the native bar is used only when the view draws the menu neither way.
-  - On Windows a window without the system's title bar keeps the system's shadow and rounded corners, and a click on its own maximize button maximizes it.
-  - Its minimize, maximize and close buttons show the system's tooltips and arrow cursor, and its maximize button offers the snap layouts from the first hover.
-  - `Ui::title_bar` is as tall as the system's caption unless its style sets a height, and its window buttons sit side by side with no gap.
-  - A press in a title bar takes focus without drawing a focus ring; the keyboard brings the ring back.
-  - A window without the system's title bar closes on the first request.
   - `Ui::menu_bar` draws flat headings with a hover and open highlight, and `MenuItem::separator()` is a rule in a dropdown.
   - Inside a title bar `Ui::menu_bar` is flat; in the body it is a strip across the window.
 - Path styles, drawn the same way by the CPU and GPU renderers:
@@ -24,11 +19,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - Linear and radial gradient fills (`Brush`), placed relative to the path's bounds.
   - See `examples/paths.rs`.
 
+### Changed
+
+- `Stroke` is no longer `Copy`, because its dash pattern is a `Vec`. `Primitive::Path`'s `fill` is an `Option<Fill>`, which holds a brush and a fill rule; `Some(color.into())` gives a solid fill.
+- A gradient whose start and end are the same point paints its last stop on the GPU as well as on the CPU. The GPU used to paint the first stop.
+- wgpu 30. It is part of the public API through `AppOptions::gpu`, `CustomDraw` and the renderer, so an application that draws with wgpu itself needs wgpu 30 too.
+- Most public enums are `#[non_exhaustive]`, so a later release can add a variant without breaking a `match`; a `match` on one needs a `_` arm. The closed sets that stay exhaustive are listed in [API stability](docs/api-stability.md#what-a-release-can-add).
+- Structs the framework fills in and the application only reads are `#[non_exhaustive]` and cannot be built outside their crate. Among them are `FrameStats`, `MemoryReport`, `NodeSnapshot`, `NodeDetails`, `CollectionInfo`, `FrameDiagnostic`, `GraphNode`, `DragInfo`, `GestureResponse`, `RichEditorResponse`, `ResolvedText`, `Swipe`, `Pen`, `WidgetInput`, `RenderStats`, `CpuStats`, `CustomDraw`, the GPU profile and memory types, the devtools records, and the error types `DockLayoutError`, `StyleSheetError` and `FluentError`.
+- Options structs are built with `..Default::default()`, so they can gain fields without breaking an application. `Stroke` and `DialogOptions` now implement `Default`.
+
+### Removed
+
+- `TextDocument::rope`. Use `TextDocument`'s own text methods.
+- `Harness::state_mut`. Use `Harness::app_mut`.
+
+## [0.1.4] - 2026-11-14
+
+### Added
+
 - Screen readers can read and move through editor text. Text fields, text areas, the code editor and the rich editor publish one text run per visual line, with character extents and word starts, and they publish the caret and the selection.
   - The platform can move the caret or set the selection, as `Action::SetSelection` in core.
   - `Context::editor_text` returns what is published.
   - Password fields publish no text.
-
+- `TextInput::password_with_reveal`, a password field with a button beside it that shows the text and hides it again. A press on the button leaves the keyboard with the field. The button is as wide for one word as for the other, so the field keeps its width. The button's texts are the catalog keys `glassmere-password-show`, `-hide`, `-show-name` and `-hide-name`, with German and Czech in `glassmere-fluent`.
 - Grid layout features:
   - `Style::row_gap` and `column_gap`. `gap` still sets both.
   - `Track::AutoFill` and `Track::AutoFit`, written `repeat(auto-fill, ...)` in a stylesheet.
@@ -40,19 +53,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- `Stroke` is no longer `Copy`, because its dash pattern is a `Vec`. `Primitive::Path`'s `fill` is an `Option<Fill>`, which holds a brush and a fill rule; `Some(color.into())` gives a solid fill.
-- A gradient whose start and end are the same point paints its last stop on the GPU as well as on the CPU. The GPU used to paint the first stop.
-- A `GridArea` line of 0 leaves that axis to auto-flow. It used to mean line 1.
+- A `GridArea` line of 0 leaves that axis to auto-flow. Lines are 1-based, and 0 used to be read as line 1.
 - Text areas, the code editor and the rich editor report `Role::MultilineTextInput` instead of `Role::TextInput`.
-- wgpu 30. It is part of the public API through `AppOptions::gpu`, `CustomDraw` and the renderer, so an application that draws with wgpu itself needs wgpu 30 too.
-- Most public enums are `#[non_exhaustive]`, so a later release can add a variant without breaking a `match`; a `match` on one needs a `_` arm. The closed sets that stay exhaustive are listed in [API stability](docs/api-stability.md#what-a-release-can-add).
-- Structs the framework fills in and the application only reads are `#[non_exhaustive]` and cannot be built outside their crate. Among them are `FrameStats`, `MemoryReport`, `NodeSnapshot`, `NodeDetails`, `CollectionInfo`, `FrameDiagnostic`, `GraphNode`, `DragInfo`, `GestureResponse`, `RichEditorResponse`, `ResolvedText`, `Swipe`, `Pen`, `WidgetInput`, `RenderStats`, `CpuStats`, `CustomDraw`, the GPU profile and memory types, the devtools records, and the error types `DockLayoutError`, `StyleSheetError` and `FluentError`.
-- Options structs are built with `..Default::default()`, so they can gain fields without breaking an application. `Stroke` and `DialogOptions` now implement `Default`.
 
-### Removed
+### Fixed
 
-- `TextDocument::rope`. Use `TextDocument`'s own text methods.
-- `Harness::state_mut`. Use `Harness::app_mut`.
+- A command picked in a `Ui::menu_bar` menu takes effect at once. Before, the application heard of it only with the next input, such as a pointer move.
+- A submenu inside a menu of `Ui::menu_bar` opens beside its row, to any depth, instead of being drawn as a heading with its items indented under it. It opens on hover, on a click, on Enter and on the arrow key that points the reading way; the other arrow key and Escape go back out one level. It opens on the other side of its row where the window ends.
+- A tab strip with more tabs than fit scrolls instead of cutting them off, in `Ui::tabs` and in dock groups. The wheel (turned either way), a touch pan and the arrow, Home and End keys move it, and a tab that becomes selected is brought into view with its close button. A dock group's panel menu stays at the end of the strip.
+- Dragging a selection past the edge of a single-line text input keeps scrolling it while the pointer rests there, faster the further out it is, as the multi-line editors do. Before, the text moved only as the pointer did.
+- The code editor no longer marks a bracket inside a string or a comment as the partner of one in code. `Highlighter::strings_and_comments` reports where they are, `SyntectHighlighter` implements it, and `TextDocument::matching_bracket_in` is the search that takes them. A bracket inside a string or comment pairs only within it. Without a highlighter every bracket counts, as before.
 
 ## [0.1.3] - 2026-11-07
 
