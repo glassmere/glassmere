@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
-## [Unreleased]
+## [0.1.5] - 2026-11-14
 
 ### Changed
 
@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The rich editor reshapes only the blocks an edit changed, also after a block is inserted or removed before them.
 - Two changes far apart no longer repaint the box between them, and an exit animation repaints only where it is drawn instead of the whole window.
 - An image with an embedded ICC profile for RGB or grey pixels (PNG, JPEG, WebP) is converted to sRGB when it is decoded, so a Display P3 or Adobe RGB photo no longer looks oversaturated or dull. `glassmere-image` now depends on `moxcms` directly.
+- The yanked `async-executor` 1.14.0 in `Cargo.lock` is replaced with 1.14.1.
 
 ## [0.1.4] - 2026-11-14
 
