@@ -240,6 +240,63 @@ fn a_local_paint_change_reuses_the_other_subtree_and_reports_local_damage() {
 }
 
 #[test]
+fn changes_far_apart_are_separate_regions_near_ones_join_and_there_are_few() {
+    let mut context = Context::new();
+    let view = |ui: &mut Ui<'_>, changed: &[usize]| {
+        ui.keyed("rows", |ui| {
+            ui.column(Style::default().gap(4.0), |ui| {
+                for row in 0..20 {
+                    let color = if changed.contains(&row) {
+                        Color::rgb(200, 0, 0)
+                    } else {
+                        Color::WHITE
+                    };
+                    ui.keyed(row.to_string(), |ui| {
+                        ui.label(Label::new("row").style(Style {
+                            foreground: Some(color),
+                            height: Length::Px(10.0),
+                            ..Style::default()
+                        }))
+                    });
+                }
+            })
+        });
+    };
+    frame(&mut context, |ui| view(ui, &[]));
+    let rows: Vec<Rect> = (0..20)
+        .map(|row| {
+            let id = context.find(&["rows", row.to_string().as_str()]).unwrap();
+            context.node(id).unwrap().clip
+        })
+        .collect();
+
+    // The first and the last row: two rectangles, not the box around them.
+    frame(&mut context, |ui| view(ui, &[0, 19]));
+    assert_eq!(context.damage_regions(), &[rows[0], rows[19]]);
+
+    // Neighbours are one rectangle.
+    frame(&mut context, |ui| view(ui, &[]));
+    frame(&mut context, |ui| view(ui, &[5, 6]));
+    assert_eq!(context.damage_regions(), &[rows[5].union(rows[6])]);
+
+    // Every other row is ten rectangles, and eight is the most there are. Each
+    // changed row is still inside one of them.
+    let changed: Vec<usize> = (0..20).step_by(2).collect();
+    frame(&mut context, |ui| view(ui, &[]));
+    frame(&mut context, |ui| view(ui, &changed));
+    let damage = context.damage_regions();
+    assert_eq!(damage.len(), 8);
+    for row in changed {
+        assert!(
+            damage
+                .iter()
+                .any(|region| region.union(rows[row]) == *region),
+            "row {row} is not damaged"
+        );
+    }
+}
+
+#[test]
 fn cached_interaction_and_scroll_paint_match_fresh_paint() {
     let mut context = Context::new();
     frame(&mut context, |ui| scroll_list(ui, 10));

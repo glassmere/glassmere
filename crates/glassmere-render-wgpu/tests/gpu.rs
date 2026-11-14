@@ -1123,10 +1123,11 @@ fn square_images_that_abut_leave_no_seam() {
 fn large_images_get_their_own_texture_and_the_budget_evicts_idle_ones() {
     let mut gpu = Gpu::new();
     let small = raster(8, 8, |_, _| [255, 0, 0, 255]);
-    // A new large image each frame, as a slideshow would produce.
+    // A new large image each frame, as a slideshow would produce, drawn at its
+    // own size: drawn far smaller, it would be filtered down into the atlas.
     let frame = |gpu: &mut Gpu| {
         let large = raster(1024, 1024, |x, _| {
-            if x < 512 {
+            if x < 32 {
                 [0, 0, 255, 255]
             } else {
                 [0, 255, 0, 255]
@@ -1135,7 +1136,7 @@ fn large_images_get_their_own_texture_and_the_budget_evicts_idle_ones() {
         let pixels = gpu.render(
             1.0,
             &[
-                picture(rect(0.0, 0.0, 64.0, 64.0), &large),
+                picture(rect(0.0, 0.0, 1024.0, 1024.0), &large),
                 picture(rect(70.0, 0.0, 20.0, 20.0), &small),
             ],
             true,
@@ -1157,6 +1158,58 @@ fn large_images_get_their_own_texture_and_the_budget_evicts_idle_ones() {
     let stats = frame(&mut gpu);
     assert_eq!((stats.atlas_pages, stats.image_textures), (1, 2));
     assert_eq!(stats.image_uploads, 5, "the small image was uploaded once");
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn images_drawn_far_below_their_size_are_filtered_and_one_to_one_is_not() {
+    let mut gpu = Gpu::new();
+    // White where `x + y` is even, black elsewhere: detail one pixel wide.
+    let checkerboard = |side| {
+        raster(side, side, |x, y| {
+            if (x + y) % 2 == 0 {
+                [255; 4]
+            } else {
+                [0, 0, 0, 255]
+            }
+        })
+    };
+    let (medium, large, one) = (checkerboard(512), checkerboard(1024), checkerboard(32));
+    let neighbour = raster(8, 8, |_, _| [255, 0, 0, 255]);
+    let pixels = gpu.render(
+        1.0,
+        &[
+            picture(rect(2.0, 2.0, 60.0, 60.0), &medium),
+            picture(rect(66.0, 2.0, 60.0, 60.0), &large),
+            picture(rect(2.0, 70.0, 32.0, 32.0), &one),
+            picture(rect(40.0, 70.0, 20.0, 20.0), &neighbour),
+        ],
+        true,
+    );
+    // 512 and 1024 texels in 60 pixels: the sampling phase drifts from pixel
+    // to pixel, so unfiltered one-pixel detail comes out as noise. Filtered, it
+    // is half black and half white in linear light: sRGB 188 to the very edge,
+    // with no red from the neighbour sharing the page.
+    for x in (2..62).chain(66..126) {
+        for y in 2..62 {
+            let pixel = &pixels[(y * SIDE + x) * 4..][..3];
+            assert!(
+                pixel.iter().all(|channel| channel.abs_diff(188) <= 8),
+                "pixel ({x}, {y}) is {pixel:?}"
+            );
+        }
+    }
+    // Drawn at its own size the same pattern is left alone.
+    assert_pixel(&pixels, 2, 70, [255; 3]);
+    assert_pixel(&pixels, 3, 70, [0; 3]);
+    assert_pixel(&pixels, 3, 71, [255; 3]);
+    assert_pixel(&pixels, 45, 80, [255, 0, 0]);
+    // Only the sizes that were drawn are uploaded, all into the one page: the
+    // 1024 by 1024 original, over the atlas limit, never reaches the GPU.
+    let stats = gpu.renderer.stats();
+    assert_eq!((stats.atlas_pages, stats.image_textures), (1, 0));
+    assert_eq!(stats.image_bytes, 2048 * 2048 * 4);
+    assert_eq!(stats.image_uploads, 4);
 }
 
 struct Solid(std::sync::Arc<std::sync::Mutex<Vec<(u32, u32)>>>);
@@ -1353,7 +1406,7 @@ fn memory_is_counted_by_category_and_the_peak_survives_eviction() {
         gpu.render(
             1.0,
             &[
-                picture(rect(0.0, 0.0, 64.0, 64.0), &large),
+                picture(rect(0.0, 0.0, 1024.0, 1024.0), &large),
                 picture(rect(70.0, 0.0, 20.0, 20.0), &small),
             ],
             true,
@@ -1467,8 +1520,8 @@ fn damage_redraws_only_its_rectangles_and_keeps_the_rest() {
     assert_eq!(gpu.renderer.stats().redrawn, (SIDE * SIDE) as u64);
     assert!(full == plain_b, "an undamaged frame is not a full redraw");
 
-    // Several rectangles are redrawn as one scissor over their union, so a
-    // pixel between them is redrawn too.
+    // Rectangles that touch are one region, so a pixel between them is
+    // redrawn too.
     let mixed = gpu.damaged(
         1.0,
         &a,
@@ -1479,6 +1532,84 @@ fn damage_redraws_only_its_rectangles_and_keeps_the_rest() {
     assert_pixel(&mixed, 40, 10, [255, 0, 0]);
     assert_pixel(&mixed, 80, 80, [0, 0, 255]);
     assert_pixel(&mixed, 60, 60, [255; 3]);
+}
+
+/// Two small changes far apart redraw two small regions: the page between
+/// them, which differs from the new scene but is not named, keeps what it had.
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn damage_far_apart_redraws_two_regions_and_not_the_box_between() {
+    let mut gpu = Gpu::new();
+    let all = [rect(0.0, 0.0, SIDE as f32, SIDE as f32)];
+    let (top, bottom) = (rect(8.0, 8.0, 16.0, 16.0), rect(104.0, 104.0, 16.0, 16.0));
+    let scene = |corner: Color, middle: Color| {
+        [
+            quad(top, corner),
+            quad(bottom, corner),
+            quad(rect(48.0, 48.0, 32.0, 32.0), middle),
+        ]
+    };
+    let (a, b) = (scene(RED, RED), scene(BLUE, BLUE));
+    let plain_a = gpu.render(1.0, &a, true);
+    let plain_b = gpu.render(1.0, &b, true);
+    gpu.damaged(1.0, &a, true, &all);
+    let mixed = gpu.damaged(1.0, &b, true, &[top, bottom]);
+    // Two regions of 16 by 16, where their union would be 112 by 112.
+    assert_eq!(gpu.renderer.stats().redrawn, 2 * 16 * 16);
+    for y in 0..SIDE {
+        for x in 0..SIDE {
+            let at = (y * SIDE + x) * 4;
+            let named = |region: Rect| {
+                (region.x as usize..(region.x + region.width) as usize).contains(&x)
+                    && (region.y as usize..(region.y + region.height) as usize).contains(&y)
+            };
+            let (expected, scene) = match named(top) || named(bottom) {
+                true => (&plain_b, 'B'),
+                false => (&plain_a, 'A'),
+            };
+            assert_eq!(
+                mixed[at..at + 4],
+                expected[at..at + 4],
+                "pixel ({x}, {y}) is not scene {scene}"
+            );
+        }
+    }
+    assert_pixel(&mixed, 12, 12, [0, 0, 255]);
+    assert_pixel(&mixed, 110, 110, [0, 0, 255]);
+    assert_pixel(&mixed, 60, 60, [255, 0, 0]);
+}
+
+/// Rectangles past the cap are joined, never dropped: a frame whose only
+/// changes are inside twenty scattered ones, one overlapping another, is the
+/// frame drawn whole.
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn scattered_damage_is_joined_past_the_cap_and_none_of_it_is_lost() {
+    let mut gpu = Gpu::new();
+    let all = [rect(0.0, 0.0, SIDE as f32, SIDE as f32)];
+    let spots: Vec<Rect> = (0..20)
+        .map(|index| {
+            rect(
+                (index % 5) as f32 * 24.0 + 2.0,
+                (index / 5) as f32 * 30.0 + 2.0,
+                8.0,
+                8.0,
+            )
+        })
+        .chain([rect(6.0, 6.0, 12.0, 12.0)])
+        .collect();
+    let spotted = |color: Color| {
+        spots
+            .iter()
+            .map(|spot| quad(*spot, color))
+            .collect::<Vec<_>>()
+    };
+    let plain = gpu.render(1.0, &spotted(BLUE), true);
+    gpu.damaged(1.0, &spotted(RED), true, &all);
+    let scattered = gpu.damaged(1.0, &spotted(BLUE), true, &spots);
+    assert!(scattered == plain, "a scattered frame is not the full one");
+    let redrawn = gpu.renderer.stats().redrawn;
+    assert!(redrawn < (SIDE * SIDE) as u64 / 2, "redrew {redrawn}");
 }
 
 #[test]

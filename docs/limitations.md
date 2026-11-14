@@ -31,9 +31,9 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - The GPU anti-aliases a path's edges with a fringe one pixel wide. Where outlines cross or pass within a pixel of each other, it can differ from the CPU renderer by a few pixels.
 - The CPU renderer and the wgpu renderer differ at edges: a quad edge is covered by its exact area in one and feathered by the shader in the other. Resampled images and transformed layers are filtered in sRGB in one and in linear light in the other.
 - `Primitive::Custom` is a wgpu callback. A window painted by the CPU renderer leaves it empty.
-- Damage is the union of the changed rectangles, so two changes far apart redraw the box between them. A window with an exiting animation repaints entirely for its length.
+- Damage is at most eight rectangles: ones that overlap or lie within 8 logical pixels join, and past eight the closest pair do, so crowded changes still redraw the gaps between them. A node animating a transform (a slide or zoom in, a layout transition, keyframes) still repaints the whole window while it runs; an exit animation does not.
 - The glyph atlas size is not reported: glyphon does not expose it, so no memory total includes it.
-- Images have no mipmaps. Animated GIF and WebP show the first frame; colour profiles are ignored.
+- Images have no mipmap chain. A photo drawn at under half its size is box-filtered down in halving steps, once per step, on the render thread the first time it is drawn there, so a large photo shown small can cost one slow frame; between steps it is sampled bilinearly, without blending two steps. Animated GIF and WebP show the first frame; colour profiles are ignored.
 - The window waits for the graphics stack before it shows anything. Startup is dominated by the driver's adapter enumeration.
 - The pixel comparison between the two renderers was tuned on one Direct3D 12 adapter. It also passes on OpenGL on Windows; tolerances on other drivers are unverified.
 
@@ -50,10 +50,10 @@ What does not work, is partial, or has not been tried. Grouped by area.
 ## Text
 
 - Input methods stay on in a password field, and macOS secure input is not turned on. The button that shows its text is an opt-in (`TextInput::password_with_reveal`) and is labelled with a word, not an icon.
-- Visual-line and visual-caret moves in the document editors resolve against the last shaped frame, so several arrow presses between two frames move one step. Several cursors in the code editor move logically.
+- A visual-line or visual-caret move in the document editors starts from where the visual moves and clicks queued before it in the same frame lead. After any other queued operation (a logical move such as Left in left-to-right text, typing, a command) it starts from the last shaped frame, so it can step from a stale cursor. Several cursors in the code editor move logically.
 - Rich documents have one font size per block, no images, tables, nested lists, alignment or colours, and paste as plain text. An edit reshapes only the blocks it changed, but the first frame and a change of width, font size or direction shape every block, not only the visible ones.
-- The code editor's horizontal range comes from the widest line declared around the view, so the scrollbar can change length as the view scrolls vertically through lines of different widths.
-- Bracket matching tells strings and comments from code only when the highlighter reports them (`Highlighter::strings_and_comments`, which `SyntectHighlighter` implements); without one, or on lines its parsing has not reached yet, every bracket counts. Auto-close does not look at them. Find is line by line.
+- The code editor's horizontal range comes from the line with the most columns in the document (a tab counts as its tab width, every other character as one), shaped once per edit. A line that shapes wider than that one, such as wide or fallback-font characters, still stretches the range while it is declared, so the scrollbar can then change length as the view scrolls past it.
+- Bracket matching tells strings and comments from code only when the highlighter reports them (`Highlighter::strings_and_comments`, which `SyntectHighlighter` implements); without one, or on lines its parsing has not reached yet, every bracket counts. Auto-close does not look at them.
 - A base direction forced with `Style::base_direction` orders each line of an editor, but text areas and code editors do not right-align a line that reads right to left (a rich editor and a text field do). Left and Right in tree rows keep their left-to-right meanings (Left collapses, Right expands) in a right-to-left window.
 - Fluent formats numbers plainly; use `Ui::format_number` for locale notation. Only the default catalog is checked by `tr!`.
 - No text selection handles or magnifier for touch.
@@ -69,9 +69,9 @@ What does not work, is partial, or has not been tried. Grouped by area.
 ## Windows and docking
 
 - Detached dock windows open where the OS puts them, and resizing them is not written back to the layout. A tab cannot be dragged from one OS window into another.
-- Retained widget state under a panel (focus, scroll, undo history) resets when a structural change re-parents its group.
+- A dock panel keeps its retained widget state (focus, scroll, undo history) through any change of the layout inside one window. It resets when the panel moves to another OS window, which has its own tree, and while its tab is not the selected one, because only the selected tab's content is declared.
 - Floating dock groups are clipped to the dock and cannot split. A tab strip with more tabs than fit scrolls by the wheel, a touch pan and the keyboard, and to the tab that becomes selected, but it has no scroll buttons and nothing marks that tabs are hidden past an edge.
-- Windows share one graphics policy. Window-to-window drags of `Item` payloads are not possible.
+- Windows share one graphics policy. A drag carries its payload, `Item` payloads included, to another window of the same application only where the platform reports where windows are on the screen, which Wayland does not. That path is covered by tests that drive two windows; nobody has dragged between two real windows by hand. A dock tab does not cross windows.
 - Outgoing OS drags work for files on Windows and macOS, always as a copy, with a fixed icon. Linux has none; the drag crate needs a GTK window. The system drag itself has not been exercised with a real pointer.
 - A file dialog blocks all windows. Notifications report nothing back. A tray icon without an image can be invisible.
 - The native menu bar exists on macOS only; elsewhere `Ui::menu_bar` draws one in the window.
