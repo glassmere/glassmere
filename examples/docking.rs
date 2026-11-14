@@ -26,7 +26,7 @@ struct Docking {
 fn default_layout() -> DockLayout {
     DockLayout::new(DockNode::row(
         0.22,
-        DockNode::tabs(["files", "search"]),
+        DockNode::tabs(["files", "search", "outline", "history", "tasks"]),
         DockNode::row(
             0.72,
             DockNode::column(
@@ -44,6 +44,9 @@ fn panels() -> Vec<DockPanel> {
         DockPanel::pinned("editor", "Editor"),
         DockPanel::new("files", "Files"),
         DockPanel::new("search", "Search"),
+        DockPanel::new("outline", "Outline"),
+        DockPanel::new("history", "History"),
+        DockPanel::new("tasks", "Tasks"),
         DockPanel::new("preview", "Preview"),
         DockPanel::new("output", "Output"),
         DockPanel::new("problems", "Problems"),

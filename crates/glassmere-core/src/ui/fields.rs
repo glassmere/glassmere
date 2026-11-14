@@ -293,7 +293,10 @@ impl<'a, M: 'static> Ui<'a, M> {
 
     /// A text field over text the framework keeps itself, such as a grid
     /// cell being edited: what was typed since the last declaration is
-    /// written to `value`. Returns the field and whether `value` changed.
+    /// written to `value`. A `number` makes it a number field, which the
+    /// arrow keys, the wheel and assistive technology step: the caller reads
+    /// the steps with `take_steps`. Returns the field and whether `value`
+    /// changed.
     #[track_caller]
     pub(crate) fn text_input_at(
         &mut self,
@@ -302,6 +305,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         value: &mut String,
         placeholder: &str,
         style: Style,
+        number: Option<NumericValue>,
     ) -> (Response<'a>, bool) {
         let key = WidgetKey::Named(key.into());
         let mut changed = false;
@@ -320,7 +324,10 @@ impl<'a, M: 'static> Ui<'a, M> {
             value,
             placeholder,
             style,
-            FieldExtra::default(),
+            FieldExtra {
+                number,
+                ..FieldExtra::default()
+            },
         );
         (response, changed)
     }

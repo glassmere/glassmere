@@ -880,8 +880,18 @@ fn a_tab_strip_with_more_tabs_than_fit_scrolls_and_keeps_its_menu_in_place() {
         .filter(|node| node.semantics.role == Role::Tab && node.clip.width > 0.0)
         .map(|node| node.clip.x + node.clip.width)
         .fold(0.0_f32, f32::max);
-    assert!(cut <= menu.x + 0.5, "tabs are drawn under the menu: {cut}");
-    // That holds for what is painted: a tab the menu covers in part is cut
+    // The scroll button fills the end of the area the menu leaves, and the
+    // tabs are cut where it starts: nothing of one is drawn under it.
+    let button = in_strip(&app.context, "$scroll-end");
+    assert!(
+        (button.x + button.width - menu.x).abs() < 0.001,
+        "{button:?} {menu:?}"
+    );
+    assert!(
+        cut <= button.x + 0.001,
+        "tabs are drawn under the button: {cut}"
+    );
+    // That holds for what is painted: a tab the button covers in part is cut
     // there, and one past it is not drawn.
     let primitives = &app.context.scene().primitives;
     let straddling = app
@@ -891,13 +901,17 @@ fn a_tab_strip_with_more_tabs_than_fit_scrolls_and_keeps_its_menu_in_place() {
         .children
         .into_iter()
         .map(|id| app.context.node(id).unwrap())
-        .find(|node| node.bounds.x < menu.x && node.bounds.x + node.bounds.width > menu.x + 0.5)
-        .expect("a tab or its close button under the menu");
+        .find(|node| {
+            node.semantics.role != Role::Button
+                && node.bounds.x < button.x
+                && node.bounds.x + node.bounds.width > button.x + 0.5
+        })
+        .expect("a tab or its close button under the button");
     assert!(
         primitives.iter().any(
             |primitive| matches!(primitive, Primitive::PushClip(rect) if *rect == straddling.clip)
         ),
-        "{:?} is not cut at the menu",
+        "{:?} is not cut at the button",
         straddling.semantics.label
     );
     let texts: Vec<&str> = primitives
@@ -967,6 +981,57 @@ fn a_tab_strip_with_more_tabs_than_fit_scrolls_and_keeps_its_menu_in_place() {
     assert_eq!(app.state().group_of("panel-0").unwrap().len(), 30);
     assert_eq!(in_strip(&app.context, "0").x, strip.x);
     assert_eq!(in_strip(&app.context, "$menu"), menu);
+}
+
+#[test]
+fn a_dock_group_strip_has_scroll_buttons_beside_its_menu_that_leave_the_layout_alone() {
+    let mut app = crowded();
+    let strip = app
+        .context
+        .node(app.context.find(&STRIP).unwrap())
+        .unwrap()
+        .bounds;
+    let menu = in_strip(&app.context, "$menu");
+    let shown = |app: &Driven<DockLayout>, key: &str| clip_in_strip(&app.context, key).width > 0.0;
+    let gradients = |app: &Driven<DockLayout>| {
+        app.context
+            .scene()
+            .primitives
+            .iter()
+            .filter(|primitive| matches!(primitive, Primitive::Gradient { .. }))
+            .count()
+    };
+
+    // Tabs are hidden past the end, so that button shows, next to the menu
+    // rather than over it.
+    assert!(!shown(&app, "$scroll-start") && shown(&app, "$scroll-end"));
+    assert_eq!(gradients(&app), 1);
+    let end = in_strip(&app.context, "$scroll-end");
+    assert!((end.x + end.width - menu.x).abs() < 0.5, "{end:?} {menu:?}");
+    let path: Vec<&str> = STRIP.iter().copied().chain(["$scroll-end"]).collect();
+    let named = app.context.node(app.context.find(&path).unwrap()).unwrap();
+    assert_eq!(named.semantics.label, "Show later tabs");
+    assert_eq!(named.semantics.role, Role::Button);
+    let layout = app.state().clone();
+    let before = in_strip(&app.context, "0").x;
+
+    // A click moves the tabs and nothing else: no panel is chosen, none
+    // moves, and the menu stays where it was.
+    let point = center(end);
+    press(&mut app.context, point);
+    app.context.event(Event::PointerUp);
+    app.frame();
+    assert!(in_strip(&app.context, "0").x < before);
+    assert_eq!(*app.state(), layout);
+    assert_eq!(in_strip(&app.context, "$menu"), menu);
+    assert!(shown(&app, "$scroll-start"));
+    assert_eq!(gradients(&app), 2);
+    assert!(
+        !app.context.snapshots().iter().any(|node| node.is_popup),
+        "no menu opened"
+    );
+    let start = in_strip(&app.context, "$scroll-start");
+    assert!((start.x - strip.x).abs() < 0.5, "{start:?}");
 }
 
 #[test]

@@ -61,7 +61,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 ## Collections and grids
 
 - Rows have one fixed height per collection.
-- A grid selects one cell at a time, with no range selection or block copy. Number cells are edited as text.
+- A grid selects one cell at a time, with no range selection or block copy.
 - Filters are text only. There are no pinned data rows (totals).
 - Property grid rows are declared, not virtualized; filter or split thousands of properties. There is no multi-object editing. Enums are edited through a `usize` index with `choices(..)`, and `Option<T>` and collection fields are not supported by `#[derive(Properties)]`.
 - Submenus nest to any depth in `Ui::menu_bar` only: `Ui::menu`, context menus and combo boxes take a flat list. A submenu opens as soon as the pointer is on its row, with no delay, and closes when the pointer crosses another row on the way to it. Tooltips are pointer-only, with one delay and one placement.
@@ -70,7 +70,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 
 - Detached dock windows open where the OS puts them, and resizing them is not written back to the layout. A tab cannot be dragged from one OS window into another.
 - Retained widget state under a panel (focus, scroll, undo history) resets when a structural change re-parents its group.
-- Floating dock groups are clipped to the dock and cannot split. A tab strip with more tabs than fit scrolls by the wheel, a touch pan and the keyboard, and to the tab that becomes selected, but it has no scroll buttons and nothing marks that tabs are hidden past an edge.
+- Floating dock groups are clipped to the dock and cannot split.
 - Windows share one graphics policy. Window-to-window drags of `Item` payloads are not possible.
 - Outgoing OS drags work for files on Windows and macOS, always as a copy, with a fixed icon. Linux has none; the drag crate needs a GTK window. The system drag itself has not been exercised with a real pointer.
 - A file dialog blocks all windows. Notifications report nothing back. A tray icon without an image can be invisible.

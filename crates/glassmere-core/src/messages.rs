@@ -87,6 +87,8 @@ pub const BUILTIN_MESSAGES: &[(&str, &str)] = &[
     ("glassmere-dock-move", "Move floating panel"),
     ("glassmere-dock-resize", "Resize floating panel"),
     ("glassmere-tab-close", "Close { $name }"),
+    ("glassmere-tab-scroll-start", "Show earlier tabs"),
+    ("glassmere-tab-scroll-end", "Show later tabs"),
     ("glassmere-find-close", "Close the find bar"),
     ("glassmere-minimize", "Minimize"),
     ("glassmere-maximize", "Maximize"),
