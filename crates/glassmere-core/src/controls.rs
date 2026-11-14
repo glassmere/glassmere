@@ -317,6 +317,9 @@ pub(crate) enum Control {
         lines: Vec<crate::text_area::AreaLine>,
         first_line: usize,
         total_lines: usize,
+        /// The line of the whole document with the most columns, which sets
+        /// the horizontal range wherever the view is scrolled to.
+        widest: String,
         selections: Vec<crate::text_area::AreaSelection>,
         selection_count: usize,
         primary: (usize, usize),

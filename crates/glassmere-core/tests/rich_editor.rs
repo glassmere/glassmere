@@ -193,7 +193,7 @@ fn vertical_and_line_keys_follow_the_wrapped_lines_with_a_sticky_column() {
     // The sticky column returns once the line is long enough again.
     assert_eq!(app.state().document.cursor(), at(2, 20));
     assert_eq!(app.state().document.anchor(), at(1, 5));
-    // Visual moves resolve against the last shaped frame, one step per declaration.
+    // With a frame between them, each press starts from the cursor it shaped.
     key(&mut app.context, Key::ArrowUp, false);
     app.frame();
     key(&mut app.context, Key::ArrowUp, false);
@@ -440,4 +440,63 @@ fn a_drag_held_below_the_editor_scrolls_it_by_the_clock_and_extends_the_selectio
     let stopped = first(&app);
     tick(&mut app, 3000);
     assert_eq!(first(&app), stopped);
+}
+
+#[test]
+fn visual_moves_queued_before_a_frame_start_where_the_one_before_them_leads() {
+    let long = "x".repeat(COLUMNS * 3 + 10);
+    let mut app = started(RichDocument::from_blocks(vec![
+        Block::new(BlockKind::Paragraph, &long),
+        Block::new(BlockKind::Paragraph, "short"),
+        Block::new(BlockKind::Paragraph, &long),
+    ]));
+    click(&mut app.context, cell(0, 0));
+    app.frame();
+    app.state_mut().document.set_cursor(at(0, 5), false);
+    app.frame();
+    // Two presses between frames are two visual lines.
+    key(&mut app.context, Key::ArrowDown, false);
+    key(&mut app.context, Key::ArrowDown, false);
+    app.frame();
+    assert_eq!(app.state().document.cursor(), at(0, COLUMNS * 2 + 5));
+    // A line key goes to the end of the line the press before it reached.
+    key(&mut app.context, Key::ArrowDown, false);
+    key(&mut app.context, Key::End, false);
+    app.frame();
+    assert_eq!(app.state().document.cursor(), at(0, COLUMNS * 3 + 10));
+    // Across blocks and back, in the column the first press took.
+    key(&mut app.context, Key::ArrowDown, false);
+    key(&mut app.context, Key::ArrowDown, true);
+    app.frame();
+    assert_eq!(app.state().document.cursor(), at(2, 5));
+    assert_eq!(app.state().document.anchor(), at(1, 5));
+    key(&mut app.context, Key::ArrowUp, false);
+    key(&mut app.context, Key::ArrowUp, false);
+    key(&mut app.context, Key::ArrowUp, false);
+    app.frame();
+    assert_eq!(app.state().document.cursor(), at(0, COLUMNS * 2 + 5));
+}
+
+#[test]
+fn page_keys_queued_before_a_frame_page_twice() {
+    let blocks: Vec<Block> = (0..40)
+        .map(|n| Block::new(BlockKind::Paragraph, &format!("paragraph {n}")))
+        .collect();
+    let cursor = |frames_between: bool| {
+        let mut app = started(RichDocument::from_blocks(blocks.clone()));
+        click(&mut app.context, cell(0, 0));
+        app.frame();
+        for _ in 0..2 {
+            key(&mut app.context, Key::PageDown, false);
+            if frames_between {
+                app.frame();
+            }
+        }
+        app.frame();
+        app.frame();
+        app.state().document.cursor()
+    };
+    let stepped = cursor(true);
+    assert!(stepped.block > 12, "{stepped:?}");
+    assert_eq!(cursor(false), stepped);
 }
