@@ -25,6 +25,20 @@ impl<'a, M: 'static> Ui<'a, M> {
         self.enabled.then_some(update).flatten()
     }
 
+    /// The steps an arrow key, the wheel or assistive technology asked of the
+    /// number field declared under `key` since the last declaration. Typed
+    /// text that arrived stays for `take_update`.
+    #[track_caller]
+    pub(super) fn take_steps(&mut self, key: &WidgetKey) -> Option<f64> {
+        let id = self.context.child(self.parent, key, Kind::TextInput)?;
+        let Some(ControlUpdate::Number(steps)) = self.updates.get(&id) else {
+            return None;
+        };
+        let steps = *steps;
+        self.updates.remove(&id);
+        self.enabled.then_some(steps)
+    }
+
     #[track_caller]
     fn control(
         &mut self,

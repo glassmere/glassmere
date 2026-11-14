@@ -124,7 +124,10 @@ struct App {
 
 impl App {
     fn new() -> Self {
-        let age = NumberOptions::default().range(0.0, 150.0).suffix(" y");
+        Self::with_age(NumberOptions::default().range(0.0, 150.0).suffix(" y"))
+    }
+
+    fn with_age(age: NumberOptions) -> Self {
         let mut driven = Driven::new(
             ROOT,
             Table {
@@ -433,6 +436,163 @@ fn numbers_parse_clamp_and_refuse_what_is_not_a_number() {
     app.retype("999");
     app.key(Key::Enter);
     assert_eq!(app.model().rows[0].age, 150.0);
+}
+
+impl App {
+    /// The draft the open editor on row 0 shows.
+    fn draft(&self) -> String {
+        let editor = self.editor(0).expect("an editor is open");
+        self.driven
+            .context
+            .node(editor)
+            .unwrap()
+            .value
+            .clone()
+            .unwrap()
+    }
+
+    /// Opens the Age cell of row 0.
+    fn edit_age(&mut self) {
+        self.key(Key::ArrowRight);
+        self.key(Key::ArrowRight);
+        self.key(Key::F2);
+    }
+}
+
+#[test]
+fn up_down_and_page_keys_step_a_number_draft_and_enter_stores_it() {
+    let mut app = App::new();
+    app.edit_age();
+    assert_eq!(app.draft(), "30");
+    app.key(Key::ArrowUp);
+    assert_eq!(app.draft(), "31");
+    assert_eq!(app.model().rows[0].age, 30.0, "a step is a draft too");
+    app.key(Key::ArrowDown);
+    app.key(Key::ArrowDown);
+    app.key(Key::ArrowDown);
+    assert_eq!(app.draft(), "28");
+    app.key(Key::PageUp);
+    assert_eq!(app.draft(), "38");
+    app.key(Key::PageDown);
+    app.key(Key::PageDown);
+    assert_eq!(app.draft(), "18");
+    assert!(app.editor(0).is_some(), "the keys stay in the editor");
+    assert_eq!(app.selected(), Some(ItemId(0)), "and the cursor stays");
+
+    // Escape drops the stepped draft.
+    app.key(Key::Escape);
+    assert!(app.editor(0).is_none());
+    assert_eq!(app.model().rows[0].age, 30.0);
+
+    app.key(Key::F2);
+    app.key(Key::ArrowUp);
+    app.key(Key::Enter);
+    assert_eq!(app.model().rows[0].age, 31.0);
+    assert!(app.editor(0).is_none());
+}
+
+#[test]
+fn stepping_starts_from_what_was_typed_clamps_and_clears_a_refusal() {
+    let mut app = App::new();
+    app.edit_age();
+    app.retype("41,5");
+    app.key(Key::ArrowUp);
+    assert_eq!(
+        app.draft(),
+        "43",
+        "from the typed number, snapped to the step"
+    );
+
+    app.retype("abc");
+    app.key(Key::Enter);
+    assert_eq!(app.error_text().as_deref(), Some("Enter a number."));
+    // Text that is not a number steps from the number the cell held.
+    app.key(Key::ArrowUp);
+    assert_eq!(app.draft(), "31");
+    assert_eq!(app.error_text(), None, "a number again, so nothing to say");
+
+    app.retype("149");
+    app.key(Key::PageUp);
+    assert_eq!(app.draft(), "150", "clamped to the range");
+    app.key(Key::ArrowUp);
+    assert_eq!(app.draft(), "150");
+    app.retype("2");
+    app.key(Key::PageDown);
+    assert_eq!(app.draft(), "0");
+    app.key(Key::Enter);
+    assert_eq!(app.model().rows[0].age, 0.0);
+}
+
+#[test]
+fn a_column_steps_by_its_own_step_and_shows_its_decimals() {
+    let mut app = App::with_age(NumberOptions::default().range(0.0, 150.0).step(0.5));
+    app.edit_age();
+    assert_eq!(app.draft(), "30.0");
+    app.key(Key::ArrowUp);
+    assert_eq!(app.draft(), "30.5");
+    app.key(Key::PageUp);
+    assert_eq!(app.draft(), "35.5");
+    app.key(Key::Enter);
+    assert_eq!(app.model().rows[0].age, 35.5);
+
+    // A column without a usable step moves by one.
+    let mut app = App::with_age(NumberOptions::default().step(0.0));
+    app.edit_age();
+    app.key(Key::ArrowDown);
+    assert_eq!(app.draft(), "29");
+}
+
+#[test]
+fn a_number_editor_tells_assistive_technology_its_range_and_steps_on_request() {
+    let mut app = App::new();
+    app.edit_age();
+    let editor = app.editor(0).unwrap();
+    let node = app.driven.context.node(editor).unwrap();
+    assert_eq!(node.semantics.role, glassmere_core::Role::SpinButton);
+    let numeric = node.numeric.expect("a number cell reports its range");
+    assert_eq!(
+        (numeric.value, numeric.min, numeric.max, numeric.step),
+        (30.0, 0.0, 150.0, 1.0)
+    );
+    assert!(app.driven.context.action(editor, Action::Increment));
+    app.frame();
+    assert_eq!(app.draft(), "31");
+    let numeric = app.driven.context.node(editor).unwrap().numeric.unwrap();
+    assert_eq!(numeric.value, 31.0);
+    assert!(app.driven.context.action(editor, Action::Decrement));
+    assert!(app.driven.context.action(editor, Action::Decrement));
+    app.frame();
+    assert_eq!(app.draft(), "29");
+}
+
+#[test]
+fn text_and_choice_editors_do_not_take_the_step_keys() {
+    let mut app = App::new();
+    app.key(Key::F2);
+    let name = app.editor(0).unwrap();
+    assert_eq!(
+        app.driven.context.node(name).unwrap().semantics.role,
+        glassmere_core::Role::TextInput
+    );
+    assert!(app.driven.context.node(name).unwrap().numeric.is_none());
+    app.key(Key::ArrowUp);
+    app.key(Key::PageDown);
+    assert_eq!(app.draft(), "Person 0");
+    assert!(app.editor(0).is_some());
+    app.key(Key::Escape);
+
+    // A choice still opens its list with Down.
+    app.key(Key::ArrowRight);
+    app.key(Key::F2);
+    app.key(Key::ArrowDown);
+    assert!(
+        app.driven
+            .context
+            .node(app.editor(0).unwrap())
+            .unwrap()
+            .expanded
+            == Some(true)
+    );
 }
 
 #[test]
