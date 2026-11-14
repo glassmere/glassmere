@@ -37,6 +37,7 @@ pub(super) struct RichEditorState {
     width: f32,
     font_size: f32,
     rtl: bool,
+    base: Option<bool>,
     preedit: Option<String>,
     /// Absolute caret rectangle, for the IME and paging.
     caret: Option<Rect>,
@@ -49,6 +50,20 @@ pub(super) struct RichEditorState {
     /// offsets.
     affinity: Affinity,
     pending_affinity: Option<Affinity>,
+}
+
+/// The editor's text style, aligned the way its paragraphs read: a forced
+/// base direction wins over the direction of the window.
+fn editor_style(node: &Node) -> TextStyle {
+    let mut style = node.text_style();
+    style.rtl = style.base.unwrap_or(style.rtl);
+    style
+}
+
+/// Whether a block of `kind` is laid out from the right. Code reads left to
+/// right whatever the UI direction is, unless a direction was forced.
+fn mirrored(base: &TextStyle, kind: BlockKind) -> bool {
+    base.rtl && (kind != BlockKind::Code || base.base.is_some())
 }
 
 fn block_style(base: &TextStyle, kind: BlockKind, font_size: f32) -> TextStyle {
@@ -67,8 +82,7 @@ fn block_style(base: &TextStyle, kind: BlockKind, font_size: f32) -> TextStyle {
         },
         italic: false,
         wrap: TextWrap::Word,
-        // Code reads left to right whatever the UI direction is.
-        rtl: base.rtl && kind != BlockKind::Code,
+        rtl: mirrored(base, kind),
     }
 }
 
@@ -564,11 +578,13 @@ impl Context {
             else {
                 continue;
             };
-            let base = node.text_style();
+            let base = editor_style(node);
             let area = node.content_box();
             let mut state = node.rich_editor.take().unwrap_or_default();
-            let same_frame =
-                state.width == area.width && state.font_size == *font_size && state.rtl == base.rtl;
+            let same_frame = state.width == area.width
+                && state.font_size == *font_size
+                && state.rtl == base.rtl
+                && state.base == base.base;
             let old = std::mem::take(&mut state.layouts);
             let mut changed = !same_frame || old.len() != blocks.len();
             // What shapes a block is its kind and spans; the number and the
@@ -636,7 +652,7 @@ impl Context {
                         left: 0.0,
                     }
                 });
-                layout.left = if base.rtl && view.kind != BlockKind::Code {
+                layout.left = if mirrored(&base, view.kind) {
                     0.0
                 } else {
                     indent
@@ -656,6 +672,7 @@ impl Context {
             state.width = area.width;
             state.font_size = *font_size;
             state.rtl = base.rtl;
+            state.base = base.base;
             let maximum = (y - area.height).max(0.0);
             changed |= node.scroll.maximum != maximum;
             node.scroll.maximum = maximum;
@@ -709,7 +726,7 @@ impl Context {
         let theme = &self.theme;
         let focused = self.focused == Some(id);
         let area = node.content_box();
-        let base = node.text_style();
+        let base = editor_style(node);
         let (start, end) = (*anchor.min(cursor), *anchor.max(cursor));
         scene.primitives.push(Primitive::PushClip(area));
         for (index, layout) in state.layouts.iter().enumerate() {

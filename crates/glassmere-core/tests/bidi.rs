@@ -2,13 +2,13 @@ mod support;
 
 use glassmere_core::app::Action;
 use glassmere_core::{
-    Block, BlockKind, CaretMovement, CodeEditorOptions, Context, Event, Key, Length,
-    MonospaceMeasurer, RichDocument, RichEditorOptions, RichOp, RichPosition, Style, TextDocument,
-    TextEdit, TextMove, TextOp, Ui,
+    Block, BlockKind, CaretMovement, CodeEditorOptions, Context, Direction, Event, Key, Length,
+    MonospaceMeasurer, RichDocument, RichEditorOptions, RichOp, RichPosition, Role, Style,
+    TextDocument, TextEdit, TextMove, TextOp, Ui,
 };
 
 use glassmere_scene::{Affinity, Point, Size, TextMeasurer, TextStyle};
-use support::{Driven, click, on};
+use support::{Driven, click, labelled, on};
 
 const ROOT: Size = Size::new(640.0, 400.0);
 /// Latin, a Hebrew word, Latin: `abc אבג def`. The Hebrew run reads right to left.
@@ -340,4 +340,242 @@ fn the_rich_editor_follows_direction_in_blocks_and_flags_the_caret() {
         })
         .count();
     assert_eq!(flags, 1);
+}
+
+/// Latin, then Hebrew. In a free paragraph the Latin comes first on the left;
+/// forced right to left, the Hebrew word is the one on the left.
+const LATIN_FIRST: &str = "abc \u{5d0}\u{5d1}\u{5d2}";
+
+fn forced(direction: Option<Direction>) -> Style {
+    Style {
+        base_direction: direction,
+        ..Style::default()
+    }
+}
+
+/// Puts the caret at each of `offsets` in turn and clicks where it was
+/// drawn. The caret must come back to the same place, and at the offsets in
+/// `inside`, which are not at an edge of a run, as the same offset.
+fn round_trip<S: 'static>(
+    app: &mut Driven<S>,
+    offsets: &[usize],
+    inside: &[usize],
+    set: impl Fn(&mut S, usize),
+    get: impl Fn(&S) -> usize,
+) -> Vec<f32> {
+    let mut xs = Vec::new();
+    for &offset in offsets {
+        set(app.state_mut(), offset);
+        app.frame();
+        let caret = app.context.ime_cursor_rect().unwrap();
+        xs.push(caret.x);
+        click(
+            &mut app.context,
+            Point {
+                x: caret.x + 0.5,
+                y: caret.y + caret.height / 2.0,
+            },
+        );
+        app.frame();
+        assert!(
+            (caret_x(&app.context) - caret.x).abs() < 0.01,
+            "offset {offset}"
+        );
+        if inside.contains(&offset) {
+            assert_eq!(get(app.state()), offset);
+        }
+    }
+    xs
+}
+
+fn code_with(
+    direction: Option<Direction>,
+) -> impl Fn(&TextDocument, &mut Ui<'_, Action<TextDocument>>) {
+    move |document, ui| {
+        ui.keyed("code", |ui| {
+            ui.code_editor(
+                document,
+                CodeEditorOptions {
+                    line_numbers: false,
+                    style: forced(direction)
+                        .width(Length::Px(600.0))
+                        .height(Length::Px(200.0))
+                        .padding(8.0),
+                    ..CodeEditorOptions::default()
+                },
+                on(|s: &mut TextDocument, op: TextOp| s.apply(op)),
+            );
+        });
+    }
+}
+
+#[test]
+fn the_code_editor_takes_a_forced_base_direction_for_every_line() {
+    let text = format!("{LATIN_FIRST}\nplain");
+    let mut positions = Vec::new();
+    for direction in [None, Some(Direction::Rtl)] {
+        let mut app = Driven::new(ROOT, TextDocument::from_text(&text), code_with(direction));
+        app.frame();
+        click(&mut app.context, Point { x: 9.0, y: 12.0 });
+        app.frame();
+        let xs = round_trip(
+            &mut app,
+            &[0, 1, 2, 3, 4, 5, 6, 7],
+            &[1, 2, 5, 6],
+            |document, offset| document.set_selection(offset, offset),
+            |document| document.primary().cursor,
+        );
+        positions.push(xs);
+
+        // The runs of text a screen reader gets follow the direction too.
+        let editor = app.context.find(&["code", "$area"]).unwrap();
+        let lines = app.context.editor_text(editor).unwrap().lines;
+        assert_eq!(lines.len(), 2);
+        assert!(lines.iter().all(|line| line.rtl == direction.is_some()));
+        for line in &lines {
+            let total: usize = line.characters.iter().map(|c| c.len).sum();
+            assert_eq!(total, line.text.len());
+        }
+    }
+    // Free: Latin then Hebrew, left to right. Forced: the first run is on the
+    // right and the Hebrew word to the left of it.
+    assert!(positions[0][0] < positions[0][6]);
+    assert!(positions[1][0] > positions[1][6]);
+}
+
+fn rich_with(
+    direction: Option<Direction>,
+) -> impl Fn(&RichDocument, &mut Ui<'_, Action<RichDocument>>) {
+    move |document, ui| {
+        ui.keyed("rich", |ui| {
+            ui.rich_editor(
+                document,
+                RichEditorOptions {
+                    toolbar: false,
+                    style: forced(direction)
+                        .width(Length::Px(400.0))
+                        .height(Length::Px(200.0))
+                        .padding(12.0),
+                    ..RichEditorOptions::default()
+                },
+                on(|s: &mut RichDocument, op: RichOp| s.apply(op)),
+            );
+        });
+    }
+}
+
+#[test]
+fn the_rich_editor_takes_a_forced_base_direction_for_every_block() {
+    let document = || {
+        RichDocument::from_blocks(vec![
+            Block::new(BlockKind::Paragraph, LATIN_FIRST),
+            Block::new(BlockKind::Paragraph, "plain"),
+        ])
+    };
+    let mut positions = Vec::new();
+    for direction in [None, Some(Direction::Rtl)] {
+        let mut app = Driven::new(ROOT, document(), rich_with(direction));
+        app.frame();
+        click(&mut app.context, Point { x: 13.0, y: 16.0 });
+        app.frame();
+        let xs = round_trip(
+            &mut app,
+            &[0, 1, 2, 3, 4, 6, 8, 10],
+            &[1, 2, 6, 8],
+            |document, offset| document.set_cursor(RichPosition { block: 0, offset }, false),
+            |document| document.cursor().offset,
+        );
+        positions.push(xs);
+        let editor = app.context.find(&["rich", "$area"]).unwrap();
+        let lines = app.context.editor_text(editor).unwrap().lines;
+        assert_eq!(lines.len(), 2);
+        assert!(lines.iter().all(|line| line.rtl == direction.is_some()));
+        for line in &lines {
+            let total: usize = line.characters.iter().map(|c| c.len).sum();
+            assert_eq!(total, line.text.len());
+        }
+        // Blocks shaped before the style changed are shaped again.
+        if direction.is_some() {
+            app.set_view(rich_with(None));
+            app.frame();
+            let lines = app.context.editor_text(editor).unwrap().lines;
+            assert!(lines.iter().all(|line| !line.rtl));
+        }
+    }
+    assert!(positions[0][0] < positions[0][5]);
+    assert!(positions[1][0] > positions[1][5]);
+    // Free, the text starts at the left of the 400 px editor; forced, it
+    // is aligned to the right end.
+    assert!(positions[0].iter().all(|x| *x < 100.0), "{positions:?}");
+    assert!(positions[1].iter().all(|x| *x > 300.0), "{positions:?}");
+}
+
+fn field_with(direction: Option<Direction>) -> impl Fn(&Field, &mut Ui<'_, Action<Field>>) {
+    move |state, ui| {
+        ui.column(forced(direction), |ui| {
+            ui.keyed("field", |ui| {
+                ui.text_input(
+                    "Field",
+                    &state.value,
+                    on(|s: &mut Field, text: String| s.value = text),
+                );
+            });
+        });
+    }
+}
+
+#[test]
+fn a_text_input_takes_a_forced_base_direction_and_aligns_to_it() {
+    let mut text_start = Vec::new();
+    for direction in [None, Some(Direction::Rtl)] {
+        let mut app = Driven::new(
+            ROOT,
+            Field {
+                value: LATIN_FIRST.to_owned(),
+            },
+            field_with(direction),
+        );
+        app.frame();
+        let field = labelled(&app.context, Role::TextInput, "Field");
+        let y = field.y + field.height / 2.0;
+        // Clicking along the field, and again where the caret was drawn,
+        // leaves the caret where it is.
+        let mut carets = Vec::new();
+        let mut x = field.x + 4.0;
+        while x < field.x + field.width - 4.0 {
+            click(&mut app.context, Point { x, y });
+            app.frame();
+            let caret = caret_x(&app.context);
+            click(&mut app.context, Point { x: caret + 0.5, y });
+            app.frame();
+            assert!((caret_x(&app.context) - caret).abs() < 0.01, "{x}");
+            carets.push(caret);
+            x += 5.0;
+        }
+        text_start.push(carets.iter().copied().fold(f32::MAX, f32::min));
+    }
+    // A right-to-left field puts its text at the right end.
+    assert!(text_start[1] > text_start[0] + 50.0, "{text_start:?}");
+}
+
+#[test]
+fn a_line_that_starts_with_hebrew_can_be_forced_to_read_left_to_right() {
+    let mut app = Driven::new(
+        ROOT,
+        TextDocument::from_text("\u{5d0}\u{5d1}\u{5d2} abc"),
+        code_with(Some(Direction::Ltr)),
+    );
+    app.frame();
+    click(&mut app.context, Point { x: 9.0, y: 12.0 });
+    app.frame();
+    let editor = app.context.find(&["code", "$area"]).unwrap();
+    let lines = app.context.editor_text(editor).unwrap().lines;
+    assert!(!lines[0].rtl);
+    // The start of the paragraph is its left end, though it starts with Hebrew.
+    app.state_mut().set_selection(0, 0);
+    app.frame();
+    let start = caret_x(&app.context);
+    app.state_mut().set_selection(7, 7);
+    app.frame();
+    assert!(caret_x(&app.context) > start);
 }

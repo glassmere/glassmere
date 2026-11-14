@@ -54,7 +54,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - Rich documents have one font size per block, no images, tables, nested lists, alignment or colours, and paste as plain text. An edit reshapes only the blocks it changed, but the first frame and a change of width, font size or direction shape every block, not only the visible ones.
 - The code editor's horizontal range comes from the widest line declared around the view, so the scrollbar can change length as the view scrolls vertically through lines of different widths.
 - Bracket matching tells strings and comments from code only when the highlighter reports them (`Highlighter::strings_and_comments`, which `SyntectHighlighter` implements); without one, or on lines its parsing has not reached yet, every bracket counts. Auto-close does not look at them. Find is line by line.
-- The base direction of a paragraph is taken from its first strong character and cannot be forced in an editor. Left and Right in tree rows keep their left-to-right meanings (Left collapses, Right expands) in a right-to-left window.
+- A base direction forced with `Style::base_direction` orders each line of an editor, but text areas and code editors do not right-align a line that reads right to left (a rich editor and a text field do). Left and Right in tree rows keep their left-to-right meanings (Left collapses, Right expands) in a right-to-left window.
 - Fluent formats numbers plainly; use `Ui::format_number` for locale notation. Only the default catalog is checked by `tr!`.
 - No text selection handles or magnifier for touch.
 

@@ -14,6 +14,8 @@ struct LineLayout {
 #[derive(Default)]
 pub(super) struct AreaState {
     layouts: Vec<LineLayout>,
+    /// The paragraph direction the layouts were shaped with.
+    base: Option<bool>,
     first_line: usize,
     /// Width of the line numbers and marks left of the text.
     pub(super) gutter: f32,
@@ -42,11 +44,12 @@ pub(crate) struct AreaView {
     pub primary: Option<(usize, usize)>,
 }
 
-fn text_style(font_size: f32) -> TextStyle {
+fn text_style(font_size: f32, base: Option<bool>) -> TextStyle {
     TextStyle {
         font_size,
         family: FontFamily::Monospace,
         wrap: TextWrap::None,
+        base,
         ..TextStyle::default()
     }
 }
@@ -546,8 +549,9 @@ impl Context {
             else {
                 continue;
             };
+            let base = node.text_style().base;
             let mut area = node.area.take().unwrap_or_default();
-            let style = text_style(*font_size);
+            let style = text_style(*font_size, base);
             let line_height = font_size * 1.4;
             let digit = measurer.measure_styled("0", &style, None).width;
             let gutter = if *line_numbers {
@@ -561,6 +565,7 @@ impl Context {
                 .map(Some)
                 .collect();
             let old_first = area.first_line;
+            let same_base = area.base == base;
             let mut changed = gutter != area.gutter || *first_line != old_first;
             for (index, line) in lines.iter().enumerate() {
                 let number = first_line + index;
@@ -572,7 +577,10 @@ impl Context {
                     .and_then(|slot| old.get_mut(slot))
                     .and_then(|slot| {
                         slot.take_if(|layout| {
-                            layout.line == *line && layout.preedit.is_none() && preedit.is_none()
+                            same_base
+                                && layout.line == *line
+                                && layout.preedit.is_none()
+                                && preedit.is_none()
                         })
                     });
                 area.layouts.push(reused.unwrap_or_else(|| {
@@ -594,6 +602,7 @@ impl Context {
                 }));
             }
             area.first_line = *first_line;
+            area.base = base;
             area.gutter = gutter;
             area.digit = digit;
             area.line_height = line_height;
@@ -681,7 +690,7 @@ impl Context {
         let origin_y = content.y - node.scroll.offset;
         let row = |line: usize| origin_y + line as f32 * line_height;
         let visible = |y: f32| y + line_height > content.y && y < content.y + content.height;
-        let style = text_style(*font_size);
+        let style = text_style(*font_size, node.text_style().base);
         scene.primitives.push(Primitive::PushClip(content));
         let caret_only = selections
             .iter()

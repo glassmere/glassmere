@@ -141,7 +141,8 @@ impl Context {
             .filter_map(|(id, node)| {
                 let width = (node.bounds.width - node.style.padding.max(0.0) * 2.0).max(1.0);
                 let text_style = node.text_style();
-                let rtl = node.resolved.rtl();
+                // A forced paragraph direction aligns the text as it reads.
+                let rtl = text_style.base.unwrap_or(node.resolved.rtl());
                 node.editor
                     .as_mut()?
                     .prepare(measurer, text_style, width, rtl)

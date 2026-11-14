@@ -288,6 +288,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         style.background = options.style.background;
         // Source code reads left to right whatever the UI direction is.
         style.direction = Some(crate::Direction::Ltr);
+        style.base_direction = options.style.base_direction;
         self.push(Element {
             style,
             enabled: self.enabled,
