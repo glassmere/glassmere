@@ -2,6 +2,13 @@
 
 use super::*;
 
+/// A frame names no more rectangles than this, so that a renderer does not
+/// draw an unbounded number of scissored passes.
+const DAMAGE_REGIONS: usize = 8;
+/// Rectangles this close, in logical pixels, are one: a second pass over a
+/// thin gap costs more than painting the gap.
+const DAMAGE_GAP: f32 = 8.0;
+
 impl Context {
     pub(super) fn refresh_bounds(&mut self, size: Size) {
         self.update_bounds(
@@ -201,9 +208,35 @@ impl Context {
         self.painted_overlays.push(rect);
     }
 
-    pub(super) fn add_damage(&mut self, rect: Rect) {
-        if rect.width > 0.0 && rect.height > 0.0 {
-            self.pending_damage = Some(self.pending_damage.map_or(rect, |old| old.union(rect)));
+    /// Records `rect` as changed. Rectangles that overlap or nearly touch
+    /// become one, and no more than `DAMAGE_REGIONS` are kept: past that the
+    /// pair that costs the least extra area is joined.
+    pub(super) fn add_damage(&mut self, mut rect: Rect) {
+        if !(rect.width > 0.0 && rect.height > 0.0) {
+            return;
+        }
+        let regions = &mut self.pending_damage;
+        let near = |a: Rect, b: Rect| {
+            a.x - DAMAGE_GAP <= b.x + b.width
+                && b.x - DAMAGE_GAP <= a.x + a.width
+                && a.y - DAMAGE_GAP <= b.y + b.height
+                && b.y - DAMAGE_GAP <= a.y + a.height
+        };
+        while let Some(at) = regions.iter().position(|region| near(*region, rect)) {
+            rect = rect.union(regions.swap_remove(at));
+        }
+        regions.push(rect);
+        let area = |rect: Rect| rect.width * rect.height;
+        while regions.len() > DAMAGE_REGIONS {
+            let waste = |a: usize, b: usize| {
+                area(regions[a].union(regions[b])) - area(regions[a]) - area(regions[b])
+            };
+            let (a, b) = (0..regions.len())
+                .flat_map(|a| (a + 1..regions.len()).map(move |b| (a, b)))
+                .min_by(|x, y| waste(x.0, x.1).total_cmp(&waste(y.0, y.1)))
+                .unwrap();
+            let joined = regions[a].union(regions.swap_remove(b));
+            regions[a] = joined;
         }
     }
 

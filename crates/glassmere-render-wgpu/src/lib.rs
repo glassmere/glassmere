@@ -19,6 +19,12 @@ pub type RenderResult<T> = Result<T, Box<dyn Error>>;
 
 /// Gradient stops one ramp can hold. A ramp given more keeps the first eight.
 pub const MAX_GRADIENT_STOPS: usize = 8;
+/// A damaged frame is drawn as at most this many regions, one scissored pass
+/// each.
+const DAMAGE_REGIONS: usize = 8;
+/// Damaged rectangles this close, in logical pixels, are drawn as one: a
+/// second pass over a thin gap costs more than drawing the gap.
+const DAMAGE_GAP: f32 = 8.0;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -96,7 +102,8 @@ pub type CustomDrawFn = Box<dyn FnMut(CustomDraw<'_>)>;
 
 /// What an application's own wgpu code is handed for a `Primitive::Custom`
 /// (see `Renderer::set_custom_draw`). The pass is scissored to the primitive's
-/// clipped rectangle and the renderer restores its own state afterwards.
+/// clipped rectangle and the renderer restores its own state afterwards. A
+/// frame that redraws damage calls it once for each damaged region it meets.
 pub struct CustomDraw<'a> {
     pub device: &'a wgpu::Device,
     pub queue: &'a wgpu::Queue,
@@ -800,7 +807,8 @@ impl Renderer {
     ///
     /// `damage` lists the logical rectangles that changed since the previous
     /// frame; empty means all of it. Where the renderer can honour damage it
-    /// redraws their union alone and takes the rest of the frame from an
+    /// redraws them alone, as at most eight regions (rectangles that overlap
+    /// or nearly touch are one), and takes the rest of the frame from an
     /// offscreen canvas, so a host may only name damage that is the truth.
     #[allow(clippy::too_many_arguments)]
     pub fn render_cached(
@@ -1397,15 +1405,16 @@ impl Renderer {
     }
 
     /// Brings the canvas to the target at hand and works out how much of this
-    /// frame may be kept. `None` means redraw it whole: there is no damage to
-    /// go by, or the canvas is new, holds another target or does not fit.
+    /// frame may be kept: the scissors to redraw. `None` means redraw it whole:
+    /// there is no damage to go by, or the canvas is new, holds another target
+    /// or does not fit.
     fn prepare_canvas(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         target_key: ([u32; 2], u32),
         damage: &[Rect],
-    ) -> Option<[u32; 4]> {
+    ) -> Option<Vec<[u32; 4]>> {
         let (size, scale) = (target_key.0, f32::from_bits(target_key.1));
         // Hosts that never name damage never pay for a canvas.
         if damage.is_empty() && self.canvas.is_none() {
@@ -1431,20 +1440,23 @@ impl Renderer {
             self.canvas = canvas;
             self.canvas_holds = None;
         }
-        let union = damage.iter().copied().reduce(Rect::union)?;
-        if self.canvas_holds != Some(target_key) {
+        if damage.is_empty() || self.canvas_holds != Some(target_key) {
             return None;
         }
-        Some(scissor(
-            union,
-            &Surface {
-                size,
-                origin: [0.0; 2],
-                scale,
-                texture: None,
-                draws: Vec::new(),
-            },
-        ))
+        let surface = Surface {
+            size,
+            origin: [0.0; 2],
+            scale,
+            texture: None,
+            draws: Vec::new(),
+        };
+        Some(
+            coalesce(damage)
+                .into_iter()
+                .map(|rect| scissor(rect, &surface))
+                .filter(|clip| clip[2] > 0 && clip[3] > 0)
+                .collect(),
+        )
     }
 
     fn layer_texture(
@@ -1507,15 +1519,18 @@ impl Renderer {
         queue: &wgpu::Queue,
         target: &wgpu::TextureView,
         clear: Color,
-        damage: Option<[u32; 4]>,
+        damage: Option<Vec<[u32; 4]>>,
     ) -> RenderResult<()> {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("glassmere frame"),
         });
         self.stats.frames += 1;
         let target_size = self.surfaces[0].size;
-        self.stats.redrawn = match damage {
-            Some(clip) => u64::from(clip[2]) * u64::from(clip[3]),
+        self.stats.redrawn = match &damage {
+            Some(clips) => clips
+                .iter()
+                .map(|clip| u64::from(clip[2]) * u64::from(clip[3]))
+                .sum(),
             None => u64::from(target_size[0]) * u64::from(target_size[1]),
         };
         if self.profiling && self.timestamps_supported {
@@ -1569,7 +1584,7 @@ impl Renderer {
                 },
             };
             // Only the target's pass may keep anything; layers are drawn afresh.
-            let confine = damage.filter(|_| surface.texture.is_none());
+            let confine = damage.as_deref().filter(|_| surface.texture.is_none());
             let timestamp_writes = self
                 .timestamps
                 .as_ref()
@@ -1615,92 +1630,109 @@ impl Renderer {
                     multiview_mask: None,
                 })
                 .forget_lifetime();
-            if let Some(clip) = confine
-                && let Some(quad) = &self.clear_quad
-            {
-                pass.set_pipeline(&self.clear_pipeline);
-                pass.set_vertex_buffer(0, quad.slice(..));
-                pass.set_scissor_rect(clip[0], clip[1], clip[2], clip[3]);
-                pass.draw(0..6, 0..1);
-            }
-            for draw in &surface.draws {
-                let clip = match draw {
-                    Draw::Quad { clip, .. }
-                    | Draw::Image { clip, .. }
-                    | Draw::Layer { clip, .. }
-                    | Draw::Gradient { clip, .. }
-                    | Draw::Shadow { clip, .. }
-                    | Draw::Path { clip, .. }
-                    | Draw::Custom { clip, .. } => *clip,
-                    // Each text area carries its own bounds into glyphon.
-                    Draw::Text(_) => [0, 0, surface.size[0], surface.size[1]],
-                };
-                let clip = confine.map_or(clip, |damage| intersect(clip, damage));
-                if clip[2] == 0 || clip[3] == 0 {
-                    continue;
+            // Each damaged region is cleared and drawn over before the next,
+            // so that regions that overlap still end as the scene.
+            let regions: Vec<Option<[u32; 4]>> = match confine {
+                Some(clips) => clips.iter().copied().map(Some).collect(),
+                None => vec![None],
+            };
+            for confine in regions {
+                if let Some(clip) = confine
+                    && let Some(quad) = &self.clear_quad
+                {
+                    pass.set_pipeline(&self.clear_pipeline);
+                    pass.set_vertex_buffer(0, quad.slice(..));
+                    pass.set_scissor_rect(clip[0], clip[1], clip[2], clip[3]);
+                    pass.draw(0..6, 0..1);
                 }
-                pass.set_scissor_rect(clip[0], clip[1], clip[2], clip[3]);
-                match draw {
-                    Draw::Quad { start, .. } => {
-                        pass.set_pipeline(&self.pipeline);
-                        pass.set_vertex_buffer(0, self.quad_buffer.as_ref().unwrap().slice(..));
-                        pass.draw(*start..*start + 6, 0..1);
+                for draw in &surface.draws {
+                    let clip = match draw {
+                        Draw::Quad { clip, .. }
+                        | Draw::Image { clip, .. }
+                        | Draw::Layer { clip, .. }
+                        | Draw::Gradient { clip, .. }
+                        | Draw::Shadow { clip, .. }
+                        | Draw::Path { clip, .. }
+                        | Draw::Custom { clip, .. } => *clip,
+                        // Each text area carries its own bounds into glyphon.
+                        Draw::Text(_) => [0, 0, surface.size[0], surface.size[1]],
+                    };
+                    let clip = confine.map_or(clip, |damage| intersect(clip, damage));
+                    if clip[2] == 0 || clip[3] == 0 {
+                        continue;
                     }
-                    Draw::Text(index) => {
-                        self.text_renderers[*index].render(&self.atlas, viewport, &mut pass)?;
-                    }
-                    Draw::Image {
-                        texture,
-                        start,
-                        count,
-                        ..
-                    } => {
-                        pass.set_pipeline(&self.image_pipeline);
-                        pass.set_bind_group(0, self.images.bind_group(*texture), &[]);
-                        pass.set_vertex_buffer(0, self.image_buffer.as_ref().unwrap().slice(..));
-                        pass.draw(*start..*start + *count, 0..1);
-                    }
-                    Draw::Layer {
-                        surface: child,
-                        start,
-                        ..
-                    } => {
-                        let texture = self.surfaces[*child].texture.unwrap();
-                        pass.set_pipeline(&self.layer_pipeline);
-                        pass.set_bind_group(0, &self.pool[texture].bind_group, &[]);
-                        pass.set_vertex_buffer(0, self.quad_buffer.as_ref().unwrap().slice(..));
-                        pass.draw(*start..*start + 6, 0..1);
-                    }
-                    Draw::Gradient { start, .. } => {
-                        pass.set_pipeline(&self.gradient_pipeline);
-                        pass.set_vertex_buffer(0, self.gradient_buffer.as_ref().unwrap().slice(..));
-                        pass.draw(*start..*start + 6, 0..1);
-                    }
-                    Draw::Shadow { start, .. } => {
-                        pass.set_pipeline(&self.shadow_pipeline);
-                        pass.set_vertex_buffer(0, self.shadow_buffer.as_ref().unwrap().slice(..));
-                        pass.draw(*start..*start + 6, 0..1);
-                    }
-                    Draw::Path { start, count, .. } => {
-                        pass.set_pipeline(&self.path_pipeline);
-                        pass.set_vertex_buffer(0, self.path_buffer.as_ref().unwrap().slice(..));
-                        pass.draw(*start..*start + *count, 0..1);
-                    }
-                    Draw::Custom { id, rect, .. } => {
-                        if let Some(draw) = self.custom.get_mut(id) {
-                            draw(CustomDraw {
-                                device,
-                                queue,
-                                pass: &mut pass,
-                                rect: *rect,
-                                scale: surface.scale,
-                                target_size: surface.size,
-                            });
-                            // Pipeline, vertex buffer and scissor are set again
-                            // by every draw that follows, but nothing else is:
-                            // the viewport a callback left would stay.
-                            let size = surface.size.map(|side| side as f32);
-                            pass.set_viewport(0.0, 0.0, size[0], size[1], 0.0, 1.0);
+                    pass.set_scissor_rect(clip[0], clip[1], clip[2], clip[3]);
+                    match draw {
+                        Draw::Quad { start, .. } => {
+                            pass.set_pipeline(&self.pipeline);
+                            pass.set_vertex_buffer(0, self.quad_buffer.as_ref().unwrap().slice(..));
+                            pass.draw(*start..*start + 6, 0..1);
+                        }
+                        Draw::Text(index) => {
+                            self.text_renderers[*index].render(&self.atlas, viewport, &mut pass)?;
+                        }
+                        Draw::Image {
+                            texture,
+                            start,
+                            count,
+                            ..
+                        } => {
+                            pass.set_pipeline(&self.image_pipeline);
+                            pass.set_bind_group(0, self.images.bind_group(*texture), &[]);
+                            pass.set_vertex_buffer(
+                                0,
+                                self.image_buffer.as_ref().unwrap().slice(..),
+                            );
+                            pass.draw(*start..*start + *count, 0..1);
+                        }
+                        Draw::Layer {
+                            surface: child,
+                            start,
+                            ..
+                        } => {
+                            let texture = self.surfaces[*child].texture.unwrap();
+                            pass.set_pipeline(&self.layer_pipeline);
+                            pass.set_bind_group(0, &self.pool[texture].bind_group, &[]);
+                            pass.set_vertex_buffer(0, self.quad_buffer.as_ref().unwrap().slice(..));
+                            pass.draw(*start..*start + 6, 0..1);
+                        }
+                        Draw::Gradient { start, .. } => {
+                            pass.set_pipeline(&self.gradient_pipeline);
+                            pass.set_vertex_buffer(
+                                0,
+                                self.gradient_buffer.as_ref().unwrap().slice(..),
+                            );
+                            pass.draw(*start..*start + 6, 0..1);
+                        }
+                        Draw::Shadow { start, .. } => {
+                            pass.set_pipeline(&self.shadow_pipeline);
+                            pass.set_vertex_buffer(
+                                0,
+                                self.shadow_buffer.as_ref().unwrap().slice(..),
+                            );
+                            pass.draw(*start..*start + 6, 0..1);
+                        }
+                        Draw::Path { start, count, .. } => {
+                            pass.set_pipeline(&self.path_pipeline);
+                            pass.set_vertex_buffer(0, self.path_buffer.as_ref().unwrap().slice(..));
+                            pass.draw(*start..*start + *count, 0..1);
+                        }
+                        Draw::Custom { id, rect, .. } => {
+                            if let Some(draw) = self.custom.get_mut(id) {
+                                draw(CustomDraw {
+                                    device,
+                                    queue,
+                                    pass: &mut pass,
+                                    rect: *rect,
+                                    scale: surface.scale,
+                                    target_size: surface.size,
+                                });
+                                // Pipeline, vertex buffer and scissor are set again
+                                // by every draw that follows, but nothing else is:
+                                // the viewport a callback left would stay.
+                                let size = surface.size.map(|side| side as f32);
+                                pass.set_viewport(0.0, 0.0, size[0], size[1], 0.0, 1.0);
+                            }
                         }
                     }
                 }
@@ -1800,6 +1832,42 @@ fn scissor(rect: Rect, surface: &Surface) -> [u32; 4] {
         .max(0.0)
         .min(size[1] as f32) as u32;
     [x, y, right.saturating_sub(x), bottom.saturating_sub(y)]
+}
+
+/// The rectangles to redraw for `damage`: those that overlap or nearly touch
+/// are one, and past `DAMAGE_REGIONS` the pair that costs the least extra area
+/// is joined. What lies between the regions is kept.
+fn coalesce(damage: &[Rect]) -> Vec<Rect> {
+    let near = |a: Rect, b: Rect| {
+        a.x - DAMAGE_GAP <= b.x + b.width
+            && b.x - DAMAGE_GAP <= a.x + a.width
+            && a.y - DAMAGE_GAP <= b.y + b.height
+            && b.y - DAMAGE_GAP <= a.y + a.height
+    };
+    let area = |rect: Rect| rect.width * rect.height;
+    let mut regions: Vec<Rect> = Vec::new();
+    for mut rect in damage
+        .iter()
+        .copied()
+        .filter(|rect| rect.width > 0.0 && rect.height > 0.0)
+    {
+        while let Some(at) = regions.iter().position(|region| near(*region, rect)) {
+            rect = rect.union(regions.swap_remove(at));
+        }
+        regions.push(rect);
+        while regions.len() > DAMAGE_REGIONS {
+            let waste = |a: usize, b: usize| {
+                area(regions[a].union(regions[b])) - area(regions[a]) - area(regions[b])
+            };
+            let (a, b) = (0..regions.len())
+                .flat_map(|a| (a + 1..regions.len()).map(move |b| (a, b)))
+                .min_by(|x, y| waste(x.0, x.1).total_cmp(&waste(y.0, y.1)))
+                .unwrap();
+            let joined = regions[a].union(regions.swap_remove(b));
+            regions[a] = joined;
+        }
+    }
+    regions
 }
 
 /// Two scissors of one surface, as one. Empty where they do not meet.

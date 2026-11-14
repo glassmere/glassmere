@@ -1467,8 +1467,8 @@ fn damage_redraws_only_its_rectangles_and_keeps_the_rest() {
     assert_eq!(gpu.renderer.stats().redrawn, (SIDE * SIDE) as u64);
     assert!(full == plain_b, "an undamaged frame is not a full redraw");
 
-    // Several rectangles are redrawn as one scissor over their union, so a
-    // pixel between them is redrawn too.
+    // Rectangles that touch are one region, so a pixel between them is
+    // redrawn too.
     let mixed = gpu.damaged(
         1.0,
         &a,
@@ -1479,6 +1479,84 @@ fn damage_redraws_only_its_rectangles_and_keeps_the_rest() {
     assert_pixel(&mixed, 40, 10, [255, 0, 0]);
     assert_pixel(&mixed, 80, 80, [0, 0, 255]);
     assert_pixel(&mixed, 60, 60, [255; 3]);
+}
+
+/// Two small changes far apart redraw two small regions: the page between
+/// them, which differs from the new scene but is not named, keeps what it had.
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn damage_far_apart_redraws_two_regions_and_not_the_box_between() {
+    let mut gpu = Gpu::new();
+    let all = [rect(0.0, 0.0, SIDE as f32, SIDE as f32)];
+    let (top, bottom) = (rect(8.0, 8.0, 16.0, 16.0), rect(104.0, 104.0, 16.0, 16.0));
+    let scene = |corner: Color, middle: Color| {
+        [
+            quad(top, corner),
+            quad(bottom, corner),
+            quad(rect(48.0, 48.0, 32.0, 32.0), middle),
+        ]
+    };
+    let (a, b) = (scene(RED, RED), scene(BLUE, BLUE));
+    let plain_a = gpu.render(1.0, &a, true);
+    let plain_b = gpu.render(1.0, &b, true);
+    gpu.damaged(1.0, &a, true, &all);
+    let mixed = gpu.damaged(1.0, &b, true, &[top, bottom]);
+    // Two regions of 16 by 16, where their union would be 112 by 112.
+    assert_eq!(gpu.renderer.stats().redrawn, 2 * 16 * 16);
+    for y in 0..SIDE {
+        for x in 0..SIDE {
+            let at = (y * SIDE + x) * 4;
+            let named = |region: Rect| {
+                (region.x as usize..(region.x + region.width) as usize).contains(&x)
+                    && (region.y as usize..(region.y + region.height) as usize).contains(&y)
+            };
+            let (expected, scene) = match named(top) || named(bottom) {
+                true => (&plain_b, 'B'),
+                false => (&plain_a, 'A'),
+            };
+            assert_eq!(
+                mixed[at..at + 4],
+                expected[at..at + 4],
+                "pixel ({x}, {y}) is not scene {scene}"
+            );
+        }
+    }
+    assert_pixel(&mixed, 12, 12, [0, 0, 255]);
+    assert_pixel(&mixed, 110, 110, [0, 0, 255]);
+    assert_pixel(&mixed, 60, 60, [255, 0, 0]);
+}
+
+/// Rectangles past the cap are joined, never dropped: a frame whose only
+/// changes are inside twenty scattered ones, one overlapping another, is the
+/// frame drawn whole.
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn scattered_damage_is_joined_past_the_cap_and_none_of_it_is_lost() {
+    let mut gpu = Gpu::new();
+    let all = [rect(0.0, 0.0, SIDE as f32, SIDE as f32)];
+    let spots: Vec<Rect> = (0..20)
+        .map(|index| {
+            rect(
+                (index % 5) as f32 * 24.0 + 2.0,
+                (index / 5) as f32 * 30.0 + 2.0,
+                8.0,
+                8.0,
+            )
+        })
+        .chain([rect(6.0, 6.0, 12.0, 12.0)])
+        .collect();
+    let spotted = |color: Color| {
+        spots
+            .iter()
+            .map(|spot| quad(*spot, color))
+            .collect::<Vec<_>>()
+    };
+    let plain = gpu.render(1.0, &spotted(BLUE), true);
+    gpu.damaged(1.0, &spotted(RED), true, &all);
+    let scattered = gpu.damaged(1.0, &spotted(BLUE), true, &spots);
+    assert!(scattered == plain, "a scattered frame is not the full one");
+    let redrawn = gpu.renderer.stats().redrawn;
+    assert!(redrawn < (SIDE * SIDE) as u64 / 2, "redrew {redrawn}");
 }
 
 #[test]

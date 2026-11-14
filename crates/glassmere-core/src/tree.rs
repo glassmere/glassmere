@@ -382,7 +382,7 @@ pub struct Context {
     /// Tabs that became selected in this declaration; layout scrolls their
     /// strips to show them.
     reveal_tabs: Vec<NodeId>,
-    pending_damage: Option<Rect>,
+    pending_damage: Vec<Rect>,
     damage: Vec<Rect>,
     updates: HashMap<NodeId, ControlUpdate>,
     bindings: HashMap<String, Option<Shortcut>>,
@@ -609,7 +609,7 @@ impl Default for Context {
             stats: FrameStats::default(),
             geometry_dirty: false,
             reveal_tabs: Vec::new(),
-            pending_damage: None,
+            pending_damage: Vec::new(),
             damage: Vec::new(),
             updates: HashMap::new(),
             bindings: HashMap::new(),
@@ -1107,7 +1107,8 @@ impl Context {
     }
 
     /// Conservative logical damage from the most recent declaration, which the
-    /// renderers use to limit what they redraw.
+    /// renderers use to limit what they redraw. Changes that overlap or nearly
+    /// touch share a rectangle, and there are never more than eight.
     pub fn damage_regions(&self) -> &[Rect] {
         &self.damage
     }
