@@ -60,7 +60,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 
 ## Collections and grids
 
-- Rows have one fixed height per collection.
+- Row heights come from the model (`ListModel::row_heights`), not from content: a row is never measured, so wrapping text or an expanding row needs its height set by the application. A grid's rows all have the one height.
 - A grid selects one cell at a time, with no range selection or block copy.
 - Filters are text only. There are no pinned data rows (totals).
 - Property grid rows are declared, not virtualized; filter or split thousands of properties. There is no multi-object editing. Enums are edited through a `usize` index with `choices(..)`, and `Option<T>` and collection fields are not supported by `#[derive(Properties)]`.
