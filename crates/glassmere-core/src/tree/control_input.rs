@@ -527,6 +527,12 @@ impl Context {
                 self.choose(owner, index)
             }
             Control::Tab { .. } => self.select_tab(id),
+            Control::StripScroll { end } => {
+                let Some(strip) = node.parent else {
+                    return false;
+                };
+                self.scroll_strip_step(strip, end)
+            }
             Control::Reveal { .. } => {
                 self.toggle_reveal(id);
                 self.queue_click(id);

@@ -202,8 +202,67 @@ impl Context {
         })
     }
 
+    /// The left and right edges of the part of the tab strip `strip` that
+    /// shows tabs: its box, less the panel menu pinned at its end.
+    pub(super) fn strip_area(&self, strip: NodeId) -> (f32, f32) {
+        let node = &self.nodes[&strip];
+        let pinned = node
+            .children_by_key
+            .get(&WidgetKey::named(STRIP_MENU))
+            .map_or(0.0, |menu| self.nodes[menu].bounds.width);
+        if node.resolved.rtl() {
+            (node.bounds.x + pinned, node.bounds.x + node.bounds.width)
+        } else {
+            (node.bounds.x, node.bounds.x + node.bounds.width - pinned)
+        }
+    }
+
+    /// A child of the tab strip `strip`; a tab comes with its close button.
+    fn strip_extent(&self, strip: NodeId, target: NodeId) -> Rect {
+        let mut shown = self.nodes[&target].bounds;
+        if let Control::Tab { index, .. } = self.nodes[&target].control
+            && let Some(close) = self.nodes[&strip]
+                .children_by_key
+                .get(&WidgetKey::named(format!("$close-{index}")))
+        {
+            shown = shown.union(self.nodes[close].bounds);
+        }
+        shown
+    }
+
+    /// Scrolls the tab strip `strip` by about a tab, toward its end or its
+    /// start: the nearest tab that is not whole between the scroll buttons on
+    /// that side is brought in.
+    pub(super) fn scroll_strip_step(&mut self, strip: NodeId, toward_end: bool) -> bool {
+        let node = &self.nodes[&strip];
+        let (left, right) = self.strip_area(strip);
+        let (left, right) = (left + STRIP_BUTTON, right - STRIP_BUTTON);
+        // The start side is on the right in a right-to-left strip.
+        let past_right = toward_end != node.resolved.rtl();
+        let cut = |tab: &NodeId| {
+            let shown = self.strip_extent(strip, *tab);
+            if past_right {
+                shown.x + shown.width > right + 0.5
+            } else {
+                shown.x < left - 0.5
+            }
+        };
+        let mut tabs = node
+            .children
+            .iter()
+            .copied()
+            .filter(|id| self.nodes[id].kind == Kind::Tab);
+        let target = if toward_end {
+            tabs.find(cut)
+        } else {
+            tabs.filter(cut).last()
+        };
+        target.is_some_and(|tab| self.reveal_in_strip(strip, tab))
+    }
+
     /// Scrolls the tab strip `strip` until `target`, one of its children, is
-    /// in the part that shows tabs. A tab comes with its close button.
+    /// in the part that shows tabs, clear of the scroll buttons. A tab comes
+    /// with its close button.
     pub(super) fn reveal_in_strip(&mut self, strip: NodeId, target: NodeId) -> bool {
         let node = &self.nodes[&strip];
         if node.scroll.maximum_x <= 0.0 {
@@ -213,24 +272,15 @@ impl Context {
             .children_by_key
             .get(&WidgetKey::named(STRIP_MENU))
             .copied();
-        if menu == Some(target) {
+        if menu == Some(target)
+            || matches!(self.nodes[&target].control, Control::StripScroll { .. })
+        {
             return false;
         }
-        let pinned = menu.map_or(0.0, |menu| self.nodes[&menu].bounds.width);
         let rtl = node.resolved.rtl();
-        let (left, right) = if rtl {
-            (node.bounds.x + pinned, node.bounds.x + node.bounds.width)
-        } else {
-            (node.bounds.x, node.bounds.x + node.bounds.width - pinned)
-        };
-        let mut shown = self.nodes[&target].bounds;
-        if let Control::Tab { index, .. } = self.nodes[&target].control
-            && let Some(close) = node
-                .children_by_key
-                .get(&WidgetKey::named(format!("$close-{index}")))
-        {
-            shown = shown.union(self.nodes[close].bounds);
-        }
+        let (left, right) = self.strip_area(strip);
+        let (left, right) = (left + STRIP_BUTTON, right - STRIP_BUTTON);
+        let shown = self.strip_extent(strip, target);
         // The start edge wins when the tab is wider than the strip.
         let (before, after) = (shown.x - left, shown.x + shown.width - right);
         let sideways = if rtl {

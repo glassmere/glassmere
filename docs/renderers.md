@@ -31,13 +31,13 @@ Coordinates are logical; the renderer multiplies by the scale factor. Nothing in
 
 This is the part that takes a day to find. Surfaces are sRGB, and blending happens in **linear light**: half of red over blue is 188, not 128. A renderer that blends in sRGB space comes out visibly wrong wherever anything is translucent.
 
-Images are premultiplied in **sRGB** space, as decoders produce them. Both renderers convert them to the sRGB encoding of their premultiplied *linear* colour before sampling; skipping that makes translucent images dark.
+Images are premultiplied in **sRGB** space, as decoders produce them. Both renderers convert them to the sRGB encoding of their premultiplied *linear* colour before sampling; skipping that makes translucent images dark. An image drawn at under half its pixel size is first box-filtered down, in linear light, to the smallest halving that still covers the pixels it fills; that is once per image and size, so sampling never shrinks it by more than two.
 
 The CPU renderer does it by hand through a twelve-bit gamma table, which round-trips exactly, and uses tiny-skia for geometry only, because tiny-skia mixes premultiplied channels in its own space.
 
 ## Damage
 
-`Context::damage_regions` gives the rectangles that changed. A renderer that can, paints only those: the wgpu one keeps a canvas texture, loads it, scissors to the damage and blits; the CPU one seeds its clip stack with the damage union and clears only those pixels. Both fall back to the whole surface when the window is resized or the scene is new.
+`Context::damage_regions` gives the rectangles that changed. A renderer that can, paints only those: the wgpu one keeps a canvas texture, loads it, clears and draws each region under its own scissor and blits; the CPU one clears and paints each region in turn, with its clip stack seeded with that region. Both join rectangles that overlap or lie within 8 logical pixels and keep at most eight regions, so two changes far apart cost two small passes and not the box between them. A custom draw is called once for each region it meets. Both fall back to the whole surface when the window is resized or the scene is new.
 
 The way to be sure damage is complete is not to reason about it. `glassmere-render-cpu/tests/damage.rs` paints every frame twice, once incrementally and once in full, and compares byte for byte.
 

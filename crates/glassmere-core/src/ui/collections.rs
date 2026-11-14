@@ -554,6 +554,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                                     &mut shown,
                                     &ui.context.tr("glassmere-filter-placeholder", &[]),
                                     field,
+                                    None,
                                 );
                                 let on_filter = on.clone();
                                 ui.set_handler(crate::app::Handler::Field {
@@ -610,6 +611,43 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                                 {
                                     // The editor takes the cell's place.
                                     let descriptor = &columns[column];
+                                    // A number cell is a number field: Up and Down,
+                                    // PageUp and PageDown, the wheel and assistive
+                                    // technology step its draft, which stays a draft
+                                    // until Enter or Tab stores it.
+                                    let number = if let Some(crate::CellEditor::Number(options)) =
+                                        &descriptor.editor
+                                    {
+                                        let from = match edit.original {
+                                            crate::CellValue::Number(number) => number,
+                                            _ => options.constrain(0.0),
+                                        };
+                                        let step = if options.step > 0.0 {
+                                            options.step
+                                        } else {
+                                            1.0
+                                        };
+                                        if let Some(steps) =
+                                            ui.take_steps(&WidgetKey::Named("$edit".into()))
+                                        {
+                                            let base = options
+                                                .parse_in(ui.context, &edit.text)
+                                                .unwrap_or(from);
+                                            let next = options.constrain(base + steps * step);
+                                            edit.text = options.bare_in(ui.context, next);
+                                            edit.error = None;
+                                        }
+                                        Some(crate::NumericValue {
+                                            value: options
+                                                .parse_in(ui.context, &edit.text)
+                                                .unwrap_or(from),
+                                            min: options.min,
+                                            max: options.max,
+                                            step,
+                                        })
+                                    } else {
+                                        None
+                                    };
                                     let mut style = Style {
                                         padding: 4.0,
                                         radius: 0.0,
@@ -642,6 +680,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                                                 &mut edit.text,
                                                 "",
                                                 style,
+                                                number,
                                             )
                                             .0
                                         }

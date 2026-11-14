@@ -945,3 +945,96 @@ fn the_caret_is_kept_in_view_sideways_when_it_moves_and_not_when_the_wheel_scrol
     app.frame();
     assert!((text_left(&app.context) - (PADDING - ADVANCE)).abs() < 0.01);
 }
+
+/// How far the editor scrolls sideways, found by sending the wheel far past
+/// the end and back. The pointer is over the editor.
+fn range_x(app: &mut Driven<State>) -> f32 {
+    app.context.event(Event::Scroll {
+        delta_x: 100_000.0,
+        delta_y: 0.0,
+    });
+    app.frame();
+    let range = PADDING - text_left(&app.context);
+    app.context.event(Event::Scroll {
+        delta_x: -100_000.0,
+        delta_y: 0.0,
+    });
+    app.frame();
+    range
+}
+
+#[test]
+fn the_horizontal_range_comes_from_the_widest_line_wherever_the_view_is_scrolled() {
+    // The long line is far below the first screen.
+    let mut text: String = (0..200)
+        .map(|n| {
+            format!(
+                "line {n}
+"
+            )
+        })
+        .collect();
+    text.push_str(&"x".repeat(300));
+    let mut app = started(&text);
+    app.context
+        .event(Event::PointerMoved(Point { x: 100.0, y: 100.0 }));
+    let range = 302.0 * ADVANCE - (600.0 - PADDING * 2.0);
+    assert!((range_x(&mut app) - range).abs() < 1.0);
+
+    app.context.event(Event::Scroll {
+        delta_x: 0.0,
+        delta_y: LINE * 100_000.0,
+    });
+    app.frame();
+    assert!(
+        lines(&app.context)
+            .iter()
+            .any(|line| line.starts_with("xxx"))
+    );
+    assert!((range_x(&mut app) - range).abs() < 1.0);
+
+    // An edit that makes another line the widest moves the range to it, also
+    // once that line is out of view again.
+    app.state_mut().document.set_selection(0, 0);
+    app.state_mut()
+        .document
+        .apply(TextOp::Insert("z".repeat(500)));
+    app.frame();
+    app.frame();
+    app.context.event(Event::Scroll {
+        delta_x: 0.0,
+        delta_y: LINE * 100_000.0,
+    });
+    app.frame();
+    assert!(
+        lines(&app.context)
+            .iter()
+            .all(|line| !line.starts_with("zzz"))
+    );
+    let longer = 508.0 * ADVANCE - (600.0 - PADDING * 2.0);
+    assert!((range_x(&mut app) - longer).abs() < 1.0);
+}
+
+#[test]
+fn find_steps_through_and_replaces_matches_that_span_lines() {
+    let mut rig = Rig::new("one\ntwo\nthree\none\ntwo");
+    rig.app.find.query = "e\ntw".into();
+    click(&mut rig.context, cell(0, 1));
+    rig.context.event(Event::Editor(EditorCommand::Find));
+    rig.frame();
+    rig.frame();
+    rig.context.event(Event::Editor(EditorCommand::FindNext));
+    rig.frame();
+    assert_eq!(rig.app.document.primary().range(), 2..6);
+    rig.context.event(Event::Editor(EditorCommand::FindNext));
+    rig.frame();
+    assert_eq!(rig.app.document.primary().range(), 16..20);
+    assert_eq!(rig.app.find.matches(), [2..6, 16..20]);
+
+    rig.app.find.replacement = "-".into();
+    rig.context.event(Event::Editor(EditorCommand::Replace));
+    rig.frame();
+    rig.frame();
+    press(&mut rig, Role::Button, "Replace all");
+    assert_eq!(rig.app.document.text(), "on-o\nthree\non-o");
+}

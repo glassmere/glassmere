@@ -880,8 +880,18 @@ fn a_tab_strip_with_more_tabs_than_fit_scrolls_and_keeps_its_menu_in_place() {
         .filter(|node| node.semantics.role == Role::Tab && node.clip.width > 0.0)
         .map(|node| node.clip.x + node.clip.width)
         .fold(0.0_f32, f32::max);
-    assert!(cut <= menu.x + 0.5, "tabs are drawn under the menu: {cut}");
-    // That holds for what is painted: a tab the menu covers in part is cut
+    // The scroll button fills the end of the area the menu leaves, and the
+    // tabs are cut where it starts: nothing of one is drawn under it.
+    let button = in_strip(&app.context, "$scroll-end");
+    assert!(
+        (button.x + button.width - menu.x).abs() < 0.001,
+        "{button:?} {menu:?}"
+    );
+    assert!(
+        cut <= button.x + 0.001,
+        "tabs are drawn under the button: {cut}"
+    );
+    // That holds for what is painted: a tab the button covers in part is cut
     // there, and one past it is not drawn.
     let primitives = &app.context.scene().primitives;
     let straddling = app
@@ -891,13 +901,17 @@ fn a_tab_strip_with_more_tabs_than_fit_scrolls_and_keeps_its_menu_in_place() {
         .children
         .into_iter()
         .map(|id| app.context.node(id).unwrap())
-        .find(|node| node.bounds.x < menu.x && node.bounds.x + node.bounds.width > menu.x + 0.5)
-        .expect("a tab or its close button under the menu");
+        .find(|node| {
+            node.semantics.role != Role::Button
+                && node.bounds.x < button.x
+                && node.bounds.x + node.bounds.width > button.x + 0.5
+        })
+        .expect("a tab or its close button under the button");
     assert!(
         primitives.iter().any(
             |primitive| matches!(primitive, Primitive::PushClip(rect) if *rect == straddling.clip)
         ),
-        "{:?} is not cut at the menu",
+        "{:?} is not cut at the button",
         straddling.semantics.label
     );
     let texts: Vec<&str> = primitives
@@ -970,6 +984,57 @@ fn a_tab_strip_with_more_tabs_than_fit_scrolls_and_keeps_its_menu_in_place() {
 }
 
 #[test]
+fn a_dock_group_strip_has_scroll_buttons_beside_its_menu_that_leave_the_layout_alone() {
+    let mut app = crowded();
+    let strip = app
+        .context
+        .node(app.context.find(&STRIP).unwrap())
+        .unwrap()
+        .bounds;
+    let menu = in_strip(&app.context, "$menu");
+    let shown = |app: &Driven<DockLayout>, key: &str| clip_in_strip(&app.context, key).width > 0.0;
+    let gradients = |app: &Driven<DockLayout>| {
+        app.context
+            .scene()
+            .primitives
+            .iter()
+            .filter(|primitive| matches!(primitive, Primitive::Gradient { .. }))
+            .count()
+    };
+
+    // Tabs are hidden past the end, so that button shows, next to the menu
+    // rather than over it.
+    assert!(!shown(&app, "$scroll-start") && shown(&app, "$scroll-end"));
+    assert_eq!(gradients(&app), 1);
+    let end = in_strip(&app.context, "$scroll-end");
+    assert!((end.x + end.width - menu.x).abs() < 0.5, "{end:?} {menu:?}");
+    let path: Vec<&str> = STRIP.iter().copied().chain(["$scroll-end"]).collect();
+    let named = app.context.node(app.context.find(&path).unwrap()).unwrap();
+    assert_eq!(named.semantics.label, "Show later tabs");
+    assert_eq!(named.semantics.role, Role::Button);
+    let layout = app.state().clone();
+    let before = in_strip(&app.context, "0").x;
+
+    // A click moves the tabs and nothing else: no panel is chosen, none
+    // moves, and the menu stays where it was.
+    let point = center(end);
+    press(&mut app.context, point);
+    app.context.event(Event::PointerUp);
+    app.frame();
+    assert!(in_strip(&app.context, "0").x < before);
+    assert_eq!(*app.state(), layout);
+    assert_eq!(in_strip(&app.context, "$menu"), menu);
+    assert!(shown(&app, "$scroll-start"));
+    assert_eq!(gradients(&app), 2);
+    assert!(
+        !app.context.snapshots().iter().any(|node| node.is_popup),
+        "no menu opened"
+    );
+    let start = in_strip(&app.context, "$scroll-start");
+    assert!((start.x - strip.x).abs() < 0.5, "{start:?}");
+}
+
+#[test]
 fn a_tab_strip_whose_tabs_fit_does_not_scroll() {
     let mut app = App::start(false);
     app.frame();
@@ -1022,4 +1087,256 @@ fn a_tab_brought_into_view_on_the_first_frame_leaves_the_window_drawn() {
         .unwrap();
     let group = app.context.node(group).unwrap();
     assert_eq!(group.clip, group.bounds);
+}
+
+mod retained {
+    //! What a panel keeps while the dock is rearranged around it: its
+    //! content is the same nodes before and after, so focus, scroll offsets
+    //! and the undo history of an editor carry over.
+    use super::*;
+    use glassmere_core::{Action, CodeEditorOptions, Length, NodeId, Style, TextDocument};
+    use glassmere_core::{TextEdit, TextInput, TextOp};
+    use support::on;
+
+    struct Retained {
+        layout: DockLayout,
+        notes: String,
+        source: TextDocument,
+    }
+
+    fn view(state: &Retained, ui: &mut Ui<'_, Message<Retained>>) {
+        ui.keyed("dock", |ui| {
+            ui.dock(
+                &state.layout,
+                &panels(),
+                DockOptions::default(),
+                |action| {
+                    act(move |s: &mut Retained| {
+                        s.layout.apply(action.clone());
+                    })
+                },
+                |ui, id| {
+                    if id != "editor" {
+                        ui.label(format!("content:{id}"));
+                        return;
+                    }
+                    ui.column(Style::default().gap(4.0), |ui| {
+                        ui.scroll(
+                            Style::default().height(Length::Px(40.0)).shrink(0.0),
+                            |ui| {
+                                for row in 0..30 {
+                                    ui.label(format!("row {row}"));
+                                }
+                            },
+                        );
+                        ui.text_input(
+                            TextInput::new("Notes"),
+                            &state.notes,
+                            on(|s: &mut Retained, text: String| s.notes = text),
+                        );
+                        ui.code_editor(
+                            &state.source,
+                            CodeEditorOptions {
+                                label: "Source".into(),
+                                style: Style::default()
+                                    .width(Length::Percent(1.0))
+                                    .height(Length::Px(80.0))
+                                    .padding(8.0),
+                                line_numbers: false,
+                                ..CodeEditorOptions::default()
+                            },
+                            on(|s: &mut Retained, op: TextOp| s.source.apply(op)),
+                        );
+                    });
+                },
+            )
+        });
+    }
+
+    /// The nodes of the editor panel, found by what they are.
+    #[derive(Debug, PartialEq)]
+    struct Content {
+        scroll: NodeId,
+        input: NodeId,
+        area: NodeId,
+    }
+
+    fn find(context: &Context, role: Role) -> NodeId {
+        let mut stack = vec![context.root()];
+        while let Some(id) = stack.pop() {
+            let node = context.node(id).unwrap();
+            if node.semantics.role == role {
+                return id;
+            }
+            stack.extend(node.children.iter().rev());
+        }
+        panic!("no {role:?}");
+    }
+
+    fn content(context: &Context) -> Content {
+        Content {
+            scroll: find(context, Role::ScrollView),
+            input: find(context, Role::TextInput),
+            area: find(context, Role::MultilineTextInput),
+        }
+    }
+
+    /// The first line the text area declares, and where it is drawn from the
+    /// area's own top edge: what the area scrolled to.
+    fn top_line(context: &Context) -> (String, f32) {
+        let area = context.node(content(context).area).unwrap().bounds;
+        context
+            .scene()
+            .primitives
+            .iter()
+            .find_map(|primitive| match primitive {
+                Primitive::RichText { rect, spans, .. } => {
+                    let text: String = spans.iter().map(|span| span.text.as_str()).collect();
+                    Some((text, rect.y - area.y))
+                }
+                _ => None,
+            })
+            .expect("the text area draws lines")
+    }
+
+    fn scrolled(context: &Context, id: NodeId) -> f32 {
+        context.node(id).unwrap().scroll.unwrap().offset
+    }
+
+    fn edit(app: &mut Driven<Retained>, edit: TextEdit) {
+        app.context.event(Event::Text(edit));
+        app.frame();
+    }
+
+    /// What the panel has: the editor scrolled, a field with two edits and
+    /// the keyboard in it.
+    fn start() -> (Driven<Retained>, Content) {
+        let source: String = (0..60).map(|line| format!("line {line}\n")).collect();
+        let state = Retained {
+            layout: workspace(),
+            notes: String::new(),
+            source: TextDocument::from_text(&source),
+        };
+        let mut app = Driven::new(ROOT, state, view);
+        app.frame();
+        let nodes = content(&app.context);
+        for id in [nodes.scroll, nodes.area] {
+            let bounds = app.context.node(id).unwrap().bounds;
+            app.context.event(Event::PointerMoved(center(bounds)));
+            app.context.event(Event::Scroll {
+                delta_x: 0.0,
+                delta_y: 60.0,
+            });
+            app.frame();
+        }
+        assert!(scrolled(&app.context, nodes.scroll) > 0.0);
+        assert_ne!(top_line(&app.context).0.trim_end(), "line 0");
+        app.context.action(nodes.input, Action::Focus);
+        edit(&mut app, TextEdit::Insert("one".into()));
+        edit(&mut app, TextEdit::Insert("two".into()));
+        assert_eq!(app.state().notes, "onetwo");
+        (app, nodes)
+    }
+
+    /// Applies each change to the layout and checks, after every one, that
+    /// the panel is the node it was and still has what the user gave it.
+    fn survives(changes: &[&dyn Fn(&mut DockLayout)]) {
+        let (mut app, nodes) = start();
+        let offset = scrolled(&app.context, nodes.scroll);
+        let line = top_line(&app.context);
+        // The nodes the panel hangs from: they change when it is re-parented.
+        let hung = |app: &Driven<Retained>| {
+            let mut chain = Vec::new();
+            let mut next = Some(nodes.scroll);
+            while let Some(id) = next {
+                chain.push(id);
+                next = app.context.node(id).and_then(|node| node.parent);
+            }
+            chain
+        };
+        let mut at = hung(&app);
+        for (n, change) in changes.iter().enumerate() {
+            change(&mut app.state_mut().layout);
+            app.frame();
+            app.frame();
+            assert_eq!(content(&app.context), nodes, "change {n}");
+            let now = hung(&app);
+            assert_ne!(now, at, "change {n} re-parents the panel");
+            at = now;
+            assert_eq!(scrolled(&app.context, nodes.scroll), offset, "change {n}");
+            let now = top_line(&app.context);
+            assert_eq!(now.0, line.0, "change {n}");
+            assert!((now.1 - line.1).abs() < 0.01, "change {n}: {now:?}");
+            assert_eq!(app.context.focused(), Some(nodes.input), "change {n}");
+            // The history is the one the user made: undo and redo walk it.
+            edit(&mut app, TextEdit::Undo);
+            assert_eq!(app.state().notes, "one", "change {n}");
+            edit(&mut app, TextEdit::Redo);
+            assert_eq!(app.state().notes, "onetwo", "change {n}");
+        }
+    }
+
+    #[test]
+    fn a_panel_keeps_its_state_when_its_group_moves_into_a_new_split() {
+        survives(&[&|layout| {
+            layout.move_panel(
+                "preview",
+                DockTarget::Group {
+                    anchor: "editor".into(),
+                    zone: DockZone::Right,
+                },
+            );
+        }]);
+    }
+
+    #[test]
+    fn a_panel_keeps_its_state_when_its_tab_moves_to_another_group() {
+        survives(&[&|layout| {
+            layout.move_panel(
+                "editor",
+                DockTarget::Group {
+                    anchor: "output".into(),
+                    zone: DockZone::Center,
+                },
+            );
+        }]);
+    }
+
+    #[test]
+    fn a_panel_keeps_its_state_when_it_floats_and_docks_back() {
+        survives(&[
+            &|layout| {
+                layout.move_panel(
+                    "editor",
+                    DockTarget::Float {
+                        x: 40.0,
+                        y: 40.0,
+                        width: 360.0,
+                        height: 260.0,
+                    },
+                );
+            },
+            &|layout| {
+                layout.move_panel(
+                    "editor",
+                    DockTarget::Edge {
+                        area: DockArea::Main,
+                        zone: DockZone::Left,
+                    },
+                );
+            },
+        ]);
+    }
+
+    #[test]
+    fn a_panel_keeps_its_state_when_a_sibling_closes_and_its_split_collapses() {
+        survives(&[
+            &|layout| {
+                layout.close("output");
+            },
+            &|layout| {
+                layout.close("files");
+            },
+        ]);
+    }
 }
