@@ -69,7 +69,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 ## Windows and docking
 
 - Detached dock windows open where the OS puts them, and resizing them is not written back to the layout. A tab cannot be dragged from one OS window into another.
-- Retained widget state under a panel (focus, scroll, undo history) resets when a structural change re-parents its group.
+- A dock panel keeps its retained widget state (focus, scroll, undo history) through any change of the layout inside one window. It resets when the panel moves to another OS window, which has its own tree, and while its tab is not the selected one, because only the selected tab's content is declared.
 - Floating dock groups are clipped to the dock and cannot split. A tab strip with more tabs than fit scrolls by the wheel, a touch pan and the keyboard, and to the tab that becomes selected, but it has no scroll buttons and nothing marks that tabs are hidden past an edge.
 - Windows share one graphics policy. Window-to-window drags of `Item` payloads are not possible.
 - Outgoing OS drags work for files on Windows and macOS, always as a copy, with a fixed icon. Linux has none; the drag crate needs a GTK window. The system drag itself has not been exercised with a real pointer.
