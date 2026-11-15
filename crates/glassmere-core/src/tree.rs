@@ -16,6 +16,7 @@ use glassmere_scene::{
 };
 mod actions;
 mod animation_state;
+mod calendar_input;
 mod collection_input;
 mod control_input;
 mod control_paint;
@@ -160,7 +161,13 @@ impl Node {
 
     fn focusable(&self) -> bool {
         self.enabled
-            && !matches!(self.control, Control::Stepper | Control::StripScroll { .. })
+            && !matches!(
+                self.control,
+                Control::Stepper
+                    | Control::StripScroll { .. }
+                    | Control::CalendarStep { .. }
+                    | Control::CalendarDay { .. }
+            )
             // Pointer-only helpers: a column sizer, whose keyboard path is its
             // header's menu, and drag sources or drop targets without a name.
             && !matches!(
@@ -183,6 +190,7 @@ impl Node {
                     | Kind::ComboBox
                     | Kind::MenuButton
                     | Kind::Choice
+                    | Kind::Calendar
                     | Kind::Collection
                     | Kind::DragSource
                     | Kind::DropTarget
@@ -271,7 +279,10 @@ impl Node {
                     crate::collection::CollectionKind::Tree => Role::TreeItem,
                     crate::collection::CollectionKind::Grid => Role::Row,
                 },
-                Control::Grid { .. } => Role::Grid,
+                Control::Grid { .. } | Control::CalendarGrid { .. } => Role::Grid,
+                Control::CalendarRow { .. } => Role::Row,
+                Control::CalendarWeekday { .. } => Role::ColumnHeader,
+                Control::CalendarDay { .. } => Role::Cell,
                 Control::GridCell { header: true, .. } => Role::ColumnHeader,
                 Control::GridCell { .. } => Role::Cell,
                 Control::TabList => Role::TabList,
@@ -328,7 +339,11 @@ impl Node {
                 | Control::CollectionRow { label, .. }
                 | Control::TextArea { label, .. }
                 | Control::RichEditor { label, .. }
-                | Control::Grid { label, .. } => label.clone(),
+                | Control::Grid { label, .. }
+                | Control::CalendarGrid { label, .. } => label.clone(),
+                Control::CalendarWeekday { name, .. } | Control::CalendarDay { name, .. } => {
+                    name.clone()
+                }
                 Control::DragSource { label, .. } | Control::DropTarget { label, .. } => {
                     label.clone()
                 }
@@ -541,6 +556,8 @@ pub struct Context {
     dock: std::cell::Cell<Option<NodeId>>,
     /// The node of each panel's content, by dock and panel id.
     panels: HashMap<NodeId, HashMap<String, NodeId>>,
+    /// Where the cursor of each calendar is, which the view does not hold.
+    calendar_views: HashMap<NodeId, crate::calendar::View>,
 }
 
 /// What reached a node, in the order of `Context::queued`.
@@ -714,6 +731,7 @@ impl Default for Context {
             view_stale: true,
             dock: std::cell::Cell::new(None),
             panels: HashMap::new(),
+            calendar_views: HashMap::new(),
         }
     }
 }

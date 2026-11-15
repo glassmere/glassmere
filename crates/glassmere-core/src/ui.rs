@@ -7,7 +7,8 @@ use std::collections::HashSet;
 use std::panic::Location;
 use std::sync::Arc;
 mod builders;
-pub use builders::{Button, ComboBox, Label, TextInput};
+pub use builders::{Button, Calendar, ComboBox, Label, TextInput};
+mod calendar;
 mod collections;
 mod controls;
 mod dock;
@@ -124,6 +125,8 @@ pub(crate) enum Kind {
     Slider,
     ComboBox,
     MenuButton,
+    /// The days of a calendar, which take the keys together.
+    Calendar,
     Popup,
     Choice,
     Collection,

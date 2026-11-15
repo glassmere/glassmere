@@ -251,6 +251,33 @@ pub(crate) enum Control {
         selected: usize,
         items: Vec<MenuItem>,
     },
+    /// The days of a calendar, in rows of a week. It has the keyboard, and the
+    /// day under the cursor is what it reports as active.
+    CalendarGrid {
+        label: String,
+        month: crate::calendar::Month,
+    },
+    /// The weekday names of a calendar, or one of its weeks.
+    CalendarRow {
+        index: usize,
+    },
+    CalendarWeekday {
+        name: String,
+        column: usize,
+    },
+    CalendarDay {
+        date: crate::Date,
+        /// The date as the locale writes it in full, which names the day.
+        name: String,
+        row: usize,
+        column: usize,
+        selected: bool,
+    },
+    /// A button that shows the month `months` away. The keyboard has page
+    /// keys for it, so it takes no focus.
+    CalendarStep {
+        months: i32,
+    },
     Menu {
         items: Vec<MenuItem>,
     },
@@ -422,6 +449,8 @@ pub(crate) enum ControlUpdate {
     Text(String),
     Number(f64),
     Choice(usize),
+    /// A day picked in a calendar.
+    Date(crate::Date),
     /// A pick inside a submenu: the index at each level, from the menu's own
     /// items down to the item picked.
     Path(Vec<usize>),

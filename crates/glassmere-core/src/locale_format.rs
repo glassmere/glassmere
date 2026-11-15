@@ -27,6 +27,73 @@ impl Date {
         Weekday::ALL[(self.days() + 3).rem_euclid(7) as usize]
     }
 
+    /// The same date with a month and day that exist: an impossible one is
+    /// read as the nearest that does.
+    pub(crate) fn normalized(self) -> Date {
+        let month = self.month.clamp(1, 12);
+        Date {
+            year: self.year,
+            month,
+            day: self.day.clamp(1, days_in_month(self.year, month)),
+        }
+    }
+
+    pub(crate) fn first_of_month(self) -> Date {
+        Date { day: 1, ..self }
+    }
+
+    /// How many days this date is after `earlier`, or before it when negative.
+    pub(crate) fn days_from(self, earlier: Date) -> i64 {
+        self.days() - earlier.days()
+    }
+
+    /// The date `delta` days later, or earlier when it is negative. Dates
+    /// stay inside what `i32` years can write.
+    pub(crate) fn plus_days(self, delta: i64) -> Date {
+        Date::from_days(self.days().saturating_add(delta))
+    }
+
+    /// The date `delta` months later at the same day of the month, or at the
+    /// last day of a month that is shorter.
+    pub(crate) fn plus_months(self, delta: i32) -> Date {
+        let date = self.normalized();
+        let months = i64::from(date.year) * 12 + i64::from(date.month) - 1 + i64::from(delta);
+        let year = months
+            .div_euclid(12)
+            .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+        let month = months.rem_euclid(12) as u8 + 1;
+        Date {
+            year,
+            month,
+            day: date.day.min(days_in_month(year, month)),
+        }
+    }
+
+    /// The date `days` days after 1970-01-01.
+    fn from_days(days: i64) -> Date {
+        // About what `i32` years hold; beyond it the date stops at the end.
+        const LIMIT: i64 = 780_000_000_000;
+        let days = days.clamp(-LIMIT, LIMIT) + 719_468;
+        let era = days.div_euclid(146_097);
+        let day_of_era = days.rem_euclid(146_097);
+        let year_of_era =
+            (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+        let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+        let shifted_month = (5 * day_of_year + 2) / 153;
+        let day = day_of_year - (153 * shifted_month + 2) / 5 + 1;
+        let month = if shifted_month < 10 {
+            shifted_month + 3
+        } else {
+            shifted_month - 9
+        };
+        let year = year_of_era + era * 400 + i64::from(month <= 2);
+        Date {
+            year: year.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+            month: month as u8,
+            day: day as u8,
+        }
+    }
+
     /// Days since 1970-01-01, which is negative before it.
     fn days(&self) -> i64 {
         let month = i64::from(self.month.clamp(1, 12));
@@ -57,6 +124,11 @@ pub enum Weekday {
 }
 
 impl Weekday {
+    /// From Monday, which is 0, to Sunday.
+    pub(crate) fn index(self) -> usize {
+        self as usize
+    }
+
     pub(crate) const ALL: [Weekday; 7] = [
         Self::Monday,
         Self::Tuesday,
@@ -74,7 +146,7 @@ fn leap_year(year: i32) -> bool {
 }
 
 /// How many days `month` (1 to 12) has in `year`.
-fn days_in_month(year: i32, month: u8) -> u8 {
+pub(crate) fn days_in_month(year: i32, month: u8) -> u8 {
     match month {
         2 if leap_year(year) => 29,
         2 => 28,

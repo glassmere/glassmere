@@ -826,6 +826,7 @@ impl Context {
         }
         self.clicks.remove(&id);
         self.updates.remove(&id);
+        self.calendar_views.remove(&id);
         self.submitted.remove(&id);
         self.stats.removed += 1;
         self.pending |= Dirty::TREE | Dirty::LAYOUT | Dirty::PAINT | Dirty::ACCESSIBILITY;

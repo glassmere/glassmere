@@ -330,7 +330,11 @@ impl Context {
                     .hovered
                     // A press on a reveal button leaves the keyboard with
                     // its password field, so typing goes on.
-                    .map(|id| self.reveal_field(id).unwrap_or(id))
+                    .map(|id| {
+                        self.reveal_field(id)
+                            .or_else(|| self.calendar_grid_of(id))
+                            .unwrap_or(id)
+                    })
                     .filter(|id| self.nodes[id].focusable());
                 self.quiet_focus = self.focused.filter(|&id| self.in_title_bar(id));
                 self.keyboard_pressed = None;

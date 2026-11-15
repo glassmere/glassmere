@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 mod animation;
 pub mod app;
+mod calendar;
 mod clipboard;
 mod collection;
 mod command;
@@ -92,7 +93,7 @@ pub use tree::{
     SwipeDirection, TouchPhase,
 };
 pub use ui::{
-    AreaBuilder, Autocomplete, Button, ComboBox, CommandPalette, DockOptions, DockPanel,
+    AreaBuilder, Autocomplete, Button, Calendar, ComboBox, CommandPalette, DockOptions, DockPanel,
     DragSourceBuilder, DropTargetBuilder, GestureBuilder, Label, PropertyGrid, Response, TextInput,
     Ui, suggest,
 };

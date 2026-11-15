@@ -527,6 +527,12 @@ impl Context {
                 self.choose(owner, index)
             }
             Control::Tab { .. } => self.select_tab(id),
+            Control::CalendarDay { date, .. } => self
+                .calendar_grid_of(id)
+                .is_some_and(|grid| self.calendar_pick(grid, date)),
+            Control::CalendarStep { months } => self
+                .calendar_grid_of(id)
+                .is_some_and(|grid| self.calendar_step(grid, months)),
             Control::StripScroll { end } => {
                 let Some(strip) = node.parent else {
                     return false;
@@ -755,6 +761,11 @@ impl Context {
                     }
                     Kind::DockHandle => {
                         if let Some(handled) = self.dock_handle_key(id, *key) {
+                            return Some(handled);
+                        }
+                    }
+                    Kind::Calendar => {
+                        if let Some(handled) = self.calendar_key(id, *key) {
                             return Some(handled);
                         }
                     }
