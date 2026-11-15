@@ -9,7 +9,7 @@ All of them are methods of `Ui`, take a value and a message constructor, and are
 | Kind | Methods |
 | --- | --- |
 | Layout | `row`, `column`, `grid`, `container`, `scroll`, `split`, `responsive`, `focus_scope`, `enabled` |
-| Text and values | `label`, `rich_text`, `text_input`, `number_input`, `autocomplete`, `checkbox`, `radio`, `slider`, `combo_box` |
+| Text and values | `label`, `rich_text`, `text_input`, `number_input`, `autocomplete`, `checkbox`, `radio`, `slider`, `combo_box`, `calendar`, `date_picker` |
 | Editors | `text_area`, `code_editor`, `rich_editor` (see [text](text.md)) |
 | Collections | `virtual_list`, `tree_view`, `data_grid`, `property_grid` |
 | Overlays | `dialog`, `popover`, `tooltip`, `menu`, `context_menu`, `command_palette`, toasts through `Effects::toast` |
@@ -18,6 +18,8 @@ All of them are methods of `Ui`, take a value and a message constructor, and are
 | Media | `image`, `image_file` |
 | Input | `drag_source`, `drop_target`, `gesture_area`, `event_area` |
 | Your own | `component`, `widget`, `custom`, `map`, `keyed`, `memo` |
+
+`calendar` is a month of days to pick one from, and `date_picker` is a field that shows a date and opens the same calendar in a popup. Both take an `Option<Date>` and send the day picked, and their builders (`Calendar`, `DatePicker`) carry a `min` and a `max`, which disable the days outside them, and the `first_weekday`; `DatePicker` also has a `date_style` for the field and a `placeholder`. The month on show is the control's own: it starts at the selection, or at `min` when there is none, and the buttons beside its name and the keys move it. The arrows move by day and week (Left and Right follow the reading direction), Page Up and Page Down by month, Home and End to the ends of the week, and Enter or Space picks. A date picker opens on a click, Enter, Space or Alt+Down, keeps the keyboard itself and forwards the keys to its popup, and Escape closes the popup without a pick. Month and weekday names are built-in messages (`glassmere-month-1` to `glassmere-month-12`, `glassmere-weekday-1` to `glassmere-weekday-7`, `glassmere-weekday-short-1` to `glassmere-weekday-short-7`, `glassmere-calendar-title` and the two month buttons' names), so a catalog translates them like the rest, and a day is named for assistive technology with `Ui::format_date`.
 
 Collections take a model rather than data: `ListModel` answers by index and by `ItemId`, only the visible range is declared, and `ListState` and `GridState` hold selection and scroll. A grid's columns can be resized, reordered, hidden and frozen through `GridColumns`, filtered per column, and edited in place through typed cell editors whose values the model may refuse with a message.
 

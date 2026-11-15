@@ -66,6 +66,12 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - Property grid rows are declared, not virtualized; filter or split thousands of properties. There is no multi-object editing. Enums are edited through a `usize` index with `choices(..)`, and `Option<T>` and collection fields are not supported by `#[derive(Properties)]`.
 - Submenus nest to any depth in `Ui::menu_bar` only: `Ui::menu`, context menus and combo boxes take a flat list. A submenu opens as soon as the pointer is on its row, with no delay, and closes when the pointer crosses another row on the way to it. Tooltips are pointer-only, with one delay and one placement.
 
+## Dates
+
+- A date is picked from the calendar and not typed, so there is no typed date entry. There is no time picker, no range selection (a range is two pickers, the second with a `min`), no week numbers and no other calendar system than the proleptic Gregorian one.
+- Nothing marks today. The framework has no clock, so a calendar with neither a selection nor a `min` starts at January 2000.
+- A date picker is a combo box to assistive technology, which announces its popup as a list box although the popup is a dialog holding a grid.
+
 ## Windows and docking
 
 - Detached dock windows open where the OS puts them, and resizing them is not written back to the layout. A tab cannot be dragged from one OS window into another.
