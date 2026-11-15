@@ -69,7 +69,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 ## Dates
 
 - A date is picked from the calendar and not typed, so there is no typed date entry. There is no time picker, no range selection (a range is two pickers, the second with a `min`), no week numbers and no other calendar system than the proleptic Gregorian one.
-- Nothing marks today. The framework has no clock, so a calendar with neither a selection nor a `min` starts at January 2000.
+- The framework has no clock, so the application tells a calendar or a date picker what today is with `today`. Without it nothing is marked, and a calendar with no selection, no `today` and no `min` starts at January 2000. A screen reader is not told which day is today.
 - A date picker is a combo box to assistive technology, which announces its popup as a list box although the popup is a dialog holding a grid.
 
 ## Windows and docking

@@ -549,6 +549,7 @@ glassmere-core   fn Calendar::max(mut self, max: Date) -> Self
 glassmere-core   fn Calendar::min(mut self, min: Date) -> Self
 glassmere-core   fn Calendar::new(label: impl Into<String>) -> Self
 glassmere-core   fn Calendar::style(mut self, style: Style) -> Self
+glassmere-core   fn Calendar::today(mut self, today: Date) -> Self
 glassmere-core   fn Cancel::cancel(&self)
 glassmere-core   fn Cancel::cancelled(&self) -> bool
 glassmere-core   fn Cancel::new() -> Self
@@ -676,6 +677,7 @@ glassmere-core   fn DatePicker::min(mut self, min: Date) -> Self
 glassmere-core   fn DatePicker::new(label: impl Into<String>) -> Self
 glassmere-core   fn DatePicker::placeholder(mut self, placeholder: impl Into<String>) -> Self
 glassmere-core   fn DatePicker::style(mut self, style: Style) -> Self
+glassmere-core   fn DatePicker::today(mut self, today: Date) -> Self
 glassmere-core   fn DialogOptions::dismissible(mut self, dismissible: bool) -> Self
 glassmere-core   fn DialogOptions::modal(mut self, modal: bool) -> Self
 glassmere-core   fn DialogOptions::new(title: impl Into<String>) -> Self

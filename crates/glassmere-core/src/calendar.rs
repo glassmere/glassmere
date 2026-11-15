@@ -2,7 +2,7 @@
 
 use crate::{Date, Key, Weekday};
 
-/// Where a calendar starts when it has neither a selection nor a minimum.
+/// Where a calendar starts when it has no selection, today or minimum.
 const FALLBACK: Date = Date {
     year: 2000,
     month: 1,
@@ -19,6 +19,7 @@ pub(crate) struct Month {
     /// show, which is therefore the cursor's.
     pub cursor: Date,
     pub selected: Option<Date>,
+    pub today: Option<Date>,
     pub min: Option<Date>,
     pub max: Option<Date>,
     pub first: Weekday,
@@ -39,21 +40,25 @@ fn clamp(date: Date, min: Option<Date>, max: Option<Date>) -> Date {
 }
 
 impl Month {
-    /// The month for `view`, or for the selection, the minimum or a fixed
-    /// date when there is none or the selection has changed since.
+    /// The month for `view`, or for the selection, today, the minimum or a
+    /// fixed date, in that order, when there is none or the selection has
+    /// changed since.
     pub fn new(
         view: Option<View>,
         selected: Option<Date>,
+        today: Option<Date>,
         min: Option<Date>,
         max: Option<Date>,
         first: Weekday,
     ) -> Self {
-        let cursor = view
-            .filter(|view| view.seen == selected)
-            .map_or_else(|| selected.or(min).unwrap_or(FALLBACK), |view| view.cursor);
+        let cursor = view.filter(|view| view.seen == selected).map_or_else(
+            || selected.or(today).or(min).unwrap_or(FALLBACK),
+            |view| view.cursor,
+        );
         Self {
             cursor: clamp(cursor, min, max),
             selected,
+            today,
             min,
             max,
             first,

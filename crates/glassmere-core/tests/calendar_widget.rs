@@ -5,7 +5,7 @@ use glassmere_core::{
     Action, Calendar, Context, Date, Direction, Event, Key, MessageArg, Messages, NodeId, Role, Ui,
     Weekday,
 };
-use glassmere_scene::Size;
+use glassmere_scene::{Primitive, Rect, Size};
 use support::{Driven, center, click, on};
 
 const ROOT: Size = Size::new(500.0, 500.0);
@@ -21,10 +21,14 @@ struct Dates {
     min: Option<Date>,
     max: Option<Date>,
     first: Option<Weekday>,
+    today: Option<Date>,
 }
 
 fn view(state: &Dates, ui: &mut Ui<'_, Msg<Dates>>) {
     let mut calendar = Calendar::new("Departure");
+    if let Some(today) = state.today {
+        calendar = calendar.today(today);
+    }
     if let Some(min) = state.min {
         calendar = calendar.min(min);
     }
@@ -109,6 +113,36 @@ fn disabled(app: &Driven<Dates>, id: NodeId) -> bool {
     app.context.node(id).unwrap().semantics.disabled
 }
 
+/// The names of the days the scene marks as today: those with an accent dot
+/// drawn inside them.
+fn today_marks(app: &Driven<Dates>) -> Vec<String> {
+    let accent = app.context.theme().accent;
+    let dots: Vec<Rect> = app
+        .context
+        .scene()
+        .primitives
+        .iter()
+        .filter_map(|primitive| match primitive {
+            Primitive::Quad { rect, color, .. } if *color == accent => Some(*rect),
+            _ => None,
+        })
+        .collect();
+    (0..6)
+        .flat_map(|row| (0..7).map(move |column| (row, column)))
+        .map(|(row, column)| day(app, row, column))
+        .filter(|id| {
+            let cell = app.context.node(*id).unwrap().bounds;
+            dots.iter().any(|dot| {
+                dot.x >= cell.x
+                    && dot.y >= cell.y
+                    && dot.x + dot.width <= cell.x + cell.width
+                    && dot.y + dot.height <= cell.y + cell.height
+            })
+        })
+        .map(|id| name(app, id))
+        .collect()
+}
+
 fn focused(state: Dates) -> Driven<Dates> {
     let mut app = app(state);
     let grid = grid(&app);
@@ -140,6 +174,103 @@ fn it_starts_at_the_selection_then_the_minimum_then_a_fixed_month() {
         ..Dates::default()
     };
     assert_eq!(title(&app(capped)), "June 1999");
+}
+
+#[test]
+fn it_starts_at_today_after_the_selection_and_before_the_minimum() {
+    let today = date(2026, 11, 15);
+    let only_today = Dates {
+        today: Some(today),
+        ..Dates::default()
+    };
+    assert_eq!(title(&app(only_today)), "November 2026");
+    let with_min = Dates {
+        today: Some(today),
+        min: Some(date(2026, 3, 10)),
+        ..Dates::default()
+    };
+    assert_eq!(title(&app(with_min)), "November 2026");
+    let with_selection = Dates {
+        today: Some(today),
+        selected: Some(date(2026, 9, 21)),
+        min: Some(date(2026, 3, 10)),
+        ..Dates::default()
+    };
+    assert_eq!(title(&app(with_selection)), "September 2026");
+    // The days that can be picked still decide: today is out of them.
+    let capped = Dates {
+        today: Some(today),
+        max: Some(date(2026, 10, 20)),
+        ..Dates::default()
+    };
+    assert_eq!(title(&app(capped)), "October 2026");
+    // The keys start from the month on show.
+    let mut app = focused(Dates {
+        today: Some(today),
+        ..Dates::default()
+    });
+    assert_eq!(cursor(&app), "2026-11-15");
+    press(&mut app, &[Key::Enter]);
+    assert_eq!(app.state().picks, [today]);
+}
+
+#[test]
+fn today_is_marked_with_a_dot_whatever_else_the_day_is() {
+    let marks = |state: Dates| today_marks(&app(state));
+    assert!(marks(selected(date(2026, 9, 21))).is_empty(), "no today");
+    let on_show = |today| Dates {
+        today: Some(today),
+        selected: Some(date(2026, 9, 21)),
+        ..Dates::default()
+    };
+    // A day of its own, away from the selection.
+    let app_today = app(on_show(date(2026, 9, 17)));
+    assert_eq!(today_marks(&app_today), ["2026-09-17"]);
+    assert_eq!(marked(&app_today), "2026-09-21");
+    // The selection's fill does not hide it, and the cursor's ring is on
+    // top of it.
+    assert_eq!(marks(on_show(date(2026, 9, 21))), ["2026-09-21"]);
+    let keys = focused(on_show(date(2026, 9, 21)));
+    assert_eq!(cursor(&keys), "2026-09-21");
+    assert_eq!(today_marks(&keys), ["2026-09-21"]);
+    // A day of the next month that is on show, dimmed.
+    assert_eq!(marks(on_show(date(2026, 10, 2))), ["2026-10-02"]);
+    // A day that cannot be picked.
+    let before = Dates {
+        min: Some(date(2026, 9, 20)),
+        ..on_show(date(2026, 9, 17))
+    };
+    let app_before = app(before);
+    assert!(disabled(&app_before, day(&app_before, 2, 3)));
+    assert_eq!(today_marks(&app_before), ["2026-09-17"]);
+}
+
+#[test]
+fn the_mark_follows_the_month_on_show_and_moves_with_the_application() {
+    let mut app = app(Dates {
+        today: Some(date(2026, 9, 17)),
+        selected: Some(date(2026, 9, 21)),
+        ..Dates::default()
+    });
+    assert_eq!(today_marks(&app), ["2026-09-17"]);
+    let next = center(&app.context, &["calendar", "$header", "$next"]);
+    click(&mut app.context, next);
+    app.frame();
+    assert_eq!(title(&app), "October 2026");
+    assert!(today_marks(&app).is_empty(), "today is not on show");
+    let previous = center(&app.context, &["calendar", "$header", "$previous"]);
+    click(&mut app.context, previous);
+    app.frame();
+    assert_eq!(today_marks(&app), ["2026-09-17"]);
+    // A new day, as when the application's clock passes midnight.
+    app.state_mut().today = Some(date(2026, 9, 18));
+    app.frame();
+    assert_eq!(today_marks(&app), ["2026-09-18"]);
+    // The semantics are the same with and without it.
+    let cell = app.context.node(day(&app, 2, 4)).unwrap();
+    assert_eq!(cell.semantics.role, Role::Cell);
+    assert_eq!(cell.semantics.label, "2026-09-18");
+    assert_eq!(cell.selected, Some(false));
 }
 
 #[test]

@@ -5,7 +5,7 @@ use glassmere_core::{
     Action, Date, DatePicker, DateStyle, Direction, Event, Key, LocaleFormat, NodeId, Role,
     Shortcut, ShortcutKey, Time, Ui, Weekday,
 };
-use glassmere_scene::{Point, Size};
+use glassmere_scene::{Point, Primitive, Rect, Size};
 use support::{Driven, center, click, on};
 
 const ROOT: Size = Size::new(500.0, 500.0);
@@ -19,6 +19,7 @@ struct Form {
     changes: Vec<Date>,
     min: Option<Date>,
     max: Option<Date>,
+    today: Option<Date>,
     placeholder: Option<&'static str>,
     style: DateStyle,
     enabled: bool,
@@ -31,6 +32,7 @@ impl Default for Form {
             changes: Vec::new(),
             min: None,
             max: None,
+            today: None,
             placeholder: None,
             style: DateStyle::default(),
             enabled: true,
@@ -52,6 +54,9 @@ fn view(state: &Form, ui: &mut Ui<'_, Msg<Form>>) {
     }
     if let Some(max) = state.max {
         picker = picker.max(max);
+    }
+    if let Some(today) = state.today {
+        picker = picker.today(today);
     }
     if let Some(placeholder) = state.placeholder {
         picker = picker.placeholder(placeholder);
@@ -123,6 +128,36 @@ fn cursor(app: &Driven<Form>) -> String {
 
 fn text(app: &Driven<Form>) -> String {
     app.context.details(field(app)).unwrap().text
+}
+
+/// The names of the days of the popup that the scene marks as today: those
+/// with an accent dot drawn inside them.
+fn today_marks(app: &Driven<Form>) -> Vec<String> {
+    let accent = app.context.theme().accent;
+    let dots: Vec<Rect> = app
+        .context
+        .scene()
+        .primitives
+        .iter()
+        .filter_map(|primitive| match primitive {
+            Primitive::Quad { rect, color, .. } if *color == accent => Some(*rect),
+            _ => None,
+        })
+        .collect();
+    (0..6)
+        .flat_map(|row| (0..7).map(move |column| (row, column)))
+        .map(|(row, column)| day(app, row, column))
+        .filter(|id| {
+            let cell = app.context.node(*id).unwrap().bounds;
+            dots.iter().any(|dot| {
+                dot.x >= cell.x
+                    && dot.y >= cell.y
+                    && dot.x + dot.width <= cell.x + cell.width
+                    && dot.y + dot.height <= cell.y + cell.height
+            })
+        })
+        .map(|id| name(app, id))
+        .collect()
 }
 
 /// Focuses the field and opens its popup the way a keyboard does.
@@ -307,6 +342,53 @@ fn the_popup_starts_at_the_value_then_the_minimum() {
     assert_eq!(cursor(&app), "2031-03-10");
     let app = opened(Form::default());
     assert_eq!(title(&app), "January 2000");
+}
+
+#[test]
+fn the_popup_starts_at_today_when_there_is_no_value_and_marks_it() {
+    let today = date(2026, 11, 15);
+    let app = opened(Form {
+        today: Some(today),
+        min: Some(date(2026, 3, 10)),
+        ..Form::default()
+    });
+    assert_eq!(title(&app), "November 2026");
+    assert_eq!(cursor(&app), "2026-11-15");
+    assert_eq!(today_marks(&app), ["2026-11-15"]);
+    // The value comes first, and today is marked where it is on show.
+    let app = opened(Form {
+        today: Some(today),
+        ..valued(date(2026, 11, 3))
+    });
+    assert_eq!(title(&app), "November 2026");
+    assert_eq!(cursor(&app), "2026-11-03");
+    assert_eq!(today_marks(&app), ["2026-11-15"]);
+    let app = opened(Form {
+        today: Some(today),
+        ..valued(date(2026, 9, 21))
+    });
+    assert_eq!(title(&app), "September 2026");
+    assert!(today_marks(&app).is_empty(), "today is not on show");
+    // Without it nothing is marked and the popup starts at the minimum.
+    let app = opened(Form {
+        min: Some(date(2031, 3, 10)),
+        ..Form::default()
+    });
+    assert!(today_marks(&app).is_empty());
+    // A day that cannot be picked is marked as well.
+    let app = opened(Form {
+        today: Some(today),
+        min: Some(date(2026, 11, 20)),
+        ..valued(date(2026, 11, 25))
+    });
+    assert!(
+        app.context
+            .node(day(&app, 2, 6))
+            .unwrap()
+            .semantics
+            .disabled
+    );
+    assert_eq!(today_marks(&app), ["2026-11-15"]);
 }
 
 #[test]

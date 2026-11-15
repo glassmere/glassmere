@@ -189,6 +189,7 @@ pub struct Calendar {
     pub(crate) min: Option<Date>,
     pub(crate) max: Option<Date>,
     pub(crate) first_weekday: Option<Weekday>,
+    pub(crate) today: Option<Date>,
 }
 
 impl Calendar {
@@ -223,6 +224,14 @@ impl Calendar {
         self.first_weekday = Some(weekday);
         self
     }
+
+    /// Today, which the application tells because the framework has no
+    /// clock. Its day is marked with a dot, and a calendar with no selection
+    /// shows its month first.
+    pub fn today(mut self, today: Date) -> Self {
+        self.today = Some(today);
+        self
+    }
 }
 
 /// A field that shows a date and opens a calendar to pick another.
@@ -235,6 +244,7 @@ pub struct DatePicker {
     pub(crate) min: Option<Date>,
     pub(crate) max: Option<Date>,
     pub(crate) first_weekday: Option<Weekday>,
+    pub(crate) today: Option<Date>,
     pub(crate) date_style: DateStyle,
     pub(crate) placeholder: String,
 }
@@ -269,6 +279,14 @@ impl DatePicker {
     /// The weekday each row of the calendar starts with; Monday by default.
     pub fn first_weekday(mut self, weekday: Weekday) -> Self {
         self.first_weekday = Some(weekday);
+        self
+    }
+
+    /// Today, which the application tells because the framework has no
+    /// clock. Its day is marked in the calendar with a dot, and a calendar
+    /// opened with no date shows its month first.
+    pub fn today(mut self, today: Date) -> Self {
+        self.today = Some(today);
         self
     }
 

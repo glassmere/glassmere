@@ -22,11 +22,12 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// picked.
     ///
     /// The month on show is the calendar's own to keep: it starts at the
-    /// selection, or at the earliest day that can be picked when there is
-    /// none, and moves with the buttons beside its name and with the keys.
-    /// The keys are the arrows by day and week, Page Up and Page Down by
-    /// month, Home and End to the ends of the week, and Enter or Space to
-    /// pick. Nothing marks today, because the framework does not know it.
+    /// selection, or at today when there is none, or else at the earliest day
+    /// that can be picked, and moves with the buttons beside its name and
+    /// with the keys. The keys are the arrows by day and week, Page Up and
+    /// Page Down by month, Home and End to the ends of the week, and Enter or
+    /// Space to pick. Today is marked only when [`Calendar::today`] tells
+    /// it, because the framework has no clock.
     #[track_caller]
     pub fn calendar(
         &mut self,
@@ -60,9 +61,10 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// carries the label, a style, the days that can be picked, how the date
     /// is written and what shows while there is none.
     ///
-    /// The date is not typed. The calendar in the popup starts at `value`,
-    /// and its keys are those of [`Ui::calendar`], which the field forwards
-    /// while the popup is open, so the keyboard stays with the field.
+    /// The date is not typed. The calendar in the popup starts at `value`, or
+    /// at [`DatePicker::today`] when there is none, and its keys are those of
+    /// [`Ui::calendar`], which the field forwards while the popup is open, so
+    /// the keyboard stays with the field.
     #[track_caller]
     pub fn date_picker(
         &mut self,
@@ -134,6 +136,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             min: picker.min,
             max: picker.max,
             first_weekday: picker.first_weekday,
+            today: picker.today,
         };
         let month = self.calendar_month(panel, &calendar, value);
         let mut child = self.scope(owner);
@@ -170,6 +173,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         Month::new(
             grid,
             selected.map(Date::normalized),
+            calendar.today.map(Date::normalized),
             calendar.min.map(Date::normalized),
             calendar.max.map(Date::normalized),
             calendar.first_weekday.unwrap_or(Weekday::Monday),

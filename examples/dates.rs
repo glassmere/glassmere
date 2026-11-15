@@ -19,6 +19,15 @@ const LAST: Date = Date {
     day: 18,
 };
 
+/// What the application says today is. The framework has no clock, and a
+/// fixed day keeps the example the same whenever it runs; a real application
+/// reads the date from the system.
+const TODAY: Date = Date {
+    year: 2026,
+    month: 9,
+    day: 17,
+};
+
 #[derive(Clone)]
 enum Msg {
     Locale(&'static str),
@@ -86,8 +95,10 @@ impl App for Dates {
             ui.label(
                 Label::new(
                     "Days before the 7th of September and after the 18th of December \
-                     are disabled. Arrows, Page Up, Page Down, Home, End and Enter \
-                     work in the calendar, and in the popup of a picker.",
+                     are disabled, and a dot marks today, the 17th of September, which \
+                     the application tells each control. Arrows, Page Up, Page Down, \
+                     Home, End and Enter work in the calendar, and in the popup of a \
+                     picker.",
                 )
                 .style(
                     Style::default()
@@ -113,7 +124,10 @@ impl App for Dates {
                 ui.column(Style::default().gap(8.0), |ui| {
                     ui.label("Appointment");
                     ui.calendar(
-                        Calendar::new("Appointment day").min(FIRST).max(LAST),
+                        Calendar::new("Appointment day")
+                            .min(FIRST)
+                            .max(LAST)
+                            .today(TODAY),
                         self.appointment,
                         Msg::Appointment,
                     );
@@ -125,6 +139,7 @@ impl App for Dates {
                             .min(FIRST)
                             .max(LAST)
                             .first_weekday(Weekday::Sunday)
+                            .today(TODAY)
                             .date_style(DateStyle::Long),
                         self.departure,
                         Msg::Departure,
@@ -134,6 +149,7 @@ impl App for Dates {
                         DatePicker::new("Return date")
                             .min(self.departure.unwrap_or(FIRST))
                             .max(LAST)
+                            .today(TODAY)
                             .placeholder("Choose a date"),
                         self.back,
                         Msg::Return,

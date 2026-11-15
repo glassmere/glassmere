@@ -20,6 +20,7 @@ impl Context {
         Some(Month::new(
             self.calendar_view(grid),
             month.selected,
+            month.today,
             month.min,
             month.max,
             month.first,
@@ -43,16 +44,24 @@ impl Context {
             .copied()
     }
 
-    /// The day the keys of `grid` act on.
-    pub(super) fn calendar_cursor_cell(&self, grid: NodeId) -> Option<NodeId> {
+    /// The cell of `date` in `grid`, when the grid shows it.
+    fn calendar_cell(&self, grid: NodeId, date: crate::Date) -> Option<NodeId> {
         let node = self.nodes.get(&grid)?;
         let Control::CalendarGrid { month, .. } = &node.control else {
             return None;
         };
-        let (row, column) = month.position(month.cursor)?;
+        let (row, column) = month.position(date)?;
         // The weekday names are the first row.
         let week = *node.children.get(row + 1)?;
         self.nodes.get(&week)?.children.get(column).copied()
+    }
+
+    /// The day the keys of `grid` act on.
+    pub(super) fn calendar_cursor_cell(&self, grid: NodeId) -> Option<NodeId> {
+        let Control::CalendarGrid { month, .. } = &self.nodes.get(&grid)?.control else {
+            return None;
+        };
+        self.calendar_cell(grid, month.cursor)
     }
 
     /// Moves the cursor of `grid`, and with it the month on show.
@@ -185,6 +194,36 @@ impl Context {
         let rtl = self.nodes[&grid].resolved.rtl();
         let to = month.moved(key, rtl)?;
         Some(self.calendar_move(grid, to))
+    }
+
+    /// A dot under today, in the accent colour. It is drawn over the day, so
+    /// that a selection, a dimmed day and the cursor's ring leave it showing.
+    pub(super) fn paint_calendar_today(&self, id: NodeId, scene: &mut Scene) {
+        let Some(Control::CalendarGrid { month, .. }) =
+            self.nodes.get(&id).map(|node| &node.control)
+        else {
+            return;
+        };
+        let Some(cell) = month
+            .today
+            .and_then(|today| self.calendar_cell(id, today))
+            .map(|cell| &self.nodes[&cell])
+        else {
+            return;
+        };
+        const SIZE: f32 = 4.0;
+        const FROM_BOTTOM: f32 = 4.0;
+        let bounds = cell.bounds;
+        scene.primitives.push(Primitive::Quad {
+            rect: Rect {
+                x: bounds.x + (bounds.width - SIZE) / 2.0,
+                y: bounds.y + bounds.height - FROM_BOTTOM - SIZE,
+                width: SIZE,
+                height: SIZE,
+            },
+            color: self.theme.accent,
+            radius: SIZE / 2.0,
+        });
     }
 
     /// A ring around the day the keys act on, while the calendar has them.
