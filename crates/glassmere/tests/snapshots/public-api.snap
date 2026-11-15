@@ -1723,8 +1723,8 @@ glassmere-core impl Default for Style
 glassmere-core impl Default for TextDocument
 glassmere-core impl Default for Transform
 glassmere-core impl Default for VirtualListOptions
-glassmere-core impl From<&String> for Collapsible
 glassmere-core impl From<&String> for Calendar
+glassmere-core impl From<&String> for Collapsible
 glassmere-core impl From<&String> for ComboBox
 glassmere-core impl From<&String> for DatePicker
 glassmere-core impl From<&String> for Label
@@ -1733,8 +1733,8 @@ glassmere-core impl From<&String> for Progress
 glassmere-core impl From<&String> for RangeSlider
 glassmere-core impl From<&String> for Spinner
 glassmere-core impl From<&String> for Switch
-glassmere-core impl From<&str> for Collapsible
 glassmere-core impl From<&str> for Calendar
+glassmere-core impl From<&str> for Collapsible
 glassmere-core impl From<&str> for ComboBox
 glassmere-core impl From<&str> for DatePicker
 glassmere-core impl From<&str> for Label
@@ -1743,8 +1743,8 @@ glassmere-core impl From<&str> for Progress
 glassmere-core impl From<&str> for RangeSlider
 glassmere-core impl From<&str> for Spinner
 glassmere-core impl From<&str> for Switch
-glassmere-core impl From<String> for Collapsible
 glassmere-core impl From<String> for Calendar
+glassmere-core impl From<String> for Collapsible
 glassmere-core impl From<String> for ComboBox
 glassmere-core impl From<String> for DatePicker
 glassmere-core impl From<String> for Label
@@ -1760,8 +1760,8 @@ glassmere-core impl From<i32> for MessageArg
 glassmere-core impl From<i64> for MessageArg
 glassmere-core impl From<i8> for MessageArg
 glassmere-core impl From<isize> for MessageArg
-glassmere-core impl From<std::borrow::Cow<'_, str>> for Collapsible
 glassmere-core impl From<std::borrow::Cow<'_, str>> for Calendar
+glassmere-core impl From<std::borrow::Cow<'_, str>> for Collapsible
 glassmere-core impl From<std::borrow::Cow<'_, str>> for ComboBox
 glassmere-core impl From<std::borrow::Cow<'_, str>> for DatePicker
 glassmere-core impl From<std::borrow::Cow<'_, str>> for Label
