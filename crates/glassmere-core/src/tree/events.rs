@@ -438,7 +438,7 @@ impl Context {
             let Control::Command { id: declared, .. } = &node.control else {
                 continue;
             };
-            if !node.enabled || declared != wanted {
+            if !node.enabled || declared != wanted || !self.attached(*id) {
                 continue;
             }
             let depth = self.depth(*id);
@@ -463,7 +463,11 @@ impl Context {
             else {
                 continue;
             };
-            if !node.enabled || binding != shortcut || !(*while_editing || !self.accepts_text()) {
+            if !node.enabled
+                || binding != shortcut
+                || !(*while_editing || !self.accepts_text())
+                || !self.attached(*id)
+            {
                 continue;
             }
             let scope = self.scope_of(*id);

@@ -1,9 +1,11 @@
 use glassmere_core::{
-    BackgroundImage, Context, ImageFit, ImageOptions, ImageSource, ImageTint, Length,
-    MonospaceMeasurer, Role, Style, StyleSheet,
+    BackgroundImage, Context, Event, ImageFit, ImageOptions, ImageSource, ImageTint, Label, Length,
+    MonospaceMeasurer, Role, Style, StyleSheet, Ui,
 };
-use glassmere_scene::{Color, Image, Primitive, Rect, Size};
+use glassmere_scene::{Color, Image, ImageFrame, Point, Primitive, Rect, Size};
+use std::num::NonZeroU32;
 use std::path::Path;
+use std::time::Duration;
 
 const ROOT: Size = Size::new(600.0, 400.0);
 
@@ -346,4 +348,138 @@ fn stylesheets_describe_background_images_relative_to_their_own_file() {
         let error = StyleSheet::parse(text).unwrap_err();
         assert!(error.message.contains(message), "{text}: {}", error.message);
     }
+}
+
+/// Three 4 by 4 stills, shaded 10, 20 and 30, lasting 100, 200 and 300 ms.
+fn film(loops: Option<u32>) -> Image {
+    let frames = [(10, 100), (20, 200), (30, 300)].map(|(shade, millis)| ImageFrame {
+        image: Image::from_premultiplied(4, 4, vec![shade; 64]).unwrap(),
+        delay: Duration::from_millis(millis),
+    });
+    Image::animated(frames.to_vec(), loops.and_then(NonZeroU32::new)).unwrap()
+}
+
+/// The shade of every image drawn, which is the frame for `film`.
+fn shades(context: &Context) -> Vec<u8> {
+    context
+        .scene()
+        .primitives
+        .iter()
+        .filter_map(|primitive| match primitive {
+            Primitive::Image { image, .. } => Some(image.pixels().unwrap().2[0]),
+            _ => None,
+        })
+        .collect()
+}
+
+fn at(context: &mut Context, millis: u64, image: &Image) {
+    context.set_now(Duration::from_millis(millis));
+    context.run(ROOT, &mut MonospaceMeasurer, |ui| {
+        ui.keyed("note", |ui| ui.label("Beside"));
+        ui.keyed("film", |ui| ui.image(image, ImageOptions::new("Film")));
+    });
+}
+
+#[test]
+fn an_animated_image_changes_frame_at_each_deadline_and_repaints_only_itself() {
+    let image = film(None);
+    let mut context = Context::new();
+    at(&mut context, 0, &image);
+    assert_eq!(shades(&context), [10]);
+    // The next frame is due after the first one's delay, with no redraw loop.
+    assert_eq!(context.next_wake(), Some(Duration::from_millis(100)));
+    assert!(!context.animating());
+
+    at(&mut context, 50, &image);
+    assert_eq!(shades(&context), [10]);
+    assert!(context.damage_regions().is_empty());
+
+    at(&mut context, 100, &image);
+    assert_eq!(shades(&context), [20]);
+    assert_eq!(context.damage_regions(), [bounds(&context, "film")]);
+    assert_eq!(context.next_wake(), Some(Duration::from_millis(300)));
+
+    // A late wake lands on the frame the clock calls for, whole laps later too.
+    at(&mut context, 650, &image);
+    assert_eq!(shades(&context), [10]);
+    assert_eq!(context.next_wake(), Some(Duration::from_millis(700)));
+    at(&mut context, 1_000, &image);
+    assert_eq!(shades(&context), [30]);
+    assert_eq!(context.next_wake(), Some(Duration::from_millis(1_200)));
+
+    // Reduced motion holds the first frame and asks for nothing more.
+    context.set_reduced_motion(true);
+    at(&mut context, 1_050, &image);
+    assert_eq!(shades(&context), [10]);
+    assert_eq!(context.damage_regions(), [bounds(&context, "film")]);
+    assert_eq!(context.next_wake(), None);
+    context.set_reduced_motion(false);
+    at(&mut context, 1_100, &image);
+    assert!(context.next_wake().is_some());
+}
+
+#[test]
+fn an_animation_stops_on_its_last_frame_after_its_loops() {
+    let image = film(Some(2));
+    let mut context = Context::new();
+    at(&mut context, 0, &image);
+    at(&mut context, 700, &image);
+    assert_eq!(shades(&context), [20]);
+    // The second lap ends at 1200 ms, on the last frame, which stays.
+    at(&mut context, 900, &image);
+    assert_eq!(shades(&context), [30]);
+    assert_eq!(context.next_wake(), None);
+    at(&mut context, 5_000, &image);
+    assert_eq!(shades(&context), [30]);
+    assert_eq!(context.next_wake(), None);
+}
+
+#[test]
+fn a_new_animation_in_the_same_place_starts_over_and_a_still_needs_no_wake() {
+    let (first, second) = (film(None), film(None));
+    let mut context = Context::new();
+    at(&mut context, 0, &first);
+    at(&mut context, 250, &first);
+    assert_eq!(shades(&context), [20]);
+    at(&mut context, 260, &second);
+    assert_eq!(shades(&context), [10]);
+    assert_eq!(context.next_wake(), Some(Duration::from_millis(360)));
+
+    at(&mut context, 300, &picture(4, 4));
+    assert_eq!(context.next_wake(), None);
+    // Gone from the view: nothing keeps running.
+    at(&mut context, 310, &second);
+    context.set_now(Duration::from_millis(320));
+    context.run(ROOT, &mut MonospaceMeasurer, |ui| ui.label("Empty"));
+    assert_eq!(context.next_wake(), None);
+}
+
+#[test]
+fn an_animation_scrolled_out_of_view_does_not_wake_the_host() {
+    let image = film(None);
+    let sized = |width, height| {
+        Style::default()
+            .width(Length::Px(width))
+            .height(Length::Px(height))
+    };
+    let view = |ui: &mut Ui<'_>| {
+        ui.keyed("view", |ui| {
+            ui.scroll(sized(100.0, 100.0), |ui| {
+                ui.keyed("spacer", |ui| {
+                    ui.label(Label::new("").style(sized(10.0, 400.0)))
+                });
+                ui.keyed("film", |ui| ui.image(&image, ImageOptions::new("Film")));
+            })
+        });
+    };
+    let mut context = Context::new();
+    context.run(ROOT, &mut MonospaceMeasurer, view);
+    assert_eq!(context.next_wake(), None);
+    context.event(Event::PointerMoved(Point { x: 50.0, y: 50.0 }));
+    context.event(Event::Scroll {
+        delta_x: 0.0,
+        delta_y: 380.0,
+    });
+    context.run(ROOT, &mut MonospaceMeasurer, view);
+    assert_eq!(context.next_wake(), Some(Duration::from_millis(100)));
 }
