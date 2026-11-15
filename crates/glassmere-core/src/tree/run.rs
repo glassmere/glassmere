@@ -145,6 +145,7 @@ impl Context {
         self.damage.clear();
         self.resizing = size != self.scene.size;
         self.begin_animation_frame();
+        self.update_images();
         self.update_toasts();
         self.update_touches();
     }

@@ -11,6 +11,7 @@ glassmere use GpuSetup = glassmere_winit::GpuSetup #[cfg(feature = "desktop")]
 glassmere use GraphicsBackend = glassmere_winit::GraphicsBackend #[cfg(feature = "desktop")]
 glassmere use GraphicsOptions = glassmere_winit::GraphicsOptions #[cfg(feature = "desktop")]
 glassmere use Image = glassmere_scene::Image
+glassmere use ImageFrame = glassmere_scene::ImageFrame
 glassmere use Path = glassmere_scene::Path
 glassmere use Placement = glassmere_winit::Placement #[cfg(feature = "desktop")]
 glassmere use Point = glassmere_scene::Point
@@ -2097,6 +2098,8 @@ glassmere-scene   field Color::2: u8
 glassmere-scene   field Color::3: u8
 glassmere-scene   field GradientStop::at: f32
 glassmere-scene   field GradientStop::color: Color
+glassmere-scene   field ImageFrame::delay: Duration
+glassmere-scene   field ImageFrame::image: Image
 glassmere-scene   field Point::x: f32
 glassmere-scene   field Point::y: f32
 glassmere-scene   field Rect::height: f32
@@ -2140,11 +2143,14 @@ glassmere-scene   fn Affine::scale(x: f32, y: f32) -> Self
 glassmere-scene   fn Affine::then(self, next: Self) -> Self
 glassmere-scene   fn Affine::translate(x: f32, y: f32) -> Self
 glassmere-scene   fn Color::linear(self) -> [f32; 4]
+glassmere-scene   fn Image::animated(frames: Vec<ImageFrame>, loops: Option<NonZeroU32>) -> Option<Self>
+glassmere-scene   fn Image::frames(&self) -> &[ImageFrame]
 glassmere-scene   fn Image::from_premultiplied(width: u32, height: u32, rgba: Vec<u8>) -> Option<Self>
 glassmere-scene   fn Image::from_rgba8(width: u32, height: u32, mut rgba: Vec<u8>) -> Option<Self>
 glassmere-scene   fn Image::from_vector(vector: impl VectorImage + 'static) -> Self
 glassmere-scene   fn Image::id(&self) -> u64
 glassmere-scene   fn Image::is_vector(&self) -> bool
+glassmere-scene   fn Image::loops(&self) -> Option<NonZeroU32>
 glassmere-scene   fn Image::pixels(&self) -> Option<(u32, u32, &[u8])>
 glassmere-scene   fn Image::size(&self) -> Size
 glassmere-scene   fn Image::vector(&self) -> Option<&dyn VectorImage>
@@ -2224,6 +2230,7 @@ glassmere-scene struct CaretStop #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-scene struct Color #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 glassmere-scene struct GradientStop #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-scene struct Image #[derive(Clone)] (private fields)
+glassmere-scene struct ImageFrame #[derive(Clone, Debug, PartialEq)]
 glassmere-scene struct MonospaceMeasurer #[derive(Default)]
 glassmere-scene struct Path #[derive(Clone, Debug, Default, PartialEq)] (private fields)
 glassmere-scene struct Point #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -2242,6 +2249,7 @@ glassmere-scene use Affinity = text::Affinity
 glassmere-scene use CaretStop = text::CaretStop
 glassmere-scene use FontFamily = text::FontFamily
 glassmere-scene use Image = image::Image
+glassmere-scene use ImageFrame = image::ImageFrame
 glassmere-scene use MonospaceMeasurer = text::MonospaceMeasurer
 glassmere-scene use Path = path::Path
 glassmere-scene use Segment = path::Segment
