@@ -247,7 +247,11 @@ impl Context {
             _ => {}
         }
         let queued = self.queued.len();
-        let handled = self.handle_event(event.clone());
+        let menus = self.popup_levels().count();
+        let mut handled = self.handle_event(event.clone());
+        // A press outside a menu closes it and still goes on to what is under
+        // it, which may change nothing else, and the menu has to be redrawn.
+        handled |= self.popup_levels().count() < menus;
         self.track_hover(&event);
         self.note_focus();
         // Moving the pointer changes what is hovered, which only repaints
