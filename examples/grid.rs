@@ -2,8 +2,9 @@
 //! user resizes, reorders and hides. F2, Enter, a second click or typing opens
 //! a cell; Enter stores and moves down, Tab stores and moves sideways, Escape
 //! cancels. Right-click a header, or press Shift+F10 on it, for its menu,
-//! which also freezes columns. Name and City can be filtered. The grid is wider
-//! than its window: Id and Name stay while the rest scrolls sideways.
+//! which also freezes columns. Name and City can be filtered. A totals row stays
+//! under the body. The grid is wider than its window: Id and Name stay while
+//! the rest scrolls sideways.
 use glassmere::{
     App, AppOptions, CellEditor, CellValue, Effects, GridColumn, GridModel, GridMsg, GridState,
     ItemId, Label, Length, ListModel, NumberOptions, Size, SortDirection, Style, Ui,
@@ -189,6 +190,24 @@ impl GridModel for People {
         }
         self.rows = rows;
         true
+    }
+    /// A totals row over the people the filters let through.
+    fn footer(&self) -> Vec<Vec<String>> {
+        let (age, salary) = self
+            .rows
+            .iter()
+            .map(|row| &self.everyone[*row])
+            .fold((0.0, 0.0), |(age, salary), person| {
+                (age + person.age, salary + person.salary)
+            });
+        let count = self.rows.len();
+        vec![vec![
+            "Total".into(),
+            format!("{count} people"),
+            String::new(),
+            format!("avg {:.1}", age / count.max(1) as f64),
+            format!("{salary} €"),
+        ]]
     }
 }
 

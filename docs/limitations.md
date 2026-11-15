@@ -64,7 +64,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 
 - Row heights come from the model (`ListModel::row_heights`), not from content: a row is never measured, so wrapping text or an expanding row needs its height set by the application. A grid's rows all have the one height.
 - A grid selects one cell at a time, with no range selection or block copy.
-- Filters are text only. There are no pinned data rows (totals).
+- Filters are text only. Pinned total rows (`GridModel::footer`) are plain text the model computes: they are not sorted, filtered, selected or copied.
 - A property grid with a `height` declares only the rows in view and a few beyond, but the view still names every property on each frame, so keep that closure cheap. Its rows and group headers share one fixed height, a grid without a `height` declares every row, and the editor that has focus goes when its row scrolls out of the declared window. Editing several objects works through `PropertyGrid::mixed`, which the view drives: a custom `with` editor cannot show a mixed value, and the derived `properties_many` compares fields with `PartialEq`. Collection fields such as `Vec<T>` are not supported by `#[derive(Properties)]`: adding, removing and reordering items needs rows whose identity follows the item, so use `with` or `custom` rows for them.
 - Submenus nest to any depth in `Ui::menu_bar` only: `Ui::menu`, context menus and combo boxes take a flat list. A submenu opens as soon as the pointer is on its row, with no delay, and closes when the pointer crosses another row on the way to it. Tooltips are pointer-only, with one delay and one placement.
 
