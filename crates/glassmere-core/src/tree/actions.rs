@@ -4,6 +4,10 @@ use super::*;
 
 impl Context {
     pub fn action(&mut self, target: NodeId, action: Action) -> bool {
+        // Parked content is not there to act on, whatever the host was told.
+        if !self.attached(target) {
+            return false;
+        }
         let focus = matches!(action, Action::Focus);
         let handled = self.handle_action(target, action);
         self.note_focus();

@@ -122,6 +122,9 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// floating groups. Tabs drag onto drop indicators, other tab strips or
     /// empty space (floating), and every group has a panel menu that offers
     /// the same moves from the keyboard. `content` declares one visible panel.
+    /// A panel whose tab is not selected is not declared, and keeps its
+    /// retained state, such as scroll offsets and editing history, until its
+    /// tab is selected again or the layout drops it.
     ///
     /// The view only reads the layout. A drag, tab pick, close, divider move
     /// or panel-menu pick sends `on(action)`; `update` gives the action to
