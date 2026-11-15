@@ -1,8 +1,9 @@
-use glassmere_core::{
-    Direction, FindState, ResolvedText, Style, TextDocument, TextStyle, TextWrap, Theme,
-};
+use glassmere_core::{Direction, ResolvedText, Style, TextStyle, TextWrap, Theme};
+#[cfg(feature = "regex")]
+use glassmere_core::{FindState, TextDocument};
 
 /// Finds matches the way the find bar does, by hand.
+#[cfg(feature = "regex")]
 fn matches(document: &TextDocument, state: &mut FindState) -> Vec<String> {
     state.refresh(document);
     let text = document.text();
@@ -13,6 +14,7 @@ fn matches(document: &TextDocument, state: &mut FindState) -> Vec<String> {
         .collect()
 }
 
+#[cfg(feature = "regex")]
 #[test]
 fn the_find_bar_searches_by_pattern_and_says_why_a_bad_one_found_nothing() {
     let document = TextDocument::from_text("alpha 12 beta\nAlpha 345 gamma\n");
