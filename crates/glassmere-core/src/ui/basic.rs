@@ -134,4 +134,33 @@ impl<'a, M: 'static> Ui<'a, M> {
             }
         });
     }
+
+    /// A link: accent-coloured, underlined text with the pointing hand over
+    /// it, which Tab reaches and Enter activates. `ui.link("Documentation")`
+    /// is the whole of it, and [`Link::new`] carries a style, a disabled
+    /// state, and with [`Link::on_click`] the message a click sends.
+    #[track_caller]
+    pub fn link(&mut self, link: impl Into<Link<M>>) -> Response<'a> {
+        let link = link.into();
+        let key = self.next_key();
+        let style = link.style.unwrap_or(Style {
+            padding: 3.0,
+            radius: 3.0,
+            ..Style::default()
+        });
+        let response = self.leaf(
+            key,
+            Kind::Link,
+            link.text,
+            Style {
+                wrap: TextWrap::None,
+                ..style
+            },
+            link.enabled,
+        );
+        if let Some(message) = link.on_click {
+            self.set_handler(Handler::Message(message));
+        }
+        response
+    }
 }

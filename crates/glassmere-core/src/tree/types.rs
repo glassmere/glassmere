@@ -60,6 +60,8 @@ pub enum Role {
     ProgressBar,
     /// An on/off switch, which reports whether it is on like a checkbox.
     Switch,
+    /// Text that sends a message when activated, such as a link to a page.
+    Link,
 }
 
 /// What a node is, for the keyboard, the accessibility tree and the tests.

@@ -88,6 +88,63 @@ impl<M> Button<M> {
     }
 }
 
+/// A link: accent-coloured, underlined text that sends a message like a
+/// button. `ui.link("Documentation")` is the short form of
+/// `Link::new("Documentation")`, and `Link::new("Documentation")
+/// .on_click(Msg::Open)` sends a message when it is clicked. Opening an
+/// address is the application's to do in that message.
+#[derive(Clone, Debug)]
+pub struct Link<M = ()> {
+    pub(crate) text: String,
+    pub(crate) style: Option<Style>,
+    pub(crate) enabled: bool,
+    pub(crate) on_click: Option<M>,
+}
+
+impl<M> Default for Link<M> {
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            style: None,
+            enabled: false,
+            on_click: None,
+        }
+    }
+}
+
+impl<M> Link<M> {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            style: None,
+            enabled: true,
+            on_click: None,
+        }
+    }
+
+    /// The message a click sends: by pointer, keyboard, touch or assistive
+    /// technology alike. Enter activates a focused link; Space does not.
+    pub fn on_click(mut self, message: M) -> Self {
+        self.on_click = Some(message);
+        self
+    }
+
+    /// Replaces the default style, which has a little padding and no
+    /// background. A foreground in the style replaces the accent, and the
+    /// text stays on one line whatever the style's wrapping says.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+
+    /// Greys the link out and stops it answering. `Ui::enabled` does the
+    /// same to everything declared in it.
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+}
+
 /// A single-line text field. `ui.text_input("Name", &mut name)` is the short
 /// form of `TextInput::new("Name")`; the string it edits stays a separate
 /// argument, so the builder can be reused and the borrow ends with the call.
@@ -325,3 +382,4 @@ from_text!(Progress);
 from_text!(Spinner);
 from_text!(Switch);
 from_text!(Collapsible);
+from_text!(Link<M>);

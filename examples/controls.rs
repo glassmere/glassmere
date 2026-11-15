@@ -1,6 +1,6 @@
 use glassmere::{
     Align, App, AppOptions, Button, Color, DirectionChoice, Effects, FontFamily, Label, Length,
-    MenuItem, NumberOptions, Size, Style, TextInput, TextWrap, Toast, Ui, run, suggest,
+    Link, MenuItem, NumberOptions, Size, Style, TextInput, TextWrap, Toast, Ui, run, suggest,
 };
 use std::time::Duration;
 
@@ -25,6 +25,7 @@ enum Msg {
     Notify(bool),
     Airplane(bool),
     Advanced(bool),
+    Documentation,
     Mode(usize),
     Volume(f64),
     Theme(usize),
@@ -43,6 +44,7 @@ struct Controls {
     notifications: bool,
     airplane: bool,
     advanced: bool,
+    opened: u32,
     mode: usize,
     volume: f64,
     theme: usize,
@@ -73,6 +75,7 @@ impl App for Controls {
             Msg::Notify(on) => self.notifications = on,
             Msg::Airplane(on) => self.airplane = on,
             Msg::Advanced(open) => self.advanced = open,
+            Msg::Documentation => self.opened += 1,
             Msg::Mode(mode) => self.mode = mode,
             Msg::Volume(volume) => self.volume = volume,
             Msg::Theme(theme) => self.theme = theme,
@@ -247,6 +250,11 @@ impl App for Controls {
                     if self.exporting {
                         ui.progress("Export progress", None);
                     }
+                    // Enter activates a focused link; opening the page is the application's to do.
+                    ui.link(Link::new("Read the documentation").on_click(Msg::Documentation));
+                    if self.opened > 0 {
+                        ui.label(format!("Documentation opened: {}", self.opened));
+                    }
                 });
                 ui.column(choice_column, |ui| {
                     ui.label(Label::new("02 / Choices & actions").style(bold));
@@ -320,6 +328,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             notifications: false,
             airplane: false,
             advanced: false,
+            opened: 0,
             mode: 0,
             volume: 50.0,
             theme: 0,

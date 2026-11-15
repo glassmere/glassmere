@@ -188,6 +188,7 @@ impl Node {
                     | Kind::Checkbox
                     | Kind::Switch
                     | Kind::Disclosure
+                    | Kind::Link
                     | Kind::Radio
                     | Kind::Slider
                     | Kind::ComboBox
@@ -239,6 +240,7 @@ impl Node {
                     | Kind::Checkbox
                     | Kind::Switch
                     | Kind::Disclosure
+                    | Kind::Link
                     | Kind::Radio
                     | Kind::ComboBox
                     | Kind::MenuButton
@@ -309,6 +311,7 @@ impl Node {
                     Kind::TextArea | Kind::RichEditor => Role::MultilineTextInput,
                     Kind::Checkbox => Role::Checkbox,
                     Kind::Switch => Role::Switch,
+                    Kind::Link => Role::Link,
                     Kind::Radio => Role::Radio,
                     Kind::Slider => Role::Slider,
                     Kind::Progress | Kind::Spinner => Role::ProgressBar,

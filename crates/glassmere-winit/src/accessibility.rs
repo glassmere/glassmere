@@ -297,6 +297,7 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     CoreRole::Alert => Role::Alert,
                     CoreRole::ProgressBar => Role::ProgressIndicator,
                     CoreRole::Switch => Role::Switch,
+                    CoreRole::Link => Role::Link,
                 }
             };
             let mut node = Node::new(role);
@@ -483,6 +484,7 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     Role::Button
                         | Role::CheckBox
                         | Role::Switch
+                        | Role::Link
                         | Role::RadioButton
                         | Role::ComboBox
                         | Role::ListBoxOption
@@ -624,7 +626,7 @@ pub(crate) fn action(context: &mut Context, request: ActionRequest, scale: f64) 
 mod tests {
     use super::*;
     use glassmere_core::{
-        Button, CodeEditorOptions, EditorPoint, ItemId, Length, ListModel, ListState,
+        Button, CodeEditorOptions, EditorPoint, ItemId, Length, Link, ListModel, ListState,
         MonospaceMeasurer, Style, TextDocument, TextEdit, TextInput, TreeItem, TreeModel,
         VirtualListOptions,
     };
@@ -1214,6 +1216,27 @@ mod tests {
         assert!(node.supports_action(Action::Collapse));
         assert!(action(&mut context, request(Action::Collapse), 1.0));
         assert!(!action(&mut context, request(Action::Expand), 1.0));
+    }
+
+    #[test]
+    fn a_link_is_a_link_that_can_be_clicked_until_it_is_disabled() {
+        let mut context = Context::new();
+        context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
+            ui.keyed("docs", |ui| ui.link("Documentation"));
+            ui.keyed("locked", |ui| ui.link(Link::new("Locked").enabled(false)));
+        });
+        let update = tree(&context, "Links", 1.0);
+        let docs = context.find(&["docs"]).unwrap();
+        let node = node_in(&update, NodeId(docs.0));
+        assert_eq!(node.role(), Role::Link);
+        assert_eq!(node.label(), Some("Documentation"));
+        assert!(node.supports_action(Action::Click));
+        assert!(node.supports_action(Action::Focus));
+        let locked = context.find(&["locked"]).unwrap();
+        let node = node_in(&update, NodeId(locked.0));
+        assert_eq!(node.role(), Role::Link);
+        assert!(node.is_disabled());
+        assert!(!node.supports_action(Action::Click));
     }
 
     #[test]

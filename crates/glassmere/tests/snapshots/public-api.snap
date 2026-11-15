@@ -810,6 +810,10 @@ glassmere-core   fn Keyframe::opacity(mut self, opacity: f32) -> Self
 glassmere-core   fn Keyframe::transform(mut self, transform: Transform) -> Self
 glassmere-core   fn Label::new(text: impl Into<String>) -> Self
 glassmere-core   fn Label::style(mut self, style: Style) -> Self
+glassmere-core   fn Link::enabled(mut self, enabled: bool) -> Self [impl<M> Link<M>]
+glassmere-core   fn Link::new(text: impl Into<String>) -> Self [impl<M> Link<M>]
+glassmere-core   fn Link::on_click(mut self, message: M) -> Self [impl<M> Link<M>]
+glassmere-core   fn Link::style(mut self, style: Style) -> Self [impl<M> Link<M>]
 glassmere-core   fn ListModel::depth(&self, _index: usize) -> usize (provided)
 glassmere-core   fn ListModel::expanded(&self, _index: usize) -> Option<bool> (provided)
 glassmere-core   fn ListModel::index_of(&self, id: ItemId) -> Option<usize>
@@ -1152,6 +1156,7 @@ glassmere-core   fn Ui::image(&mut self, image: &Image, options: ImageOptions) #
 glassmere-core   fn Ui::image_file(&mut self, path: impl AsRef<std::path::Path>, options: ImageOptions) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::keyed<R>(&mut self, key: impl Into<String>, content: impl FnOnce(&mut Ui<'a, M>) -> R) -> R #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::label(&mut self, label: impl Into<Label>) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
+glassmere-core   fn Ui::link(&mut self, link: impl Into<Link<M>>) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::locale(&self) -> &str [impl<'a, M: 'static> crate::Ui<'a, M>]
 glassmere-core   fn Ui::map<N: Clone + 'static>(&mut self, f: impl Fn(N) -> M + 'static, content: impl FnOnce(&mut Ui<'_, N>)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::memo<S: std::hash::Hash>(&mut self, state: &S, style: Style, content: impl FnOnce(&mut Ui<'_, M>)) -> bool #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
@@ -1462,6 +1467,7 @@ glassmere-core   variant Role::Grid
 glassmere-core   variant Role::Group
 glassmere-core   variant Role::Image
 glassmere-core   variant Role::Label
+glassmere-core   variant Role::Link
 glassmere-core   variant Role::ListBox
 glassmere-core   variant Role::Menu
 glassmere-core   variant Role::MenuButton
@@ -1731,14 +1737,19 @@ glassmere-core impl<K, T> Drop for TaskSender<K, T>
 glassmere-core impl<M> Default for Autocomplete<M>
 glassmere-core impl<M> Default for Button<M>
 glassmere-core impl<M> Default for GestureBuilder<M>
+glassmere-core impl<M> Default for Link<M>
 glassmere-core impl<M> Default for TextInput<M>
 glassmere-core impl<M> From<&String> for Button<M>
+glassmere-core impl<M> From<&String> for Link<M>
 glassmere-core impl<M> From<&String> for TextInput<M>
 glassmere-core impl<M> From<&str> for Button<M>
+glassmere-core impl<M> From<&str> for Link<M>
 glassmere-core impl<M> From<&str> for TextInput<M>
 glassmere-core impl<M> From<String> for Button<M>
+glassmere-core impl<M> From<String> for Link<M>
 glassmere-core impl<M> From<String> for TextInput<M>
 glassmere-core impl<M> From<std::borrow::Cow<'_, str>> for Button<M>
+glassmere-core impl<M> From<std::borrow::Cow<'_, str>> for Link<M>
 glassmere-core impl<M> From<std::borrow::Cow<'_, str>> for TextInput<M>
 glassmere-core impl<M> std::fmt::Debug for AreaBuilder<M>
 glassmere-core impl<M> std::fmt::Debug for Autocomplete<M>
@@ -1815,6 +1826,7 @@ glassmere-core struct ItemId #[derive(Clone, Copy, Debug, Eq, Hash, Ord, Partial
 glassmere-core struct ItemOrder #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct Keyframe #[derive(Clone, Copy, Debug, Default, PartialEq)]
 glassmere-core struct Label #[derive(Clone, Debug, Default)] (private fields)
+glassmere-core struct Link<M = ()> #[derive(Clone, Debug)] (private fields)
 glassmere-core struct ListState #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct Mailbox<T> (private fields)
 glassmere-core struct Marks #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -1995,6 +2007,7 @@ glassmere-core use Keyframe = animation::Keyframe
 glassmere-core use LAYER_AREA = tree::diagnostics::LAYER_AREA
 glassmere-core use Label = ui::Label
 glassmere-core use Length = style::Length
+glassmere-core use Link = ui::Link
 glassmere-core use ListModel = collection::ListModel
 glassmere-core use ListState = collection::ListState
 glassmere-core use Live = tree::Live

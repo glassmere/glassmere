@@ -362,7 +362,11 @@ impl Context {
                 if self.keyboard_pressed.is_none() {
                     self.keyboard_pressed = self
                         .focused
-                        .filter(|id| self.nodes[id].activatable())
+                        // A link answers Enter, as one on a page does, and not Space.
+                        .filter(|id| {
+                            self.nodes[id].activatable()
+                                && !(key == Key::Space && self.nodes[id].kind == Kind::Link)
+                        })
                         .map(|id| (id, key));
                 }
             }

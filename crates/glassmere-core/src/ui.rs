@@ -7,7 +7,9 @@ use std::collections::HashSet;
 use std::panic::Location;
 use std::sync::Arc;
 mod builders;
-pub use builders::{Button, Collapsible, ComboBox, Label, Progress, Spinner, Switch, TextInput};
+pub use builders::{
+    Button, Collapsible, ComboBox, Label, Link, Progress, Spinner, Switch, TextInput,
+};
 mod collections;
 mod controls;
 mod dock;
@@ -123,6 +125,7 @@ pub(crate) enum Kind {
     Checkbox,
     Switch,
     Disclosure,
+    Link,
     Radio,
     Slider,
     Progress,
@@ -149,6 +152,7 @@ impl Kind {
                 | Self::Checkbox
                 | Self::Switch
                 | Self::Disclosure
+                | Self::Link
                 | Self::Radio
                 | Self::Choice
                 | Self::MenuButton

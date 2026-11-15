@@ -361,6 +361,9 @@ impl Context {
                 background = Some(theme.control_hover);
             }
         }
+        if node.kind == Kind::Link && node.style.foreground.is_none() && node.enabled {
+            foreground = theme.accent;
+        }
         if node.kind == Kind::Disclosure && node.enabled && node.style.background.is_none() {
             if pressed {
                 background = Some(theme.control_pressed);
@@ -671,6 +674,21 @@ impl Context {
                 crate::Align::End => spare,
                 _ => 0.0,
             };
+        }
+        if node.kind == Kind::Link
+            && let Some(size) = measured.filter(|size| size.width > 0.0)
+        {
+            // Under the text, as a rich text link's rule is under its run.
+            scene.primitives.push(Primitive::Quad {
+                rect: Rect {
+                    x: rect.x,
+                    y: rect.y + size.height - 3.0,
+                    width: width.min(rect.width),
+                    height: 1.0,
+                },
+                color: foreground,
+                radius: 0.0,
+            });
         }
         if let Some((start, end)) = self.suggestion_match(node) {
             // The part of a suggestion that was typed stands out.

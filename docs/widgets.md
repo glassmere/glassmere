@@ -9,7 +9,7 @@ All of them are methods of `Ui`, take a value and a message constructor, and are
 | Kind | Methods |
 | --- | --- |
 | Layout | `row`, `column`, `grid`, `container`, `scroll`, `split`, `responsive`, `focus_scope`, `enabled` |
-| Text and values | `label`, `rich_text`, `text_input`, `number_input`, `autocomplete`, `checkbox`, `radio`, `slider`, `combo_box`, `progress`, `spinner`, `switch`, `collapsible` |
+| Text and values | `label`, `rich_text`, `text_input`, `number_input`, `autocomplete`, `checkbox`, `radio`, `slider`, `combo_box`, `progress`, `spinner`, `switch`, `collapsible`, `link` |
 | Editors | `text_area`, `code_editor`, `rich_editor` (see [text](text.md)) |
 | Collections | `virtual_list`, `tree_view`, `data_grid`, `property_grid` |
 | Overlays | `dialog`, `popover`, `tooltip`, `menu`, `context_menu`, `command_palette`, toasts through `Effects::toast` |

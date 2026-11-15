@@ -2,7 +2,7 @@ mod support;
 
 use glassmere_core::app::Action as Msg;
 use glassmere_core::{
-    Action, Button, Collapsible, Context, Direction, Event, Key, Length, MonospaceMeasurer,
+    Action, Button, Collapsible, Context, Direction, Event, Key, Length, Link, MonospaceMeasurer,
     Progress, Role, Spinner, Style, Switch, Transition, Ui,
 };
 use glassmere_scene::{Color, Point, Primitive, Rect, Segment, Size};
@@ -872,4 +872,231 @@ fn hovering_the_header_paints_a_background_and_a_header_style_replaces_the_defau
     });
     let header = bounds(&context, &HEADER);
     assert_eq!(header.width, 300.0);
+}
+
+struct Links {
+    opened: u32,
+}
+
+fn links_view(_: &Links, ui: &mut Ui<'_, Msg<Links>>) {
+    ui.keyed("page", |ui| links_column(ui));
+}
+
+fn links_column(ui: &mut Ui<'_, Msg<Links>>) {
+    ui.column(Style::default().gap(12.0), |ui| {
+        ui.keyed("docs", |ui| {
+            ui.link(Link::new("Documentation").on_click(act(|s: &mut Links| s.opened += 1)))
+        });
+        ui.enabled(false, |ui| {
+            ui.keyed("locked", |ui| {
+                ui.link(Link::new("Locked").on_click(act(|s: &mut Links| s.opened += 100)))
+            });
+        });
+        ui.keyed("off", |ui| {
+            ui.link(
+                Link::new("Off")
+                    .enabled(false)
+                    .on_click(act(|s: &mut Links| s.opened += 1000)),
+            )
+        });
+        ui.keyed("quiet", |ui| ui.link("No message"));
+    });
+}
+
+fn links() -> Driven<Links> {
+    Driven::new(ROOT, Links { opened: 0 }, links_view)
+}
+
+#[test]
+fn a_link_sends_its_message_for_a_click_and_for_assistive_technology() {
+    let mut app = links();
+    click_on(&mut app.context, &["page", "docs"]);
+    app.frame();
+    assert_eq!(app.state().opened, 1);
+    let docs = app.context.find(&["page", "docs"]).unwrap();
+    assert!(app.context.action(docs, Action::Activate));
+    app.frame();
+    assert_eq!(app.state().opened, 2);
+    app.frame();
+    assert_eq!(app.state().opened, 2, "one message per activation");
+}
+
+#[test]
+fn enter_activates_a_focused_link_and_space_does_not() {
+    let mut app = links();
+    press(&mut app.context, Key::Tab);
+    assert_eq!(app.context.focused(), app.context.find(&["page", "docs"]));
+    press(&mut app.context, Key::Space);
+    app.frame();
+    assert_eq!(app.state().opened, 0);
+    press(&mut app.context, Key::Enter);
+    app.frame();
+    assert_eq!(app.state().opened, 1);
+}
+
+#[test]
+fn a_disabled_link_cannot_be_focused_or_activated_and_says_so() {
+    let mut app = links();
+    for name in ["locked", "off"] {
+        let id = app.context.find(&["page", name]).unwrap();
+        assert!(!app.context.action(id, Action::Activate));
+        click_on(&mut app.context, &["page", name]);
+        let node = app.context.node(id).unwrap();
+        assert!(node.semantics.disabled, "{name}");
+        assert!(!node.semantics.focusable, "{name}");
+    }
+    press(&mut app.context, Key::Tab);
+    press(&mut app.context, Key::Tab);
+    assert_eq!(
+        app.context.focused(),
+        app.context.find(&["page", "quiet"]),
+        "Tab skips the disabled links"
+    );
+    app.frame();
+    assert_eq!(app.state().opened, 0);
+}
+
+#[test]
+fn a_link_is_a_link_with_a_name_and_takes_the_keyboard_and_the_pointing_hand() {
+    let app = links();
+    let docs = app.context.find(&["page", "docs"]).unwrap();
+    let node = app.context.node(docs).unwrap();
+    assert_eq!(node.semantics.role, Role::Link);
+    assert_eq!(node.semantics.label, "Documentation");
+    // The window shows the pointing hand over anything focusable.
+    assert!(node.semantics.focusable);
+    assert!(!node.semantics.disabled);
+    // Without a message it is still a link: the application may only listen.
+    let quiet = app.context.find(&["page", "quiet"]).unwrap();
+    assert_eq!(app.context.node(quiet).unwrap().semantics.role, Role::Link);
+}
+
+/// The color and the font size of the text drawn for `label`.
+fn text_style(context: &Context, label: &str) -> (Color, f32) {
+    context
+        .scene()
+        .primitives
+        .iter()
+        .find_map(|primitive| match primitive {
+            Primitive::Text {
+                text,
+                color,
+                font_size,
+                ..
+            } if text == label => Some((*color, *font_size)),
+            Primitive::StyledText {
+                text, color, style, ..
+            } if text == label => Some((*color, style.font_size)),
+            _ => None,
+        })
+        .expect("the text is drawn")
+}
+
+/// The one-pixel rule drawn in `color`, which is how a link is underlined.
+fn rule(context: &Context, color: Color) -> Rect {
+    let rules: Vec<Rect> = quads(context, color)
+        .into_iter()
+        .filter(|rect| rect.height == 1.0)
+        .collect();
+    assert_eq!(rules.len(), 1, "one underline is drawn: {rules:?}");
+    rules[0]
+}
+
+fn one_link(ui: &mut Ui<'_>, style: Option<Style>) {
+    ui.keyed("docs", |ui| {
+        let link = Link::new("Documentation");
+        ui.link(match style {
+            Some(style) => link.style(style),
+            None => link,
+        })
+    });
+}
+
+#[test]
+fn a_link_is_underlined_text_in_the_accent_color() {
+    let mut context = Context::new();
+    frame_at(&mut context, 0, |ui| one_link(ui, None));
+    let accent = context.theme().accent;
+    let (color, font_size) = text_style(&context, "Documentation");
+    assert_eq!(color, accent);
+    let text = label_rect(&context, "Documentation");
+    let line = rule(&context, accent);
+    let width = "Documentation".chars().count() as f32 * font_size * 0.6;
+    assert_eq!(line.x, text.x);
+    assert_eq!(line.width, width, "the rule is as wide as the text");
+    assert!(
+        line.y > text.y && line.y < text.y + text.height,
+        "{line:?} is under the text {text:?}"
+    );
+    let node = bounds(&context, &["docs"]);
+    assert!(
+        line.x >= node.x && line.x + line.width <= node.x + node.width,
+        "the underline stays inside the link's box {node:?}"
+    );
+}
+
+#[test]
+fn a_link_style_may_choose_the_color_and_never_wraps() {
+    let mut context = Context::new();
+    let green = Color::rgb(30, 160, 60);
+    frame_at(&mut context, 0, |ui| {
+        one_link(
+            ui,
+            Some(Style {
+                foreground: Some(green),
+                width: Length::Px(60.0),
+                ..Style::default()
+            }),
+        )
+    });
+    assert_eq!(text_style(&context, "Documentation").0, green);
+    let line = rule(&context, green);
+    assert!(
+        line.x + line.width <= bounds(&context, &["docs"]).x + 60.0,
+        "{line:?} is cut to the box"
+    );
+    assert!(quads(&context, context.theme().accent).is_empty());
+}
+
+#[test]
+fn a_disabled_link_is_dimmed_with_its_underline() {
+    let mut context = Context::new();
+    frame_at(&mut context, 0, |ui| {
+        ui.keyed("off", |ui| ui.link(Link::new("Off").enabled(false)));
+    });
+    let dim = context.theme().text_disabled;
+    assert_eq!(text_style(&context, "Off").0, dim);
+    rule(&context, dim);
+    assert!(quads(&context, context.theme().accent).is_empty());
+}
+
+#[test]
+fn a_link_in_right_to_left_text_is_underlined_where_its_text_is_at_the_end_edge() {
+    let mut context = Context::new();
+    context.set_direction(Direction::Rtl);
+    frame_at(&mut context, 0, |ui| {
+        ui.keyed("page", |ui| {
+            ui.column(Style::default().width(Length::Px(300.0)), |ui| {
+                ui.keyed("docs", |ui| {
+                    ui.link(Link::new("Documentation").style(Style {
+                        width: Length::Px(200.0),
+                        padding: 3.0,
+                        ..Style::default()
+                    }));
+                });
+            })
+        });
+    });
+    let (_, font_size) = text_style(&context, "Documentation");
+    let node = bounds(&context, &["page", "docs"]);
+    let text = label_rect(&context, "Documentation");
+    let line = rule(&context, context.theme().accent);
+    let width = "Documentation".chars().count() as f32 * font_size * 0.6;
+    assert_eq!(line.width, width);
+    assert_eq!(line.x, text.x, "under the text");
+    assert_eq!(
+        line.x + line.width,
+        node.x + node.width - 3.0,
+        "the text ends at the end edge, the right"
+    );
 }
