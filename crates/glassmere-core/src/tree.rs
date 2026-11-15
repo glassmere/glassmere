@@ -113,7 +113,7 @@ struct Node {
     painted_frame: u64,
     resolved: ResolvedText,
     scope: Option<Box<ScopeState>>,
-    tooltip: Option<String>,
+    tooltip: Option<Box<crate::Tooltip>>,
     anim: Option<Box<animation_state::NodeAnim>>,
     area: Option<Box<text_area_input::AreaState>>,
     rich: Option<Box<rich_text::RichState>>,
@@ -280,9 +280,12 @@ impl Node {
         // by its tooltip: that is what makes an icon button nameable, and
         // what the `Inaccessible` diagnostic already counts as a name.
         if !semantics.label.chars().any(char::is_alphanumeric)
-            && let Some(tooltip) = self.tooltip.as_ref().filter(|text| !text.trim().is_empty())
+            && let Some(tooltip) = self
+                .tooltip
+                .as_ref()
+                .filter(|tooltip| !tooltip.text.trim().is_empty())
         {
-            semantics.label = tooltip.clone();
+            semantics.label = tooltip.text.clone();
         }
         semantics
     }
@@ -550,7 +553,12 @@ pub struct Context {
     pending_restore: Option<NodeId>,
     now: Duration,
     hover_since: Option<(NodeId, Duration)>,
-    tooltip: Option<NodeId>,
+    /// Where the keyboard moved focus last, and when: the dwell of the tooltip it brings up.
+    focus_since: Option<(NodeId, Duration)>,
+    /// The tooltip on show, and what brought it.
+    tooltip: Option<(NodeId, overlay_input::Dwell)>,
+    /// When a tooltip last went because its widget was left.
+    tooltip_left: Option<Duration>,
     new_popovers: Vec<NodeId>,
     reduced_motion: bool,
     resizing: bool,
@@ -751,7 +759,9 @@ impl Default for Context {
             pending_restore: None,
             now: Duration::ZERO,
             hover_since: None,
+            focus_since: None,
             tooltip: None,
+            tooltip_left: None,
             new_popovers: Vec::new(),
             reduced_motion: false,
             resizing: false,

@@ -191,7 +191,7 @@ pub(crate) struct Element {
     pub enabled: bool,
     pub children: Vec<Element>,
     pub custom: Option<CustomWidget>,
-    pub tooltip: Option<String>,
+    pub tooltip: Option<Box<crate::Tooltip>>,
     pub control: Control,
 }
 

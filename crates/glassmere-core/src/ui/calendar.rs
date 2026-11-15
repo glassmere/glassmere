@@ -250,7 +250,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                             ..cell(CELL_HEIGHT)
                         },
                         enabled: month.can_step(months),
-                        tooltip: Some(context.tr(name, &[])),
+                        tooltip: Some(Box::new(crate::Tooltip::new(context.tr(name, &[])))),
                         control: Control::CalendarStep { months },
                         ..Element::new(WidgetKey::named(key), Kind::Button)
                     });

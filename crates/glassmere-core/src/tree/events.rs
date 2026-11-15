@@ -210,6 +210,9 @@ impl Context {
     /// Returns true if a declaration/redraw is needed. Pointer capture survives
     /// leaving the window, but activation requires release over the same button.
     pub fn event(&mut self, event: Event) -> bool {
+        if self.escape_tooltip(&event) {
+            return true;
+        }
         // Areas see an event before and after the widgets, and may keep it
         // from them.
         if self.travelled(&event) {
@@ -247,6 +250,7 @@ impl Context {
             _ => {}
         }
         let queued = self.queued.len();
+        let focus = self.noted_focus;
         let menus = self.popup_levels().count();
         let mut handled = self.handle_event(event.clone());
         // A press outside a menu closes it and still goes on to what is under
@@ -254,6 +258,7 @@ impl Context {
         handled |= self.popup_levels().count() < menus;
         self.track_hover(&event);
         self.note_focus();
+        self.track_focus(&event, focus, queued);
         // Moving the pointer changes what is hovered, which only repaints
         // unless the view observed it; holding something while moving it
         // (a scrollbar, a drag) changes what the view reads.
