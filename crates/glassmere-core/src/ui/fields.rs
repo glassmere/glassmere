@@ -224,7 +224,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                         ..Style::button()
                     },
                     enabled: ui.enabled && enabled,
-                    tooltip: Some(name),
+                    tooltip: Some(Box::new(crate::Tooltip::new(name))),
                     control: Control::Stepper,
                     ..Element::new(WidgetKey::Named(key.into()), Kind::Button)
                 });

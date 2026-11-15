@@ -1,5 +1,75 @@
 use super::*;
-use crate::{Axis, panes::TOOLTIP_DELAY};
+use crate::{Axis, Length, Tooltip, TooltipPlacement, panes::TOOLTIP_DELAY};
+use std::borrow::Cow;
+
+/// The space between a tooltip and the widget it is for.
+const TOOLTIP_GAP: f32 = 6.0;
+
+/// The side of a widget a tooltip is on.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Side {
+    Above,
+    Below,
+    Left,
+    Right,
+}
+
+impl Side {
+    fn opposite(self) -> Self {
+        match self {
+            Self::Above => Self::Below,
+            Self::Below => Self::Above,
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+        }
+    }
+}
+
+/// Where a tooltip of `size` goes against `anchor`, inside `window`: on the
+/// side `placement` prefers, on the opposite one when that side has no room,
+/// and in any case within the window.
+fn place_tooltip(
+    placement: TooltipPlacement,
+    rtl: bool,
+    anchor: Rect,
+    size: Size,
+    window: Rect,
+) -> Rect {
+    let side = match placement {
+        TooltipPlacement::Auto | TooltipPlacement::Below => Side::Below,
+        TooltipPlacement::Above => Side::Above,
+        TooltipPlacement::Before if rtl => Side::Right,
+        TooltipPlacement::Before => Side::Left,
+        TooltipPlacement::After if rtl => Side::Left,
+        TooltipPlacement::After => Side::Right,
+    };
+    let (right, bottom) = (anchor.x + anchor.width, anchor.y + anchor.height);
+    // Above and below line up with the start edge; the sides are centred.
+    let start = if rtl { right - size.width } else { anchor.x };
+    let middle = anchor.y + (anchor.height - size.height) / 2.0;
+    let at = |side: Side| match side {
+        Side::Below => (start, bottom + TOOLTIP_GAP),
+        Side::Above => (start, anchor.y - size.height - TOOLTIP_GAP),
+        Side::Left => (anchor.x - size.width - TOOLTIP_GAP, middle),
+        Side::Right => (right + TOOLTIP_GAP, middle),
+    };
+    let fits = |side: Side| {
+        let (x, y) = at(side);
+        match side {
+            Side::Below => y + size.height <= window.y + window.height,
+            Side::Above => y >= window.y,
+            Side::Right => x + size.width <= window.x + window.width,
+            Side::Left => x >= window.x,
+        }
+    };
+    let (x, y) = at(if fits(side) { side } else { side.opposite() });
+    Rect {
+        x: x.clamp(window.x, window.x + (window.width - size.width).max(0.0)),
+        y: y.clamp(window.y, window.y + (window.height - size.height).max(0.0)),
+        width: size.width,
+        height: size.height,
+    }
+}
 
 impl Context {
     /// Supplies the host's monotonic clock. Timed behavior (tooltips) is
@@ -15,10 +85,9 @@ impl Context {
 
     /// When the context next wants to be run without input, on the `set_now` clock.
     pub fn next_wake(&self) -> Option<Duration> {
-        let tooltip = self.hover_since.and_then(|(id, since)| {
-            (self.tooltip.is_none() && self.tooltip_text(id).is_some())
-                .then_some(since + TOOLTIP_DELAY)
-        });
+        let tooltip = self
+            .hover_since
+            .and_then(|(id, since)| self.tooltip_due(id, since));
         [
             tooltip,
             self.toast_wake(),
@@ -33,10 +102,10 @@ impl Context {
     }
 
     /// The node's tooltip, or for an editor the diagnostic under the pointer.
-    fn tooltip_text(&self, id: NodeId) -> Option<String> {
+    /// Windows shows its own over a title bar's buttons, after its own delay,
+    /// so that it does not come before the snap layouts.
+    fn tooltip_for(&self, id: NodeId) -> Option<Cow<'_, Tooltip>> {
         let node = self.nodes.get(&id)?;
-        // Windows shows its own over a title bar's buttons, after its own
-        // delay, so that it does not come before the snap layouts.
         if cfg!(windows)
             && matches!(
                 node.control,
@@ -45,7 +114,25 @@ impl Context {
         {
             return None;
         }
-        node.tooltip.clone().or_else(|| self.area_diagnostic(id))
+        if let Some(tooltip) = node
+            .tooltip
+            .as_deref()
+            .filter(|tooltip| !tooltip.text.trim().is_empty())
+        {
+            return Some(Cow::Borrowed(tooltip));
+        }
+        let message = self.area_diagnostic(id)?;
+        Some(Cow::Owned(Tooltip::new(message)))
+    }
+
+    /// When the tooltip a dwell on `id` since `since` waits for is due, if
+    /// there is one still to show.
+    fn tooltip_due(&self, id: NodeId, since: Duration) -> Option<Duration> {
+        if self.tooltip.is_some() {
+            return None;
+        }
+        let delay = self.tooltip_for(id)?.delay.unwrap_or(TOOLTIP_DELAY);
+        Some(since + delay)
     }
 
     /// Tracks hover dwell after input; hides a visible tooltip when the pointer
@@ -98,10 +185,10 @@ impl Context {
         let Some((id, since)) = self.hover_since else {
             return;
         };
-        if self.tooltip.is_some() || self.now < since + TOOLTIP_DELAY {
-            return;
-        }
-        if self.tooltip_text(id).is_some() {
+        if self
+            .tooltip_due(id, since)
+            .is_some_and(|due| self.now >= due)
+        {
             self.tooltip = Some(id);
             self.pending |= Dirty::PAINT;
         }
@@ -116,45 +203,68 @@ impl Context {
             self.tooltip = None;
             return;
         };
-        let Some(text) = self.tooltip_text(owner) else {
+        let (anchor, rtl, in_editor) = (
+            node.bounds,
+            node.resolved.rtl(),
+            node.kind == Kind::TextArea,
+        );
+        let Some(tooltip) = self.tooltip_for(owner).map(Cow::into_owned) else {
             return;
         };
+        let custom = tooltip.style.as_deref();
+        let positive = |value: Option<f32>, default: f32| {
+            value.filter(|value| *value > 0.0).unwrap_or(default)
+        };
+        let padding = positive(custom.map(|style| style.padding), 8.0);
+        let radius = positive(custom.map(|style| style.radius), 6.0);
         let style = TextStyle {
-            font_size: 13.0,
-            family: self.theme.font_family.clone(),
+            font_size: custom.and_then(|style| style.font_size).unwrap_or(13.0),
+            family: custom
+                .and_then(|style| style.font_family.clone())
+                .unwrap_or_else(|| self.theme.font_family.clone()),
+            weight: custom.and_then(|style| style.font_weight).unwrap_or(400),
+            italic: custom.and_then(|style| style.italic).unwrap_or(false),
             wrap: TextWrap::Word,
             ..TextStyle::default()
         };
-        let padding = 8.0;
-        let measured = measurer.measure_styled(&text, &style, Some(280.0));
-        let viewport = self.nodes[&self.root].bounds;
-        let width = (measured.width + padding * 2.0).min(viewport.width);
-        let height = measured.height + padding * 2.0;
-        let mut rect = Rect {
-            x: if node.resolved.rtl() {
-                node.bounds.x + node.bounds.width - width
-            } else {
-                node.bounds.x
-            },
-            y: node.bounds.y + node.bounds.height + 6.0,
-            width,
-            height,
+        let wrap = match custom.map(|style| style.max_width) {
+            Some(Length::Px(width)) => (width - padding * 2.0).max(1.0),
+            _ => 280.0,
         };
-        // Editor messages belong to a spot in the text, not to the whole editor.
-        let anchor = self.pointer.filter(|_| node.kind == Kind::TextArea);
-        if let Some(pointer) = anchor {
-            rect.x = pointer.x;
-            rect.y = pointer.y + 18.0;
-        }
-        rect.x = rect.x.clamp(0.0, (viewport.width - width).max(0.0));
-        if rect.y + height > viewport.height {
-            rect.y = (anchor.map_or(node.bounds.y, |pointer| pointer.y) - height - 6.0).max(0.0);
-        }
+        let measured = measurer.measure_styled(&tooltip.text, &style, Some(wrap));
+        let window = self.nodes[&self.root].bounds;
+        let size = Size::new(
+            (measured.width + padding * 2.0).min(window.width),
+            measured.height + padding * 2.0,
+        );
+        // Editor messages belong to a spot in the text, not to the whole
+        // editor, unless a placement was asked for.
+        let pointer = self
+            .pointer
+            .filter(|_| in_editor && tooltip.placement == TooltipPlacement::Auto);
+        let rect = match pointer {
+            Some(pointer) => {
+                let y = pointer.y + 18.0;
+                Rect {
+                    x: pointer.x.clamp(0.0, (window.width - size.width).max(0.0)),
+                    y: if y + size.height > window.height {
+                        (pointer.y - size.height - TOOLTIP_GAP).max(0.0)
+                    } else {
+                        y
+                    },
+                    width: size.width,
+                    height: size.height,
+                }
+            }
+            None => place_tooltip(tooltip.placement, rtl, anchor, size, window),
+        };
         self.painted_overlay(rect);
         scene.primitives.push(Primitive::Quad {
             rect,
-            color: self.theme.popup,
-            radius: 6.0,
+            color: custom
+                .and_then(|style| style.background)
+                .unwrap_or(self.theme.popup),
+            radius,
         });
         scene.primitives.push(Primitive::StyledText {
             rect: Rect {
@@ -163,9 +273,11 @@ impl Context {
                 width: measured.width,
                 height: measured.height,
             },
-            text,
+            text: tooltip.text,
             style,
-            color: self.theme.text,
+            color: custom
+                .and_then(|style| style.foreground)
+                .unwrap_or(self.theme.text),
         });
     }
 

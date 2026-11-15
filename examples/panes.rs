@@ -1,7 +1,8 @@
 use glassmere::{
     App, AppOptions, Axis, Button, Color, DirectionChoice, Effects, Label, Length, MenuItem,
-    PopoverOptions, Size, SplitOptions, Style, Tab, TextWrap, Ui, run,
+    PopoverOptions, Size, SplitOptions, Style, Tab, TextWrap, Tooltip, TooltipPlacement, Ui, run,
 };
+use std::time::Duration;
 
 #[derive(Clone)]
 enum Msg {
@@ -109,7 +110,10 @@ impl App for Panes {
                 ui.button("New");
                 ui.tooltip("Create a new document (Ctrl+N)");
                 ui.button("Open…");
-                ui.tooltip("Open a document from disk");
+                // Shows after 150 ms instead of the usual half second.
+                ui.tooltip_with(
+                    Tooltip::new("Open a document from disk").delay(Duration::from_millis(150)),
+                );
                 ui.button(Button::new("Share ▾").on_click(Msg::ToggleShare));
                 ui.tooltip("Share a link to this document");
                 ui.popover(self.share, share_popover.clone(), Msg::Share, |ui| {
@@ -130,9 +134,9 @@ impl App for Panes {
             });
             ui.label(
                 Label::new(
-                    "Hover the toolbar for tooltips. Right-click the editor (or press Shift+F10 \
-                     while it has focus) for a context menu. Drag the dividers or focus one and \
-                     use the arrow keys.",
+                    "Hover the toolbar, the files and the buttons for tooltips. Right-click the \
+                     editor (or press Shift+F10 while it has focus) for a context menu. Drag the \
+                     dividers or focus one and use the arrow keys.",
                 )
                 .style(muted),
             );
@@ -156,6 +160,11 @@ impl App for Panes {
                                     ui.keyed(name, |ui| {
                                         ui.button(Button::new(name).style(file_button.clone()))
                                     });
+                                    // Beside the list, where it covers nothing in it.
+                                    ui.tooltip_with(
+                                        Tooltip::new(format!("Open {name} in a new tab"))
+                                            .placement(TooltipPlacement::After),
+                                    );
                                 }
                             });
                         },
@@ -178,6 +187,20 @@ impl App for Panes {
                                 .style(wrapped.clone()),
                             );
                                             ui.button("A focusable control inside the area");
+                                            ui.tooltip_with(
+                                                Tooltip::new(
+                                                    "Above the button, in the accent colour",
+                                                )
+                                                .placement(TooltipPlacement::Above)
+                                                .style(
+                                                    Style::default()
+                                                        .background(theme.accent)
+                                                        .foreground(theme.window)
+                                                        .padding(10.0)
+                                                        .radius(10.0)
+                                                        .font_weight(700),
+                                                ),
+                                            );
                                         },
                                     );
                                 },
@@ -190,6 +213,11 @@ impl App for Panes {
                                                         .font_size(13.0)
                                                         .foreground(theme.text_muted),
                                                 ),
+                                        );
+                                        ui.button("Clear");
+                                        ui.tooltip_with(
+                                            Tooltip::new("Before the button: on its start side")
+                                                .placement(TooltipPlacement::Before),
                                         );
                                     });
                                 },

@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Align, Axis, Length, MenuItem, PopoverOptions, SplitOptions, Tab, TextInput};
+use crate::{Align, Axis, Length, MenuItem, PopoverOptions, SplitOptions, Tab, TextInput, Tooltip};
 use glassmere_scene::Color;
 use std::rc::Rc;
 
@@ -42,11 +42,19 @@ impl<M> CommandPalette<M> {
 
 impl<'a, M: 'static> Ui<'a, M> {
     /// Attaches hover help to the previously declared widget. It appears after a
-    /// short dwell and doubles as the widget's accessible description.
+    /// short dwell and doubles as the widget's accessible description. The
+    /// same as `tooltip_with(Tooltip::new(text))`.
     #[track_caller]
     pub fn tooltip(&mut self, text: impl Into<String>) {
+        self.tooltip_with(Tooltip::new(text));
+    }
+
+    /// `tooltip` with a say in where the tooltip goes, how long it waits and how
+    /// it looks. Text alone is a tooltip: `ui.tooltip_with("Save")`.
+    #[track_caller]
+    pub fn tooltip_with(&mut self, tooltip: impl Into<Tooltip>) {
         if let Some(element) = self.declared() {
-            element.tooltip = Some(text.into());
+            element.tooltip = Some(Box::new(tooltip.into()));
         }
     }
 
@@ -210,7 +218,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                                     offset: Some((0.0, 0.0)),
                                     ..Style::button()
                                 },
-                                tooltip: Some(name),
+                                tooltip: Some(Box::new(Tooltip::new(name))),
                                 control: Control::StripScroll { end },
                                 ..Element::new(WidgetKey::Named(key.into()), Kind::Button)
                             });

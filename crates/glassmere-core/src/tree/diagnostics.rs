@@ -263,7 +263,7 @@ impl Context {
                 let described = node
                     .tooltip
                     .as_ref()
-                    .is_some_and(|text| !text.trim().is_empty());
+                    .is_some_and(|tooltip| !tooltip.text.trim().is_empty());
                 let empty = semantics.label.trim().is_empty();
                 let symbols = !empty && !semantics.label.chars().any(char::is_alphanumeric);
                 (interactive && !described && (empty || symbols)).then_some((

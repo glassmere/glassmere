@@ -1095,6 +1095,10 @@ glassmere-core   fn Toast::success(text: impl Into<String>) -> Self
 glassmere-core   fn Toast::tag(mut self, tag: impl Into<String>) -> Self
 glassmere-core   fn Toast::warning(text: impl Into<String>) -> Self
 glassmere-core   fn ToastSender::send(&self, toast: Toast)
+glassmere-core   fn Tooltip::delay(mut self, delay: Duration) -> Self
+glassmere-core   fn Tooltip::new(text: impl Into<String>) -> Self
+glassmere-core   fn Tooltip::placement(mut self, placement: TooltipPlacement) -> Self
+glassmere-core   fn Tooltip::style(mut self, style: Style) -> Self
 glassmere-core   fn Track::auto_fill(tracks: Vec<Track>) -> Self
 glassmere-core   fn Track::auto_fit(tracks: Vec<Track>) -> Self
 glassmere-core   fn Track::repeat(count: u16, tracks: Vec<Track>) -> Self
@@ -1173,6 +1177,7 @@ glassmere-core   fn Ui::theme(&self) -> &crate::Theme #[track_caller] [impl<'a, 
 glassmere-core   fn Ui::title_bar(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_, M>)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::toast_sender(&self) -> ToastSender #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::tooltip(&mut self, text: impl Into<String>) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
+glassmere-core   fn Ui::tooltip_with(&mut self, tooltip: impl Into<Tooltip>) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::tr(&self, key: &str) -> String [impl<'a, M: 'static> crate::Ui<'a, M>]
 glassmere-core   fn Ui::tr_args(&self, key: &str, args: &[(&str, MessageArg)]) -> String [impl<'a, M: 'static> crate::Ui<'a, M>]
 glassmere-core   fn Ui::tree_view(&mut self, model: &impl ListModel, state: &ListState, options: VirtualListOptions, on: impl Fn(GridMsg) -> Msg + 'static) #[track_caller] [impl<'a, Msg: 'static> Ui<'a, Msg>]
@@ -1523,6 +1528,11 @@ glassmere-core   variant ToastKind::Error
 glassmere-core   variant ToastKind::Info
 glassmere-core   variant ToastKind::Success
 glassmere-core   variant ToastKind::Warning
+glassmere-core   variant TooltipPlacement::Above
+glassmere-core   variant TooltipPlacement::After
+glassmere-core   variant TooltipPlacement::Auto
+glassmere-core   variant TooltipPlacement::Before
+glassmere-core   variant TooltipPlacement::Below
 glassmere-core   variant TouchPhase::Cancelled
 glassmere-core   variant TouchPhase::Ended
 glassmere-core   variant TouchPhase::Moved
@@ -1619,6 +1629,7 @@ glassmere-core enum TextEdit #[derive(Clone, Debug)]
 glassmere-core enum TextMove #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 glassmere-core enum TextOp #[derive(Clone, Debug, PartialEq)]
 glassmere-core enum ToastKind #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+glassmere-core enum TooltipPlacement #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-core enum TouchPhase #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 glassmere-core enum Track #[derive(Clone, Debug, PartialEq)]
 glassmere-core enum TrackSize #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1662,12 +1673,16 @@ glassmere-core impl Default for VirtualListOptions
 glassmere-core impl From<&String> for ComboBox
 glassmere-core impl From<&String> for Label
 glassmere-core impl From<&String> for MessageArg
+glassmere-core impl From<&String> for Tooltip
 glassmere-core impl From<&str> for ComboBox
 glassmere-core impl From<&str> for Label
 glassmere-core impl From<&str> for MessageArg
+glassmere-core impl From<&str> for Tooltip
+glassmere-core impl From<Cow<'_, str>> for Tooltip
 glassmere-core impl From<String> for ComboBox
 glassmere-core impl From<String> for Label
 glassmere-core impl From<String> for MessageArg
+glassmere-core impl From<String> for Tooltip
 glassmere-core impl From<f32> for MessageArg
 glassmere-core impl From<f64> for MessageArg
 glassmere-core impl From<i16> for MessageArg
@@ -1838,6 +1853,7 @@ glassmere-core struct Toast #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct ToastAction #[derive(Clone, Debug, Eq, PartialEq)]
 glassmere-core struct ToastId #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)] (private fields)
 glassmere-core struct ToastSender #[derive(Clone)] (private fields)
+glassmere-core struct Tooltip #[derive(Clone, Debug, Default, PartialEq)] (private fields)
 glassmere-core struct Transform #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-core struct Transition #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-core struct Tray #[derive(Clone, Debug, Default, PartialEq)]
@@ -2048,6 +2064,8 @@ glassmere-core use ToastAction = toast::ToastAction
 glassmere-core use ToastId = toast::ToastId
 glassmere-core use ToastKind = toast::ToastKind
 glassmere-core use ToastSender = toast::ToastSender
+glassmere-core use Tooltip = panes::Tooltip
+glassmere-core use TooltipPlacement = panes::TooltipPlacement
 glassmere-core use TouchPhase = tree::TouchPhase
 glassmere-core use Track = style::Track
 glassmere-core use TrackSize = style::TrackSize

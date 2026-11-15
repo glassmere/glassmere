@@ -144,7 +144,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                     ..Style::button()
                 },
                 enabled: ui.enabled,
-                tooltip: Some(name.clone()),
+                tooltip: Some(Box::new(crate::Tooltip::new(name.clone()))),
                 control: Control::Reveal { name, other },
                 ..Element::new(WidgetKey::named("$reveal"), Kind::Button)
             });

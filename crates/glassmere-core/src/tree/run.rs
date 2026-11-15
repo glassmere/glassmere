@@ -567,6 +567,10 @@ impl Context {
         }
         if node.tooltip != element.tooltip {
             self.pending |= Dirty::ACCESSIBILITY;
+            // The bubble on show is drawn from it.
+            if self.tooltip == Some(id) {
+                self.pending |= Dirty::PAINT;
+            }
         }
         if !changed.is_empty() {
             node.changed = changed;

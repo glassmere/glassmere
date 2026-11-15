@@ -157,7 +157,7 @@ impl Context {
             text_selection: node.editor.as_ref().map(|editor| editor.selection),
             is_popup: matches!(node.kind, Kind::Popup | Kind::Popover),
             modal: matches!(node.control, Control::Dialog { modal: true, .. }),
-            description: node.tooltip.clone(),
+            description: node.tooltip.as_ref().map(|tooltip| tooltip.text.clone()),
             orientation: match node.control {
                 Control::Divider { axis, .. } => Some(axis),
                 Control::Sizer { .. } => Some(crate::Axis::Horizontal),
