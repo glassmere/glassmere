@@ -24,7 +24,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 rust-version = "1.90"
 license = "Apache-2.0"
@@ -32,20 +32,20 @@ readme = "README.md"
 repository = "https://github.com/glassmere/glassmere"
 
 [workspace.dependencies]
-glassmere-core = { path = "crates/glassmere-core", version = "0.1.5" }
-glassmere-scene = { path = "crates/glassmere-scene", version = "0.1.5" }
-glassmere-text = { path = "crates/glassmere-text", version = "0.1.5" }
-glassmere-render-cpu = { path = "crates/glassmere-render-cpu", version = "0.1.5" }
-glassmere-render-wgpu = { path = "crates/glassmere-render-wgpu", version = "0.1.5" }
-glassmere-winit = { path = "crates/glassmere-winit", version = "0.1.5" }
-glassmere-testing = { path = "crates/glassmere-testing", version = "0.1.5" }
-glassmere-devtools = { path = "crates/glassmere-devtools", version = "0.1.5" }
-glassmere-syntax = { path = "crates/glassmere-syntax", version = "0.1.5" }
-glassmere-image = { path = "crates/glassmere-image", version = "0.1.5" }
-glassmere-derive = { path = "crates/glassmere-derive", version = "0.1.5" }
-glassmere-fluent = { path = "crates/glassmere-fluent", version = "0.1.5" }
-glassmere-icu = { path = "crates/glassmere-icu", version = "0.1.5" }
-glassmere-win32 = { path = "crates/glassmere-win32", version = "0.1.5" }
+glassmere-core = { path = "crates/glassmere-core", version = "0.1.6" }
+glassmere-scene = { path = "crates/glassmere-scene", version = "0.1.6" }
+glassmere-text = { path = "crates/glassmere-text", version = "0.1.6" }
+glassmere-render-cpu = { path = "crates/glassmere-render-cpu", version = "0.1.6" }
+glassmere-render-wgpu = { path = "crates/glassmere-render-wgpu", version = "0.1.6" }
+glassmere-winit = { path = "crates/glassmere-winit", version = "0.1.6" }
+glassmere-testing = { path = "crates/glassmere-testing", version = "0.1.6" }
+glassmere-devtools = { path = "crates/glassmere-devtools", version = "0.1.6" }
+glassmere-syntax = { path = "crates/glassmere-syntax", version = "0.1.6" }
+glassmere-image = { path = "crates/glassmere-image", version = "0.1.6" }
+glassmere-derive = { path = "crates/glassmere-derive", version = "0.1.6" }
+glassmere-fluent = { path = "crates/glassmere-fluent", version = "0.1.6" }
+glassmere-icu = { path = "crates/glassmere-icu", version = "0.1.6" }
+glassmere-win32 = { path = "crates/glassmere-win32", version = "0.1.6" }
 bitflags = "2.13"
 ropey = "1.6"
 serde = { version = "1.0.229", features = ["derive"] }
