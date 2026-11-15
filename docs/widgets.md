@@ -19,9 +19,13 @@ All of them are methods of `Ui`, take a value and a message constructor, and are
 | Input | `drag_source`, `drop_target`, `gesture_area`, `event_area` |
 | Your own | `component`, `widget`, `custom`, `map`, `keyed`, `memo` |
 
-Collections take a model rather than data: `ListModel` answers by index and by `ItemId`, only the visible range is declared, and `ListState` and `GridState` hold selection and scroll. A grid's columns can be resized, reordered, hidden and frozen through `GridColumns`, filtered per column, pinned under the body with total rows from `GridModel::footer`, and edited in place through typed cell editors whose values the model may refuse with a message.
+Collections take a model rather than data: `ListModel` answers by index and by `ItemId`, only the visible range is declared, and `ListState` and `GridState` hold selection and scroll. Rows of a list or tree are `VirtualListOptions::row_height` high unless the model returns a `RowHeights` from `ListModel::row_heights`, which gives some rows another height (`TreeModel::set_row_height` does it for a tree); scrolling, revealing, paging and the scrollbar then follow the real heights. A grid's columns can be resized, reordered, hidden and frozen through `GridColumns`, filtered per column, pinned under the body with total rows from `GridModel::footer`, and edited in place through typed cell editors whose values the model may refuse with a message.
 
-`#[derive(Properties)]` turns a struct into property grid rows. Fields get an editor by type, and `#[property(..)]` sets `group`, `name`, `min`, `max`, `step`, `suffix`, `default`, `choices(..)`, `readonly`, `flatten`, `with` and `skip`.
+A property grid with a `height` declares only the rows in view, however many properties the view names; groups, the filter and Tab to the next editor work over all of them.
+
+`#[derive(Properties)]` turns a struct into property grid rows. Fields get an editor by type, and `#[property(..)]` sets `group`, `name`, `min`, `max`, `step`, `suffix`, `default`, `choices(..)`, `readonly`, `flatten`, `with` and `skip`. A fieldless enum that derives `PropertyChoice` is edited as a drop-down of its variants (named from the variant, or `#[property(name = "..")]`), and `choices(..)` over a `usize` still works. An `Option<T>` field is edited as `T` beside a box that sets or clears it, through `PropertyGrid::optional`: setting gives the value `default` names, or a neutral one.
+
+A grid can edit several objects at once: the view shows the first one's values and marks the rows where they differ with `PropertyGrid::mixed`, which shows "Mixed" instead of a value, and the application stores each message in every object. `Card::properties_many(&[&a, &b], grid, on)` does it for a derived struct.
 
 ## A function
 

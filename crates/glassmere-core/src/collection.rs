@@ -74,6 +74,116 @@ pub trait ListModel {
     fn set_expanded(&mut self, _id: ItemId, _expanded: bool) -> bool {
         false
     }
+    /// The rows whose height differs from
+    /// [`VirtualListOptions::row_height`], one entry per row; `None`, the
+    /// default, gives every row that height. Keep the index in the model and
+    /// patch it where the model changes, as for [`ItemOrder`]. Lists and trees
+    /// use it; a grid's rows keep the one height.
+    fn row_heights(&self) -> Option<&RowHeights> {
+        None
+    }
+}
+
+/// Heights of the rows that are not [`VirtualListOptions::row_height`],
+/// indexed by prefix sums so that a row's offset and the row at an offset
+/// cost O(log n) however many rows there are. Keep one in a model and return
+/// it from [`ListModel::row_heights`]: [`set`](Self::set) patches a row in
+/// O(log n), and [`new`](Self::new) rebuilds it in O(n) after rows are
+/// inserted, removed or reordered.
+#[derive(Clone, Debug, Default)]
+pub struct RowHeights {
+    rows: Vec<Option<f32>>,
+    /// A Fenwick tree over `rows`, one-based: for the span each node covers,
+    /// the sum of the heights set and how many are set.
+    spans: Vec<(f64, u32)>,
+}
+
+impl RowHeights {
+    /// One entry per row: `Some(height)` where the row is not the fixed
+    /// height. A height under 1, or not finite, counts as `None`.
+    pub fn new(rows: impl IntoIterator<Item = Option<f32>>) -> Self {
+        let rows: Vec<_> = rows.into_iter().map(Self::valid).collect();
+        let mut spans = vec![(0.0, 0); rows.len() + 1];
+        for (at, row) in (1..).zip(&rows) {
+            if let Some(height) = row {
+                spans[at].0 += f64::from(*height);
+                spans[at].1 += 1;
+            }
+            let parent = at + (at & at.wrapping_neg());
+            if parent < spans.len() {
+                let (sum, count) = spans[at];
+                spans[parent].0 += sum;
+                spans[parent].1 += count;
+            }
+        }
+        Self { rows, spans }
+    }
+
+    pub fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+
+    /// The height of row `index`, or `None` for the fixed height.
+    pub fn get(&self, index: usize) -> Option<f32> {
+        self.rows.get(index).copied().flatten()
+    }
+
+    /// Patches row `index`, with the limits of [`new`](Self::new). Panics if
+    /// `index` is not a row.
+    pub fn set(&mut self, index: usize, height: Option<f32>) {
+        let height = Self::valid(height);
+        let was = std::mem::replace(&mut self.rows[index], height);
+        let sum = height.map_or(0.0, f64::from) - was.map_or(0.0, f64::from);
+        let count = i32::from(height.is_some()) - i32::from(was.is_some());
+        let mut at = index + 1;
+        while at < self.spans.len() {
+            self.spans[at].0 += sum;
+            self.spans[at].1 = self.spans[at].1.wrapping_add_signed(count);
+            at += at & at.wrapping_neg();
+        }
+    }
+
+    fn valid(height: Option<f32>) -> Option<f32> {
+        height.filter(|height| height.is_finite() && *height >= 1.0)
+    }
+
+    /// Where row `index` starts, with the rows not set `fixed` high; the
+    /// total height for `index` at or past the end.
+    pub(crate) fn top(&self, index: usize, fixed: f32) -> f64 {
+        let index = index.min(self.rows.len());
+        let (mut sum, mut count, mut at) = (0.0, 0, index);
+        while at > 0 {
+            sum += self.spans[at].0;
+            count += self.spans[at].1;
+            at &= at - 1;
+        }
+        sum + (index - count as usize) as f64 * f64::from(fixed)
+    }
+
+    /// The row that `offset` falls in, or the number of rows when it is past
+    /// them.
+    pub(crate) fn row_at(&self, offset: f64, fixed: f32) -> usize {
+        let len = self.rows.len();
+        let (mut row, mut above) = (0, 0.0);
+        let mut step = len.checked_ilog2().map_or(0, |bits| 1 << bits);
+        while step > 0 {
+            let next = row + step;
+            if next <= len {
+                let (sum, count) = self.spans[next];
+                let span = sum + (step - count as usize) as f64 * f64::from(fixed);
+                if above + span <= offset {
+                    row = next;
+                    above += span;
+                }
+            }
+            step >>= 1;
+        }
+        row
+    }
 }
 
 /// An indexed order for existing application data. Rebuild only on model changes.
@@ -250,9 +360,9 @@ impl CollectionInput {
 }
 
 impl VirtualListOptions {
-    /// Why a list of `len` rows cannot be shown with these options, if it
-    /// cannot.
-    pub(crate) fn check(&self, len: usize) -> Result<(), &'static str> {
+    /// Why rows `extent` high in all cannot be shown with these options, if
+    /// they cannot.
+    pub(crate) fn check(&self, extent: f64) -> Result<(), &'static str> {
         if !(self.height.is_finite()
             && self.height > 0.0
             && self.row_height.is_finite()
@@ -263,7 +373,7 @@ impl VirtualListOptions {
         if self.overscan > 128 {
             return Err("virtual list overscan must be bounded (<= 128)");
         }
-        if len as f64 * f64::from(self.row_height) - f64::from(self.height) > 1_000_000_000.0 {
+        if extent - f64::from(self.height) > 1_000_000_000.0 {
             return Err("virtual content exceeds supported logical extent");
         }
         Ok(())
@@ -285,6 +395,10 @@ pub struct TreeModel {
     expanded: HashSet<ItemId>,
     order: ItemOrder,
     depths: Vec<usize>,
+    /// Heights given with `set_row_height`, by item.
+    heights: HashMap<ItemId, f32>,
+    /// `heights` along the visible order; empty while `heights` is.
+    row_heights: RowHeights,
 }
 
 impl std::fmt::Debug for TreeModel {
@@ -333,6 +447,8 @@ impl TreeModel {
             expanded: HashSet::new(),
             order: ItemOrder::default(),
             depths: Vec::new(),
+            heights: HashMap::new(),
+            row_heights: RowHeights::default(),
         };
         model.rebuild();
         Ok(model)
@@ -363,9 +479,39 @@ impl TreeModel {
             }
         }
         self.order = ItemOrder::new(ids).expect("validated unique tree identities");
+        if !self.heights.is_empty() {
+            self.index_heights();
+        }
+    }
+    fn index_heights(&mut self) {
+        self.row_heights = RowHeights::new(
+            self.order
+                .ids
+                .iter()
+                .map(|id| self.heights.get(id).copied()),
+        );
     }
     pub fn item(&self, id: ItemId) -> Option<&TreeItem> {
         self.items.get(&id)
+    }
+    /// Gives an item a height other than [`VirtualListOptions::row_height`],
+    /// or `None` to give it back. Heights follow their items as the tree
+    /// expands and collapses. Ignored for an id the tree does not have.
+    pub fn set_row_height(&mut self, id: ItemId, height: Option<f32>) {
+        if !self.items.contains_key(&id) {
+            return;
+        }
+        match height {
+            Some(height) => self.heights.insert(id, height),
+            None => self.heights.remove(&id),
+        };
+        if self.heights.is_empty() {
+            self.row_heights = RowHeights::default();
+        } else if self.row_heights.len() != self.order.ids.len() {
+            self.index_heights();
+        } else if let Some(index) = self.order.index_of(id) {
+            self.row_heights.set(index, height);
+        }
     }
 }
 impl ListModel for TreeModel {
@@ -406,6 +552,9 @@ impl ListModel for TreeModel {
             self.rebuild();
         }
         changed
+    }
+    fn row_heights(&self) -> Option<&RowHeights> {
+        (!self.heights.is_empty()).then_some(&self.row_heights)
     }
 }
 
@@ -799,5 +948,56 @@ impl GridColumns {
     /// Back to the model's order and widths, with everything showing.
     pub fn reset(&mut self) {
         *self = Self::default();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RowHeights;
+
+    /// What `RowHeights` answers, found by walking the rows.
+    fn check(heights: &RowHeights, fixed: f32) {
+        let mut top = 0.0;
+        for index in 0..heights.len() {
+            assert_eq!(heights.top(index, fixed), top, "top of row {index}");
+            let height = f64::from(heights.get(index).unwrap_or(fixed));
+            for offset in [top, top + height / 2.0, top + height - 0.25] {
+                assert_eq!(heights.row_at(offset, fixed), index, "row at {offset}");
+            }
+            top += height;
+        }
+        assert_eq!(heights.top(heights.len(), fixed), top);
+        assert_eq!(heights.top(heights.len() + 5, fixed), top);
+        assert_eq!(heights.row_at(top, fixed), heights.len());
+        assert_eq!(heights.row_at(top + 1000.0, fixed), heights.len());
+        assert_eq!(heights.row_at(-1.0, fixed), 0);
+    }
+
+    #[test]
+    fn prefix_sums_match_a_walk_after_building_and_patching() {
+        for len in [0, 1, 2, 3, 7, 8, 9, 100, 129] {
+            let mut heights = RowHeights::new((0..len).map(|row| match row % 5 {
+                1 => Some(48.0),
+                3 => Some(17.5),
+                _ => None,
+            }));
+            for fixed in [1.0, 30.0, 32.5] {
+                check(&heights, fixed);
+            }
+            for row in (0..len).step_by(3) {
+                heights.set(row, if row % 2 == 0 { Some(64.0) } else { None });
+                check(&heights, 30.0);
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_heights_count_as_unset() {
+        let heights = RowHeights::new([Some(0.5), Some(f32::NAN), Some(f32::INFINITY), Some(2.0)]);
+        assert_eq!(
+            [0, 1, 2, 3].map(|row| heights.get(row)),
+            [None, None, None, Some(2.0)]
+        );
+        assert_eq!(heights.top(4, 10.0), 32.0);
     }
 }

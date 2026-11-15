@@ -1090,18 +1090,27 @@ fn a_tab_brought_into_view_on_the_first_frame_leaves_the_window_drawn() {
 }
 
 mod retained {
-    //! What a panel keeps while the dock is rearranged around it: its
-    //! content is the same nodes before and after, so focus, scroll offsets
-    //! and the undo history of an editor carry over.
+    //! What a panel keeps while the dock is rearranged around it, or while its
+    //! tab is not the selected one: its content is the same nodes before and
+    //! after, so focus, scroll offsets and the undo history of an editor
+    //! carry over.
     use super::*;
-    use glassmere_core::{Action, CodeEditorOptions, Length, NodeId, Style, TextDocument};
+    use glassmere_core::{
+        Action, CodeEditorOptions, Command, DockAction, Length, NodeId, Shortcut, Style,
+        TextDocument,
+    };
     use glassmere_core::{TextEdit, TextInput, TextOp};
+    use std::cell::Cell;
     use support::on;
 
     struct Retained {
         layout: DockLayout,
         notes: String,
         source: TextDocument,
+        /// How many times the view declared the editor panel.
+        declared: Cell<u32>,
+        /// How many times the panel's own command ran.
+        saved: u32,
     }
 
     fn view(state: &Retained, ui: &mut Ui<'_, Message<Retained>>) {
@@ -1120,7 +1129,12 @@ mod retained {
                         ui.label(format!("content:{id}"));
                         return;
                     }
+                    state.declared.set(state.declared.get() + 1);
                     ui.column(Style::default().gap(4.0), |ui| {
+                        ui.command_button(
+                            &Command::with_id("editor.save", "Save", Some(Shortcut::primary('s'))),
+                            act(|s: &mut Retained| s.saved += 1),
+                        );
                         ui.scroll(
                             Style::default().height(Length::Px(40.0)).shrink(0.0),
                             |ui| {
@@ -1162,15 +1176,19 @@ mod retained {
     }
 
     fn find(context: &Context, role: Role) -> NodeId {
+        locate(context, role).unwrap_or_else(|| panic!("no {role:?}"))
+    }
+
+    fn locate(context: &Context, role: Role) -> Option<NodeId> {
         let mut stack = vec![context.root()];
         while let Some(id) = stack.pop() {
             let node = context.node(id).unwrap();
             if node.semantics.role == role {
-                return id;
+                return Some(id);
             }
             stack.extend(node.children.iter().rev());
         }
-        panic!("no {role:?}");
+        None
     }
 
     fn content(context: &Context) -> Content {
@@ -1208,16 +1226,21 @@ mod retained {
         app.frame();
     }
 
+    fn retained(layout: DockLayout) -> Retained {
+        let source: String = (0..60).map(|line| format!("line {line}\n")).collect();
+        Retained {
+            layout,
+            notes: String::new(),
+            source: TextDocument::from_text(&source),
+            declared: Cell::new(0),
+            saved: 0,
+        }
+    }
+
     /// What the panel has: the editor scrolled, a field with two edits and
     /// the keyboard in it.
     fn start() -> (Driven<Retained>, Content) {
-        let source: String = (0..60).map(|line| format!("line {line}\n")).collect();
-        let state = Retained {
-            layout: workspace(),
-            notes: String::new(),
-            source: TextDocument::from_text(&source),
-        };
-        let mut app = Driven::new(ROOT, state, view);
+        let mut app = Driven::new(ROOT, retained(workspace()), view);
         app.frame();
         let nodes = content(&app.context);
         for id in [nodes.scroll, nodes.area] {
@@ -1338,5 +1361,190 @@ mod retained {
                 layout.close("files");
             },
         ]);
+    }
+
+    /// Brings `panel` forward in its group, as a click on its tab does.
+    fn select(app: &mut Driven<Retained>, panel: &str) {
+        app.state_mut()
+            .layout
+            .apply(DockAction::Select(panel.into()));
+        app.frame();
+        app.frame();
+    }
+
+    /// Whether a screen reader is told of the editor panel's content.
+    fn exposed(context: &Context) -> bool {
+        context.snapshots().iter().any(|node| {
+            node.semantics.label == "Save"
+                || matches!(
+                    node.semantics.role,
+                    Role::ScrollView | Role::TextInput | Role::MultilineTextInput
+                )
+        })
+    }
+
+    #[test]
+    fn a_panel_keeps_its_state_while_its_tab_is_not_selected() {
+        let (mut app, nodes) = start();
+        let offset = scrolled(&app.context, nodes.scroll);
+        let line = top_line(&app.context);
+        assert!(exposed(&app.context));
+        let declared = app.state().declared.get();
+
+        select(&mut app, "preview");
+        assert!(shows(&app.context, "content:preview"));
+        // The hidden content is not drawn, announced or reachable, and the
+        // view is not asked to declare it.
+        assert!(!exposed(&app.context));
+        assert!(!shows(&app.context, "row 0"));
+        assert_eq!(app.state().declared.get(), declared);
+        assert_eq!(app.context.focused(), None);
+        assert!(!app.context.action(nodes.input, Action::Focus));
+        assert_eq!(app.context.focused(), None);
+        let hidden = [nodes.scroll, nodes.input, nodes.area];
+        for shift in [false, true] {
+            for _ in 0..12 {
+                app.context.event(Event::KeyDown {
+                    key: Key::Tab,
+                    shift,
+                    repeat: false,
+                });
+                app.frame();
+                let focused = app.context.focused();
+                assert!(!matches!(focused, Some(id) if hidden.contains(&id)));
+            }
+        }
+        // Keys and shortcuts have nowhere to go in it.
+        edit(&mut app, TextEdit::Insert("x".into()));
+        assert_eq!(app.state().notes, "onetwo");
+        assert!(!app.context.event(Event::Shortcut(Shortcut::primary('s'))));
+        app.frame();
+        assert_eq!(app.state().saved, 0);
+        assert_eq!(app.state().declared.get(), declared);
+
+        select(&mut app, "editor");
+        assert_eq!(content(&app.context), nodes);
+        assert_eq!(scrolled(&app.context, nodes.scroll), offset);
+        let now = top_line(&app.context);
+        assert_eq!(now.0, line.0);
+        assert!((now.1 - line.1).abs() < 0.01, "{now:?}");
+        assert!(exposed(&app.context));
+        // The command is there again, where the keyboard is not in a field.
+        assert!(app.context.event(Event::Shortcut(Shortcut::primary('s'))));
+        app.frame();
+        assert_eq!(app.state().saved, 1);
+        // The history is the one the user made.
+        assert!(app.context.action(nodes.input, Action::Focus));
+        edit(&mut app, TextEdit::Undo);
+        assert_eq!(app.state().notes, "one");
+        edit(&mut app, TextEdit::Redo);
+        assert_eq!(app.state().notes, "onetwo");
+    }
+
+    #[test]
+    fn panels_of_one_group_may_each_have_a_command_on_the_same_keys() {
+        struct Saves {
+            layout: DockLayout,
+            saved: Vec<String>,
+        }
+        let state = Saves {
+            layout: DockLayout::new(DockNode::tabs(["editor", "preview"])),
+            saved: Vec::new(),
+        };
+        let mut app = Driven::new(
+            ROOT,
+            state,
+            |state: &Saves, ui: &mut Ui<'_, Message<Saves>>| {
+                ui.dock(
+                    &state.layout,
+                    &panels(),
+                    DockOptions::default(),
+                    |action| {
+                        act(move |s: &mut Saves| {
+                            s.layout.apply(action.clone());
+                        })
+                    },
+                    |ui, id| {
+                        let owner = id.to_owned();
+                        ui.command_button(
+                            &Command::with_id(
+                                format!("{id}.save"),
+                                "Save",
+                                Some(Shortcut::primary('s')),
+                            ),
+                            act(move |s: &mut Saves| s.saved.push(owner.clone())),
+                        );
+                    },
+                )
+            },
+        );
+        for (panel, saved) in [
+            ("preview", ["preview"].as_slice()),
+            ("editor", &["preview", "editor"]),
+        ] {
+            app.state_mut()
+                .layout
+                .apply(DockAction::Select(panel.into()));
+            app.frame();
+            app.frame();
+            assert!(app.context.event(Event::Shortcut(Shortcut::primary('s'))));
+            app.frame();
+            assert_eq!(app.state().saved, saved);
+        }
+    }
+
+    #[test]
+    fn a_hidden_panel_keeps_its_state_when_it_is_moved_and_shown_in_another_group() {
+        let (mut app, nodes) = start();
+        let offset = scrolled(&app.context, nodes.scroll);
+        select(&mut app, "preview");
+        app.state_mut().layout.move_panel(
+            "editor",
+            DockTarget::Group {
+                anchor: "output".into(),
+                zone: DockZone::Center,
+            },
+        );
+        app.frame();
+        app.frame();
+        assert_eq!(content(&app.context), nodes);
+        assert_eq!(scrolled(&app.context, nodes.scroll), offset);
+    }
+
+    #[test]
+    fn closing_a_hidden_panel_drops_what_it_kept() {
+        let (mut app, nodes) = start();
+        select(&mut app, "preview");
+        let kept = app.context.node_count();
+        app.state_mut().layout.close("editor");
+        app.frame();
+        app.frame();
+        // The dock has as many nodes as one that never had the panel.
+        let mut without = workspace();
+        without.close("editor");
+        let never = Driven::new(ROOT, retained(without), view);
+        assert!(app.context.node_count() < kept);
+        assert_eq!(app.context.node_count(), never.context.node_count());
+        // Shown again, it starts afresh.
+        app.state_mut().layout.show("editor");
+        app.frame();
+        app.frame();
+        let fresh = content(&app.context);
+        assert_ne!(fresh.input, nodes.input);
+        assert_eq!(scrolled(&app.context, fresh.scroll), 0.0);
+        assert!(app.context.action(fresh.input, Action::Focus));
+        edit(&mut app, TextEdit::Undo);
+        assert_eq!(app.state().notes, "onetwo");
+    }
+
+    #[test]
+    fn a_dock_that_leaves_the_view_takes_its_hidden_panels_with_it() {
+        let (mut app, _) = start();
+        select(&mut app, "preview");
+        app.set_view(|_, _| {});
+        app.frame();
+        app.frame();
+        let empty = Driven::new(ROOT, retained(workspace()), |_, _| {});
+        assert_eq!(app.context.node_count(), empty.context.node_count());
     }
 }

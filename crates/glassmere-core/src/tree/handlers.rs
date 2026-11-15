@@ -153,26 +153,26 @@ impl Context {
                             .copied()
                     });
                     if let (true, Some(field)) = (enabled && self.clicks.contains(&id), field)
-                        && let Some(Handler::Number { on, options }) = self
+                        && let Some(Handler::Number { on, options, mixed }) = self
                             .nodes
                             .get(&field)
                             .and_then(|node| node.handler)
                             .and_then(|slot| slab.slots[slot as usize].as_ref())
                     {
-                        self.commit_number(field, *steps, on.as_ref(), options, out);
+                        self.commit_number(field, *steps, on.as_ref(), options, *mixed, out);
                     }
                 }
-                (Queued::Update, Handler::Number { on, options }) => {
+                (Queued::Update, Handler::Number { on, options, mixed }) => {
                     // Only steps commit; typed text waits for Enter or leaving.
                     if let Some(ControlUpdate::Number(steps)) = self.updates.remove(&id)
                         && enabled
                     {
-                        self.commit_number(id, steps, on.as_ref(), options, out);
+                        self.commit_number(id, steps, on.as_ref(), options, *mixed, out);
                     }
                 }
-                (Queued::Submit, Handler::Number { on, options }) => {
+                (Queued::Submit, Handler::Number { on, options, mixed }) => {
                     if enabled && self.submitted.contains(&id) {
-                        self.commit_number(id, 0.0, on.as_ref(), options, out);
+                        self.commit_number(id, 0.0, on.as_ref(), options, *mixed, out);
                     }
                 }
                 (
@@ -287,13 +287,15 @@ impl Context {
     /// its declared number when it has none. `on` of the result is sent when
     /// it differs from the declared number. Either way the field then shows
     /// the committed number and forgets the draft, so text that does not
-    /// parse reverts without a message.
+    /// parse reverts without a message. A `mixed` field has no declared
+    /// number to differ from: a parsed number or a step always sends.
     fn commit_number<M>(
         &mut self,
         id: NodeId,
         steps: f64,
         on: &dyn Fn(f64) -> M,
         options: &NumberOptions,
+        mixed: bool,
         out: &mut Vec<M>,
     ) {
         let Some(node) = self.nodes.get(&id).filter(|node| node.enabled) else {
@@ -314,17 +316,14 @@ impl Context {
             .as_ref()
             .map_or_else(String::new, |editor| editor.text.clone());
         let drafting = *draft || text != *value;
-        let base = if drafting {
-            options.parse_in(self, &text).unwrap_or(declared)
-        } else {
-            declared
-        };
+        let typed = drafting.then(|| options.parse_in(self, &text)).flatten();
+        let base = typed.unwrap_or(declared);
         let next = if steps != 0.0 {
             options.constrain(base + steps * options.step)
         } else {
             base
         };
-        if next != declared {
+        if next != declared || (mixed && (typed.is_some() || steps != 0.0)) {
             out.push(on(next));
         }
         let shown = options.format_in(self, next);
@@ -548,8 +547,10 @@ impl Context {
     /// Focuses the focusable widget declared with this key, wherever it is.
     pub(crate) fn focus_named(&mut self, key: &str) {
         let target = self.nodes.iter().find_map(|(id, node)| {
-            (matches!(&node.key, WidgetKey::Named(name) if name == key) && node.focusable())
-                .then_some(*id)
+            (matches!(&node.key, WidgetKey::Named(name) if name == key)
+                && node.focusable()
+                && self.attached(*id))
+            .then_some(*id)
         });
         if let Some(target) = target {
             self.focus_control(target);

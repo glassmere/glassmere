@@ -1,7 +1,8 @@
 use super::*;
 use super::{DragSourceBuilder, DropTargetBuilder};
 use crate::{
-    GridModel, GridMsg, GridState, Length, ListModel, ListState, SortDirection, VirtualListOptions,
+    GridModel, GridMsg, GridState, Length, ListModel, ListState, RowHeights, SortDirection,
+    VirtualListOptions,
     collection::{After, CollectionInput, CollectionKind, FilterNote, GridNode, NodeEdit},
 };
 use std::rc::Rc;
@@ -835,7 +836,16 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
         kind: CollectionKind,
         row: impl FnMut(&mut Ui<'_, Msg>, &M, usize, bool),
     ) -> Nav {
-        if let Err(message) = options.check(model.len()) {
+        let heights = model.row_heights().filter(|_| kind != CollectionKind::Grid);
+        if heights.is_some_and(|heights| heights.len() != model.len()) {
+            self.misuse("row heights need one entry per row of the model".to_owned());
+            return Nav::default();
+        }
+        let geometry = Geometry {
+            fixed: options.row_height,
+            heights,
+        };
+        if let Err(message) = options.check(geometry.extent(model.len())) {
             self.misuse(message.to_owned());
             return Nav::default();
         }
@@ -851,10 +861,9 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
             && anchor.offset == native
             && let Some(index) = model.index_of(anchor.item)
         {
-            native = index as f32 * options.row_height + anchor.within;
+            native = geometry.top(index) + anchor.within;
         }
-        let top = (model.len() as f64 * f64::from(options.row_height) - f64::from(options.height))
-            .max(0.0) as f32;
+        let top = (geometry.extent(model.len()) - f64::from(options.height)).max(0.0) as f32;
         let mut offset = native.clamp(0.0, top);
         // A row the user or the application just moved to, or asked to
         // reveal, is scrolled into view once.
@@ -862,8 +871,8 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
             && self.context.reveal_selection(owner, state.reveal_target())
             && let Some(index) = state.reveal_target().0.and_then(|id| model.index_of(id))
         {
-            let first = index as f32 * options.row_height;
-            let last = first + options.row_height;
+            let first = geometry.top(index);
+            let last = first + geometry.height(index);
             if first < offset {
                 offset = first;
             }
@@ -873,12 +882,12 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
             offset = offset.clamp(0.0, top);
         }
         if let Some(owner) = owner {
-            let first = (offset / options.row_height).floor() as usize;
+            let first = geometry.row_at(offset);
             self.context.set_list_anchor(
                 owner,
                 (first < model.len()).then(|| crate::collection::ListAnchor {
                     item: model.item_id(first),
-                    within: offset - first as f32 * options.row_height,
+                    within: offset - geometry.top(first),
                     offset,
                 }),
             );
@@ -891,11 +900,14 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                 self.request_redraw();
             }
         }
-        let nav = Nav::new(model, state.selected(), &options);
+        let pages = geometry.pages(model, state.selected(), options.height);
+        let nav = Nav::new(model, state.selected(), &options, pages);
         let window = Window {
             selected: state.selected(),
             offset,
-            realized: realized_rows(model.len(), offset, &options),
+            realized: geometry.realized(model.len(), offset, &options),
+            geometry,
+            pages,
         };
         self.rows_body(key, model, window, options, kind, row);
         nav
@@ -906,7 +918,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
         &mut self,
         key: WidgetKey,
         model: &M,
-        window: Window,
+        window: Window<'_>,
         options: VirtualListOptions,
         kind: CollectionKind,
         mut row: impl FnMut(&mut Ui<'_, Msg>, &M, usize, bool),
@@ -926,7 +938,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                 "$before",
                 "",
                 Style {
-                    height: Length::Px(window.realized.start as f32 * options.row_height),
+                    height: Length::Px(window.geometry.top(window.realized.start)),
                     gap: 0.0,
                     ..Style::default()
                 },
@@ -939,7 +951,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                     Kind::CollectionRow,
                     Style {
                         width: Length::Percent(1.0),
-                        height: Length::Px(options.row_height),
+                        height: Length::Px(window.geometry.height(index)),
                         gap: 0.0,
                         background: Some(if is_selected {
                             selection
@@ -992,7 +1004,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                 "$after",
                 "",
                 Style {
-                    height: Length::Px((count - window.realized.end) as f32 * options.row_height),
+                    height: Length::Px(window.geometry.below(count, window.realized.end)),
                     gap: 0.0,
                     ..Style::default()
                 },
@@ -1003,32 +1015,114 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
             kind,
             count,
             row_height: options.row_height,
+            pages: window.pages,
             offset: window.offset,
             selected,
         });
     }
 }
 
-/// What a rows declaration shows: the selected row, the scroll offset and the
-/// rows realized.
-struct Window {
+/// What a rows declaration shows: the selected row, the scroll offset, the
+/// rows realized, where rows stand and how far a page key moves.
+struct Window<'a> {
     selected: Option<crate::ItemId>,
     offset: f32,
     realized: std::ops::Range<usize>,
+    geometry: Geometry<'a>,
+    pages: Option<(usize, usize)>,
 }
 
-/// The rows a list shows at `offset`, with its overscan.
-pub(crate) fn realized_rows(
-    len: usize,
-    offset: f32,
-    options: &VirtualListOptions,
-) -> std::ops::Range<usize> {
-    let first = (offset / options.row_height).floor() as usize;
-    let start = first.saturating_sub(options.overscan).min(len);
-    let end = (((offset + options.height) / options.row_height).ceil() as usize)
-        .saturating_add(options.overscan)
-        .min(len);
-    start..end
+/// Where a declaration's rows stand: all `fixed` high, or as the model's
+/// heights say. Without heights the arithmetic is that of one row height.
+#[derive(Clone, Copy)]
+struct Geometry<'a> {
+    fixed: f32,
+    heights: Option<&'a RowHeights>,
+}
+
+impl Geometry<'_> {
+    fn height(&self, index: usize) -> f32 {
+        self.heights
+            .and_then(|heights| heights.get(index))
+            .unwrap_or(self.fixed)
+    }
+
+    /// Where row `index` starts.
+    fn top(&self, index: usize) -> f32 {
+        match self.heights {
+            Some(heights) => heights.top(index, self.fixed) as f32,
+            None => index as f32 * self.fixed,
+        }
+    }
+
+    /// The height of `len` rows.
+    fn extent(&self, len: usize) -> f64 {
+        match self.heights {
+            Some(heights) => heights.top(len, self.fixed),
+            None => len as f64 * f64::from(self.fixed),
+        }
+    }
+
+    /// The height of the rows from `end` to the last of `len`.
+    fn below(&self, len: usize, end: usize) -> f32 {
+        match self.heights {
+            Some(heights) => (heights.top(len, self.fixed) - heights.top(end, self.fixed)) as f32,
+            None => (len - end) as f32 * self.fixed,
+        }
+    }
+
+    /// The row `offset` falls in.
+    fn row_at(&self, offset: f32) -> usize {
+        match self.heights {
+            Some(heights) => heights.row_at(f64::from(offset), self.fixed),
+            None => (offset / self.fixed).floor() as usize,
+        }
+    }
+
+    /// One past the last row that starts before `offset`.
+    fn rows_before(&self, offset: f32) -> usize {
+        match self.heights {
+            Some(heights) => {
+                let row = heights.row_at(f64::from(offset), self.fixed);
+                row + usize::from(heights.top(row, self.fixed) < f64::from(offset))
+            }
+            None => (offset / self.fixed).ceil() as usize,
+        }
+    }
+
+    /// The rows a list shows at `offset`, with its overscan.
+    fn realized(
+        &self,
+        len: usize,
+        offset: f32,
+        options: &VirtualListOptions,
+    ) -> std::ops::Range<usize> {
+        let start = self
+            .row_at(offset)
+            .saturating_sub(options.overscan)
+            .min(len);
+        let end = self
+            .rows_before(offset + options.height)
+            .saturating_add(options.overscan)
+            .min(len);
+        start..end
+    }
+
+    /// How many rows Page Up and Page Down move from the selected row, when
+    /// rows differ in height: to the row a view's height away.
+    fn pages(
+        &self,
+        model: &impl ListModel,
+        selected: Option<crate::ItemId>,
+        viewport: f32,
+    ) -> Option<(usize, usize)> {
+        self.heights?;
+        let from = selected.and_then(|id| model.index_of(id)).unwrap_or(0);
+        let top = self.top(from);
+        let up = from.saturating_sub(self.row_at(top - viewport));
+        let down = self.row_at(top + viewport).saturating_sub(from);
+        Some((up.max(1), down.max(1)))
+    }
 }
 
 /// What a collection's rows need to turn keys into messages without the
@@ -1056,10 +1150,14 @@ impl Nav {
         model: &impl ListModel,
         selected: Option<crate::ItemId>,
         options: &VirtualListOptions,
+        pages: Option<(usize, usize)>,
     ) -> Self {
         let len = model.len();
         let current = selected.and_then(|id| model.index_of(id));
-        let page = (options.height / options.row_height).ceil() as usize + 1;
+        let page = pages.map_or(
+            (options.height / options.row_height).ceil() as usize + 1,
+            |(up, down)| up.max(down) + 1,
+        );
         let centre = current.unwrap_or(0);
         let base = centre.saturating_sub(page).min(len);
         let end = centre.saturating_add(page + 1).min(len);
