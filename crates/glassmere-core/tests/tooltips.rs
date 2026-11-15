@@ -704,3 +704,50 @@ fn only_one_tooltip_is_on_show_and_a_pointer_tooltip_takes_over() {
     frame(&mut context, toolbar);
     assert_eq!(on_show(&context), ["Second help"]);
 }
+
+// -- Moving along ------------------------------------------------------------
+
+#[test]
+fn a_tooltip_right_after_another_waits_less() {
+    let mut context = toolbar_at(Duration::ZERO);
+    hover(&mut context, "first");
+    context.set_now(TOOLTIP_DELAY);
+    frame(&mut context, toolbar);
+    assert!(shown(&context, "First help"));
+    // On to the neighbour: its tooltip does not wait out its own 200 ms, nor the default.
+    context.set_now(TOOLTIP_DELAY + ms(50));
+    hover(&mut context, "second");
+    let moved = context.now();
+    assert_eq!(context.next_wake(), Some(moved + ms(100)));
+    frame(&mut context, toolbar);
+    assert!(!shown(&context, "First help"));
+    context.set_now(moved + ms(100));
+    frame(&mut context, toolbar);
+    assert!(shown(&context, "Second help"));
+    // Across a gap that is soon crossed it still goes quickly.
+    context.set_now(moved + ms(150));
+    hover(&mut context, "bare");
+    context.set_now(moved + ms(250));
+    hover(&mut context, "first");
+    let again = context.now();
+    assert_eq!(context.next_wake(), Some(again + ms(100)));
+    // After a pause everything is as at the start.
+    context.event(Event::PointerLeft);
+    context.set_now(again + ms(5000));
+    hover(&mut context, "first");
+    assert_eq!(context.next_wake(), Some(context.now() + TOOLTIP_DELAY));
+}
+
+#[test]
+fn a_focus_tooltip_right_after_another_waits_less_too() {
+    let mut context = toolbar_at(Duration::ZERO);
+    tab(&mut context);
+    context.set_now(TOOLTIP_DELAY);
+    frame(&mut context, toolbar);
+    assert!(shown(&context, "First help"));
+    tab(&mut context);
+    assert_eq!(context.next_wake(), Some(TOOLTIP_DELAY + ms(100)));
+    context.set_now(TOOLTIP_DELAY + ms(100));
+    frame(&mut context, toolbar);
+    assert!(shown(&context, "Second help"));
+}

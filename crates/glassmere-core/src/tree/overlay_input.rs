@@ -2,6 +2,12 @@ use super::*;
 use crate::{Axis, Length, Tooltip, TooltipPlacement, panes::TOOLTIP_DELAY};
 use std::borrow::Cow;
 
+/// How soon after a tooltip goes away the next one is shown without its full
+/// delay, and the delay it then has at most: someone moving along a row of
+/// buttons wants each one's help at once.
+const FOLLOW_WINDOW: Duration = Duration::from_millis(300);
+const FOLLOW_DELAY: Duration = Duration::from_millis(100);
+
 /// The space between a tooltip and the widget it is for.
 const TOOLTIP_GAP: f32 = 6.0;
 
@@ -152,7 +158,17 @@ impl Context {
             return None;
         }
         let delay = self.tooltip_for(id, by)?.delay.unwrap_or(TOOLTIP_DELAY);
-        Some(since + delay)
+        let following = self
+            .tooltip_left
+            .is_some_and(|left| since <= left + FOLLOW_WINDOW);
+        Some(
+            since
+                + if following {
+                    delay.min(FOLLOW_DELAY)
+                } else {
+                    delay
+                },
+        )
     }
 
     /// Tracks hover dwell after input; hides a visible tooltip when the pointer
@@ -168,13 +184,13 @@ impl Context {
         ) {
             self.hover_since = None;
             self.focus_since = None;
-            self.hide_tooltip();
+            self.hide_tooltip(false);
             return;
         }
         // A key, or the pointer leaving the window, ends the pointer's only.
         if matches!(event, Event::KeyDown { .. } | Event::PointerLeft) {
             self.hover_since = None;
-            self.hide_pointer_tooltip();
+            self.hide_pointer_tooltip(false);
             return;
         }
         // Only movement re-arms the dwell; a release over the same widget does not.
@@ -194,23 +210,28 @@ impl Context {
                     .tooltip
                     .is_some_and(|(owner, _)| Some(owner) != self.hovered)
             {
-                self.hide_pointer_tooltip();
+                self.hide_pointer_tooltip(true);
             }
         }
     }
 
-    fn hide_tooltip(&mut self) {
+    /// Takes the tooltip off. `left` when it went because its widget was left,
+    /// which makes the next tooltip quick.
+    fn hide_tooltip(&mut self, left: bool) {
         if self.tooltip.take().is_some() {
+            if left {
+                self.tooltip_left = Some(self.now);
+            }
             self.pending |= Dirty::PAINT;
         }
     }
 
-    fn hide_pointer_tooltip(&mut self) {
+    fn hide_pointer_tooltip(&mut self, left: bool) {
         if self
             .tooltip
             .is_some_and(|(_, shown)| shown == Dwell::Pointer)
         {
-            self.hide_tooltip();
+            self.hide_tooltip(left);
         }
     }
 
@@ -219,7 +240,7 @@ impl Context {
     pub(super) fn blur_tooltip(&mut self) {
         self.focus_since = None;
         if self.tooltip.is_some_and(|(_, shown)| shown == Dwell::Focus) {
-            self.hide_tooltip();
+            self.hide_tooltip(true);
         }
     }
 
@@ -242,7 +263,7 @@ impl Context {
         if acted {
             self.focus_since = None;
             if self.tooltip.is_some_and(|(_, shown)| shown == Dwell::Focus) {
-                self.hide_tooltip();
+                self.hide_tooltip(false);
             }
         } else if self.noted_focus != before
             // Escape leaves what it dismissed, and focus goes back to where it was.
@@ -269,7 +290,7 @@ impl Context {
         if self.tooltip.is_none_or(|(_, shown)| shown != Dwell::Focus) {
             return false;
         }
-        self.hide_tooltip();
+        self.hide_tooltip(false);
         true
     }
 

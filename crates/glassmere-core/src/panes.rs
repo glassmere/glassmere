@@ -54,7 +54,8 @@ impl Tooltip {
     }
 
     /// How long the pointer rests on the widget, or the keyboard focus stays
-    /// on it, before the tooltip shows, instead of [`TOOLTIP_DELAY`].
+    /// on it, before the tooltip shows, instead of [`TOOLTIP_DELAY`]. A
+    /// tooltip that follows another one closely shows after a shorter time.
     pub fn delay(mut self, delay: Duration) -> Self {
         self.delay = Some(delay);
         self

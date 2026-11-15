@@ -504,6 +504,8 @@ pub struct Context {
     focus_since: Option<(NodeId, Duration)>,
     /// The tooltip on show, and what brought it.
     tooltip: Option<(NodeId, overlay_input::Dwell)>,
+    /// When a tooltip last went because its widget was left.
+    tooltip_left: Option<Duration>,
     new_popovers: Vec<NodeId>,
     reduced_motion: bool,
     resizing: bool,
@@ -700,6 +702,7 @@ impl Default for Context {
             hover_since: None,
             focus_since: None,
             tooltip: None,
+            tooltip_left: None,
             new_popovers: Vec::new(),
             reduced_motion: false,
             resizing: false,
