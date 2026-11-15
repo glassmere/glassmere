@@ -74,6 +74,7 @@ impl Context {
                 Control::Combo {
                     items, selected, ..
                 } => items.get(*selected).map(|item| item.label.clone()),
+                Control::DatePicker { value, .. } => value.clone(),
                 // A widget of the application's own says what it holds.
                 _ => node
                     .custom
@@ -87,6 +88,7 @@ impl Context {
             selected: match node.control {
                 Control::Radio { selected, .. }
                 | Control::Tab { selected, .. }
+                | Control::CalendarDay { selected, .. }
                 | Control::CollectionRow { selected, .. }
                 | Control::Choice {
                     selected,
@@ -143,7 +145,10 @@ impl Context {
             // reported on the owner of the outermost, which has the focus.
             active_descendant: self
                 .popup
-                .filter(|_| self.popup_levels().next().is_some_and(|outer| outer.owner == id))
+                .filter(|_| {
+                    self.popup_levels().next().is_some_and(|outer| outer.owner == id)
+                        && !matches!(node.control, Control::DatePicker { .. })
+                })
                 .and_then(|popup| {
                     self.nodes[&popup.owner]
                         .children
@@ -151,7 +156,7 @@ impl Context {
                         .find(|child| self.nodes[*child].kind == Kind::Popup)
                         .and_then(|panel| self.nodes[panel].children.get(popup.highlighted))
                         .copied()
-                }).or_else(|| if let Control::Collection { selected: Some(selected), .. } = node.control {
+                }).or_else(|| if node.kind == Kind::Calendar { self.calendar_cursor_cell(id) } else { None }).or_else(|| if matches!(node.control, Control::DatePicker { .. }) { self.date_picker_cursor(id) } else { None }).or_else(|| if let Control::Collection { selected: Some(selected), .. } = node.control {
                     node.children.iter().find(|id| matches!(self.nodes[id].control, Control::CollectionRow { item, .. } if item == selected)).copied()
                 } else { None }),
             text_selection: node.editor.as_ref().map(|editor| editor.selection),
@@ -173,6 +178,10 @@ impl Context {
                 Control::CollectionRow { item, index, total, depth, .. } => Some(CollectionInfo { item: Some(item), index, total, level: depth + 1, column: None, columns: None, sort: None }),
                 Control::Grid { rows, columns, .. } => Some(CollectionInfo { item: None, index: 0, total: rows, level: 0, column: None, columns: Some(columns), sort: None }),
                 Control::GridCell { row, column, sort, .. } => Some(CollectionInfo { item: None, index: row, total: 0, level: 0, column: Some(column), columns: None, sort }),
+                Control::CalendarGrid { .. } => Some(CollectionInfo { item: None, index: 0, total: crate::calendar::WEEKS + 1, level: 0, column: None, columns: Some(7), sort: None }),
+                Control::CalendarRow { index } => Some(CollectionInfo { item: None, index, total: 0, level: 0, column: None, columns: None, sort: None }),
+                Control::CalendarWeekday { column, .. } => Some(CollectionInfo { item: None, index: 0, total: 0, level: 0, column: Some(column), columns: None, sort: None }),
+                Control::CalendarDay { row, column, .. } => Some(CollectionInfo { item: None, index: row + 1, total: 0, level: 0, column: Some(column), columns: None, sort: None }),
                 _ => None,
             },
         })

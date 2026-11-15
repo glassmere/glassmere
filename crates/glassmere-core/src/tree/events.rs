@@ -251,7 +251,11 @@ impl Context {
         }
         let queued = self.queued.len();
         let focus = self.noted_focus;
-        let handled = self.handle_event(event.clone());
+        let menus = self.popup_levels().count();
+        let mut handled = self.handle_event(event.clone());
+        // A press outside a menu closes it and still goes on to what is under
+        // it, which may change nothing else, and the menu has to be redrawn.
+        handled |= self.popup_levels().count() < menus;
         self.track_hover(&event);
         self.note_focus();
         self.track_focus(&event, focus, queued);
@@ -297,9 +301,10 @@ impl Context {
                 .is_some_and(|id| self.activate(id));
         }
         if let Event::Shortcut(shortcut) = &event {
-            return self
-                .shortcut_target(shortcut)
-                .is_some_and(|id| self.activate(id));
+            return match self.shortcut_target(shortcut) {
+                Some(id) => self.activate(id),
+                None => self.date_picker_shortcut(shortcut),
+            };
         }
         if let Some(handled) = self.collection_event(&event) {
             return handled;
@@ -335,7 +340,11 @@ impl Context {
                     .hovered
                     // A press on a reveal button leaves the keyboard with
                     // its password field, so typing goes on.
-                    .map(|id| self.reveal_field(id).unwrap_or(id))
+                    .map(|id| {
+                        self.reveal_field(id)
+                            .or_else(|| self.calendar_focus_of(id))
+                            .unwrap_or(id)
+                    })
                     .filter(|id| self.nodes[id].focusable());
                 self.quiet_focus = self.focused.filter(|&id| self.in_title_bar(id));
                 self.keyboard_pressed = None;

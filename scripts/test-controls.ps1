@@ -134,7 +134,8 @@ try {
     if ($Screenshot) { Save-Window $window 'controls-popup' }
     ([System.Windows.Automation.SelectionItemPattern]$light.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Select()
     $null = Wait-Element $window 'State: true / 1 / 70 / 1'
-    $actions = Wait-Element $window ('Actions  ' + [char]0x25BE)
+    # The drawn arrow after the text is not part of the accessible name.
+    $actions = Wait-Element $window 'Actions'
     if ($PointerOnly) { Click-Element $handle $actions }
     else { Focus-Element $actions; Send-Key $handle 0x28 }
     $disabled = Wait-Element $window 'Publish (unavailable)'

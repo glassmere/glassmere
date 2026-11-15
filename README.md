@@ -75,7 +75,7 @@ Green is used and tested by hand, yellow builds and passes tests but has gaps or
 ## What is in it
 
 - **Layout:** flex and grid through Taffy, with tracks, explicit placement and spans, min/max, aspect ratio and full alignment. Right-to-left windows mirror layout and widgets.
-- **Controls:** buttons, checkboxes, radios, sliders, combo boxes, menus, password fields, number fields, autocomplete, tabs, split panes, tooltips, popovers, context menus, dialogs, toasts and a command palette.
+- **Controls:** buttons, checkboxes, radios, sliders, combo boxes, a calendar and a date picker, menus, password fields, number fields, autocomplete, tabs, split panes, tooltips, popovers, context menus, dialogs, toasts and a command palette.
 - **Collections:** virtualized lists, trees and a data grid with sorting, filtering, frozen columns, a cell cursor and typed in-place editing. Also a property grid with `#[derive(Properties)]`.
 - **Text:** a single-line field, a virtualized code editor over a rope with syntect highlighting, find and replace, multiple cursors and diagnostics, and a WYSIWYG rich text editor that saves Markdown. BiDi caret movement and IME composition.
 - **Docking:** tab groups in a split tree, floating groups, detached OS windows and a layout the application owns and can save.
@@ -114,6 +114,7 @@ cargo run -p glassmere-examples --example platform --features platform
 | `images` | Image formats, fit modes, tinted icons, dragging a file out. |
 | `gestures` | Pan, pinch and rotate. |
 | `localization` | Fluent catalogs and switching language at run time. Add `-p glassmere-examples --features icu` for CLDR formatting. |
+| `dates` | A calendar and date pickers over a range of days, with the language and theme switched at run time. Add `-p glassmere-examples --features icu` for CLDR dates. |
 | `tasks` | Cancellable background jobs. |
 | `reactive` | The optional signal store. |
 | `titlebar` | A window that draws its own title bar. |
