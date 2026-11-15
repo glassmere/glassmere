@@ -491,6 +491,8 @@ impl Context {
         let before = std::mem::take(&mut scene.primitives);
         self.paint_scrollbars(id, &mut scene);
         self.paint_strip_edges(id, &mut scene);
+        self.paint_calendar_today(id, &mut scene);
+        self.paint_calendar_cursor(id, &mut scene);
         scene.primitives.push(Primitive::PopClip);
         if layer.is_some() {
             scene.primitives.push(Primitive::PopLayer);
