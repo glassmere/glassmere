@@ -253,14 +253,15 @@ impl<'a, M: 'static> Ui<'a, M> {
                 let crate::MenuEntry::Submenu { label, entries } = entry else {
                     continue;
                 };
-                if let Some(command) = ui.menu_tree(
+                let (_, command) = ui.menu_tree(
                     WidgetKey::named(format!("menu{index}")),
                     label.clone(),
                     entries,
                     heading.clone(),
                     crate::Length::Px(260.0),
-                ) {
-                    chosen = Some(command);
+                );
+                if command.is_some() {
+                    chosen = command;
                 }
             }
         });
@@ -270,27 +271,22 @@ impl<'a, M: 'static> Ui<'a, M> {
     }
 
     /// A menu button over `entries`, whose submenus open beside the menu
-    /// they are in. Returns the id of the command picked since the last
-    /// declaration.
+    /// they are in. Returns the button's response and the id of the command
+    /// picked since the last declaration.
     #[track_caller]
-    fn menu_tree(
+    pub(super) fn menu_tree(
         &mut self,
         key: WidgetKey,
         text: String,
         entries: &[crate::MenuEntry],
         style: Style,
         popup_width: crate::Length,
-    ) -> Option<String> {
-        let path = match self.take_update(&key, Kind::MenuButton) {
-            Some(ControlUpdate::Choice(index)) => vec![index],
-            Some(ControlUpdate::Path(path)) => path,
-            _ => Vec::new(),
-        };
-        let chosen = crate::platform::command_at(entries, &path).map(|command| command.id.clone());
+    ) -> (Response<'a>, Option<String>) {
+        let chosen = self.take_command(&key, Kind::MenuButton, entries);
         let items = crate::platform::level_items(entries);
         let owner = self.context.child(self.parent, &key, Kind::MenuButton);
         let children = self.menu_level(owner, entries, &items, popup_width);
-        self.push(Element {
+        let response = self.push(Element {
             text,
             style,
             enabled: self.enabled && items.iter().any(|item| item.enabled),
@@ -298,13 +294,30 @@ impl<'a, M: 'static> Ui<'a, M> {
             control: Control::Menu { items },
             ..Element::new(key, Kind::MenuButton)
         });
-        chosen
+        (response, chosen)
+    }
+
+    /// The id of the command picked from the menu declared under `key` since
+    /// the last declaration, when it can be chosen.
+    #[track_caller]
+    pub(super) fn take_command(
+        &mut self,
+        key: &WidgetKey,
+        kind: Kind,
+        entries: &[crate::MenuEntry],
+    ) -> Option<String> {
+        let path = match self.take_update(key, kind) {
+            Some(ControlUpdate::Choice(index)) => vec![index],
+            Some(ControlUpdate::Path(path)) => path,
+            _ => Vec::new(),
+        };
+        crate::platform::command_at(entries, &path).map(|command| command.id.clone())
     }
 
     /// The popup of one level of a menu while `owner` has it open, with the
     /// popups of the submenus open under it.
     #[track_caller]
-    fn menu_level(
+    pub(super) fn menu_level(
         &mut self,
         owner: Option<NodeId>,
         entries: &[crate::MenuEntry],

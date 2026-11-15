@@ -48,6 +48,40 @@ fn menu(saved: bool) -> Menu {
     ])
 }
 
+/// A menu for a button and a right click: a submenu in a submenu.
+fn more(saved: bool) -> Menu {
+    Menu::new([
+        MenuEntry::Command(Command::with_id(
+            "open",
+            "Open...",
+            Some(Shortcut::primary('o')),
+        )),
+        MenuEntry::Command(Command::with_id(
+            "save",
+            "Save as...",
+            Some(Shortcut::primary('s')),
+        )),
+        MenuEntry::Separator,
+        MenuEntry::submenu(
+            "More",
+            [
+                MenuEntry::Command(Command {
+                    enabled: saved,
+                    ..Command::with_id("notify", "Say it was saved", None)
+                }),
+                MenuEntry::submenu(
+                    "Window",
+                    [MenuEntry::Command(Command::with_id(
+                        "quit",
+                        "Close the window",
+                        None,
+                    ))],
+                ),
+            ],
+        ),
+    ])
+}
+
 /// A teal disc, drawn here so the example needs no image file. The window
 /// and the tray icon both use it.
 fn icon() -> Image {
@@ -168,6 +202,23 @@ impl App for Platform {
                     ..Style::default()
                 }),
             );
+            ui.row(Style::default().gap(10.0), |ui| {
+                // A `Menu` is not only a bar: a button can drop one down, and
+                // a right click, the menu key or a long press can open one
+                // where the pointer is. Submenus nest in both, and choosing a
+                // command activates the same commands as below.
+                ui.command_menu("Menu", &more(self.saved));
+                ui.command_context_menu(
+                    &more(self.saved),
+                    Style::default()
+                        .width(Length::Px(300.0))
+                        .height(Length::Px(44.0))
+                        .padding(12.0),
+                    |ui| {
+                        ui.label("Right-click here for the same menu.");
+                    },
+                );
+            });
             ui.row(Style::default().gap(10.0), |ui| {
                 ui.command_button(
                     &Command::with_id("open", "Open...", Some(Shortcut::primary('o'))),

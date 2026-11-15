@@ -8,6 +8,7 @@ use glassmere_core::{
 };
 use glassmere_scene::Size;
 use std::path::PathBuf;
+use std::time::Duration;
 use support::{Driven, Host, act};
 
 const ROOT: Size = Size::new(400.0, 300.0);
@@ -357,6 +358,13 @@ fn hover(context: &mut Context, rect: glassmere_scene::Rect) {
 /// Room for three menus side by side.
 const WIDE: Size = Size::new(900.0, 400.0);
 
+/// Lets the pointer rest where it is for `millis` more.
+fn rest(driven: &mut Driven<Nested>, millis: u64) {
+    let now = driven.context.now() + Duration::from_millis(millis);
+    driven.context.set_now(now);
+    driven.frame();
+}
+
 fn open_file(driven: &mut Driven<Nested>) {
     let file = driven.context.find(&["bar", "menu0"]).unwrap();
     assert!(driven.context.action(file, Action::Expand));
@@ -465,7 +473,7 @@ fn submenus_follow_the_pointer_and_a_click_picks_in_them() {
     // Resting on the row opens its menu; a click on the row leaves it open.
     let recent = row(&driven.context, &FILE, "1").bounds;
     hover(&mut driven.context, recent);
-    driven.frame();
+    rest(&mut driven, 200);
     assert!(driven.context.find(&RECENT).is_some());
     driven.context.event(Event::PointerDown);
     driven.context.event(Event::PointerUp);
@@ -476,18 +484,18 @@ fn submenus_follow_the_pointer_and_a_click_picks_in_them() {
     // Into it and on to the next level, which opens in turn.
     let more = row(&driven.context, &RECENT, "1").bounds;
     hover(&mut driven.context, more);
-    driven.frame();
+    rest(&mut driven, 200);
     assert!(driven.context.find(&MORE).is_some());
     // Back to a row of the first menu: both submenus close.
     let save = row(&driven.context, &FILE, "2").bounds;
     hover(&mut driven.context, save);
-    driven.frame();
+    rest(&mut driven, 200);
     assert!(driven.context.find(&RECENT).is_none());
     assert!(driven.context.find(&FILE).is_some());
 
     // A click on a command in a submenu picks it.
     hover(&mut driven.context, recent);
-    driven.frame();
+    rest(&mut driven, 200);
     let a = row(&driven.context, &RECENT, "0").bounds;
     hover(&mut driven.context, a);
     driven.context.event(Event::PointerDown);
@@ -500,7 +508,7 @@ fn submenus_follow_the_pointer_and_a_click_picks_in_them() {
     // A press outside every level closes them all.
     open_file(&mut driven);
     hover(&mut driven.context, recent);
-    driven.frame();
+    rest(&mut driven, 200);
     driven
         .context
         .event(Event::PointerMoved(glassmere_scene::Point {
@@ -512,6 +520,191 @@ fn submenus_follow_the_pointer_and_a_click_picks_in_them() {
     driven.frame();
     assert!(driven.context.find(&FILE).is_none());
     assert_eq!(driven.state().picked, ["a"]);
+}
+
+/// The row the menu `File` opened has highlighted, as the button reports it.
+fn highlighted(driven: &Driven<Nested>) -> Option<glassmere_core::NodeId> {
+    let file = driven.context.find(&["bar", "menu0"]).unwrap();
+    driven.context.node(file).unwrap().active_descendant
+}
+
+fn find(driven: &Driven<Nested>, path: &[&str]) -> glassmere_core::NodeId {
+    driven.context.find(path).unwrap()
+}
+
+#[test]
+fn a_submenu_opens_once_the_pointer_has_rested_on_its_row() {
+    let mut driven = Driven::new(WIDE, Nested::default(), nested_page);
+    open_file(&mut driven);
+    assert_eq!(driven.context.next_wake(), None, "an open menu is idle");
+    let recent = row(&driven.context, &FILE, "1").bounds;
+    driven.context.set_now(Duration::from_secs(1));
+    hover(&mut driven.context, recent);
+    assert_eq!(
+        driven.context.next_wake(),
+        Some(Duration::from_millis(1200)),
+        "the host is asked to come back"
+    );
+    // The row has the highlight at once; its submenu waits.
+    assert_eq!(
+        highlighted(&driven),
+        Some(find(&driven, &["bar", "menu0", "$popup", "1"]))
+    );
+    driven.context.set_now(Duration::from_millis(1199));
+    driven.frame();
+    assert!(driven.context.find(&RECENT).is_none(), "not yet");
+    driven.context.set_now(Duration::from_millis(1200));
+    driven.frame();
+    assert!(driven.context.find(&RECENT).is_some());
+    assert_eq!(driven.context.next_wake(), None, "nothing is waited for");
+    driven.frame();
+    assert!(driven.context.find(&RECENT).is_some());
+}
+
+#[test]
+fn a_click_opens_a_submenu_at_once_and_ends_the_wait() {
+    let mut driven = Driven::new(WIDE, Nested::default(), nested_page);
+    open_file(&mut driven);
+    let recent = row(&driven.context, &FILE, "1").bounds;
+    driven.context.set_now(Duration::from_secs(1));
+    hover(&mut driven.context, recent);
+    driven.context.event(Event::PointerDown);
+    driven.context.event(Event::PointerUp);
+    driven.frame();
+    assert!(driven.context.find(&RECENT).is_some());
+    assert_eq!(driven.context.next_wake(), None);
+}
+
+#[test]
+fn the_keyboard_ends_the_wait_and_so_does_closing_the_menu() {
+    let mut driven = Driven::new(WIDE, Nested::default(), nested_page);
+    open_file(&mut driven);
+    let recent = row(&driven.context, &FILE, "1").bounds;
+    driven.context.set_now(Duration::from_secs(1));
+    hover(&mut driven.context, recent);
+    assert!(driven.context.next_wake().is_some());
+    // The keyboard moves the highlight, and the pointer's wait is over.
+    press(&mut driven.context, Key::ArrowUp);
+    assert_eq!(driven.context.next_wake(), None);
+    rest(&mut driven, 1000);
+    assert!(driven.context.find(&RECENT).is_none());
+    // So does closing the menu with a row waiting.
+    hover(&mut driven.context, recent);
+    assert!(driven.context.next_wake().is_some());
+    press(&mut driven.context, Key::Escape);
+    assert_eq!(driven.context.next_wake(), None);
+    driven.frame();
+    assert!(driven.context.find(&FILE).is_none());
+}
+
+#[test]
+fn the_pointer_leaving_the_menu_cancels_the_wait() {
+    let mut driven = Driven::new(WIDE, Nested::default(), nested_page);
+    open_file(&mut driven);
+    let recent = row(&driven.context, &FILE, "1").bounds;
+    driven.context.set_now(Duration::from_secs(1));
+    hover(&mut driven.context, recent);
+    driven.context.set_now(Duration::from_millis(1100));
+    driven
+        .context
+        .event(Event::PointerMoved(glassmere_scene::Point {
+            x: WIDE.width - 5.0,
+            y: WIDE.height - 5.0,
+        }));
+    assert_eq!(driven.context.next_wake(), None);
+    rest(&mut driven, 1000);
+    assert!(driven.context.find(&RECENT).is_none());
+    assert!(driven.context.find(&FILE).is_some(), "the menu stays");
+}
+
+#[test]
+fn the_open_submenu_stays_while_the_pointer_crosses_rows_on_the_way_to_it() {
+    let mut driven = Driven::new(WIDE, Nested::default(), nested_page);
+    open_file(&mut driven);
+    let recent = row(&driven.context, &FILE, "1").bounds;
+    hover(&mut driven.context, recent);
+    rest(&mut driven, 200);
+    assert!(driven.context.find(&RECENT).is_some());
+    let a = row(&driven.context, &RECENT, "0").bounds;
+    let save = row(&driven.context, &FILE, "2").bounds;
+    // Down onto the next row of the menu, and across into the submenu before
+    // the wait there is over.
+    let start = driven.context.now();
+    hover(&mut driven.context, save);
+    assert_eq!(
+        driven.context.next_wake(),
+        Some(start + Duration::from_millis(200))
+    );
+    rest(&mut driven, 150);
+    assert!(driven.context.find(&RECENT).is_some());
+    hover(&mut driven.context, a);
+    assert_eq!(driven.context.next_wake(), None, "nothing waits any more");
+    rest(&mut driven, 1000);
+    assert!(driven.context.find(&RECENT).is_some());
+    assert_eq!(
+        highlighted(&driven),
+        Some(find(
+            &driven,
+            &["bar", "menu0", "$popup", "1", "$popup", "0"]
+        )),
+        "the submenu has the highlight"
+    );
+    // Back over the row that opened it, from another one, there is no wait.
+    hover(&mut driven.context, save);
+    assert!(driven.context.next_wake().is_some());
+    hover(&mut driven.context, recent);
+    assert_eq!(driven.context.next_wake(), None);
+    rest(&mut driven, 1000);
+    assert!(driven.context.find(&RECENT).is_some());
+}
+
+#[test]
+fn a_row_the_pointer_rests_on_takes_the_menu_back_from_the_open_submenu() {
+    let mut driven = Driven::new(WIDE, Nested::default(), nested_page);
+    open_file(&mut driven);
+    let open = row(&driven.context, &FILE, "0").bounds;
+    let recent = row(&driven.context, &FILE, "1").bounds;
+    let save = row(&driven.context, &FILE, "2").bounds;
+    hover(&mut driven.context, recent);
+    rest(&mut driven, 200);
+    assert!(driven.context.find(&RECENT).is_some());
+    // Each row crossed starts the wait again.
+    hover(&mut driven.context, open);
+    rest(&mut driven, 150);
+    hover(&mut driven.context, save);
+    rest(&mut driven, 150);
+    assert!(driven.context.find(&RECENT).is_some(), "150 ms on this row");
+    rest(&mut driven, 49);
+    assert!(driven.context.find(&RECENT).is_some(), "199 ms on it");
+    rest(&mut driven, 1);
+    assert!(driven.context.find(&RECENT).is_none());
+    assert!(driven.context.find(&FILE).is_some());
+    assert_eq!(
+        highlighted(&driven),
+        Some(find(&driven, &["bar", "menu0", "$popup", "2"]))
+    );
+    assert_eq!(driven.context.next_wake(), None);
+}
+
+#[test]
+fn a_row_that_is_not_a_submenu_closes_an_open_one_after_the_wait_too() {
+    let mut driven = Driven::new(WIDE, Nested::default(), nested_page);
+    open_file(&mut driven);
+    let recent = row(&driven.context, &FILE, "1").bounds;
+    hover(&mut driven.context, recent);
+    rest(&mut driven, 200);
+    let more = row(&driven.context, &RECENT, "1").bounds;
+    hover(&mut driven.context, more);
+    rest(&mut driven, 200);
+    assert!(driven.context.find(&MORE).is_some());
+    // One level back out: a command of Recent closes More, not Recent.
+    let a = row(&driven.context, &RECENT, "0").bounds;
+    hover(&mut driven.context, a);
+    rest(&mut driven, 199);
+    assert!(driven.context.find(&MORE).is_some());
+    rest(&mut driven, 1);
+    assert!(driven.context.find(&MORE).is_none());
+    assert!(driven.context.find(&RECENT).is_some());
 }
 
 #[test]

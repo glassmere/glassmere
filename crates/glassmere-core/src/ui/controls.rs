@@ -291,6 +291,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                 min,
                 max,
                 step,
+                span: None,
             },
         );
         self.set_handler(Handler::Map(Box::new(move |update| match update {
@@ -378,6 +379,28 @@ impl<'a, M: 'static> Ui<'a, M> {
             ControlUpdate::Choice(index) => Some(on_pick(index)),
             _ => None,
         })));
+        response
+    }
+
+    /// A menu button whose popup is `menu`: its commands, separators and
+    /// submenus, which open beside the menu they are in to any depth. A
+    /// command shows its shortcut as a hint, and choosing one activates that
+    /// command, exactly as in [`Ui::menu_bar`]: through the command the view
+    /// declared, with [`Ui::command_button`]. A command that is disabled
+    /// cannot be chosen.
+    #[track_caller]
+    pub fn command_menu(&mut self, label: impl Into<String>, menu: &crate::Menu) -> Response<'a> {
+        let key = self.next_key();
+        let (response, chosen) = self.menu_tree(
+            key,
+            format!("{}  ▾", label.into()),
+            &menu.entries,
+            Self::menu_style(),
+            Length::Percent(1.0),
+        );
+        if let Some(id) = chosen {
+            self.host.commands.push(id);
+        }
         response
     }
 

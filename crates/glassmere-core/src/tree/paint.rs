@@ -8,6 +8,69 @@ const DAMAGE_REGIONS: usize = 8;
 /// Rectangles this close, in logical pixels, are one: a second pass over a
 /// thin gap costs more than painting the gap.
 const DAMAGE_GAP: f32 = 8.0;
+/// How far a submenu's panel laps the row it opens beside.
+const LAP: f32 = 2.0;
+
+/// The row a submenu's panel opens beside, and the menu that row is in.
+#[derive(Clone, Copy)]
+struct Opener {
+    row: Rect,
+    /// The row's own padding, inside which a panel may lie.
+    padding: f32,
+    menu: Rect,
+    rtl: bool,
+}
+
+impl Opener {
+    /// Where a panel of `size` goes inside `viewport`: at the end side of the
+    /// row, or at the other side when the window ends first, `level` with the
+    /// row. With room at neither side it keeps inside the window over the
+    /// least of the menu, and clear of the row's content, below the row or
+    /// else above it, when it can.
+    fn place(self, size: Size, level: f32, viewport: Rect) -> Point {
+        let Self {
+            row,
+            padding,
+            menu,
+            rtl,
+        } = self;
+        let after = row.x + row.width - LAP;
+        let before = row.x - size.width + LAP;
+        let fits = |x: f32| x >= 0.0 && x + size.width <= viewport.width;
+        let (first, second) = if rtl {
+            (before, after)
+        } else {
+            (after, before)
+        };
+        if let Some(x) = [first, second].into_iter().find(|x| fits(*x)) {
+            return Point { x, y: level };
+        }
+        // How far a panel at `x` reaches across `over`.
+        let across = |x: f32, over: Rect| (x + size.width).min(over.x + over.width) - x.max(over.x);
+        let ends = [0.0, viewport.width - size.width];
+        let x = if rtl { ends } else { [ends[1], ends[0]] }
+            .into_iter()
+            .min_by(|a, b| across(*a, menu).total_cmp(&across(*b, menu)))
+            .unwrap_or(0.0);
+        let content = Rect {
+            x: row.x + padding,
+            width: (row.width - 2.0 * padding).max(0.0),
+            ..row
+        };
+        let below = row.y + row.height;
+        let above = row.y - size.height;
+        let y = if across(x, content) <= 0.0 {
+            level
+        } else if below + size.height <= viewport.height {
+            below
+        } else if above >= 0.0 {
+            above
+        } else {
+            level
+        };
+        Point { x, y }
+    }
+}
 
 impl Context {
     pub(super) fn refresh_bounds(&mut self, size: Size) {
@@ -56,7 +119,14 @@ impl Context {
             .filter(|_| node.kind == Kind::Popup)
             .map(|parent| &self.nodes[&parent])
             .filter(|parent| matches!(parent.control, Control::Submenu { .. }))
-            .map(|parent| (parent.bounds, parent.resolved.rtl()));
+            .and_then(|row| {
+                Some(Opener {
+                    row: row.bounds,
+                    padding: row.style.padding.max(0.0),
+                    menu: self.nodes[&row.parent?].bounds,
+                    rtl: row.resolved.rtl(),
+                })
+            });
         let node = self.nodes.get_mut(&id).unwrap();
         let layout = self.layout.layout(node.layout_id).unwrap();
         node.bounds = Rect {
@@ -94,22 +164,17 @@ impl Context {
             }
             node.bounds.width = node.bounds.width.min(viewport.width);
             node.bounds.height = node.bounds.height.min(viewport.height);
-            if let Some((row, rtl)) = beside {
-                // At the end side of its row, lapping it slightly, or at the
-                // other side when the window ends first; level with the row.
-                const LAP: f32 = 2.0;
-                let after = row.x + row.width - LAP;
-                let before = row.x - node.bounds.width + LAP;
-                let fits_after = after + node.bounds.width <= viewport.width;
-                let fits_before = before >= 0.0;
-                node.bounds.x = match (rtl, fits_after, fits_before) {
-                    (false, true, _) | (true, true, false) => after,
-                    (true, _, true) | (false, false, true) => before,
-                    _ => after,
-                };
-                node.bounds.y = (row.y - node.style.padding.max(0.0))
+            if let Some(opener) = beside {
+                let level = (opener.row.y - node.style.padding.max(0.0))
                     .min(viewport.height - node.bounds.height)
                     .max(0.0);
+                let size = Size {
+                    width: node.bounds.width,
+                    height: node.bounds.height,
+                };
+                let at = opener.place(size, level, viewport);
+                node.bounds.x = at.x;
+                node.bounds.y = at.y;
             }
             node.bounds.x = node
                 .bounds
@@ -337,6 +402,7 @@ impl Context {
             | Kind::ComboBox
             | Kind::MenuButton => Some(theme.control),
             Kind::Popup | Kind::Popover => Some(theme.popup),
+            Kind::Progress => Some(theme.track),
             Kind::Divider | Kind::DockHandle => Some(if hovered || pressed {
                 theme.accent
             } else {
@@ -355,6 +421,16 @@ impl Context {
             if !node.enabled {
                 background = Some(theme.control_disabled);
             } else if pressed {
+                background = Some(theme.control_pressed);
+            } else if hovered {
+                background = Some(theme.control_hover);
+            }
+        }
+        if node.kind == Kind::Link && node.style.foreground.is_none() && node.enabled {
+            foreground = theme.accent;
+        }
+        if node.kind == Kind::Disclosure && node.enabled && node.style.background.is_none() {
+            if pressed {
                 background = Some(theme.control_pressed);
             } else if hovered {
                 background = Some(theme.control_hover);
@@ -400,6 +476,11 @@ impl Context {
             radius,
             opacity,
             transform,
+            knob: if matches!(node.control, Control::Switch { on: true, .. }) {
+                1.0
+            } else {
+                0.0
+            },
         }
     }
 
@@ -429,6 +510,7 @@ impl Context {
         }
         let target = self.appearance(id, &self.nodes[&id]);
         let animation_state::Displayed { shown, layer } = self.displayed(id, target);
+        self.keep_busy(id);
         let frame = self.image_frame(id);
         let crate::animation::Shown {
             background,
@@ -456,7 +538,10 @@ impl Context {
         // bounds the node's own painting.
         paint_shadow(node, radius, false, &mut scene);
         scene.primitives.push(Primitive::PushClip(node.bounds));
-        let focused = self.focused == Some(id) && self.quiet_focus != Some(id);
+        // A range slider's thumb rings itself: its box is the whole slider.
+        let focused = self.focused == Some(id)
+            && self.quiet_focus != Some(id)
+            && !matches!(node.control, Control::Slider { span: Some(_), .. });
         self.paint_fill(node, focused, background, radius, &mut scene);
         self.paint_background_image(node, &mut scene, foreground, radius);
         if node.kind == Kind::RichText {
@@ -464,6 +549,7 @@ impl Context {
         } else if node.kind == Kind::Image {
             self.paint_image(id, &mut scene, foreground, radius, frame);
         } else if !node.text.is_empty() {
+            self.paint_selection(id, node, &mut scene);
             self.paint_text(node, foreground, &mut scene);
         }
         self.paint_hint(node, &mut scene);
@@ -480,7 +566,7 @@ impl Context {
                     .map(|primitive| primitive.translated(offset)),
             );
         }
-        self.paint_control(id, &mut scene);
+        self.paint_control(id, shown, &mut scene);
         let node = &self.nodes[&id];
         let children = node
             .children
@@ -621,7 +707,32 @@ impl Context {
     }
 
     /// The node's own text, placed in its box.
-    fn paint_text(&self, node: &Node, foreground: Color, scene: &mut Scene) {
+    /// What is selected of a label's text, behind the text.
+    fn paint_selection(&self, id: NodeId, node: &Node, scene: &mut Scene) {
+        let Some(editor) = node.editor.as_ref().filter(|_| node.read_only()) else {
+            return;
+        };
+        let text = self.text_place(node).0;
+        let color = if self.focused == Some(id) {
+            self.theme.highlight
+        } else {
+            self.theme.selection_inactive
+        };
+        for rect in editor.geometry.selection(editor.selection.range()) {
+            scene.primitives.push(Primitive::Quad {
+                rect: rect.translated(Point {
+                    x: text.x,
+                    y: text.y,
+                }),
+                color,
+                radius: 0.0,
+            });
+        }
+    }
+
+    /// Where the text of a node is drawn, how big the layout measured it
+    /// (for the leaves that were) and how wide it is.
+    pub(super) fn text_place(&self, node: &Node) -> (Rect, Option<Size>, f32) {
         let mut rect = node.content_box();
         // Where the text sits in a box wider or taller than it is. A
         // wrapped block is aligned line by line by the shaper; this
@@ -636,7 +747,13 @@ impl Context {
             .then(|| self.layout.get_node_context(node.layout_id))
             .flatten()
             .map(|measured| measured.size);
-        let width = measured.map_or(node.label_width, |size| size.width);
+        // What the control draws before its text takes the start edge.
+        let indicator = node.kind.indicator_width();
+        rect.width = (rect.width - indicator).max(0.0);
+        if !node.resolved.rtl() {
+            rect.x += indicator;
+        }
+        let width = measured.map_or(node.label_width, |size| size.width - indicator);
         if width > 0.0 && node.style.wrap == TextWrap::None {
             let spare = (rect.width - width).max(0.0);
             rect.x += match node.style.justify_content {
@@ -654,6 +771,26 @@ impl Context {
                 crate::Align::End => spare,
                 _ => 0.0,
             };
+        }
+        (rect, measured, width)
+    }
+
+    fn paint_text(&self, node: &Node, foreground: Color, scene: &mut Scene) {
+        let (rect, measured, width) = self.text_place(node);
+        if node.kind == Kind::Link
+            && let Some(size) = measured.filter(|size| size.width > 0.0)
+        {
+            // Under the text, as a rich text link's rule is under its run.
+            scene.primitives.push(Primitive::Quad {
+                rect: Rect {
+                    x: rect.x,
+                    y: rect.y + size.height - 3.0,
+                    width: width.min(rect.width),
+                    height: 1.0,
+                },
+                color: foreground,
+                radius: 0.0,
+            });
         }
         if let Some((start, end)) = self.suggestion_match(node) {
             // The part of a suggestion that was typed stands out.

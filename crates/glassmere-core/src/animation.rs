@@ -388,6 +388,8 @@ pub(crate) struct Shown {
     pub radius: f32,
     pub opacity: f32,
     pub transform: Transform,
+    /// How far a switch's thumb has travelled from its off position, 0 to 1.
+    pub knob: f32,
 }
 
 impl Shown {
@@ -406,6 +408,7 @@ impl Shown {
             radius: lerp(self.radius, to.radius, t),
             opacity: lerp(self.opacity, to.opacity, t),
             transform: self.transform.lerp(to.transform, t),
+            knob: lerp(self.knob, to.knob, t),
         }
     }
 }

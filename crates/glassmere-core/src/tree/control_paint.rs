@@ -95,7 +95,7 @@ impl Context {
             .iter()
             .filter_map(|(id, node)| {
                 (node.resolved.rtl()
-                    && node.kind == Kind::Slider
+                    && matches!(node.kind, Kind::Slider | Kind::RangeSlider)
                     && node.changed_frame == self.frame)
                     .then_some(*id)
             })
@@ -165,7 +165,32 @@ impl Context {
         }
     }
 
-    pub(super) fn paint_control(&self, id: NodeId, scene: &mut Scene) {
+    /// A busy indicator draws what the clock says, so it asks for the next
+    /// frame itself; only its own box is damaged by it. It stands still
+    /// while motion is off, and while nobody can see it.
+    pub(super) fn keep_busy(&mut self, id: NodeId) {
+        let node = &self.nodes[&id];
+        if node.busy() && !self.reduced_motion && node.clip.width > 0.0 && node.clip.height > 0.0 {
+            self.animating_nodes.push(id);
+        }
+    }
+
+    /// Where a busy indicator is in its cycle, from 0 up to but not
+    /// including 1; fixed at the start while motion is off.
+    fn busy_phase(&self, period: Duration) -> f32 {
+        if self.reduced_motion {
+            return 0.0;
+        }
+        let elapsed = self.now.as_nanos() % period.as_nanos();
+        (elapsed as f64 / period.as_nanos() as f64) as f32
+    }
+
+    pub(super) fn paint_control(
+        &self,
+        id: NodeId,
+        shown: crate::animation::Shown,
+        scene: &mut Scene,
+    ) {
         let node = &self.nodes[&id];
         if node.kind == Kind::TextArea {
             self.paint_text_area(id, scene);
@@ -178,7 +203,7 @@ impl Context {
                 scene.primitives.push(Primitive::Quad { rect, color: self.theme.accent, radius: 0.0 });
             }
         }
-        if let Some(editor) = &node.editor {
+        if let Some(editor) = node.editor.as_ref().filter(|_| !node.read_only()) {
             let content = node.content_box();
             let origin = Point {
                 x: content.x - editor.scroll_x + editor.align_x,
@@ -261,37 +286,64 @@ impl Context {
             }
             scene.primitives.push(Primitive::PopClip);
         }
+        match node.control {
+            Control::Progress { value, .. } => {
+                self.paint_progress(node, value, shown.radius, scene)
+            }
+            Control::Spinner { .. } => self.paint_spinner(node, scene),
+            Control::Switch { .. } => self.paint_switch(node, shown.knob, scene),
+            Control::RangeSlider { .. } => self.paint_range_track(node, scene),
+            Control::Disclosure { open, .. } => {
+                self.paint_chevron(node, open, shown.foreground, scene)
+            }
+            _ => {}
+        }
         if let Control::Slider {
-            value, min, max, ..
+            value,
+            min,
+            max,
+            span,
+            ..
         } = node.control
         {
-            let track = Rect {
-                x: node.bounds.x + 12.0,
-                y: node.bounds.y + node.bounds.height - 17.0,
-                width: (node.bounds.width - 24.0).max(1.0),
-                height: 4.0,
-            };
-            let fraction = ((value - min) / (max - min)) as f32;
+            let (low, high) = span.unwrap_or((min, max));
+            let track = slider_track(node.bounds);
+            let fraction = ((value - low) / (high - low)) as f32;
             let rtl = node.resolved.rtl();
             let thumb = if rtl { 1.0 - fraction } else { fraction };
-            scene.primitives.push(Primitive::Quad {
-                rect: track,
-                color: self.theme.track,
-                radius: 2.0,
-            });
-            scene.primitives.push(Primitive::Quad {
-                rect: Rect {
-                    x: if rtl {
-                        track.x + track.width * thumb
-                    } else {
-                        track.x
+            // The thumbs of a range slider sit on the track that the control
+            // holding them draws.
+            if span.is_none() {
+                scene.primitives.push(Primitive::Quad {
+                    rect: track,
+                    color: self.theme.track,
+                    radius: 2.0,
+                });
+                scene.primitives.push(Primitive::Quad {
+                    rect: Rect {
+                        x: if rtl {
+                            track.x + track.width * thumb
+                        } else {
+                            track.x
+                        },
+                        width: track.width * fraction,
+                        ..track
                     },
-                    width: track.width * fraction,
-                    ..track
-                },
-                color: self.theme.accent,
-                radius: 2.0,
-            });
+                    color: self.theme.accent,
+                    radius: 2.0,
+                });
+            } else if self.focused == Some(id) && self.quiet_focus != Some(id) {
+                scene.primitives.push(Primitive::Quad {
+                    rect: Rect {
+                        x: track.x + track.width * thumb - 9.0,
+                        y: track.y - 7.0,
+                        width: 18.0,
+                        height: 18.0,
+                    },
+                    color: self.theme.focus,
+                    radius: 9.0,
+                });
+            }
             scene.primitives.push(Primitive::Quad {
                 rect: Rect {
                     x: track.x + track.width * thumb - 7.0,
@@ -309,13 +361,212 @@ impl Context {
         }
     }
 
+    /// A range slider's track, with the part between its thumbs filled. The
+    /// thumbs are its children, so they are drawn over it.
+    fn paint_range_track(&self, node: &Node, scene: &mut Scene) {
+        let thumbs: Vec<(f64, (f64, f64))> = node
+            .children
+            .iter()
+            .filter_map(|child| match self.nodes[child].control {
+                Control::Slider {
+                    value,
+                    span: Some(span),
+                    ..
+                } => Some((value, span)),
+                _ => None,
+            })
+            .collect();
+        let [(low, span), (high, _)] = thumbs[..] else {
+            return;
+        };
+        let track = slider_track(node.bounds);
+        let at = |value: f64| ((value - span.0) / (span.1 - span.0)) as f32;
+        let (from, to) = if node.resolved.rtl() {
+            (1.0 - at(high), 1.0 - at(low))
+        } else {
+            (at(low), at(high))
+        };
+        scene.primitives.push(Primitive::Quad {
+            rect: track,
+            color: self.theme.track,
+            radius: 2.0,
+        });
+        scene.primitives.push(Primitive::Quad {
+            rect: Rect {
+                x: track.x + track.width * from,
+                width: track.width * (to - from),
+                ..track
+            },
+            color: self.theme.accent,
+            radius: 2.0,
+        });
+    }
+
+    /// The part of a progress bar that is done, or the segment that sweeps
+    /// along an indeterminate one. The bar's background is its track.
+    fn paint_progress(&self, node: &Node, value: Option<f64>, radius: f32, scene: &mut Scene) {
+        let bounds = node.bounds;
+        let (offset, width) = match value {
+            Some(fraction) => (0.0, bounds.width * fraction as f32),
+            None => {
+                let segment = bounds.width * 0.4;
+                // Out of the box at one end and in at the other, easing
+                // at both so that it does not look mechanical.
+                let phase = self.busy_phase(Duration::from_millis(1400));
+                let eased = if self.reduced_motion {
+                    0.5
+                } else {
+                    phase * phase * (3.0 - 2.0 * phase)
+                };
+                ((bounds.width + segment) * eased - segment, segment)
+            }
+        };
+        if width <= 0.0 {
+            return;
+        }
+        let x = if node.resolved.rtl() {
+            bounds.x + bounds.width - offset - width
+        } else {
+            bounds.x + offset
+        };
+        scene.primitives.push(Primitive::Quad {
+            rect: Rect { x, width, ..bounds },
+            color: self.busy_color(node),
+            radius: radius.min(bounds.height / 2.0).min(width / 2.0),
+        });
+    }
+
+    /// A pill and a thumb at the start edge, the thumb moving to the other
+    /// end as `knob` goes from 0 to 1, in both directions of writing.
+    fn paint_switch(&self, node: &Node, knob: f32, scene: &mut Scene) {
+        let (width, height) = crate::ui::SWITCH_TRACK;
+        let content = node.content_box();
+        let rtl = node.resolved.rtl();
+        let track = Rect {
+            x: if rtl {
+                content.x + content.width - width
+            } else {
+                content.x
+            },
+            y: content.y + (content.height - height) / 2.0,
+            width,
+            height,
+        };
+        let (off, on, thumb) = if node.enabled {
+            (self.theme.track, self.theme.accent, self.theme.thumb)
+        } else {
+            (
+                self.theme.control_disabled,
+                self.theme.text_disabled,
+                self.theme.text_muted,
+            )
+        };
+        scene.primitives.push(Primitive::Quad {
+            rect: track,
+            color: crate::animation::lerp_color(off, on, knob),
+            radius: height / 2.0,
+        });
+        let inset = 3.0;
+        let diameter = height - 2.0 * inset;
+        let along = if rtl { 1.0 - knob } else { knob };
+        scene.primitives.push(Primitive::Quad {
+            rect: Rect {
+                x: track.x + inset + (width - height) * along,
+                y: track.y + inset,
+                width: diameter,
+                height: diameter,
+            },
+            color: thumb,
+            radius: diameter / 2.0,
+        });
+    }
+
+    /// A chevron at the start edge: pointing along the line when the section
+    /// is closed, which is toward its end, and down when it is open.
+    fn paint_chevron(&self, node: &Node, open: bool, color: Color, scene: &mut Scene) {
+        let content = node.content_box();
+        let rtl = node.resolved.rtl();
+        let x = if rtl {
+            content.x + content.width - 6.0
+        } else {
+            content.x + 6.0
+        };
+        let y = content.y + content.height / 2.0;
+        let toward_end = if rtl { -1.0 } else { 1.0 };
+        let point = |dx: f32, dy: f32| glassmere_scene::Point {
+            x: x + dx,
+            y: y + dy,
+        };
+        let mut path = glassmere_scene::Path::new();
+        if open {
+            path.move_to(point(-4.5, -2.0))
+                .line_to(point(0.0, 2.5))
+                .line_to(point(4.5, -2.0));
+        } else {
+            path.move_to(point(-2.0 * toward_end, -4.5))
+                .line_to(point(2.5 * toward_end, 0.0))
+                .line_to(point(-2.0 * toward_end, 4.5));
+        }
+        scene.primitives.push(Primitive::Path {
+            path,
+            fill: None,
+            stroke: Some(glassmere_scene::Stroke { width: 1.8, color }),
+        });
+    }
+
+    /// Dots around a circle, the newest at full strength and each one before
+    /// it fainter, so that the trail turns clockwise. It is not mirrored in
+    /// right-to-left text: a clock is not.
+    fn paint_spinner(&self, node: &Node, scene: &mut Scene) {
+        const DOTS: usize = 10;
+        let bounds = node.bounds;
+        let diameter = bounds.width.min(bounds.height);
+        let dot = (diameter / 6.0).max(1.0);
+        let orbit = (diameter - dot) / 2.0;
+        let (center_x, center_y) = (
+            bounds.x + bounds.width / 2.0,
+            bounds.y + bounds.height / 2.0,
+        );
+        let color = self.busy_color(node);
+        let head = self.busy_phase(Duration::from_millis(900)) * DOTS as f32;
+        for index in 0..DOTS {
+            let angle = index as f32 / DOTS as f32 * std::f32::consts::TAU;
+            let behind = (head - index as f32).rem_euclid(DOTS as f32) / DOTS as f32;
+            let strength = 1.0 - 0.85 * behind;
+            scene.primitives.push(Primitive::Quad {
+                rect: Rect {
+                    x: center_x + orbit * angle.sin() - dot / 2.0,
+                    y: center_y - orbit * angle.cos() - dot / 2.0,
+                    width: dot,
+                    height: dot,
+                },
+                color: Color(
+                    color.0,
+                    color.1,
+                    color.2,
+                    (f32::from(color.3) * strength) as u8,
+                ),
+                radius: dot / 2.0,
+            });
+        }
+    }
+
+    /// What a busy indicator is drawn in: the accent, unless its style says.
+    fn busy_color(&self, node: &Node) -> Color {
+        if node.enabled {
+            node.style.foreground.unwrap_or(self.theme.accent)
+        } else {
+            self.theme.text_disabled
+        }
+    }
+
     /// Logical candidate-window anchor, clamped to the active input's content box.
     pub fn ime_cursor_rect(&self) -> Option<Rect> {
         if let Some(caret) = self.area_caret().or_else(|| self.rich_caret()) {
             return Some(caret);
         }
         let node = self.nodes.get(&self.focused?)?;
-        let editor = node.editor.as_ref()?;
+        let editor = node.editor.as_ref().filter(|_| !node.read_only())?;
         let caret = editor.caret()?;
         let padding = node.style.padding.max(0.0);
         Some(
@@ -334,7 +585,7 @@ impl Context {
             || self
                 .focused
                 .and_then(|id| self.nodes.get(&id))
-                .is_some_and(|node| node.enabled && node.editor.is_some())
+                .is_some_and(|node| node.enabled && node.editor.is_some() && !node.read_only())
     }
 
     pub fn composing_text(&self) -> bool {
@@ -353,5 +604,16 @@ impl Context {
             .editor
             .as_ref()
             .and_then(|editor| editor.selected_text())
+    }
+}
+
+/// Where a slider's track runs: along the bottom of its box, inset to leave
+/// room for the thumb at either end.
+pub(super) fn slider_track(bounds: Rect) -> Rect {
+    Rect {
+        x: bounds.x + 12.0,
+        y: bounds.y + bounds.height - 17.0,
+        width: (bounds.width - 24.0).max(1.0),
+        height: 4.0,
     }
 }

@@ -9,10 +9,10 @@ All of them are methods of `Ui`, take a value and a message constructor, and are
 | Kind | Methods |
 | --- | --- |
 | Layout | `row`, `column`, `grid`, `container`, `scroll`, `split`, `responsive`, `focus_scope`, `enabled` |
-| Text and values | `label`, `rich_text`, `text_input`, `number_input`, `autocomplete`, `checkbox`, `radio`, `slider`, `combo_box`, `calendar`, `date_picker` |
+| Text and values | `label` (`Label::selectable` lets its text be selected and copied), `rich_text`, `text_input`, `number_input`, `autocomplete`, `checkbox`, `radio`, `slider`, `combo_box`, `progress`, `spinner`, `switch`, `collapsible`, `link`, `range_slider`, `calendar`, `date_picker` |
 | Editors | `text_area`, `code_editor`, `rich_editor` (see [text](text.md)) |
 | Collections | `virtual_list`, `tree_view`, `data_grid`, `property_grid` |
-| Overlays | `dialog`, `popover`, `tooltip`, `menu`, `context_menu`, `command_palette`, toasts through `Effects::toast` |
+| Overlays | `dialog`, `popover`, `tooltip`, `menu`, `command_menu`, `context_menu`, `command_context_menu`, `command_palette`, toasts through `Effects::toast` |
 | Panes | `tabs`, `tabs_close`, `split`, `dock`, `dock_window` (see [state](state.md)) |
 | Windows | `title_bar`, `window_buttons`, `resize_frame`, `menu_bar` (see [platform](platform.md)) |
 | Media | `image`, `image_file` |
@@ -23,7 +23,7 @@ All of them are methods of `Ui`, take a value and a message constructor, and are
 
 `Ui::tooltip(text)` gives the widget declared just before it a tooltip; `Ui::tooltip_with(Tooltip::new(text).placement(..).delay(..).style(..))` sets how it behaves. `TooltipPlacement` is `Auto` (below the widget, or above it with no room), `Above`, `Below`, or `Before` and `After`, the start and end sides, which mirror in a right-to-left window. A placed tooltip flips to the opposite side when it would leave the window and is always kept inside it. `delay` replaces `TOOLTIP_DELAY` for the widget, and `style` sets the bubble's `background`, `foreground`, `padding`, `radius`, `max_width` and font. A tooltip shows after the delay when the pointer rests on the widget, or when focus arrives by keyboard and stays; it hides on leaving, blurring, Escape, or a key that changes the widget's value, and only one is shown at a time. Moving to a neighbouring tooltip soon after one has shown skips most of the wait. The text is also the control's accessible description.
 
-Collections take a model rather than data: `ListModel` answers by index and by `ItemId`, only the visible range is declared, and `ListState` and `GridState` hold selection and scroll. Rows of a list or tree are `VirtualListOptions::row_height` high unless the model returns a `RowHeights` from `ListModel::row_heights`, which gives some rows another height (`TreeModel::set_row_height` does it for a tree); scrolling, revealing, paging and the scrollbar then follow the real heights. A grid's columns can be resized, reordered, hidden and frozen through `GridColumns`, filtered per column, and edited in place through typed cell editors whose values the model may refuse with a message.
+Collections take a model rather than data: `ListModel` answers by index and by `ItemId`, only the visible range is declared, and `ListState` and `GridState` hold selection and scroll. Rows of a list or tree are `VirtualListOptions::row_height` high unless the model returns a `RowHeights` from `ListModel::row_heights`, which gives some rows another height (`TreeModel::set_row_height` does it for a tree); scrolling, revealing, paging and the scrollbar then follow the real heights. A grid's columns can be resized, reordered, hidden and frozen through `GridColumns`, filtered per column, pinned under the body with total rows from `GridModel::footer`, and edited in place through typed cell editors whose values the model may refuse with a message.
 
 A property grid with a `height` declares only the rows in view, however many properties the view names; groups, the filter and Tab to the next editor work over all of them.
 

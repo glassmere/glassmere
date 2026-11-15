@@ -38,6 +38,7 @@ mod run;
 mod scrollbar_input;
 mod scrolling;
 mod snapshot;
+mod submenu_hover;
 mod text_area_input;
 mod toasts;
 mod touch_input;
@@ -159,6 +160,14 @@ impl Node {
         self.resolved.text_style(self.style.wrap)
     }
 
+    /// Whether the node draws something that moves while it is on screen.
+    fn busy(&self) -> bool {
+        matches!(
+            self.control,
+            Control::Progress { value: None, .. } | Control::Spinner { .. }
+        )
+    }
+
     fn focusable(&self) -> bool {
         self.enabled
             && !matches!(
@@ -186,6 +195,9 @@ impl Node {
                     | Kind::Scroll
                     | Kind::TextInput
                     | Kind::Checkbox
+                    | Kind::Switch
+                    | Kind::Disclosure
+                    | Kind::Link
                     | Kind::Radio
                     | Kind::Slider
                     | Kind::ComboBox
@@ -201,10 +213,16 @@ impl Node {
                     | Kind::RichEditor
             ) || matches!(self.control, Control::Tab { selected: true, .. })
                 || matches!(self.control, Control::RichText { links: 1.., .. })
+                || matches!(self.control, Control::SelectableText)
                 || self
                     .custom
                     .as_ref()
                     .is_some_and(|widget| widget.semantics.focusable))
+    }
+
+    /// Text that is selected and copied but never edited.
+    fn read_only(&self) -> bool {
+        matches!(self.control, Control::SelectableText)
     }
 
     /// A tab strip's scroll button while no tabs are hidden on its side: it
@@ -236,6 +254,9 @@ impl Node {
                 self.kind,
                 Kind::Button
                     | Kind::Checkbox
+                    | Kind::Switch
+                    | Kind::Disclosure
+                    | Kind::Link
                     | Kind::Radio
                     | Kind::ComboBox
                     | Kind::MenuButton
@@ -307,13 +328,16 @@ impl Node {
                     Kind::Label | Kind::RichText => Role::Label,
                     // An image without a name is decorative.
                     Kind::Image if !self.text.is_empty() => Role::Image,
-                    Kind::Button => Role::Button,
+                    Kind::Button | Kind::Disclosure => Role::Button,
                     Kind::Scroll => Role::ScrollView,
                     Kind::TextInput => Role::TextInput,
                     Kind::TextArea | Kind::RichEditor => Role::MultilineTextInput,
                     Kind::Checkbox => Role::Checkbox,
+                    Kind::Switch => Role::Switch,
+                    Kind::Link => Role::Link,
                     Kind::Radio => Role::Radio,
                     Kind::Slider => Role::Slider,
+                    Kind::Progress | Kind::Spinner => Role::ProgressBar,
                     Kind::ComboBox => Role::ComboBox,
                     Kind::MenuButton => Role::MenuButton,
                     Kind::Dialog => Role::Dialog,
@@ -337,8 +361,13 @@ impl Node {
             label: match &self.control {
                 Control::TextInput { label, .. }
                 | Control::Checkbox { label, .. }
+                | Control::Switch { label, .. }
+                | Control::Disclosure { label, .. }
                 | Control::Radio { label, .. }
                 | Control::Slider { label, .. }
+                | Control::RangeSlider { label }
+                | Control::Progress { label, .. }
+                | Control::Spinner { label }
                 | Control::Combo { label, .. }
                 | Control::Collection { label, .. }
                 | Control::CollectionRow { label, .. }
@@ -445,6 +474,9 @@ pub struct Context {
     /// The menus the open popup is a submenu of, outermost first. `popup`
     /// is the innermost, which has the keyboard.
     pub(crate) popup_parents: Vec<PopupState>,
+    /// The row of an open menu the pointer is resting on, which opens a
+    /// submenu or closes the open one when the wait is over.
+    menu_dwell: Option<submenu_hover::MenuDwell>,
     drag: Option<Box<crate::drag::DragState>>,
     /// Source of a drag the host handed to the operating system.
     exported_drag: Option<NodeId>,
@@ -674,6 +706,7 @@ impl Default for Context {
             submitted: HashSet::new(),
             popup: None,
             popup_parents: Vec::new(),
+            menu_dwell: None,
             drag: None,
             exported_drag: None,
             dock_drag: None,

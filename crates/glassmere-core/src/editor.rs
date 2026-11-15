@@ -86,6 +86,11 @@ pub(crate) struct Editor {
     pub geometry: TextGeometry,
     pub scroll_x: f32,
     geometry_key: Option<(String, TextStyle)>,
+    /// The width the geometry wraps at, for text that wraps.
+    geometry_limit: Option<f32>,
+    /// The text of a label: it keeps its line breaks and wraps at its box
+    /// as drawn, instead of being one line that scrolls.
+    pub wrapped: bool,
     /// Which neighbour the caret belongs to at a direction boundary.
     pub affinity: Affinity,
     /// Left and Right move on screen instead of in reading order.
@@ -138,6 +143,8 @@ impl Editor {
             geometry: TextGeometry::default(),
             scroll_x: 0.0,
             geometry_key: None,
+            geometry_limit: None,
+            wrapped: false,
             affinity: Affinity::Downstream,
             visual: true,
             align_x: 0.0,
@@ -146,8 +153,22 @@ impl Editor {
         }
     }
 
+    /// An editor over the text of a label, with the selection at its start.
+    pub fn block(text: &str) -> Self {
+        Self {
+            text: text.to_owned(),
+            selection: TextSelection::default(),
+            wrapped: true,
+            ..Self::new("")
+        }
+    }
+
     pub fn synchronize(&mut self, text: &str) {
-        let text = single_line(text);
+        let text = if self.wrapped {
+            text.to_owned()
+        } else {
+            single_line(text)
+        };
         if text != self.text {
             self.text = text;
             self.selection = TextSelection {
@@ -389,6 +410,14 @@ impl Editor {
                 let horizontal = matches!(direction, TextMove::Left | TextMove::Right);
                 let mut affinity = Affinity::Downstream;
                 let cursor = match (direction, self.visual_step(right)) {
+                    (TextMove::Start | TextMove::End, _) if self.wrapped => {
+                        let end = direction == TextMove::End;
+                        let (byte, side) =
+                            self.geometry
+                                .line_edge(self.selection.cursor, self.affinity, end);
+                        affinity = side;
+                        byte
+                    }
                     (TextMove::Start | TextMove::DocumentStart, _) => 0,
                     (TextMove::End | TextMove::DocumentEnd, _) => {
                         affinity = Affinity::Upstream;
@@ -483,13 +512,22 @@ impl Editor {
         width: f32,
         rtl: bool,
     ) -> bool {
-        style.wrap = TextWrap::None;
+        let limit = if self.wrapped {
+            (style.wrap != TextWrap::None).then_some(width)
+        } else {
+            style.wrap = TextWrap::None;
+            None
+        };
         let text = self.shown();
         let key = (text, style);
-        let changed = self.geometry_key.as_ref() != Some(&key);
+        let changed = self.geometry_key.as_ref() != Some(&key) || self.geometry_limit != limit;
         if changed {
-            self.geometry = measurer.geometry(&key.0, &key.1, None);
+            self.geometry = measurer.geometry(&key.0, &key.1, limit);
             self.geometry_key = Some(key);
+            self.geometry_limit = limit;
+        }
+        if self.wrapped {
+            return changed;
         }
         let old_scroll = self.scroll_x;
         if let Some(caret) = self.caret() {
