@@ -57,6 +57,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - A base direction forced with `Style::base_direction` orders each line of an editor, but text areas and code editors do not right-align a line that reads right to left (a rich editor and a text field do). Left and Right in tree rows keep their left-to-right meanings (Left collapses, Right expands) in a right-to-left window.
 - Fluent formats numbers plainly; use `Ui::format_number` for locale notation. Only the default catalog is checked by `tr!`.
 - No text selection handles or magnifier for touch.
+- A selectable label (`Label::selectable`) is selected by dragging, Shift and click, the arrow keys, Home and End (by line) and Select All. It has no word or line selection by double and triple click, no Up and Down, and no scrolling while a drag is held past it. Assistive technology reads the label's text but gets no selection or text runs from it, and a press that lands on one does not reach a clickable container it is in.
 
 ## Collections and grids
 

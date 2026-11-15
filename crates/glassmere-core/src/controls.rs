@@ -178,6 +178,9 @@ pub(crate) enum Control {
     Memo(u64),
     /// Text written along the end edge of a control, such as a shortcut.
     Hint(String),
+    /// A label whose text can be selected and copied; its node keeps the
+    /// selection in an editor that is never edited.
+    SelectableText,
     EventArea(crate::EventArea),
     /// A strip that moves the window, and maximizes it when pressed twice.
     TitleBar,

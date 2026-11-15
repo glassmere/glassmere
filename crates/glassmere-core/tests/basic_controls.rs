@@ -2,8 +2,8 @@ mod support;
 
 use glassmere_core::app::Action as Msg;
 use glassmere_core::{
-    Action, Button, Collapsible, Context, Direction, Event, Key, Length, Link, MonospaceMeasurer,
-    Progress, Role, Spinner, Style, Switch, Transition, Ui,
+    Action, Button, Collapsible, Context, Direction, Event, Key, Label, Length, Link,
+    MonospaceMeasurer, Progress, Role, Spinner, Style, Switch, TextEdit, TextWrap, Transition, Ui,
 };
 use glassmere_scene::{Color, Point, Primitive, Rect, Segment, Size};
 use std::ops::RangeInclusive;
@@ -1464,4 +1464,328 @@ fn a_range_slider_over_an_empty_range_is_misuse() {
     frame_at(&mut context, 0, |ui| {
         ui.range_slider("Price", 5.0..=5.0, 5.0..=5.0, 1.0, |_| ());
     });
+}
+
+const ORDER: &str = "Order 4711 shipped";
+const LONG: &str = "alpha beta gamma delta epsilon";
+
+fn notes(ui: &mut Ui<'_>) {
+    ui.keyed("page", |ui| {
+        ui.column(Style::default().gap(12.0), |ui| {
+            ui.keyed("order", |ui| ui.label(Label::new(ORDER).selectable()));
+            ui.keyed("plain", |ui| ui.label("Not selectable"));
+            ui.keyed("long", |ui| {
+                ui.label(
+                    Label::new(LONG).selectable().style(
+                        Style::default()
+                            .width(Length::Px(120.0))
+                            .wrap(TextWrap::Word),
+                    ),
+                )
+            });
+            ui.enabled(false, |ui| {
+                ui.keyed("off", |ui| ui.label(Label::new("Unavailable").selectable()))
+            });
+        });
+    });
+}
+
+fn shown_notes() -> Context {
+    let mut context = Context::new();
+    frame_at(&mut context, 0, notes);
+    context
+}
+
+/// Where the character at `column` of line `line` of `label` starts, nudged
+/// into it: the middle of the line's height, and just inside its left edge.
+fn glyph(context: &Context, label: &str, line: usize, column: usize) -> Point {
+    let rect = label_rect(context, label);
+    let (_, size) = text_style(context, label);
+    Point {
+        x: rect.x + column as f32 * size * 0.6 + 1.0,
+        y: rect.y + (line as f32 + 0.5) * size * 1.4,
+    }
+}
+
+fn drag(context: &mut Context, from: Point, to: Point) {
+    context.event(Event::PointerMoved(from));
+    context.event(Event::PointerDown);
+    context.event(Event::PointerMoved(to));
+    context.event(Event::PointerUp);
+}
+
+fn drag_over(context: &mut Context, label: &str, from: (usize, usize), to: (usize, usize)) {
+    let (from, to) = (
+        glyph(context, label, from.0, from.1),
+        glyph(context, label, to.0, to.1),
+    );
+    drag(context, from, to);
+}
+
+fn click_glyph(context: &mut Context, label: &str, line: usize, column: usize) {
+    let at = glyph(context, label, line, column);
+    click(context, at);
+}
+
+fn press_with_shift(context: &mut Context, key: Key) {
+    context.event(Event::KeyDown {
+        key,
+        shift: true,
+        repeat: false,
+    });
+    context.event(Event::KeyUp(key));
+}
+
+fn selected(context: &Context) -> Option<String> {
+    context.selected_text().map(str::to_owned)
+}
+
+#[test]
+fn only_a_selectable_label_takes_focus_and_keeps_its_role() {
+    let mut context = shown_notes();
+    let node = |name: &str| {
+        context
+            .node(context.find(&["page", name]).unwrap())
+            .unwrap()
+    };
+    for name in ["order", "plain", "long", "off"] {
+        assert_eq!(node(name).semantics.role, Role::Label, "{name}");
+    }
+    assert!(node("order").semantics.focusable);
+    assert_eq!(node("order").semantics.label, ORDER);
+    assert!(!node("plain").semantics.focusable);
+    assert!(node("off").semantics.disabled && !node("off").semantics.focusable);
+    // Tab skips the text that cannot be selected.
+    press(&mut context, Key::Tab);
+    assert_eq!(context.focused(), context.find(&["page", "order"]));
+    press(&mut context, Key::Tab);
+    assert_eq!(context.focused(), context.find(&["page", "long"]));
+}
+
+#[test]
+fn dragging_across_a_selectable_label_selects_that_text_and_it_is_copied() {
+    let mut context = shown_notes();
+    let (from, to) = (glyph(&context, ORDER, 0, 6), glyph(&context, ORDER, 0, 10));
+    drag(&mut context, from, to);
+    frame_at(&mut context, 1, notes);
+    assert_eq!(context.focused(), context.find(&["page", "order"]));
+    assert_eq!(selected(&context).as_deref(), Some("4711"));
+    // The selection is drawn behind the text, one cell per character.
+    let (_, size) = text_style(&context, ORDER);
+    let highlight = quads(&context, context.theme().highlight);
+    let width: f32 = highlight.iter().map(|rect| rect.width).sum();
+    assert_eq!(highlight.len(), 4);
+    assert!((width - 4.0 * size * 0.6).abs() < 0.01, "{highlight:?}");
+    // Dragging back past the anchor reverses it.
+    drag(&mut context, to, from);
+    assert_eq!(selected(&context).as_deref(), Some("4711"));
+    // Text that cannot be selected stays as it is.
+    drag_over(&mut context, "Not selectable", (0, 2), (0, 6));
+    assert_eq!(context.focused(), None);
+    assert_eq!(selected(&context), None);
+}
+
+#[test]
+fn a_press_selects_nothing_and_a_shifted_press_extends_the_selection() {
+    let mut context = shown_notes();
+    let start = glyph(&context, ORDER, 0, 6);
+    click(&mut context, start);
+    assert_eq!(selected(&context).as_deref(), Some(""));
+    context.event(Event::PointerMoved(glyph(&context, ORDER, 0, 10)));
+    context.event(Event::PointerDownWithShift);
+    context.event(Event::PointerUp);
+    assert_eq!(selected(&context).as_deref(), Some("4711"));
+}
+
+#[test]
+fn the_keyboard_selects_with_shift_and_arrows_home_end_and_select_all() {
+    let mut context = shown_notes();
+    press(&mut context, Key::Tab);
+    for _ in 0..3 {
+        press_with_shift(&mut context, Key::ArrowRight);
+    }
+    assert_eq!(selected(&context).as_deref(), Some("Ord"));
+    press_with_shift(&mut context, Key::End);
+    assert_eq!(selected(&context).as_deref(), Some(ORDER));
+    press(&mut context, Key::Home);
+    assert_eq!(selected(&context).as_deref(), Some(""));
+    press(&mut context, Key::ArrowRight);
+    press_with_shift(&mut context, Key::ArrowRight);
+    assert_eq!(selected(&context).as_deref(), Some("r"));
+    context.event(Event::Text(TextEdit::SelectAll));
+    assert_eq!(selected(&context).as_deref(), Some(ORDER));
+}
+
+#[test]
+fn a_selectable_label_is_never_edited_and_never_asks_for_text() {
+    let mut context = shown_notes();
+    press(&mut context, Key::Tab);
+    context.event(Event::Text(TextEdit::SelectAll));
+    for edit in [
+        TextEdit::Insert("x".into()),
+        TextEdit::Commit("x".into()),
+        TextEdit::Backspace { word: false },
+        TextEdit::Delete { word: true },
+        TextEdit::Undo,
+        TextEdit::Redo,
+        TextEdit::Preedit {
+            text: "x".into(),
+            selection: None,
+        },
+    ] {
+        assert!(
+            !context.event(Event::Text(edit.clone())),
+            "{edit:?} changed a label"
+        );
+    }
+    for key in [Key::Backspace, Key::Delete, Key::Enter, Key::Escape] {
+        press(&mut context, key);
+    }
+    let order = context.find(&["page", "order"]).unwrap();
+    assert!(!context.action(order, Action::SetText("changed".into())));
+    frame_at(&mut context, 1, notes);
+    assert_eq!(selected(&context).as_deref(), Some(ORDER));
+    assert_eq!(context.node(order).unwrap().semantics.label, ORDER);
+    // No soft keyboard or input method for it, and shortcuts keep working.
+    assert!(!context.accepts_text());
+    assert_eq!(context.ime_cursor_rect(), None);
+}
+
+#[test]
+fn a_selectable_label_has_no_border_and_no_background() {
+    let context = shown_notes();
+    assert!(quads(&context, context.theme().control).is_empty());
+    assert!(quads(&context, context.theme().highlight).is_empty());
+    let order = bounds(&context, &["page", "order"]);
+    let text = label_rect(&context, ORDER);
+    assert!(text.x >= order.x && text.y >= order.y);
+}
+
+#[test]
+fn a_selection_dims_when_the_focus_leaves_the_label() {
+    let mut context = shown_notes();
+    let (from, to) = (glyph(&context, ORDER, 0, 0), glyph(&context, ORDER, 0, 5));
+    drag(&mut context, from, to);
+    frame_at(&mut context, 1, notes);
+    assert_eq!(quads(&context, context.theme().highlight).len(), 5);
+    press(&mut context, Key::Tab);
+    frame_at(&mut context, 2, notes);
+    assert!(quads(&context, context.theme().highlight).is_empty());
+    assert_eq!(quads(&context, context.theme().selection_inactive).len(), 5);
+    // Back at the label, the selection it kept is live again.
+    press_with_shift(&mut context, Key::Tab);
+    frame_at(&mut context, 3, notes);
+    assert_eq!(selected(&context).as_deref(), Some("Order"));
+    assert_eq!(quads(&context, context.theme().highlight).len(), 5);
+}
+
+#[test]
+fn a_disabled_selectable_label_cannot_be_selected_and_is_dimmed() {
+    let mut context = shown_notes();
+    drag_over(&mut context, "Unavailable", (0, 0), (0, 5));
+    assert_eq!(context.focused(), None);
+    assert!(quads(&context, context.theme().highlight).is_empty());
+    assert_eq!(
+        text_style(&context, "Unavailable").0,
+        context.theme().text_disabled
+    );
+}
+
+#[test]
+fn a_wrapped_label_selects_across_its_lines_and_home_and_end_follow_them() {
+    let mut context = shown_notes();
+    // The test font breaks the text every twelve characters.
+    drag_over(&mut context, LONG, (0, 4), (2, 3));
+    assert_eq!(selected(&context).as_deref(), Some(&LONG[4..27]));
+    frame_at(&mut context, 1, notes);
+    let mut rows: Vec<f32> = quads(&context, context.theme().highlight)
+        .iter()
+        .map(|rect| rect.y)
+        .collect();
+    rows.dedup();
+    assert_eq!(rows.len(), 3, "one row of cells for each line");
+    // End goes to the end of the line the caret is on, Home to its start.
+    click_glyph(&mut context, LONG, 1, 3);
+    press_with_shift(&mut context, Key::End);
+    assert_eq!(selected(&context).as_deref(), Some(&LONG[15..24]));
+    click_glyph(&mut context, LONG, 1, 3);
+    press_with_shift(&mut context, Key::Home);
+    assert_eq!(selected(&context).as_deref(), Some(&LONG[12..15]));
+}
+
+#[test]
+fn a_label_changing_its_text_or_its_selectability_keeps_up() {
+    let mut context = Context::new();
+    let view = |text: &'static str, selectable: bool| {
+        move |ui: &mut Ui<'_>| {
+            ui.keyed("note", |ui| {
+                let label = Label::new(text);
+                ui.label(if selectable {
+                    label.selectable()
+                } else {
+                    label
+                })
+            })
+        }
+    };
+    frame_at(&mut context, 0, view(ORDER, true));
+    let note = context.find(&["note"]).unwrap();
+    drag_over(&mut context, ORDER, (0, 0), (0, 18));
+    assert_eq!(selected(&context).as_deref(), Some(ORDER));
+    // A shorter text keeps what still fits of the selection.
+    frame_at(&mut context, 1, view("Order", true));
+    assert_eq!(selected(&context).as_deref(), Some("Order"));
+    frame_at(&mut context, 2, view("Order", false));
+    assert!(!context.node(note).unwrap().semantics.focusable);
+    assert_eq!(selected(&context), None);
+    frame_at(&mut context, 3, view("Order", true));
+    assert!(context.node(note).unwrap().semantics.focusable);
+}
+
+#[test]
+fn selectable_text_in_right_to_left_text_selects_from_its_start_edge() {
+    let mut context = Context::new();
+    let hebrew = "\u{5e9}\u{5dc}\u{5d5}\u{5dd}";
+    let view = |ui: &mut Ui<'_>| {
+        ui.keyed("page", |ui| {
+            ui.column(Style::default().width(Length::Px(300.0)), |ui| {
+                ui.keyed("note", |ui| {
+                    ui.label(
+                        Label::new(hebrew)
+                            .selectable()
+                            .style(Style::default().wrap(TextWrap::None)),
+                    )
+                })
+            })
+        });
+    };
+    context.set_direction(Direction::Rtl);
+    frame_at(&mut context, 0, view);
+    let (_, size) = text_style(&context, hebrew);
+    let advance = size * 0.6;
+    let text = label_rect(&context, hebrew);
+    // The first letter is at the right: dragging from the text's right end
+    // two letters toward the left selects the first two.
+    let y = text.y + 0.7 * size;
+    drag(
+        &mut context,
+        Point {
+            x: text.x + 4.0 * advance - 1.0,
+            y,
+        },
+        Point {
+            x: text.x + 2.0 * advance + 1.0,
+            y,
+        },
+    );
+    assert_eq!(selected(&context).as_deref(), Some(&hebrew[..4]));
+    frame_at(&mut context, 1, view);
+    let cells = quads(&context, context.theme().highlight);
+    assert_eq!(cells.len(), 2);
+    assert!(
+        cells
+            .iter()
+            .all(|cell| cell.x >= text.x + 2.0 * advance - 0.01),
+        "{cells:?} is at the right of the text {text:?}"
+    );
 }

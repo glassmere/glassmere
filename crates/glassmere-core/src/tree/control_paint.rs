@@ -203,7 +203,7 @@ impl Context {
                 scene.primitives.push(Primitive::Quad { rect, color: self.theme.accent, radius: 0.0 });
             }
         }
-        if let Some(editor) = &node.editor {
+        if let Some(editor) = node.editor.as_ref().filter(|_| !node.read_only()) {
             let content = node.content_box();
             let origin = Point {
                 x: content.x - editor.scroll_x + editor.align_x,
@@ -566,7 +566,7 @@ impl Context {
             return Some(caret);
         }
         let node = self.nodes.get(&self.focused?)?;
-        let editor = node.editor.as_ref()?;
+        let editor = node.editor.as_ref().filter(|_| !node.read_only())?;
         let caret = editor.caret()?;
         let padding = node.style.padding.max(0.0);
         Some(
@@ -585,7 +585,7 @@ impl Context {
             || self
                 .focused
                 .and_then(|id| self.nodes.get(&id))
-                .is_some_and(|node| node.enabled && node.editor.is_some())
+                .is_some_and(|node| node.enabled && node.editor.is_some() && !node.read_only())
     }
 
     pub fn composing_text(&self) -> bool {

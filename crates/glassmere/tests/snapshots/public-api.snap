@@ -809,6 +809,7 @@ glassmere-core   fn Keyframe::foreground(mut self, color: Color) -> Self
 glassmere-core   fn Keyframe::opacity(mut self, opacity: f32) -> Self
 glassmere-core   fn Keyframe::transform(mut self, transform: Transform) -> Self
 glassmere-core   fn Label::new(text: impl Into<String>) -> Self
+glassmere-core   fn Label::selectable(mut self) -> Self
 glassmere-core   fn Label::style(mut self, style: Style) -> Self
 glassmere-core   fn Link::enabled(mut self, enabled: bool) -> Self [impl<M> Link<M>]
 glassmere-core   fn Link::new(text: impl Into<String>) -> Self [impl<M> Link<M>]

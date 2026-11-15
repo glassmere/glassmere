@@ -18,6 +18,7 @@ use crate::Style;
 pub struct Label {
     pub(crate) text: String,
     pub(crate) style: Option<Style>,
+    pub(crate) selectable: bool,
 }
 
 impl Label {
@@ -25,12 +26,22 @@ impl Label {
         Self {
             text: text.into(),
             style: None,
+            selectable: false,
         }
     }
 
     /// Replaces the default style, which is `Style::default()`.
     pub fn style(mut self, style: Style) -> Self {
         self.style = Some(style);
+        self
+    }
+
+    /// Lets the text be selected and copied, but never edited: by dragging
+    /// across it, or with the keyboard once Tab has brought focus to it
+    /// (Shift and the arrow keys, Home and End, Ctrl/Cmd + A, then Ctrl/Cmd +
+    /// C). It draws no border and no background.
+    pub fn selectable(mut self) -> Self {
+        self.selectable = true;
         self
     }
 }

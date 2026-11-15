@@ -483,6 +483,7 @@ impl Context {
         } else if node.kind == Kind::Image {
             self.paint_image(id, &mut scene, foreground, radius);
         } else if !node.text.is_empty() {
+            self.paint_selection(id, node, &mut scene);
             self.paint_text(node, foreground, &mut scene);
         }
         self.paint_hint(node, &mut scene);
@@ -638,7 +639,32 @@ impl Context {
     }
 
     /// The node's own text, placed in its box.
-    fn paint_text(&self, node: &Node, foreground: Color, scene: &mut Scene) {
+    /// What is selected of a label's text, behind the text.
+    fn paint_selection(&self, id: NodeId, node: &Node, scene: &mut Scene) {
+        let Some(editor) = node.editor.as_ref().filter(|_| node.read_only()) else {
+            return;
+        };
+        let text = self.text_place(node).0;
+        let color = if self.focused == Some(id) {
+            self.theme.highlight
+        } else {
+            self.theme.selection_inactive
+        };
+        for rect in editor.geometry.selection(editor.selection.range()) {
+            scene.primitives.push(Primitive::Quad {
+                rect: rect.translated(Point {
+                    x: text.x,
+                    y: text.y,
+                }),
+                color,
+                radius: 0.0,
+            });
+        }
+    }
+
+    /// Where the text of a node is drawn, how big the layout measured it
+    /// (for the leaves that were) and how wide it is.
+    pub(super) fn text_place(&self, node: &Node) -> (Rect, Option<Size>, f32) {
         let mut rect = node.content_box();
         // Where the text sits in a box wider or taller than it is. A
         // wrapped block is aligned line by line by the shaper; this
@@ -678,6 +704,11 @@ impl Context {
                 _ => 0.0,
             };
         }
+        (rect, measured, width)
+    }
+
+    fn paint_text(&self, node: &Node, foreground: Color, scene: &mut Scene) {
+        let (rect, measured, width) = self.text_place(node);
         if node.kind == Kind::Link
             && let Some(size) = measured.filter(|size| size.width > 0.0)
         {

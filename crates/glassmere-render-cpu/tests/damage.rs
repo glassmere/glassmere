@@ -846,3 +846,63 @@ fn dragging_a_range_slider_thumb_repaints_the_slider_and_not_the_window() {
     let redrawn = frame(&mut context, low, high);
     assert!(redrawn < area / 4, "repainted {redrawn} of {area}");
 }
+
+/// Selecting text of a selectable label moves its highlight from frame to
+/// frame; every frame is painted from damage as it is in full, and none of
+/// it repaints much of the window.
+#[test]
+fn selecting_label_text_repaints_the_label_and_not_the_window() {
+    let view = |ui: &mut Ui<'_>| {
+        ui.keyed("page", |ui| {
+            ui.column(Style::default().padding(8.0).gap(6.0), |ui| {
+                ui.keyed("title", |ui| ui.label("Selectable"));
+                ui.keyed("note", |ui| {
+                    ui.label(Label::new("Order 4711 shipped on Monday").selectable())
+                });
+                ui.keyed("rest", |ui| ui.label(Label::new("The rest of the page")));
+            })
+        });
+    };
+    let mut context = Context::new();
+    let mut incremental = CpuRenderer::with_text_system(fonts());
+    let mut whole = CpuRenderer::with_text_system(fonts());
+    let physical = [SIZE.width as u32, SIZE.height as u32];
+    let area = u64::from(physical[0]) * u64::from(physical[1]);
+    let mut frame = |context: &mut Context| {
+        context.run(SIZE, &mut MonospaceMeasurer, view);
+        let damage: Vec<_> = context.damage_regions().to_vec();
+        let scene = context.scene();
+        let partial = incremental
+            .render_damaged(physical, 1.0, scene, CLEAR, &damage)
+            .to_vec();
+        let full = whole.render(physical, 1.0, scene, CLEAR).to_vec();
+        assert_frames_match(&partial, &full, physical[0] as usize, "selection");
+        incremental.stats().redrawn
+    };
+    frame(&mut context);
+    let bounds = context
+        .node(context.find(&["page", "note"]).unwrap())
+        .unwrap()
+        .bounds;
+    let at = |column: f32| Point {
+        x: bounds.x + column * 9.6 + 1.0,
+        y: bounds.y + bounds.height / 2.0,
+    };
+    context.event(Event::PointerMoved(at(0.0)));
+    context.event(Event::PointerDown);
+    for column in [2.0, 6.0, 11.0, 5.0] {
+        context.event(Event::PointerMoved(at(column)));
+        let redrawn = frame(&mut context);
+        assert!(redrawn < area / 4, "repainted {redrawn} of {area}");
+    }
+    context.event(Event::PointerUp);
+    // Tab moves on, and the selection it leaves is drawn dimmed.
+    context.event(Event::KeyDown {
+        key: Key::Tab,
+        shift: false,
+        repeat: false,
+    });
+    context.event(Event::KeyUp(Key::Tab));
+    let redrawn = frame(&mut context);
+    assert!(redrawn < area / 4, "repainted {redrawn} of {area}");
+}

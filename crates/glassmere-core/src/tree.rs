@@ -203,10 +203,16 @@ impl Node {
                     | Kind::RichEditor
             ) || matches!(self.control, Control::Tab { selected: true, .. })
                 || matches!(self.control, Control::RichText { links: 1.., .. })
+                || matches!(self.control, Control::SelectableText)
                 || self
                     .custom
                     .as_ref()
                     .is_some_and(|widget| widget.semantics.focusable))
+    }
+
+    /// Text that is selected and copied but never edited.
+    fn read_only(&self) -> bool {
+        matches!(self.control, Control::SelectableText)
     }
 
     /// A tab strip's scroll button while no tabs are hidden on its side: it

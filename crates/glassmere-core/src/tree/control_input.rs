@@ -33,6 +33,15 @@ impl Context {
         let Some(node) = self.nodes.get_mut(&id).filter(|node| node.enabled) else {
             return false;
         };
+        // Selected and copied, never edited.
+        if node.read_only()
+            && !matches!(
+                edit,
+                TextEdit::Move { .. } | TextEdit::Select { .. } | TextEdit::SelectAll
+            )
+        {
+            return false;
+        }
         let Some(editor) = &mut node.editor else {
             return false;
         };
@@ -168,9 +177,22 @@ impl Context {
         let Some(editor) = &node.editor else {
             return false;
         };
+        // A label's text is where it is drawn; a field's is its scrolled content box.
+        let origin = if node.read_only() {
+            let text = self.text_place(node).0;
+            Point {
+                x: text.x,
+                y: text.y,
+            }
+        } else {
+            Point {
+                x: node.bounds.x + node.style.padding - editor.scroll_x + editor.align_x,
+                y: node.bounds.y + node.style.padding,
+            }
+        };
         let local = Point {
-            x: position.x - node.bounds.x - node.style.padding + editor.scroll_x - editor.align_x,
-            y: position.y - node.bounds.y - node.style.padding,
+            x: position.x - origin.x,
+            y: position.y - origin.y,
         };
         let (cursor, affinity) = editor.geometry.hit_affinity(local);
         let cursor = editor.display_offset(cursor);
@@ -714,7 +736,7 @@ impl Context {
                         self.divider_pointer(id, *position);
                         return Some(true);
                     }
-                    if self.nodes[&id].kind == Kind::TextInput {
+                    if self.nodes[&id].editor.is_some() {
                         self.pointer = Some(*position);
                         return Some(self.editor_pointer(id, *position, true));
                     }
@@ -767,17 +789,18 @@ impl Context {
                         self.captured = Some(id);
                         return Some(true);
                     }
-                    if matches!(kind, Kind::TextInput | Kind::Slider) {
+                    if matches!(kind, Kind::TextInput | Kind::Slider) || self.nodes[&id].read_only()
+                    {
                         self.focus_control(id);
                         self.captured = Some(id);
-                        if kind == Kind::TextInput {
+                        if kind == Kind::Slider {
+                            self.slider_pointer(id, position);
+                        } else {
                             self.editor_pointer(
                                 id,
                                 position,
                                 matches!(event, Event::PointerDownWithShift),
                             );
-                        } else {
-                            self.slider_pointer(id, position);
                         }
                         return Some(true);
                     }
@@ -820,6 +843,7 @@ impl Context {
                 }
                 let node = &self.nodes[&id];
                 if node.editor.is_some() {
+                    let read_only = node.read_only();
                     let steps = match key {
                         Key::ArrowUp => 1.0,
                         Key::ArrowDown => -1.0,
@@ -855,10 +879,10 @@ impl Context {
                             select: *shift,
                             word: false,
                         },
-                        Key::Backspace => TextEdit::Backspace { word: false },
-                        Key::Delete => TextEdit::Delete { word: false },
-                        Key::Escape => TextEdit::CancelComposition,
-                        Key::Enter => {
+                        Key::Backspace if !read_only => TextEdit::Backspace { word: false },
+                        Key::Delete if !read_only => TextEdit::Delete { word: false },
+                        Key::Escape if !read_only => TextEdit::CancelComposition,
+                        Key::Enter if !read_only => {
                             self.queue_submit(id);
                             return Some(true);
                         }

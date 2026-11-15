@@ -232,6 +232,14 @@ impl App for Controls {
                         )
                         .style(hint),
                     );
+                    // The pointer or Shift + arrows select it and Ctrl/Cmd + C copies it; nothing edits it.
+                    ui.label(
+                        Label::new(
+                            "Order 4711 shipped on Monday. Select any of this text to copy it.",
+                        )
+                        .selectable()
+                        .style(wrapped.clone()),
+                    );
                     ui.label(Label::new("Shaped serif · bold italic").style(serif));
                     ui.label(Label::new("let native = true;").style(mono));
                     // Disabled, so it never sends: the name's message is only a placeholder here.

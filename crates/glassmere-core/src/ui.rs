@@ -560,13 +560,16 @@ impl<'a, M: 'static> Ui<'a, M> {
     pub fn label(&mut self, label: impl Into<Label>) {
         let label = label.into();
         let key = self.next_key();
-        self.leaf(
-            key,
-            Kind::Label,
-            label.text,
-            label.style.unwrap_or_default(),
-            true,
-        );
+        self.push(Element {
+            text: label.text,
+            style: label.style.unwrap_or_default(),
+            control: if label.selectable {
+                Control::SelectableText
+            } else {
+                Control::None
+            },
+            ..Element::new(key, Kind::Label)
+        });
     }
 
     /// A button. `ui.button("Save")` is the whole of it, and

@@ -626,7 +626,7 @@ pub(crate) fn action(context: &mut Context, request: ActionRequest, scale: f64) 
 mod tests {
     use super::*;
     use glassmere_core::{
-        Button, CodeEditorOptions, EditorPoint, ItemId, Length, Link, ListModel, ListState,
+        Button, CodeEditorOptions, EditorPoint, ItemId, Label, Length, Link, ListModel, ListState,
         MonospaceMeasurer, Style, TextDocument, TextEdit, TextInput, TreeItem, TreeModel,
         VirtualListOptions,
     };
@@ -1263,6 +1263,24 @@ mod tests {
             assert!(node.supports_action(Action::Increment));
             assert!(node.supports_action(Action::Focus));
         }
+    }
+
+    #[test]
+    fn a_selectable_label_is_read_as_text_and_can_take_focus() {
+        let mut context = Context::new();
+        context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
+            ui.keyed("id", |ui| ui.label(Label::new("Order 4711").selectable()));
+            ui.keyed("plain", |ui| ui.label("Order 4712"));
+        });
+        let update = tree(&context, "Labels", 1.0);
+        let id = context.find(&["id"]).unwrap();
+        let node = node_in(&update, NodeId(id.0));
+        assert_eq!(node.role(), Role::Label);
+        assert_eq!(node.value(), Some("Order 4711"));
+        assert!(node.supports_action(Action::Focus));
+        let plain = context.find(&["plain"]).unwrap();
+        let node = node_in(&update, NodeId(plain.0));
+        assert!(!node.supports_action(Action::Focus));
     }
 
     #[test]
