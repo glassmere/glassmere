@@ -50,7 +50,7 @@ struct Card {
     width: f64,
     #[property(min = 80, max = 420, step = 10, suffix = " px", default = 140)]
     height: f64,
-    #[property(flatten)]
+    #[property(flatten, many)]
     corners: Corners,
     #[property(group = "Appearance", default = Color::rgb(22, 105, 99))]
     fill: Color,
