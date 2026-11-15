@@ -308,15 +308,20 @@ impl<'a, M: 'static> Ui<'a, M> {
                                 // The days of the months beside it are dimmed.
                                 foreground: (date.month != shown.month).then_some(theme.text_muted),
                                 font_weight: selected.then_some(700),
-                                // A pointer over the selection leaves it as it is.
-                                states: held.map(|held| {
-                                    Box::new(StateStyles {
+                                // A pointer over the selection leaves it as it is,
+                                // and a day that cannot be picked is dimmed, not boxed.
+                                states: Some(Box::new(match held {
+                                    Some(held) => StateStyles {
                                         hover: held,
                                         pressed: held,
                                         disabled: held,
                                         ..StateStyles::default()
-                                    })
-                                }),
+                                    },
+                                    None => StateStyles {
+                                        disabled: Paint::background(Color::TRANSPARENT),
+                                        ..StateStyles::default()
+                                    },
+                                })),
                                 ..cell(CELL_HEIGHT)
                             },
                             enabled: month.enabled(date),
