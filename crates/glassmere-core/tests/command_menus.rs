@@ -753,3 +753,85 @@ fn a_disabled_command_context_menu_does_not_open() {
     driven.frame();
     assert!(driven.context.find(&at(&AREA, &["$popup"])).is_none());
 }
+
+/// Lets the pointer rest where it is for `millis` more.
+fn rest(driven: &mut Driven<Page>, millis: u64) {
+    let now = driven.context.now() + Duration::from_millis(millis);
+    driven.context.set_now(now);
+    driven.frame();
+}
+
+fn hover(driven: &mut Driven<Page>, rect: Rect) {
+    driven.context.event(Event::PointerMoved(point(rect)));
+}
+
+/// A submenu waits for the pointer to rest on its row, stays open while the
+/// pointer crosses the next row on the way into it, and closes once the
+/// pointer rests on another row. `base` is the menu button or area.
+fn hover_walks_the_submenus(driven: &mut Driven<Page>, base: &[&str]) {
+    let recent_row = node(&driven.context, &at(base, &["$popup", "2"])).bounds;
+    let save_row = node(&driven.context, &at(base, &["$popup", "3"])).bounds;
+    let start = driven.context.now();
+    hover(driven, recent_row);
+    assert_eq!(
+        driven.context.next_wake(),
+        Some(start + Duration::from_millis(200))
+    );
+    rest(driven, 199);
+    assert!(found(&driven.context, &recent(base)).is_none(), "not yet");
+    rest(driven, 1);
+    assert!(found(&driven.context, &recent(base)).is_some());
+    assert_eq!(driven.context.next_wake(), None, "an open menu is idle");
+
+    // Across the next row and into the submenu before the wait is over.
+    hover(driven, save_row);
+    rest(driven, 100);
+    let a = node(&driven.context, &at(base, &["$popup", "2", "$popup", "0"])).bounds;
+    hover(driven, a);
+    rest(driven, 1000);
+    assert!(found(&driven.context, &recent(base)).is_some());
+    assert!(driven.state().picked.is_empty());
+
+    // Resting on the next row takes the menu back.
+    hover(driven, save_row);
+    rest(driven, 199);
+    assert!(found(&driven.context, &recent(base)).is_some());
+    rest(driven, 1);
+    assert!(found(&driven.context, &recent(base)).is_none());
+    assert!(driven.context.find(&at(base, &["$popup"])).is_some());
+}
+
+#[test]
+fn a_command_menu_submenu_waits_for_the_pointer_and_stays_on_the_way_to_it() {
+    let mut driven = Driven::new(WIDE, Page::default(), button_page);
+    open_button(&mut driven);
+    driven.context.set_now(Duration::from_secs(1));
+    hover_walks_the_submenus(&mut driven, &BUTTON);
+}
+
+#[test]
+fn a_command_context_menu_submenu_waits_for_the_pointer_and_stays_on_the_way_to_it() {
+    let mut driven = Driven::new(WIDE, Page::default(), area_page);
+    open_area(&mut driven, Point { x: 100.0, y: 60.0 });
+    driven.context.set_now(Duration::from_secs(1));
+    hover_walks_the_submenus(&mut driven, &AREA);
+}
+
+#[test]
+fn a_right_to_left_command_menu_opens_a_hovered_submenu_on_the_left() {
+    let mut driven = Driven::new(WIDE, Page::default(), button_page);
+    driven.context.set_direction(Direction::Rtl);
+    driven.frame();
+    open_button(&mut driven);
+    let row = node(&driven.context, &at(&BUTTON, &["$popup", "2"])).bounds;
+    hover(&mut driven, row);
+    rest(&mut driven, 199);
+    assert!(found(&driven.context, &recent(&BUTTON)).is_none());
+    rest(&mut driven, 1);
+    let panel = found(&driven.context, &recent(&BUTTON)).expect("Recent is open");
+    assert!(
+        (panel.bounds.x + panel.bounds.width - (row.x + 2.0)).abs() < 0.5,
+        "{:?} beside {row:?}",
+        panel.bounds
+    );
+}

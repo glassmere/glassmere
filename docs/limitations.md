@@ -64,7 +64,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - A grid selects one cell at a time, with no range selection or block copy.
 - Filters are text only. There are no pinned data rows (totals).
 - Property grid rows are declared, not virtualized; filter or split thousands of properties. There is no multi-object editing. Enums are edited through a `usize` index with `choices(..)`, and `Option<T>` and collection fields are not supported by `#[derive(Properties)]`.
-- Submenus nest to any depth in `Ui::menu_bar`, `Ui::command_menu` and `Ui::command_context_menu`, which draw a `Menu`; `Ui::menu`, `Ui::context_menu` and combo boxes take a flat list. A submenu opens as soon as the pointer is on its row, with no delay, and closes when the pointer crosses another row on the way to it. Tooltips are pointer-only, with one delay and one placement.
+- Submenus nest to any depth in `Ui::menu_bar`, `Ui::command_menu` and `Ui::command_context_menu`, which draw a `Menu`; `Ui::menu`, `Ui::context_menu` and combo boxes take a flat list. A submenu opens once the pointer has rested on its row for 200 ms, and the one that is open stays until the pointer has rested on another row for as long, so that it can be reached across the rows between; a click, Enter or the arrow key opens it at once. The delay is fixed, and there is no safe area for the pointer's path. Tooltips are pointer-only, with one delay and one placement.
 
 ## Windows and docking
 

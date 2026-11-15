@@ -427,6 +427,7 @@ impl Context {
         self.start_grid_timers();
         self.update_long_presses();
         self.update_track_hold();
+        self.update_menu_dwell();
     }
 
     /// Whether something the view reads changed since it last declared,

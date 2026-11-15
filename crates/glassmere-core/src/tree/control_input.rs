@@ -207,7 +207,7 @@ impl Context {
         Some((panel.parent?, index))
     }
 
-    fn is_submenu(&self, id: NodeId) -> bool {
+    pub(super) fn is_submenu(&self, id: NodeId) -> bool {
         self.nodes
             .get(&id)
             .is_some_and(|node| matches!(node.control, Control::Submenu { .. }))
@@ -226,7 +226,7 @@ impl Context {
 
     /// Closes the submenus opened from `owner`'s menu, so that it is the
     /// innermost one. False when `owner` has no open menu.
-    fn close_levels_below(&mut self, owner: NodeId) -> bool {
+    pub(super) fn close_levels_below(&mut self, owner: NodeId) -> bool {
         if self.popup_of(owner).is_none() {
             return false;
         }
@@ -257,6 +257,7 @@ impl Context {
     }
 
     fn close_popup(&mut self) -> bool {
+        self.menu_dwell = None;
         let innermost = self.popup.take();
         // Focus goes back to where the outermost menu took it from.
         let Some(popup) = self.popup_parents.drain(..).next().or(innermost) else {
@@ -273,11 +274,12 @@ impl Context {
         true
     }
 
-    fn open_popup(&mut self, owner: NodeId) -> bool {
+    pub(super) fn open_popup(&mut self, owner: NodeId) -> bool {
         self.open_popup_at(owner, None)
     }
 
     pub(super) fn open_popup_at(&mut self, owner: NodeId, anchor: Option<Point>) -> bool {
+        self.menu_dwell = None;
         let Some(node) = self.nodes.get(&owner).filter(|node| node.enabled) else {
             return false;
         };
@@ -560,6 +562,8 @@ impl Context {
 
     fn popup_key(&mut self, key: Key) -> Option<bool> {
         let popup = self.popup?;
+        // The keyboard has the menu now, wherever the pointer rests.
+        self.menu_dwell = None;
         // An autocomplete field keeps typing while its list is open: only the
         // arrows and Escape belong to the list, and Enter only with a highlight.
         if self
@@ -668,27 +672,18 @@ impl Context {
                         return Some(self.editor_pointer(id, *position, true));
                     }
                 }
-                if let Some(id) = self.hit_test(*position)
-                    && let Some((owner, index)) = self.row_place(id)
-                    && self.popup_of(owner).is_some()
-                    // The row whose submenu is open keeps it; any other row
-                    // of that menu closes it and takes the highlight.
-                    && self.popup_of(id).is_none()
-                {
-                    let opens = self.is_submenu(id) && self.nodes[&id].enabled;
-                    let mut changed = self.close_levels_below(owner);
-                    if let Some(popup) = &mut self.popup {
-                        popup.highlighted = index;
-                        popup.reveal_highlight = false;
-                    }
-                    if opens {
-                        self.pointer = Some(*position);
-                        changed |= self.open_popup(id);
-                    }
-                    if changed {
-                        self.pointer = Some(*position);
-                        return Some(true);
-                    }
+                // A row of an open menu waits for the pointer to rest on it
+                // before it opens a submenu or closes the one that is open.
+                // The row whose submenu is open keeps it, and a pointer off
+                // the rows waits for nothing.
+                match self
+                    .hit_test(*position)
+                    .and_then(|id| Some((id, self.row_place(id)?)))
+                    .filter(|(id, (owner, _))| {
+                        self.popup_of(*owner).is_some() && self.popup_of(*id).is_none()
+                    }) {
+                    Some((id, (owner, index))) => self.hover_menu_row(id, owner, index),
+                    None => self.menu_dwell = None,
                 }
             }
             Event::PointerDown | Event::PointerDownWithShift => {

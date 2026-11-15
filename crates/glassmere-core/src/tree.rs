@@ -37,6 +37,7 @@ mod run;
 mod scrollbar_input;
 mod scrolling;
 mod snapshot;
+mod submenu_hover;
 mod text_area_input;
 mod toasts;
 mod touch_input;
@@ -423,6 +424,9 @@ pub struct Context {
     /// The menus the open popup is a submenu of, outermost first. `popup`
     /// is the innermost, which has the keyboard.
     pub(crate) popup_parents: Vec<PopupState>,
+    /// The row of an open menu the pointer is resting on, which opens a
+    /// submenu or closes the open one when the wait is over.
+    menu_dwell: Option<submenu_hover::MenuDwell>,
     drag: Option<Box<crate::drag::DragState>>,
     /// Source of a drag the host handed to the operating system.
     exported_drag: Option<NodeId>,
@@ -641,6 +645,7 @@ impl Default for Context {
             submitted: HashSet::new(),
             popup: None,
             popup_parents: Vec::new(),
+            menu_dwell: None,
             drag: None,
             exported_drag: None,
             dock_drag: None,
