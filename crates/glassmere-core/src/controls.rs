@@ -377,6 +377,8 @@ pub(crate) enum Control {
         kind: crate::collection::CollectionKind,
         count: usize,
         row_height: f32,
+        /// Rows that Page Up and Page Down move when row heights differ.
+        pages: Option<(usize, usize)>,
         offset: f32,
         selected: Option<crate::ItemId>,
     },

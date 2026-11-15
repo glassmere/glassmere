@@ -69,6 +69,10 @@ impl Context {
             for node in self.nodes.values_mut() {
                 node.paint_cache = None;
             }
+            // An animated image changes frame on screen.
+            for id in self.image_plays.keys().copied().collect::<Vec<_>>() {
+                self.invalidate_paint(id);
+            }
             self.pending |= Dirty::PAINT;
         }
     }

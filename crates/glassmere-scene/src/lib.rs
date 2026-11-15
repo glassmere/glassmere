@@ -2,7 +2,7 @@
 mod image;
 mod path;
 mod text;
-pub use image::{Image, VectorImage};
+pub use image::{Image, ImageFrame, VectorImage};
 pub use path::{Path, Segment, Stroke};
 pub use text::{
     Affinity, CaretStop, FontFamily, MonospaceMeasurer, TextCluster, TextGeometry, TextLine,

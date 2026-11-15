@@ -11,11 +11,13 @@ glassmere use GpuSetup = glassmere_winit::GpuSetup #[cfg(feature = "desktop")]
 glassmere use GraphicsBackend = glassmere_winit::GraphicsBackend #[cfg(feature = "desktop")]
 glassmere use GraphicsOptions = glassmere_winit::GraphicsOptions #[cfg(feature = "desktop")]
 glassmere use Image = glassmere_scene::Image
+glassmere use ImageFrame = glassmere_scene::ImageFrame
 glassmere use Path = glassmere_scene::Path
 glassmere use Placement = glassmere_winit::Placement #[cfg(feature = "desktop")]
 glassmere use Point = glassmere_scene::Point
 glassmere use Primitive = glassmere_scene::Primitive
 glassmere use Properties = glassmere_derive::Properties #[cfg(feature = "derive")]
+glassmere use PropertyChoice = glassmere_derive::PropertyChoice #[cfg(feature = "derive")]
 glassmere use Rect = glassmere_scene::Rect
 glassmere use Scene = glassmere_scene::Scene
 glassmere use Segment = glassmere_scene::Segment
@@ -42,6 +44,7 @@ glassmere-core   const Dirty::TEXT: Dirty
 glassmere-core   const Dirty::TREE: Dirty
 glassmere-core   const GridColumns::MAX_WIDTH: f32
 glassmere-core   const GridColumns::MIN_WIDTH: f32
+glassmere-core   const PropertyChoice::NAMES: &'static [&'static str]
 glassmere-core   const ResizeEdge::ALL: [Self; 8]
 glassmere-core   const Transform::IDENTITY: Self
 glassmere-core   const WindowId::MAIN: WindowId
@@ -816,6 +819,7 @@ glassmere-core   fn ListModel::item_id(&self, index: usize) -> ItemId
 glassmere-core   fn ListModel::label(&self, index: usize) -> String
 glassmere-core   fn ListModel::len(&self) -> usize
 glassmere-core   fn ListModel::parent(&self, _id: ItemId) -> Option<ItemId> (provided)
+glassmere-core   fn ListModel::row_heights(&self) -> Option<&RowHeights> (provided)
 glassmere-core   fn ListModel::set_expanded(&mut self, _id: ItemId, _expanded: bool) -> bool (provided)
 glassmere-core   fn ListState::reveal(&mut self, id: ItemId)
 glassmere-core   fn ListState::scroll_offset(&self) -> f32
@@ -860,6 +864,8 @@ glassmere-core   fn Paint::background(color: Color) -> Self
 glassmere-core   fn Paint::foreground(color: Color) -> Self
 glassmere-core   fn Paint::opacity(opacity: f32) -> Self
 glassmere-core   fn Paint::transform(transform: Transform) -> Self
+glassmere-core   fn PropertyChoice::from_index(index: usize) -> Self
+glassmere-core   fn PropertyChoice::index(&self) -> usize
 glassmere-core   fn PropertyGrid::bool(&mut self, name: &str, value: bool) [impl<M: 'static> PropertyGrid<'_, '_, M>]
 glassmere-core   fn PropertyGrid::bool_with(&mut self, name: &str, value: bool, on: impl Fn(bool) -> M + 'static) [impl<M: 'static> PropertyGrid<'_, '_, M>]
 glassmere-core   fn PropertyGrid::choice(&mut self, name: &str, value: usize, choices: &[&str]) [impl<M: 'static> PropertyGrid<'_, '_, M>]
@@ -869,8 +875,10 @@ glassmere-core   fn PropertyGrid::color_with(&mut self, name: &str, value: Color
 glassmere-core   fn PropertyGrid::custom(&mut self, name: &str, editor: impl FnOnce(&mut Ui<'_, M>, &str)) [impl<M: 'static> PropertyGrid<'_, '_, M>]
 glassmere-core   fn PropertyGrid::default<T: Any>(&mut self, value: T) -> &mut Self [impl<M: 'static> PropertyGrid<'_, '_, M>]
 glassmere-core   fn PropertyGrid::group(&mut self, name: &str, content: impl FnOnce(&mut PropertyGrid<'_, '_, M>)) [impl<M: 'static> PropertyGrid<'_, '_, M>]
+glassmere-core   fn PropertyGrid::mixed(&mut self, mixed: bool) -> &mut Self [impl<M: 'static> PropertyGrid<'_, '_, M>]
 glassmere-core   fn PropertyGrid::number(&mut self, name: &str, value: f64, options: NumberOptions) [impl<M: 'static> PropertyGrid<'_, '_, M>]
 glassmere-core   fn PropertyGrid::number_with(&mut self, name: &str, value: f64, options: NumberOptions, on: impl Fn(f64) -> M + 'static) [impl<M: 'static> PropertyGrid<'_, '_, M>]
+glassmere-core   fn PropertyGrid::optional(&mut self, set: bool, on: impl Fn(bool) -> M) -> &mut Self [impl<M: 'static> PropertyGrid<'_, '_, M>]
 glassmere-core   fn PropertyGrid::readonly(&mut self, name: &str, text: impl Into<String>) [impl<M: 'static> PropertyGrid<'_, '_, M>]
 glassmere-core   fn PropertyGrid::text(&mut self, name: &str, value: &str) [impl<M: 'static> PropertyGrid<'_, '_, M>]
 glassmere-core   fn PropertyGrid::text_with(&mut self, name: &str, value: &str, on: impl Fn(String) -> M + 'static) [impl<M: 'static> PropertyGrid<'_, '_, M>]
@@ -936,6 +944,11 @@ glassmere-core   fn RichText::new() -> Self
 glassmere-core   fn RichText::plain(&self) -> String
 glassmere-core   fn RichText::run(mut self, run: RichRun) -> Self
 glassmere-core   fn RichText::text(self, text: impl Into<String>) -> Self
+glassmere-core   fn RowHeights::get(&self, index: usize) -> Option<f32>
+glassmere-core   fn RowHeights::is_empty(&self) -> bool
+glassmere-core   fn RowHeights::len(&self) -> usize
+glassmere-core   fn RowHeights::new(rows: impl IntoIterator<Item = Option<f32>>) -> Self
+glassmere-core   fn RowHeights::set(&mut self, index: usize, height: Option<f32>)
 glassmere-core   fn Selection::caret(at: usize) -> Self
 glassmere-core   fn Selection::is_caret(self) -> bool
 glassmere-core   fn Selection::range(self) -> Range<usize>
@@ -1110,6 +1123,7 @@ glassmere-core   fn Tray::with_icon(mut self, icon: Image) -> Self
 glassmere-core   fn Tray::with_menu(mut self, menu: Menu) -> Self
 glassmere-core   fn TreeModel::item(&self, id: ItemId) -> Option<&TreeItem>
 glassmere-core   fn TreeModel::new(items: Vec<TreeItem>) -> Result<Self, ModelError>
+glassmere-core   fn TreeModel::set_row_height(&mut self, id: ItemId, height: Option<f32>)
 glassmere-core   fn Ui::autocomplete<S: AsRef<str>>(&mut self, label: impl Into<String>, value: &str, suggestions: &[S], on_change: impl Fn(String) -> M + 'static) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::autocomplete_with<S: AsRef<str>>(&mut self, label: impl Into<String>, value: &str, suggestions: &[S], on_change: impl Fn(String) -> M + 'static, extra: Autocomplete<M>) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::button(&mut self, button: impl Into<Button<M>>) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
@@ -1813,6 +1827,7 @@ glassmere-core struct RichEditorResponse #[derive(Clone, Debug, Default, Eq, Par
 glassmere-core struct RichPosition #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 glassmere-core struct RichRun #[derive(Clone, Debug, Default, PartialEq)]
 glassmere-core struct RichText #[derive(Clone, Debug, Default, PartialEq)]
+glassmere-core struct RowHeights #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct ScrollState #[derive(Clone, Copy, Debug, Default, PartialEq)]
 glassmere-core struct Selection #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-core struct Semantics #[derive(Clone, Debug, Default, PartialEq)]
@@ -1857,6 +1872,7 @@ glassmere-core trait Highlighter
 glassmere-core trait ListModel
 glassmere-core trait LocaleFormat
 glassmere-core trait Messages
+glassmere-core trait PropertyChoice: Sized
 glassmere-core type app::Action<S> = Rc<dyn Fn(&mut S)>
 glassmere-core use Action = tree::Action
 glassmere-core use Align = style::Align
@@ -1988,6 +2004,7 @@ glassmere-core use Pacing = app::Pacing
 glassmere-core use Paint = style::Paint
 glassmere-core use Pen = tree::Pen
 glassmere-core use PopoverOptions = panes::PopoverOptions
+glassmere-core use PropertyChoice = property_grid::PropertyChoice
 glassmere-core use PropertyGrid = ui::PropertyGrid
 glassmere-core use PropertyGridOptions = property_grid::PropertyGridOptions
 glassmere-core use PropertyGridState = property_grid::PropertyGridState
@@ -2008,6 +2025,7 @@ glassmere-core use RichPosition = rich_document::RichPosition
 glassmere-core use RichRun = rich_text::RichRun
 glassmere-core use RichText = rich_text::RichText
 glassmere-core use Role = tree::Role
+glassmere-core use RowHeights = collection::RowHeights
 glassmere-core use ScrollState = tree::ScrollState
 glassmere-core use Selection = document::Selection
 glassmere-core use Semantics = tree::Semantics
@@ -2088,6 +2106,8 @@ glassmere-scene   field Color::2: u8
 glassmere-scene   field Color::3: u8
 glassmere-scene   field GradientStop::at: f32
 glassmere-scene   field GradientStop::color: Color
+glassmere-scene   field ImageFrame::delay: Duration
+glassmere-scene   field ImageFrame::image: Image
 glassmere-scene   field Point::x: f32
 glassmere-scene   field Point::y: f32
 glassmere-scene   field Rect::height: f32
@@ -2131,11 +2151,14 @@ glassmere-scene   fn Affine::scale(x: f32, y: f32) -> Self
 glassmere-scene   fn Affine::then(self, next: Self) -> Self
 glassmere-scene   fn Affine::translate(x: f32, y: f32) -> Self
 glassmere-scene   fn Color::linear(self) -> [f32; 4]
+glassmere-scene   fn Image::animated(frames: Vec<ImageFrame>, loops: Option<NonZeroU32>) -> Option<Self>
+glassmere-scene   fn Image::frames(&self) -> &[ImageFrame]
 glassmere-scene   fn Image::from_premultiplied(width: u32, height: u32, rgba: Vec<u8>) -> Option<Self>
 glassmere-scene   fn Image::from_rgba8(width: u32, height: u32, mut rgba: Vec<u8>) -> Option<Self>
 glassmere-scene   fn Image::from_vector(vector: impl VectorImage + 'static) -> Self
 glassmere-scene   fn Image::id(&self) -> u64
 glassmere-scene   fn Image::is_vector(&self) -> bool
+glassmere-scene   fn Image::loops(&self) -> Option<NonZeroU32>
 glassmere-scene   fn Image::pixels(&self) -> Option<(u32, u32, &[u8])>
 glassmere-scene   fn Image::size(&self) -> Size
 glassmere-scene   fn Image::vector(&self) -> Option<&dyn VectorImage>
@@ -2215,6 +2238,7 @@ glassmere-scene struct CaretStop #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-scene struct Color #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 glassmere-scene struct GradientStop #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-scene struct Image #[derive(Clone)] (private fields)
+glassmere-scene struct ImageFrame #[derive(Clone, Debug, PartialEq)]
 glassmere-scene struct MonospaceMeasurer #[derive(Default)]
 glassmere-scene struct Path #[derive(Clone, Debug, Default, PartialEq)] (private fields)
 glassmere-scene struct Point #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -2233,6 +2257,7 @@ glassmere-scene use Affinity = text::Affinity
 glassmere-scene use CaretStop = text::CaretStop
 glassmere-scene use FontFamily = text::FontFamily
 glassmere-scene use Image = image::Image
+glassmere-scene use ImageFrame = image::ImageFrame
 glassmere-scene use MonospaceMeasurer = text::MonospaceMeasurer
 glassmere-scene use Path = path::Path
 glassmere-scene use Segment = path::Segment
@@ -2574,6 +2599,7 @@ glassmere-win32 fn frame_shadow(window: isize)
 glassmere-win32 impl Drop for Caption
 glassmere-win32 struct Caption (private fields)
 glassmere-derive fn properties(input: TokenStream) -> TokenStream #[proc_macro_derive(Properties, attributes(property))]
+glassmere-derive fn property_choice(input: TokenStream) -> TokenStream #[proc_macro_derive(PropertyChoice, attributes(property))]
 glassmere-derive fn style_sheet(input: TokenStream) -> TokenStream #[proc_macro]
 glassmere-derive fn tr(input: TokenStream) -> TokenStream #[proc_macro]
 glassmere-fluent   field FluentError::file: Option<PathBuf>
