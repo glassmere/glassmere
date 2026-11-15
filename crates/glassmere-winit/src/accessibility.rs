@@ -295,9 +295,6 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     CoreRole::SpinButton => Role::SpinButton,
                     CoreRole::Status => Role::Status,
                     CoreRole::Alert => Role::Alert,
-                    CoreRole::ProgressBar => Role::ProgressIndicator,
-                    CoreRole::Switch => Role::Switch,
-                    CoreRole::Link => Role::Link,
                 }
             };
             let mut node = Node::new(role);
@@ -483,8 +480,6 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     role,
                     Role::Button
                         | Role::CheckBox
-                        | Role::Switch
-                        | Role::Link
                         | Role::RadioButton
                         | Role::ComboBox
                         | Role::ListBoxOption
@@ -1133,7 +1128,7 @@ mod tests {
     }
 
     #[test]
-    fn progress_bars_and_spinners_are_progress_indicators_with_a_value_only_when_it_is_known() {
+    fn progress_bars_and_spinners_are_statuses_with_a_value_only_when_it_is_known() {
         let mut context = Context::new();
         context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
             ui.keyed("known", |ui| ui.progress("Upload", Some(0.4)));
@@ -1142,22 +1137,22 @@ mod tests {
         });
         let update = tree(&context, "Progress", 1.0);
         let node = |key: &str| node_in(&update, NodeId(context.find(&[key]).unwrap().0));
-        assert_eq!(node("known").role(), Role::ProgressIndicator);
+        assert_eq!(node("known").role(), Role::Status);
         assert_eq!(node("known").label(), Some("Upload"));
         assert_eq!(node("known").numeric_value(), Some(40.0));
         assert_eq!(node("known").max_numeric_value(), Some(100.0));
         assert_eq!(node("known").value(), Some("40%"));
         assert!(!node("known").supports_action(Action::SetValue));
-        assert_eq!(node("unknown").role(), Role::ProgressIndicator);
+        assert_eq!(node("unknown").role(), Role::Status);
         assert_eq!(node("unknown").numeric_value(), None);
-        assert_eq!(node("spinner").role(), Role::ProgressIndicator);
+        assert_eq!(node("spinner").role(), Role::Status);
         assert_eq!(node("spinner").label(), Some("Loading"));
         assert_eq!(node("spinner").numeric_value(), None);
         assert_eq!(node("spinner").value(), None);
     }
 
     #[test]
-    fn a_switch_is_a_switch_that_reports_whether_it_is_on_and_can_be_clicked() {
+    fn a_switch_is_a_checkbox_that_reports_whether_it_is_on_and_can_be_clicked() {
         let mut context = Context::new();
         context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
             ui.keyed("off", |ui| ui.switch("Wi-Fi", false, |_| ()));
@@ -1168,7 +1163,7 @@ mod tests {
         });
         let update = tree(&context, "Switch", 1.0);
         let node = |key: &str| node_in(&update, NodeId(context.find(&[key]).unwrap().0));
-        assert_eq!(node("off").role(), Role::Switch);
+        assert_eq!(node("off").role(), Role::CheckBox);
         assert_eq!(node("off").label(), Some("Wi-Fi"));
         assert_eq!(node("off").toggled(), Some(accesskit::Toggled::False));
         assert_eq!(node("on").toggled(), Some(accesskit::Toggled::True));
@@ -1220,7 +1215,7 @@ mod tests {
     }
 
     #[test]
-    fn a_link_is_a_link_that_can_be_clicked_until_it_is_disabled() {
+    fn a_link_is_a_button_that_can_be_clicked_until_it_is_disabled() {
         let mut context = Context::new();
         context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
             ui.keyed("docs", |ui| ui.link("Documentation"));
@@ -1229,13 +1224,13 @@ mod tests {
         let update = tree(&context, "Links", 1.0);
         let docs = context.find(&["docs"]).unwrap();
         let node = node_in(&update, NodeId(docs.0));
-        assert_eq!(node.role(), Role::Link);
+        assert_eq!(node.role(), Role::Button);
         assert_eq!(node.label(), Some("Documentation"));
         assert!(node.supports_action(Action::Click));
         assert!(node.supports_action(Action::Focus));
         let locked = context.find(&["locked"]).unwrap();
         let node = node_in(&update, NodeId(locked.0));
-        assert_eq!(node.role(), Role::Link);
+        assert_eq!(node.role(), Role::Button);
         assert!(node.is_disabled());
         assert!(!node.supports_action(Action::Click));
     }

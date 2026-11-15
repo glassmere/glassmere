@@ -16,13 +16,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `Ui::link`, underlined text that sends a message.
   - `Ui::range_slider`, a slider with two thumbs that cannot cross.
   - `Label::selectable`, a label whose text can be selected and copied.
-- `Role::ProgressBar`, `Role::Switch` and `Role::Link`. A `match` on `Role` without a `_` arm needs the three new arms.
 - Stylesheet variables and nesting. `--name: value` declares a variable and `var(--name)` or `var(--name, fallback)` uses it. A class may contain `&:state` and `&.name` blocks. Both work in files and in `style_sheet!`.
 - Animated GIF, WebP and APNG play in image widgets. `Image::animated` builds one from `ImageFrame`s, and `Image::frames` and `Image::loops` read it back. A background image shows the first frame.
 - Rows of a list or tree can differ in height: `ListModel::row_heights` returns a `RowHeights`, and `TreeModel::set_row_height` sets one row of a tree. Scrolling, paging and the scrollbar follow the real heights.
 - Property grid:
   - A grid with a `height` declares only the rows in view, however many properties there are. Its rows and group headers are then 44 px high.
-  - Several objects can be edited at once: `PropertyGrid::mixed` shows "Mixed" where they differ, and `#[derive(Properties)]` generates `properties_many`.
+  - Several objects can be edited at once: `PropertyGrid::mixed` shows "Mixed" where they differ, and `#[derive(Properties)]` generates `properties_many`. A `flatten` group shows the first object's rows unless it is `#[property(flatten, many)]`, which needs `properties_many` on the nested type.
   - A fieldless enum that derives `PropertyChoice` is edited as a drop-down of its variants.
   - An `Option<T>` field is edited as `T` beside a box that sets or clears it, through `PropertyGrid::optional`.
 - `Ui::calendar`, a month grid, and `Ui::date_picker`, a field that opens one, both on `Date` with `min`, `max` and the first weekday. `Date::new` checks a date, `Date::weekday` returns the new `Weekday`. `today` marks a day with a dot and is where a calendar without a selection starts. Month and weekday names are catalog keys, with German and Czech in `glassmere-fluent`. See `examples/dates.rs`.
@@ -35,7 +34,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A tooltip also shows when its widget gets the focus from the keyboard, and hides on blur, on Escape or on a key that changes the value. A tooltip shown this way takes that Escape.
 - A tooltip shows sooner when the pointer moves to it right after another one was on show.
 - A submenu opens after the pointer has rested on its row for 200 ms, and stays open while the pointer crosses other rows on the way to it. A click, Enter and the arrow keys open it at once.
-- `#[property(flatten)]` calls `properties_many` on the nested type. A derived type has it; a hand-written one needs to add it.
 
 ### Fixed
 

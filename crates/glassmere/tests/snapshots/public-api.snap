@@ -1511,7 +1511,6 @@ glassmere-core   variant Role::Grid
 glassmere-core   variant Role::Group
 glassmere-core   variant Role::Image
 glassmere-core   variant Role::Label
-glassmere-core   variant Role::Link
 glassmere-core   variant Role::ListBox
 glassmere-core   variant Role::Menu
 glassmere-core   variant Role::MenuButton
@@ -1519,7 +1518,6 @@ glassmere-core   variant Role::MenuItem
 glassmere-core   variant Role::MultilineTextInput
 glassmere-core   variant Role::Option
 glassmere-core   variant Role::PasswordInput
-glassmere-core   variant Role::ProgressBar
 glassmere-core   variant Role::Radio
 glassmere-core   variant Role::Row
 glassmere-core   variant Role::RowGroup
@@ -1528,7 +1526,6 @@ glassmere-core   variant Role::Slider
 glassmere-core   variant Role::SpinButton
 glassmere-core   variant Role::Splitter
 glassmere-core   variant Role::Status
-glassmere-core   variant Role::Switch
 glassmere-core   variant Role::Tab
 glassmere-core   variant Role::TabList
 glassmere-core   variant Role::TabPanel

@@ -59,7 +59,7 @@ fn a_progress_bar_reads_as_a_percentage_clamped_to_its_range() {
             .unwrap()
     };
     let quarter = snapshot("quarter");
-    assert_eq!(quarter.semantics.role, Role::ProgressBar);
+    assert_eq!(quarter.semantics.role, Role::Status);
     assert_eq!(quarter.semantics.label, "quarter");
     assert_eq!(quarter.value.as_deref(), Some("25%"));
     assert_eq!(
@@ -70,7 +70,7 @@ fn a_progress_bar_reads_as_a_percentage_clamped_to_its_range() {
     assert_eq!(snapshot("over").value.as_deref(), Some("100%"));
     assert_eq!(snapshot("under").value.as_deref(), Some("0%"));
     let unknown = snapshot("unknown");
-    assert_eq!(unknown.semantics.role, Role::ProgressBar);
+    assert_eq!(unknown.semantics.role, Role::Status);
     assert_eq!((unknown.value, unknown.numeric), (None, None));
 }
 
@@ -203,13 +203,13 @@ fn spin(ui: &mut Ui<'_>) {
 }
 
 #[test]
-fn a_spinner_is_a_progress_bar_without_a_value_and_cannot_be_focused() {
+fn a_spinner_is_a_status_without_a_value_and_cannot_be_focused() {
     let mut context = Context::new();
     frame_at(&mut context, 0, spin);
     let node = context
         .node(context.find(&["page", "busy"]).unwrap())
         .unwrap();
-    assert_eq!(node.semantics.role, Role::ProgressBar);
+    assert_eq!(node.semantics.role, Role::Status);
     assert_eq!(node.semantics.label, "Loading");
     assert!(!node.semantics.focusable);
     assert_eq!((node.value, node.numeric), (None, None));
@@ -420,11 +420,11 @@ fn a_disabled_switch_cannot_be_focused_or_toggled_and_says_so() {
 }
 
 #[test]
-fn a_switch_is_a_switch_with_a_name_and_a_checked_state() {
+fn a_switch_is_a_checkbox_with_a_name_and_a_checked_state() {
     let mut app = toggles();
     let wifi = app.context.find(&["page", "wifi"]).unwrap();
     let node = app.context.node(wifi).unwrap();
-    assert_eq!(node.semantics.role, Role::Switch);
+    assert_eq!(node.semantics.role, Role::Checkbox);
     assert_eq!(node.semantics.label, "Wi-Fi");
     assert!(node.semantics.focusable);
     assert_eq!(node.checked, Some(false));
@@ -958,18 +958,21 @@ fn a_disabled_link_cannot_be_focused_or_activated_and_says_so() {
 }
 
 #[test]
-fn a_link_is_a_link_with_a_name_and_takes_the_keyboard_and_the_pointing_hand() {
+fn a_link_is_a_button_with_a_name_and_takes_the_keyboard_and_the_pointing_hand() {
     let app = links();
     let docs = app.context.find(&["page", "docs"]).unwrap();
     let node = app.context.node(docs).unwrap();
-    assert_eq!(node.semantics.role, Role::Link);
+    assert_eq!(node.semantics.role, Role::Button);
     assert_eq!(node.semantics.label, "Documentation");
     // The window shows the pointing hand over anything focusable.
     assert!(node.semantics.focusable);
     assert!(!node.semantics.disabled);
     // Without a message it is still a link: the application may only listen.
     let quiet = app.context.find(&["page", "quiet"]).unwrap();
-    assert_eq!(app.context.node(quiet).unwrap().semantics.role, Role::Link);
+    assert_eq!(
+        app.context.node(quiet).unwrap().semantics.role,
+        Role::Button
+    );
 }
 
 /// The color and the font size of the text drawn for `label`.

@@ -254,8 +254,6 @@ impl Context {
                         | Role::MultilineTextInput
                         | Role::PasswordInput
                         | Role::Checkbox
-                        | Role::Switch
-                        | Role::Link
                         | Role::Radio
                         | Role::Slider
                         | Role::ComboBox

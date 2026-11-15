@@ -718,3 +718,113 @@ fn several_objects_agree_on_an_option_only_when_all_have_it_and_the_same_value()
         Some("4")
     );
 }
+
+/// A nested type written by hand, with `properties` and nothing for several
+/// objects.
+struct Border {
+    width: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum BorderMsg {
+    Width(f64),
+}
+
+impl Border {
+    fn apply(&mut self, message: BorderMsg) {
+        let BorderMsg::Width(width) = message;
+        self.width = width;
+    }
+
+    fn properties<M: 'static>(
+        &self,
+        grid: &mut glassmere::PropertyGrid<'_, '_, M>,
+        on: impl Fn(BorderMsg) -> M + 'static,
+    ) {
+        grid.number_with(
+            "Width",
+            self.width,
+            glassmere::NumberOptions::default(),
+            move |width| on(BorderMsg::Width(width)),
+        );
+    }
+}
+
+#[derive(Properties)]
+struct Panel {
+    #[property(flatten)]
+    border: Border,
+    #[property(flatten, many)]
+    shadow: Shadow,
+}
+
+#[derive(Clone)]
+enum PanelsMsg {
+    Grid(PropertyMsg),
+    Panel(PanelMsg),
+}
+
+struct PanelsApp {
+    state: PropertyGridState,
+    panels: Vec<Panel>,
+}
+
+impl glassmere::App for PanelsApp {
+    type Message = PanelsMsg;
+
+    fn update(&mut self, message: PanelsMsg, _effects: &mut Effects<'_, PanelsMsg>) {
+        match message {
+            PanelsMsg::Grid(grid) => self.state.apply(&grid),
+            PanelsMsg::Panel(panel) => {
+                for each in &mut self.panels {
+                    each.apply(panel.clone());
+                }
+            }
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, PanelsMsg>) {
+        let panels: Vec<&Panel> = self.panels.iter().collect();
+        ui.keyed("grid", |ui| {
+            ui.property_grid(
+                &self.state,
+                PropertyGridOptions::new("Panels"),
+                PanelsMsg::Grid,
+                |grid| Panel::properties_many(&panels, grid, PanelsMsg::Panel),
+            )
+        });
+    }
+}
+
+#[test]
+fn a_flattened_group_marks_mixed_rows_only_when_it_is_declared_many() {
+    let panel = |width, blur| Panel {
+        border: Border { width },
+        shadow: Shadow {
+            blur,
+            color: Color::rgb(0, 0, 0),
+        },
+    };
+    let harness = Harness::app(
+        Size::new(640.0, 1000.0),
+        PanelsApp {
+            state: PropertyGridState::default(),
+            panels: vec![panel(1.0, 4.0), panel(2.0, 8.0)],
+        },
+    );
+    let value = |path: &[&str]| {
+        let mut full = vec!["grid", "$rows"];
+        full.extend(path);
+        let id = harness
+            .context()
+            .find(&full)
+            .unwrap_or_else(|| panic!("{path:?}"));
+        harness.context().node(id).unwrap().value
+    };
+    // The hand-written group shows the first panel's width.
+    let width = ["group:Border", "row:Width", "$editor", "$value", "$field"];
+    assert_eq!(value(&width).as_deref(), Some("1"));
+    // The derived one knows the blurs differ.
+    let blur = ["group:Shadow", "row:Blur", "$editor", "$value", "$field"];
+    assert_eq!(value(&blur).as_deref(), Some(""));
+}

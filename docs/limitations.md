@@ -24,6 +24,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - AccessKit's Windows adapter has no UI Automation ExpandCollapse pattern. The tree exposes expand and collapse actions, but combo boxes and menus open from automation only through focus and keyboard or pointer input.
 - IME routing and preedit geometry are covered by model-level tests. Real candidate windows for Japanese, Chinese and Korean, and dead-key input, have not been tried.
 - Accessibility checks cover names, not contrast, focus order or target size.
+- A switch is a checkbox to assistive technology, a link is a button, and a progress bar or a spinner is a status with its percentage as the value. `Role` has no variants of their own for them.
 
 ## Rendering
 

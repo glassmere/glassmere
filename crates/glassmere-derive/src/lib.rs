@@ -56,6 +56,9 @@
 //! compared as the text it shows, and a choice by its position). The
 //! application applies each message to
 //! every card: `for card in &mut cards { card.apply(message.clone()) }`. A
+//! `flatten` group shows the first card's rows unless the field is
+//! `#[property(flatten, many)]`, which needs `properties_many` on the nested
+//! type and then marks its mixed rows too. A
 //! `with` editor is given the first card's value and cannot show a mixed one.
 //! `properties` is `properties_many` over one card.
 //!
@@ -145,6 +148,7 @@ struct Options {
     skip: bool,
     readonly: bool,
     flatten: bool,
+    many: bool,
     with: Option<Path>,
     default: Option<Expr>,
     min: Option<Expr>,
@@ -177,6 +181,7 @@ fn options(field: &syn::Field) -> syn::Result<Options> {
                 "skip" => options.skip = true,
                 "readonly" => options.readonly = true,
                 "flatten" => options.flatten = true,
+                "many" => options.many = true,
                 "with" => options.with = Some(meta.value()?.parse()?),
                 "default" => options.default = Some(meta.value()?.parse()?),
                 "min" => options.min = Some(meta.value()?.parse()?),
@@ -195,7 +200,7 @@ fn options(field: &syn::Field) -> syn::Result<Options> {
                 _ => {
                     return Err(meta.error(
                         "unknown property option; expected name, group, default, min, max, step, \
-                         decimals, suffix, choices(...), readonly, flatten, with or skip",
+                         decimals, suffix, choices(...), readonly, flatten, many, with or skip",
                     ));
                 }
             }
@@ -413,6 +418,17 @@ fn message_row(
         let inner: Tokens = format!("{}Msg", quote! { #path }.to_string().replace(' ', ""))
             .parse()
             .map_err(|_| Error::new_spanned(ty, "`flatten` needs a plain path to the struct"))?;
+        // A nested type is only known to have `properties`; `many` says it
+        // has `properties_many` too, and can show where the objects differ.
+        let nested = if options.many {
+            quote! {
+                let __inner: ::std::vec::Vec<&#ty> =
+                    objects.iter().map(|__object| &__object.#ident).collect();
+                <#ty>::properties_many(&__inner, grid, #send);
+            }
+        } else {
+            quote! { __first.#ident.properties(grid, #send); }
+        };
         return Ok((
             Some((
                 variant.clone(),
@@ -421,9 +437,7 @@ fn message_row(
             )),
             quote! {
                 grid.group(#name, |grid| {
-                    let __inner: ::std::vec::Vec<&#ty> =
-                        objects.iter().map(|__object| &__object.#ident).collect();
-                    <#ty>::properties_many(&__inner, grid, #send);
+                    #nested
                 });
             },
         ));
