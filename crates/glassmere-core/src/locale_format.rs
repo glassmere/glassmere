@@ -12,6 +12,77 @@ pub struct Date {
     pub day: u8,
 }
 
+impl Date {
+    /// The date, or `None` when it does not exist, such as 30 February or
+    /// 29 February of a year that is not a leap year.
+    pub fn new(year: i32, month: u8, day: u8) -> Option<Date> {
+        ((1..=12).contains(&month) && (1..=days_in_month(year, month)).contains(&day))
+            .then_some(Date { year, month, day })
+    }
+
+    /// The day of the week. A date written with a month or day that does not
+    /// exist is read as the nearest one that does.
+    pub fn weekday(&self) -> Weekday {
+        // 1970-01-01, day zero, was a Thursday.
+        Weekday::ALL[(self.days() + 3).rem_euclid(7) as usize]
+    }
+
+    /// Days since 1970-01-01, which is negative before it.
+    fn days(&self) -> i64 {
+        let month = i64::from(self.month.clamp(1, 12));
+        let day = i64::from(
+            self.day
+                .clamp(1, days_in_month(self.year, self.month.clamp(1, 12))),
+        );
+        // The year starts in March, so that the leap day ends it.
+        let year = i64::from(self.year) - i64::from(month <= 2);
+        let era = year.div_euclid(400);
+        let year_of_era = year.rem_euclid(400);
+        let day_of_year = (153 * ((month + 9) % 12) + 2) / 5 + day - 1;
+        let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+        era * 146_097 + day_of_era - 719_468
+    }
+}
+
+/// A day of the week.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Weekday {
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
+    Saturday,
+    Sunday,
+}
+
+impl Weekday {
+    pub(crate) const ALL: [Weekday; 7] = [
+        Self::Monday,
+        Self::Tuesday,
+        Self::Wednesday,
+        Self::Thursday,
+        Self::Friday,
+        Self::Saturday,
+        Self::Sunday,
+    ];
+}
+
+/// Whether the proleptic Gregorian calendar gives the year a 29 February.
+fn leap_year(year: i32) -> bool {
+    year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+}
+
+/// How many days `month` (1 to 12) has in `year`.
+fn days_in_month(year: i32, month: u8) -> u8 {
+    match month {
+        2 if leap_year(year) => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
 /// A time of day.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Time {

@@ -57,7 +57,7 @@ pub use focus::{DialogOptions, FocusScope};
 pub use glassmere_scene::{FontFamily, TextSpan, TextStyle, TextWrap};
 pub use glassmere_scene::{MonospaceMeasurer, TextMeasurer};
 pub use image::{BackgroundImage, ImageFit, ImageOptions, ImageSource, ImageTint};
-pub use locale_format::{Date, DateStyle, LocaleFormat, Time};
+pub use locale_format::{Date, DateStyle, LocaleFormat, Time, Weekday};
 pub use mailbox::{Mailbox, MessageSender, message_channel};
 pub use messages::{BUILTIN_MESSAGES, MessageArg, Messages};
 pub use panes::{Axis, PopoverOptions, SplitOptions, TOOLTIP_DELAY, Tab};
