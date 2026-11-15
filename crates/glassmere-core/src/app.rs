@@ -80,10 +80,13 @@ pub(crate) enum Handler<M> {
     /// highlighted suggestion sends `submit`.
     Autocomplete { change: Batch<M>, submit: Option<M> },
     /// A number field: a commit parses its draft in the context's locale and
-    /// sends `on` of the number when that differs from the declared one.
+    /// sends `on` of the number when that differs from the declared one. A
+    /// `mixed` field declares no one number, so a typed or stepped number
+    /// always sends.
     Number {
         on: Box<dyn Fn(f64) -> M>,
         options: Box<NumberOptions>,
+        mixed: bool,
     },
     /// A stepper button: steps the number field of its row by this many steps.
     Step(f64),
@@ -133,11 +136,12 @@ impl<M: 'static> Handler<M> {
                     submit: submit.map(|message| f(message)),
                 }
             }
-            Self::Number { on, options } => {
+            Self::Number { on, options, mixed } => {
                 let f = f.clone();
                 Handler::Number {
                     on: Box::new(move |number| f(on(number))),
                     options,
+                    mixed,
                 }
             }
             Self::Step(steps) => Handler::Step(steps),

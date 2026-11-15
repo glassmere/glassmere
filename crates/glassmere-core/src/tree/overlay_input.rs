@@ -27,6 +27,7 @@ impl Context {
             self.track_wake(),
             self.edge_scroll_wake(),
             self.menu_dwell_wake(),
+            self.image_wake(),
         ]
         .into_iter()
         .flatten()

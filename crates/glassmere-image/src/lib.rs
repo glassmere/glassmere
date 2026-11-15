@@ -1,21 +1,32 @@
-//! Decoding for `glassmere_scene::Image`: PNG, JPEG, WebP and GIF (first frame)
-//! through the `image` crate, SVG through `resvg`, and a background loader so
-//! files never decode on the UI thread.
-use glassmere_scene::{Image, Size, VectorImage};
+//! Decoding for `glassmere_scene::Image`: PNG, JPEG, WebP and GIF through the
+//! `image` crate, animated GIF, WebP and APNG as animated images, SVG through
+//! `resvg`, and a background loader so files never decode on the UI thread.
+use glassmere_scene::{Image, ImageFrame, Size, VectorImage};
 use image::{DynamicImage, ImageBuffer};
 use moxcms::{ColorProfile, DataColorSpace, Layout, TransformExecutor, TransformOptions};
 use resvg::{tiny_skia, usvg};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
+
+/// An animation keeps every frame decoded, premultiplied, so it is kept only
+/// while the frames add up to this many bytes (a 480 by 270 GIF keeps about
+/// 60 of them). A longer one shows its first frame, as a still image.
+const MAX_ANIMATION_BYTES: usize = 32 << 20;
 
 /// Decodes an image file's bytes. The format is detected from the content;
 /// anything that is not a known raster format is tried as SVG.
+///
+/// An animated GIF, WebP or APNG becomes an animated image (`Image::animated`)
+/// with every frame composited to the full picture, its delays and its loop
+/// count. A frame that asks for 10 ms or less lasts 100 ms, as in browsers. An
+/// animation that does not fit in 32 MiB of decoded frames, or fails to decode
+/// whole, is the still image of its first frame.
 pub fn decode(bytes: &[u8]) -> Result<Image, String> {
-    if image::guess_format(bytes).is_ok() {
-        raster(bytes)
-    } else {
-        svg(bytes)
+    match image::guess_format(bytes) {
+        Ok(format) => animation(bytes, format).map_or_else(|| raster(bytes), Ok),
+        Err(_) => svg(bytes),
     }
 }
 
@@ -163,6 +174,85 @@ fn behaves_as_srgb(transform: &dyn TransformExecutor<u8>, layout: Layout) -> boo
             .zip(&expected)
             .all(|(actual, expected)| actual.abs_diff(*expected) <= 1)
     })
+}
+
+/// The whole animation of a GIF, WebP or APNG. `None` for anything else, for
+/// a single frame (the still path decodes those) and for one that fails or is
+/// too big to keep.
+fn animation(bytes: &[u8], format: image::ImageFormat) -> Option<Image> {
+    use image::codecs::{gif::GifDecoder, png::PngDecoder, webp::WebPDecoder};
+    use image::{ImageDecoder, ImageFormat, Limits};
+    // These decoders start without the limits `ImageReader` applies, and a
+    // picture too big for two of its frames cannot be kept anyway.
+    fn bounded(decoder: &mut impl ImageDecoder) -> Option<()> {
+        decoder.set_limits(Limits::default()).ok()?;
+        let (width, height) = decoder.dimensions();
+        let pixels = u64::from(width) * u64::from(height);
+        (pixels * 8 <= MAX_ANIMATION_BYTES as u64).then_some(())
+    }
+    let input = std::io::Cursor::new(bytes);
+    match format {
+        ImageFormat::Gif => {
+            let mut decoder = GifDecoder::new(input).ok()?;
+            bounded(&mut decoder)?;
+            // A GIF counts the repeats after the first play.
+            frames(decoder, 1)
+        }
+        ImageFormat::WebP => {
+            let mut decoder = WebPDecoder::new(input).ok()?;
+            bounded(&mut decoder)?;
+            if decoder.has_animation() {
+                frames(decoder, 0)
+            } else {
+                None
+            }
+        }
+        ImageFormat::Png => {
+            let mut decoder = PngDecoder::new(input).ok()?;
+            bounded(&mut decoder)?;
+            if decoder.is_apng().ok()? {
+                frames(decoder.apng().ok()?, 0)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Decodes frames until they add up past the cap. `plays_added` is how many
+/// plays the format's loop count leaves out.
+fn frames<'a>(decoder: impl image::AnimationDecoder<'a>, plays_added: u32) -> Option<Image> {
+    use image::metadata::LoopCount;
+    let loops = match decoder.loop_count() {
+        LoopCount::Infinite => None,
+        LoopCount::Finite(plays) => Some(plays.checked_add(plays_added)?),
+    };
+    let mut bytes = 0;
+    let mut frames = Vec::new();
+    for frame in decoder.into_frames() {
+        let frame = frame.ok()?;
+        let delay = Duration::from(frame.delay());
+        // Browsers give a frame that asks for next to nothing a tenth of a
+        // second, which also keeps a file from asking for a redraw per tick.
+        let delay = if delay <= Duration::from_millis(10) {
+            Duration::from_millis(100)
+        } else {
+            delay
+        };
+        let buffer = frame.into_buffer();
+        bytes += buffer.as_raw().len();
+        if bytes > MAX_ANIMATION_BYTES {
+            return None;
+        }
+        let (width, height) = buffer.dimensions();
+        let image = Image::from_rgba8(width, height, buffer.into_raw())?;
+        frames.push(ImageFrame { image, delay });
+    }
+    if frames.len() < 2 {
+        return None;
+    }
+    Image::animated(frames, loops)
 }
 
 struct Svg(usvg::Tree);

@@ -33,7 +33,8 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - `Primitive::Custom` is a wgpu callback. A window painted by the CPU renderer leaves it empty.
 - Damage is at most eight rectangles: ones that overlap or lie within 8 logical pixels join, and past eight the closest pair do, so crowded changes still redraw the gaps between them. A node animating a transform (a slide or zoom in, a layout transition, keyframes) still repaints the whole window while it runs; an exit animation does not.
 - The glyph atlas size is not reported: glyphon does not expose it, so no memory total includes it.
-- Images have no mipmap chain. A photo drawn at under half its size is box-filtered down in halving steps, once per step, on the render thread the first time it is drawn there, so a large photo shown small can cost one slow frame; between steps it is sampled bilinearly, without blending two steps. Animated GIF and WebP show the first frame. An embedded ICC profile for RGB or grey pixels is converted to sRGB (PNG, JPEG and WebP); CMYK profiles and PNG `gAMA`, `cHRM` and `cICP` information are ignored.
+- Images have no mipmap chain. A photo drawn at under half its size is box-filtered down in halving steps, once per step, on the render thread the first time it is drawn there, so a large photo shown small can cost one slow frame; between steps it is sampled bilinearly, without blending two steps. An embedded ICC profile for RGB or grey pixels is converted to sRGB (PNG, JPEG and WebP); CMYK profiles and PNG `gAMA`, `cHRM` and `cICP` information are ignored.
+- Animated GIF, WebP and APNG play in image widgets only; a background image shows the first frame. An animation is kept only while its decoded frames add up to 32 MiB, and past that it shows its first frame. Playback follows the clock, so an animation off screen is not paused but skips ahead, and one that finished its loops while hidden shows its last frame. A GIF without a loop extension repeats forever (browsers play it once), because the `image` crate does not tell it from an infinite one. Animated frames skip EXIF orientation and ICC conversion.
 - The window waits for the graphics stack before it shows anything. Startup is dominated by the driver's adapter enumeration.
 - The pixel comparison between the two renderers was tuned on one Direct3D 12 adapter. It also passes on OpenGL on Windows; tolerances on other drivers are unverified.
 
@@ -41,7 +42,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 
 - Grid: no named lines, only named areas; no nested `repeat`. A percentage width on a grid item resolves against the grid container.
 - `Ui::responsive` reads the width of the last frame, so a view that changes structure at a threshold settles on the second frame.
-- Stylesheets have no variables or nesting and reload by polling every half second.
+- Stylesheets reload by polling every half second. Variables are plain text resolved when the sheet is parsed, in one scope for the whole sheet: they cannot read a theme token, so a colour taken from one does not follow a theme switch, and a variable must be declared above its first use. Nesting is `&:state` and `&.name` only, because a class is a name and not a selector; there are no descendant selectors.
 - One transition covers all animated properties of a node, with no spring physics. Control internals (slider thumbs, caret) do not ease.
 - Ancestors clip to their bounds; there is no unclipped container.
 - Only direct children extend a scroll view's width, and popups scroll vertically only.
@@ -60,16 +61,16 @@ What does not work, is partial, or has not been tried. Grouped by area.
 
 ## Collections and grids
 
-- Rows have one fixed height per collection.
+- Row heights come from the model (`ListModel::row_heights`), not from content: a row is never measured, so wrapping text or an expanding row needs its height set by the application. A grid's rows all have the one height.
 - A grid selects one cell at a time, with no range selection or block copy.
 - Filters are text only. There are no pinned data rows (totals).
-- Property grid rows are declared, not virtualized; filter or split thousands of properties. There is no multi-object editing. Enums are edited through a `usize` index with `choices(..)`, and `Option<T>` and collection fields are not supported by `#[derive(Properties)]`.
+- A property grid with a `height` declares only the rows in view and a few beyond, but the view still names every property on each frame, so keep that closure cheap. Its rows and group headers share one fixed height, a grid without a `height` declares every row, and the editor that has focus goes when its row scrolls out of the declared window. Editing several objects works through `PropertyGrid::mixed`, which the view drives: a custom `with` editor cannot show a mixed value, and the derived `properties_many` compares fields with `PartialEq`. Collection fields such as `Vec<T>` are not supported by `#[derive(Properties)]`: adding, removing and reordering items needs rows whose identity follows the item, so use `with` or `custom` rows for them.
 - Submenus nest to any depth in `Ui::menu_bar`, `Ui::command_menu` and `Ui::command_context_menu`, which draw a `Menu`; `Ui::menu`, `Ui::context_menu` and combo boxes take a flat list. A submenu opens once the pointer has rested on its row for 200 ms, and the one that is open stays until the pointer has rested on another row for as long, so that it can be reached across the rows between; a click, Enter or the arrow key opens it at once. The delay is fixed, and there is no safe area for the pointer's path. Tooltips are pointer-only, with one delay and one placement.
 
 ## Windows and docking
 
 - Detached dock windows open where the OS puts them, and resizing them is not written back to the layout. A tab cannot be dragged from one OS window into another.
-- A dock panel keeps its retained widget state (focus, scroll, undo history) through any change of the layout inside one window. It resets when the panel moves to another OS window, which has its own tree, and while its tab is not the selected one, because only the selected tab's content is declared.
+- A dock panel keeps its retained widget state (focus, scroll, undo history) through any change of the layout inside one window. While its tab is not the selected one its content is not declared, drawn or reachable, but its scroll offsets, undo history and the like are kept for the next selection; the keyboard focus is not. The state resets when the panel is closed or moves to another OS window, which has its own tree. `Ui::tabs` has no panel ids to keep state by and drops the content of a tab it leaves.
 - Floating dock groups are clipped to the dock and cannot split.
 - Windows share one graphics policy. A drag carries its payload, `Item` payloads included, to another window of the same application only where the platform reports where windows are on the screen, which Wayland does not. That path is covered by tests that drive two windows; nobody has dragged between two real windows by hand. A dock tab does not cross windows.
 - Outgoing OS drags work for files on Windows and macOS, always as a copy, with a fixed icon. Linux has none; the drag crate needs a GTK window. The system drag itself has not been exercised with a real pointer.
