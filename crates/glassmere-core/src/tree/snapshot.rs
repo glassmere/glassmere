@@ -74,6 +74,7 @@ impl Context {
                 Control::Combo {
                     items, selected, ..
                 } => items.get(*selected).map(|item| item.label.clone()),
+                Control::DatePicker { value, .. } => value.clone(),
                 // A widget of the application's own says what it holds.
                 _ => node
                     .custom
@@ -144,7 +145,10 @@ impl Context {
             // reported on the owner of the outermost, which has the focus.
             active_descendant: self
                 .popup
-                .filter(|_| self.popup_levels().next().is_some_and(|outer| outer.owner == id))
+                .filter(|_| {
+                    self.popup_levels().next().is_some_and(|outer| outer.owner == id)
+                        && !matches!(node.control, Control::DatePicker { .. })
+                })
                 .and_then(|popup| {
                     self.nodes[&popup.owner]
                         .children
@@ -152,7 +156,7 @@ impl Context {
                         .find(|child| self.nodes[*child].kind == Kind::Popup)
                         .and_then(|panel| self.nodes[panel].children.get(popup.highlighted))
                         .copied()
-                }).or_else(|| if node.kind == Kind::Calendar { self.calendar_cursor_cell(id) } else { None }).or_else(|| if let Control::Collection { selected: Some(selected), .. } = node.control {
+                }).or_else(|| if node.kind == Kind::Calendar { self.calendar_cursor_cell(id) } else { None }).or_else(|| if matches!(node.control, Control::DatePicker { .. }) { self.date_picker_cursor(id) } else { None }).or_else(|| if let Control::Collection { selected: Some(selected), .. } = node.control {
                     node.children.iter().find(|id| matches!(self.nodes[id].control, Control::CollectionRow { item, .. } if item == selected)).copied()
                 } else { None }),
             text_selection: node.editor.as_ref().map(|editor| editor.selection),

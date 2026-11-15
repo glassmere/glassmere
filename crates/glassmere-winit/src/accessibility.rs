@@ -1311,4 +1311,48 @@ mod tests {
             1.0
         ));
     }
+
+    #[test]
+    fn an_open_date_picker_puts_the_focus_on_the_day_under_its_cursor() {
+        let mut context = Context::new();
+        let view = |ui: &mut glassmere_core::Ui<'_>| {
+            ui.keyed("picker", |ui| {
+                ui.date_picker("Departure", Date::new(2026, 9, 21), |_| ())
+            });
+        };
+        context.run(Size::new(500.0, 500.0), &mut MonospaceMeasurer, view);
+        let picker = context.find(&["picker"]).unwrap();
+        context.action(picker, CoreAction::Focus);
+        let update = tree(&context, "Picker", 1.0);
+        let node = node_in(&update, NodeId(picker.0));
+        assert_eq!(node.role(), Role::ComboBox);
+        assert_eq!(node.value(), Some("2026-09-21"));
+        assert_eq!(node.is_expanded(), Some(false));
+        assert_eq!(update.focus, NodeId(picker.0));
+        assert!(action(
+            &mut context,
+            ActionRequest {
+                action: Action::Expand,
+                target_tree: TreeId::ROOT,
+                target_node: NodeId(picker.0),
+                data: None
+            },
+            1.0
+        ));
+        context.run(Size::new(500.0, 500.0), &mut MonospaceMeasurer, view);
+        let panel = context.find(&["picker", "$popup"]).unwrap();
+        let selected = context
+            .find(&["picker", "$popup", "$grid", "w3", "d0"])
+            .unwrap();
+        let update = tree(&context, "Picker", 1.0);
+        let node = |id: CoreNodeId| node_in(&update, NodeId(id.0));
+        assert_eq!(node(picker).is_expanded(), Some(true));
+        assert_eq!(node(picker).active_descendant(), Some(NodeId(selected.0)));
+        assert_eq!(update.focus, NodeId(selected.0));
+        assert_eq!(node(selected).label(), Some("2026-09-21"));
+        assert_eq!(node(selected).is_selected(), Some(true));
+        // The popup is a dialog of the window, not of the field's box.
+        assert_eq!(node(panel).role(), Role::Dialog);
+        assert!(node(context.root()).children().contains(&NodeId(panel.0)));
+    }
 }

@@ -167,6 +167,7 @@ impl Node {
                     | Control::StripScroll { .. }
                     | Control::CalendarStep { .. }
                     | Control::CalendarDay { .. }
+                    | Control::CalendarGrid { popup: true, .. }
             )
             // Pointer-only helpers: a column sizer, whose keyboard path is its
             // header's menu, and drag sources or drop targets without a name.
@@ -283,6 +284,7 @@ impl Node {
                 Control::CalendarRow { .. } => Role::Row,
                 Control::CalendarWeekday { .. } => Role::ColumnHeader,
                 Control::CalendarDay { .. } => Role::Cell,
+                Control::CalendarPopup { .. } => Role::Dialog,
                 Control::GridCell { header: true, .. } => Role::ColumnHeader,
                 Control::GridCell { .. } => Role::Cell,
                 Control::TabList => Role::TabList,
@@ -340,6 +342,8 @@ impl Node {
                 | Control::TextArea { label, .. }
                 | Control::RichEditor { label, .. }
                 | Control::Grid { label, .. }
+                | Control::DatePicker { label, .. }
+                | Control::CalendarPopup { label }
                 | Control::CalendarGrid { label, .. } => label.clone(),
                 Control::CalendarWeekday { name, .. } | Control::CalendarDay { name, .. } => {
                     name.clone()

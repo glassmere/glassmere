@@ -292,9 +292,10 @@ impl Context {
                 .is_some_and(|id| self.activate(id));
         }
         if let Event::Shortcut(shortcut) = &event {
-            return self
-                .shortcut_target(shortcut)
-                .is_some_and(|id| self.activate(id));
+            return match self.shortcut_target(shortcut) {
+                Some(id) => self.activate(id),
+                None => self.date_picker_shortcut(shortcut),
+            };
         }
         if let Some(handled) = self.collection_event(&event) {
             return handled;
@@ -332,7 +333,7 @@ impl Context {
                     // its password field, so typing goes on.
                     .map(|id| {
                         self.reveal_field(id)
-                            .or_else(|| self.calendar_grid_of(id))
+                            .or_else(|| self.calendar_focus_of(id))
                             .unwrap_or(id)
                     })
                     .filter(|id| self.nodes[id].focusable());

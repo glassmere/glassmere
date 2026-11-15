@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::panic::Location;
 use std::sync::Arc;
 mod builders;
-pub use builders::{Button, Calendar, ComboBox, Label, TextInput};
+pub use builders::{Button, Calendar, ComboBox, DatePicker, Label, TextInput};
 mod calendar;
 mod collections;
 mod controls;

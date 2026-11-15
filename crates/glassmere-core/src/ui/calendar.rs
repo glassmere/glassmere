@@ -3,8 +3,8 @@
 use super::*;
 use crate::calendar::{Month, WEEKS};
 use crate::{
-    Align, Calendar, Date, DateStyle, Justify, Length, MessageArg, Paint, StateStyles, Weekday,
-    app::Handler,
+    Align, Calendar, Date, DatePicker, DateStyle, Justify, Length, MessageArg, Paint, StateStyles,
+    Weekday, app::Handler,
 };
 use glassmere_scene::Color;
 
@@ -54,6 +54,106 @@ impl<'a, M: 'static> Ui<'a, M> {
         })
     }
 
+    /// A field showing `value`, which opens a calendar in a popup on a click,
+    /// Enter, Space or Alt+Down. Picking a day sends `on_change(day)` and
+    /// closes the popup, and Escape closes it without. [`DatePicker::new`]
+    /// carries the label, a style, the days that can be picked, how the date
+    /// is written and what shows while there is none.
+    ///
+    /// The date is not typed. The calendar in the popup starts at `value`,
+    /// and its keys are those of [`Ui::calendar`], which the field forwards
+    /// while the popup is open, so the keyboard stays with the field.
+    #[track_caller]
+    pub fn date_picker(
+        &mut self,
+        picker: impl Into<DatePicker>,
+        value: Option<Date>,
+        on_change: impl Fn(Date) -> M + 'static,
+    ) -> Response<'a> {
+        let picker = picker.into();
+        let key = self.next_key();
+        // A date that does not exist is the nearest that does, so that a
+        // locale's formatting never sees one.
+        let value = value.map(Date::normalized);
+        let written = value.map(|date| self.context.format_date(date, picker.date_style));
+        let children = self.date_popup(&key, &picker, value);
+        let mut style = picker.style.unwrap_or_else(Self::field_style);
+        let text = match &written {
+            Some(text) => text.as_str(),
+            None => {
+                style.foreground = style.foreground.or(Some(self.context.theme().text_muted));
+                if picker.placeholder.is_empty() {
+                    "—"
+                } else {
+                    picker.placeholder.as_str()
+                }
+            }
+        };
+        let response = self.push(Element {
+            text: format!("{text}  ▾"),
+            style,
+            enabled: self.enabled,
+            children,
+            control: Control::DatePicker {
+                label: picker.label,
+                value: written,
+            },
+            ..Element::new(key, Kind::ComboBox)
+        });
+        self.set_handler(Handler::Map(Box::new(move |update| match update {
+            ControlUpdate::Date(date) => Some(on_change(date)),
+            _ => None,
+        })));
+        response
+    }
+
+    /// The popup of the date picker `key` while it is open: a panel holding a
+    /// calendar, which leaves a pick to the field.
+    #[track_caller]
+    fn date_popup(
+        &mut self,
+        key: &WidgetKey,
+        picker: &DatePicker,
+        value: Option<Date>,
+    ) -> Vec<Element> {
+        let owner = self.context.child(self.parent, key, Kind::ComboBox);
+        if !self.enabled
+            || owner
+                .and_then(|owner| self.context.popup_of(owner))
+                .is_none()
+        {
+            return Vec::new();
+        }
+        let panel = owner.and_then(|owner| {
+            self.context
+                .child(Some(owner), &WidgetKey::named("$popup"), Kind::Popup)
+        });
+        let calendar = Calendar {
+            label: picker.label.clone(),
+            style: None,
+            min: picker.min,
+            max: picker.max,
+            first_weekday: picker.first_weekday,
+        };
+        let month = self.calendar_month(panel, &calendar, value);
+        let mut child = self.scope(owner);
+        child.group(
+            WidgetKey::named("$popup"),
+            Kind::Popup,
+            Style {
+                width: Length::Px(GRID_WIDTH + 2.0 * PADDING),
+                padding: PADDING,
+                gap: 4.0,
+                ..Style::default()
+            },
+            |ui| ui.calendar_body(&picker.label, &month, None),
+        );
+        child.elements[0].control = Control::CalendarPopup {
+            label: picker.label.clone(),
+        };
+        child.elements
+    }
+
     /// The month a calendar shows, from what it kept in `container`.
     fn calendar_month(
         &self,
@@ -77,8 +177,8 @@ impl<'a, M: 'static> Ui<'a, M> {
     }
 
     /// The header and the days of `month`, as children of the container this
-    /// is the scope of. `on_pick` is what a pick sends; a calendar inside a
-    /// popup leaves it to the popup's owner.
+    /// is the scope of. `on_pick` is what a pick sends; a calendar without
+    /// one is in the popup of a date picker, which is told of a pick instead.
     #[track_caller]
     pub(super) fn calendar_body(
         &mut self,
@@ -245,6 +345,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             control: Control::CalendarGrid {
                 label: label.into(),
                 month: month.clone(),
+                popup: on_pick.is_none(),
             },
             ..Element::new(WidgetKey::named("$grid"), Kind::Calendar)
         });

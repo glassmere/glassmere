@@ -11,7 +11,7 @@
 //! Identity is not here. A widget is identified by where it is declared, and
 //! [`Ui::keyed`](crate::Ui::keyed) names one when that is not enough.
 
-use crate::{Date, Style, Weekday};
+use crate::{Date, DateStyle, Style, Weekday};
 
 /// Text. `ui.label("Ready")` is the short form of `Label::new("Ready")`.
 #[derive(Clone, Debug, Default)]
@@ -225,6 +225,66 @@ impl Calendar {
     }
 }
 
+/// A field that shows a date and opens a calendar to pick another.
+/// `ui.date_picker("Departure", value, Msg::Departure)` is the short form of
+/// `DatePicker::new("Departure")`.
+#[derive(Clone, Debug, Default)]
+pub struct DatePicker {
+    pub(crate) label: String,
+    pub(crate) style: Option<Style>,
+    pub(crate) min: Option<Date>,
+    pub(crate) max: Option<Date>,
+    pub(crate) first_weekday: Option<Weekday>,
+    pub(crate) date_style: DateStyle,
+    pub(crate) placeholder: String,
+}
+
+impl DatePicker {
+    /// The label is what a screen reader announces, not what is drawn.
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            ..Self::default()
+        }
+    }
+
+    /// Replaces the default style, which is a field-sized `Style::button()`.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+
+    /// The earliest day that can be picked; earlier days are disabled.
+    pub fn min(mut self, min: Date) -> Self {
+        self.min = Some(min);
+        self
+    }
+
+    /// The latest day that can be picked; later days are disabled.
+    pub fn max(mut self, max: Date) -> Self {
+        self.max = Some(max);
+        self
+    }
+
+    /// The weekday each row of the calendar starts with; Monday by default.
+    pub fn first_weekday(mut self, weekday: Weekday) -> Self {
+        self.first_weekday = Some(weekday);
+        self
+    }
+
+    /// How the field writes its date; `Medium` by default.
+    pub fn date_style(mut self, style: DateStyle) -> Self {
+        self.date_style = style;
+        self
+    }
+
+    /// Greyed text shown while there is no date.
+    pub fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.placeholder = placeholder.into();
+        self
+    }
+}
+
 /// `impl From<&str>` and `impl From<String>` for a builder whose first field
 /// is its text, so `ui.button("Save")` and `ui.button(Button::new("Save"))`
 /// are the same call.
@@ -261,3 +321,4 @@ from_text!(Button<M>);
 from_text!(TextInput<M>);
 from_text!(ComboBox);
 from_text!(Calendar);
+from_text!(DatePicker);

@@ -256,6 +256,9 @@ pub(crate) enum Control {
     CalendarGrid {
         label: String,
         month: crate::calendar::Month,
+        /// In the popup of a date picker, whose field has the keyboard and
+        /// is told of a pick.
+        popup: bool,
     },
     /// The weekday names of a calendar, or one of its weeks.
     CalendarRow {
@@ -277,6 +280,16 @@ pub(crate) enum Control {
     /// keys for it, so it takes no focus.
     CalendarStep {
         months: i32,
+    },
+    /// A field showing a date, which opens a calendar to pick another.
+    DatePicker {
+        label: String,
+        /// The date as the field writes it, when there is one.
+        value: Option<String>,
+    },
+    /// The popup of a date picker.
+    CalendarPopup {
+        label: String,
     },
     Menu {
         items: Vec<MenuItem>,

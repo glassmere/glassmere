@@ -73,9 +73,95 @@ impl Context {
         {
             return false;
         }
+        // The calendar of a date picker leaves the pick to the field, which
+        // closes it.
+        if let Some(field) = self.calendar_field(grid) {
+            self.queue_update(field, ControlUpdate::Date(date));
+            self.close_popup();
+            return true;
+        }
         self.calendar_move(grid, date);
         self.queue_update(grid, ControlUpdate::Date(date));
         true
+    }
+
+    /// The date picker whose popup holds the calendar `grid`.
+    fn calendar_field(&self, grid: NodeId) -> Option<NodeId> {
+        let node = self.nodes.get(&grid)?;
+        let Control::CalendarGrid { popup: true, .. } = node.control else {
+            return None;
+        };
+        self.nodes.get(&node.parent?)?.parent
+    }
+
+    /// The calendar in the popup of the date picker `field`, while it is open.
+    pub(super) fn date_picker_grid(&self, field: NodeId) -> Option<NodeId> {
+        self.popup_of(field)?;
+        let panel = self
+            .nodes
+            .get(&field)?
+            .children
+            .iter()
+            .copied()
+            .find(|child| self.nodes[child].kind == Kind::Popup)?;
+        self.nodes
+            .get(&panel)?
+            .children_by_key
+            .get(&WidgetKey::named("$grid"))
+            .copied()
+    }
+
+    /// The day the keys of the open date picker `field` act on.
+    pub(super) fn date_picker_cursor(&self, field: NodeId) -> Option<NodeId> {
+        self.calendar_cursor_cell(self.date_picker_grid(field)?)
+    }
+
+    /// Where a press on `id` leaves the keyboard when `id` is part of a
+    /// calendar: with the date picker whose popup it is in, or else with the
+    /// calendar of the day or button.
+    pub(super) fn calendar_focus_of(&self, id: NodeId) -> Option<NodeId> {
+        let mut at = self.nodes.get(&id);
+        while let Some(node) = at {
+            if matches!(node.control, Control::CalendarPopup { .. }) {
+                return node.parent;
+            }
+            at = node.parent.and_then(|parent| self.nodes.get(&parent));
+        }
+        self.calendar_grid_of(id)
+    }
+
+    /// A key pressed while the popup of the date picker `field` is open.
+    /// `None` for one that is not the popup's.
+    pub(super) fn date_picker_key(&mut self, field: NodeId, key: Key) -> Option<bool> {
+        match key {
+            Key::Escape => Some(self.close_popup()),
+            Key::Tab => {
+                self.close_popup();
+                None
+            }
+            _ => {
+                let grid = self.date_picker_grid(field)?;
+                self.calendar_key(grid, key)
+            }
+        }
+    }
+
+    /// Alt+Down opens the calendar of the focused date picker.
+    pub(super) fn date_picker_shortcut(&mut self, shortcut: &crate::Shortcut) -> bool {
+        let alt_down = crate::Shortcut {
+            key: crate::ShortcutKey::Named(Key::ArrowDown),
+            control: false,
+            alt: true,
+            shift: false,
+            super_key: false,
+        };
+        let Some(field) = self
+            .focused
+            .filter(|id| matches!(self.nodes[id].control, Control::DatePicker { .. }))
+        else {
+            return false;
+        };
+        *shortcut == alt_down && self.popup_of(field).is_none() && self.open_popup_at(field, None)
     }
 
     /// Shows the month `months` away.
@@ -103,7 +189,11 @@ impl Context {
 
     /// A ring around the day the keys act on, while the calendar has them.
     pub(super) fn paint_calendar_cursor(&self, id: NodeId, scene: &mut Scene) {
-        if self.focused != Some(id) || self.quiet_focus == Some(id) {
+        let keys = match self.calendar_field(id) {
+            Some(field) => self.focused == Some(field) && self.popup_of(field).is_some(),
+            None => self.focused == Some(id),
+        };
+        if !keys || self.quiet_focus == Some(id) {
             return;
         }
         let Some(cell) = self.calendar_cursor_cell(id).map(|cell| &self.nodes[&cell]) else {
