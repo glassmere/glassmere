@@ -96,6 +96,8 @@ pub const BUILTIN_MESSAGES: &[(&str, &str)] = &[
     ("glassmere-maximize", "Maximize"),
     ("glassmere-restore", "Restore"),
     ("glassmere-close", "Close"),
+    ("glassmere-range-minimum", "{ $name } minimum"),
+    ("glassmere-range-maximum", "{ $name } maximum"),
     ("glassmere-calendar-title", "{ $month } { $year }"),
     ("glassmere-calendar-previous", "Previous month"),
     ("glassmere-calendar-next", "Next month"),

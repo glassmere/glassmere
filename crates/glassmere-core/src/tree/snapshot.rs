@@ -74,6 +74,9 @@ impl Context {
                 Control::Combo {
                     items, selected, ..
                 } => items.get(*selected).map(|item| item.label.clone()),
+                Control::Progress {
+                    value: Some(value), ..
+                } => Some(format!("{:.0}%", value * 100.0)),
                 Control::DatePicker { value, .. } => value.clone(),
                 // A widget of the application's own says what it holds.
                 _ => node
@@ -83,6 +86,7 @@ impl Context {
             },
             checked: match node.control {
                 Control::Checkbox { checked, .. } => Some(checked),
+                Control::Switch { on, .. } => Some(on),
                 _ => None,
             },
             selected: match node.control {
@@ -111,6 +115,14 @@ impl Context {
                     step,
                 }),
                 Control::TextInput { number, .. } => number,
+                Control::Progress {
+                    value: Some(value), ..
+                } => Some(NumericValue {
+                    value: value * 100.0,
+                    min: 0.0,
+                    max: 100.0,
+                    step: 1.0,
+                }),
                 Control::Sizer { size, min, max, .. } => Some(NumericValue {
                     value: f64::from(size),
                     min: f64::from(min),
@@ -132,7 +144,7 @@ impl Context {
                 Control::Toast { .. } => Some(Live::Polite),
                 _ => None,
             },
-            expanded: if let Control::CollectionRow { expanded, .. } = node.control { expanded } else {
+            expanded: if let Control::CollectionRow { expanded, .. } = node.control { expanded } else if let Control::Disclosure { open, .. } = node.control { Some(open) } else {
                 let suggests = matches!(node.control, Control::TextInput { suggestions: Some(_), .. });
                 // An autocomplete list is open only while it has rows to show.
                 let submenu = matches!(node.control, Control::Submenu { .. });

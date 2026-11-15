@@ -337,6 +337,7 @@ impl Context {
             | Kind::ComboBox
             | Kind::MenuButton => Some(theme.control),
             Kind::Popup | Kind::Popover => Some(theme.popup),
+            Kind::Progress => Some(theme.track),
             Kind::Divider | Kind::DockHandle => Some(if hovered || pressed {
                 theme.accent
             } else {
@@ -355,6 +356,16 @@ impl Context {
             if !node.enabled {
                 background = Some(theme.control_disabled);
             } else if pressed {
+                background = Some(theme.control_pressed);
+            } else if hovered {
+                background = Some(theme.control_hover);
+            }
+        }
+        if node.kind == Kind::Link && node.style.foreground.is_none() && node.enabled {
+            foreground = theme.accent;
+        }
+        if node.kind == Kind::Disclosure && node.enabled && node.style.background.is_none() {
+            if pressed {
                 background = Some(theme.control_pressed);
             } else if hovered {
                 background = Some(theme.control_hover);
@@ -400,6 +411,11 @@ impl Context {
             radius,
             opacity,
             transform,
+            knob: if matches!(node.control, Control::Switch { on: true, .. }) {
+                1.0
+            } else {
+                0.0
+            },
         }
     }
 
@@ -429,6 +445,7 @@ impl Context {
         }
         let target = self.appearance(id, &self.nodes[&id]);
         let animation_state::Displayed { shown, layer } = self.displayed(id, target);
+        self.keep_busy(id);
         let frame = self.image_frame(id);
         let crate::animation::Shown {
             background,
@@ -456,7 +473,10 @@ impl Context {
         // bounds the node's own painting.
         paint_shadow(node, radius, false, &mut scene);
         scene.primitives.push(Primitive::PushClip(node.bounds));
-        let focused = self.focused == Some(id) && self.quiet_focus != Some(id);
+        // A range slider's thumb rings itself: its box is the whole slider.
+        let focused = self.focused == Some(id)
+            && self.quiet_focus != Some(id)
+            && !matches!(node.control, Control::Slider { span: Some(_), .. });
         self.paint_fill(node, focused, background, radius, &mut scene);
         self.paint_background_image(node, &mut scene, foreground, radius);
         if node.kind == Kind::RichText {
@@ -464,6 +484,7 @@ impl Context {
         } else if node.kind == Kind::Image {
             self.paint_image(id, &mut scene, foreground, radius, frame);
         } else if !node.text.is_empty() {
+            self.paint_selection(id, node, &mut scene);
             self.paint_text(node, foreground, &mut scene);
         }
         self.paint_hint(node, &mut scene);
@@ -480,7 +501,7 @@ impl Context {
                     .map(|primitive| primitive.translated(offset)),
             );
         }
-        self.paint_control(id, &mut scene);
+        self.paint_control(id, shown, &mut scene);
         let node = &self.nodes[&id];
         let children = node
             .children
@@ -621,7 +642,32 @@ impl Context {
     }
 
     /// The node's own text, placed in its box.
-    fn paint_text(&self, node: &Node, foreground: Color, scene: &mut Scene) {
+    /// What is selected of a label's text, behind the text.
+    fn paint_selection(&self, id: NodeId, node: &Node, scene: &mut Scene) {
+        let Some(editor) = node.editor.as_ref().filter(|_| node.read_only()) else {
+            return;
+        };
+        let text = self.text_place(node).0;
+        let color = if self.focused == Some(id) {
+            self.theme.highlight
+        } else {
+            self.theme.selection_inactive
+        };
+        for rect in editor.geometry.selection(editor.selection.range()) {
+            scene.primitives.push(Primitive::Quad {
+                rect: rect.translated(Point {
+                    x: text.x,
+                    y: text.y,
+                }),
+                color,
+                radius: 0.0,
+            });
+        }
+    }
+
+    /// Where the text of a node is drawn, how big the layout measured it
+    /// (for the leaves that were) and how wide it is.
+    pub(super) fn text_place(&self, node: &Node) -> (Rect, Option<Size>, f32) {
         let mut rect = node.content_box();
         // Where the text sits in a box wider or taller than it is. A
         // wrapped block is aligned line by line by the shaper; this
@@ -636,7 +682,13 @@ impl Context {
             .then(|| self.layout.get_node_context(node.layout_id))
             .flatten()
             .map(|measured| measured.size);
-        let width = measured.map_or(node.label_width, |size| size.width);
+        // What the control draws before its text takes the start edge.
+        let indicator = node.kind.indicator_width();
+        rect.width = (rect.width - indicator).max(0.0);
+        if !node.resolved.rtl() {
+            rect.x += indicator;
+        }
+        let width = measured.map_or(node.label_width, |size| size.width - indicator);
         if width > 0.0 && node.style.wrap == TextWrap::None {
             let spare = (rect.width - width).max(0.0);
             rect.x += match node.style.justify_content {
@@ -654,6 +706,26 @@ impl Context {
                 crate::Align::End => spare,
                 _ => 0.0,
             };
+        }
+        (rect, measured, width)
+    }
+
+    fn paint_text(&self, node: &Node, foreground: Color, scene: &mut Scene) {
+        let (rect, measured, width) = self.text_place(node);
+        if node.kind == Kind::Link
+            && let Some(size) = measured.filter(|size| size.width > 0.0)
+        {
+            // Under the text, as a rich text link's rule is under its run.
+            scene.primitives.push(Primitive::Quad {
+                rect: Rect {
+                    x: rect.x,
+                    y: rect.y + size.height - 3.0,
+                    width: width.min(rect.width),
+                    height: 1.0,
+                },
+                color: foreground,
+                radius: 0.0,
+            });
         }
         if let Some((start, end)) = self.suggestion_match(node) {
             // The part of a suggestion that was typed stands out.

@@ -7,7 +7,10 @@ use std::collections::HashSet;
 use std::panic::Location;
 use std::sync::Arc;
 mod builders;
-pub use builders::{Button, Calendar, ComboBox, DatePicker, Label, TextInput};
+pub use builders::{
+    Button, Calendar, Collapsible, ComboBox, DatePicker, Label, Link, Progress, RangeSlider,
+    Spinner, Switch, TextInput,
+};
 mod calendar;
 mod collections;
 mod controls;
@@ -20,6 +23,7 @@ pub use overlays::CommandPalette;
 mod property_grid;
 pub use property_grid::PropertyGrid;
 mod areas;
+mod basic;
 pub use areas::{AreaBuilder, DragSourceBuilder, DropTargetBuilder, GestureBuilder};
 mod dialog;
 mod rich_editor;
@@ -121,8 +125,14 @@ pub(crate) enum Kind {
     Custom,
     TextInput,
     Checkbox,
+    Switch,
+    Disclosure,
+    Link,
     Radio,
     Slider,
+    RangeSlider,
+    Progress,
+    Spinner,
     ComboBox,
     MenuButton,
     /// The days of a calendar, which take the keys together.
@@ -135,6 +145,9 @@ pub(crate) enum Kind {
     DropTarget,
 }
 
+/// Width and height of a switch's track.
+pub(crate) const SWITCH_TRACK: (f32, f32) = (40.0, 22.0);
+
 impl Kind {
     pub(crate) fn text_leaf(self) -> bool {
         matches!(
@@ -142,6 +155,9 @@ impl Kind {
             Self::Label
                 | Self::Button
                 | Self::Checkbox
+                | Self::Switch
+                | Self::Disclosure
+                | Self::Link
                 | Self::Radio
                 | Self::Choice
                 | Self::MenuButton
@@ -149,6 +165,16 @@ impl Kind {
                 | Self::Tab
                 | Self::RichText
         )
+    }
+
+    /// Width of what a control draws before its text, along the start edge,
+    /// counting the gap to the text.
+    pub(crate) fn indicator_width(self) -> f32 {
+        match self {
+            Self::Switch => SWITCH_TRACK.0 + 10.0,
+            Self::Disclosure => 20.0,
+            _ => 0.0,
+        }
     }
 }
 
@@ -538,13 +564,16 @@ impl<'a, M: 'static> Ui<'a, M> {
     pub fn label(&mut self, label: impl Into<Label>) {
         let label = label.into();
         let key = self.next_key();
-        self.leaf(
-            key,
-            Kind::Label,
-            label.text,
-            label.style.unwrap_or_default(),
-            true,
-        );
+        self.push(Element {
+            text: label.text,
+            style: label.style.unwrap_or_default(),
+            control: if label.selectable {
+                Control::SelectableText
+            } else {
+                Control::None
+            },
+            ..Element::new(key, Kind::Label)
+        });
     }
 
     /// A button. `ui.button("Save")` is the whole of it, and

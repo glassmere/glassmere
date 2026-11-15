@@ -679,6 +679,13 @@ impl Context {
             editor.synchronize(value);
             editor.masked = *password && !editor.revealed;
         }
+        if matches!(element.control, Control::SelectableText) {
+            node.editor
+                .get_or_insert_with(|| Box::new(Editor::block(&node.text)))
+                .synchronize(&node.text);
+        } else if node.kind == Kind::Label {
+            node.editor = None;
+        }
         node.control = element.control;
         if paint_changed {
             self.invalidate_paint(id);
@@ -723,6 +730,17 @@ impl Context {
         if matches!(element.control, Control::Tab { selected: true, .. }) {
             self.reveal_tabs.push(id);
         }
+        let editor = match &element.control {
+            Control::TextInput {
+                value, password, ..
+            } => {
+                let mut editor = Editor::new(value);
+                editor.masked = *password;
+                Some(Box::new(editor))
+            }
+            Control::SelectableText => Some(Box::new(Editor::block(&element.text))),
+            _ => None,
+        };
         self.nodes.insert(
             id,
             Node {
@@ -761,16 +779,7 @@ impl Context {
                 },
                 custom: element.custom,
                 paint_cache: None,
-                editor: match &element.control {
-                    Control::TextInput {
-                        value, password, ..
-                    } => {
-                        let mut editor = Editor::new(value);
-                        editor.masked = *password;
-                        Some(Box::new(editor))
-                    }
-                    _ => None,
-                },
+                editor,
                 control: element.control,
                 changed: Dirty::all(),
                 changed_frame: self.frame,

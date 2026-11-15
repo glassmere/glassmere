@@ -291,6 +291,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                 min,
                 max,
                 step,
+                span: None,
             },
         );
         self.set_handler(Handler::Map(Box::new(move |update| match update {

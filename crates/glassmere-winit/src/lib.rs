@@ -1336,6 +1336,13 @@ impl Application {
                 {
                     CursorIcon::Text
                 }
+                // A label whose text can be selected.
+                Some(node)
+                    if node.semantics.role == glassmere_core::Role::Label
+                        && node.text_selection.is_some() =>
+                {
+                    CursorIcon::Text
+                }
                 Some(node) if node.semantics.role == glassmere_core::Role::Splitter => {
                     match node.orientation {
                         Some(glassmere_core::Axis::Vertical) => CursorIcon::RowResize,

@@ -666,3 +666,243 @@ fn an_exiting_node_repaints_its_ghost_and_not_the_window() {
     }
     assert!(!context.animating());
 }
+
+/// A progress bar of unknown length and a spinner move by themselves, and
+/// what they need from the window is their own boxes and nothing around them.
+#[test]
+fn busy_indicators_repaint_their_own_boxes_and_not_the_window() {
+    use glassmere_core::Progress;
+    use std::time::Duration;
+
+    let view = |ui: &mut Ui<'_>| {
+        ui.keyed("page", |ui| {
+            ui.column(Style::default().padding(8.0).gap(6.0), |ui| {
+                ui.keyed("title", |ui| ui.label("Progress"));
+                ui.keyed("bar", |ui| ui.progress(Progress::new("Sync"), None));
+                ui.keyed("spinner", |ui| ui.spinner("Loading"));
+                ui.keyed("rest", |ui| ui.label(Label::new("The rest of the page")));
+            })
+        });
+    };
+    let mut context = Context::new();
+    let mut incremental = CpuRenderer::with_text_system(fonts());
+    let mut whole = CpuRenderer::with_text_system(fonts());
+    let physical = [SIZE.width as u32, SIZE.height as u32];
+    let area = u64::from(physical[0]) * u64::from(physical[1]);
+    let mut frame = |context: &mut Context, at: u64| {
+        context.set_now(Duration::from_millis(at));
+        context.run(SIZE, &mut MonospaceMeasurer, view);
+        let damage: Vec<_> = context.damage_regions().to_vec();
+        let scene = context.scene();
+        let partial = incremental
+            .render_damaged(physical, 1.0, scene, CLEAR, &damage)
+            .to_vec();
+        let full = whole.render(physical, 1.0, scene, CLEAR).to_vec();
+        assert_frames_match(&partial, &full, physical[0] as usize, &format!("{at} ms"));
+        incremental.stats().redrawn
+    };
+    frame(&mut context, 0);
+    for at in (100..1500).step_by(100) {
+        let redrawn = frame(&mut context, at);
+        assert!(redrawn > 0, "{at} ms: the bar moved");
+        assert!(redrawn < area / 8, "{at} ms repainted {redrawn} of {area}");
+    }
+    assert!(context.animating());
+}
+
+/// A switch eases its thumb across for a moment after it is toggled; every
+/// frame of that is painted from damage as it is in full, and none of it
+/// repaints much of the window.
+#[test]
+fn a_switch_easing_repaints_its_own_box_and_not_the_window() {
+    use glassmere_core::Switch;
+    use std::time::Duration;
+
+    let view = |ui: &mut Ui<'_>, on: bool| {
+        ui.keyed("page", |ui| {
+            ui.column(Style::default().padding(8.0).gap(6.0), |ui| {
+                ui.keyed("title", |ui| ui.label("Switch"));
+                ui.keyed("wifi", |ui| ui.switch(Switch::new("Wi-Fi"), on, |_| ()));
+                ui.keyed("rest", |ui| ui.label(Label::new("The rest of the page")));
+            })
+        });
+    };
+    let mut context = Context::new();
+    let mut incremental = CpuRenderer::with_text_system(fonts());
+    let mut whole = CpuRenderer::with_text_system(fonts());
+    let physical = [SIZE.width as u32, SIZE.height as u32];
+    let area = u64::from(physical[0]) * u64::from(physical[1]);
+    let mut frame = |context: &mut Context, at: u64, on: bool| {
+        context.set_now(Duration::from_millis(at));
+        context.run(SIZE, &mut MonospaceMeasurer, |ui| view(ui, on));
+        let damage: Vec<_> = context.damage_regions().to_vec();
+        let scene = context.scene();
+        let partial = incremental
+            .render_damaged(physical, 1.0, scene, CLEAR, &damage)
+            .to_vec();
+        let full = whole.render(physical, 1.0, scene, CLEAR).to_vec();
+        assert_frames_match(&partial, &full, physical[0] as usize, &format!("{at} ms"));
+        incremental.stats().redrawn
+    };
+    frame(&mut context, 0, false);
+    // The frame that declares the new value, then each one until it settles.
+    let mut at = 1000;
+    let mut frames = 0;
+    loop {
+        let redrawn = frame(&mut context, at, true);
+        assert!(redrawn < area / 4, "{at} ms repainted {redrawn} of {area}");
+        frames += 1;
+        if !context.animating() {
+            break;
+        }
+        at += 20;
+        assert!(frames < 20, "the thumb never settled");
+    }
+    assert!(frames > 2, "the thumb moved over several frames");
+    // And back, which is the same in the other direction.
+    at += 500;
+    loop {
+        let redrawn = frame(&mut context, at, false);
+        assert!(redrawn < area / 4, "{at} ms repainted {redrawn} of {area}");
+        if !context.animating() {
+            break;
+        }
+        at += 20;
+    }
+}
+
+/// Dragging a thumb of a range slider moves it, the fill between the thumbs
+/// and its ring; every frame is painted from damage as it is in full, and
+/// none of it repaints much of the window.
+#[test]
+fn dragging_a_range_slider_thumb_repaints_the_slider_and_not_the_window() {
+    let view = |ui: &mut Ui<'_>, low: f64, high: f64| {
+        ui.keyed("page", |ui| {
+            ui.column(Style::default().padding(8.0).gap(6.0), |ui| {
+                ui.keyed("title", |ui| ui.label("Range"));
+                ui.keyed("price", |ui| {
+                    ui.range_slider("Price", low..=high, 0.0..=100.0, 10.0, |_| ())
+                });
+                ui.keyed("rest", |ui| ui.label(Label::new("The rest of the page")));
+            })
+        });
+    };
+    let mut context = Context::new();
+    let mut incremental = CpuRenderer::with_text_system(fonts());
+    let mut whole = CpuRenderer::with_text_system(fonts());
+    let physical = [SIZE.width as u32, SIZE.height as u32];
+    let area = u64::from(physical[0]) * u64::from(physical[1]);
+    let mut frame = |context: &mut Context, low: f64, high: f64| {
+        context.run(SIZE, &mut MonospaceMeasurer, |ui| view(ui, low, high));
+        let damage: Vec<_> = context.damage_regions().to_vec();
+        let scene = context.scene();
+        let partial = incremental
+            .render_damaged(physical, 1.0, scene, CLEAR, &damage)
+            .to_vec();
+        let full = whole.render(physical, 1.0, scene, CLEAR).to_vec();
+        assert_frames_match(&partial, &full, physical[0] as usize, "range slider");
+        incremental.stats().redrawn
+    };
+    let values = |context: &Context| {
+        let value = |name: &str| {
+            let id = context.find(&["page", "price", name]).unwrap();
+            context.node(id).unwrap().numeric.unwrap().value
+        };
+        (value("$minimum"), value("$maximum"))
+    };
+    let (mut low, mut high) = (20.0, 80.0);
+    frame(&mut context, low, high);
+    let bounds = context
+        .node(context.find(&["page", "price"]).unwrap())
+        .unwrap()
+        .bounds;
+    let at = |fraction: f32| Point {
+        x: bounds.x + 12.0 + (bounds.width - 24.0) * fraction,
+        y: bounds.y + bounds.height - 15.0,
+    };
+    context.event(Event::PointerMoved(at(0.2)));
+    context.event(Event::PointerDown);
+    for step in [0.3, 0.4, 0.55, 0.9] {
+        context.event(Event::PointerMoved(at(step)));
+        (low, high) = values(&context);
+        let redrawn = frame(&mut context, low, high);
+        assert!(redrawn < area / 4, "repainted {redrawn} of {area}");
+    }
+    context.event(Event::PointerUp);
+    assert_eq!((low, high), (80.0, 80.0), "stopped at the other thumb");
+    // The other thumb, and the ring that follows the keyboard.
+    context.event(Event::PointerMoved(at(0.8)));
+    context.event(Event::PointerDown);
+    context.event(Event::PointerMoved(at(0.4)));
+    (low, high) = values(&context);
+    frame(&mut context, low, high);
+    context.event(Event::PointerUp);
+    context.event(Event::KeyDown {
+        key: Key::Tab,
+        shift: false,
+        repeat: false,
+    });
+    context.event(Event::KeyUp(Key::Tab));
+    let redrawn = frame(&mut context, low, high);
+    assert!(redrawn < area / 4, "repainted {redrawn} of {area}");
+}
+
+/// Selecting text of a selectable label moves its highlight from frame to
+/// frame; every frame is painted from damage as it is in full, and none of
+/// it repaints much of the window.
+#[test]
+fn selecting_label_text_repaints_the_label_and_not_the_window() {
+    let view = |ui: &mut Ui<'_>| {
+        ui.keyed("page", |ui| {
+            ui.column(Style::default().padding(8.0).gap(6.0), |ui| {
+                ui.keyed("title", |ui| ui.label("Selectable"));
+                ui.keyed("note", |ui| {
+                    ui.label(Label::new("Order 4711 shipped on Monday").selectable())
+                });
+                ui.keyed("rest", |ui| ui.label(Label::new("The rest of the page")));
+            })
+        });
+    };
+    let mut context = Context::new();
+    let mut incremental = CpuRenderer::with_text_system(fonts());
+    let mut whole = CpuRenderer::with_text_system(fonts());
+    let physical = [SIZE.width as u32, SIZE.height as u32];
+    let area = u64::from(physical[0]) * u64::from(physical[1]);
+    let mut frame = |context: &mut Context| {
+        context.run(SIZE, &mut MonospaceMeasurer, view);
+        let damage: Vec<_> = context.damage_regions().to_vec();
+        let scene = context.scene();
+        let partial = incremental
+            .render_damaged(physical, 1.0, scene, CLEAR, &damage)
+            .to_vec();
+        let full = whole.render(physical, 1.0, scene, CLEAR).to_vec();
+        assert_frames_match(&partial, &full, physical[0] as usize, "selection");
+        incremental.stats().redrawn
+    };
+    frame(&mut context);
+    let bounds = context
+        .node(context.find(&["page", "note"]).unwrap())
+        .unwrap()
+        .bounds;
+    let at = |column: f32| Point {
+        x: bounds.x + column * 9.6 + 1.0,
+        y: bounds.y + bounds.height / 2.0,
+    };
+    context.event(Event::PointerMoved(at(0.0)));
+    context.event(Event::PointerDown);
+    for column in [2.0, 6.0, 11.0, 5.0] {
+        context.event(Event::PointerMoved(at(column)));
+        let redrawn = frame(&mut context);
+        assert!(redrawn < area / 4, "repainted {redrawn} of {area}");
+    }
+    context.event(Event::PointerUp);
+    // Tab moves on, and the selection it leaves is drawn dimmed.
+    context.event(Event::KeyDown {
+        key: Key::Tab,
+        shift: false,
+        repeat: false,
+    });
+    context.event(Event::KeyUp(Key::Tab));
+    let redrawn = frame(&mut context);
+    assert!(redrawn < area / 4, "repainted {redrawn} of {area}");
+}

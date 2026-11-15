@@ -178,6 +178,9 @@ pub(crate) enum Control {
     Memo(u64),
     /// Text written along the end edge of a control, such as a shortcut.
     Hint(String),
+    /// A label whose text can be selected and copied; its node keeps the
+    /// selection in an editor that is never edited.
+    SelectableText,
     EventArea(crate::EventArea),
     /// A strip that moves the window, and maximizes it when pressed twice.
     TitleBar,
@@ -242,9 +245,38 @@ pub(crate) enum Control {
     Slider {
         label: String,
         value: f64,
+        /// The lowest and highest value this slider can be given.
         min: f64,
         max: f64,
         step: f64,
+        /// For a thumb of a range slider, the whole range of the track that
+        /// it sits on, which `min` and `max` are narrowed from by the other
+        /// thumb. A slider of its own has none.
+        span: Option<(f64, f64)>,
+    },
+    /// The track and the caption of a range slider, whose children are its
+    /// two thumbs.
+    RangeSlider {
+        label: String,
+    },
+    /// A progress bar: how far it is, or `None` while it cannot tell.
+    Progress {
+        label: String,
+        value: Option<f64>,
+    },
+    /// The header of a collapsible section.
+    Disclosure {
+        label: String,
+        open: bool,
+    },
+    /// An on/off switch.
+    Switch {
+        label: String,
+        on: bool,
+    },
+    /// A busy indicator, which never knows how far it is.
+    Spinner {
+        label: String,
     },
     Combo {
         label: String,

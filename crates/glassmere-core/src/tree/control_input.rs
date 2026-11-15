@@ -1,3 +1,4 @@
+use super::control_paint::slider_track;
 use super::*;
 use crate::{TextMove, controls::slider_value};
 
@@ -32,6 +33,15 @@ impl Context {
         let Some(node) = self.nodes.get_mut(&id).filter(|node| node.enabled) else {
             return false;
         };
+        // Selected and copied, never edited.
+        if node.read_only()
+            && !matches!(
+                edit,
+                TextEdit::Move { .. } | TextEdit::Select { .. } | TextEdit::SelectAll
+            )
+        {
+            return false;
+        }
         let Some(editor) = &mut node.editor else {
             return false;
         };
@@ -98,9 +108,10 @@ impl Context {
 
     fn slider_pointer(&mut self, id: NodeId, position: Point) -> bool {
         let node = &self.nodes[&id];
-        let Control::Slider { min, max, .. } = node.control else {
+        let Control::Slider { min, max, span, .. } = node.control else {
             return false;
         };
+        let (low, high) = span.unwrap_or((min, max));
         let fraction = ((position.x - node.bounds.x - 12.0) / (node.bounds.width - 24.0).max(1.0))
             .clamp(0.0, 1.0);
         // A right-to-left slider has its minimum on the right.
@@ -109,7 +120,56 @@ impl Context {
         } else {
             fraction
         };
-        self.set_number(id, min + f64::from(fraction) * (max - min))
+        self.set_number(id, low + f64::from(fraction) * (high - low))
+    }
+
+    /// The thumb of a range slider that a press at `position` takes: the
+    /// nearer of its two, and of two on top of each other the one that can
+    /// move toward the press. Anything else is taken as it is.
+    fn range_thumb_at(&self, id: NodeId, position: Point) -> NodeId {
+        let Some(owner) = self.nodes[&id]
+            .parent
+            .filter(|parent| self.nodes[parent].kind == Kind::RangeSlider)
+        else {
+            return id;
+        };
+        let [low, high] = self.nodes[&owner].children[..] else {
+            return id;
+        };
+        let x = |thumb: NodeId| {
+            let node = &self.nodes[&thumb];
+            let Control::Slider {
+                value,
+                span: Some((from, to)),
+                ..
+            } = node.control
+            else {
+                return node.bounds.x;
+            };
+            let fraction = ((value - from) / (to - from)) as f32;
+            let track = slider_track(node.bounds);
+            track.x
+                + track.width
+                    * if node.resolved.rtl() {
+                        1.0 - fraction
+                    } else {
+                        fraction
+                    }
+        };
+        let (near, far) = (x(low) - position.x, x(high) - position.x);
+        match near.abs().total_cmp(&far.abs()) {
+            std::cmp::Ordering::Less => low,
+            std::cmp::Ordering::Greater => high,
+            // On the thumbs or midway between them: toward the greater value.
+            std::cmp::Ordering::Equal => {
+                let greater_is_right = !self.nodes[&low].resolved.rtl();
+                if (position.x > x(low)) == greater_is_right {
+                    high
+                } else {
+                    low
+                }
+            }
+        }
     }
 
     pub(super) fn editor_pointer(&mut self, id: NodeId, position: Point, extend: bool) -> bool {
@@ -117,9 +177,22 @@ impl Context {
         let Some(editor) = &node.editor else {
             return false;
         };
+        // A label's text is where it is drawn; a field's is its scrolled content box.
+        let origin = if node.read_only() {
+            let text = self.text_place(node).0;
+            Point {
+                x: text.x,
+                y: text.y,
+            }
+        } else {
+            Point {
+                x: node.bounds.x + node.style.padding - editor.scroll_x + editor.align_x,
+                y: node.bounds.y + node.style.padding,
+            }
+        };
         let local = Point {
-            x: position.x - node.bounds.x - node.style.padding + editor.scroll_x - editor.align_x,
-            y: position.y - node.bounds.y - node.style.padding,
+            x: position.x - origin.x,
+            y: position.y - origin.y,
         };
         let (cursor, affinity) = editor.geometry.hit_affinity(local);
         let cursor = editor.display_offset(cursor);
@@ -681,7 +754,7 @@ impl Context {
                         self.divider_pointer(id, *position);
                         return Some(true);
                     }
-                    if self.nodes[&id].kind == Kind::TextInput {
+                    if self.nodes[&id].editor.is_some() {
                         self.pointer = Some(*position);
                         return Some(self.editor_pointer(id, *position, true));
                     }
@@ -711,7 +784,9 @@ impl Context {
             }
             Event::PointerDown | Event::PointerDownWithShift => {
                 let position = self.pointer?;
-                let target = self.hit_test(position);
+                let target = self
+                    .hit_test(position)
+                    .map(|id| self.range_thumb_at(id, position));
                 let outermost = self.popup_levels().next();
                 if let Some(popup) = outermost {
                     let inside = self
@@ -732,17 +807,18 @@ impl Context {
                         self.captured = Some(id);
                         return Some(true);
                     }
-                    if matches!(kind, Kind::TextInput | Kind::Slider) {
+                    if matches!(kind, Kind::TextInput | Kind::Slider) || self.nodes[&id].read_only()
+                    {
                         self.focus_control(id);
                         self.captured = Some(id);
-                        if kind == Kind::TextInput {
+                        if kind == Kind::Slider {
+                            self.slider_pointer(id, position);
+                        } else {
                             self.editor_pointer(
                                 id,
                                 position,
                                 matches!(event, Event::PointerDownWithShift),
                             );
-                        } else {
-                            self.slider_pointer(id, position);
                         }
                         return Some(true);
                     }
@@ -776,6 +852,11 @@ impl Context {
                             return Some(handled);
                         }
                     }
+                    Kind::Disclosure => {
+                        if let Some(handled) = self.disclosure_key(id, *key) {
+                            return Some(handled);
+                        }
+                    }
                     Kind::Calendar => {
                         if let Some(handled) = self.calendar_key(id, *key) {
                             return Some(handled);
@@ -785,6 +866,7 @@ impl Context {
                 }
                 let node = &self.nodes[&id];
                 if node.editor.is_some() {
+                    let read_only = node.read_only();
                     let steps = match key {
                         Key::ArrowUp => 1.0,
                         Key::ArrowDown => -1.0,
@@ -820,10 +902,10 @@ impl Context {
                             select: *shift,
                             word: false,
                         },
-                        Key::Backspace => TextEdit::Backspace { word: false },
-                        Key::Delete => TextEdit::Delete { word: false },
-                        Key::Escape => TextEdit::CancelComposition,
-                        Key::Enter => {
+                        Key::Backspace if !read_only => TextEdit::Backspace { word: false },
+                        Key::Delete if !read_only => TextEdit::Delete { word: false },
+                        Key::Escape if !read_only => TextEdit::CancelComposition,
+                        Key::Enter if !read_only => {
                             self.queue_submit(id);
                             return Some(true);
                         }
@@ -893,6 +975,18 @@ impl Context {
         None
     }
 
+    /// Right opens a section and Left closes it, whichever way the text
+    /// runs, as they do on a tree row.
+    fn disclosure_key(&mut self, id: NodeId, key: Key) -> Option<bool> {
+        let Control::Disclosure { open, .. } = self.nodes[&id].control else {
+            return None;
+        };
+        match (key, open) {
+            (Key::ArrowRight, false) | (Key::ArrowLeft, true) => Some(self.activate(id)),
+            _ => None,
+        }
+    }
+
     pub(super) fn control_action(&mut self, target: NodeId, action: &Action) -> Option<bool> {
         let node = self.nodes.get(&target)?;
         if !node.enabled {
@@ -938,6 +1032,12 @@ impl Context {
             }
             Action::SetSelection { anchor, focus } => {
                 Some(self.set_selection(target, *anchor, *focus))
+            }
+            Action::Expand | Action::Collapse if node.kind == Kind::Disclosure => {
+                let opens = matches!(action, Action::Expand);
+                let changes =
+                    matches!(node.control, Control::Disclosure { open, .. } if open != opens);
+                Some(changes && self.activate(target))
             }
             Action::Expand => Some(self.open_popup(target)),
             Action::Collapse => Some(self.popup_of(target).is_some() && self.close_popup()),

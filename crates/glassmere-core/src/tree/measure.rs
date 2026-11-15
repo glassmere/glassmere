@@ -146,8 +146,19 @@ impl Measurement {
                 .map_or(Size::default(), glassmere_scene::Image::size),
         ))
     }
-    /// A text leaf: plain, or the styled runs of a rich block.
+    /// A text leaf: plain, or the styled runs of a rich block, with room
+    /// before it for what the control draws there.
     pub(super) fn leaf(
+        element: &Element,
+        text_style: TextStyle,
+        measurer: &mut impl TextMeasurer,
+    ) -> Self {
+        let mut measured = Self::text_only(element, text_style, measurer);
+        measured.size.width += element.kind.indicator_width();
+        measured
+    }
+
+    fn text_only(
         element: &Element,
         text_style: TextStyle,
         measurer: &mut impl TextMeasurer,
