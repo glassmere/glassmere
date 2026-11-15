@@ -1,8 +1,8 @@
 use glassmere::{
     App, AppOptions, Color, Command, DragPayload, DragSourceBuilder, DropKind, DropTargetBuilder,
     Effects, GridColumn, GridModel, GridMsg, GridState, ItemId, ItemOrder, Key, Label, Length,
-    ListModel, ListState, Shortcut, ShortcutKey, Size, SortDirection, Style, TextWrap, TreeItem,
-    TreeModel, Ui, VirtualListOptions, WindowId, WindowRequest, run,
+    ListModel, ListState, RowHeights, Shortcut, ShortcutKey, Size, SortDirection, Style, TextWrap,
+    TreeItem, TreeModel, Ui, VirtualListOptions, WindowId, WindowRequest, run,
 };
 use std::{sync::mpsc::TrySendError, thread, time::Duration};
 
@@ -12,6 +12,8 @@ struct Tickets {
     count: u64,
     sort: Option<(usize, SortDirection)>,
     order: ItemOrder,
+    /// Urgent tickets are taller in the list; the grid keeps one row height.
+    heights: RowHeights,
     columns: Vec<GridColumn>,
 }
 
@@ -28,6 +30,7 @@ impl Tickets {
             count,
             sort: None,
             order: ItemOrder::default(),
+            heights: RowHeights::default(),
             columns: vec![
                 column("Ticket", 110.0, true),
                 column("Priority", 110.0, true),
@@ -43,6 +46,14 @@ impl Tickets {
     fn status(id: ItemId) -> &'static str {
         ["open", "triaged", "in progress"][(id.0 % 3) as usize]
     }
+    /// Lines of detail under an urgent ticket in the list.
+    fn notes(id: ItemId) -> &'static [&'static str] {
+        match Self::priority(id) {
+            4 => &["Escalated to the on-call owner", "Waiting for a reply"],
+            3 => &["Due this week"],
+            _ => &[],
+        }
+    }
     // Full re-sort on every change; switch to incremental insertion if models grow past ~10^5 rows.
     fn rebuild(&mut self) {
         let mut ids: Vec<_> = (0..self.count).map(ItemId).collect();
@@ -54,6 +65,12 @@ impl Tickets {
                 ids.reverse();
             }
         }
+        // Three heights in one list: the rows with notes are taller than the
+        // fixed row height. The index is rebuilt with the order it describes.
+        self.heights = RowHeights::new(ids.iter().map(|id| match Self::notes(*id).len() {
+            0 => None,
+            lines => Some(14.0 + 18.0 * (lines + 1) as f32),
+        }));
         self.order = ItemOrder::new(ids).expect("ticket numbers are unique");
     }
     fn append(&mut self) {
@@ -80,6 +97,9 @@ impl ListModel for Tickets {
             Self::priority(id),
             Self::status(id)
         )
+    }
+    fn row_heights(&self) -> Option<&RowHeights> {
+        Some(&self.heights)
     }
 }
 
@@ -347,7 +367,40 @@ impl App for Application {
                             ))
                             .style(heading.clone()),
                         );
-                        ui.virtual_list(&self.tickets, &self.list, list_options, Message::List);
+                        ui.virtual_list_with(
+                            &self.tickets,
+                            &self.list,
+                            list_options,
+                            Message::List,
+                            |ui, tickets, index, _| {
+                                let line = Style {
+                                    width: Length::Percent(1.0),
+                                    ..Style::default()
+                                };
+                                ui.column(
+                                    Style {
+                                        padding: 6.0,
+                                        gap: 0.0,
+                                        ..line.clone()
+                                    },
+                                    |ui| {
+                                        ui.label(
+                                            Label::new(tickets.label(index)).style(line.clone()),
+                                        );
+                                        let notes = Tickets::notes(tickets.item_id(index));
+                                        for (at, note) in notes.iter().enumerate() {
+                                            ui.keyed(format!("note-{at}"), |ui| {
+                                                ui.label(Label::new(*note).style(Style {
+                                                    font_size: Some(12.0),
+                                                    foreground: Some(Color::rgb(162, 180, 198)),
+                                                    ..line.clone()
+                                                }));
+                                            });
+                                        }
+                                    },
+                                );
+                            },
+                        );
                         ui.label(
                             Label::new("Areas  ·  arrows expand and collapse")
                                 .style(heading.clone()),

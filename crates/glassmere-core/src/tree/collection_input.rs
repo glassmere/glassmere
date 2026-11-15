@@ -369,6 +369,7 @@ impl Context {
                 let Control::Collection {
                     kind,
                     row_height,
+                    pages,
                     selected,
                     ..
                 } = node.control
@@ -379,11 +380,13 @@ impl Context {
                     return Some(false);
                 }
                 let page = (node.bounds.height / row_height).floor().max(1.0) as isize;
+                let (up, down) =
+                    pages.map_or((page, page), |(up, down)| (up as isize, down as isize));
                 let input = match key {
                     Key::ArrowUp => CollectionInput::Move(-1),
                     Key::ArrowDown => CollectionInput::Move(1),
-                    Key::PageUp => CollectionInput::Move(-page),
-                    Key::PageDown => CollectionInput::Move(page),
+                    Key::PageUp => CollectionInput::Move(-up),
+                    Key::PageDown => CollectionInput::Move(down),
                     Key::Home => CollectionInput::First,
                     Key::End => CollectionInput::Last,
                     Key::Enter if !repeat => CollectionInput::Activate,
