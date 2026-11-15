@@ -1,10 +1,11 @@
 //! Immediate-style declarations over a retained, incremental UI kernel.
 pub use glassmere_core::*;
 /// Derives `Properties`: property grid rows from a struct's fields, and
-/// `tr!` and `style_sheet!`, which check a message key and a stylesheet
-/// while the crate compiles.
+/// `PropertyChoice`: an enum as a choice among its variants. Also `tr!` and
+/// `style_sheet!`, which check a message key and a stylesheet while the
+/// crate compiles.
 #[cfg(feature = "derive")]
-pub use glassmere_derive::{Properties, style_sheet, tr};
+pub use glassmere_derive::{Properties, PropertyChoice, style_sheet, tr};
 pub use glassmere_devtools as devtools;
 #[cfg(feature = "fluent")]
 pub use glassmere_fluent as fluent;
