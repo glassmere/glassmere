@@ -816,6 +816,7 @@ glassmere-core   fn ListModel::item_id(&self, index: usize) -> ItemId
 glassmere-core   fn ListModel::label(&self, index: usize) -> String
 glassmere-core   fn ListModel::len(&self) -> usize
 glassmere-core   fn ListModel::parent(&self, _id: ItemId) -> Option<ItemId> (provided)
+glassmere-core   fn ListModel::row_heights(&self) -> Option<&RowHeights> (provided)
 glassmere-core   fn ListModel::set_expanded(&mut self, _id: ItemId, _expanded: bool) -> bool (provided)
 glassmere-core   fn ListState::reveal(&mut self, id: ItemId)
 glassmere-core   fn ListState::scroll_offset(&self) -> f32
@@ -936,6 +937,11 @@ glassmere-core   fn RichText::new() -> Self
 glassmere-core   fn RichText::plain(&self) -> String
 glassmere-core   fn RichText::run(mut self, run: RichRun) -> Self
 glassmere-core   fn RichText::text(self, text: impl Into<String>) -> Self
+glassmere-core   fn RowHeights::get(&self, index: usize) -> Option<f32>
+glassmere-core   fn RowHeights::is_empty(&self) -> bool
+glassmere-core   fn RowHeights::len(&self) -> usize
+glassmere-core   fn RowHeights::new(rows: impl IntoIterator<Item = Option<f32>>) -> Self
+glassmere-core   fn RowHeights::set(&mut self, index: usize, height: Option<f32>)
 glassmere-core   fn Selection::caret(at: usize) -> Self
 glassmere-core   fn Selection::is_caret(self) -> bool
 glassmere-core   fn Selection::range(self) -> Range<usize>
@@ -1110,6 +1116,7 @@ glassmere-core   fn Tray::with_icon(mut self, icon: Image) -> Self
 glassmere-core   fn Tray::with_menu(mut self, menu: Menu) -> Self
 glassmere-core   fn TreeModel::item(&self, id: ItemId) -> Option<&TreeItem>
 glassmere-core   fn TreeModel::new(items: Vec<TreeItem>) -> Result<Self, ModelError>
+glassmere-core   fn TreeModel::set_row_height(&mut self, id: ItemId, height: Option<f32>)
 glassmere-core   fn Ui::autocomplete<S: AsRef<str>>(&mut self, label: impl Into<String>, value: &str, suggestions: &[S], on_change: impl Fn(String) -> M + 'static) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::autocomplete_with<S: AsRef<str>>(&mut self, label: impl Into<String>, value: &str, suggestions: &[S], on_change: impl Fn(String) -> M + 'static, extra: Autocomplete<M>) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::button(&mut self, button: impl Into<Button<M>>) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
@@ -1813,6 +1820,7 @@ glassmere-core struct RichEditorResponse #[derive(Clone, Debug, Default, Eq, Par
 glassmere-core struct RichPosition #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 glassmere-core struct RichRun #[derive(Clone, Debug, Default, PartialEq)]
 glassmere-core struct RichText #[derive(Clone, Debug, Default, PartialEq)]
+glassmere-core struct RowHeights #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct ScrollState #[derive(Clone, Copy, Debug, Default, PartialEq)]
 glassmere-core struct Selection #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-core struct Semantics #[derive(Clone, Debug, Default, PartialEq)]
@@ -2008,6 +2016,7 @@ glassmere-core use RichPosition = rich_document::RichPosition
 glassmere-core use RichRun = rich_text::RichRun
 glassmere-core use RichText = rich_text::RichText
 glassmere-core use Role = tree::Role
+glassmere-core use RowHeights = collection::RowHeights
 glassmere-core use ScrollState = tree::ScrollState
 glassmere-core use Selection = document::Selection
 glassmere-core use Semantics = tree::Semantics

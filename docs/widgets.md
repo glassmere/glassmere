@@ -19,7 +19,7 @@ All of them are methods of `Ui`, take a value and a message constructor, and are
 | Input | `drag_source`, `drop_target`, `gesture_area`, `event_area` |
 | Your own | `component`, `widget`, `custom`, `map`, `keyed`, `memo` |
 
-Collections take a model rather than data: `ListModel` answers by index and by `ItemId`, only the visible range is declared, and `ListState` and `GridState` hold selection and scroll. A grid's columns can be resized, reordered, hidden and frozen through `GridColumns`, filtered per column, and edited in place through typed cell editors whose values the model may refuse with a message.
+Collections take a model rather than data: `ListModel` answers by index and by `ItemId`, only the visible range is declared, and `ListState` and `GridState` hold selection and scroll. Rows of a list or tree are `VirtualListOptions::row_height` high unless the model returns a `RowHeights` from `ListModel::row_heights`, which gives some rows another height (`TreeModel::set_row_height` does it for a tree); scrolling, revealing, paging and the scrollbar then follow the real heights. A grid's columns can be resized, reordered, hidden and frozen through `GridColumns`, filtered per column, and edited in place through typed cell editors whose values the model may refuse with a message.
 
 `#[derive(Properties)]` turns a struct into property grid rows. Fields get an editor by type, and `#[property(..)]` sets `group`, `name`, `min`, `max`, `step`, `suffix`, `default`, `choices(..)`, `readonly`, `flatten`, `with` and `skip`.
 

@@ -37,8 +37,8 @@ pub use animation::{Animation, Easing, Effect, Keyframe, Repeat, Transform, Tran
 pub use clipboard::Clip;
 pub use collection::{
     CellEditor, CellValue, FILTER_DELAY, GridColumn, GridColumns, GridModel, GridMsg, GridState,
-    ItemId, ItemOrder, ListModel, ListState, ModelError, SortDirection, TreeItem, TreeModel,
-    VirtualListOptions, text_matches,
+    ItemId, ItemOrder, ListModel, ListState, ModelError, RowHeights, SortDirection, TreeItem,
+    TreeModel, VirtualListOptions, text_matches,
 };
 pub use command::{Command, Shortcut, ShortcutKey};
 pub use glassmere_scene::GradientStop;
