@@ -547,6 +547,12 @@ glassmere-core   fn Button::enabled(mut self, enabled: bool) -> Self [impl<M> Bu
 glassmere-core   fn Button::new(text: impl Into<String>) -> Self [impl<M> Button<M>]
 glassmere-core   fn Button::on_click(mut self, message: M) -> Self [impl<M> Button<M>]
 glassmere-core   fn Button::style(mut self, style: Style) -> Self [impl<M> Button<M>]
+glassmere-core   fn Calendar::first_weekday(mut self, weekday: Weekday) -> Self
+glassmere-core   fn Calendar::max(mut self, max: Date) -> Self
+glassmere-core   fn Calendar::min(mut self, min: Date) -> Self
+glassmere-core   fn Calendar::new(label: impl Into<String>) -> Self
+glassmere-core   fn Calendar::style(mut self, style: Style) -> Self
+glassmere-core   fn Calendar::today(mut self, today: Date) -> Self
 glassmere-core   fn Cancel::cancel(&self)
 glassmere-core   fn Cancel::cancelled(&self) -> bool
 glassmere-core   fn Cancel::new() -> Self
@@ -665,6 +671,16 @@ glassmere-core   fn Context::watch_error(&self, path: &std::path::Path) -> Optio
 glassmere-core   fn Context::watched_known(&self, path: &std::path::Path) -> bool
 glassmere-core   fn Context::watched_paths(&self) -> &[std::path::PathBuf]
 glassmere-core   fn Context::withdraw_drag(&mut self) -> Option<DragPayload>
+glassmere-core   fn Date::new(year: i32, month: u8, day: u8) -> Option<Date>
+glassmere-core   fn Date::weekday(&self) -> Weekday
+glassmere-core   fn DatePicker::date_style(mut self, style: DateStyle) -> Self
+glassmere-core   fn DatePicker::first_weekday(mut self, weekday: Weekday) -> Self
+glassmere-core   fn DatePicker::max(mut self, max: Date) -> Self
+glassmere-core   fn DatePicker::min(mut self, min: Date) -> Self
+glassmere-core   fn DatePicker::new(label: impl Into<String>) -> Self
+glassmere-core   fn DatePicker::placeholder(mut self, placeholder: impl Into<String>) -> Self
+glassmere-core   fn DatePicker::style(mut self, style: Style) -> Self
+glassmere-core   fn DatePicker::today(mut self, today: Date) -> Self
 glassmere-core   fn DialogOptions::dismissible(mut self, dismissible: bool) -> Self
 glassmere-core   fn DialogOptions::modal(mut self, modal: bool) -> Self
 glassmere-core   fn DialogOptions::new(title: impl Into<String>) -> Self
@@ -1128,6 +1144,7 @@ glassmere-core   fn TreeModel::set_row_height(&mut self, id: ItemId, height: Opt
 glassmere-core   fn Ui::autocomplete<S: AsRef<str>>(&mut self, label: impl Into<String>, value: &str, suggestions: &[S], on_change: impl Fn(String) -> M + 'static) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::autocomplete_with<S: AsRef<str>>(&mut self, label: impl Into<String>, value: &str, suggestions: &[S], on_change: impl Fn(String) -> M + 'static, extra: Autocomplete<M>) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::button(&mut self, button: impl Into<Button<M>>) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
+glassmere-core   fn Ui::calendar(&mut self, calendar: impl Into<Calendar>, selected: Option<Date>, on_pick: impl Fn(Date) -> M + 'static) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::checkbox(&mut self, label: impl Into<String>, checked: bool, on_toggle: impl Fn(bool) -> M) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::class(&mut self, name: &str) -> Style #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::code_editor(&mut self, document: &TextDocument, options: CodeEditorOptions<'_>, on: impl Fn(TextOp) -> M + 'static) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
@@ -1141,6 +1158,7 @@ glassmere-core   fn Ui::container(&mut self, style: Style, content: impl FnOnce(
 glassmere-core   fn Ui::context_menu(&mut self, items: &[MenuItem], style: Style, on_pick: impl Fn(usize) -> M + 'static, content: impl FnOnce(&mut Ui<'_, M>)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::custom(&mut self, style: Style, widget: CustomWidget, on_click: M) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::data_grid(&mut self, model: &impl GridModel, state: &GridState, options: VirtualListOptions, on: impl Fn(GridMsg) -> Msg + 'static) #[track_caller] [impl<'a, Msg: 'static> Ui<'a, Msg>]
+glassmere-core   fn Ui::date_picker(&mut self, picker: impl Into<DatePicker>, value: Option<Date>, on_change: impl Fn(Date) -> M + 'static) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::dialog(&mut self, key: impl Into<String>, open: bool, options: crate::DialogOptions, on_open: impl Fn(bool) -> M + 'static, content: impl FnOnce(&mut Ui<'_, M>)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::dock(&mut self, layout: &DockLayout, panels: &[DockPanel], options: DockOptions, on: impl Fn(DockAction) -> M + 'static, content: impl FnMut(&mut Ui<'_, M>, &str)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::dock_window(&mut self, layout: &DockLayout, window: DockWindowId, panels: &[DockPanel], options: DockOptions, on: impl Fn(DockAction) -> M + 'static, content: impl FnMut(&mut Ui<'_, M>, &str)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
@@ -1561,6 +1579,13 @@ glassmere-core   variant UiEvent::PointerMoved(Point)
 glassmere-core   variant UiEvent::PointerUp(Point)
 glassmere-core   variant UiEvent::Scroll { delta_x: f32, delta_y: f32 }
 glassmere-core   variant UiEvent::Text(String)
+glassmere-core   variant Weekday::Friday
+glassmere-core   variant Weekday::Monday
+glassmere-core   variant Weekday::Saturday
+glassmere-core   variant Weekday::Sunday
+glassmere-core   variant Weekday::Thursday
+glassmere-core   variant Weekday::Tuesday
+glassmere-core   variant Weekday::Wednesday
 glassmere-core   variant WindowCommand::Close
 glassmere-core   variant WindowCommand::Drag
 glassmere-core   variant WindowCommand::Minimize
@@ -1638,6 +1663,7 @@ glassmere-core enum TouchPhase #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 glassmere-core enum Track #[derive(Clone, Debug, PartialEq)]
 glassmere-core enum TrackSize #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-core enum UiEvent #[derive(Clone, Debug, PartialEq)]
+glassmere-core enum Weekday #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 glassmere-core enum WindowCommand #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 glassmere-core fn message_channel<T>(capacity: usize, wake: impl Fn() -> bool + Send + Sync + 'static) -> (MessageSender<T>, Mailbox<T>)
 glassmere-core fn suggest<'a>(typed: &str, candidates: &[&'a str], limit: usize) -> Vec<&'a str>
@@ -1674,13 +1700,19 @@ glassmere-core impl Default for Style
 glassmere-core impl Default for TextDocument
 glassmere-core impl Default for Transform
 glassmere-core impl Default for VirtualListOptions
+glassmere-core impl From<&String> for Calendar
 glassmere-core impl From<&String> for ComboBox
+glassmere-core impl From<&String> for DatePicker
 glassmere-core impl From<&String> for Label
 glassmere-core impl From<&String> for MessageArg
+glassmere-core impl From<&str> for Calendar
 glassmere-core impl From<&str> for ComboBox
+glassmere-core impl From<&str> for DatePicker
 glassmere-core impl From<&str> for Label
 glassmere-core impl From<&str> for MessageArg
+glassmere-core impl From<String> for Calendar
 glassmere-core impl From<String> for ComboBox
+glassmere-core impl From<String> for DatePicker
 glassmere-core impl From<String> for Label
 glassmere-core impl From<String> for MessageArg
 glassmere-core impl From<f32> for MessageArg
@@ -1690,7 +1722,9 @@ glassmere-core impl From<i32> for MessageArg
 glassmere-core impl From<i64> for MessageArg
 glassmere-core impl From<i8> for MessageArg
 glassmere-core impl From<isize> for MessageArg
+glassmere-core impl From<std::borrow::Cow<'_, str>> for Calendar
 glassmere-core impl From<std::borrow::Cow<'_, str>> for ComboBox
+glassmere-core impl From<std::borrow::Cow<'_, str>> for DatePicker
 glassmere-core impl From<std::borrow::Cow<'_, str>> for Label
 glassmere-core impl From<u16> for MessageArg
 glassmere-core impl From<u32> for MessageArg
@@ -1746,6 +1780,7 @@ glassmere-core struct Autocomplete<M = ()> (private fields)
 glassmere-core struct BackgroundImage #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct Block #[derive(Clone, Debug, Default, Eq, PartialEq)]
 glassmere-core struct Button<M = ()> #[derive(Clone, Debug)] (private fields)
+glassmere-core struct Calendar #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct Cancel #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct Clip #[derive(Clone, Debug, Default, PartialEq)]
 glassmere-core struct CodeEditorOptions<'a>
@@ -1756,6 +1791,7 @@ glassmere-core struct CommandPalette<M = ()> (private fields)
 glassmere-core struct Context (private fields)
 glassmere-core struct CustomWidget #[derive(Clone, Debug, Default, PartialEq)]
 glassmere-core struct Date #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+glassmere-core struct DatePicker #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct Diagnostic #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct DialogOptions #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct Dirty #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)] (private fields)
@@ -1889,6 +1925,7 @@ glassmere-core use BackgroundImage = image::BackgroundImage
 glassmere-core use Block = rich_document::Block
 glassmere-core use BlockKind = rich_document::BlockKind
 glassmere-core use Button = ui::Button
+glassmere-core use Calendar = ui::Calendar
 glassmere-core use Cancel = task::Cancel
 glassmere-core use CaretMovement = editor::CaretMovement
 glassmere-core use CellEditor = collection::CellEditor
@@ -1903,6 +1940,7 @@ glassmere-core use Component = app::Component
 glassmere-core use Context = tree::Context
 glassmere-core use CustomWidget = widget::CustomWidget
 glassmere-core use Date = locale_format::Date
+glassmere-core use DatePicker = ui::DatePicker
 glassmere-core use DateStyle = locale_format::DateStyle
 glassmere-core use Diagnostic = text_area::Diagnostic
 glassmere-core use DiagnosticKind = tree::diagnostics::DiagnosticKind
@@ -2079,6 +2117,7 @@ glassmere-core use UNSTABLE_ID_FRAMES = tree::diagnostics::UNSTABLE_ID_FRAMES
 glassmere-core use Ui = ui::Ui
 glassmere-core use UiEvent = events::UiEvent
 glassmere-core use VirtualListOptions = collection::VirtualListOptions
+glassmere-core use Weekday = locale_format::Weekday
 glassmere-core use WidgetBuilder = widget::WidgetBuilder
 glassmere-core use WidgetInput = widget::WidgetInput
 glassmere-core use WindowCommand = window::WindowCommand
