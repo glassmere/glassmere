@@ -1,10 +1,14 @@
+mod support;
+
+use glassmere_core::app::Action as Msg;
 use glassmere_core::{
-    Button, Context, Direction, Event, Length, MonospaceMeasurer, Role, Style, TOOLTIP_DELAY,
-    Tooltip, TooltipPlacement, Ui,
+    Action, Button, Context, DialogOptions, Direction, Event, Key, Length, MonospaceMeasurer, Role,
+    Style, TOOLTIP_DELAY, Tooltip, TooltipPlacement, Ui,
 };
 use glassmere_scene::{Color, Point, Primitive, Rect, Size};
 use std::borrow::Cow;
 use std::time::Duration;
+use support::{Driven, on};
 
 const WINDOW: Size = Size::new(400.0, 300.0);
 const TEXT: &str = "Saves the document";
@@ -386,4 +390,317 @@ fn the_text_is_the_description_and_names_an_icon_button() {
     assert_eq!(node("icon").semantics.label, "Settings");
     assert_eq!(node("icon").description.as_deref(), Some("Settings"));
     assert_eq!(node("icon").semantics.role, Role::Button);
+}
+
+// -- Keyboard focus ----------------------------------------------------------
+
+fn press(context: &mut Context, key: Key, shift: bool) -> bool {
+    let handled = context.event(Event::KeyDown {
+        key,
+        shift,
+        repeat: false,
+    });
+    context.event(Event::KeyUp(key));
+    handled
+}
+
+fn tab(context: &mut Context) {
+    press(context, Key::Tab, false);
+}
+
+fn focused_key(context: &Context) -> String {
+    context
+        .focused()
+        .and_then(|id| context.details(id))
+        .map_or_else(|| "none".into(), |details| details.key)
+}
+
+fn toolbar(ui: &mut Ui<'_>) {
+    spot(ui, "first", 20.0, 20.0, Some("First help".into()));
+    spot(
+        ui,
+        "second",
+        130.0,
+        20.0,
+        Some(Tooltip::new("Second help").delay(ms(200))),
+    );
+    spot(ui, "bare", 240.0, 20.0, None);
+}
+
+fn toolbar_at(now: Duration) -> Context {
+    let mut context = Context::new();
+    context.set_now(now);
+    frame(&mut context, toolbar);
+    context
+}
+
+#[test]
+fn keyboard_focus_shows_the_tooltip_after_its_delay_against_the_widget() {
+    let mut context = toolbar_at(Duration::ZERO);
+    // The pointer is somewhere else altogether.
+    context.event(Event::PointerMoved(Point { x: 380.0, y: 280.0 }));
+    context.set_now(ms(10));
+    tab(&mut context);
+    assert_eq!(focused_key(&context), "first");
+    assert_eq!(context.next_wake(), Some(ms(10) + TOOLTIP_DELAY));
+    context.set_now(ms(10) + TOOLTIP_DELAY - ms(1));
+    frame(&mut context, toolbar);
+    assert!(!shown(&context, "First help"), "not yet due");
+    context.set_now(ms(10) + TOOLTIP_DELAY);
+    let stats = context.run(WINDOW, &mut MonospaceMeasurer, toolbar);
+    assert!(stats.scene_rebuilt);
+    let first = widget(&context, "first");
+    let bubble = bubble(&context, "First help").expect("shown on focus");
+    assert_eq!((bubble.x, bubble.y), (first.x, bottom(first) + GAP));
+    assert_eq!(context.next_wake(), None, "nothing pending while shown");
+    // The same for a tooltip made from a spec, with its delay.
+    let mut context = toolbar_at(Duration::ZERO);
+    tab(&mut context);
+    tab(&mut context);
+    assert_eq!(focused_key(&context), "second");
+    assert_eq!(context.next_wake(), Some(ms(200)));
+    context.set_now(ms(200));
+    frame(&mut context, toolbar);
+    assert!(shown(&context, "Second help"));
+}
+
+#[test]
+fn a_focus_tooltip_follows_its_placement() {
+    let view = |ui: &mut Ui<'_>| {
+        spot(
+            ui,
+            "target",
+            150.0,
+            130.0,
+            Some(Tooltip::new(SHORT).placement(TooltipPlacement::After)),
+        )
+    };
+    let mut context = Context::new();
+    context.set_now(Duration::ZERO);
+    frame(&mut context, view);
+    tab(&mut context);
+    context.set_now(TOOLTIP_DELAY);
+    frame(&mut context, view);
+    let target = widget(&context, "target");
+    assert_eq!(bubble(&context, SHORT).unwrap().x, right(target) + GAP);
+}
+
+#[test]
+fn a_focus_tooltip_hides_on_blur_and_when_focus_leaves_the_window() {
+    let mut context = toolbar_at(Duration::ZERO);
+    tab(&mut context);
+    context.set_now(TOOLTIP_DELAY);
+    frame(&mut context, toolbar);
+    assert!(shown(&context, "First help"));
+    // Moving on to a widget without a tooltip takes it away and brings no other.
+    tab(&mut context);
+    tab(&mut context);
+    assert_eq!(focused_key(&context), "bare");
+    frame(&mut context, toolbar);
+    assert!(!shown(&context, "First help"));
+    assert!(!shown(&context, "Second help"));
+    assert_eq!(context.next_wake(), None);
+    // Shift+Tab back to the first one, and the window losing focus.
+    press(&mut context, Key::Tab, true);
+    press(&mut context, Key::Tab, true);
+    assert_eq!(focused_key(&context), "first");
+    context.set_now(TOOLTIP_DELAY * 4);
+    frame(&mut context, toolbar);
+    assert!(shown(&context, "First help"));
+    context.event(Event::FocusLost);
+    frame(&mut context, toolbar);
+    assert!(!shown(&context, "First help"));
+    assert_eq!(context.next_wake(), None);
+}
+
+#[test]
+fn pointer_focus_shows_no_focus_tooltip() {
+    let mut context = toolbar_at(Duration::ZERO);
+    // A click focuses the button; the pointer then leaves, so only focus is left.
+    hover(&mut context, "first");
+    context.event(Event::PointerDown);
+    context.event(Event::PointerUp);
+    assert_eq!(focused_key(&context), "first");
+    context.event(Event::PointerLeft);
+    assert_eq!(context.next_wake(), None, "nothing to wait for");
+    context.set_now(TOOLTIP_DELAY * 4);
+    frame(&mut context, toolbar);
+    assert!(!shown(&context, "First help"));
+    // Nor does focus an assistive technology moved there.
+    let second = context.find(&["second"]).unwrap();
+    context.action(second, Action::Focus);
+    assert_eq!(focused_key(&context), "second");
+    assert_eq!(context.next_wake(), None);
+    context.set_now(TOOLTIP_DELAY * 8);
+    frame(&mut context, toolbar);
+    assert!(!shown(&context, "Second help"));
+}
+
+#[test]
+fn escape_hides_a_focus_tooltip_and_does_nothing_else() {
+    #[derive(Default)]
+    struct Page {
+        open: bool,
+        closed: u32,
+    }
+    let view = |state: &Page, ui: &mut Ui<'_, Msg<Page>>| {
+        ui.keyed("opener", |ui| ui.button("Opener"));
+        ui.dialog(
+            "ask",
+            state.open,
+            DialogOptions::new("Ask"),
+            on(|s: &mut Page, open: bool| {
+                s.open = open;
+                s.closed += u32::from(!open);
+            }),
+            |ui| {
+                ui.keyed("no", |ui| ui.button("No"));
+                ui.keyed("yes", |ui| ui.button("Yes"));
+                ui.tooltip("Confirms the question");
+            },
+        );
+    };
+    let mut driven = Driven::new(WINDOW, Page::default(), view);
+    driven.state_mut().open = true;
+    driven.frame();
+    // The dialog put focus on its first button; Tab is the keyboard arriving at the next.
+    assert_eq!(focused_key(&driven.context), "no");
+    tab(&mut driven.context);
+    assert_eq!(focused_key(&driven.context), "yes");
+    driven.context.set_now(TOOLTIP_DELAY);
+    driven.frame();
+    assert!(shown(&driven.context, "Confirms the question"));
+    // The first Escape takes the tooltip away and leaves the dialog alone.
+    assert!(press(&mut driven.context, Key::Escape, false));
+    driven.frame();
+    assert!(!shown(&driven.context, "Confirms the question"));
+    assert!(driven.state().open);
+    assert_eq!(driven.state().closed, 0);
+    assert_eq!(driven.context.next_wake(), None);
+    // The next one closes the dialog, as it always did.
+    press(&mut driven.context, Key::Escape, false);
+    driven.frame();
+    assert!(!driven.state().open);
+    assert_eq!(driven.state().closed, 1);
+}
+
+#[test]
+fn escape_before_the_tooltip_shows_cancels_it_and_a_pointer_tooltip_does_not_take_escape() {
+    let mut context = toolbar_at(Duration::ZERO);
+    tab(&mut context);
+    assert!(context.next_wake().is_some());
+    press(&mut context, Key::Escape, false);
+    assert_eq!(context.next_wake(), None, "no tooltip is going to appear");
+    context.set_now(TOOLTIP_DELAY * 2);
+    frame(&mut context, toolbar);
+    assert!(!shown(&context, "First help"));
+    // A tooltip from hovering is not what Escape is for: the key goes on to what it does.
+    hover(&mut context, "second");
+    context.set_now(TOOLTIP_DELAY * 4);
+    frame(&mut context, toolbar);
+    assert!(shown(&context, "Second help"));
+    assert!(
+        !press(&mut context, Key::Escape, false),
+        "nothing took Escape"
+    );
+}
+
+#[test]
+fn a_key_that_changes_the_value_ends_the_focus_tooltip() {
+    let view = |ui: &mut Ui<'_>| {
+        ui.keyed("other", |ui| ui.button("Other"));
+        ui.keyed("name", |ui| ui.text_input("Name", "abc", |_| ()));
+        ui.tooltip("Your name");
+    };
+    let mut context = Context::new();
+    context.set_now(Duration::ZERO);
+    frame(&mut context, view);
+    tab(&mut context);
+    tab(&mut context);
+    assert_eq!(focused_key(&context), "name");
+    // Typing before it shows keeps it from showing at all.
+    context.event(Event::Text(glassmere_core::TextEdit::Insert("d".into())));
+    assert_eq!(context.next_wake(), None);
+    context.set_now(TOOLTIP_DELAY * 2);
+    frame(&mut context, view);
+    assert!(!shown(&context, "Your name"));
+    // Moving the caret is not a change: the tooltip stays once it shows.
+    press(&mut context, Key::Tab, true);
+    tab(&mut context);
+    context.set_now(TOOLTIP_DELAY * 4);
+    frame(&mut context, view);
+    assert!(shown(&context, "Your name"));
+    press(&mut context, Key::ArrowLeft, false);
+    frame(&mut context, view);
+    assert!(
+        shown(&context, "Your name"),
+        "the caret moved, the value did not change"
+    );
+    // Typing hides it.
+    context.event(Event::Text(glassmere_core::TextEdit::Insert("e".into())));
+    frame(&mut context, view);
+    assert!(!shown(&context, "Your name"));
+    assert_eq!(context.next_wake(), None);
+}
+
+#[test]
+fn a_key_that_presses_the_widget_ends_the_focus_tooltip() {
+    let mut context = toolbar_at(Duration::ZERO);
+    tab(&mut context);
+    context.set_now(TOOLTIP_DELAY);
+    frame(&mut context, toolbar);
+    assert!(shown(&context, "First help"));
+    press(&mut context, Key::Enter, false);
+    frame(&mut context, toolbar);
+    assert!(!shown(&context, "First help"));
+}
+
+#[test]
+fn only_one_tooltip_is_on_show_and_a_pointer_tooltip_takes_over() {
+    let on_show = |context: &Context| {
+        ["First help", "Second help"]
+            .into_iter()
+            .filter(|text| shown(context, text))
+            .collect::<Vec<_>>()
+    };
+    let mut context = toolbar_at(Duration::ZERO);
+    tab(&mut context);
+    context.set_now(TOOLTIP_DELAY);
+    frame(&mut context, toolbar);
+    assert_eq!(on_show(&context), ["First help"]);
+    // Moving the pointer about does not take it away; only another tooltip does.
+    hover(&mut context, "bare");
+    frame(&mut context, toolbar);
+    assert_eq!(on_show(&context), ["First help"]);
+    hover(&mut context, "second");
+    let start = context.now();
+    assert_eq!(
+        context.next_wake(),
+        Some(start + ms(200)),
+        "the pointer's tooltip is due"
+    );
+    frame(&mut context, toolbar);
+    assert_eq!(on_show(&context), ["First help"]);
+    context.set_now(start + ms(200));
+    frame(&mut context, toolbar);
+    assert_eq!(on_show(&context), ["Second help"]);
+    assert_eq!(context.next_wake(), None);
+    // The pointer leaving takes its tooltip, and the keyboard's does not come back.
+    context.event(Event::PointerLeft);
+    context.set_now(start + TOOLTIP_DELAY * 4);
+    frame(&mut context, toolbar);
+    assert!(on_show(&context).is_empty());
+    assert_eq!(context.next_wake(), None);
+    // A key takes the pointer's away and moves on to one of the keyboard's.
+    hover(&mut context, "second");
+    context.set_now(start + TOOLTIP_DELAY * 8);
+    frame(&mut context, toolbar);
+    assert_eq!(on_show(&context), ["Second help"]);
+    tab(&mut context);
+    assert_eq!(focused_key(&context), "second");
+    frame(&mut context, toolbar);
+    assert!(on_show(&context).is_empty());
+    context.set_now(start + TOOLTIP_DELAY * 8 + ms(200));
+    frame(&mut context, toolbar);
+    assert_eq!(on_show(&context), ["Second help"]);
 }

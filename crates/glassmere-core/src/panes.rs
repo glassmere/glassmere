@@ -26,7 +26,7 @@ pub enum TooltipPlacement {
     After,
 }
 
-/// Hover help for a widget; see [`Ui::tooltip_with`](crate::Ui::tooltip_with).
+/// Hover and focus help for a widget; see [`Ui::tooltip_with`](crate::Ui::tooltip_with).
 /// Text alone converts into one, so `ui.tooltip_with("Save")` works.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Tooltip {
@@ -53,8 +53,8 @@ impl Tooltip {
         self
     }
 
-    /// How long the pointer rests on the widget before the tooltip shows,
-    /// instead of [`TOOLTIP_DELAY`].
+    /// How long the pointer rests on the widget, or the keyboard focus stays
+    /// on it, before the tooltip shows, instead of [`TOOLTIP_DELAY`].
     pub fn delay(mut self, delay: Duration) -> Self {
         self.delay = Some(delay);
         self

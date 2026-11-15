@@ -5,6 +5,15 @@ use std::borrow::Cow;
 /// The space between a tooltip and the widget it is for.
 const TOOLTIP_GAP: f32 = 6.0;
 
+/// What brought a tooltip up, which decides what takes it away again.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Dwell {
+    /// The pointer rested on the widget.
+    Pointer,
+    /// The keyboard moved focus to the widget.
+    Focus,
+}
+
 /// The side of a widget a tooltip is on.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Side {
@@ -85,9 +94,14 @@ impl Context {
 
     /// When the context next wants to be run without input, on the `set_now` clock.
     pub fn next_wake(&self) -> Option<Duration> {
-        let tooltip = self
-            .hover_since
-            .and_then(|(id, since)| self.tooltip_due(id, since));
+        let tooltip = [
+            self.hover_since.map(|dwell| (dwell, Dwell::Pointer)),
+            self.focus_since.map(|dwell| (dwell, Dwell::Focus)),
+        ]
+        .into_iter()
+        .flatten()
+        .filter_map(|((id, since), by)| self.tooltip_due(id, since, by))
+        .min();
         [
             tooltip,
             self.toast_wake(),
@@ -101,10 +115,11 @@ impl Context {
         .min()
     }
 
-    /// The node's tooltip, or for an editor the diagnostic under the pointer.
-    /// Windows shows its own over a title bar's buttons, after its own delay,
-    /// so that it does not come before the snap layouts.
-    fn tooltip_for(&self, id: NodeId) -> Option<Cow<'_, Tooltip>> {
+    /// The tooltip `by` brings up for the node, or for an editor under the
+    /// pointer the diagnostic there. Windows shows its own over a title bar's
+    /// buttons, after its own delay, so that it does not come before the snap
+    /// layouts.
+    fn tooltip_for(&self, id: NodeId, by: Dwell) -> Option<Cow<'_, Tooltip>> {
         let node = self.nodes.get(&id)?;
         if cfg!(windows)
             && matches!(
@@ -121,35 +136,45 @@ impl Context {
         {
             return Some(Cow::Borrowed(tooltip));
         }
-        let message = self.area_diagnostic(id)?;
+        // A spot in the text is something only the pointer can point at.
+        let message = self.area_diagnostic(id).filter(|_| by == Dwell::Pointer)?;
         Some(Cow::Owned(Tooltip::new(message)))
     }
 
     /// When the tooltip a dwell on `id` since `since` waits for is due, if
     /// there is one still to show.
-    fn tooltip_due(&self, id: NodeId, since: Duration) -> Option<Duration> {
-        if self.tooltip.is_some() {
+    fn tooltip_due(&self, id: NodeId, since: Duration, by: Dwell) -> Option<Duration> {
+        // It is on show already, or the pointer's is.
+        if self
+            .tooltip
+            .is_some_and(|(owner, shown)| owner == id || shown == Dwell::Pointer)
+        {
             return None;
         }
-        let delay = self.tooltip_for(id)?.delay.unwrap_or(TOOLTIP_DELAY);
+        let delay = self.tooltip_for(id, by)?.delay.unwrap_or(TOOLTIP_DELAY);
         Some(since + delay)
     }
 
     /// Tracks hover dwell after input; hides a visible tooltip when the pointer
     /// leaves its owner or any press or key arrives.
     pub(super) fn track_hover(&mut self, event: &Event) {
-        let hides = matches!(
+        // A press, a scroll and losing the window end every tooltip.
+        if matches!(
             event,
             Event::PointerDown
                 | Event::PointerDownWithShift
-                | Event::KeyDown { .. }
                 | Event::FocusLost
-                | Event::PointerLeft
                 | Event::Scroll { .. }
-        );
-        if hides {
+        ) {
             self.hover_since = None;
+            self.focus_since = None;
             self.hide_tooltip();
+            return;
+        }
+        // A key, or the pointer leaving the window, ends the pointer's only.
+        if matches!(event, Event::KeyDown { .. } | Event::PointerLeft) {
+            self.hover_since = None;
+            self.hide_pointer_tooltip();
             return;
         }
         // Only movement re-arms the dwell; a release over the same widget does not.
@@ -167,9 +192,9 @@ impl Context {
             if editor
                 || self
                     .tooltip
-                    .is_some_and(|owner| Some(owner) != self.hovered)
+                    .is_some_and(|(owner, _)| Some(owner) != self.hovered)
             {
-                self.hide_tooltip();
+                self.hide_pointer_tooltip();
             }
         }
     }
@@ -180,23 +205,97 @@ impl Context {
         }
     }
 
+    fn hide_pointer_tooltip(&mut self) {
+        if self
+            .tooltip
+            .is_some_and(|(_, shown)| shown == Dwell::Pointer)
+        {
+            self.hide_tooltip();
+        }
+    }
+
+    /// Focus moved: the tooltip the keyboard brought up, or was about to, was
+    /// for the widget that had it.
+    pub(super) fn blur_tooltip(&mut self) {
+        self.focus_since = None;
+        if self.tooltip.is_some_and(|(_, shown)| shown == Dwell::Focus) {
+            self.hide_tooltip();
+        }
+    }
+
+    /// Tooltips for the keyboard, after `event` has been handled: a key that
+    /// moved focus starts the delay of the tooltip of the widget it moved to,
+    /// unless it also acted on that widget (changed its value, pressed it),
+    /// which takes the tooltip away, as a press does. `before` is the focus
+    /// before the event and `queued` how much was queued by then.
+    pub(super) fn track_focus(&mut self, event: &Event, before: Option<NodeId>, queued: usize) {
+        if !matches!(
+            event,
+            Event::KeyDown { .. } | Event::KeyUp(_) | Event::Text(_)
+        ) {
+            return;
+        }
+        let acted = self
+            .queued
+            .get(queued..)
+            .is_some_and(|new| new.iter().any(|(id, _)| Some(*id) == self.focused));
+        if acted {
+            self.focus_since = None;
+            if self.tooltip.is_some_and(|(_, shown)| shown == Dwell::Focus) {
+                self.hide_tooltip();
+            }
+        } else if self.noted_focus != before
+            // Escape leaves what it dismissed, and focus goes back to where it was.
+            && matches!(event, Event::KeyDown { key, .. } if *key != Key::Escape)
+        {
+            self.focus_since = self.noted_focus.map(|id| (id, self.now));
+        }
+    }
+
+    /// Escape takes a tooltip the keyboard brought up away and does nothing
+    /// else, as it does for the innermost popup, popover or dialog. True when
+    /// it did.
+    pub(super) fn escape_tooltip(&mut self, event: &Event) -> bool {
+        if !matches!(
+            event,
+            Event::KeyDown {
+                key: Key::Escape,
+                ..
+            }
+        ) {
+            return false;
+        }
+        self.focus_since = None;
+        if self.tooltip.is_none_or(|(_, shown)| shown != Dwell::Focus) {
+            return false;
+        }
+        self.hide_tooltip();
+        true
+    }
+
     /// Shows a due tooltip. Called during declaration, after reconciliation.
     pub(super) fn update_tooltip(&mut self) {
-        let Some((id, since)) = self.hover_since else {
-            return;
+        let due = |context: &Self, dwell: Option<(NodeId, Duration)>, by| {
+            dwell
+                .and_then(|(id, since)| Some((id, context.tooltip_due(id, since, by)?)))
+                .filter(|(_, due)| context.now >= *due)
+                .map(|(id, _)| id)
         };
-        if self
-            .tooltip_due(id, since)
-            .is_some_and(|due| self.now >= due)
-        {
-            self.tooltip = Some(id);
-            self.pending |= Dirty::PAINT;
+        // The pointer's goes first, and replaces one the keyboard brought up.
+        if let Some(id) = due(self, self.hover_since, Dwell::Pointer) {
+            self.tooltip = Some((id, Dwell::Pointer));
+            self.focus_since = None;
+        } else if let Some(id) = due(self, self.focus_since, Dwell::Focus) {
+            self.tooltip = Some((id, Dwell::Focus));
+        } else {
+            return;
         }
+        self.pending |= Dirty::PAINT;
     }
 
     /// Paints the visible tooltip after all content and overlays.
     pub(super) fn paint_tooltip(&mut self, scene: &mut Scene, measurer: &mut impl TextMeasurer) {
-        let Some(owner) = self.tooltip else {
+        let Some((owner, by)) = self.tooltip else {
             return;
         };
         let Some(node) = self.nodes.get(&owner) else {
@@ -208,7 +307,7 @@ impl Context {
             node.resolved.rtl(),
             node.kind == Kind::TextArea,
         );
-        let Some(tooltip) = self.tooltip_for(owner).map(Cow::into_owned) else {
+        let Some(tooltip) = self.tooltip_for(owner, by).map(Cow::into_owned) else {
             return;
         };
         let custom = tooltip.style.as_deref();
@@ -239,9 +338,9 @@ impl Context {
         );
         // Editor messages belong to a spot in the text, not to the whole
         // editor, unless a placement was asked for.
-        let pointer = self
-            .pointer
-            .filter(|_| in_editor && tooltip.placement == TooltipPlacement::Auto);
+        let pointer = self.pointer.filter(|_| {
+            by == Dwell::Pointer && in_editor && tooltip.placement == TooltipPlacement::Auto
+        });
         let rect = match pointer {
             Some(pointer) => {
                 let y = pointer.y + 18.0;

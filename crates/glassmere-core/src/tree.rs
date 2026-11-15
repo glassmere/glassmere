@@ -500,7 +500,10 @@ pub struct Context {
     pending_restore: Option<NodeId>,
     now: Duration,
     hover_since: Option<(NodeId, Duration)>,
-    tooltip: Option<NodeId>,
+    /// Where the keyboard moved focus last, and when: the dwell of the tooltip it brings up.
+    focus_since: Option<(NodeId, Duration)>,
+    /// The tooltip on show, and what brought it.
+    tooltip: Option<(NodeId, overlay_input::Dwell)>,
     new_popovers: Vec<NodeId>,
     reduced_motion: bool,
     resizing: bool,
@@ -695,6 +698,7 @@ impl Default for Context {
             pending_restore: None,
             now: Duration::ZERO,
             hover_since: None,
+            focus_since: None,
             tooltip: None,
             new_popovers: Vec::new(),
             reduced_motion: false,

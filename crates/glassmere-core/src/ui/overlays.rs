@@ -41,9 +41,10 @@ impl<M> CommandPalette<M> {
 }
 
 impl<'a, M: 'static> Ui<'a, M> {
-    /// Attaches hover help to the previously declared widget. It appears after a
-    /// short dwell and doubles as the widget's accessible description. The
-    /// same as `tooltip_with(Tooltip::new(text))`.
+    /// Attaches help to the previously declared widget. It appears after a
+    /// short dwell of the pointer or of keyboard focus, and doubles as the
+    /// widget's accessible description. The same as
+    /// `tooltip_with(Tooltip::new(text))`.
     #[track_caller]
     pub fn tooltip(&mut self, text: impl Into<String>) {
         self.tooltip_with(Tooltip::new(text));

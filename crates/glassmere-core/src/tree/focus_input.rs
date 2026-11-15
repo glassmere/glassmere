@@ -149,6 +149,7 @@ impl Context {
         }
         let previous = self.noted_focus;
         self.noted_focus = focused;
+        self.blur_tooltip();
         if let Some(old) = previous.filter(|old| Some(*old) != focused) {
             self.queue_blur(old);
         }

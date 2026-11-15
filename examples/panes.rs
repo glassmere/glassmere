@@ -134,9 +134,10 @@ impl App for Panes {
             });
             ui.label(
                 Label::new(
-                    "Hover the toolbar, the files and the buttons for tooltips. Right-click the \
-                     editor (or press Shift+F10 while it has focus) for a context menu. Drag the \
-                     dividers or focus one and use the arrow keys.",
+                    "Hover the toolbar, the files and the buttons for tooltips, or Tab to a \
+                     control and wait. Right-click the editor (or press Shift+F10 while it has \
+                     focus) for a context menu. Drag the dividers or focus one and use the \
+                     arrow keys.",
                 )
                 .style(muted),
             );
