@@ -315,7 +315,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         let combo = combo.into();
         let key = self.next_key();
         let selected = selected.min(items.len().saturating_sub(1));
-        let response = self.combo_shown(combo, key, selected, items);
+        let response = self.combo_shown(combo, key, selected, items, "—");
         self.set_handler(Handler::Map(Box::new(move |update| match update {
             ControlUpdate::Choice(index) => Some(on_choose(index)),
             _ => None,
@@ -330,6 +330,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         key: WidgetKey,
         selected: usize,
         items: &[&str],
+        none: &str,
     ) -> Response<'a> {
         let style = combo.style.unwrap_or_else(Self::field_style);
         let entries = items
@@ -345,7 +346,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             Length::Percent(1.0),
         );
         self.push(Element {
-            text: format!("{}  ▾", items.get(selected).copied().unwrap_or("—")),
+            text: format!("{}  ▾", items.get(selected).copied().unwrap_or(none)),
             style,
             enabled: self.enabled && !items.is_empty(),
             children,

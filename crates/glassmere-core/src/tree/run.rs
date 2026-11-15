@@ -145,6 +145,7 @@ impl Context {
         self.damage.clear();
         self.resizing = size != self.scene.size;
         self.begin_animation_frame();
+        self.update_images();
         self.update_toasts();
         self.update_touches();
     }
@@ -223,6 +224,7 @@ impl Context {
                 } => Some((*id, shortcut.clone())),
                 _ => None,
             })
+            .filter(|(id, _)| self.attached(*id))
             .collect();
         let mut shortcuts = HashSet::new();
         for (id, shortcut) in commands {
@@ -259,6 +261,7 @@ impl Context {
                     .filter(|input| *input != crate::EventArea::default())
                     .map(|input| (*id, input)),
             })
+            .filter(|(id, _)| self.attached(*id))
             .collect();
         self.pending_area_events
             .borrow_mut()
@@ -486,7 +489,7 @@ impl Context {
     /// Whether `id` is panel content that the dock being reconciled keeps
     /// instead of removing it with the place it was in, because the dock may
     /// put it somewhere else. [`Context::release_panels`] removes what no
-    /// one took.
+    /// one took and no group shows.
     fn park_panel(&mut self, id: NodeId) -> bool {
         let Some(dock) = self.dock.get() else {
             return false;
@@ -499,26 +502,52 @@ impl Context {
             .get(&dock)
             .is_some_and(|panels| panels.get(panel) == Some(&id));
         if kept {
-            self.nodes.get_mut(&id).unwrap().parent = None;
+            let node = self.nodes.get_mut(&id).unwrap();
+            node.parent = None;
+            let clip = node.clip;
+            self.add_damage(clip);
         }
         kept
     }
 
-    /// Removes the panels of `dock` that no group declared this time.
+    /// Removes the panels of `dock` that no group declared this time and
+    /// that no group shows either. A shown panel whose tab is not the
+    /// selected one stays parked, detached from the tree with its whole
+    /// subtree, so that it comes back as it was when its tab is selected.
+    /// The tree never reaches it, and [`Context::attached`] keeps what scans
+    /// the nodes from finding it.
     fn release_panels(&mut self, dock: NodeId) {
+        let mut shown = Vec::new();
+        self.shown_panels(dock, &mut shown);
         let Some(panels) = self.panels.get_mut(&dock) else {
             return;
         };
         let mut gone = Vec::new();
-        panels.retain(|_, id| {
-            let parked = self.nodes[id].parent.is_none();
-            if parked {
+        panels.retain(|panel, id| {
+            let released = self.nodes[id].parent.is_none() && !shown.contains(panel);
+            if released {
                 gone.push(*id);
             }
-            !parked
+            !released
         });
+        // Whatever was shown has gone already, with its exit effects, when
+        // it left its group.
         for id in gone {
-            self.remove_with_exit(id);
+            self.remove(id);
+        }
+    }
+
+    /// The ids of the panels the groups under `id` show, without looking
+    /// into the panels.
+    fn shown_panels(&self, id: NodeId, shown: &mut Vec<String>) {
+        let node = &self.nodes[&id];
+        match &node.control {
+            Control::DockGroup { panels, .. } => shown.extend(panels.iter().cloned()),
+            _ => {
+                for child in &node.children {
+                    self.shown_panels(*child, shown);
+                }
+            }
         }
     }
 
@@ -806,7 +835,19 @@ impl Context {
         }
         let node = self.nodes.remove(&id).unwrap();
         if node.kind == Kind::Dock {
-            self.panels.remove(&id);
+            // The panels parked while their tabs were not selected go with it;
+            // the others are children, removed below.
+            for panel in self
+                .panels
+                .remove(&id)
+                .into_iter()
+                .flatten()
+                .map(|(_, id)| id)
+            {
+                if self.nodes[&panel].parent.is_none() {
+                    self.remove(panel);
+                }
+            }
         }
         // Popovers fall back to their anchor when nothing was focused before them.
         if let Some(state) = &node.scope
@@ -844,36 +885,41 @@ impl Context {
         // A menu whose owner went away or was disabled closes, and every
         // submenu opened from it with it.
         let gone = self.popup_levels().position(|popup| {
-            !self
-                .nodes
-                .get(&popup.owner)
-                .is_some_and(|node| node.enabled)
+            !self.attached(popup.owner)
+                || !self
+                    .nodes
+                    .get(&popup.owner)
+                    .is_some_and(|node| node.enabled)
         });
         if let Some(depth) = gone {
             self.popup = (depth > 0).then(|| self.popup_parents[depth - 1]);
             self.popup_parents.truncate(depth.saturating_sub(1));
         }
-        let valid = |id: NodeId| self.nodes.get(&id).is_some_and(Node::focusable);
-        if self.focused.is_some_and(|id| !valid(id)) {
+        let valid = |this: &Self, id: NodeId| {
+            this.attached(id) && this.nodes.get(&id).is_some_and(Node::focusable)
+        };
+        if self.focused.is_some_and(|id| !valid(self, id)) {
             self.focused = None;
             self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
         }
         let restored = self
             .pending_restore
             .take()
-            .filter(|target| self.focused.is_none() && valid(*target));
+            .filter(|target| self.focused.is_none() && valid(self, *target));
         if restored.is_some() {
             self.focused = restored;
             self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
         }
-        if self
-            .captured
-            .is_some_and(|id| !self.nodes.get(&id).is_some_and(Node::takes_pointer))
-        {
+        if self.captured.is_some_and(|id| {
+            !self.attached(id) || !self.nodes.get(&id).is_some_and(Node::takes_pointer)
+        }) {
             self.captured = None;
             self.pending |= Dirty::PAINT;
         }
-        if self.keyboard_pressed.is_some_and(|(id, _)| !valid(id)) {
+        if self
+            .keyboard_pressed
+            .is_some_and(|(id, _)| !valid(self, id))
+        {
             self.keyboard_pressed = None;
             self.pending |= Dirty::PAINT;
         }
@@ -882,10 +928,11 @@ impl Context {
         }
         self.cancel_compositions_except(self.focused);
         if self.drag.as_ref().is_some_and(|drag| {
-            !self
-                .nodes
-                .get(&drag.source)
-                .is_some_and(|node| node.enabled)
+            !self.attached(drag.source)
+                || !self
+                    .nodes
+                    .get(&drag.source)
+                    .is_some_and(|node| node.enabled)
         }) {
             self.cancel_drag();
         }

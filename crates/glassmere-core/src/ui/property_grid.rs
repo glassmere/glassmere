@@ -1,18 +1,27 @@
+use super::collections::realized_rows;
 use super::controls::FieldExtra;
 use super::*;
 use crate::app::Handler;
 use crate::controls::ControlUpdate;
 use crate::{
     Align, Axis, Button, ComboBox, Length, NumberOptions, PropertyGridOptions, PropertyGridState,
-    PropertyMsg, SplitOptions, TextInput,
+    PropertyMsg, SplitOptions, TextInput, VirtualListOptions,
 };
 use glassmere_scene::Color;
 use std::any::Any;
+use std::cell::Cell;
 use std::rc::Rc;
 
 /// Gap between the name and the value, and the width of the header's divider,
 /// so the columns line up with the header.
 const COLUMN_GAP: f32 = 6.0;
+
+/// Height of every row and group header in a grid with a height, and the gap
+/// between them. They are alike so that a scrolled grid can tell which rows are
+/// in view from the scroll offset alone. A grid without a height keeps the
+/// height its content takes.
+const ROW_HEIGHT: f32 = 44.0;
+const ROW_GAP: f32 = 4.0;
 
 fn contains(text: &str, filter: &str) -> bool {
     text.to_lowercase().contains(filter)
@@ -46,9 +55,12 @@ fn parse_hex(text: &str) -> Option<Color> {
 /// A percentage because styles have no one-sided padding.
 const BESIDE_SCROLLBAR: f32 = 0.97;
 
+/// The editors fill the value column, and give way to the toggle that an
+/// optional row puts before them.
 fn fill() -> Style {
     Style {
         width: Length::Percent(1.0),
+        shrink: 1.0,
         ..Ui::<()>::field_style()
     }
 }
@@ -73,6 +85,28 @@ fn take_default_from<T: Any, M: 'static>(
     }
 }
 
+/// The rows of a scrolling grid that exist. Rows and headers are counted as
+/// the view declares them, in order, and only those in `range` become nodes;
+/// the rest are stood in for by a spacer of their height, as in a virtual list.
+struct Window {
+    range: std::ops::Range<usize>,
+    /// Rows and headers counted so far, in view or not.
+    counted: Cell<usize>,
+    offset: f32,
+    height: f32,
+}
+
+impl Window {
+    /// Whether the scroll offset the window was made from lies past the end
+    /// of what was counted, which happens when a filter or a collapsed group
+    /// shortens the grid: nothing is in view, and the next declaration is
+    /// made from the offset the layout clamped it to.
+    fn past_end(&self) -> bool {
+        let content = (self.counted.get() as f32 * (ROW_HEIGHT + ROW_GAP) - ROW_GAP).max(0.0);
+        self.offset > (content - self.height).max(0.0)
+    }
+}
+
 /// Declares the rows of a property grid whose values are messages; see
 /// [`Ui::property_grid`]. Each row shows the value it is given and sends
 /// the message of its editor, so the view keeps no state of its own.
@@ -86,6 +120,17 @@ pub struct PropertyGrid<'a, 'u, M: 'static = ()> {
     /// An enclosing group matched the filter, so all its rows show.
     shown_by_group: bool,
     default: Option<(Box<dyn Any>, &'static str)>,
+    /// The next row edits several objects whose values differ.
+    mixed: bool,
+    /// Whether the next row's property has a value, and the message that
+    /// flips it.
+    optional: Option<(bool, M)>,
+    /// Which rows exist; `None` declares them all.
+    window: Option<&'a Window>,
+    /// Rows and headers passed over since the last one declared here.
+    skipped: usize,
+    /// Whether anything was declared here.
+    shown: bool,
     rows: usize,
 }
 
@@ -98,6 +143,54 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         if self.default.take().is_some() {
             self.ui
                 .misuse("PropertyGrid::default was not followed by a row".to_owned());
+        }
+        if std::mem::take(&mut self.mixed) {
+            self.ui
+                .misuse("PropertyGrid::mixed was not followed by a row".to_owned());
+        }
+        if self.optional.take().is_some() {
+            self.ui
+                .misuse("PropertyGrid::optional was not followed by a row".to_owned());
+        }
+    }
+
+    fn row_height(&self) -> Length {
+        match self.window {
+            Some(_) => Length::Px(ROW_HEIGHT),
+            None => Length::Auto,
+        }
+    }
+
+    /// Counts the next row or header, and says whether it is declared. The
+    /// rows passed over before it are declared as one spacer first.
+    fn take_slot(&mut self) -> bool {
+        if let Some(window) = self.window {
+            let index = window.counted.get();
+            window.counted.set(index + 1);
+            if !window.range.contains(&index) {
+                self.skipped += 1;
+                return false;
+            }
+            self.flush("$before");
+        }
+        self.shown = true;
+        true
+    }
+
+    /// Declares the rows passed over as a spacer, which the gaps around it
+    /// complete to the height they would have taken.
+    fn flush(&mut self, key: &str) {
+        if self.skipped > 0 {
+            let height = self.skipped as f32 * (ROW_HEIGHT + ROW_GAP) - ROW_GAP;
+            self.ui.label_at(
+                key,
+                "",
+                Style {
+                    height: Length::Px(height),
+                    ..Style::default()
+                },
+            );
+            self.skipped = 0;
         }
     }
 
@@ -114,16 +207,40 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         self
     }
 
-    /// Whether the pending default differs from `value`, and the message that
-    /// restores it.
+    /// Marks the next row as editing several objects whose values differ, as
+    /// `PropertyGrid::default` marks its default. The row shows "Mixed" for a
+    /// value, and what it sends is meant for all of them: the application
+    /// stores it in each object. A number, text or colour row shows no value
+    /// and sends what is typed even when it equals the first object's value, a
+    /// checkbox sends `true`, and a reset button is enabled. A row of
+    /// [`custom`](Self::custom) cannot be mixed.
+    pub fn mixed(&mut self, mixed: bool) -> &mut Self {
+        self.mixed = mixed;
+        self
+    }
+
+    /// Marks the next row as a property that may have no value, such as an
+    /// `Option`: a checkbox beside the editor is checked while `set`, and a
+    /// click sends `on` of the opposite. The editor is disabled while the
+    /// property has no value, and then shows the value that a click on the
+    /// checkbox is meant to give it. A row of [`custom`](Self::custom) or
+    /// [`readonly`](Self::readonly) cannot be optional.
+    pub fn optional(&mut self, set: bool, on: impl Fn(bool) -> M) -> &mut Self {
+        self.optional = Some((set, on(!set)));
+        self
+    }
+
+    /// Whether the pending default differs from `value`, or the row is
+    /// `mixed`, and the message that restores it.
     fn reset<T: Any + Clone + PartialEq>(
         &mut self,
         name: &str,
         value: &T,
+        mixed: bool,
         on: &Rc<dyn Fn(T) -> M>,
     ) -> Option<(bool, M)> {
         let default = take_default_from::<T, M>(&mut self.default, self.ui, name)?;
-        Some((default != *value, on(default.clone())))
+        Some((mixed || default != *value, on(default.clone())))
     }
 
     /// A collapsible group of rows. The header sends the toggled state, which
@@ -137,43 +254,18 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         let shown_by_group = self.shown_by_group || (!filter.is_empty() && contains(name, &filter));
         let collapsed = filter.is_empty() && self.state.collapsed.contains(&joined);
         let depth = self.path.len();
-        let (state, send) = (self.state, self.send.clone());
-        let mut rows = 0;
+        let (state, send, window) = (self.state, self.send.clone(), self.window);
+        let first = window.map(|window| window.counted.get());
+        // What was passed over before the group is a spacer inside it, if the
+        // group has anything in view.
+        let carried = std::mem::take(&mut self.skipped);
+        let (mut rows, mut skipped, mut shown) = (0, 0, false);
         let style = Style {
             width: Length::Percent(1.0),
-            gap: 4.0,
+            gap: ROW_GAP,
             ..Style::default()
         };
         self.ui.column_at(format!("group:{name}"), style, |ui| {
-            let header = Style {
-                width: Length::Percent(1.0),
-                padding: 8.0,
-                radius: 6.0,
-                font_weight: Some(700),
-                background: Some(ui.context.theme().track),
-                ..Style::default()
-            };
-            let arrow = if collapsed { "\u{25b8}" } else { "\u{25be}" };
-            let indent = "    ".repeat(depth);
-            let toggle = send(PropertyMsg::Group {
-                path: joined.clone(),
-                collapsed: !state.collapsed.contains(&joined),
-            });
-            ui.at("$header").button(
-                Button::new(format!("{indent}{arrow}  {name}"))
-                    .style(header)
-                    .on_click(toggle),
-            );
-            ui.tooltip(if collapsed {
-                ui.context
-                    .tr("glassmere-property-expand", &[("name", name.into())])
-            } else {
-                ui.context
-                    .tr("glassmere-property-collapse", &[("name", name.into())])
-            });
-            if collapsed {
-                return;
-            }
             let mut grid = PropertyGrid {
                 ui,
                 state,
@@ -181,15 +273,62 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
                 path,
                 shown_by_group,
                 default: None,
+                mixed: false,
+                optional: None,
+                window,
+                skipped: carried,
+                shown: false,
                 rows: 0,
             };
-            content(&mut grid);
+            if grid.take_slot() {
+                let header = Style {
+                    width: Length::Percent(1.0),
+                    height: grid.row_height(),
+                    padding: 8.0,
+                    radius: 6.0,
+                    font_weight: Some(700),
+                    background: Some(grid.ui.context.theme().track),
+                    ..Style::default()
+                };
+                let arrow = if collapsed { "\u{25b8}" } else { "\u{25be}" };
+                let indent = "    ".repeat(depth);
+                let toggle = (grid.send)(PropertyMsg::Group {
+                    path: joined.clone(),
+                    collapsed: !state.collapsed.contains(&joined),
+                });
+                grid.ui.at("$header").button(
+                    Button::new(format!("{indent}{arrow}  {name}"))
+                        .style(header)
+                        .on_click(toggle),
+                );
+                let key = if collapsed {
+                    "glassmere-property-expand"
+                } else {
+                    "glassmere-property-collapse"
+                };
+                let tooltip = grid.ui.context.tr(key, &[("name", name.into())]);
+                grid.ui.tooltip(tooltip);
+            }
+            if !collapsed {
+                content(&mut grid);
+            }
             grid.finish();
-            rows = grid.rows;
+            (rows, skipped, shown) = (grid.rows, grid.skipped, grid.shown);
         });
-        // A filter hides groups that have nothing to show.
         if !filter.is_empty() && rows == 0 {
+            // A filter hides groups that have nothing to show, and their
+            // header is not counted.
             self.ui.take_declared();
+            if let (Some(window), Some(first)) = (window, first) {
+                window.counted.set(first);
+            }
+            self.skipped = carried;
+        } else {
+            // A scrolled grid declares no group that is out of view.
+            if !shown {
+                self.ui.take_declared();
+            }
+            self.skipped = skipped;
         }
         self.rows += rows;
     }
@@ -202,15 +341,20 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         reset: Option<(bool, M)>,
         editor: impl FnOnce(&mut Ui<'_, M>, &str),
     ) {
+        let optional = self.optional.take();
         let filter = self.filter();
         if !(filter.is_empty() || self.shown_by_group || contains(name, &filter)) {
             return;
         }
         self.rows += 1;
+        if !self.take_slot() {
+            return;
+        }
         let share = self.state.name_share;
         let shown = format!("{}{name}", "    ".repeat(self.path.len()));
         let style = Style {
             width: Length::Percent(1.0),
+            height: self.row_height(),
             gap: COLUMN_GAP,
             align_items: Align::Center,
             ..Style::default()
@@ -221,15 +365,30 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
                 shown,
                 Style::default().width(Length::Percent(share)),
             );
-            ui.container_at(
-                "$editor",
-                Style {
-                    grow: 1.0,
-                    shrink: 1.0,
-                    ..Style::default()
-                },
-                |ui| editor(ui, name),
-            );
+            let editor_style = Style {
+                grow: 1.0,
+                shrink: 1.0,
+                ..Style::default()
+            };
+            match optional {
+                None => ui.container_at("$editor", editor_style, |ui| editor(ui, name)),
+                Some((set, toggle)) => {
+                    let beside = Style {
+                        gap: COLUMN_GAP,
+                        align_items: Align::Center,
+                        ..editor_style
+                    };
+                    ui.row_at("$editor", beside, |ui| {
+                        let label = ui
+                            .context
+                            .tr("glassmere-property-set", &[("name", name.into())]);
+                        let checkbox = ui.at("$set");
+                        checkbox.checkbox_shown(label, "", set);
+                        checkbox.set_handler(Handler::Message(toggle));
+                        ui.enabled(set, |ui| editor(ui, name));
+                    });
+                }
+            }
             if let Some((differs, message)) = reset {
                 let compact = Style {
                     padding: 8.0,
@@ -257,12 +416,17 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         options: NumberOptions,
         on: impl Fn(f64) -> M + 'static,
     ) {
-        let options = options.style(Style::default().width(Length::Percent(1.0)));
+        let options = options.style(Style {
+            width: Length::Percent(1.0),
+            shrink: 1.0,
+            ..Style::default()
+        });
         let on: Rc<dyn Fn(f64) -> M> = Rc::new(on);
-        let reset = self.reset(name, &value, &on);
+        let mixed = std::mem::take(&mut self.mixed);
+        let reset = self.reset(name, &value, mixed, &on);
         self.row(name, reset, |ui, label| {
             ui.at("$value")
-                .number_input(label, value, options, move |number| on(number));
+                .number_field(label, value, options, mixed, move |number| on(number));
         });
     }
 
@@ -280,12 +444,19 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
     /// A checkbox row: a click sends `on` of the opposite of `value`.
     pub fn bool_with(&mut self, name: &str, value: bool, on: impl Fn(bool) -> M + 'static) {
         let on: Rc<dyn Fn(bool) -> M> = Rc::new(on);
-        let reset = self.reset(name, &value, &on);
+        let mixed = std::mem::take(&mut self.mixed);
+        let reset = self.reset(name, &value, mixed, &on);
         self.row(name, reset, |ui, label| {
-            // The name is already in the first column; the box alone shows.
+            // The name is already in the first column; the box alone shows,
+            // and an unchecked one with the hint while the values are mixed.
+            let hint = if mixed {
+                ui.context.tr("glassmere-property-mixed", &[])
+            } else {
+                String::new()
+            };
             let checkbox = ui.at("$value");
-            checkbox.checkbox_shown(label, "", value);
-            checkbox.set_handler(Handler::Message(on(!value)));
+            checkbox.checkbox_shown(label, &hint, value && !mixed);
+            checkbox.set_handler(Handler::Message(on(mixed || !value)));
         });
     }
 
@@ -303,12 +474,19 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
     /// A text row: edits send `on` of the text.
     pub fn text_with(&mut self, name: &str, value: &str, on: impl Fn(String) -> M + 'static) {
         let on: Rc<dyn Fn(String) -> M> = Rc::new(on);
-        let reset = self.reset(name, &value.to_owned(), &on);
+        let mixed = std::mem::take(&mut self.mixed);
+        let reset = self.reset(name, &value.to_owned(), mixed, &on);
         self.row(name, reset, |ui, label| {
-            ui.at("$value")
-                .text_input(TextInput::new(label).style(fill()), value, move |text| {
-                    on(text)
-                });
+            let hint = if mixed {
+                ui.context.tr("glassmere-property-mixed", &[])
+            } else {
+                String::new()
+            };
+            ui.at("$value").text_input(
+                TextInput::new(label).placeholder(hint).style(fill()),
+                if mixed { "" } else { value },
+                move |text| on(text),
+            );
         });
     }
 
@@ -332,14 +510,27 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         on: impl Fn(usize) -> M + 'static,
     ) {
         let on: Rc<dyn Fn(usize) -> M> = Rc::new(on);
-        let reset = self.reset(name, &value, &on);
+        let mixed = std::mem::take(&mut self.mixed);
+        let reset = self.reset(name, &value, mixed, &on);
         self.row(name, reset, |ui, label| {
-            ui.at("$value").combo_box(
+            let (selected, hint) = if mixed {
+                (usize::MAX, ui.context.tr("glassmere-property-mixed", &[]))
+            } else {
+                (value.min(choices.len().saturating_sub(1)), String::new())
+            };
+            let combo = ui.at("$value");
+            let key = combo.next_key();
+            combo.combo_shown(
                 ComboBox::new(label).style(fill()),
-                value,
+                key,
+                selected,
                 choices,
-                move |index| on(index),
+                &hint,
             );
+            combo.set_handler(Handler::Map(Box::new(move |update| match update {
+                ControlUpdate::Choice(index) => Some(on(index)),
+                _ => None,
+            })));
         });
     }
 
@@ -359,10 +550,12 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
     /// keeps what was typed until the colour changes.
     pub fn color_with(&mut self, name: &str, value: Color, on: impl Fn(Color) -> M + 'static) {
         let on: Rc<dyn Fn(Color) -> M> = Rc::new(on);
-        let reset = self.reset(name, &value, &on);
+        let mixed = std::mem::take(&mut self.mixed);
+        let reset = self.reset(name, &value, mixed, &on);
         self.row(name, reset, |ui, label| {
             let row = Style {
                 width: Length::Percent(1.0),
+                shrink: 1.0,
                 gap: COLUMN_GAP,
                 align_items: Align::Center,
                 ..Style::default()
@@ -374,12 +567,19 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
                         width: Length::Px(28.0),
                         height: Length::Px(28.0),
                         radius: 6.0,
-                        background: Some(value),
+                        background: (!mixed).then_some(value),
                         ..Style::default()
                     },
                     |_| {},
                 );
-                let mut shown = hex(value);
+                let (mut shown, hint) = if mixed {
+                    (
+                        String::new(),
+                        ui.context.tr("glassmere-property-mixed", &[]),
+                    )
+                } else {
+                    (hex(value), "#rrggbb".to_owned())
+                };
                 let field = Style {
                     grow: 1.0,
                     shrink: 1.0,
@@ -405,7 +605,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
                     key,
                     label.to_owned(),
                     &shown,
-                    "#rrggbb",
+                    &hint,
                     field,
                     FieldExtra {
                         draft: drafting,
@@ -443,9 +643,13 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
 
     /// A value that is shown, not edited.
     pub fn readonly(&mut self, name: &str, text: impl Into<String>) {
-        let text = text.into();
+        let mut text = text.into();
+        let mixed = std::mem::take(&mut self.mixed);
         self.finish();
         self.row(name, None, |ui, _| {
+            if mixed {
+                text = ui.context.tr("glassmere-property-mixed", &[]);
+            }
             let muted = ui.context.theme().text_muted;
             ui.label_at(
                 "$value",
@@ -469,6 +673,11 @@ impl<'a, M: 'static> Ui<'a, M> {
     ///
     /// The name column's divider sends [`PropertyMsg::NameShare`], which
     /// [`PropertyGridState::apply`] stores.
+    ///
+    /// With a [`PropertyGridOptions::height`] the grid scrolls and declares
+    /// only the rows in view and a few beyond, like a virtual list; the
+    /// content still runs for every property, so it should only name them.
+    /// Rows and group headers are all one height for that.
     #[track_caller]
     pub fn property_grid(
         &mut self,
@@ -534,6 +743,27 @@ impl<'a, M: 'static> Ui<'a, M> {
                 header("glassmere-property-column"),
                 header("glassmere-value-column"),
             );
+            // A grid that scrolls declares the rows in view and a few beyond,
+            // like a virtual list, where the last declaration left the scroll.
+            let window = options.height.map(|height| {
+                let offset = ui
+                    .context
+                    .child(ui.parent, &WidgetKey::named("$scroll"), Kind::Scroll)
+                    .and_then(|scroll| ui.context.node(scroll))
+                    .and_then(|node| node.scroll)
+                    .map_or(0.0, |scroll| scroll.offset);
+                let list = VirtualListOptions {
+                    height,
+                    row_height: ROW_HEIGHT + ROW_GAP,
+                    ..VirtualListOptions::default()
+                };
+                Window {
+                    range: realized_rows(usize::MAX, offset, &list),
+                    counted: Cell::new(0),
+                    offset,
+                    height,
+                }
+            });
             let rows = |ui: &mut Ui<'_, M>| {
                 let mut grid = PropertyGrid {
                     ui,
@@ -542,14 +772,23 @@ impl<'a, M: 'static> Ui<'a, M> {
                     path: Vec::new(),
                     shown_by_group: false,
                     default: None,
+                    mixed: false,
+                    optional: None,
+                    window: window.as_ref(),
+                    skipped: 0,
+                    shown: false,
                     rows: 0,
                 };
                 content(&mut grid);
                 grid.finish();
+                grid.flush("$after");
+                if window.as_ref().is_some_and(Window::past_end) {
+                    grid.ui.request_redraw();
+                }
             };
             let body = Style {
                 width: Length::Percent(1.0),
-                gap: 4.0,
+                gap: ROW_GAP,
                 ..Style::default()
             };
             match options.height {

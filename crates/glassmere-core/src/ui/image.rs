@@ -5,6 +5,12 @@ use glassmere_scene::Image;
 impl<'a, M: 'static> Ui<'a, M> {
     /// A decoded image. It takes its natural size unless the style gives one;
     /// `ImageOptions::fit` decides how it fills a box of another shape.
+    ///
+    /// An animated image (`Image::animated`) plays from the moment it is first
+    /// shown: the context wakes the host at each frame's deadline and repaints
+    /// the image's own bounds only. Off screen it does not run, and with
+    /// `Context::set_reduced_motion` it shows its first frame. A background
+    /// image shows the first frame.
     #[track_caller]
     pub fn image(&mut self, image: &Image, options: ImageOptions) {
         let key = self.next_key();

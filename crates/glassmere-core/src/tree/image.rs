@@ -21,6 +21,49 @@ impl LoadedImage {
 /// switching back to a view does not decode again. Past this they are dropped.
 const UNUSED_IMAGE_BYTES: usize = 64 << 20;
 
+/// An animated image a node shows: which one, when it started, and when its
+/// frame next changes (`None` once it rests on its last frame, and under
+/// reduced motion).
+pub(super) struct Play {
+    image: u64,
+    start: Duration,
+    next: Option<Duration>,
+}
+
+/// Decoded bytes an image holds, all frames of an animation included.
+fn pixel_bytes(image: &Image) -> usize {
+    let bytes = |image: &Image| image.pixels().map_or(0, |(_, _, pixels)| pixels.len());
+    match image.frames() {
+        [] => bytes(image),
+        frames => frames.iter().map(|frame| bytes(&frame.image)).sum(),
+    }
+}
+
+/// The frame of an animated image showing `elapsed` after it started, and when
+/// after the start the next one comes; `None` while it rests on the last frame
+/// of its last loop.
+fn frame_at(image: &Image, elapsed: Duration) -> (usize, Option<Duration>) {
+    let frames = image.frames();
+    let last = frames.len() - 1;
+    let lap: Duration = frames.iter().map(|frame| frame.delay).sum();
+    let laps = elapsed.as_nanos() / lap.as_nanos();
+    let loops = image.loops().map(|loops| u128::from(loops.get()));
+    if loops.is_some_and(|loops| laps >= loops) {
+        return (last, None);
+    }
+    let into = Duration::from_nanos((elapsed.as_nanos() % lap.as_nanos()) as u64);
+    let mut end = Duration::ZERO;
+    let index = frames
+        .iter()
+        .position(|frame| {
+            end += frame.delay;
+            into < end
+        })
+        .unwrap_or(last);
+    let resting = index == last && loops.is_some_and(|loops| laps + 1 == loops);
+    (index, (!resting).then_some(elapsed - into + end))
+}
+
 impl Context {
     /// Image files the last declaration asked for through `Ui::image_file`.
     /// Hosts decode them off the UI thread, watch them for changes and report
@@ -78,6 +121,77 @@ impl Context {
         })
     }
 
+    /// The frame an animated image shows in its node now, which starts
+    /// playing on the first call; `None` for a node without an animated image.
+    pub(super) fn image_frame(&mut self, id: NodeId) -> Option<Image> {
+        let node = self
+            .nodes
+            .get(&id)
+            .filter(|node| node.kind == Kind::Image)?;
+        let Control::Image {
+            image: Some(image), ..
+        } = &node.control
+        else {
+            self.image_plays.remove(&id);
+            return None;
+        };
+        if image.frames().is_empty() {
+            self.image_plays.remove(&id);
+            return None;
+        }
+        let now = self.now;
+        let fresh = || Play {
+            image: image.id(),
+            start: now,
+            next: None,
+        };
+        let play = self.image_plays.entry(id).or_insert_with(fresh);
+        if play.image != image.id() {
+            *play = fresh();
+        }
+        let (index, next) = if self.reduced_motion {
+            (0, None)
+        } else {
+            frame_at(image, now.saturating_sub(play.start))
+        };
+        play.next = next.map(|after| play.start + after);
+        Some(image.frames()[index].image.clone())
+    }
+
+    /// Whether any of the node shows; animations off screen do not run.
+    fn image_visible(&self, id: NodeId) -> bool {
+        self.nodes
+            .get(&id)
+            .is_some_and(|node| node.clip.width > 0.0 && node.clip.height > 0.0)
+    }
+
+    /// When the next animated image on screen changes frame.
+    pub(super) fn image_wake(&self) -> Option<Duration> {
+        self.image_plays
+            .iter()
+            .filter(|(id, _)| self.image_visible(**id))
+            .filter_map(|(_, play)| play.next)
+            .min()
+    }
+
+    /// Before a frame: repaints, within their own bounds, the animated images
+    /// whose frame is due to change.
+    pub(super) fn update_images(&mut self) {
+        let now = self.now;
+        self.image_plays.retain(|id, _| self.nodes.contains_key(id));
+        let due: Vec<NodeId> = self
+            .image_plays
+            .iter()
+            .filter(|(id, play)| {
+                play.next.is_some_and(|next| next <= now) && self.image_visible(**id)
+            })
+            .map(|(id, _)| *id)
+            .collect();
+        for id in due {
+            self.invalidate_paint(id);
+        }
+    }
+
     /// After a declaration: forget images nothing shows once they add up.
     pub(super) fn trim_images(&mut self) {
         let unused = |(path, _): &(&PathBuf, &LoadedImage)| !self.image_requests.contains(path);
@@ -85,8 +199,8 @@ impl Context {
             .images
             .iter()
             .filter(unused)
-            .filter_map(|(_, loaded)| loaded.image.as_ref()?.pixels())
-            .map(|(_, _, pixels)| pixels.len())
+            .filter_map(|(_, loaded)| loaded.image.as_ref())
+            .map(pixel_bytes)
             .sum();
         if bytes > UNUSED_IMAGE_BYTES {
             let requests = &self.image_requests;
@@ -145,6 +259,7 @@ impl Context {
         scene: &mut Scene,
         foreground: Color,
         radius: f32,
+        frame: Option<Image>,
     ) {
         let node = &self.nodes[&id];
         let Control::Image {
@@ -157,7 +272,7 @@ impl Context {
             return;
         };
         let content = node.content_box();
-        let Some(image) = image else {
+        let Some(image) = frame.as_ref().or(image.as_ref()) else {
             // Still loading, or failed: a quiet box, with the name if loading failed.
             scene.primitives.push(Primitive::Quad {
                 rect: node.bounds,

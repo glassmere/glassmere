@@ -3,29 +3,37 @@
 // Tokens overlay whichever theme is active (OS preference or the Dark/Light buttons).
 // Uncomment the next line to pin a base theme instead:
 // theme dark
-token accent #f59e0b
-token focus #f59e0b
+
+// Variables: declare `--name: value` once, use `var(--name)` wherever a value goes.
+--amber: #f59e0b
+--amber-light: #fbbf24
+--amber-dark: #d97706
+--muted: #8a97a8
+
+token accent var(--amber)
+token focus var(--amber)
 
 class title { font-size: 30; font-weight: 700 }
-class muted { font-size: 13; foreground: #8a97a8; wrap: word; width: 100% }
+class muted { font-size: 13; foreground: var(--muted); wrap: word; width: 100% }
 class code { font-family: monospace; font-size: 14 }
 
+// `&:state` blocks set that state's properties; `&.large` is the class `primary.large`.
 class primary {
-    background: #f59e0b
+    background: var(--amber)
     foreground: #1a1206
     padding: 12
     radius: 8
     font-weight: 700
-    hover.background: #fbbf24
-    pressed.background: #d97706
-    focused.radius: 2
-    disabled.background: #4a3b1d
-    disabled.foreground: #8a7a55
+    &:hover { background: var(--amber-light) }
+    &:pressed { background: var(--amber-dark) }
+    &:focused { radius: 2 }
+    &:disabled { background: #4a3b1d; foreground: #8a7a55 }
+    &.large { padding: 18; font-size: 20 }
 }
 
 class danger extends primary {
     background: #dc2626
     foreground: #ffffff
-    hover.background: #ef4444
-    pressed.background: #b91c1c
+    &:hover { background: #ef4444 }
+    &:pressed { background: #b91c1c }
 }

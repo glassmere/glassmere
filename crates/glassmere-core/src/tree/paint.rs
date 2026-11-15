@@ -446,6 +446,7 @@ impl Context {
         let target = self.appearance(id, &self.nodes[&id]);
         let animation_state::Displayed { shown, layer } = self.displayed(id, target);
         self.keep_busy(id);
+        let frame = self.image_frame(id);
         let crate::animation::Shown {
             background,
             foreground,
@@ -481,7 +482,7 @@ impl Context {
         if node.kind == Kind::RichText {
             self.paint_rich_text(id, &mut scene, foreground);
         } else if node.kind == Kind::Image {
-            self.paint_image(id, &mut scene, foreground, radius);
+            self.paint_image(id, &mut scene, foreground, radius, frame);
         } else if !node.text.is_empty() {
             self.paint_selection(id, node, &mut scene);
             self.paint_text(node, foreground, &mut scene);
