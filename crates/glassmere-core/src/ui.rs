@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::panic::Location;
 use std::sync::Arc;
 mod builders;
-pub use builders::{Button, ComboBox, Label, Progress, Spinner, TextInput};
+pub use builders::{Button, ComboBox, Label, Progress, Spinner, Switch, TextInput};
 mod collections;
 mod controls;
 mod dock;
@@ -121,6 +121,7 @@ pub(crate) enum Kind {
     Custom,
     TextInput,
     Checkbox,
+    Switch,
     Radio,
     Slider,
     Progress,
@@ -135,6 +136,9 @@ pub(crate) enum Kind {
     DropTarget,
 }
 
+/// Width and height of a switch's track.
+pub(crate) const SWITCH_TRACK: (f32, f32) = (40.0, 22.0);
+
 impl Kind {
     pub(crate) fn text_leaf(self) -> bool {
         matches!(
@@ -142,6 +146,7 @@ impl Kind {
             Self::Label
                 | Self::Button
                 | Self::Checkbox
+                | Self::Switch
                 | Self::Radio
                 | Self::Choice
                 | Self::MenuButton
@@ -149,6 +154,15 @@ impl Kind {
                 | Self::Tab
                 | Self::RichText
         )
+    }
+
+    /// Width of what a control draws before its text, along the start edge,
+    /// counting the gap to the text.
+    pub(crate) fn indicator_width(self) -> f32 {
+        match self {
+            Self::Switch => SWITCH_TRACK.0 + 10.0,
+            _ => 0.0,
+        }
     }
 }
 

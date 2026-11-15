@@ -709,3 +709,64 @@ fn busy_indicators_repaint_their_own_boxes_and_not_the_window() {
     }
     assert!(context.animating());
 }
+
+/// A switch eases its thumb across for a moment after it is toggled; every
+/// frame of that is painted from damage as it is in full, and none of it
+/// repaints much of the window.
+#[test]
+fn a_switch_easing_repaints_its_own_box_and_not_the_window() {
+    use glassmere_core::Switch;
+    use std::time::Duration;
+
+    let view = |ui: &mut Ui<'_>, on: bool| {
+        ui.keyed("page", |ui| {
+            ui.column(Style::default().padding(8.0).gap(6.0), |ui| {
+                ui.keyed("title", |ui| ui.label("Switch"));
+                ui.keyed("wifi", |ui| ui.switch(Switch::new("Wi-Fi"), on, |_| ()));
+                ui.keyed("rest", |ui| ui.label(Label::new("The rest of the page")));
+            })
+        });
+    };
+    let mut context = Context::new();
+    let mut incremental = CpuRenderer::with_text_system(fonts());
+    let mut whole = CpuRenderer::with_text_system(fonts());
+    let physical = [SIZE.width as u32, SIZE.height as u32];
+    let area = u64::from(physical[0]) * u64::from(physical[1]);
+    let mut frame = |context: &mut Context, at: u64, on: bool| {
+        context.set_now(Duration::from_millis(at));
+        context.run(SIZE, &mut MonospaceMeasurer, |ui| view(ui, on));
+        let damage: Vec<_> = context.damage_regions().to_vec();
+        let scene = context.scene();
+        let partial = incremental
+            .render_damaged(physical, 1.0, scene, CLEAR, &damage)
+            .to_vec();
+        let full = whole.render(physical, 1.0, scene, CLEAR).to_vec();
+        assert_frames_match(&partial, &full, physical[0] as usize, &format!("{at} ms"));
+        incremental.stats().redrawn
+    };
+    frame(&mut context, 0, false);
+    // The frame that declares the new value, then each one until it settles.
+    let mut at = 1000;
+    let mut frames = 0;
+    loop {
+        let redrawn = frame(&mut context, at, true);
+        assert!(redrawn < area / 4, "{at} ms repainted {redrawn} of {area}");
+        frames += 1;
+        if !context.animating() {
+            break;
+        }
+        at += 20;
+        assert!(frames < 20, "the thumb never settled");
+    }
+    assert!(frames > 2, "the thumb moved over several frames");
+    // And back, which is the same in the other direction.
+    at += 500;
+    loop {
+        let redrawn = frame(&mut context, at, false);
+        assert!(redrawn < area / 4, "{at} ms repainted {redrawn} of {area}");
+        if !context.animating() {
+            break;
+        }
+        at += 20;
+    }
+}

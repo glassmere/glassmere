@@ -401,6 +401,11 @@ impl Context {
             radius,
             opacity,
             transform,
+            knob: if matches!(node.control, Control::Switch { on: true, .. }) {
+                1.0
+            } else {
+                0.0
+            },
         }
     }
 
@@ -635,7 +640,13 @@ impl Context {
             .then(|| self.layout.get_node_context(node.layout_id))
             .flatten()
             .map(|measured| measured.size);
-        let width = measured.map_or(node.label_width, |size| size.width);
+        // What the control draws before its text takes the start edge.
+        let indicator = node.kind.indicator_width();
+        rect.width = (rect.width - indicator).max(0.0);
+        if !node.resolved.rtl() {
+            rect.x += indicator;
+        }
+        let width = measured.map_or(node.label_width, |size| size.width - indicator);
         if width > 0.0 && node.style.wrap == TextWrap::None {
             let spare = (rect.width - width).max(0.0);
             rect.x += match node.style.justify_content {

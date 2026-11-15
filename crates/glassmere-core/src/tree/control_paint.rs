@@ -291,6 +291,7 @@ impl Context {
                 self.paint_progress(node, value, shown.radius, scene)
             }
             Control::Spinner { .. } => self.paint_spinner(node, scene),
+            Control::Switch { .. } => self.paint_switch(node, shown.knob, scene),
             _ => {}
         }
         if let Control::Slider {
@@ -372,6 +373,51 @@ impl Context {
             rect: Rect { x, width, ..bounds },
             color: self.busy_color(node),
             radius: radius.min(bounds.height / 2.0).min(width / 2.0),
+        });
+    }
+
+    /// A pill and a thumb at the start edge, the thumb moving to the other
+    /// end as `knob` goes from 0 to 1, in both directions of writing.
+    fn paint_switch(&self, node: &Node, knob: f32, scene: &mut Scene) {
+        let (width, height) = crate::ui::SWITCH_TRACK;
+        let content = node.content_box();
+        let rtl = node.resolved.rtl();
+        let track = Rect {
+            x: if rtl {
+                content.x + content.width - width
+            } else {
+                content.x
+            },
+            y: content.y + (content.height - height) / 2.0,
+            width,
+            height,
+        };
+        let (off, on, thumb) = if node.enabled {
+            (self.theme.track, self.theme.accent, self.theme.thumb)
+        } else {
+            (
+                self.theme.control_disabled,
+                self.theme.text_disabled,
+                self.theme.text_muted,
+            )
+        };
+        scene.primitives.push(Primitive::Quad {
+            rect: track,
+            color: crate::animation::lerp_color(off, on, knob),
+            radius: height / 2.0,
+        });
+        let inset = 3.0;
+        let diameter = height - 2.0 * inset;
+        let along = if rtl { 1.0 - knob } else { knob };
+        scene.primitives.push(Primitive::Quad {
+            rect: Rect {
+                x: track.x + inset + (width - height) * along,
+                y: track.y + inset,
+                width: diameter,
+                height: diameter,
+            },
+            color: thumb,
+            radius: diameter / 2.0,
         });
     }
 

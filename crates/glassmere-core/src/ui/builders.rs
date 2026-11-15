@@ -232,6 +232,32 @@ impl Spinner {
     }
 }
 
+/// An on/off switch. `ui.switch("Wi-Fi", on, Msg::Wifi)` is the short form of
+/// `Switch::new("Wi-Fi")`; the label is written beside the switch and is its
+/// accessible name.
+#[derive(Clone, Debug, Default)]
+pub struct Switch {
+    pub(crate) label: String,
+    pub(crate) style: Option<Style>,
+}
+
+impl Switch {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            style: None,
+        }
+    }
+
+    /// Replaces the default style, which is a button's padding with a short
+    /// transition that moves the thumb. The label stays on one line whatever
+    /// the style's wrapping says.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+}
+
 /// `impl From<&str>` and `impl From<String>` for a builder whose first field
 /// is its text, so `ui.button("Save")` and `ui.button(Button::new("Save"))`
 /// are the same call.
@@ -269,3 +295,4 @@ from_text!(TextInput<M>);
 from_text!(ComboBox);
 from_text!(Progress);
 from_text!(Spinner);
+from_text!(Switch);

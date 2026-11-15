@@ -296,6 +296,7 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     CoreRole::Status => Role::Status,
                     CoreRole::Alert => Role::Alert,
                     CoreRole::ProgressBar => Role::ProgressIndicator,
+                    CoreRole::Switch => Role::Switch,
                 }
             };
             let mut node = Node::new(role);
@@ -481,6 +482,7 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     role,
                     Role::Button
                         | Role::CheckBox
+                        | Role::Switch
                         | Role::RadioButton
                         | Role::ComboBox
                         | Role::ListBoxOption
@@ -1149,6 +1151,28 @@ mod tests {
         assert_eq!(node("spinner").label(), Some("Loading"));
         assert_eq!(node("spinner").numeric_value(), None);
         assert_eq!(node("spinner").value(), None);
+    }
+
+    #[test]
+    fn a_switch_is_a_switch_that_reports_whether_it_is_on_and_can_be_clicked() {
+        let mut context = Context::new();
+        context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
+            ui.keyed("off", |ui| ui.switch("Wi-Fi", false, |_| ()));
+            ui.keyed("on", |ui| ui.switch("Bluetooth", true, |_| ()));
+            ui.enabled(false, |ui| {
+                ui.keyed("locked", |ui| ui.switch("Locked", true, |_| ()));
+            });
+        });
+        let update = tree(&context, "Switch", 1.0);
+        let node = |key: &str| node_in(&update, NodeId(context.find(&[key]).unwrap().0));
+        assert_eq!(node("off").role(), Role::Switch);
+        assert_eq!(node("off").label(), Some("Wi-Fi"));
+        assert_eq!(node("off").toggled(), Some(accesskit::Toggled::False));
+        assert_eq!(node("on").toggled(), Some(accesskit::Toggled::True));
+        assert!(node("off").supports_action(Action::Click));
+        assert!(node("off").supports_action(Action::Focus));
+        assert!(node("locked").is_disabled());
+        assert!(!node("locked").supports_action(Action::Click));
     }
 
     #[test]

@@ -186,6 +186,7 @@ impl Node {
                     | Kind::Scroll
                     | Kind::TextInput
                     | Kind::Checkbox
+                    | Kind::Switch
                     | Kind::Radio
                     | Kind::Slider
                     | Kind::ComboBox
@@ -235,6 +236,7 @@ impl Node {
                 self.kind,
                 Kind::Button
                     | Kind::Checkbox
+                    | Kind::Switch
                     | Kind::Radio
                     | Kind::ComboBox
                     | Kind::MenuButton
@@ -304,6 +306,7 @@ impl Node {
                     Kind::TextInput => Role::TextInput,
                     Kind::TextArea | Kind::RichEditor => Role::MultilineTextInput,
                     Kind::Checkbox => Role::Checkbox,
+                    Kind::Switch => Role::Switch,
                     Kind::Radio => Role::Radio,
                     Kind::Slider => Role::Slider,
                     Kind::Progress | Kind::Spinner => Role::ProgressBar,
@@ -330,6 +333,7 @@ impl Node {
             label: match &self.control {
                 Control::TextInput { label, .. }
                 | Control::Checkbox { label, .. }
+                | Control::Switch { label, .. }
                 | Control::Radio { label, .. }
                 | Control::Slider { label, .. }
                 | Control::Progress { label, .. }

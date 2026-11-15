@@ -251,6 +251,11 @@ pub(crate) enum Control {
         label: String,
         value: Option<f64>,
     },
+    /// An on/off switch.
+    Switch {
+        label: String,
+        on: bool,
+    },
     /// A busy indicator, which never knows how far it is.
     Spinner {
         label: String,

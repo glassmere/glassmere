@@ -42,7 +42,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - Grid: no named lines, only named areas; no nested `repeat`. A percentage width on a grid item resolves against the grid container.
 - `Ui::responsive` reads the width of the last frame, so a view that changes structure at a threshold settles on the second frame.
 - Stylesheets have no variables or nesting and reload by polling every half second.
-- One transition covers all animated properties of a node, with no spring physics. Control internals (slider thumbs, caret) do not ease.
+- One transition covers all animated properties of a node, with no spring physics. Control internals (slider thumbs, caret) do not ease; a switch's thumb is the exception, and follows the style's transition.
 - Ancestors clip to their bounds; there is no unclipped container.
 - Only direct children extend a scroll view's width, and popups scroll vertically only.
 - The OS reduced-motion preference is read on Windows only (at startup and when a window gains focus, not the moment it changes). macOS and Linux use the application option alone. `AppOptions::reduced_motion = false` follows the system; an application cannot force animations on against it.

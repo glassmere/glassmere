@@ -2,7 +2,8 @@
 //! busy indicators, switches, disclosure sections, links and range sliders.
 
 use super::*;
-use crate::Length;
+use crate::app::Handler;
+use crate::{Length, TextWrap, Transition};
 
 impl<'a, M: 'static> Ui<'a, M> {
     /// A progress bar: `Some(fraction)` fills that share of it, clamped to
@@ -54,5 +55,36 @@ impl<'a, M: 'static> Ui<'a, M> {
             },
             ..Element::new(key, Kind::Spinner)
         });
+    }
+
+    /// An on/off switch showing `on`: a click, Space or Enter sends
+    /// `on_toggle(!on)`. The label is written beside it and names it.
+    #[track_caller]
+    pub fn switch(
+        &mut self,
+        switch: impl Into<Switch>,
+        on: bool,
+        on_toggle: impl Fn(bool) -> M,
+    ) -> Response<'a> {
+        let switch = switch.into();
+        let key = self.next_key();
+        let response = self.push(Element {
+            text: switch.label.clone(),
+            style: Style {
+                wrap: TextWrap::None,
+                ..switch.style.unwrap_or(Style {
+                    transition: Some(Transition::new(120)),
+                    ..Style::button()
+                })
+            },
+            enabled: self.enabled,
+            control: Control::Switch {
+                label: switch.label,
+                on,
+            },
+            ..Element::new(key, Kind::Switch)
+        });
+        self.set_handler(Handler::Message(on_toggle(!on)));
+        response
     }
 }

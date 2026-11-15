@@ -85,6 +85,7 @@ impl Context {
             },
             checked: match node.control {
                 Control::Checkbox { checked, .. } => Some(checked),
+                Control::Switch { on, .. } => Some(on),
                 _ => None,
             },
             selected: match node.control {

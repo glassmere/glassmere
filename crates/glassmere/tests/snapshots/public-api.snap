@@ -1017,6 +1017,8 @@ glassmere-core   fn StyleSheet::classes(&self) -> impl Iterator<Item = (&str, &S
 glassmere-core   fn StyleSheet::insert(&mut self, name: impl Into<String>, style: Style)
 glassmere-core   fn StyleSheet::parse(text: &str) -> Result<Self, StyleSheetError>
 glassmere-core   fn StyleSheet::rebase(&mut self, directory: &std::path::Path)
+glassmere-core   fn Switch::new(label: impl Into<String>) -> Self
+glassmere-core   fn Switch::style(mut self, style: Style) -> Self
 glassmere-core   fn Tab::closable(label: impl Into<String>) -> Self
 glassmere-core   fn Tab::new(label: impl Into<String>) -> Self
 glassmere-core   fn TaskSender::cancelled(&self) -> bool [impl<K: Clone, T> TaskSender<K, T>]
@@ -1171,6 +1173,7 @@ glassmere-core   fn Ui::set_tray(&mut self, tray: Option<crate::Tray>) #[track_c
 glassmere-core   fn Ui::slider(&mut self, label: impl Into<String>, value: f64, range: RangeInclusive<f64>, step: f64, on_change: impl Fn(f64) -> M + 'static) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::spinner(&mut self, spinner: impl Into<Spinner>) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::split(&mut self, ratio: f32, axis: Axis, options: SplitOptions, on: impl Fn(f32) -> M + 'static, first: impl FnOnce(&mut Ui<'_, M>), second: impl FnOnce(&mut Ui<'_, M>)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
+glassmere-core   fn Ui::switch(&mut self, switch: impl Into<Switch>, on: bool, on_toggle: impl Fn(bool) -> M) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::tabs(&mut self, selected: usize, tabs: &[Tab], on_select: impl Fn(usize) -> M + 'static, content: impl FnOnce(&mut Ui<'_, M>, usize)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::tabs_close(&mut self, selected: usize, tabs: &[Tab], on_select: impl Fn(usize) -> M + 'static, on_close: impl Fn(usize) -> M, content: impl FnOnce(&mut Ui<'_, M>, usize)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::text_area(&mut self, document: &TextDocument, options: CodeEditorOptions<'_>, on: impl Fn(TextOp) -> M + 'static) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
@@ -1472,6 +1475,7 @@ glassmere-core   variant Role::Slider
 glassmere-core   variant Role::SpinButton
 glassmere-core   variant Role::Splitter
 glassmere-core   variant Role::Status
+glassmere-core   variant Role::Switch
 glassmere-core   variant Role::Tab
 glassmere-core   variant Role::TabList
 glassmere-core   variant Role::TabPanel
@@ -1671,16 +1675,19 @@ glassmere-core impl From<&String> for Label
 glassmere-core impl From<&String> for MessageArg
 glassmere-core impl From<&String> for Progress
 glassmere-core impl From<&String> for Spinner
+glassmere-core impl From<&String> for Switch
 glassmere-core impl From<&str> for ComboBox
 glassmere-core impl From<&str> for Label
 glassmere-core impl From<&str> for MessageArg
 glassmere-core impl From<&str> for Progress
 glassmere-core impl From<&str> for Spinner
+glassmere-core impl From<&str> for Switch
 glassmere-core impl From<String> for ComboBox
 glassmere-core impl From<String> for Label
 glassmere-core impl From<String> for MessageArg
 glassmere-core impl From<String> for Progress
 glassmere-core impl From<String> for Spinner
+glassmere-core impl From<String> for Switch
 glassmere-core impl From<f32> for MessageArg
 glassmere-core impl From<f64> for MessageArg
 glassmere-core impl From<i16> for MessageArg
@@ -1692,6 +1699,7 @@ glassmere-core impl From<std::borrow::Cow<'_, str>> for ComboBox
 glassmere-core impl From<std::borrow::Cow<'_, str>> for Label
 glassmere-core impl From<std::borrow::Cow<'_, str>> for Progress
 glassmere-core impl From<std::borrow::Cow<'_, str>> for Spinner
+glassmere-core impl From<std::borrow::Cow<'_, str>> for Switch
 glassmere-core impl From<u16> for MessageArg
 glassmere-core impl From<u32> for MessageArg
 glassmere-core impl From<u64> for MessageArg
@@ -1843,6 +1851,7 @@ glassmere-core struct Style #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct StyleSheet #[derive(Clone, Debug, Default, PartialEq)] (private fields)
 glassmere-core struct StyleSheetError #[derive(Clone, Debug, Eq, PartialEq)]
 glassmere-core struct Swipe #[derive(Clone, Copy, Debug, PartialEq)]
+glassmere-core struct Switch #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct Tab #[derive(Clone, Debug, Eq, PartialEq)]
 glassmere-core struct TaskSender<K, T> (private fields)
 glassmere-core struct Tasks<K, T> (private fields)
@@ -2045,6 +2054,7 @@ glassmere-core use StyleSheet = stylesheet::StyleSheet
 glassmere-core use StyleSheetError = stylesheet::StyleSheetError
 glassmere-core use Swipe = tree::Swipe
 glassmere-core use SwipeDirection = tree::SwipeDirection
+glassmere-core use Switch = ui::Switch
 glassmere-core use TOKENS = theme::TOKENS
 glassmere-core use TOOLTIP_DELAY = panes::TOOLTIP_DELAY
 glassmere-core use Tab = panes::Tab

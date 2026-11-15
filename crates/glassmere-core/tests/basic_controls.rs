@@ -1,10 +1,13 @@
 mod support;
 
+use glassmere_core::app::Action as Msg;
 use glassmere_core::{
-    Context, Direction, Length, MonospaceMeasurer, Progress, Role, Spinner, Style, Ui,
+    Action, Context, Direction, Event, Key, Length, MonospaceMeasurer, Progress, Role, Spinner,
+    Style, Switch, Transition, Ui,
 };
 use glassmere_scene::{Color, Primitive, Rect, Size};
 use std::time::Duration;
+use support::{Driven, center, click, on};
 
 const ROOT: Size = Size::new(400.0, 300.0);
 
@@ -305,5 +308,291 @@ fn a_disabled_spinner_is_dimmed_and_a_style_sizes_and_colors_it() {
         quads(&context, red).len(),
         1,
         "only the head is at full strength"
+    );
+}
+
+struct Toggles {
+    on: bool,
+    flips: u32,
+}
+
+fn toggles_view(state: &Toggles, ui: &mut Ui<'_, Msg<Toggles>>) {
+    ui.keyed("page", |ui| {
+        ui.column(Style::default().gap(12.0), |ui| {
+            ui.keyed("wifi", |ui| {
+                ui.switch(
+                    "Wi-Fi",
+                    state.on,
+                    on(|s: &mut Toggles, on: bool| {
+                        s.on = on;
+                        s.flips += 1;
+                    }),
+                )
+            });
+            ui.enabled(false, |ui| {
+                ui.keyed("locked", |ui| {
+                    ui.switch(
+                        "Locked",
+                        true,
+                        on(|s: &mut Toggles, _: bool| s.flips += 100),
+                    )
+                });
+            });
+        });
+    });
+}
+
+fn toggles() -> Driven<Toggles> {
+    Driven::new(
+        ROOT,
+        Toggles {
+            on: false,
+            flips: 0,
+        },
+        toggles_view,
+    )
+}
+
+/// Moves to the middle of the node at `path` and presses and releases.
+fn click_on(context: &mut Context, path: &[&str]) {
+    let at = center(context, path);
+    click(context, at);
+}
+
+fn press(context: &mut Context, key: Key) {
+    context.event(Event::KeyDown {
+        key,
+        shift: false,
+        repeat: false,
+    });
+    context.event(Event::KeyUp(key));
+}
+
+#[test]
+fn a_switch_sends_the_opposite_of_what_it_shows_for_a_click() {
+    let mut app = toggles();
+    click_on(&mut app.context, &["page", "wifi"]);
+    app.frame();
+    assert!(app.state().on);
+    assert_eq!(app.state().flips, 1);
+    click_on(&mut app.context, &["page", "wifi"]);
+    app.frame();
+    assert!(!app.state().on);
+    assert_eq!(app.state().flips, 2);
+    app.frame();
+    assert_eq!(app.state().flips, 2, "one message per click");
+}
+
+#[test]
+fn a_switch_toggles_from_the_keyboard_and_from_assistive_technology() {
+    let mut app = toggles();
+    press(&mut app.context, Key::Tab);
+    assert_eq!(app.context.focused(), app.context.find(&["page", "wifi"]));
+    press(&mut app.context, Key::Space);
+    app.frame();
+    assert!(app.state().on);
+    press(&mut app.context, Key::Enter);
+    app.frame();
+    assert!(!app.state().on);
+    let wifi = app.context.find(&["page", "wifi"]).unwrap();
+    assert!(app.context.action(wifi, Action::Activate));
+    app.frame();
+    assert!(app.state().on);
+    assert_eq!(app.state().flips, 3);
+}
+
+#[test]
+fn a_disabled_switch_cannot_be_focused_or_toggled_and_says_so() {
+    let mut app = toggles();
+    let locked = app.context.find(&["page", "locked"]).unwrap();
+    assert!(!app.context.action(locked, Action::Activate));
+    click_on(&mut app.context, &["page", "locked"]);
+    press(&mut app.context, Key::Tab);
+    press(&mut app.context, Key::Tab);
+    assert_ne!(app.context.focused(), Some(locked));
+    app.frame();
+    assert_eq!(app.state().flips, 0);
+    let node = app.context.node(locked).unwrap();
+    assert!(node.semantics.disabled);
+    assert!(!node.semantics.focusable);
+    assert_eq!(node.checked, Some(true));
+}
+
+#[test]
+fn a_switch_is_a_switch_with_a_name_and_a_checked_state() {
+    let mut app = toggles();
+    let wifi = app.context.find(&["page", "wifi"]).unwrap();
+    let node = app.context.node(wifi).unwrap();
+    assert_eq!(node.semantics.role, Role::Switch);
+    assert_eq!(node.semantics.label, "Wi-Fi");
+    assert!(node.semantics.focusable);
+    assert_eq!(node.checked, Some(false));
+    app.send(|s: &mut Toggles| s.on = true);
+    app.frame();
+    assert_eq!(app.context.node(wifi).unwrap().checked, Some(true));
+}
+
+/// The track and the thumb of the one switch drawn, in that order.
+fn switch_parts(context: &Context) -> (Rect, Rect) {
+    let thumb = quads(context, context.theme().thumb);
+    let track: Vec<Rect> = context
+        .scene()
+        .primitives
+        .iter()
+        .filter_map(|primitive| match primitive {
+            Primitive::Quad { rect, .. } if (rect.width, rect.height) == (40.0, 22.0) => {
+                Some(*rect)
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!((thumb.len(), track.len()), (1, 1), "one switch is drawn");
+    (track[0], thumb[0])
+}
+
+fn one_switch(ui: &mut Ui<'_>, on: bool) {
+    ui.keyed("wifi", |ui| ui.switch("Wi-Fi", on, |_| ()));
+}
+
+fn label_rect(context: &Context, label: &str) -> Rect {
+    context
+        .scene()
+        .primitives
+        .iter()
+        .find_map(|primitive| match primitive {
+            Primitive::Text { rect, text, .. } | Primitive::StyledText { rect, text, .. }
+                if text == label =>
+            {
+                Some(*rect)
+            }
+            _ => None,
+        })
+        .expect("the label is drawn")
+}
+
+#[test]
+fn a_switch_puts_its_thumb_at_the_start_when_off_and_the_end_when_on() {
+    let mut context = Context::new();
+    frame_at(&mut context, 0, |ui| one_switch(ui, false));
+    let (track, thumb) = switch_parts(&context);
+    assert_eq!(thumb.x, track.x + 3.0);
+    assert_eq!(thumb.y, track.y + 3.0);
+    frame_at(&mut context, 1000, |ui| one_switch(ui, true));
+    frame_at(&mut context, 2000, |ui| one_switch(ui, true));
+    let (track, thumb) = switch_parts(&context);
+    assert_eq!(thumb.x + thumb.width, track.x + track.width - 3.0);
+    // The pill is the accent when on.
+    assert_eq!(quads(&context, context.theme().accent), vec![track]);
+}
+
+#[test]
+fn a_switch_thumb_eases_with_the_style_transition_and_only_its_box_is_repainted() {
+    let mut context = Context::new();
+    frame_at(&mut context, 0, |ui| one_switch(ui, false));
+    let node = bounds(&context, &["wifi"]);
+    let (_, start) = switch_parts(&context);
+    frame_at(&mut context, 1000, |ui| one_switch(ui, true));
+    frame_at(&mut context, 1050, |ui| one_switch(ui, true));
+    let (track, middle) = switch_parts(&context);
+    assert!(
+        middle.x > start.x && middle.x + middle.width < track.x + track.width - 3.0,
+        "the thumb is on its way: {middle:?}"
+    );
+    assert!(context.animating());
+    for region in context.damage_regions() {
+        assert!(
+            region.x >= node.x - 1.0
+                && region.y >= node.y - 1.0
+                && region.x + region.width <= node.x + node.width + 1.0
+                && region.y + region.height <= node.y + node.height + 1.0,
+            "{region:?} is outside the switch {node:?}"
+        );
+    }
+    frame_at(&mut context, 1200, |ui| one_switch(ui, true));
+    let (track, end) = switch_parts(&context);
+    assert_eq!(end.x + end.width, track.x + track.width - 3.0);
+    assert!(!context.animating());
+}
+
+#[test]
+fn a_switch_without_a_transition_or_with_reduced_motion_jumps() {
+    let plain = |ui: &mut Ui<'_>, on: bool| {
+        ui.keyed("wifi", |ui| {
+            ui.switch(Switch::new("Wi-Fi").style(Style::button()), on, |_| ())
+        });
+    };
+    let mut context = Context::new();
+    frame_at(&mut context, 0, |ui| plain(ui, false));
+    frame_at(&mut context, 1000, |ui| plain(ui, true));
+    let (track, thumb) = switch_parts(&context);
+    assert_eq!(thumb.x + thumb.width, track.x + track.width - 3.0);
+    assert!(!context.animating());
+
+    let mut context = Context::new();
+    context.set_reduced_motion(true);
+    frame_at(&mut context, 0, |ui| one_switch(ui, false));
+    frame_at(&mut context, 1000, |ui| one_switch(ui, true));
+    let (track, thumb) = switch_parts(&context);
+    assert_eq!(thumb.x + thumb.width, track.x + track.width - 3.0);
+    assert!(!context.animating());
+}
+
+#[test]
+fn a_switch_that_does_not_change_is_idle_whatever_its_transition() {
+    let slow = |ui: &mut Ui<'_>| {
+        ui.keyed("wifi", |ui| {
+            ui.switch(
+                Switch::new("Wi-Fi").style(Style {
+                    transition: Some(Transition::new(400)),
+                    ..Style::button()
+                }),
+                false,
+                |_| (),
+            )
+        });
+    };
+    let mut context = Context::new();
+    frame_at(&mut context, 0, slow);
+    frame_at(&mut context, 100, slow);
+    assert!(!context.animating());
+    assert!(context.damage_regions().is_empty());
+}
+
+#[test]
+fn a_switch_is_mirrored_in_right_to_left_text() {
+    let mut context = Context::new();
+    context.set_direction(Direction::Rtl);
+    frame_at(&mut context, 0, |ui| one_switch(ui, false));
+    let node = bounds(&context, &["wifi"]);
+    let (track, thumb) = switch_parts(&context);
+    assert_eq!(
+        track.x + track.width,
+        node.x + node.width - 12.0,
+        "the pill is at the start edge, the right"
+    );
+    assert_eq!(thumb.x + thumb.width, track.x + track.width - 3.0);
+    let text = label_rect(&context, "Wi-Fi");
+    assert!(
+        text.x + text.width <= track.x,
+        "the label is beside the pill: {text:?}"
+    );
+    frame_at(&mut context, 1000, |ui| one_switch(ui, true));
+    frame_at(&mut context, 2000, |ui| one_switch(ui, true));
+    let (track, thumb) = switch_parts(&context);
+    assert_eq!(thumb.x, track.x + 3.0, "on is at the far end, the left");
+}
+
+#[test]
+fn a_switch_label_is_written_after_the_pill_inside_the_box() {
+    let mut context = Context::new();
+    frame_at(&mut context, 0, |ui| one_switch(ui, false));
+    let node = bounds(&context, &["wifi"]);
+    let (track, _) = switch_parts(&context);
+    assert_eq!(track.x, node.x + 12.0);
+    let text = label_rect(&context, "Wi-Fi");
+    assert!(text.x >= track.x + track.width, "{text:?} after {track:?}");
+    assert!(
+        text.x + text.width <= node.x + node.width,
+        "the label fits the box"
     );
 }

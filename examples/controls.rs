@@ -23,6 +23,7 @@ enum Msg {
     Password(String),
     Submitted,
     Notify(bool),
+    Airplane(bool),
     Mode(usize),
     Volume(f64),
     Theme(usize),
@@ -39,6 +40,7 @@ struct Controls {
     name: String,
     password: String,
     notifications: bool,
+    airplane: bool,
     mode: usize,
     volume: f64,
     theme: usize,
@@ -67,6 +69,7 @@ impl App for Controls {
             Msg::Password(password) => self.password = password,
             Msg::Submitted => self.submissions += 1,
             Msg::Notify(on) => self.notifications = on,
+            Msg::Airplane(on) => self.airplane = on,
             Msg::Mode(mode) => self.mode = mode,
             Msg::Volume(volume) => self.volume = volume,
             Msg::Theme(theme) => self.theme = theme,
@@ -245,6 +248,7 @@ impl App for Controls {
                 ui.column(choice_column, |ui| {
                     ui.label(Label::new("02 / Choices & actions").style(bold));
                     ui.checkbox("Notifications", self.notifications, Msg::Notify);
+                    ui.switch("Airplane mode", self.airplane, Msg::Airplane);
                     ui.row(Style::default().gap(8.0), |ui| {
                         ui.radio("Quiet", self.mode, 0, Msg::Mode);
                         ui.radio("Balanced", self.mode, 1, Msg::Mode);
@@ -302,6 +306,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             name: String::from("Hello, 世界 👩‍💻"),
             password: String::new(),
             notifications: false,
+            airplane: false,
             mode: 0,
             volume: 50.0,
             theme: 0,

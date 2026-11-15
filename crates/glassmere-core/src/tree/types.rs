@@ -58,6 +58,8 @@ pub enum Role {
     Alert,
     /// A progress bar, or a spinner, which has no value.
     ProgressBar,
+    /// An on/off switch, which reports whether it is on like a checkbox.
+    Switch,
 }
 
 /// What a node is, for the keyboard, the accessibility tree and the tests.
