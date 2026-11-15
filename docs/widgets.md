@@ -12,7 +12,7 @@ All of them are methods of `Ui`, take a value and a message constructor, and are
 | Text and values | `label`, `rich_text`, `text_input`, `number_input`, `autocomplete`, `checkbox`, `radio`, `slider`, `combo_box` |
 | Editors | `text_area`, `code_editor`, `rich_editor` (see [text](text.md)) |
 | Collections | `virtual_list`, `tree_view`, `data_grid`, `property_grid` |
-| Overlays | `dialog`, `popover`, `tooltip`, `menu`, `context_menu`, `command_palette`, toasts through `Effects::toast` |
+| Overlays | `dialog`, `popover`, `tooltip`, `menu`, `command_menu`, `context_menu`, `command_palette`, toasts through `Effects::toast` |
 | Panes | `tabs`, `tabs_close`, `split`, `dock`, `dock_window` (see [state](state.md)) |
 | Windows | `title_bar`, `window_buttons`, `resize_frame`, `menu_bar` (see [platform](platform.md)) |
 | Media | `image`, `image_file` |

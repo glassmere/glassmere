@@ -169,6 +169,9 @@ impl App for Platform {
                 }),
             );
             ui.row(Style::default().gap(10.0), |ui| {
+                // The same `Menu` as a button's dropdown, anywhere in the
+                // view. Its submenus nest and its commands are the ones below.
+                ui.command_menu("Menu", &menu(self.saved));
                 ui.command_button(
                     &Command::with_id("open", "Open...", Some(Shortcut::primary('o'))),
                     Msg::Open,

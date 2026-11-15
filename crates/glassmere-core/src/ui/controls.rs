@@ -380,6 +380,28 @@ impl<'a, M: 'static> Ui<'a, M> {
         response
     }
 
+    /// A menu button whose popup is `menu`: its commands, separators and
+    /// submenus, which open beside the menu they are in to any depth. A
+    /// command shows its shortcut as a hint, and choosing one activates that
+    /// command, exactly as in [`Ui::menu_bar`]: through the command the view
+    /// declared, with [`Ui::command_button`]. A command that is disabled
+    /// cannot be chosen.
+    #[track_caller]
+    pub fn command_menu(&mut self, label: impl Into<String>, menu: &crate::Menu) -> Response<'a> {
+        let key = self.next_key();
+        let (response, chosen) = self.menu_tree(
+            key,
+            format!("{}  ▾", label.into()),
+            &menu.entries,
+            Self::menu_style(),
+            Length::Percent(1.0),
+        );
+        if let Some(id) = chosen {
+            self.host.commands.push(id);
+        }
+        response
+    }
+
     /// The look of a menu button.
     #[track_caller]
     fn menu_style() -> Style {

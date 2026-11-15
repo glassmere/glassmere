@@ -1120,6 +1120,7 @@ glassmere-core   fn Ui::column(&mut self, style: Style, content: impl FnOnce(&mu
 glassmere-core   fn Ui::combo_box(&mut self, combo: impl Into<ComboBox>, selected: usize, items: &[&str], on_choose: impl Fn(usize) -> M + 'static) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::command(&self, command: &crate::Command) -> crate::Command #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::command_button(&mut self, command: &crate::Command, message: M) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
+glassmere-core   fn Ui::command_menu(&mut self, label: impl Into<String>, menu: &crate::Menu) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::command_palette(&mut self, open: bool, query: &str, commands: &[crate::Command], palette: CommandPalette<M>) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::component<C: Component>(&mut self, style: Style, component: &C, f: impl Fn(C::Message) -> M + 'static) #[track_caller] [impl<M: 'static> Ui<'_, M>]
 glassmere-core   fn Ui::container(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_, M>)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
