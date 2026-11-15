@@ -454,6 +454,94 @@ fn a_command_menu_opens_a_submenu_on_the_other_side_where_the_window_ends() {
     assert!(panel.bounds.x >= 0.0);
 }
 
+fn overlaps(a: Rect, b: Rect) -> bool {
+    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+}
+
+/// How far two rectangles reach over each other sideways.
+fn shared_width(a: Rect, b: Rect) -> f32 {
+    ((a.x + a.width).min(b.x + b.width) - a.x.max(b.x)).max(0.0)
+}
+
+/// A window of `window`, with the menu open and Recent and More open in it:
+/// the rows that opened them and their panels, from the outermost level in.
+fn open_three_levels(window: Size, direction: Direction) -> [(Rect, Rect, Rect); 2] {
+    let mut driven = Driven::new(window, Page::default(), button_page);
+    driven.context.set_direction(direction);
+    driven.frame();
+    open_button(&mut driven);
+    let forward = match direction {
+        Direction::Ltr => Key::ArrowRight,
+        Direction::Rtl => Key::ArrowLeft,
+    };
+    press(&mut driven.context, Key::ArrowDown);
+    press(&mut driven.context, forward);
+    driven.frame();
+    press(&mut driven.context, Key::ArrowDown);
+    press(&mut driven.context, Key::Enter);
+    driven.frame();
+    let menu = node(&driven.context, &at(&BUTTON, &["$popup"])).bounds;
+    let recent_row = node(&driven.context, &at(&BUTTON, &["$popup", "2"])).bounds;
+    let recent = found(&driven.context, &recent(&BUTTON))
+        .expect("Recent is open")
+        .bounds;
+    let more_row = node(
+        &driven.context,
+        &at(&BUTTON, &["$popup", "2", "$popup", "1"]),
+    )
+    .bounds;
+    let more = found(&driven.context, &more(&BUTTON))
+        .expect("More is open")
+        .bounds;
+    [(recent_row, recent, menu), (more_row, more, recent)]
+}
+
+/// In a window with room for little more than one menu neither side of a row
+/// has room for a submenu: each panel stays inside the window, off the row
+/// that opened it, and over as little as it can of the menu it opened from.
+fn nested_submenus_in_a_narrow_window(direction: Direction) {
+    let window = Size::new(400.0, 400.0);
+    for (row, panel, parent) in open_three_levels(window, direction) {
+        assert!(
+            panel.x >= 0.0
+                && panel.y >= 0.0
+                && panel.x + panel.width <= window.width
+                && panel.y + panel.height <= window.height,
+            "{panel:?} outside the window"
+        );
+        assert!(!overlaps(panel, row), "{panel:?} covers {row:?}");
+        assert!(
+            shared_width(panel, parent) < panel.width / 2.0,
+            "{panel:?} over most of {parent:?}"
+        );
+    }
+}
+
+#[test]
+fn nested_submenus_in_a_narrow_window_stay_inside_it_and_clear_of_their_rows() {
+    nested_submenus_in_a_narrow_window(Direction::Ltr);
+}
+
+#[test]
+fn right_to_left_nested_submenus_in_a_narrow_window_stay_inside_it_and_clear_of_their_rows() {
+    nested_submenus_in_a_narrow_window(Direction::Rtl);
+}
+
+#[test]
+fn a_third_level_that_does_not_fit_after_its_row_opens_before_its_parent_menu() {
+    // Room for Recent after its row, and for More before Recent only.
+    let window = Size::new(460.0, 400.0);
+    let [_, (row, panel, parent)] = open_three_levels(window, Direction::Ltr);
+    assert!(panel.x >= 0.0, "{panel:?}");
+    assert!((panel.x + panel.width - (row.x + 2.0)).abs() < 0.5);
+    assert!((panel.y - (row.y - 4.0)).abs() < 0.5, "level with the row");
+    // Only the lap over the row's end and the menu's padding.
+    assert!(
+        shared_width(panel, parent) <= 6.5,
+        "{panel:?} over {parent:?}"
+    );
+}
+
 fn area_page(_: &Page, ui: &mut Ui<'_, Handler<Page>>) {
     ui.keyed("area", |ui| {
         ui.command_context_menu(
