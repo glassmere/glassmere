@@ -330,7 +330,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     run(
         AppOptions {
             title: "Glassmere / Text and controls".into(),
-            size: Size::new(880.0, 740.0),
+            size: Size::new(880.0, 960.0),
             frame_limit: smoke.then_some(3),
             direction,
             ..AppOptions::default()
