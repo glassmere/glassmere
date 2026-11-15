@@ -8,6 +8,69 @@ const DAMAGE_REGIONS: usize = 8;
 /// Rectangles this close, in logical pixels, are one: a second pass over a
 /// thin gap costs more than painting the gap.
 const DAMAGE_GAP: f32 = 8.0;
+/// How far a submenu's panel laps the row it opens beside.
+const LAP: f32 = 2.0;
+
+/// The row a submenu's panel opens beside, and the menu that row is in.
+#[derive(Clone, Copy)]
+struct Opener {
+    row: Rect,
+    /// The row's own padding, inside which a panel may lie.
+    padding: f32,
+    menu: Rect,
+    rtl: bool,
+}
+
+impl Opener {
+    /// Where a panel of `size` goes inside `viewport`: at the end side of the
+    /// row, or at the other side when the window ends first, `level` with the
+    /// row. With room at neither side it keeps inside the window over the
+    /// least of the menu, and clear of the row's content, below the row or
+    /// else above it, when it can.
+    fn place(self, size: Size, level: f32, viewport: Rect) -> Point {
+        let Self {
+            row,
+            padding,
+            menu,
+            rtl,
+        } = self;
+        let after = row.x + row.width - LAP;
+        let before = row.x - size.width + LAP;
+        let fits = |x: f32| x >= 0.0 && x + size.width <= viewport.width;
+        let (first, second) = if rtl {
+            (before, after)
+        } else {
+            (after, before)
+        };
+        if let Some(x) = [first, second].into_iter().find(|x| fits(*x)) {
+            return Point { x, y: level };
+        }
+        // How far a panel at `x` reaches across `over`.
+        let across = |x: f32, over: Rect| (x + size.width).min(over.x + over.width) - x.max(over.x);
+        let ends = [0.0, viewport.width - size.width];
+        let x = if rtl { ends } else { [ends[1], ends[0]] }
+            .into_iter()
+            .min_by(|a, b| across(*a, menu).total_cmp(&across(*b, menu)))
+            .unwrap_or(0.0);
+        let content = Rect {
+            x: row.x + padding,
+            width: (row.width - 2.0 * padding).max(0.0),
+            ..row
+        };
+        let below = row.y + row.height;
+        let above = row.y - size.height;
+        let y = if across(x, content) <= 0.0 {
+            level
+        } else if below + size.height <= viewport.height {
+            below
+        } else if above >= 0.0 {
+            above
+        } else {
+            level
+        };
+        Point { x, y }
+    }
+}
 
 impl Context {
     pub(super) fn refresh_bounds(&mut self, size: Size) {
@@ -56,7 +119,14 @@ impl Context {
             .filter(|_| node.kind == Kind::Popup)
             .map(|parent| &self.nodes[&parent])
             .filter(|parent| matches!(parent.control, Control::Submenu { .. }))
-            .map(|parent| (parent.bounds, parent.resolved.rtl()));
+            .and_then(|row| {
+                Some(Opener {
+                    row: row.bounds,
+                    padding: row.style.padding.max(0.0),
+                    menu: self.nodes[&row.parent?].bounds,
+                    rtl: row.resolved.rtl(),
+                })
+            });
         let node = self.nodes.get_mut(&id).unwrap();
         let layout = self.layout.layout(node.layout_id).unwrap();
         node.bounds = Rect {
@@ -94,22 +164,17 @@ impl Context {
             }
             node.bounds.width = node.bounds.width.min(viewport.width);
             node.bounds.height = node.bounds.height.min(viewport.height);
-            if let Some((row, rtl)) = beside {
-                // At the end side of its row, lapping it slightly, or at the
-                // other side when the window ends first; level with the row.
-                const LAP: f32 = 2.0;
-                let after = row.x + row.width - LAP;
-                let before = row.x - node.bounds.width + LAP;
-                let fits_after = after + node.bounds.width <= viewport.width;
-                let fits_before = before >= 0.0;
-                node.bounds.x = match (rtl, fits_after, fits_before) {
-                    (false, true, _) | (true, true, false) => after,
-                    (true, _, true) | (false, false, true) => before,
-                    _ => after,
-                };
-                node.bounds.y = (row.y - node.style.padding.max(0.0))
+            if let Some(opener) = beside {
+                let level = (opener.row.y - node.style.padding.max(0.0))
                     .min(viewport.height - node.bounds.height)
                     .max(0.0);
+                let size = Size {
+                    width: node.bounds.width,
+                    height: node.bounds.height,
+                };
+                let at = opener.place(size, level, viewport);
+                node.bounds.x = at.x;
+                node.bounds.y = at.y;
             }
             node.bounds.x = node
                 .bounds
