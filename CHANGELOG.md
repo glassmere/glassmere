@@ -25,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - Several objects can be edited at once: `PropertyGrid::mixed` shows "Mixed" where they differ, and `#[derive(Properties)]` generates `properties_many`.
   - A fieldless enum that derives `PropertyChoice` is edited as a drop-down of its variants.
   - An `Option<T>` field is edited as `T` beside a box that sets or clears it, through `PropertyGrid::optional`.
-- `Ui::calendar`, a month grid, and `Ui::date_picker`, a field that opens one, both on `Date` with `min`, `max` and the first weekday. `Date::new` checks a date, `Date::weekday` returns the new `Weekday`. Month and weekday names are catalog keys, with German and Czech in `glassmere-fluent`. See `examples/dates.rs`.
+- `Ui::calendar`, a month grid, and `Ui::date_picker`, a field that opens one, both on `Date` with `min`, `max` and the first weekday. `Date::new` checks a date, `Date::weekday` returns the new `Weekday`. `today` marks a day with a dot and is where a calendar without a selection starts. Month and weekday names are catalog keys, with German and Czech in `glassmere-fluent`. See `examples/dates.rs`.
 - `Ui::command_menu` and `Ui::command_context_menu` show a `Menu` with separators and nested submenus, as a menu button and as a context menu. Their commands are sent the way `Ui::menu_bar` sends them.
 - `Ui::tooltip_with` takes a `Tooltip` with a placement (`TooltipPlacement`: auto, above, below, before or after), a delay and a style. A placed tooltip flips at the window edge, and before and after mirror in a right-to-left window.
 - `GridModel::footer` gives a data grid rows pinned under its body, for totals.
@@ -40,6 +40,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - A dock panel keeps its scroll position and undo history while another tab of its group is selected. Before, selecting another tab rebuilt the panel's content.
+- A press on empty space outside a context menu removes it at once. Before, it could stay painted until the next redraw.
+- A submenu that fits on neither side of its row in a narrow window stays inside the window and clear of the row that opened it, instead of covering its parent menu.
 
 ## [0.1.5] - 2026-11-14
 
