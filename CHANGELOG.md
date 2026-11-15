@@ -4,6 +4,36 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- Basic controls, each taking a spec with `new(label)` and `style(..)`, and shown in `examples/controls.rs`:
+  - `Ui::progress`, a bar for a value from 0 to 1, or an indeterminate one for `None`.
+  - `Ui::spinner`, a busy indicator.
+  - `Ui::switch`, an on and off toggle whose thumb eases with the style's transition.
+  - `Ui::collapsible`, a header that shows or hides the content under it. The application owns the open state.
+  - `Ui::link`, underlined text that sends a message.
+  - `Ui::range_slider`, a slider with two thumbs that cannot cross.
+  - `Label::selectable`, a label whose text can be selected and copied.
+- `Role::ProgressBar`, `Role::Switch` and `Role::Link`. A `match` on `Role` without a `_` arm needs the three new arms.
+- Stylesheet variables and nesting. `--name: value` declares a variable and `var(--name)` or `var(--name, fallback)` uses it. A class may contain `&:state` and `&.name` blocks. Both work in files and in `style_sheet!`.
+- Animated GIF, WebP and APNG play in image widgets. `Image::animated` builds one from `ImageFrame`s, and `Image::frames` and `Image::loops` read it back. A background image shows the first frame.
+- Rows of a list or tree can differ in height: `ListModel::row_heights` returns a `RowHeights`, and `TreeModel::set_row_height` sets one row of a tree. Scrolling, paging and the scrollbar follow the real heights.
+- Property grid:
+  - A grid with a `height` declares only the rows in view, however many properties there are. Its rows and group headers are then 44 px high.
+  - Several objects can be edited at once: `PropertyGrid::mixed` shows "Mixed" where they differ, and `#[derive(Properties)]` generates `properties_many`.
+  - A fieldless enum that derives `PropertyChoice` is edited as a drop-down of its variants.
+  - An `Option<T>` field is edited as `T` beside a box that sets or clears it, through `PropertyGrid::optional`.
+
+### Changed
+
+- `#[property(flatten)]` calls `properties_many` on the nested type. A derived type has it; a hand-written one needs to add it.
+
+### Fixed
+
+- A dock panel keeps its scroll position and undo history while another tab of its group is selected. Before, selecting another tab rebuilt the panel's content.
+
 ## [0.1.5] - 2026-11-14
 
 ### Changed
