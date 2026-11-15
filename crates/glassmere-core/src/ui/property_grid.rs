@@ -16,9 +16,10 @@ use std::rc::Rc;
 /// so the columns line up with the header.
 const COLUMN_GAP: f32 = 6.0;
 
-/// Height of every row and group header, and the gap between them. They are
-/// alike so that a scrolled grid can tell which rows are in view from the
-/// scroll offset alone.
+/// Height of every row and group header in a grid with a height, and the gap
+/// between them. They are alike so that a scrolled grid can tell which rows are
+/// in view from the scroll offset alone. A grid without a height keeps the
+/// height its content takes.
 const ROW_HEIGHT: f32 = 44.0;
 const ROW_GAP: f32 = 4.0;
 
@@ -153,6 +154,13 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         }
     }
 
+    fn row_height(&self) -> Length {
+        match self.window {
+            Some(_) => Length::Px(ROW_HEIGHT),
+            None => Length::Auto,
+        }
+    }
+
     /// Counts the next row or header, and says whether it is declared. The
     /// rows passed over before it are declared as one spacer first.
     fn take_slot(&mut self) -> bool {
@@ -275,7 +283,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
             if grid.take_slot() {
                 let header = Style {
                     width: Length::Percent(1.0),
-                    height: Length::Px(ROW_HEIGHT),
+                    height: grid.row_height(),
                     padding: 8.0,
                     radius: 6.0,
                     font_weight: Some(700),
@@ -346,7 +354,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         let shown = format!("{}{name}", "    ".repeat(self.path.len()));
         let style = Style {
             width: Length::Percent(1.0),
-            height: Length::Px(ROW_HEIGHT),
+            height: self.row_height(),
             gap: COLUMN_GAP,
             align_items: Align::Center,
             ..Style::default()
