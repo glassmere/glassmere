@@ -67,6 +67,12 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - A property grid with a `height` declares only the rows in view and a few beyond, but the view still names every property on each frame, so keep that closure cheap. Its rows and group headers share one fixed height, a grid without a `height` declares every row, and the editor that has focus goes when its row scrolls out of the declared window. Editing several objects works through `PropertyGrid::mixed`, which the view drives: a custom `with` editor cannot show a mixed value, and the derived `properties_many` compares fields with `PartialEq`. Collection fields such as `Vec<T>` are not supported by `#[derive(Properties)]`: adding, removing and reordering items needs rows whose identity follows the item, so use `with` or `custom` rows for them.
 - Submenus nest to any depth in `Ui::menu_bar`, `Ui::command_menu` and `Ui::command_context_menu`, which draw a `Menu`; `Ui::menu`, `Ui::context_menu` and combo boxes take a flat list. A submenu opens once the pointer has rested on its row for 200 ms, and the one that is open stays until the pointer has rested on another row for as long, so that it can be reached across the rows between; a click, Enter or the arrow key opens it at once. The delay is fixed, and there is no safe area for the pointer's path. Tooltips are pointer-only, with one delay and one placement.
 
+## Dates
+
+- A date is picked from the calendar and not typed, so there is no typed date entry. There is no time picker, no range selection (a range is two pickers, the second with a `min`), no week numbers and no other calendar system than the proleptic Gregorian one.
+- The framework has no clock, so the application tells a calendar or a date picker what today is with `today`. Without it nothing is marked, and a calendar with no selection, no `today` and no `min` starts at January 2000. A screen reader is not told which day is today.
+- A date picker is a combo box to assistive technology, which announces its popup as a list box although the popup is a dialog holding a grid.
+
 ## Windows and docking
 
 - Detached dock windows open where the OS puts them, and resizing them is not written back to the layout. A tab cannot be dragged from one OS window into another.

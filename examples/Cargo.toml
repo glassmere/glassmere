@@ -38,6 +38,10 @@ name = "counter"
 path = "counter.rs"
 
 [[example]]
+name = "dates"
+path = "dates.rs"
+
+[[example]]
 name = "dialogs"
 path = "dialogs.rs"
 
