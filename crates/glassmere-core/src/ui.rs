@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::panic::Location;
 use std::sync::Arc;
 mod builders;
-pub use builders::{Button, ComboBox, Label, TextInput};
+pub use builders::{Button, ComboBox, Label, Progress, TextInput};
 mod collections;
 mod controls;
 mod dock;
@@ -19,6 +19,7 @@ pub use overlays::CommandPalette;
 mod property_grid;
 pub use property_grid::PropertyGrid;
 mod areas;
+mod basic;
 pub use areas::{AreaBuilder, DragSourceBuilder, DropTargetBuilder, GestureBuilder};
 mod dialog;
 mod rich_editor;
@@ -122,6 +123,7 @@ pub(crate) enum Kind {
     Checkbox,
     Radio,
     Slider,
+    Progress,
     ComboBox,
     MenuButton,
     Popup,

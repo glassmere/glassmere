@@ -165,7 +165,32 @@ impl Context {
         }
     }
 
-    pub(super) fn paint_control(&self, id: NodeId, scene: &mut Scene) {
+    /// A busy indicator draws what the clock says, so it asks for the next
+    /// frame itself; only its own box is damaged by it. It stands still
+    /// while motion is off, and while nobody can see it.
+    pub(super) fn keep_busy(&mut self, id: NodeId) {
+        let node = &self.nodes[&id];
+        if node.busy() && !self.reduced_motion && node.clip.width > 0.0 && node.clip.height > 0.0 {
+            self.animating_nodes.push(id);
+        }
+    }
+
+    /// Where a busy indicator is in its cycle, from 0 up to but not
+    /// including 1; fixed at the start while motion is off.
+    fn busy_phase(&self, period: Duration) -> f32 {
+        if self.reduced_motion {
+            return 0.0;
+        }
+        let elapsed = self.now.as_nanos() % period.as_nanos();
+        (elapsed as f64 / period.as_nanos() as f64) as f32
+    }
+
+    pub(super) fn paint_control(
+        &self,
+        id: NodeId,
+        shown: crate::animation::Shown,
+        scene: &mut Scene,
+    ) {
         let node = &self.nodes[&id];
         if node.kind == Kind::TextArea {
             self.paint_text_area(id, scene);
@@ -261,6 +286,9 @@ impl Context {
             }
             scene.primitives.push(Primitive::PopClip);
         }
+        if let Control::Progress { value, .. } = node.control {
+            self.paint_progress(node, value, shown.radius, scene);
+        }
         if let Control::Slider {
             value, min, max, ..
         } = node.control
@@ -307,6 +335,44 @@ impl Context {
                 radius: 7.0,
             });
         }
+    }
+
+    /// The part of a progress bar that is done, or the segment that sweeps
+    /// along an indeterminate one. The bar's background is its track.
+    fn paint_progress(&self, node: &Node, value: Option<f64>, radius: f32, scene: &mut Scene) {
+        let bounds = node.bounds;
+        let (offset, width) = match value {
+            Some(fraction) => (0.0, bounds.width * fraction as f32),
+            None => {
+                let segment = bounds.width * 0.4;
+                // Out of the box at one end and in at the other, easing
+                // at both so that it does not look mechanical.
+                let phase = self.busy_phase(Duration::from_millis(1400));
+                let eased = if self.reduced_motion {
+                    0.5
+                } else {
+                    phase * phase * (3.0 - 2.0 * phase)
+                };
+                ((bounds.width + segment) * eased - segment, segment)
+            }
+        };
+        if width <= 0.0 {
+            return;
+        }
+        let x = if node.resolved.rtl() {
+            bounds.x + bounds.width - offset - width
+        } else {
+            bounds.x + offset
+        };
+        scene.primitives.push(Primitive::Quad {
+            rect: Rect { x, width, ..bounds },
+            color: if node.enabled {
+                self.theme.accent
+            } else {
+                self.theme.text_disabled
+            },
+            radius: radius.min(bounds.height / 2.0).min(width / 2.0),
+        });
     }
 
     /// Logical candidate-window anchor, clamped to the active input's content box.

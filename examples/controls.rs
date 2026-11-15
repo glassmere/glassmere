@@ -46,6 +46,7 @@ struct Controls {
     city: String,
     action: String,
     submissions: u32,
+    exporting: bool,
 }
 
 /// The menu's items, shared by the view and the `Action` message.
@@ -87,6 +88,7 @@ impl App for Controls {
             }
             Msg::Undo => self.action = "save undone".into(),
             Msg::Export => {
+                self.exporting = true;
                 // Work on a thread; what it sends arrives as a message.
                 let _ = effects.spawn(
                     "export",
@@ -97,9 +99,12 @@ impl App for Controls {
                     |()| Msg::ExportFailed,
                 );
             }
-            Msg::ExportFailed => effects.toast(Toast::error(
-                "Export failed: the disk is full. Free some space and try again.",
-            )),
+            Msg::ExportFailed => {
+                self.exporting = false;
+                effects.toast(Toast::error(
+                    "Export failed: the disk is full. Free some space and try again.",
+                ));
+            }
         }
     }
 
@@ -230,6 +235,7 @@ impl App for Controls {
                         ui.radio("Balanced", self.mode, 1, Msg::Mode);
                     });
                     ui.slider("Volume", self.volume, 0.0..=100.0, 5.0, Msg::Volume);
+                    ui.progress("Volume level", Some(self.volume / 100.0));
                     ui.label("Theme");
                     ui.combo_box(
                         "Theme",
@@ -252,6 +258,10 @@ impl App for Controls {
                     ));
                     ui.label(format!("Fields: {} kg / {}", self.quantity, self.city));
                     ui.button(Button::new("Export in the background").on_click(Msg::Export));
+                    // A bar of unknown length only while the export runs, so the window is idle after.
+                    if self.exporting {
+                        ui.progress("Exporting", None);
+                    }
                 });
             });
             ui.label(
@@ -289,6 +299,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             city: String::new(),
             action: String::from("none"),
             submissions: 0,
+            exporting: false,
         },
     )
 }

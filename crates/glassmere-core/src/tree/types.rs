@@ -56,6 +56,8 @@ pub enum Role {
     /// A toast; `Alert` for errors.
     Status,
     Alert,
+    /// A progress bar, or a spinner, which has no value.
+    ProgressBar,
 }
 
 /// What a node is, for the keyboard, the accessibility tree and the tests.

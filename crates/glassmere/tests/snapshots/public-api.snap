@@ -860,6 +860,8 @@ glassmere-core   fn Paint::background(color: Color) -> Self
 glassmere-core   fn Paint::foreground(color: Color) -> Self
 glassmere-core   fn Paint::opacity(opacity: f32) -> Self
 glassmere-core   fn Paint::transform(transform: Transform) -> Self
+glassmere-core   fn Progress::new(label: impl Into<String>) -> Self
+glassmere-core   fn Progress::style(mut self, style: Style) -> Self
 glassmere-core   fn PropertyGrid::bool(&mut self, name: &str, value: bool) [impl<M: 'static> PropertyGrid<'_, '_, M>]
 glassmere-core   fn PropertyGrid::bool_with(&mut self, name: &str, value: bool, on: impl Fn(bool) -> M + 'static) [impl<M: 'static> PropertyGrid<'_, '_, M>]
 glassmere-core   fn PropertyGrid::choice(&mut self, name: &str, value: usize, choices: &[&str]) [impl<M: 'static> PropertyGrid<'_, '_, M>]
@@ -1152,6 +1154,7 @@ glassmere-core   fn Ui::number_input(&mut self, label: impl Into<String>, value:
 glassmere-core   fn Ui::observe(&mut self, store: &crate::Store) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::opened_files(&self) -> &[std::path::PathBuf] #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::popover(&mut self, open: bool, options: PopoverOptions, on_open: impl Fn(bool) -> M + 'static, content: impl FnOnce(&mut Ui<'_, M>)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
+glassmere-core   fn Ui::progress(&mut self, progress: impl Into<Progress>, value: Option<f64>) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::property_grid(&mut self, state: &PropertyGridState, options: PropertyGridOptions, on: impl Fn(PropertyMsg) -> M + 'static, content: impl FnOnce(&mut PropertyGrid<'_, '_, M>)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::radio(&mut self, label: impl Into<String>, selected: usize, option: usize, on_select: impl Fn(usize) -> M) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::request_redraw(&mut self) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
@@ -1457,6 +1460,7 @@ glassmere-core   variant Role::MenuItem
 glassmere-core   variant Role::MultilineTextInput
 glassmere-core   variant Role::Option
 glassmere-core   variant Role::PasswordInput
+glassmere-core   variant Role::ProgressBar
 glassmere-core   variant Role::Radio
 glassmere-core   variant Role::Row
 glassmere-core   variant Role::RowGroup
@@ -1662,12 +1666,15 @@ glassmere-core impl Default for VirtualListOptions
 glassmere-core impl From<&String> for ComboBox
 glassmere-core impl From<&String> for Label
 glassmere-core impl From<&String> for MessageArg
+glassmere-core impl From<&String> for Progress
 glassmere-core impl From<&str> for ComboBox
 glassmere-core impl From<&str> for Label
 glassmere-core impl From<&str> for MessageArg
+glassmere-core impl From<&str> for Progress
 glassmere-core impl From<String> for ComboBox
 glassmere-core impl From<String> for Label
 glassmere-core impl From<String> for MessageArg
+glassmere-core impl From<String> for Progress
 glassmere-core impl From<f32> for MessageArg
 glassmere-core impl From<f64> for MessageArg
 glassmere-core impl From<i16> for MessageArg
@@ -1677,6 +1684,7 @@ glassmere-core impl From<i8> for MessageArg
 glassmere-core impl From<isize> for MessageArg
 glassmere-core impl From<std::borrow::Cow<'_, str>> for ComboBox
 glassmere-core impl From<std::borrow::Cow<'_, str>> for Label
+glassmere-core impl From<std::borrow::Cow<'_, str>> for Progress
 glassmere-core impl From<u16> for MessageArg
 glassmere-core impl From<u32> for MessageArg
 glassmere-core impl From<u64> for MessageArg
@@ -1802,6 +1810,7 @@ glassmere-core struct Pacing #[derive(Default)] (private fields)
 glassmere-core struct Paint #[derive(Clone, Copy, Debug, Default, PartialEq)]
 glassmere-core struct Pen #[derive(Clone, Copy, Debug, Default, PartialEq)]
 glassmere-core struct PopoverOptions #[derive(Clone, Debug, PartialEq)]
+glassmere-core struct Progress #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct PropertyGrid<'a, 'u, M: 'static = ()> (private fields)
 glassmere-core struct PropertyGridOptions #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct PropertyGridState #[derive(Clone, Debug, PartialEq)]
@@ -1988,6 +1997,7 @@ glassmere-core use Pacing = app::Pacing
 glassmere-core use Paint = style::Paint
 glassmere-core use Pen = tree::Pen
 glassmere-core use PopoverOptions = panes::PopoverOptions
+glassmere-core use Progress = ui::Progress
 glassmere-core use PropertyGrid = ui::PropertyGrid
 glassmere-core use PropertyGridOptions = property_grid::PropertyGridOptions
 glassmere-core use PropertyGridState = property_grid::PropertyGridState

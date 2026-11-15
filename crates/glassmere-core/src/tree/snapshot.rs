@@ -74,6 +74,9 @@ impl Context {
                 Control::Combo {
                     items, selected, ..
                 } => items.get(*selected).map(|item| item.label.clone()),
+                Control::Progress {
+                    value: Some(value), ..
+                } => Some(format!("{:.0}%", value * 100.0)),
                 // A widget of the application's own says what it holds.
                 _ => node
                     .custom
@@ -109,6 +112,14 @@ impl Context {
                     step,
                 }),
                 Control::TextInput { number, .. } => number,
+                Control::Progress {
+                    value: Some(value), ..
+                } => Some(NumericValue {
+                    value: value * 100.0,
+                    min: 0.0,
+                    max: 100.0,
+                    step: 1.0,
+                }),
                 Control::Sizer { size, min, max, .. } => Some(NumericValue {
                     value: f64::from(size),
                     min: f64::from(min),

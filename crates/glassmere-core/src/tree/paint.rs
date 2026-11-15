@@ -337,6 +337,7 @@ impl Context {
             | Kind::ComboBox
             | Kind::MenuButton => Some(theme.control),
             Kind::Popup | Kind::Popover => Some(theme.popup),
+            Kind::Progress => Some(theme.track),
             Kind::Divider | Kind::DockHandle => Some(if hovered || pressed {
                 theme.accent
             } else {
@@ -429,6 +430,7 @@ impl Context {
         }
         let target = self.appearance(id, &self.nodes[&id]);
         let animation_state::Displayed { shown, layer } = self.displayed(id, target);
+        self.keep_busy(id);
         let crate::animation::Shown {
             background,
             foreground,
@@ -479,7 +481,7 @@ impl Context {
                     .map(|primitive| primitive.translated(offset)),
             );
         }
-        self.paint_control(id, &mut scene);
+        self.paint_control(id, shown, &mut scene);
         let node = &self.nodes[&id];
         let children = node
             .children

@@ -666,3 +666,45 @@ fn an_exiting_node_repaints_its_ghost_and_not_the_window() {
     }
     assert!(!context.animating());
 }
+
+/// A progress bar of unknown length moves by itself, and what it needs from
+/// the window is its own box and nothing around it.
+#[test]
+fn an_unknown_progress_bar_repaints_its_own_box_and_not_the_window() {
+    use glassmere_core::Progress;
+    use std::time::Duration;
+
+    let view = |ui: &mut Ui<'_>| {
+        ui.keyed("page", |ui| {
+            ui.column(Style::default().padding(8.0).gap(6.0), |ui| {
+                ui.keyed("title", |ui| ui.label("Progress"));
+                ui.keyed("bar", |ui| ui.progress(Progress::new("Sync"), None));
+                ui.keyed("rest", |ui| ui.label(Label::new("The rest of the page")));
+            })
+        });
+    };
+    let mut context = Context::new();
+    let mut incremental = CpuRenderer::with_text_system(fonts());
+    let mut whole = CpuRenderer::with_text_system(fonts());
+    let physical = [SIZE.width as u32, SIZE.height as u32];
+    let area = u64::from(physical[0]) * u64::from(physical[1]);
+    let mut frame = |context: &mut Context, at: u64| {
+        context.set_now(Duration::from_millis(at));
+        context.run(SIZE, &mut MonospaceMeasurer, view);
+        let damage: Vec<_> = context.damage_regions().to_vec();
+        let scene = context.scene();
+        let partial = incremental
+            .render_damaged(physical, 1.0, scene, CLEAR, &damage)
+            .to_vec();
+        let full = whole.render(physical, 1.0, scene, CLEAR).to_vec();
+        assert_frames_match(&partial, &full, physical[0] as usize, &format!("{at} ms"));
+        incremental.stats().redrawn
+    };
+    frame(&mut context, 0);
+    for at in (100..1500).step_by(100) {
+        let redrawn = frame(&mut context, at);
+        assert!(redrawn > 0, "{at} ms: the bar moved");
+        assert!(redrawn < area / 8, "{at} ms repainted {redrawn} of {area}");
+    }
+    assert!(context.animating());
+}

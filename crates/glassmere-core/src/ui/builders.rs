@@ -180,6 +180,31 @@ impl ComboBox {
     }
 }
 
+/// A progress bar. `ui.progress("Upload", Some(0.4))` is the short form of
+/// `Progress::new("Upload")`; the label is what a screen reader announces, and
+/// is not drawn.
+#[derive(Clone, Debug, Default)]
+pub struct Progress {
+    pub(crate) label: String,
+    pub(crate) style: Option<Style>,
+}
+
+impl Progress {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            style: None,
+        }
+    }
+
+    /// Replaces the default style, which is a bar 280 wide and 8 high. The
+    /// style's background is the track and its radius rounds both ends.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+}
+
 /// `impl From<&str>` and `impl From<String>` for a builder whose first field
 /// is its text, so `ui.button("Save")` and `ui.button(Button::new("Save"))`
 /// are the same call.
@@ -215,3 +240,4 @@ from_text!(Label);
 from_text!(Button<M>);
 from_text!(TextInput<M>);
 from_text!(ComboBox);
+from_text!(Progress);

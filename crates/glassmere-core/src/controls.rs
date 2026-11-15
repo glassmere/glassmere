@@ -246,6 +246,11 @@ pub(crate) enum Control {
         max: f64,
         step: f64,
     },
+    /// A progress bar: how far it is, or `None` while it cannot tell.
+    Progress {
+        label: String,
+        value: Option<f64>,
+    },
     Combo {
         label: String,
         selected: usize,
