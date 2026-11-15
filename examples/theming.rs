@@ -47,6 +47,7 @@ impl App for Theming {
         let code = ui.class("code");
         let primary = ui.class("primary");
         let danger = ui.class("danger");
+        let large = ui.class("primary.large");
         let bold = Style {
             font_weight: Some(700),
             ..Style::default()
@@ -118,6 +119,11 @@ impl App for Theming {
                             .on_click(Msg::Delete),
                     );
                     ui.button(Button::new("Disabled primary").enabled(false).style(primary));
+                    ui.button(
+                        Button::new("Large (primary.large)")
+                            .style(large)
+                            .on_click(Msg::Save),
+                    );
                 });
                 ui.label(
                     Label::new(format!("Saved {} · deleted {}", self.saves, self.deleted))

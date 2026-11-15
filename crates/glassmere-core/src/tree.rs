@@ -473,6 +473,8 @@ pub struct Context {
     watch_requests: Vec<std::path::PathBuf>,
     images: HashMap<std::path::PathBuf, image::LoadedImage>,
     image_requests: Vec<std::path::PathBuf>,
+    /// Animated images being shown, by the node that shows them.
+    image_plays: HashMap<NodeId, image::Play>,
     hot_save: bool,
     /// How many theme, messages and format requests of the app this context
     /// has applied.
@@ -539,7 +541,9 @@ pub struct Context {
     /// wherever they sit. A cell because `Ui` only holds a shared reference
     /// to the context.
     dock: std::cell::Cell<Option<NodeId>>,
-    /// The node of each panel's content, by dock and panel id.
+    /// The node of each panel's content, by dock and panel id. The content
+    /// of a panel whose tab is not selected stays here, parked: its nodes
+    /// have no parent and the tree does not reach them.
     panels: HashMap<NodeId, HashMap<String, NodeId>>,
 }
 
@@ -671,6 +675,7 @@ impl Default for Context {
             watched: HashMap::new(),
             images: HashMap::new(),
             image_requests: Vec::new(),
+            image_plays: HashMap::new(),
             watch_requests: Vec::new(),
             hot_save: false,
             settings: (0, 0, 0),

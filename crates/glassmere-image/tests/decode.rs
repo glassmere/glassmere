@@ -1,8 +1,10 @@
 use glassmere_image::{Loader, decode, load};
+use image::codecs::gif::{GifEncoder, Repeat};
 use image::codecs::{jpeg::JpegEncoder, png::PngEncoder, webp::WebPEncoder};
-use image::{ExtendedColorType, ImageEncoder, ImageFormat, Rgba, RgbaImage};
+use image::{Delay, ExtendedColorType, Frame, ImageEncoder, ImageFormat, Rgba, RgbaImage};
 use moxcms::{ColorProfile, ToneReprCurve};
 use std::io::Cursor;
+use std::num::NonZeroU32;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 
@@ -331,4 +333,254 @@ fn srgb_missing_and_unusable_profiles_leave_the_pixels_alone() {
     ] {
         assert_eq!(decode_with(Some(&icc)), pixels, "{what}");
     }
+}
+
+/// Solid frames of 3 by 2 pixels.
+fn frame_image(color: Rgba<u8>) -> RgbaImage {
+    RgbaImage::from_pixel(3, 2, color)
+}
+
+const RED: Rgba<u8> = Rgba([255, 0, 0, 255]);
+const GREEN: Rgba<u8> = Rgba([0, 255, 0, 255]);
+const BLUE: Rgba<u8> = Rgba([0, 0, 255, 255]);
+
+fn gif(frames: &[(Rgba<u8>, u32)], repeat: Repeat) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut encoder = GifEncoder::new(&mut bytes);
+    encoder.set_repeat(repeat).unwrap();
+    for (color, millis) in frames {
+        let delay = Delay::from_numer_denom_ms(*millis, 1);
+        encoder
+            .encode_frame(Frame::from_parts(frame_image(*color), 0, 0, delay))
+            .unwrap();
+    }
+    drop(encoder);
+    bytes
+}
+
+fn milliseconds(image: &glassmere_scene::Image) -> Vec<u128> {
+    image
+        .frames()
+        .iter()
+        .map(|frame| frame.delay.as_millis())
+        .collect()
+}
+
+/// The first pixel of each frame.
+fn first_pixels(image: &glassmere_scene::Image) -> Vec<[u8; 4]> {
+    image
+        .frames()
+        .iter()
+        .map(|frame| frame.image.pixels().unwrap().2[..4].try_into().unwrap())
+        .collect()
+}
+
+#[test]
+fn an_animated_gif_keeps_its_frames_delays_and_loop_count() {
+    let frames = [(RED, 100), (GREEN, 200), (BLUE, 300)];
+    let image = decode(&gif(&frames, Repeat::Infinite)).unwrap();
+    assert_eq!(image.frames().len(), 3);
+    assert_eq!(milliseconds(&image), [100, 200, 300]);
+    assert_eq!(image.loops(), None);
+    assert_eq!(
+        first_pixels(&image),
+        [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255]]
+    );
+    // The animation stands in for its first frame everywhere else.
+    assert_eq!(image.size(), glassmere_scene::Size::new(3.0, 2.0));
+    assert_eq!(image.pixels().unwrap().2[..4], [255, 0, 0, 255]);
+
+    // A GIF counts the repeats after the first play.
+    let twice = decode(&gif(&frames, Repeat::Finite(2))).unwrap();
+    assert_eq!(twice.loops(), NonZeroU32::new(3));
+
+    // A frame that asks for next to nothing lasts a tenth of a second.
+    let fast = decode(&gif(&[(RED, 0), (GREEN, 10), (BLUE, 20)], Repeat::Infinite)).unwrap();
+    assert_eq!(milliseconds(&fast), [100, 100, 20]);
+}
+
+#[test]
+fn a_one_frame_gif_is_a_still_image_as_before() {
+    let image = decode(&gif(&[(RED, 100)], Repeat::Infinite)).unwrap();
+    assert!(image.frames().is_empty() && image.loops().is_none());
+    assert_eq!(image.pixels().unwrap().2[..4], [255, 0, 0, 255]);
+    assert_eq!(image.size(), glassmere_scene::Size::new(3.0, 2.0));
+}
+
+fn lossless_webp(image: &RgbaImage) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    image
+        .write_to(&mut Cursor::new(&mut bytes), ImageFormat::WebP)
+        .unwrap();
+    bytes
+}
+
+fn riff_chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+    let mut chunk = kind.to_vec();
+    chunk.extend((data.len() as u32).to_le_bytes());
+    chunk.extend(data);
+    chunk.resize(chunk.len() + data.len() % 2, 0);
+    chunk
+}
+
+/// An animated WebP of `count` copies of the one lossless frame in the corner
+/// of a `canvas`, with `delays`
+/// cycled, which no encoder in the `image` crate writes.
+fn animated_webp(
+    frame: &RgbaImage,
+    canvas: (u32, u32),
+    delays: &[u32],
+    count: usize,
+    loops: u16,
+) -> Vec<u8> {
+    let (width, height) = frame.dimensions();
+    let still = lossless_webp(frame);
+    assert_eq!(&still[12..16], b"VP8L");
+    let three = |value: u32| value.to_le_bytes()[..3].to_vec();
+    let mut header = vec![0x12, 0, 0, 0];
+    header.extend(three(canvas.0 - 1));
+    header.extend(three(canvas.1 - 1));
+    let mut body = b"WEBP".to_vec();
+    body.extend(riff_chunk(b"VP8X", &header));
+    let animation = [&[0u8; 4][..], &loops.to_le_bytes()].concat();
+    body.extend(riff_chunk(b"ANIM", &animation));
+    for index in 0..count {
+        let mut data = three(0);
+        data.extend(three(0));
+        data.extend(three(width - 1));
+        data.extend(three(height - 1));
+        data.extend(three(delays[index % delays.len()]));
+        data.push(0);
+        data.extend(&still[12..]);
+        body.extend(riff_chunk(b"ANMF", &data));
+    }
+    let mut bytes = b"RIFF".to_vec();
+    bytes.extend((body.len() as u32).to_le_bytes());
+    bytes.extend(body);
+    bytes
+}
+
+#[test]
+fn an_animated_webp_keeps_its_frames_delays_and_loop_count() {
+    let frame = frame_image(GREEN);
+    let image = decode(&animated_webp(&frame, (3, 2), &[50, 120], 3, 4)).unwrap();
+    assert_eq!(image.frames().len(), 3);
+    assert_eq!(milliseconds(&image), [50, 120, 50]);
+    // WebP counts plays, and 0 is forever.
+    assert_eq!(image.loops(), NonZeroU32::new(4));
+    // Compositing a frame over the canvas can be a level off.
+    for pixel in first_pixels(&image) {
+        assert!(pixel[1] >= 254 && pixel[0] == 0 && pixel[2] == 0 && pixel[3] == 255);
+    }
+    let forever = decode(&animated_webp(&frame, (3, 2), &[50], 2, 0)).unwrap();
+    assert_eq!(forever.loops(), None);
+
+    // A still WebP is not an animation.
+    let still = decode(&lossless_webp(&frame)).unwrap();
+    assert!(still.frames().is_empty());
+}
+
+fn crc32(data: &[u8]) -> u32 {
+    let mut crc = !0u32;
+    for byte in data {
+        crc ^= u32::from(*byte);
+        for _ in 0..8 {
+            crc = if crc & 1 == 1 {
+                (crc >> 1) ^ 0xEDB8_8320
+            } else {
+                crc >> 1
+            };
+        }
+    }
+    !crc
+}
+
+fn png_chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+    let mut chunk = (data.len() as u32).to_be_bytes().to_vec();
+    chunk.extend(kind);
+    chunk.extend(data);
+    chunk.extend(crc32(&chunk[4..]).to_be_bytes());
+    chunk
+}
+
+/// The chunks of a PNG file as (kind, data).
+fn png_chunks(bytes: &[u8]) -> Vec<([u8; 4], Vec<u8>)> {
+    let mut chunks = Vec::new();
+    let mut at = 8;
+    while at < bytes.len() {
+        let length = u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
+        let kind = bytes[at + 4..at + 8].try_into().unwrap();
+        chunks.push((kind, bytes[at + 8..at + 8 + length].to_vec()));
+        at += length + 12;
+    }
+    chunks
+}
+
+/// An APNG whose animation starts with its default image, `plays` times.
+fn animated_png(frames: &[(Rgba<u8>, u16)], plays: u32) -> Vec<u8> {
+    let mut bytes = vec![137, 80, 78, 71, 13, 10, 26, 10];
+    let mut sequence = 0u32;
+    for (index, (color, millis)) in frames.iter().enumerate() {
+        let mut file = Vec::new();
+        frame_image(*color)
+            .write_to(&mut Cursor::new(&mut file), ImageFormat::Png)
+            .unwrap();
+        let chunks = png_chunks(&file);
+        let data: Vec<u8> = chunks
+            .iter()
+            .filter(|(kind, _)| kind == b"IDAT")
+            .flat_map(|(_, data)| data.clone())
+            .collect();
+        if index == 0 {
+            bytes.extend(png_chunk(b"IHDR", &chunks[0].1));
+            let mut control = (frames.len() as u32).to_be_bytes().to_vec();
+            control.extend(plays.to_be_bytes());
+            bytes.extend(png_chunk(b"acTL", &control));
+        }
+        let mut control = sequence.to_be_bytes().to_vec();
+        for value in [3u32, 2, 0, 0] {
+            control.extend(value.to_be_bytes());
+        }
+        control.extend(millis.to_be_bytes());
+        control.extend(1000u16.to_be_bytes());
+        control.extend([0, 0]);
+        bytes.extend(png_chunk(b"fcTL", &control));
+        sequence += 1;
+        if index == 0 {
+            bytes.extend(png_chunk(b"IDAT", &data));
+        } else {
+            let mut frame = sequence.to_be_bytes().to_vec();
+            frame.extend(data);
+            bytes.extend(png_chunk(b"fdAT", &frame));
+            sequence += 1;
+        }
+    }
+    bytes.extend(png_chunk(b"IEND", &[]));
+    bytes
+}
+
+#[test]
+fn an_animated_png_keeps_its_frames_delays_and_loop_count() {
+    let image = decode(&animated_png(&[(RED, 40), (BLUE, 250)], 2)).unwrap();
+    assert_eq!(milliseconds(&image), [40, 250]);
+    assert_eq!(image.loops(), NonZeroU32::new(2));
+    assert_eq!(first_pixels(&image), [[255, 0, 0, 255], [0, 0, 255, 255]]);
+    let forever = decode(&animated_png(&[(RED, 40), (BLUE, 40)], 0)).unwrap();
+    assert_eq!(forever.loops(), None);
+
+    // An ordinary PNG is not an animation.
+    let plain = decode(&encoded(ImageFormat::Png)).unwrap();
+    assert!(plain.frames().is_empty());
+}
+
+#[test]
+fn frames_beyond_the_memory_cap_leave_the_first_frame_as_a_still() {
+    // A 2000 by 2000 canvas is 16 MB a frame: two fit in 32 MiB, three do not.
+    let (frame, canvas) = (RgbaImage::from_pixel(1, 1, RED), (2000, 2000));
+    let fits = decode(&animated_webp(&frame, canvas, &[100], 2, 0)).unwrap();
+    assert_eq!(fits.frames().len(), 2);
+    let too_long = decode(&animated_webp(&frame, canvas, &[100], 3, 0)).unwrap();
+    assert!(too_long.frames().is_empty());
+    assert_eq!(too_long.size(), glassmere_scene::Size::new(2000.0, 2000.0));
+    assert!(too_long.pixels().unwrap().2[0] >= 254);
 }
