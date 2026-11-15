@@ -25,9 +25,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - Several objects can be edited at once: `PropertyGrid::mixed` shows "Mixed" where they differ, and `#[derive(Properties)]` generates `properties_many`.
   - A fieldless enum that derives `PropertyChoice` is edited as a drop-down of its variants.
   - An `Option<T>` field is edited as `T` beside a box that sets or clears it, through `PropertyGrid::optional`.
+- `Ui::calendar`, a month grid, and `Ui::date_picker`, a field that opens one, both on `Date` with `min`, `max` and the first weekday. `Date::new` checks a date, `Date::weekday` returns the new `Weekday`. Month and weekday names are catalog keys, with German and Czech in `glassmere-fluent`. See `examples/dates.rs`.
+- `Ui::command_menu` and `Ui::command_context_menu` show a `Menu` with separators and nested submenus, as a menu button and as a context menu. Their commands are sent the way `Ui::menu_bar` sends them.
+- `Ui::tooltip_with` takes a `Tooltip` with a placement (`TooltipPlacement`: auto, above, below, before or after), a delay and a style. A placed tooltip flips at the window edge, and before and after mirror in a right-to-left window.
+- `GridModel::footer` gives a data grid rows pinned under its body, for totals.
 
 ### Changed
 
+- A tooltip also shows when its widget gets the focus from the keyboard, and hides on blur, on Escape or on a key that changes the value. A tooltip shown this way takes that Escape.
+- A tooltip shows sooner when the pointer moves to it right after another one was on show.
+- A submenu opens after the pointer has rested on its row for 200 ms, and stays open while the pointer crosses other rows on the way to it. A click, Enter and the arrow keys open it at once.
 - `#[property(flatten)]` calls `properties_many` on the nested type. A derived type has it; a hand-written one needs to add it.
 
 ### Fixed
