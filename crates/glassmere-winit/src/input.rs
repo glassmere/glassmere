@@ -571,7 +571,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "images"))]
 mod clipboard_tests {
     use super::*;
 
@@ -579,7 +579,6 @@ mod clipboard_tests {
     /// `cargo test -p glassmere-winit --features images -- --ignored`.
     #[test]
     #[ignore = "writes to the system clipboard"]
-    #[cfg(feature = "images")]
     fn an_image_and_private_bytes_survive_a_round_trip_through_the_platform() {
         let mut clipboard = HostClipboard::default();
         // Half-transparent blue, premultiplied as scenes hold it.

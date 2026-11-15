@@ -199,21 +199,27 @@ fn shipped_catalogs_translate_every_built_in_key_and_nothing_else() {
     use glassmere_core::BUILTIN_MESSAGES;
     for (language, source) in glassmere_fluent::FRAMEWORK_CATALOGS {
         let messages = FluentMessages::new(language, language).unwrap();
-        let name = [("name", "X".into())];
+        let args = [
+            ("name", "[name]".into()),
+            ("month", "[month]".into()),
+            ("year", "[year]".into()),
+        ];
         for (key, english) in BUILTIN_MESSAGES {
             let text = messages
-                .text(key, &name)
+                .text(key, &args)
                 .unwrap_or_else(|| panic!("{language} lacks {key}"));
             assert!(
                 !text.is_empty() && !text.contains("{"),
                 "{language} {key}: {text}"
             );
             // An argument the English text uses has to appear in the translation.
-            assert_eq!(
-                english.contains("$name"),
-                text.contains('X'),
-                "{language} {key}"
-            );
+            for (argument, _) in &args {
+                assert_eq!(
+                    english.contains(&format!("${argument}")),
+                    text.contains(&format!("[{argument}]")),
+                    "{language} {key} {argument}"
+                );
+            }
         }
         let keys = source
             .lines()

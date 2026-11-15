@@ -8,8 +8,10 @@ use std::panic::Location;
 use std::sync::Arc;
 mod builders;
 pub use builders::{
-    Button, Collapsible, ComboBox, Label, Link, Progress, RangeSlider, Spinner, Switch, TextInput,
+    Button, Calendar, Collapsible, ComboBox, DatePicker, Label, Link, Progress, RangeSlider,
+    Spinner, Switch, TextInput,
 };
+mod calendar;
 mod collections;
 mod controls;
 mod dock;
@@ -133,6 +135,8 @@ pub(crate) enum Kind {
     Spinner,
     ComboBox,
     MenuButton,
+    /// The days of a calendar, which take the keys together.
+    Calendar,
     Popup,
     Choice,
     Collection,

@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 mod animation;
 pub mod app;
+mod calendar;
 mod clipboard;
 mod collection;
 mod command;
@@ -57,7 +58,7 @@ pub use focus::{DialogOptions, FocusScope};
 pub use glassmere_scene::{FontFamily, TextSpan, TextStyle, TextWrap};
 pub use glassmere_scene::{MonospaceMeasurer, TextMeasurer};
 pub use image::{BackgroundImage, ImageFit, ImageOptions, ImageSource, ImageTint};
-pub use locale_format::{Date, DateStyle, LocaleFormat, Time};
+pub use locale_format::{Date, DateStyle, LocaleFormat, Time, Weekday};
 pub use mailbox::{Mailbox, MessageSender, message_channel};
 pub use messages::{BUILTIN_MESSAGES, MessageArg, Messages};
 pub use panes::{Axis, PopoverOptions, SplitOptions, TOOLTIP_DELAY, Tab};
@@ -92,9 +93,9 @@ pub use tree::{
     SwipeDirection, TouchPhase,
 };
 pub use ui::{
-    AreaBuilder, Autocomplete, Button, Collapsible, ComboBox, CommandPalette, DockOptions,
-    DockPanel, DragSourceBuilder, DropTargetBuilder, GestureBuilder, Label, Link, Progress,
-    PropertyGrid, RangeSlider, Response, Spinner, Switch, TextInput, Ui, suggest,
+    AreaBuilder, Autocomplete, Button, Calendar, Collapsible, ComboBox, CommandPalette, DatePicker,
+    DockOptions, DockPanel, DragSourceBuilder, DropTargetBuilder, GestureBuilder, Label, Link,
+    Progress, PropertyGrid, RangeSlider, Response, Spinner, Switch, TextInput, Ui, suggest,
 };
 pub use widget::{CustomWidget, WidgetBuilder, WidgetInput};
 pub use window::{ResizeEdge, WindowCommand, WindowId, WindowInfo, WindowRequest};

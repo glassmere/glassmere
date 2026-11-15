@@ -329,7 +329,7 @@ impl Context {
         true
     }
 
-    fn close_popup(&mut self) -> bool {
+    pub(super) fn close_popup(&mut self) -> bool {
         let innermost = self.popup.take();
         // Focus goes back to where the outermost menu took it from.
         let Some(popup) = self.popup_parents.drain(..).next().or(innermost) else {
@@ -354,19 +354,25 @@ impl Context {
         let Some(node) = self.nodes.get(&owner).filter(|node| node.enabled) else {
             return false;
         };
+        // A calendar has no rows to highlight: its own cursor is the one.
+        let calendar = matches!(node.control, Control::DatePicker { .. });
         let selected = match &node.control {
             Control::Combo { selected, .. } => *selected,
             _ => 0,
         };
-        let Some(items) = self.popup_items(owner) else {
-            return false;
-        };
-        let highlighted = if items.get(selected).is_some_and(|item| item.enabled) {
-            selected
-        } else if let Some(index) = items.iter().position(|item| item.enabled) {
-            index
+        let highlighted = if calendar {
+            0
         } else {
-            return false;
+            let Some(items) = self.popup_items(owner) else {
+                return false;
+            };
+            if items.get(selected).is_some_and(|item| item.enabled) {
+                selected
+            } else if let Some(index) = items.iter().position(|item| item.enabled) {
+                index
+            } else {
+                return false;
+            }
         };
         // A row of an open menu opens its own beside it, and that menu stays.
         if let Some((parent, index)) = self
@@ -394,7 +400,7 @@ impl Context {
         self.popup = Some(PopupState {
             owner,
             highlighted,
-            reveal_highlight: true,
+            reveal_highlight: !calendar,
             anchor,
             return_focus,
         });
@@ -578,7 +584,7 @@ impl Context {
             return false;
         };
         match node.control {
-            Control::Combo { .. } | Control::Menu { .. } => {
+            Control::Combo { .. } | Control::Menu { .. } | Control::DatePicker { .. } => {
                 if self.popup_of(id).is_some() {
                     self.close_popup()
                 } else {
@@ -600,6 +606,12 @@ impl Context {
                 self.choose(owner, index)
             }
             Control::Tab { .. } => self.select_tab(id),
+            Control::CalendarDay { date, .. } => self
+                .calendar_grid_of(id)
+                .is_some_and(|grid| self.calendar_pick(grid, date)),
+            Control::CalendarStep { months } => self
+                .calendar_grid_of(id)
+                .is_some_and(|grid| self.calendar_step(grid, months)),
             Control::StripScroll { end } => {
                 let Some(strip) = node.parent else {
                     return false;
@@ -633,6 +645,12 @@ impl Context {
 
     fn popup_key(&mut self, key: Key) -> Option<bool> {
         let popup = self.popup?;
+        if matches!(
+            self.nodes.get(&popup.owner).map(|owner| &owner.control),
+            Some(Control::DatePicker { .. })
+        ) {
+            return self.date_picker_key(popup.owner, key);
+        }
         // An autocomplete field keeps typing while its list is open: only the
         // arrows and Escape belong to the list, and Enter only with a highlight.
         if self
@@ -839,6 +857,11 @@ impl Context {
                             return Some(handled);
                         }
                     }
+                    Kind::Calendar => {
+                        if let Some(handled) = self.calendar_key(id, *key) {
+                            return Some(handled);
+                        }
+                    }
                     _ => {}
                 }
                 let node = &self.nodes[&id];
@@ -939,7 +962,9 @@ impl Context {
                     self.activate(siblings[next]);
                     return Some(true);
                 }
+                // A date picker opens with Alt+Down, which is no key of its own.
                 if matches!(node.kind, Kind::ComboBox | Kind::MenuButton)
+                    && !matches!(node.control, Control::DatePicker { .. })
                     && matches!(key, Key::ArrowDown | Key::ArrowUp)
                 {
                     return Some(self.open_popup(id));
