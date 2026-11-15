@@ -75,7 +75,7 @@ Green is used and tested by hand, yellow builds and passes tests but has gaps or
 ## What is in it
 
 - **Layout:** flex and grid through Taffy, with tracks, explicit placement and spans, min/max, aspect ratio and full alignment. Right-to-left windows mirror layout and widgets.
-- **Controls:** buttons, checkboxes, radios, sliders, progress bars, combo boxes, menus, password fields, number fields, autocomplete, tabs, split panes, tooltips, popovers, context menus, dialogs, toasts and a command palette.
+- **Controls:** buttons, checkboxes, radios, sliders, progress bars and spinners, combo boxes, menus, password fields, number fields, autocomplete, tabs, split panes, tooltips, popovers, context menus, dialogs, toasts and a command palette.
 - **Collections:** virtualized lists, trees and a data grid with sorting, filtering, frozen columns, a cell cursor and typed in-place editing. Also a property grid with `#[derive(Properties)]`.
 - **Text:** a single-line field, a virtualized code editor over a rope with syntect highlighting, find and replace, multiple cursors and diagnostics, and a WYSIWYG rich text editor that saves Markdown. BiDi caret movement and IME composition.
 - **Docking:** tab groups in a split tree, floating groups, detached OS windows and a layout the application owns and can save.

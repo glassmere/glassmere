@@ -1,6 +1,8 @@
 mod support;
 
-use glassmere_core::{Context, Direction, MonospaceMeasurer, Progress, Role, Style, Ui};
+use glassmere_core::{
+    Context, Direction, Length, MonospaceMeasurer, Progress, Role, Spinner, Style, Ui,
+};
 use glassmere_scene::{Color, Primitive, Rect, Size};
 use std::time::Duration;
 
@@ -166,4 +168,142 @@ fn a_known_progress_bar_and_a_window_without_one_stay_idle() {
     frame_at(&mut context, 900, view);
     assert!(!context.animating());
     assert!(context.damage_regions().is_empty());
+}
+
+/// The dots a spinner draws, as (rectangle, opacity), in paint order.
+fn dots(context: &Context) -> Vec<(Rect, u8)> {
+    let accent = context.theme().accent;
+    context
+        .scene()
+        .primitives
+        .iter()
+        .filter_map(|primitive| match primitive {
+            Primitive::Quad { rect, color, .. }
+                if (color.0, color.1, color.2) == (accent.0, accent.1, accent.2) =>
+            {
+                Some((*rect, color.3))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn spin(ui: &mut Ui<'_>) {
+    ui.keyed("page", |ui| {
+        ui.column(Style::default().gap(20.0), |ui| {
+            ui.label("Static text above");
+            ui.keyed("busy", |ui| ui.spinner("Loading"));
+            ui.label("Static text below");
+        });
+    });
+}
+
+#[test]
+fn a_spinner_is_a_progress_bar_without_a_value_and_cannot_be_focused() {
+    let mut context = Context::new();
+    frame_at(&mut context, 0, spin);
+    let node = context
+        .node(context.find(&["page", "busy"]).unwrap())
+        .unwrap();
+    assert_eq!(node.semantics.role, Role::ProgressBar);
+    assert_eq!(node.semantics.label, "Loading");
+    assert!(!node.semantics.focusable);
+    assert_eq!((node.value, node.numeric), (None, None));
+    let size = bounds(&context, &["page", "busy"]);
+    assert_eq!((size.width, size.height), (24.0, 24.0));
+    // The label is a name and is not drawn.
+    assert!(!support::shows(&context, "Loading"));
+}
+
+#[test]
+fn a_spinner_turns_and_repaints_only_its_own_box() {
+    let mut context = Context::new();
+    frame_at(&mut context, 0, spin);
+    assert!(context.animating());
+    let spinner = bounds(&context, &["page", "busy"]);
+    let first = dots(&context);
+    assert_eq!(first.len(), 10);
+    assert!(first.iter().all(|(rect, _)| {
+        rect.x >= spinner.x
+            && rect.y >= spinner.y
+            && rect.x + rect.width <= spinner.x + spinner.width
+            && rect.y + rect.height <= spinner.y + spinner.height
+    }));
+    let strongest = |dots: &[(Rect, u8)]| {
+        dots.iter()
+            .enumerate()
+            .max_by_key(|(_, (_, alpha))| *alpha)
+            .unwrap()
+            .0
+    };
+    frame_at(&mut context, 300, spin);
+    let later = dots(&context);
+    assert_ne!(strongest(&first), strongest(&later), "the trail has turned");
+    let damage = context.damage_regions();
+    assert!(!damage.is_empty());
+    assert!(
+        damage.iter().all(|region| {
+            region.x >= spinner.x - 1.0
+                && region.y >= spinner.y - 1.0
+                && region.x + region.width <= spinner.x + spinner.width + 1.0
+                && region.y + region.height <= spinner.y + spinner.height + 1.0
+        }),
+        "only the spinner is damaged: {damage:?} outside {spinner:?}"
+    );
+}
+
+#[test]
+fn reduced_motion_stops_a_spinner_and_the_window_goes_idle() {
+    let mut context = Context::new();
+    context.set_reduced_motion(true);
+    frame_at(&mut context, 0, spin);
+    let still = dots(&context);
+    assert_eq!(still.len(), 10);
+    assert!(!context.animating());
+    frame_at(&mut context, 450, spin);
+    assert_eq!(dots(&context), still);
+    assert!(!context.animating());
+    assert!(context.damage_regions().is_empty());
+}
+
+#[test]
+fn a_spinner_that_is_removed_leaves_the_window_idle() {
+    let mut context = Context::new();
+    frame_at(&mut context, 0, spin);
+    assert!(context.animating());
+    let without = |ui: &mut Ui<'_>| {
+        ui.keyed("page", |ui| ui.label("Done"));
+    };
+    frame_at(&mut context, 16, without);
+    frame_at(&mut context, 32, without);
+    assert!(!context.animating());
+}
+
+#[test]
+fn a_disabled_spinner_is_dimmed_and_a_style_sizes_and_colors_it() {
+    let mut context = Context::new();
+    frame_at(&mut context, 0, |ui| {
+        ui.enabled(false, |ui| ui.spinner("Loading"));
+    });
+    assert!(dots(&context).is_empty());
+    assert_eq!(quads(&context, context.theme().text_disabled).len(), 1);
+
+    let mut context = Context::new();
+    let red = Color(200, 0, 0, 255);
+    frame_at(&mut context, 0, |ui| {
+        ui.keyed("big", |ui| {
+            ui.spinner(Spinner::new("Loading").style(Style {
+                width: Length::Px(48.0),
+                height: Length::Px(48.0),
+                foreground: Some(red),
+                ..Style::default()
+            }))
+        });
+    });
+    assert_eq!(bounds(&context, &["big"]).width, 48.0);
+    assert_eq!(
+        quads(&context, red).len(),
+        1,
+        "only the head is at full strength"
+    );
 }

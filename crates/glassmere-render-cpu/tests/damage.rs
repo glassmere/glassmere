@@ -667,10 +667,10 @@ fn an_exiting_node_repaints_its_ghost_and_not_the_window() {
     assert!(!context.animating());
 }
 
-/// A progress bar of unknown length moves by itself, and what it needs from
-/// the window is its own box and nothing around it.
+/// A progress bar of unknown length and a spinner move by themselves, and
+/// what they need from the window is their own boxes and nothing around them.
 #[test]
-fn an_unknown_progress_bar_repaints_its_own_box_and_not_the_window() {
+fn busy_indicators_repaint_their_own_boxes_and_not_the_window() {
     use glassmere_core::Progress;
     use std::time::Duration;
 
@@ -679,6 +679,7 @@ fn an_unknown_progress_bar_repaints_its_own_box_and_not_the_window() {
             ui.column(Style::default().padding(8.0).gap(6.0), |ui| {
                 ui.keyed("title", |ui| ui.label("Progress"));
                 ui.keyed("bar", |ui| ui.progress(Progress::new("Sync"), None));
+                ui.keyed("spinner", |ui| ui.spinner("Loading"));
                 ui.keyed("rest", |ui| ui.label(Label::new("The rest of the page")));
             })
         });

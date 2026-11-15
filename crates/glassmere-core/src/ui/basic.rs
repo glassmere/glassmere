@@ -35,4 +35,24 @@ impl<'a, M: 'static> Ui<'a, M> {
             ..Element::new(key, Kind::Progress)
         });
     }
+
+    /// A busy indicator: dots that turn while the work goes on, still when
+    /// motion is reduced. It is read as a progress bar without a value.
+    #[track_caller]
+    pub fn spinner(&mut self, spinner: impl Into<Spinner>) {
+        let spinner = spinner.into();
+        let key = self.next_key();
+        self.push(Element {
+            style: spinner.style.unwrap_or(Style {
+                width: Length::Px(24.0),
+                height: Length::Px(24.0),
+                ..Style::default()
+            }),
+            enabled: self.enabled,
+            control: Control::Spinner {
+                label: spinner.label,
+            },
+            ..Element::new(key, Kind::Spinner)
+        });
+    }
 }

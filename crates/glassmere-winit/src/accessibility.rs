@@ -1128,11 +1128,12 @@ mod tests {
     }
 
     #[test]
-    fn progress_bars_are_progress_indicators_with_a_value_only_when_it_is_known() {
+    fn progress_bars_and_spinners_are_progress_indicators_with_a_value_only_when_it_is_known() {
         let mut context = Context::new();
         context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
             ui.keyed("known", |ui| ui.progress("Upload", Some(0.4)));
             ui.keyed("unknown", |ui| ui.progress("Sync", None));
+            ui.keyed("spinner", |ui| ui.spinner("Loading"));
         });
         let update = tree(&context, "Progress", 1.0);
         let node = |key: &str| node_in(&update, NodeId(context.find(&[key]).unwrap().0));
@@ -1144,6 +1145,10 @@ mod tests {
         assert!(!node("known").supports_action(Action::SetValue));
         assert_eq!(node("unknown").role(), Role::ProgressIndicator);
         assert_eq!(node("unknown").numeric_value(), None);
+        assert_eq!(node("spinner").role(), Role::ProgressIndicator);
+        assert_eq!(node("spinner").label(), Some("Loading"));
+        assert_eq!(node("spinner").numeric_value(), None);
+        assert_eq!(node("spinner").value(), None);
     }
 
     #[test]

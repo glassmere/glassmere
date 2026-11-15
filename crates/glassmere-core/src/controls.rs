@@ -251,6 +251,10 @@ pub(crate) enum Control {
         label: String,
         value: Option<f64>,
     },
+    /// A busy indicator, which never knows how far it is.
+    Spinner {
+        label: String,
+    },
     Combo {
         label: String,
         selected: usize,

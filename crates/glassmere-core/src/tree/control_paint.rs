@@ -286,8 +286,12 @@ impl Context {
             }
             scene.primitives.push(Primitive::PopClip);
         }
-        if let Control::Progress { value, .. } = node.control {
-            self.paint_progress(node, value, shown.radius, scene);
+        match node.control {
+            Control::Progress { value, .. } => {
+                self.paint_progress(node, value, shown.radius, scene)
+            }
+            Control::Spinner { .. } => self.paint_spinner(node, scene),
+            _ => {}
         }
         if let Control::Slider {
             value, min, max, ..
@@ -366,13 +370,55 @@ impl Context {
         };
         scene.primitives.push(Primitive::Quad {
             rect: Rect { x, width, ..bounds },
-            color: if node.enabled {
-                self.theme.accent
-            } else {
-                self.theme.text_disabled
-            },
+            color: self.busy_color(node),
             radius: radius.min(bounds.height / 2.0).min(width / 2.0),
         });
+    }
+
+    /// Dots around a circle, the newest at full strength and each one before
+    /// it fainter, so that the trail turns clockwise. It is not mirrored in
+    /// right-to-left text: a clock is not.
+    fn paint_spinner(&self, node: &Node, scene: &mut Scene) {
+        const DOTS: usize = 10;
+        let bounds = node.bounds;
+        let diameter = bounds.width.min(bounds.height);
+        let dot = (diameter / 6.0).max(1.0);
+        let orbit = (diameter - dot) / 2.0;
+        let (center_x, center_y) = (
+            bounds.x + bounds.width / 2.0,
+            bounds.y + bounds.height / 2.0,
+        );
+        let color = self.busy_color(node);
+        let head = self.busy_phase(Duration::from_millis(900)) * DOTS as f32;
+        for index in 0..DOTS {
+            let angle = index as f32 / DOTS as f32 * std::f32::consts::TAU;
+            let behind = (head - index as f32).rem_euclid(DOTS as f32) / DOTS as f32;
+            let strength = 1.0 - 0.85 * behind;
+            scene.primitives.push(Primitive::Quad {
+                rect: Rect {
+                    x: center_x + orbit * angle.sin() - dot / 2.0,
+                    y: center_y - orbit * angle.cos() - dot / 2.0,
+                    width: dot,
+                    height: dot,
+                },
+                color: Color(
+                    color.0,
+                    color.1,
+                    color.2,
+                    (f32::from(color.3) * strength) as u8,
+                ),
+                radius: dot / 2.0,
+            });
+        }
+    }
+
+    /// What a busy indicator is drawn in: the accent, unless its style says.
+    fn busy_color(&self, node: &Node) -> Color {
+        if node.enabled {
+            node.style.foreground.unwrap_or(self.theme.accent)
+        } else {
+            self.theme.text_disabled
+        }
     }
 
     /// Logical candidate-window anchor, clamped to the active input's content box.

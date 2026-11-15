@@ -160,7 +160,10 @@ impl Node {
 
     /// Whether the node draws something that moves while it is on screen.
     fn busy(&self) -> bool {
-        matches!(self.control, Control::Progress { value: None, .. })
+        matches!(
+            self.control,
+            Control::Progress { value: None, .. } | Control::Spinner { .. }
+        )
     }
 
     fn focusable(&self) -> bool {
@@ -303,7 +306,7 @@ impl Node {
                     Kind::Checkbox => Role::Checkbox,
                     Kind::Radio => Role::Radio,
                     Kind::Slider => Role::Slider,
-                    Kind::Progress => Role::ProgressBar,
+                    Kind::Progress | Kind::Spinner => Role::ProgressBar,
                     Kind::ComboBox => Role::ComboBox,
                     Kind::MenuButton => Role::MenuButton,
                     Kind::Dialog => Role::Dialog,
@@ -330,6 +333,7 @@ impl Node {
                 | Control::Radio { label, .. }
                 | Control::Slider { label, .. }
                 | Control::Progress { label, .. }
+                | Control::Spinner { label }
                 | Control::Combo { label, .. }
                 | Control::Collection { label, .. }
                 | Control::CollectionRow { label, .. }

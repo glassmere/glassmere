@@ -1,6 +1,6 @@
 use glassmere::{
-    App, AppOptions, Button, Color, DirectionChoice, Effects, FontFamily, Label, Length, MenuItem,
-    NumberOptions, Size, Style, TextInput, TextWrap, Toast, Ui, run, suggest,
+    Align, App, AppOptions, Button, Color, DirectionChoice, Effects, FontFamily, Label, Length,
+    MenuItem, NumberOptions, Size, Style, TextInput, TextWrap, Toast, Ui, run, suggest,
 };
 use std::time::Duration;
 
@@ -226,6 +226,21 @@ impl App for Controls {
                     ui.enabled(false, |ui| {
                         ui.text_input("Unavailable field", "Unavailable field", Msg::Name);
                     });
+                    // Busy indicators only while the export runs, so the window is idle after.
+                    let centered = Style {
+                        gap: 12.0,
+                        align_items: Align::Center,
+                        ..Style::default()
+                    };
+                    ui.row(centered, |ui| {
+                        ui.button(Button::new("Export in the background").on_click(Msg::Export));
+                        if self.exporting {
+                            ui.spinner("Exporting");
+                        }
+                    });
+                    if self.exporting {
+                        ui.progress("Export progress", None);
+                    }
                 });
                 ui.column(choice_column, |ui| {
                     ui.label(Label::new("02 / Choices & actions").style(bold));
@@ -257,11 +272,6 @@ impl App for Controls {
                         self.notifications, self.mode, self.volume, self.theme
                     ));
                     ui.label(format!("Fields: {} kg / {}", self.quantity, self.city));
-                    ui.button(Button::new("Export in the background").on_click(Msg::Export));
-                    // A bar of unknown length only while the export runs, so the window is idle after.
-                    if self.exporting {
-                        ui.progress("Exporting", None);
-                    }
                 });
             });
             ui.label(

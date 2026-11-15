@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::panic::Location;
 use std::sync::Arc;
 mod builders;
-pub use builders::{Button, ComboBox, Label, Progress, TextInput};
+pub use builders::{Button, ComboBox, Label, Progress, Spinner, TextInput};
 mod collections;
 mod controls;
 mod dock;
@@ -124,6 +124,7 @@ pub(crate) enum Kind {
     Radio,
     Slider,
     Progress,
+    Spinner,
     ComboBox,
     MenuButton,
     Popup,

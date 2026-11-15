@@ -198,7 +198,34 @@ impl Progress {
     }
 
     /// Replaces the default style, which is a bar 280 wide and 8 high. The
-    /// style's background is the track and its radius rounds both ends.
+    /// style's background is the track, its foreground is the filled part,
+    /// and its radius rounds both ends.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+}
+
+/// A busy indicator for work that cannot say how far it is, drawn as dots
+/// that turn. `ui.spinner("Loading")` is the short form of
+/// `Spinner::new("Loading")`; the label is what a screen reader announces,
+/// and is not drawn.
+#[derive(Clone, Debug, Default)]
+pub struct Spinner {
+    pub(crate) label: String,
+    pub(crate) style: Option<Style>,
+}
+
+impl Spinner {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            style: None,
+        }
+    }
+
+    /// Replaces the default style, which is 24 square. The smaller side is
+    /// the diameter, and the foreground colors the dots.
     pub fn style(mut self, style: Style) -> Self {
         self.style = Some(style);
         self
@@ -241,3 +268,4 @@ from_text!(Button<M>);
 from_text!(TextInput<M>);
 from_text!(ComboBox);
 from_text!(Progress);
+from_text!(Spinner);
