@@ -59,7 +59,45 @@ class primary {
 class danger extends primary { background: #c0392b }
 ```
 
-One property per line, or separated by `;`. Colours are `#rrggbb` or `#rrggbbaa`. There are no variables and no nesting. A token overlays whichever theme is active, so an OS light and dark switch keeps the application's accent.
+One property per line, or separated by `;`. Colours are `#rrggbb` or `#rrggbbaa`. A token overlays whichever theme is active, so an OS light and dark switch keeps the application's accent.
+
+### Variables
+
+A line outside any class declares a variable, `--name: value`, with one or more declarations per line separated by `;`. A name is `--` followed by letters, digits, `-` or `_`. `var(--name)` stands for its value wherever a value is written: in a property, in a `token` line, or in another variable. `var(--name, fallback)` uses the fallback, which may itself contain `var()`, when no variable of that name has been declared.
+
+Variables are read from the top of the sheet down, with one scope for the whole sheet, and they are replaced before the value is parsed. So a variable can use only the ones declared above it, a later declaration of the same name replaces the value for the lines below it, and a variable that uses itself is an error. Using one before it is declared is an error naming the line (`unknown variable`) unless a fallback is given. A value is checked where it is used: `--size: wide` is fine until a `padding: var(--size)` reads it. Text inside double quotes is left alone, so `"var(--x)"` is a font name.
+
+Variables are plain text for the sheet and not theme tokens. `var()` never reads a token, and a class holds literal colours, so a colour taken from a variable does not follow a theme switch; the value of `token accent var(--brand)` is the one the sheet gives it, as `token accent #1a9c8f` would be. There is no per-class scope and no cascade.
+
+### Nesting
+
+A class may contain `&:state` and `&.name` blocks, on their own lines or on one line with the class:
+
+```text
+--brand: #1a9c8f
+--brand-light: #22b0a0
+
+class card {
+    background: var(--brand)
+    padding: 12
+    &:hover { background: var(--brand-light) }   // the same as `hover.background: ...`
+    &:disabled {
+        background: #3a4a4f
+        opacity: 0.6
+    }
+    &.selected {                                  // the class `card.selected`
+        background: #ffffff
+        &:hover { background: #e6fffb }           // the state of `card.selected`
+        &.compact { padding: 6 }                  // the class `card.selected.compact`
+    }
+}
+```
+
+- `&:hover`, `&:pressed`, `&:focused` and `&:disabled` set that state's properties, the ones a `hover.`-prefixed line can set (`background`, `foreground`, `radius`, `opacity`, `translate`, `scale`, `rotate`), without the prefix. A state block holds properties only.
+- `&.name` is the class `parent.name`, written as `class parent.name extends parent { ... }` would be, and found with `ui.class("card.selected")`. It starts from the finished parent, whatever lines come after the block, and its own lines override it. `name` is letters, digits, `-` and `_`. Like `extends`, it is a copy: a class that extends `card` does not get `card.selected`.
+- In one class, `&:state` blocks and `hover.`-prefixed lines apply in the order written, so the later line of a property wins. A second `&.name` block with the same name replaces the first, as two classes of one name do.
+
+A nested rule that does not start with `&:` or `&.` is an error. A class is a named style, not a selector matched against a tree, so there are no descendant or child selectors (`.title { }`, `& .title { }`, `&>.title { }`), no `&.a.b` or `&.a:hover` in one block (nest `&:hover` inside `&.a`), no `&` elsewhere in a selector, and no nested `class`. Nesting is flattened into ordinary classes while the sheet is parsed.
 
 | Group | Properties |
 | --- | --- |
@@ -85,7 +123,9 @@ Ancestors clip to their bounds, so a node that slides or scales needs room insid
 
 ## Images and backgrounds
 
-`Ui::image(&Image, ImageOptions)` and `Ui::image_file(path, options)` show an image; `ImageFit` is `Contain`, `Cover`, `Fill` or `None`, and `ImageTint` is `None`, `Foreground` or `Color`. `glassmere::image::decode` and `load` produce an `Image` from PNG, JPEG, WebP, GIF (first frame) and SVG; EXIF orientation is applied, and an embedded RGB or grey ICC profile is converted to sRGB (CMYK profiles are ignored, and pixels without a profile are taken as sRGB). `image_file` loads on a background thread and polls the file's modification time, so replacing the file updates the window.
+`Ui::image(&Image, ImageOptions)` and `Ui::image_file(path, options)` show an image; `ImageFit` is `Contain`, `Cover`, `Fill` or `None`, and `ImageTint` is `None`, `Foreground` or `Color`. `glassmere::image::decode` and `load` produce an `Image` from PNG, JPEG, WebP, GIF and SVG; EXIF orientation is applied, and an embedded RGB or grey ICC profile is converted to sRGB (CMYK profiles are ignored, and pixels without a profile are taken as sRGB). `image_file` loads on a background thread and polls the file's modification time, so replacing the file updates the window.
+
+An animated GIF, WebP or APNG decodes to an animated image: `Image::frames` lists the full-picture stills with their delays and `Image::loops` the number of plays (`None` forever), and `Image::animated` builds one from your own stills. `Ui::image` and `Ui::image_file` play it from the moment it is first shown. The window sleeps between frames, wakes at each frame's deadline and repaints only the image's own rectangle; an image scrolled out of view does not run, and with reduced motion the first frame stays. After the last loop it rests on the last frame. A decoded animation keeps all its frames in memory, so one is kept only while they add up to 32 MiB (a 480 by 270 GIF keeps about 64 frames); a longer one shows its first frame, as a still image. A background image always shows the first frame.
 
 `Style::background_image(BackgroundImage)` paints an image over the background colour and under the content, fitted like an image widget or nine-sliced with `BackgroundImage::slice` so one small frame skins boxes of any size. One background image per node; no tiling, and no position other than centred.
 

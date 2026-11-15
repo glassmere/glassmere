@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 mod animation;
 pub mod app;
+mod calendar;
 mod clipboard;
 mod collection;
 mod command;
@@ -37,8 +38,8 @@ pub use animation::{Animation, Easing, Effect, Keyframe, Repeat, Transform, Tran
 pub use clipboard::Clip;
 pub use collection::{
     CellEditor, CellValue, FILTER_DELAY, GridColumn, GridColumns, GridModel, GridMsg, GridState,
-    ItemId, ItemOrder, ListModel, ListState, ModelError, SortDirection, TreeItem, TreeModel,
-    VirtualListOptions, text_matches,
+    ItemId, ItemOrder, ListModel, ListState, ModelError, RowHeights, SortDirection, TreeItem,
+    TreeModel, VirtualListOptions, text_matches,
 };
 pub use command::{Command, Shortcut, ShortcutKey};
 pub use glassmere_scene::GradientStop;
@@ -57,12 +58,14 @@ pub use focus::{DialogOptions, FocusScope};
 pub use glassmere_scene::{FontFamily, TextSpan, TextStyle, TextWrap};
 pub use glassmere_scene::{MonospaceMeasurer, TextMeasurer};
 pub use image::{BackgroundImage, ImageFit, ImageOptions, ImageSource, ImageTint};
-pub use locale_format::{Date, DateStyle, LocaleFormat, Time};
+pub use locale_format::{Date, DateStyle, LocaleFormat, Time, Weekday};
 pub use mailbox::{Mailbox, MessageSender, message_channel};
 pub use messages::{BUILTIN_MESSAGES, MessageArg, Messages};
-pub use panes::{Axis, PopoverOptions, SplitOptions, TOOLTIP_DELAY, Tab};
+pub use panes::{
+    Axis, PopoverOptions, SplitOptions, TOOLTIP_DELAY, Tab, Tooltip, TooltipPlacement,
+};
 pub use platform::{FileKind, FileRequest, Menu, MenuEntry, Notification, Tray};
-pub use property_grid::{PropertyGridOptions, PropertyGridState, PropertyMsg};
+pub use property_grid::{PropertyChoice, PropertyGridOptions, PropertyGridState, PropertyMsg};
 pub use reactive::{GraphNode, Memo, Signal, StateKind, Store};
 pub use rich_document::{
     Block, BlockKind, InlineRun, Mark, Marks, RichDocument, RichMotion, RichPosition,
@@ -92,9 +95,9 @@ pub use tree::{
     SwipeDirection, TouchPhase,
 };
 pub use ui::{
-    AreaBuilder, Autocomplete, Button, ComboBox, CommandPalette, DockOptions, DockPanel,
-    DragSourceBuilder, DropTargetBuilder, GestureBuilder, Label, PropertyGrid, Response, TextInput,
-    Ui, suggest,
+    AreaBuilder, Autocomplete, Button, Calendar, Collapsible, ComboBox, CommandPalette, DatePicker,
+    DockOptions, DockPanel, DragSourceBuilder, DropTargetBuilder, GestureBuilder, Label, Link,
+    Progress, PropertyGrid, RangeSlider, Response, Spinner, Switch, TextInput, Ui, suggest,
 };
 pub use widget::{CustomWidget, WidgetBuilder, WidgetInput};
 pub use window::{ResizeEdge, WindowCommand, WindowId, WindowInfo, WindowRequest};

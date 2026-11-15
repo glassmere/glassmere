@@ -11,13 +11,14 @@
 //! Identity is not here. A widget is identified by where it is declared, and
 //! [`Ui::keyed`](crate::Ui::keyed) names one when that is not enough.
 
-use crate::Style;
+use crate::{Date, DateStyle, Style, Weekday};
 
 /// Text. `ui.label("Ready")` is the short form of `Label::new("Ready")`.
 #[derive(Clone, Debug, Default)]
 pub struct Label {
     pub(crate) text: String,
     pub(crate) style: Option<Style>,
+    pub(crate) selectable: bool,
 }
 
 impl Label {
@@ -25,12 +26,22 @@ impl Label {
         Self {
             text: text.into(),
             style: None,
+            selectable: false,
         }
     }
 
     /// Replaces the default style, which is `Style::default()`.
     pub fn style(mut self, style: Style) -> Self {
         self.style = Some(style);
+        self
+    }
+
+    /// Lets the text be selected and copied, but never edited: by dragging
+    /// across it, or with the keyboard once Tab has brought focus to it
+    /// (Shift and the arrow keys, Home and End, Ctrl/Cmd + A, then Ctrl/Cmd +
+    /// C). It draws no border and no background.
+    pub fn selectable(mut self) -> Self {
+        self.selectable = true;
         self
     }
 }
@@ -84,6 +95,89 @@ impl<M> Button<M> {
     /// same to everything declared in it.
     pub fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
+        self
+    }
+}
+
+/// A link: accent-coloured, underlined text that sends a message like a
+/// button. `ui.link("Documentation")` is the short form of
+/// `Link::new("Documentation")`, and `Link::new("Documentation")
+/// .on_click(Msg::Open)` sends a message when it is clicked. Opening an
+/// address is the application's to do in that message.
+#[derive(Clone, Debug)]
+pub struct Link<M = ()> {
+    pub(crate) text: String,
+    pub(crate) style: Option<Style>,
+    pub(crate) enabled: bool,
+    pub(crate) on_click: Option<M>,
+}
+
+impl<M> Default for Link<M> {
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            style: None,
+            enabled: false,
+            on_click: None,
+        }
+    }
+}
+
+impl<M> Link<M> {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            style: None,
+            enabled: true,
+            on_click: None,
+        }
+    }
+
+    /// The message a click sends: by pointer, keyboard, touch or assistive
+    /// technology alike. Enter activates a focused link; Space does not.
+    pub fn on_click(mut self, message: M) -> Self {
+        self.on_click = Some(message);
+        self
+    }
+
+    /// Replaces the default style, which has a little padding and no
+    /// background. A foreground in the style replaces the accent, and the
+    /// text stays on one line whatever the style's wrapping says.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+
+    /// Greys the link out and stops it answering. `Ui::enabled` does the
+    /// same to everything declared in it.
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+}
+
+/// A slider with two thumbs. `ui.range_slider("Price", low..=high, range,
+/// step, Msg::Price)` is the short form of `RangeSlider::new("Price")`; the
+/// label is written above the track, and names each thumb as "Price minimum"
+/// and "Price maximum".
+#[derive(Clone, Debug, Default)]
+pub struct RangeSlider {
+    pub(crate) label: String,
+    pub(crate) style: Option<Style>,
+}
+
+impl RangeSlider {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            style: None,
+        }
+    }
+
+    /// Replaces the default style, which is 280 by 64 pixels with the
+    /// caption in its padding. The thumbs fill the box, so give it a size.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
         self
     }
 }
@@ -180,6 +274,235 @@ impl ComboBox {
     }
 }
 
+/// A progress bar. `ui.progress("Upload", Some(0.4))` is the short form of
+/// `Progress::new("Upload")`; the label is what a screen reader announces, and
+/// is not drawn.
+#[derive(Clone, Debug, Default)]
+pub struct Progress {
+    pub(crate) label: String,
+    pub(crate) style: Option<Style>,
+}
+
+impl Progress {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            style: None,
+        }
+    }
+
+    /// Replaces the default style, which is a bar 280 wide and 8 high. The
+    /// style's background is the track, its foreground is the filled part,
+    /// and its radius rounds both ends.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+}
+
+/// A busy indicator for work that cannot say how far it is, drawn as dots
+/// that turn. `ui.spinner("Loading")` is the short form of
+/// `Spinner::new("Loading")`; the label is what a screen reader announces,
+/// and is not drawn.
+#[derive(Clone, Debug, Default)]
+pub struct Spinner {
+    pub(crate) label: String,
+    pub(crate) style: Option<Style>,
+}
+
+impl Spinner {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            style: None,
+        }
+    }
+
+    /// Replaces the default style, which is 24 square. The smaller side is
+    /// the diameter, and the foreground colors the dots.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+}
+
+/// An on/off switch. `ui.switch("Wi-Fi", on, Msg::Wifi)` is the short form of
+/// `Switch::new("Wi-Fi")`; the label is written beside the switch and is its
+/// accessible name.
+#[derive(Clone, Debug, Default)]
+pub struct Switch {
+    pub(crate) label: String,
+    pub(crate) style: Option<Style>,
+}
+
+impl Switch {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            style: None,
+        }
+    }
+
+    /// Replaces the default style, which is a button's padding with a short
+    /// transition that moves the thumb. The label stays on one line whatever
+    /// the style's wrapping says.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+}
+
+/// A section that its header opens and closes. `ui.collapsible("Advanced",
+/// open, Msg::Advanced, |ui| ..)` is the short form of
+/// `Collapsible::new("Advanced")`; the label is written in the header and is
+/// its accessible name.
+#[derive(Clone, Debug, Default)]
+pub struct Collapsible {
+    pub(crate) label: String,
+    pub(crate) style: Option<Style>,
+}
+
+impl Collapsible {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            style: None,
+        }
+    }
+
+    /// Replaces the default style of the header, which is a padded row with
+    /// no background of its own. The header's label stays on one line
+    /// whatever the style's wrapping says; the content is styled by what the
+    /// application declares in it.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+}
+
+/// A month to pick a day from. `ui.calendar("Departure", selected, Msg::Pick)`
+/// is the short form of `Calendar::new("Departure")`.
+#[derive(Clone, Debug, Default)]
+pub struct Calendar {
+    pub(crate) label: String,
+    pub(crate) style: Option<Style>,
+    pub(crate) min: Option<Date>,
+    pub(crate) max: Option<Date>,
+    pub(crate) first_weekday: Option<Weekday>,
+    pub(crate) today: Option<Date>,
+}
+
+impl Calendar {
+    /// The label is what a screen reader announces, not what is drawn.
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            ..Self::default()
+        }
+    }
+
+    /// Replaces the default style, which pads the calendar by 8 pixels.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+
+    /// The earliest day that can be picked; earlier days are disabled.
+    pub fn min(mut self, min: Date) -> Self {
+        self.min = Some(min);
+        self
+    }
+
+    /// The latest day that can be picked; later days are disabled.
+    pub fn max(mut self, max: Date) -> Self {
+        self.max = Some(max);
+        self
+    }
+
+    /// The weekday each row starts with; Monday by default.
+    pub fn first_weekday(mut self, weekday: Weekday) -> Self {
+        self.first_weekday = Some(weekday);
+        self
+    }
+
+    /// Today, which the application tells because the framework has no
+    /// clock. Its day is marked with a dot, and a calendar with no selection
+    /// shows its month first.
+    pub fn today(mut self, today: Date) -> Self {
+        self.today = Some(today);
+        self
+    }
+}
+
+/// A field that shows a date and opens a calendar to pick another.
+/// `ui.date_picker("Departure", value, Msg::Departure)` is the short form of
+/// `DatePicker::new("Departure")`.
+#[derive(Clone, Debug, Default)]
+pub struct DatePicker {
+    pub(crate) label: String,
+    pub(crate) style: Option<Style>,
+    pub(crate) min: Option<Date>,
+    pub(crate) max: Option<Date>,
+    pub(crate) first_weekday: Option<Weekday>,
+    pub(crate) today: Option<Date>,
+    pub(crate) date_style: DateStyle,
+    pub(crate) placeholder: String,
+}
+
+impl DatePicker {
+    /// The label is what a screen reader announces, not what is drawn.
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            ..Self::default()
+        }
+    }
+
+    /// Replaces the default style, which is a field-sized `Style::button()`.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+
+    /// The earliest day that can be picked; earlier days are disabled.
+    pub fn min(mut self, min: Date) -> Self {
+        self.min = Some(min);
+        self
+    }
+
+    /// The latest day that can be picked; later days are disabled.
+    pub fn max(mut self, max: Date) -> Self {
+        self.max = Some(max);
+        self
+    }
+
+    /// The weekday each row of the calendar starts with; Monday by default.
+    pub fn first_weekday(mut self, weekday: Weekday) -> Self {
+        self.first_weekday = Some(weekday);
+        self
+    }
+
+    /// Today, which the application tells because the framework has no
+    /// clock. Its day is marked in the calendar with a dot, and a calendar
+    /// opened with no date shows its month first.
+    pub fn today(mut self, today: Date) -> Self {
+        self.today = Some(today);
+        self
+    }
+
+    /// How the field writes its date; `Medium` by default.
+    pub fn date_style(mut self, style: DateStyle) -> Self {
+        self.date_style = style;
+        self
+    }
+
+    /// Greyed text shown while there is no date.
+    pub fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.placeholder = placeholder.into();
+        self
+    }
+}
+
 /// `impl From<&str>` and `impl From<String>` for a builder whose first field
 /// is its text, so `ui.button("Save")` and `ui.button(Button::new("Save"))`
 /// are the same call.
@@ -215,3 +538,11 @@ from_text!(Label);
 from_text!(Button<M>);
 from_text!(TextInput<M>);
 from_text!(ComboBox);
+from_text!(Progress);
+from_text!(Spinner);
+from_text!(Switch);
+from_text!(Collapsible);
+from_text!(RangeSlider);
+from_text!(Link<M>);
+from_text!(Calendar);
+from_text!(DatePicker);

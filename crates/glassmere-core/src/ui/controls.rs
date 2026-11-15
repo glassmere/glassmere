@@ -144,7 +144,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                     ..Style::button()
                 },
                 enabled: ui.enabled,
-                tooltip: Some(name.clone()),
+                tooltip: Some(Box::new(crate::Tooltip::new(name.clone()))),
                 control: Control::Reveal { name, other },
                 ..Element::new(WidgetKey::named("$reveal"), Kind::Button)
             });
@@ -291,6 +291,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                 min,
                 max,
                 step,
+                span: None,
             },
         );
         self.set_handler(Handler::Map(Box::new(move |update| match update {
@@ -314,7 +315,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         let combo = combo.into();
         let key = self.next_key();
         let selected = selected.min(items.len().saturating_sub(1));
-        let response = self.combo_shown(combo, key, selected, items);
+        let response = self.combo_shown(combo, key, selected, items, "—");
         self.set_handler(Handler::Map(Box::new(move |update| match update {
             ControlUpdate::Choice(index) => Some(on_choose(index)),
             _ => None,
@@ -329,6 +330,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         key: WidgetKey,
         selected: usize,
         items: &[&str],
+        none: &str,
     ) -> Response<'a> {
         let style = combo.style.unwrap_or_else(Self::field_style);
         let entries = items
@@ -344,7 +346,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             Length::Percent(1.0),
         );
         self.push(Element {
-            text: format!("{}  ▾", items.get(selected).copied().unwrap_or("—")),
+            text: format!("{}  ▾", items.get(selected).copied().unwrap_or(none)),
             style,
             enabled: self.enabled && !items.is_empty(),
             children,
@@ -377,6 +379,28 @@ impl<'a, M: 'static> Ui<'a, M> {
             ControlUpdate::Choice(index) => Some(on_pick(index)),
             _ => None,
         })));
+        response
+    }
+
+    /// A menu button whose popup is `menu`: its commands, separators and
+    /// submenus, which open beside the menu they are in to any depth. A
+    /// command shows its shortcut as a hint, and choosing one activates that
+    /// command, exactly as in [`Ui::menu_bar`]: through the command the view
+    /// declared, with [`Ui::command_button`]. A command that is disabled
+    /// cannot be chosen.
+    #[track_caller]
+    pub fn command_menu(&mut self, label: impl Into<String>, menu: &crate::Menu) -> Response<'a> {
+        let key = self.next_key();
+        let (response, chosen) = self.menu_tree(
+            key,
+            format!("{}  ▾", label.into()),
+            &menu.entries,
+            Self::menu_style(),
+            Length::Percent(1.0),
+        );
+        if let Some(id) = chosen {
+            self.host.commands.push(id);
+        }
         response
     }
 

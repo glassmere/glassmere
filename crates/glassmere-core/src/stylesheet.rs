@@ -18,6 +18,21 @@
 //! class danger extends primary { background: #c0392b }
 //! ```
 //!
+//! `--name: value` declares a variable that any later value can use as
+//! `var(--name)` or `var(--name, fallback)`; a variable may use the ones above
+//! it. A class may nest `&:hover`, `&:pressed`, `&:focused` and `&:disabled`
+//! blocks, which set that state's properties, and `&.name` blocks, which are
+//! the class `card.name` extending the class they are in:
+//!
+//! ```text
+//! --brand: #1a9c8f
+//! class card {
+//!     background: var(--brand)
+//!     &:hover { background: #22b0a0 }
+//!     &.selected { foreground: #ffffff }   // the class `card.selected`
+//! }
+//! ```
+//!
 //! Properties: width, height, min-width, max-width, min-height, max-height
 //! (`auto`, `50%`, `120`), aspect-ratio, padding, gap, grow, shrink, radius,
 //! align-items, align-self, justify-self (`start`, `center`, `end`, `stretch`,
@@ -109,7 +124,8 @@ impl StyleSheet {
 
     pub fn parse(text: &str) -> Result<Self, StyleSheetError> {
         let mut sheet = Self::default();
-        let mut current: Option<(String, Style)> = None;
+        let mut current: Option<Open> = None;
+        let mut variables = Variables::new();
         let fail = |line: usize, message: String| Err(StyleSheetError { line, message });
         for (index, raw) in text.lines().enumerate() {
             let line = index + 1;
@@ -117,14 +133,23 @@ impl StyleSheet {
             if content.is_empty() {
                 continue;
             }
-            if let Some((name, style)) = current.as_mut() {
-                let body = content.strip_suffix('}');
-                let closes = body.is_some();
-                apply_properties(style, body.unwrap_or(content), line, name)?;
-                if closes {
-                    let (name, style) = current.take().unwrap();
-                    sheet.classes.insert(name, style);
+            if let Some(open) = current.as_mut() {
+                // Only a line with a brace of a nested rule, or inside one,
+                // needs more than `properties` and a closing `}`.
+                let closed = if open.scopes.is_empty() && !braces(content).any(|(_, b)| b == '{') {
+                    let body = content.strip_suffix('}');
+                    open.properties(body.unwrap_or(content), line, &variables)?;
+                    body.is_some()
+                } else {
+                    read_nested(open, content, line, &variables)?
+                };
+                if closed {
+                    current.take().unwrap().finish(&mut sheet.classes)?;
                 }
+                continue;
+            }
+            if content.starts_with("--") {
+                declare(content, line, &mut variables)?;
                 continue;
             }
             let mut words = content.split_whitespace();
@@ -142,6 +167,9 @@ impl StyleSheet {
                     });
                 }
                 Some("token") => {
+                    let resolved = substitute(&content["token".len()..], &variables, None)
+                        .map_err(|message| StyleSheetError { line, message })?;
+                    let mut words = resolved.split_whitespace();
                     let (Some(name), Some(value)) = (words.next(), words.next()) else {
                         return fail(line, "expected `token name #rrggbb`".into());
                     };
@@ -178,11 +206,18 @@ impl StyleSheet {
                     let inline = rest.join(" ");
                     let inline = inline.trim();
                     let inline = inline.strip_prefix('{').unwrap_or(inline).trim();
-                    if let Some(body) = inline.strip_suffix('}') {
-                        apply_properties(&mut style, body, line, &name)?;
-                        sheet.classes.insert(name, style);
+                    let mut open = Open::new(name, style);
+                    if braces(inline).any(|(_, b)| b == '{') {
+                        if read_nested(&mut open, inline, line, &variables)? {
+                            open.finish(&mut sheet.classes)?;
+                        } else {
+                            current = Some(open);
+                        }
+                    } else if let Some(body) = inline.strip_suffix('}') {
+                        open.properties(body, line, &variables)?;
+                        open.finish(&mut sheet.classes)?;
                     } else if inline.is_empty() {
-                        current = Some((name, style));
+                        current = Some(open);
                     } else {
                         return fail(line, "class bodies start with `{` on the same line".into());
                     }
@@ -193,38 +228,339 @@ impl StyleSheet {
                 None => {}
             }
         }
-        if let Some((name, _)) = current {
+        if let Some(open) = current {
             return fail(
                 text.lines().count(),
-                format!("class `{name}` is missing `}}`"),
+                format!("class `{}` is missing `}}`", open.name),
             );
         }
         Ok(sheet)
     }
 }
 
-/// Applies the `;`-separated `property: value` pairs of a class body.
-fn apply_properties(
-    style: &mut Style,
-    body: &str,
+/// Variables by name, with `--`, and their values with every `var()` resolved.
+type Variables = HashMap<String, String>;
+
+/// The states a nested `&:state` block can set, as in `hover.background`.
+const STATES: [&str; 4] = ["hover", "pressed", "focused", "disabled"];
+
+/// A class being read. Its own properties apply as they are read; the
+/// `&.name` rules nested in it are kept as text and applied once it is
+/// complete, because each is the finished class with its own lines on top.
+struct Open {
+    name: String,
+    style: Style,
+    variants: Vec<Variant>,
+    /// The nested rules open at this point, innermost last.
+    scopes: Vec<Scope>,
+}
+
+enum Scope {
+    State(String),
+    Variant(Variant),
+}
+
+/// A nested `&.suffix` rule: the properties set in it, and the rules nested in it.
+#[derive(Default)]
+struct Variant {
+    suffix: String,
+    ops: Vec<Op>,
+    children: Vec<Variant>,
+}
+
+struct Op {
     line: usize,
-    class: &str,
-) -> Result<(), StyleSheetError> {
-    for property in body.split(';') {
-        let property = property.trim();
-        if property.is_empty() {
-            continue;
+    key: String,
+    value: String,
+}
+
+impl Open {
+    fn new(name: String, style: Style) -> Self {
+        Self {
+            name,
+            style,
+            variants: Vec::new(),
+            scopes: Vec::new(),
         }
-        let Some((key, value)) = property.split_once(':') else {
-            return Err(StyleSheetError {
-                line,
-                message: format!("expected `property: value` in class `{class}`"),
-            });
+    }
+
+    /// Applies the `;`-separated `property: value` pairs of a body.
+    fn properties(
+        &mut self,
+        body: &str,
+        line: usize,
+        variables: &Variables,
+    ) -> Result<(), StyleSheetError> {
+        let fail = |message: String| StyleSheetError { line, message };
+        for property in body.split(';') {
+            let property = property.trim();
+            if property.is_empty() {
+                continue;
+            }
+            let Some((key, value)) = property.split_once(':') else {
+                return Err(fail(format!(
+                    "expected `property: value` in class `{}`",
+                    self.name
+                )));
+            };
+            let key = key.trim();
+            if key.starts_with("--") {
+                return Err(fail(format!(
+                    "variables are declared at the top level of the sheet, not inside class `{}`",
+                    self.name
+                )));
+            }
+            let value = substitute(value.trim(), variables, None).map_err(fail)?;
+            self.set(line, key, value)?;
+        }
+        Ok(())
+    }
+
+    /// Sets a property in the innermost open rule: on the class itself, or
+    /// recorded in the variant that is open. Inside `&:state` it is that
+    /// state's property.
+    fn set(&mut self, line: usize, key: &str, value: String) -> Result<(), StyleSheetError> {
+        let key = match self.scopes.last() {
+            Some(Scope::State(state)) => format!("{state}.{key}"),
+            _ => key.to_owned(),
         };
-        apply(style, key.trim(), value.trim())
-            .map_err(|message| StyleSheetError { line, message })?;
+        let variant = self.scopes.iter_mut().rev().find_map(|scope| match scope {
+            Scope::Variant(variant) => Some(variant),
+            Scope::State(_) => None,
+        });
+        match variant {
+            Some(variant) => variant.ops.push(Op { line, key, value }),
+            None => apply(&mut self.style, &key, &value)
+                .map_err(|message| StyleSheetError { line, message })?,
+        }
+        Ok(())
+    }
+
+    /// Opens the nested rule `&:state` or `&.name`.
+    fn enter(&mut self, header: &str, line: usize) -> Result<(), StyleSheetError> {
+        let fail = |message: String| Err(StyleSheetError { line, message });
+        if let Some(Scope::State(state)) = self.scopes.last() {
+            return fail(format!("`&:{state}` cannot contain nested rules"));
+        }
+        let scope = if let Some(state) = header.strip_prefix("&:") {
+            if !STATES.contains(&state) {
+                return fail(format!("unknown state `{state}`"));
+            }
+            Scope::State(state.to_owned())
+        } else if let Some(suffix) = header.strip_prefix("&.").filter(|suffix| {
+            !suffix.is_empty()
+                && suffix
+                    .chars()
+                    .all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_')
+        }) {
+            Scope::Variant(Variant {
+                suffix: suffix.to_owned(),
+                ..Variant::default()
+            })
+        } else {
+            return fail(format!(
+                "nested rule `{header}` is not supported: use `&:state` or `&.name`; \
+                 there are no descendant selectors"
+            ));
+        };
+        self.scopes.push(scope);
+        Ok(())
+    }
+
+    /// Closes the innermost open rule; true when that was the class itself.
+    fn leave(&mut self) -> bool {
+        match self.scopes.pop() {
+            None => true,
+            Some(Scope::State(_)) => false,
+            Some(Scope::Variant(variant)) => {
+                match self.scopes.last_mut() {
+                    Some(Scope::Variant(parent)) => parent.children.push(variant),
+                    _ => self.variants.push(variant),
+                }
+                false
+            }
+        }
+    }
+
+    /// Stores the class, and the classes nested in it.
+    fn finish(self, classes: &mut HashMap<String, Style>) -> Result<(), StyleSheetError> {
+        flatten(&self.name, &self.style, self.variants, classes)?;
+        classes.insert(self.name, self.style);
+        Ok(())
+    }
+}
+
+/// Stores each variant as the class `parent.suffix`: a copy of the finished
+/// parent with the variant's own properties on top, and then its children.
+fn flatten(
+    parent: &str,
+    base: &Style,
+    variants: Vec<Variant>,
+    classes: &mut HashMap<String, Style>,
+) -> Result<(), StyleSheetError> {
+    for variant in variants {
+        let mut style = base.clone();
+        for Op { line, key, value } in variant.ops {
+            apply(&mut style, &key, &value).map_err(|message| StyleSheetError { line, message })?;
+        }
+        let name = format!("{parent}.{}", variant.suffix);
+        flatten(&name, &style, variant.children, classes)?;
+        classes.insert(name, style);
     }
     Ok(())
+}
+
+/// Reads a line of a class body that has the braces of nested rules in it:
+/// `&:hover {`, `padding: 1 }` or a whole rule. True once the class itself
+/// has closed.
+fn read_nested(
+    open: &mut Open,
+    text: &str,
+    line: usize,
+    variables: &Variables,
+) -> Result<bool, StyleSheetError> {
+    let mut start = 0;
+    for (at, brace) in braces(text) {
+        let segment = &text[start..at];
+        start = at + 1;
+        if brace == '{' {
+            // What follows the last `;` is the rule's selector.
+            let (body, header) = segment.rsplit_once(';').unwrap_or(("", segment));
+            open.properties(body, line, variables)?;
+            open.enter(header.trim(), line)?;
+        } else {
+            open.properties(segment, line, variables)?;
+            if open.leave() {
+                if !text[start..].trim().is_empty() {
+                    return Err(StyleSheetError {
+                        line,
+                        message: "unexpected text after `}`".into(),
+                    });
+                }
+                return Ok(true);
+            }
+        }
+    }
+    open.properties(&text[start..], line, variables)?;
+    Ok(false)
+}
+
+/// The `{` and `}` in `text` that are not inside quotes or parentheses, with
+/// their positions.
+fn braces(text: &str) -> impl Iterator<Item = (usize, char)> + '_ {
+    let (mut quoted, mut depth) = (false, 0usize);
+    text.char_indices().filter(move |&(_, ch)| {
+        match ch {
+            '"' => quoted = !quoted,
+            '(' if !quoted => depth += 1,
+            ')' if !quoted => depth = depth.saturating_sub(1),
+            '{' | '}' if !quoted && depth == 0 => return true,
+            _ => {}
+        }
+        false
+    })
+}
+
+/// `--name: value`, `;`-separated. A variable is read in order: its value may
+/// use the variables declared above it, and a later declaration of the same
+/// name replaces it for the lines below.
+fn declare(content: &str, line: usize, variables: &mut Variables) -> Result<(), StyleSheetError> {
+    let fail = |message: String| StyleSheetError { line, message };
+    for declaration in content.split(';') {
+        let declaration = declaration.trim();
+        if declaration.is_empty() {
+            continue;
+        }
+        let (name, value) = declaration
+            .split_once(':')
+            .map(|(name, value)| (name.trim(), value.trim()))
+            .filter(|(name, _)| is_variable(name))
+            .ok_or_else(|| fail("expected `--name: value`".into()))?;
+        if value.is_empty() {
+            return Err(fail(format!("variable `{name}` needs a value")));
+        }
+        let value = substitute(value, variables, Some(name)).map_err(fail)?;
+        variables.insert(name.to_owned(), value);
+    }
+    Ok(())
+}
+
+fn is_variable(name: &str) -> bool {
+    name.strip_prefix("--").is_some_and(|rest| {
+        !rest.is_empty()
+            && rest
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+    })
+}
+
+/// Replaces each `var(--name)` and `var(--name, fallback)` outside quotes with
+/// the variable's value; the fallback is read only when the variable is not
+/// declared. `declaring` is the variable whose own value this is, which cannot
+/// use itself.
+fn substitute(
+    value: &str,
+    variables: &Variables,
+    declaring: Option<&str>,
+) -> Result<String, String> {
+    let mut out = String::new();
+    let mut rest = value;
+    while let Some(at) = var_call(rest) {
+        out.push_str(&rest[..at]);
+        let inside = &rest[at + "var(".len()..];
+        let end = closing_paren(inside).ok_or_else(|| format!("unclosed `var(` in `{value}`"))?;
+        let (name, fallback) = match inside[..end].split_once(',') {
+            Some((name, fallback)) => (name.trim(), Some(fallback.trim())),
+            None => (inside[..end].trim(), None),
+        };
+        if !is_variable(name) {
+            return Err(format!(
+                "var() needs a variable name like `--accent`, got `{name}`"
+            ));
+        }
+        if declaring == Some(name) {
+            return Err(format!("variable `{name}` refers to itself"));
+        }
+        match (variables.get(name), fallback) {
+            (Some(found), _) => out.push_str(found),
+            (None, Some(fallback)) => out.push_str(&substitute(fallback, variables, declaring)?),
+            (None, None) => {
+                return Err(format!(
+                    "unknown variable `{name}`; variables must be declared before use"
+                ));
+            }
+        }
+        rest = &inside[end + 1..];
+    }
+    out.push_str(rest);
+    Ok(out)
+}
+
+/// Where the first `var(` outside quotes starts.
+fn var_call(text: &str) -> Option<usize> {
+    let mut quoted = false;
+    text.char_indices()
+        .find(|&(at, ch)| {
+            if ch == '"' {
+                quoted = !quoted;
+            }
+            !quoted && text[at..].starts_with("var(")
+        })
+        .map(|(at, _)| at)
+}
+
+/// Where the `)` that closes an already opened `(` is.
+fn closing_paren(text: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    for (at, ch) in text.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' if depth == 0 => return Some(at),
+            ')' => depth -= 1,
+            _ => {}
+        }
+    }
+    None
 }
 
 fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {

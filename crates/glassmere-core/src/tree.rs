@@ -16,6 +16,7 @@ use glassmere_scene::{
 };
 mod actions;
 mod animation_state;
+mod calendar_input;
 mod collection_input;
 mod control_input;
 mod control_paint;
@@ -37,6 +38,7 @@ mod run;
 mod scrollbar_input;
 mod scrolling;
 mod snapshot;
+mod submenu_hover;
 mod text_area_input;
 mod toasts;
 mod touch_input;
@@ -111,7 +113,7 @@ struct Node {
     painted_frame: u64,
     resolved: ResolvedText,
     scope: Option<Box<ScopeState>>,
-    tooltip: Option<String>,
+    tooltip: Option<Box<crate::Tooltip>>,
     anim: Option<Box<animation_state::NodeAnim>>,
     area: Option<Box<text_area_input::AreaState>>,
     rich: Option<Box<rich_text::RichState>>,
@@ -158,9 +160,24 @@ impl Node {
         self.resolved.text_style(self.style.wrap)
     }
 
+    /// Whether the node draws something that moves while it is on screen.
+    fn busy(&self) -> bool {
+        matches!(
+            self.control,
+            Control::Progress { value: None, .. } | Control::Spinner { .. }
+        )
+    }
+
     fn focusable(&self) -> bool {
         self.enabled
-            && !matches!(self.control, Control::Stepper | Control::StripScroll { .. })
+            && !matches!(
+                self.control,
+                Control::Stepper
+                    | Control::StripScroll { .. }
+                    | Control::CalendarStep { .. }
+                    | Control::CalendarDay { .. }
+                    | Control::CalendarGrid { popup: true, .. }
+            )
             // Pointer-only helpers: a column sizer, whose keyboard path is its
             // header's menu, and drag sources or drop targets without a name.
             && !matches!(
@@ -178,11 +195,15 @@ impl Node {
                     | Kind::Scroll
                     | Kind::TextInput
                     | Kind::Checkbox
+                    | Kind::Switch
+                    | Kind::Disclosure
+                    | Kind::Link
                     | Kind::Radio
                     | Kind::Slider
                     | Kind::ComboBox
                     | Kind::MenuButton
                     | Kind::Choice
+                    | Kind::Calendar
                     | Kind::Collection
                     | Kind::DragSource
                     | Kind::DropTarget
@@ -192,10 +213,16 @@ impl Node {
                     | Kind::RichEditor
             ) || matches!(self.control, Control::Tab { selected: true, .. })
                 || matches!(self.control, Control::RichText { links: 1.., .. })
+                || matches!(self.control, Control::SelectableText)
                 || self
                     .custom
                     .as_ref()
                     .is_some_and(|widget| widget.semantics.focusable))
+    }
+
+    /// Text that is selected and copied but never edited.
+    fn read_only(&self) -> bool {
+        matches!(self.control, Control::SelectableText)
     }
 
     /// A tab strip's scroll button while no tabs are hidden on its side: it
@@ -227,6 +254,9 @@ impl Node {
                 self.kind,
                 Kind::Button
                     | Kind::Checkbox
+                    | Kind::Switch
+                    | Kind::Disclosure
+                    | Kind::Link
                     | Kind::Radio
                     | Kind::ComboBox
                     | Kind::MenuButton
@@ -250,9 +280,12 @@ impl Node {
         // by its tooltip: that is what makes an icon button nameable, and
         // what the `Inaccessible` diagnostic already counts as a name.
         if !semantics.label.chars().any(char::is_alphanumeric)
-            && let Some(tooltip) = self.tooltip.as_ref().filter(|text| !text.trim().is_empty())
+            && let Some(tooltip) = self
+                .tooltip
+                .as_ref()
+                .filter(|tooltip| !tooltip.text.trim().is_empty())
         {
-            semantics.label = tooltip.clone();
+            semantics.label = tooltip.text.clone();
         }
         semantics
     }
@@ -271,7 +304,11 @@ impl Node {
                     crate::collection::CollectionKind::Tree => Role::TreeItem,
                     crate::collection::CollectionKind::Grid => Role::Row,
                 },
-                Control::Grid { .. } => Role::Grid,
+                Control::Grid { .. } | Control::CalendarGrid { .. } => Role::Grid,
+                Control::CalendarRow { .. } => Role::Row,
+                Control::CalendarWeekday { .. } => Role::ColumnHeader,
+                Control::CalendarDay { .. } => Role::Cell,
+                Control::CalendarPopup { .. } => Role::Dialog,
                 Control::GridCell { header: true, .. } => Role::ColumnHeader,
                 Control::GridCell { .. } => Role::Cell,
                 Control::TabList => Role::TabList,
@@ -291,13 +328,14 @@ impl Node {
                     Kind::Label | Kind::RichText => Role::Label,
                     // An image without a name is decorative.
                     Kind::Image if !self.text.is_empty() => Role::Image,
-                    Kind::Button => Role::Button,
+                    Kind::Button | Kind::Disclosure | Kind::Link => Role::Button,
                     Kind::Scroll => Role::ScrollView,
                     Kind::TextInput => Role::TextInput,
                     Kind::TextArea | Kind::RichEditor => Role::MultilineTextInput,
-                    Kind::Checkbox => Role::Checkbox,
+                    Kind::Checkbox | Kind::Switch => Role::Checkbox,
                     Kind::Radio => Role::Radio,
                     Kind::Slider => Role::Slider,
+                    Kind::Progress | Kind::Spinner => Role::Status,
                     Kind::ComboBox => Role::ComboBox,
                     Kind::MenuButton => Role::MenuButton,
                     Kind::Dialog => Role::Dialog,
@@ -321,14 +359,25 @@ impl Node {
             label: match &self.control {
                 Control::TextInput { label, .. }
                 | Control::Checkbox { label, .. }
+                | Control::Switch { label, .. }
+                | Control::Disclosure { label, .. }
                 | Control::Radio { label, .. }
                 | Control::Slider { label, .. }
+                | Control::RangeSlider { label }
+                | Control::Progress { label, .. }
+                | Control::Spinner { label }
                 | Control::Combo { label, .. }
                 | Control::Collection { label, .. }
                 | Control::CollectionRow { label, .. }
                 | Control::TextArea { label, .. }
                 | Control::RichEditor { label, .. }
-                | Control::Grid { label, .. } => label.clone(),
+                | Control::Grid { label, .. }
+                | Control::DatePicker { label, .. }
+                | Control::CalendarPopup { label }
+                | Control::CalendarGrid { label, .. } => label.clone(),
+                Control::CalendarWeekday { name, .. } | Control::CalendarDay { name, .. } => {
+                    name.clone()
+                }
                 Control::DragSource { label, .. } | Control::DropTarget { label, .. } => {
                     label.clone()
                 }
@@ -423,6 +472,9 @@ pub struct Context {
     /// The menus the open popup is a submenu of, outermost first. `popup`
     /// is the innermost, which has the keyboard.
     pub(crate) popup_parents: Vec<PopupState>,
+    /// The row of an open menu the pointer is resting on, which opens a
+    /// submenu or closes the open one when the wait is over.
+    menu_dwell: Option<submenu_hover::MenuDwell>,
     drag: Option<Box<crate::drag::DragState>>,
     /// Source of a drag the host handed to the operating system.
     exported_drag: Option<NodeId>,
@@ -473,6 +525,8 @@ pub struct Context {
     watch_requests: Vec<std::path::PathBuf>,
     images: HashMap<std::path::PathBuf, image::LoadedImage>,
     image_requests: Vec<std::path::PathBuf>,
+    /// Animated images being shown, by the node that shows them.
+    image_plays: HashMap<NodeId, image::Play>,
     hot_save: bool,
     /// How many theme, messages and format requests of the app this context
     /// has applied.
@@ -497,7 +551,12 @@ pub struct Context {
     pending_restore: Option<NodeId>,
     now: Duration,
     hover_since: Option<(NodeId, Duration)>,
-    tooltip: Option<NodeId>,
+    /// Where the keyboard moved focus last, and when: the dwell of the tooltip it brings up.
+    focus_since: Option<(NodeId, Duration)>,
+    /// The tooltip on show, and what brought it.
+    tooltip: Option<(NodeId, overlay_input::Dwell)>,
+    /// When a tooltip last went because its widget was left.
+    tooltip_left: Option<Duration>,
     new_popovers: Vec<NodeId>,
     reduced_motion: bool,
     resizing: bool,
@@ -539,8 +598,12 @@ pub struct Context {
     /// wherever they sit. A cell because `Ui` only holds a shared reference
     /// to the context.
     dock: std::cell::Cell<Option<NodeId>>,
-    /// The node of each panel's content, by dock and panel id.
+    /// The node of each panel's content, by dock and panel id. The content
+    /// of a panel whose tab is not selected stays here, parked: its nodes
+    /// have no parent and the tree does not reach them.
     panels: HashMap<NodeId, HashMap<String, NodeId>>,
+    /// Where the cursor of each calendar is, which the view does not hold.
+    calendar_views: HashMap<NodeId, crate::calendar::View>,
 }
 
 /// What reached a node, in the order of `Context::queued`.
@@ -641,6 +704,7 @@ impl Default for Context {
             submitted: HashSet::new(),
             popup: None,
             popup_parents: Vec::new(),
+            menu_dwell: None,
             drag: None,
             exported_drag: None,
             dock_drag: None,
@@ -671,6 +735,7 @@ impl Default for Context {
             watched: HashMap::new(),
             images: HashMap::new(),
             image_requests: Vec::new(),
+            image_plays: HashMap::new(),
             watch_requests: Vec::new(),
             hot_save: false,
             settings: (0, 0, 0),
@@ -692,7 +757,9 @@ impl Default for Context {
             pending_restore: None,
             now: Duration::ZERO,
             hover_since: None,
+            focus_since: None,
             tooltip: None,
+            tooltip_left: None,
             new_popovers: Vec::new(),
             reduced_motion: false,
             resizing: false,
@@ -714,6 +781,7 @@ impl Default for Context {
             view_stale: true,
             dock: std::cell::Cell::new(None),
             panels: HashMap::new(),
+            calendar_views: HashMap::new(),
         }
     }
 }

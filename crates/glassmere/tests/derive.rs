@@ -1,7 +1,7 @@
 #![cfg(feature = "derive")]
 use glassmere::{
-    Button, Color, Effects, Event, Key, NodeId, Properties, PropertyGridOptions, PropertyGridState,
-    PropertyMsg, Role, Size, TextEdit, Ui,
+    Action, Button, Color, Effects, Event, Key, NodeId, Properties, PropertyChoice,
+    PropertyGridOptions, PropertyGridState, PropertyMsg, Role, Size, TextEdit, Ui,
 };
 use glassmere_testing::Harness;
 
@@ -354,4 +354,477 @@ fn a_derived_checkbox_click_sends_the_opposite_value() {
         Some(&Msg::Lamp(LampMsg::Visible(!visible)))
     );
     assert_eq!(harness.state().lamp.visible, !visible);
+}
+
+/// Every lamp of a selection, edited together: each message is applied to all.
+struct LampsApp {
+    state: PropertyGridState,
+    lamps: Vec<Lamp>,
+}
+
+impl glassmere::App for LampsApp {
+    type Message = Msg;
+
+    fn update(&mut self, message: Msg, _effects: &mut Effects<'_, Msg>) {
+        match message {
+            Msg::Grid(grid) => self.state.apply(&grid),
+            Msg::Lamp(lamp) => {
+                for each in &mut self.lamps {
+                    each.apply(lamp.clone());
+                }
+            }
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        let lamps: Vec<&Lamp> = self.lamps.iter().collect();
+        ui.keyed("grid", |ui| {
+            ui.property_grid(
+                &self.state,
+                PropertyGridOptions::new("Lamps"),
+                Msg::Grid,
+                |grid| Lamp::properties_many(&lamps, grid, Msg::Lamp),
+            )
+        });
+    }
+}
+
+fn lamp(brightness: f32, tone: usize, id: u32) -> Lamp {
+    Lamp {
+        brightness,
+        color: Color::rgb(255, 255, 255),
+        tone,
+        text: "Desk".into(),
+        visible: true,
+        id,
+        cache: Vec::new(),
+    }
+}
+
+#[test]
+fn a_derived_struct_edits_several_objects_showing_mixed_where_they_differ() {
+    let mut harness = Harness::app(
+        Size::new(640.0, 1000.0),
+        LampsApp {
+            state: PropertyGridState::default(),
+            lamps: vec![lamp(2.0, 0, 9), lamp(4.0, 1, 10)],
+        },
+    );
+    let find = |harness: &Harness<LampsApp>, path: &[&str]| {
+        let mut full = vec!["grid", "$rows", "group:Light"];
+        full.extend(path);
+        harness
+            .context()
+            .find(&full)
+            .unwrap_or_else(|| panic!("{path:?}"))
+    };
+    let value = |harness: &Harness<LampsApp>, path: &[&str]| {
+        let node = harness.context().node(find(harness, path)).unwrap();
+        (node.value, node.checked, node.semantics.label)
+    };
+
+    // The brightness, the tone and the id differ; the rest agree.
+    let brightness = ["row:Brightness", "$editor", "$value", "$field"];
+    assert_eq!(value(&harness, &brightness).0.as_deref(), Some(""));
+    assert_eq!(value(&harness, &["row:Tone", "$editor", "$value"]).0, None);
+    assert_eq!(value(&harness, &["row:Id", "$editor", "$value"]).2, "Mixed");
+    assert_eq!(
+        value(&harness, &["row:Label", "$editor", "$value"])
+            .0
+            .as_deref(),
+        Some("Desk")
+    );
+    assert_eq!(
+        value(&harness, &["row:Visible", "$editor", "$value"]).1,
+        Some(true)
+    );
+    assert_eq!(
+        value(&harness, &["row:Color", "$editor", "$value", "$hex"])
+            .0
+            .as_deref(),
+        Some("#ffffff")
+    );
+
+    // Typing what the first lamp already has still sets the second.
+    let field = find(&harness, &brightness);
+    harness.focus(field);
+    harness.event(Event::Text(TextEdit::SelectAll));
+    harness.type_text("2");
+    let stats = harness.press(Key::Enter);
+    assert_eq!(stats.messages, 1);
+    assert_eq!(
+        harness
+            .state()
+            .lamps
+            .iter()
+            .map(|l| l.brightness)
+            .collect::<Vec<_>>(),
+        [2.0, 2.0]
+    );
+    // Now they agree, and the field shows the value again.
+    harness.run();
+    assert_eq!(value(&harness, &brightness).0.as_deref(), Some("2.0"));
+
+    // One lamp declares what `properties` does, and none declares nothing.
+    harness.app_mut().lamps.truncate(1);
+    harness.run();
+    assert_eq!(value(&harness, &brightness).0.as_deref(), Some("2.0"));
+    harness.app_mut().lamps.clear();
+    harness.run();
+    assert!(
+        harness
+            .context()
+            .find(&["grid", "$rows", "group:Light"])
+            .is_none()
+    );
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, PropertyChoice)]
+pub enum Edge {
+    TopLeft,
+    #[property(name = "Right side")]
+    Right,
+    Bottom,
+}
+
+/// Enums and `Option`s as fields, without a `usize` or a `choices(..)`.
+#[derive(Properties)]
+struct Frame {
+    #[property(default = Edge::Right)]
+    edge: Edge,
+    #[property(min = 0, max = 10, default = 4)]
+    inset: Option<u8>,
+    label: Option<String>,
+    tint: Option<Color>,
+    marker: Option<Edge>,
+    #[property(choices("Solid", "Dashed"))]
+    line: Option<usize>,
+    flag: Option<bool>,
+}
+
+struct FrameApp {
+    state: PropertyGridState,
+    frames: Vec<Frame>,
+    sent: Vec<FrameMsg>,
+}
+
+impl glassmere::App for FrameApp {
+    type Message = FrameEvent;
+
+    fn update(&mut self, message: FrameEvent, _effects: &mut Effects<'_, FrameEvent>) {
+        match message {
+            FrameEvent::Grid(grid) => self.state.apply(&grid),
+            FrameEvent::Frame(frame) => {
+                self.sent.push(frame.clone());
+                for each in &mut self.frames {
+                    each.apply(frame.clone());
+                }
+            }
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, FrameEvent>) {
+        let frames: Vec<&Frame> = self.frames.iter().collect();
+        ui.keyed("grid", |ui| {
+            ui.property_grid(
+                &self.state,
+                PropertyGridOptions::new("Frame"),
+                FrameEvent::Grid,
+                |grid| Frame::properties_many(&frames, grid, FrameEvent::Frame),
+            )
+        });
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum FrameEvent {
+    Grid(PropertyMsg),
+    Frame(FrameMsg),
+}
+
+fn frame(edge: Edge, inset: Option<u8>) -> Frame {
+    Frame {
+        edge,
+        inset,
+        label: None,
+        tint: None,
+        marker: None,
+        line: None,
+        flag: None,
+    }
+}
+
+fn frame_app(frames: Vec<Frame>) -> Harness<FrameApp> {
+    Harness::app(
+        Size::new(640.0, 1000.0),
+        FrameApp {
+            state: PropertyGridState::default(),
+            frames,
+            sent: Vec::new(),
+        },
+    )
+}
+
+fn frame_node(app: &Harness<FrameApp>, path: &[&str]) -> NodeId {
+    let mut full = vec!["grid", "$rows"];
+    full.extend(path);
+    app.context()
+        .find(&full)
+        .unwrap_or_else(|| panic!("{path:?}"))
+}
+
+/// Clicks, and the messages the application got from it.
+fn press_frame(app: &mut Harness<FrameApp>, id: NodeId) -> Vec<FrameMsg> {
+    let before = app.state().sent.len();
+    app.click(id);
+    app.state().sent[before..].to_vec()
+}
+
+#[test]
+fn an_enum_field_is_a_choice_of_its_variants_without_a_usize() {
+    let mut app = frame_app(vec![frame(Edge::TopLeft, None)]);
+    let edge = frame_node(&app, &["row:Edge", "$editor", "$value"]);
+    // The variant names are words, or the one the attribute gives.
+    let node = app.context().node(edge).unwrap();
+    assert_eq!(node.value.as_deref(), Some("Top left"));
+    app.action(edge, Action::Activate);
+    app.run();
+    for (index, name) in ["Top left", "Right side", "Bottom"].iter().enumerate() {
+        let item = frame_node(
+            &app,
+            &[
+                "row:Edge",
+                "$editor",
+                "$value",
+                "$popup",
+                &index.to_string(),
+            ],
+        );
+        assert_eq!(app.context().node(item).unwrap().semantics.label, *name);
+    }
+    let bottom = frame_node(&app, &["row:Edge", "$editor", "$value", "$popup", "2"]);
+    assert_eq!(
+        press_frame(&mut app, bottom),
+        [FrameMsg::Edge(Edge::Bottom)]
+    );
+    assert_eq!(app.state().frames[0].edge, Edge::Bottom);
+    // The default is a variant too.
+    let reset = frame_node(&app, &["row:Edge", "$reset"]);
+    assert_eq!(press_frame(&mut app, reset), [FrameMsg::Edge(Edge::Right)]);
+    assert_eq!(app.state().frames[0].edge, Edge::Right);
+}
+
+#[test]
+fn an_option_field_has_a_toggle_that_sets_it_and_an_editor_that_waits_for_it() {
+    let mut app = frame_app(vec![frame(Edge::Right, None)]);
+
+    // Unset: the box is empty, the editor is off and shows what setting gives.
+    let set = frame_node(&app, &["row:Inset", "$editor", "$set"]);
+    let node = app.context().node(set).unwrap();
+    assert_eq!(
+        (node.checked, node.semantics.label.as_str()),
+        (Some(false), "Set Inset")
+    );
+    let field = frame_node(&app, &["row:Inset", "$editor", "$value", "$field"]);
+    let node = app.context().node(field).unwrap();
+    assert!(node.semantics.disabled);
+    assert_eq!(node.value.as_deref(), Some("4"));
+
+    // Setting sends `Some` of the default, and the editor wakes.
+    assert_eq!(press_frame(&mut app, set), [FrameMsg::Inset(Some(4))]);
+    assert_eq!(app.state().frames[0].inset, Some(4));
+    app.run();
+    assert_eq!(app.context().node(set).unwrap().checked, Some(true));
+    assert!(!app.context().node(field).unwrap().semantics.disabled);
+    app.focus(field);
+    app.event(Event::Text(TextEdit::SelectAll));
+    app.type_text("7");
+    app.press(Key::Enter);
+    assert_eq!(app.state().sent.last(), Some(&FrameMsg::Inset(Some(7))));
+    assert_eq!(app.state().frames[0].inset, Some(7));
+    // Clearing sends `None`.
+    assert_eq!(press_frame(&mut app, set), [FrameMsg::Inset(None)]);
+    assert_eq!(app.state().frames[0].inset, None);
+
+    // Each kind of editor starts from its own value.
+    let toggle = |app: &mut Harness<FrameApp>, name: &str| {
+        let set = frame_node(app, &[name, "$editor", "$set"]);
+        press_frame(app, set)
+    };
+    assert_eq!(
+        toggle(&mut app, "row:Label"),
+        [FrameMsg::Label(Some(String::new()))]
+    );
+    assert_eq!(
+        toggle(&mut app, "row:Tint"),
+        [FrameMsg::Tint(Some(Color::WHITE))]
+    );
+    assert_eq!(
+        toggle(&mut app, "row:Marker"),
+        [FrameMsg::Marker(Some(Edge::TopLeft))]
+    );
+    assert_eq!(toggle(&mut app, "row:Line"), [FrameMsg::Line(Some(0))]);
+    assert_eq!(toggle(&mut app, "row:Flag"), [FrameMsg::Flag(Some(false))]);
+
+    // Once set, the editors send `Some` of what they edit.
+    app.run();
+    let flag = frame_node(&app, &["row:Flag", "$editor", "$value"]);
+    assert_eq!(press_frame(&mut app, flag), [FrameMsg::Flag(Some(true))]);
+    let label = frame_node(&app, &["row:Label", "$editor", "$value"]);
+    app.focus(label);
+    app.type_text("hi");
+    assert_eq!(app.state().frames[0].label.as_deref(), Some("hi"));
+    app.action(
+        frame_node(&app, &["row:Marker", "$editor", "$value"]),
+        Action::Activate,
+    );
+    app.run();
+    let bottom = frame_node(&app, &["row:Marker", "$editor", "$value", "$popup", "2"]);
+    assert_eq!(
+        press_frame(&mut app, bottom),
+        [FrameMsg::Marker(Some(Edge::Bottom))]
+    );
+    assert_eq!(app.state().frames[0].marker, Some(Edge::Bottom));
+}
+
+#[test]
+fn several_objects_agree_on_an_option_only_when_all_have_it_and_the_same_value() {
+    let mut app = frame_app(vec![
+        frame(Edge::TopLeft, None),
+        frame(Edge::Bottom, Some(3)),
+    ]);
+    // The edges differ, and one inset is missing: both rows are mixed, and
+    // the toggle is off because not every object has a value.
+    let edge = frame_node(&app, &["row:Edge", "$editor", "$value"]);
+    assert_eq!(app.context().node(edge).unwrap().value, None);
+    let set = frame_node(&app, &["row:Inset", "$editor", "$set"]);
+    assert_eq!(app.context().node(set).unwrap().checked, Some(false));
+    let field = frame_node(&app, &["row:Inset", "$editor", "$value", "$field"]);
+    assert!(app.context().node(field).unwrap().semantics.disabled);
+    // Setting gives every object a value.
+    assert_eq!(press_frame(&mut app, set), [FrameMsg::Inset(Some(4))]);
+    let insets = |app: &Harness<FrameApp>| {
+        app.state()
+            .frames
+            .iter()
+            .map(|f| f.inset)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(insets(&app), [Some(4), Some(4)]);
+    app.run();
+    assert_eq!(app.context().node(set).unwrap().checked, Some(true));
+    assert_eq!(
+        app.context().node(field).unwrap().value.as_deref(),
+        Some("4")
+    );
+}
+
+/// A nested type written by hand, with `properties` and nothing for several
+/// objects.
+struct Border {
+    width: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum BorderMsg {
+    Width(f64),
+}
+
+impl Border {
+    fn apply(&mut self, message: BorderMsg) {
+        let BorderMsg::Width(width) = message;
+        self.width = width;
+    }
+
+    fn properties<M: 'static>(
+        &self,
+        grid: &mut glassmere::PropertyGrid<'_, '_, M>,
+        on: impl Fn(BorderMsg) -> M + 'static,
+    ) {
+        grid.number_with(
+            "Width",
+            self.width,
+            glassmere::NumberOptions::default(),
+            move |width| on(BorderMsg::Width(width)),
+        );
+    }
+}
+
+#[derive(Properties)]
+struct Panel {
+    #[property(flatten)]
+    border: Border,
+    #[property(flatten, many)]
+    shadow: Shadow,
+}
+
+#[derive(Clone)]
+enum PanelsMsg {
+    Grid(PropertyMsg),
+    Panel(PanelMsg),
+}
+
+struct PanelsApp {
+    state: PropertyGridState,
+    panels: Vec<Panel>,
+}
+
+impl glassmere::App for PanelsApp {
+    type Message = PanelsMsg;
+
+    fn update(&mut self, message: PanelsMsg, _effects: &mut Effects<'_, PanelsMsg>) {
+        match message {
+            PanelsMsg::Grid(grid) => self.state.apply(&grid),
+            PanelsMsg::Panel(panel) => {
+                for each in &mut self.panels {
+                    each.apply(panel.clone());
+                }
+            }
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, PanelsMsg>) {
+        let panels: Vec<&Panel> = self.panels.iter().collect();
+        ui.keyed("grid", |ui| {
+            ui.property_grid(
+                &self.state,
+                PropertyGridOptions::new("Panels"),
+                PanelsMsg::Grid,
+                |grid| Panel::properties_many(&panels, grid, PanelsMsg::Panel),
+            )
+        });
+    }
+}
+
+#[test]
+fn a_flattened_group_marks_mixed_rows_only_when_it_is_declared_many() {
+    let panel = |width, blur| Panel {
+        border: Border { width },
+        shadow: Shadow {
+            blur,
+            color: Color::rgb(0, 0, 0),
+        },
+    };
+    let harness = Harness::app(
+        Size::new(640.0, 1000.0),
+        PanelsApp {
+            state: PropertyGridState::default(),
+            panels: vec![panel(1.0, 4.0), panel(2.0, 8.0)],
+        },
+    );
+    let value = |path: &[&str]| {
+        let mut full = vec!["grid", "$rows"];
+        full.extend(path);
+        let id = harness
+            .context()
+            .find(&full)
+            .unwrap_or_else(|| panic!("{path:?}"));
+        harness.context().node(id).unwrap().value
+    };
+    // The hand-written group shows the first panel's width.
+    let width = ["group:Border", "row:Width", "$editor", "$value", "$field"];
+    assert_eq!(value(&width).as_deref(), Some("1"));
+    // The derived one knows the blurs differ.
+    let blur = ["group:Shadow", "row:Blur", "$editor", "$value", "$field"];
+    assert_eq!(value(&blur).as_deref(), Some(""));
 }

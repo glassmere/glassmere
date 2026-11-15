@@ -210,6 +210,9 @@ impl Context {
     /// Returns true if a declaration/redraw is needed. Pointer capture survives
     /// leaving the window, but activation requires release over the same button.
     pub fn event(&mut self, event: Event) -> bool {
+        if self.escape_tooltip(&event) {
+            return true;
+        }
         // Areas see an event before and after the widgets, and may keep it
         // from them.
         if self.travelled(&event) {
@@ -247,9 +250,15 @@ impl Context {
             _ => {}
         }
         let queued = self.queued.len();
-        let handled = self.handle_event(event.clone());
+        let focus = self.noted_focus;
+        let menus = self.popup_levels().count();
+        let mut handled = self.handle_event(event.clone());
+        // A press outside a menu closes it and still goes on to what is under
+        // it, which may change nothing else, and the menu has to be redrawn.
+        handled |= self.popup_levels().count() < menus;
         self.track_hover(&event);
         self.note_focus();
+        self.track_focus(&event, focus, queued);
         // Moving the pointer changes what is hovered, which only repaints
         // unless the view observed it; holding something while moving it
         // (a scrollbar, a drag) changes what the view reads.
@@ -292,9 +301,10 @@ impl Context {
                 .is_some_and(|id| self.activate(id));
         }
         if let Event::Shortcut(shortcut) = &event {
-            return self
-                .shortcut_target(shortcut)
-                .is_some_and(|id| self.activate(id));
+            return match self.shortcut_target(shortcut) {
+                Some(id) => self.activate(id),
+                None => self.date_picker_shortcut(shortcut),
+            };
         }
         if let Some(handled) = self.collection_event(&event) {
             return handled;
@@ -330,7 +340,11 @@ impl Context {
                     .hovered
                     // A press on a reveal button leaves the keyboard with
                     // its password field, so typing goes on.
-                    .map(|id| self.reveal_field(id).unwrap_or(id))
+                    .map(|id| {
+                        self.reveal_field(id)
+                            .or_else(|| self.calendar_focus_of(id))
+                            .unwrap_or(id)
+                    })
                     .filter(|id| self.nodes[id].focusable());
                 self.quiet_focus = self.focused.filter(|&id| self.in_title_bar(id));
                 self.keyboard_pressed = None;
@@ -362,7 +376,11 @@ impl Context {
                 if self.keyboard_pressed.is_none() {
                     self.keyboard_pressed = self
                         .focused
-                        .filter(|id| self.nodes[id].activatable())
+                        // A link answers Enter, as one on a page does, and not Space.
+                        .filter(|id| {
+                            self.nodes[id].activatable()
+                                && !(key == Key::Space && self.nodes[id].kind == Kind::Link)
+                        })
                         .map(|id| (id, key));
                 }
             }
@@ -433,7 +451,7 @@ impl Context {
             let Control::Command { id: declared, .. } = &node.control else {
                 continue;
             };
-            if !node.enabled || declared != wanted {
+            if !node.enabled || declared != wanted || !self.attached(*id) {
                 continue;
             }
             let depth = self.depth(*id);
@@ -458,7 +476,11 @@ impl Context {
             else {
                 continue;
             };
-            if !node.enabled || binding != shortcut || !(*while_editing || !self.accepts_text()) {
+            if !node.enabled
+                || binding != shortcut
+                || !(*while_editing || !self.accepts_text())
+                || !self.attached(*id)
+            {
                 continue;
             }
             let scope = self.scope_of(*id);

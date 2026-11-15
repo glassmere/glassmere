@@ -178,6 +178,9 @@ pub(crate) enum Control {
     Memo(u64),
     /// Text written along the end edge of a control, such as a shortcut.
     Hint(String),
+    /// A label whose text can be selected and copied; its node keeps the
+    /// selection in an editor that is never edited.
+    SelectableText,
     EventArea(crate::EventArea),
     /// A strip that moves the window, and maximizes it when pressed twice.
     TitleBar,
@@ -242,14 +245,83 @@ pub(crate) enum Control {
     Slider {
         label: String,
         value: f64,
+        /// The lowest and highest value this slider can be given.
         min: f64,
         max: f64,
         step: f64,
+        /// For a thumb of a range slider, the whole range of the track that
+        /// it sits on, which `min` and `max` are narrowed from by the other
+        /// thumb. A slider of its own has none.
+        span: Option<(f64, f64)>,
+    },
+    /// The track and the caption of a range slider, whose children are its
+    /// two thumbs.
+    RangeSlider {
+        label: String,
+    },
+    /// A progress bar: how far it is, or `None` while it cannot tell.
+    Progress {
+        label: String,
+        value: Option<f64>,
+    },
+    /// The header of a collapsible section.
+    Disclosure {
+        label: String,
+        open: bool,
+    },
+    /// An on/off switch.
+    Switch {
+        label: String,
+        on: bool,
+    },
+    /// A busy indicator, which never knows how far it is.
+    Spinner {
+        label: String,
     },
     Combo {
         label: String,
         selected: usize,
         items: Vec<MenuItem>,
+    },
+    /// The days of a calendar, in rows of a week. It has the keyboard, and the
+    /// day under the cursor is what it reports as active.
+    CalendarGrid {
+        label: String,
+        month: crate::calendar::Month,
+        /// In the popup of a date picker, whose field has the keyboard and
+        /// is told of a pick.
+        popup: bool,
+    },
+    /// The weekday names of a calendar, or one of its weeks.
+    CalendarRow {
+        index: usize,
+    },
+    CalendarWeekday {
+        name: String,
+        column: usize,
+    },
+    CalendarDay {
+        date: crate::Date,
+        /// The date as the locale writes it in full, which names the day.
+        name: String,
+        row: usize,
+        column: usize,
+        selected: bool,
+    },
+    /// A button that shows the month `months` away. The keyboard has page
+    /// keys for it, so it takes no focus.
+    CalendarStep {
+        months: i32,
+    },
+    /// A field showing a date, which opens a calendar to pick another.
+    DatePicker {
+        label: String,
+        /// The date as the field writes it, when there is one.
+        value: Option<String>,
+    },
+    /// The popup of a date picker.
+    CalendarPopup {
+        label: String,
     },
     Menu {
         items: Vec<MenuItem>,
@@ -377,6 +449,8 @@ pub(crate) enum Control {
         kind: crate::collection::CollectionKind,
         count: usize,
         row_height: f32,
+        /// Rows that Page Up and Page Down move when row heights differ.
+        pages: Option<(usize, usize)>,
         offset: f32,
         selected: Option<crate::ItemId>,
     },
@@ -422,6 +496,8 @@ pub(crate) enum ControlUpdate {
     Text(String),
     Number(f64),
     Choice(usize),
+    /// A day picked in a calendar.
+    Date(crate::Date),
     /// A pick inside a submenu: the index at each level, from the menu's own
     /// items down to the item picked.
     Path(Vec<usize>),

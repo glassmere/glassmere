@@ -1,9 +1,9 @@
 //! Images: files decoded in the background (PNG, JPEG, WebP, GIF, SVG), fit
-//! modes, tinted vector icons, an image made in code, and background images
-//! with nine-slice frames from a stylesheet and from code. Edit or replace a
-//! file under `examples/assets` while this runs and it reloads. The file card
-//! at the bottom can be dragged out of the window, onto the desktop or into
-//! another application.
+//! modes, tinted vector icons, an image made in code, an animated GIF that
+//! plays on its own, and background images with nine-slice frames from a
+//! stylesheet and from code. Edit or replace a file under `examples/assets`
+//! while this runs and it reloads. The file card at the bottom can be dragged
+//! out of the window, onto the desktop or into another application.
 use glassmere::{
     Align, App, AppOptions, BackgroundImage, Button, Color, DragOutcome, DragPayload,
     DragSourceBuilder, Effects, Image, ImageFit, ImageOptions, ImageTint, Justify, Label, Length,
@@ -210,7 +210,7 @@ impl App for Gallery {
                 ui,
                 "made-caption",
                 "Pixels made in code, translucent over a panel; a 512 px checkerboard shown at \
-                 64 px; a file that does not exist",
+                 64 px; a file that does not exist; an animated GIF, which loops on its own",
             );
             ui.row(Style::default().gap(16.0), |ui| {
                 let backing = Style {
@@ -242,6 +242,12 @@ impl App for Gallery {
                     ..panel.clone()
                 });
                 ui.image_file(format!("{ASSETS}/not-there.png"), missing);
+                let orbit = ImageOptions::new("Dots orbiting, an animated GIF").style(Style {
+                    width: Length::Px(96.0),
+                    radius: 8.0,
+                    ..Style::default()
+                });
+                ui.image_file(format!("{ASSETS}/orbit.gif"), orbit);
             });
 
             caption(

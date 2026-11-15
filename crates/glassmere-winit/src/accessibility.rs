@@ -488,7 +488,8 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                         | Role::Row
                         | Role::ColumnHeader
                         | Role::Tab
-                ) {
+                ) || (role == Role::Cell && snapshot.selected.is_some())
+                {
                     node.add_action(Action::Click);
                 }
                 if matches!(
@@ -621,9 +622,9 @@ pub(crate) fn action(context: &mut Context, request: ActionRequest, scale: f64) 
 mod tests {
     use super::*;
     use glassmere_core::{
-        Button, CodeEditorOptions, EditorPoint, ItemId, Length, ListModel, ListState,
-        MonospaceMeasurer, Style, TextDocument, TextEdit, TextInput, TreeItem, TreeModel,
-        VirtualListOptions,
+        Button, CodeEditorOptions, Date, EditorPoint, ItemId, Label, Length, Link, ListModel,
+        ListState, MonospaceMeasurer, Style, TextDocument, TextEdit, TextInput, TreeItem,
+        TreeModel, VirtualListOptions,
     };
     use glassmere_scene::Size;
     use std::{cell::RefCell, rc::Rc};
@@ -1127,6 +1128,158 @@ mod tests {
     }
 
     #[test]
+    fn progress_bars_and_spinners_are_statuses_with_a_value_only_when_it_is_known() {
+        let mut context = Context::new();
+        context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
+            ui.keyed("known", |ui| ui.progress("Upload", Some(0.4)));
+            ui.keyed("unknown", |ui| ui.progress("Sync", None));
+            ui.keyed("spinner", |ui| ui.spinner("Loading"));
+        });
+        let update = tree(&context, "Progress", 1.0);
+        let node = |key: &str| node_in(&update, NodeId(context.find(&[key]).unwrap().0));
+        assert_eq!(node("known").role(), Role::Status);
+        assert_eq!(node("known").label(), Some("Upload"));
+        assert_eq!(node("known").numeric_value(), Some(40.0));
+        assert_eq!(node("known").max_numeric_value(), Some(100.0));
+        assert_eq!(node("known").value(), Some("40%"));
+        assert!(!node("known").supports_action(Action::SetValue));
+        assert_eq!(node("unknown").role(), Role::Status);
+        assert_eq!(node("unknown").numeric_value(), None);
+        assert_eq!(node("spinner").role(), Role::Status);
+        assert_eq!(node("spinner").label(), Some("Loading"));
+        assert_eq!(node("spinner").numeric_value(), None);
+        assert_eq!(node("spinner").value(), None);
+    }
+
+    #[test]
+    fn a_switch_is_a_checkbox_that_reports_whether_it_is_on_and_can_be_clicked() {
+        let mut context = Context::new();
+        context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
+            ui.keyed("off", |ui| ui.switch("Wi-Fi", false, |_| ()));
+            ui.keyed("on", |ui| ui.switch("Bluetooth", true, |_| ()));
+            ui.enabled(false, |ui| {
+                ui.keyed("locked", |ui| ui.switch("Locked", true, |_| ()));
+            });
+        });
+        let update = tree(&context, "Switch", 1.0);
+        let node = |key: &str| node_in(&update, NodeId(context.find(&[key]).unwrap().0));
+        assert_eq!(node("off").role(), Role::CheckBox);
+        assert_eq!(node("off").label(), Some("Wi-Fi"));
+        assert_eq!(node("off").toggled(), Some(accesskit::Toggled::False));
+        assert_eq!(node("on").toggled(), Some(accesskit::Toggled::True));
+        assert!(node("off").supports_action(Action::Click));
+        assert!(node("off").supports_action(Action::Focus));
+        assert!(node("locked").is_disabled());
+        assert!(!node("locked").supports_action(Action::Click));
+    }
+
+    #[test]
+    fn a_collapsible_header_reports_and_takes_expand_and_collapse() {
+        use std::cell::Cell;
+        let open = Cell::new(false);
+        let mut context = Context::new();
+        let declare = |context: &mut Context| {
+            context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
+                ui.keyed("section", |ui| {
+                    ui.collapsible("Advanced", open.get(), |_| (), |ui| ui.label("Inside"));
+                });
+            });
+        };
+        declare(&mut context);
+        let header = context.find(&["section", "$header"]).unwrap();
+        let request = |action| ActionRequest {
+            action,
+            target_tree: TreeId::ROOT,
+            target_node: NodeId(header.0),
+            data: None,
+        };
+        let update = tree(&context, "Section", 1.0);
+        let node = node_in(&update, NodeId(header.0));
+        assert_eq!(node.role(), Role::Button);
+        assert_eq!(node.label(), Some("Advanced"));
+        assert_eq!(node.is_expanded(), Some(false));
+        assert!(node.supports_action(Action::Expand));
+        assert!(!node.supports_action(Action::Collapse));
+        assert!(node.supports_action(Action::Click));
+
+        // The application is what opens it; the request only asks.
+        assert!(action(&mut context, request(Action::Expand), 1.0));
+        open.set(true);
+        declare(&mut context);
+        let update = tree(&context, "Section", 1.0);
+        let node = node_in(&update, NodeId(header.0));
+        assert_eq!(node.is_expanded(), Some(true));
+        assert!(node.supports_action(Action::Collapse));
+        assert!(action(&mut context, request(Action::Collapse), 1.0));
+        assert!(!action(&mut context, request(Action::Expand), 1.0));
+    }
+
+    #[test]
+    fn a_link_is_a_button_that_can_be_clicked_until_it_is_disabled() {
+        let mut context = Context::new();
+        context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
+            ui.keyed("docs", |ui| ui.link("Documentation"));
+            ui.keyed("locked", |ui| ui.link(Link::new("Locked").enabled(false)));
+        });
+        let update = tree(&context, "Links", 1.0);
+        let docs = context.find(&["docs"]).unwrap();
+        let node = node_in(&update, NodeId(docs.0));
+        assert_eq!(node.role(), Role::Button);
+        assert_eq!(node.label(), Some("Documentation"));
+        assert!(node.supports_action(Action::Click));
+        assert!(node.supports_action(Action::Focus));
+        let locked = context.find(&["locked"]).unwrap();
+        let node = node_in(&update, NodeId(locked.0));
+        assert_eq!(node.role(), Role::Button);
+        assert!(node.is_disabled());
+        assert!(!node.supports_action(Action::Click));
+    }
+
+    #[test]
+    fn a_range_slider_reports_two_sliders_that_each_report_their_own_value() {
+        let mut context = Context::new();
+        context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
+            ui.keyed("price", |ui| {
+                ui.range_slider("Price", 20.0..=80.0, 0.0..=100.0, 10.0, |_| ());
+            });
+        });
+        let update = tree(&context, "Prices", 1.0);
+        for (path, label, value, min, max) in [
+            ("$minimum", "Price minimum", 20.0, 0.0, 80.0),
+            ("$maximum", "Price maximum", 80.0, 20.0, 100.0),
+        ] {
+            let thumb = context.find(&["price", path]).unwrap();
+            let node = node_in(&update, NodeId(thumb.0));
+            assert_eq!(node.role(), Role::Slider);
+            assert_eq!(node.label(), Some(label));
+            assert_eq!(node.numeric_value(), Some(value));
+            assert_eq!(node.min_numeric_value(), Some(min));
+            assert_eq!(node.max_numeric_value(), Some(max));
+            assert_eq!(node.numeric_value_step(), Some(10.0));
+            assert!(node.supports_action(Action::Increment));
+            assert!(node.supports_action(Action::Focus));
+        }
+    }
+
+    #[test]
+    fn a_selectable_label_is_read_as_text_and_can_take_focus() {
+        let mut context = Context::new();
+        context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
+            ui.keyed("id", |ui| ui.label(Label::new("Order 4711").selectable()));
+            ui.keyed("plain", |ui| ui.label("Order 4712"));
+        });
+        let update = tree(&context, "Labels", 1.0);
+        let id = context.find(&["id"]).unwrap();
+        let node = node_in(&update, NodeId(id.0));
+        assert_eq!(node.role(), Role::Label);
+        assert_eq!(node.value(), Some("Order 4711"));
+        assert!(node.supports_action(Action::Focus));
+        let plain = context.find(&["plain"]).unwrap();
+        let node = node_in(&update, NodeId(plain.0));
+        assert!(!node.supports_action(Action::Focus));
+    }
+
+    #[test]
     fn a_view_that_overflows_sideways_reports_and_takes_horizontal_scrolling() {
         let mut context = Context::new();
         context.run(Size::new(200.0, 200.0), &mut MonospaceMeasurer, |ui| {
@@ -1254,5 +1407,104 @@ mod tests {
             2.0
         ));
         assert_eq!(tree(&context, "Test window", 2.0).focus, NodeId(active.0));
+    }
+
+    #[test]
+    fn a_calendar_is_a_grid_of_named_cells_that_can_be_clicked() {
+        let mut context = Context::new();
+        let view = |ui: &mut glassmere_core::Ui<'_>| {
+            ui.keyed("calendar", |ui| {
+                ui.calendar("Departure", Date::new(2026, 9, 21), |_| ())
+            });
+        };
+        context.run(Size::new(500.0, 500.0), &mut MonospaceMeasurer, view);
+        let grid = context.find(&["calendar", "$grid"]).unwrap();
+        let day = context.find(&["calendar", "$grid", "w1", "d2"]).unwrap();
+        let weekday = context
+            .find(&["calendar", "$grid", "$weekdays", "c2"])
+            .unwrap();
+        context.action(grid, CoreAction::Focus);
+        context.run(Size::new(500.0, 500.0), &mut MonospaceMeasurer, view);
+        let update = tree(&context, "Calendar", 1.0);
+        let node = |id: CoreNodeId| node_in(&update, NodeId(id.0));
+        assert_eq!(node(grid).role(), Role::Grid);
+        assert_eq!(node(grid).label(), Some("Departure"));
+        assert_eq!(
+            (node(grid).row_count(), node(grid).column_count()),
+            (Some(7), Some(7))
+        );
+        assert_eq!(node(weekday).role(), Role::ColumnHeader);
+        assert_eq!(node(weekday).label(), Some("Wednesday"));
+        assert_eq!(node(day).role(), Role::Cell);
+        assert_eq!(node(day).label(), Some("2026-09-09"));
+        assert_eq!(
+            (node(day).row_index(), node(day).column_index()),
+            (Some(2), Some(2))
+        );
+        assert_eq!(node(day).is_selected(), Some(false));
+        assert!(node(day).supports_action(Action::Click));
+        // The selected day, 21 September, is in the third week after the first.
+        let selected = context.find(&["calendar", "$grid", "w3", "d0"]).unwrap();
+        assert_eq!(node(selected).label(), Some("2026-09-21"));
+        assert_eq!(node(selected).is_selected(), Some(true));
+        // The keys act on the day the grid names as its active descendant,
+        // which is where assistive technology puts the focus.
+        assert_eq!(update.focus, NodeId(selected.0));
+        assert_eq!(node(grid).active_descendant(), Some(NodeId(selected.0)));
+        // Clicking a day is the platform choosing it.
+        assert!(action(
+            &mut context,
+            ActionRequest {
+                action: Action::Click,
+                target_tree: TreeId::ROOT,
+                target_node: NodeId(day.0),
+                data: None
+            },
+            1.0
+        ));
+    }
+
+    #[test]
+    fn an_open_date_picker_puts_the_focus_on_the_day_under_its_cursor() {
+        let mut context = Context::new();
+        let view = |ui: &mut glassmere_core::Ui<'_>| {
+            ui.keyed("picker", |ui| {
+                ui.date_picker("Departure", Date::new(2026, 9, 21), |_| ())
+            });
+        };
+        context.run(Size::new(500.0, 500.0), &mut MonospaceMeasurer, view);
+        let picker = context.find(&["picker"]).unwrap();
+        context.action(picker, CoreAction::Focus);
+        let update = tree(&context, "Picker", 1.0);
+        let node = node_in(&update, NodeId(picker.0));
+        assert_eq!(node.role(), Role::ComboBox);
+        assert_eq!(node.value(), Some("2026-09-21"));
+        assert_eq!(node.is_expanded(), Some(false));
+        assert_eq!(update.focus, NodeId(picker.0));
+        assert!(action(
+            &mut context,
+            ActionRequest {
+                action: Action::Expand,
+                target_tree: TreeId::ROOT,
+                target_node: NodeId(picker.0),
+                data: None
+            },
+            1.0
+        ));
+        context.run(Size::new(500.0, 500.0), &mut MonospaceMeasurer, view);
+        let panel = context.find(&["picker", "$popup"]).unwrap();
+        let selected = context
+            .find(&["picker", "$popup", "$grid", "w3", "d0"])
+            .unwrap();
+        let update = tree(&context, "Picker", 1.0);
+        let node = |id: CoreNodeId| node_in(&update, NodeId(id.0));
+        assert_eq!(node(picker).is_expanded(), Some(true));
+        assert_eq!(node(picker).active_descendant(), Some(NodeId(selected.0)));
+        assert_eq!(update.focus, NodeId(selected.0));
+        assert_eq!(node(selected).label(), Some("2026-09-21"));
+        assert_eq!(node(selected).is_selected(), Some(true));
+        // The popup is a dialog of the window, not of the field's box.
+        assert_eq!(node(panel).role(), Role::Dialog);
+        assert!(node(context.root()).children().contains(&NodeId(panel.0)));
     }
 }

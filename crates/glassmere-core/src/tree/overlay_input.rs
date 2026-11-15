@@ -1,5 +1,90 @@
 use super::*;
-use crate::{Axis, panes::TOOLTIP_DELAY};
+use crate::{Axis, Length, Tooltip, TooltipPlacement, panes::TOOLTIP_DELAY};
+use std::borrow::Cow;
+
+/// How soon after a tooltip goes away the next one is shown without its full
+/// delay, and the delay it then has at most: someone moving along a row of
+/// buttons wants each one's help at once.
+const FOLLOW_WINDOW: Duration = Duration::from_millis(300);
+const FOLLOW_DELAY: Duration = Duration::from_millis(100);
+
+/// The space between a tooltip and the widget it is for.
+const TOOLTIP_GAP: f32 = 6.0;
+
+/// What brought a tooltip up, which decides what takes it away again.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Dwell {
+    /// The pointer rested on the widget.
+    Pointer,
+    /// The keyboard moved focus to the widget.
+    Focus,
+}
+
+/// The side of a widget a tooltip is on.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Side {
+    Above,
+    Below,
+    Left,
+    Right,
+}
+
+impl Side {
+    fn opposite(self) -> Self {
+        match self {
+            Self::Above => Self::Below,
+            Self::Below => Self::Above,
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+        }
+    }
+}
+
+/// Where a tooltip of `size` goes against `anchor`, inside `window`: on the
+/// side `placement` prefers, on the opposite one when that side has no room,
+/// and in any case within the window.
+fn place_tooltip(
+    placement: TooltipPlacement,
+    rtl: bool,
+    anchor: Rect,
+    size: Size,
+    window: Rect,
+) -> Rect {
+    let side = match placement {
+        TooltipPlacement::Auto | TooltipPlacement::Below => Side::Below,
+        TooltipPlacement::Above => Side::Above,
+        TooltipPlacement::Before if rtl => Side::Right,
+        TooltipPlacement::Before => Side::Left,
+        TooltipPlacement::After if rtl => Side::Left,
+        TooltipPlacement::After => Side::Right,
+    };
+    let (right, bottom) = (anchor.x + anchor.width, anchor.y + anchor.height);
+    // Above and below line up with the start edge; the sides are centred.
+    let start = if rtl { right - size.width } else { anchor.x };
+    let middle = anchor.y + (anchor.height - size.height) / 2.0;
+    let at = |side: Side| match side {
+        Side::Below => (start, bottom + TOOLTIP_GAP),
+        Side::Above => (start, anchor.y - size.height - TOOLTIP_GAP),
+        Side::Left => (anchor.x - size.width - TOOLTIP_GAP, middle),
+        Side::Right => (right + TOOLTIP_GAP, middle),
+    };
+    let fits = |side: Side| {
+        let (x, y) = at(side);
+        match side {
+            Side::Below => y + size.height <= window.y + window.height,
+            Side::Above => y >= window.y,
+            Side::Right => x + size.width <= window.x + window.width,
+            Side::Left => x >= window.x,
+        }
+    };
+    let (x, y) = at(if fits(side) { side } else { side.opposite() });
+    Rect {
+        x: x.clamp(window.x, window.x + (window.width - size.width).max(0.0)),
+        y: y.clamp(window.y, window.y + (window.height - size.height).max(0.0)),
+        width: size.width,
+        height: size.height,
+    }
+}
 
 impl Context {
     /// Supplies the host's monotonic clock. Timed behavior (tooltips) is
@@ -15,10 +100,14 @@ impl Context {
 
     /// When the context next wants to be run without input, on the `set_now` clock.
     pub fn next_wake(&self) -> Option<Duration> {
-        let tooltip = self.hover_since.and_then(|(id, since)| {
-            (self.tooltip.is_none() && self.tooltip_text(id).is_some())
-                .then_some(since + TOOLTIP_DELAY)
-        });
+        let tooltip = [
+            self.hover_since.map(|dwell| (dwell, Dwell::Pointer)),
+            self.focus_since.map(|dwell| (dwell, Dwell::Focus)),
+        ]
+        .into_iter()
+        .flatten()
+        .filter_map(|((id, since), by)| self.tooltip_due(id, since, by))
+        .min();
         [
             tooltip,
             self.toast_wake(),
@@ -26,17 +115,20 @@ impl Context {
             self.grid_wake(),
             self.track_wake(),
             self.edge_scroll_wake(),
+            self.menu_dwell_wake(),
+            self.image_wake(),
         ]
         .into_iter()
         .flatten()
         .min()
     }
 
-    /// The node's tooltip, or for an editor the diagnostic under the pointer.
-    fn tooltip_text(&self, id: NodeId) -> Option<String> {
+    /// The tooltip `by` brings up for the node, or for an editor under the
+    /// pointer the diagnostic there. Windows shows its own over a title bar's
+    /// buttons, after its own delay, so that it does not come before the snap
+    /// layouts.
+    fn tooltip_for(&self, id: NodeId, by: Dwell) -> Option<Cow<'_, Tooltip>> {
         let node = self.nodes.get(&id)?;
-        // Windows shows its own over a title bar's buttons, after its own
-        // delay, so that it does not come before the snap layouts.
         if cfg!(windows)
             && matches!(
                 node.control,
@@ -45,24 +137,62 @@ impl Context {
         {
             return None;
         }
-        node.tooltip.clone().or_else(|| self.area_diagnostic(id))
+        if let Some(tooltip) = node
+            .tooltip
+            .as_deref()
+            .filter(|tooltip| !tooltip.text.trim().is_empty())
+        {
+            return Some(Cow::Borrowed(tooltip));
+        }
+        // A spot in the text is something only the pointer can point at.
+        let message = self.area_diagnostic(id).filter(|_| by == Dwell::Pointer)?;
+        Some(Cow::Owned(Tooltip::new(message)))
+    }
+
+    /// When the tooltip a dwell on `id` since `since` waits for is due, if
+    /// there is one still to show.
+    fn tooltip_due(&self, id: NodeId, since: Duration, by: Dwell) -> Option<Duration> {
+        // It is on show already, or the pointer's is.
+        if self
+            .tooltip
+            .is_some_and(|(owner, shown)| owner == id || shown == Dwell::Pointer)
+        {
+            return None;
+        }
+        let delay = self.tooltip_for(id, by)?.delay.unwrap_or(TOOLTIP_DELAY);
+        let following = self
+            .tooltip_left
+            .is_some_and(|left| since <= left + FOLLOW_WINDOW);
+        Some(
+            since
+                + if following {
+                    delay.min(FOLLOW_DELAY)
+                } else {
+                    delay
+                },
+        )
     }
 
     /// Tracks hover dwell after input; hides a visible tooltip when the pointer
     /// leaves its owner or any press or key arrives.
     pub(super) fn track_hover(&mut self, event: &Event) {
-        let hides = matches!(
+        // A press, a scroll and losing the window end every tooltip.
+        if matches!(
             event,
             Event::PointerDown
                 | Event::PointerDownWithShift
-                | Event::KeyDown { .. }
                 | Event::FocusLost
-                | Event::PointerLeft
                 | Event::Scroll { .. }
-        );
-        if hides {
+        ) {
             self.hover_since = None;
-            self.hide_tooltip();
+            self.focus_since = None;
+            self.hide_tooltip(false);
+            return;
+        }
+        // A key, or the pointer leaving the window, ends the pointer's only.
+        if matches!(event, Event::KeyDown { .. } | Event::PointerLeft) {
+            self.hover_since = None;
+            self.hide_pointer_tooltip(false);
             return;
         }
         // Only movement re-arms the dwell; a release over the same widget does not.
@@ -80,81 +210,183 @@ impl Context {
             if editor
                 || self
                     .tooltip
-                    .is_some_and(|owner| Some(owner) != self.hovered)
+                    .is_some_and(|(owner, _)| Some(owner) != self.hovered)
             {
-                self.hide_tooltip();
+                self.hide_pointer_tooltip(true);
             }
         }
     }
 
-    fn hide_tooltip(&mut self) {
+    /// Takes the tooltip off. `left` when it went because its widget was left,
+    /// which makes the next tooltip quick.
+    fn hide_tooltip(&mut self, left: bool) {
         if self.tooltip.take().is_some() {
+            if left {
+                self.tooltip_left = Some(self.now);
+            }
             self.pending |= Dirty::PAINT;
         }
+    }
+
+    fn hide_pointer_tooltip(&mut self, left: bool) {
+        if self
+            .tooltip
+            .is_some_and(|(_, shown)| shown == Dwell::Pointer)
+        {
+            self.hide_tooltip(left);
+        }
+    }
+
+    /// Focus moved: the tooltip the keyboard brought up, or was about to, was
+    /// for the widget that had it.
+    pub(super) fn blur_tooltip(&mut self) {
+        self.focus_since = None;
+        if self.tooltip.is_some_and(|(_, shown)| shown == Dwell::Focus) {
+            self.hide_tooltip(true);
+        }
+    }
+
+    /// Tooltips for the keyboard, after `event` has been handled: a key that
+    /// moved focus starts the delay of the tooltip of the widget it moved to,
+    /// unless it also acted on that widget (changed its value, pressed it),
+    /// which takes the tooltip away, as a press does. `before` is the focus
+    /// before the event and `queued` how much was queued by then.
+    pub(super) fn track_focus(&mut self, event: &Event, before: Option<NodeId>, queued: usize) {
+        if !matches!(
+            event,
+            Event::KeyDown { .. } | Event::KeyUp(_) | Event::Text(_)
+        ) {
+            return;
+        }
+        let acted = self
+            .queued
+            .get(queued..)
+            .is_some_and(|new| new.iter().any(|(id, _)| Some(*id) == self.focused));
+        if acted {
+            self.focus_since = None;
+            if self.tooltip.is_some_and(|(_, shown)| shown == Dwell::Focus) {
+                self.hide_tooltip(false);
+            }
+        } else if self.noted_focus != before
+            // Escape leaves what it dismissed, and focus goes back to where it was.
+            && matches!(event, Event::KeyDown { key, .. } if *key != Key::Escape)
+        {
+            self.focus_since = self.noted_focus.map(|id| (id, self.now));
+        }
+    }
+
+    /// Escape takes a tooltip the keyboard brought up away and does nothing
+    /// else, as it does for the innermost popup, popover or dialog. True when
+    /// it did.
+    pub(super) fn escape_tooltip(&mut self, event: &Event) -> bool {
+        if !matches!(
+            event,
+            Event::KeyDown {
+                key: Key::Escape,
+                ..
+            }
+        ) {
+            return false;
+        }
+        self.focus_since = None;
+        if self.tooltip.is_none_or(|(_, shown)| shown != Dwell::Focus) {
+            return false;
+        }
+        self.hide_tooltip(false);
+        true
     }
 
     /// Shows a due tooltip. Called during declaration, after reconciliation.
     pub(super) fn update_tooltip(&mut self) {
-        let Some((id, since)) = self.hover_since else {
-            return;
+        let due = |context: &Self, dwell: Option<(NodeId, Duration)>, by| {
+            dwell
+                .and_then(|(id, since)| Some((id, context.tooltip_due(id, since, by)?)))
+                .filter(|(_, due)| context.now >= *due)
+                .map(|(id, _)| id)
         };
-        if self.tooltip.is_some() || self.now < since + TOOLTIP_DELAY {
+        // The pointer's goes first, and replaces one the keyboard brought up.
+        if let Some(id) = due(self, self.hover_since, Dwell::Pointer) {
+            self.tooltip = Some((id, Dwell::Pointer));
+            self.focus_since = None;
+        } else if let Some(id) = due(self, self.focus_since, Dwell::Focus) {
+            self.tooltip = Some((id, Dwell::Focus));
+        } else {
             return;
         }
-        if self.tooltip_text(id).is_some() {
-            self.tooltip = Some(id);
-            self.pending |= Dirty::PAINT;
-        }
+        self.pending |= Dirty::PAINT;
     }
 
     /// Paints the visible tooltip after all content and overlays.
     pub(super) fn paint_tooltip(&mut self, scene: &mut Scene, measurer: &mut impl TextMeasurer) {
-        let Some(owner) = self.tooltip else {
+        let Some((owner, by)) = self.tooltip else {
             return;
         };
         let Some(node) = self.nodes.get(&owner) else {
             self.tooltip = None;
             return;
         };
-        let Some(text) = self.tooltip_text(owner) else {
+        let (anchor, rtl, in_editor) = (
+            node.bounds,
+            node.resolved.rtl(),
+            node.kind == Kind::TextArea,
+        );
+        let Some(tooltip) = self.tooltip_for(owner, by).map(Cow::into_owned) else {
             return;
         };
+        let custom = tooltip.style.as_deref();
+        let positive = |value: Option<f32>, default: f32| {
+            value.filter(|value| *value > 0.0).unwrap_or(default)
+        };
+        let padding = positive(custom.map(|style| style.padding), 8.0);
+        let radius = positive(custom.map(|style| style.radius), 6.0);
         let style = TextStyle {
-            font_size: 13.0,
-            family: self.theme.font_family.clone(),
+            font_size: custom.and_then(|style| style.font_size).unwrap_or(13.0),
+            family: custom
+                .and_then(|style| style.font_family.clone())
+                .unwrap_or_else(|| self.theme.font_family.clone()),
+            weight: custom.and_then(|style| style.font_weight).unwrap_or(400),
+            italic: custom.and_then(|style| style.italic).unwrap_or(false),
             wrap: TextWrap::Word,
             ..TextStyle::default()
         };
-        let padding = 8.0;
-        let measured = measurer.measure_styled(&text, &style, Some(280.0));
-        let viewport = self.nodes[&self.root].bounds;
-        let width = (measured.width + padding * 2.0).min(viewport.width);
-        let height = measured.height + padding * 2.0;
-        let mut rect = Rect {
-            x: if node.resolved.rtl() {
-                node.bounds.x + node.bounds.width - width
-            } else {
-                node.bounds.x
-            },
-            y: node.bounds.y + node.bounds.height + 6.0,
-            width,
-            height,
+        let wrap = match custom.map(|style| style.max_width) {
+            Some(Length::Px(width)) => (width - padding * 2.0).max(1.0),
+            _ => 280.0,
         };
-        // Editor messages belong to a spot in the text, not to the whole editor.
-        let anchor = self.pointer.filter(|_| node.kind == Kind::TextArea);
-        if let Some(pointer) = anchor {
-            rect.x = pointer.x;
-            rect.y = pointer.y + 18.0;
-        }
-        rect.x = rect.x.clamp(0.0, (viewport.width - width).max(0.0));
-        if rect.y + height > viewport.height {
-            rect.y = (anchor.map_or(node.bounds.y, |pointer| pointer.y) - height - 6.0).max(0.0);
-        }
+        let measured = measurer.measure_styled(&tooltip.text, &style, Some(wrap));
+        let window = self.nodes[&self.root].bounds;
+        let size = Size::new(
+            (measured.width + padding * 2.0).min(window.width),
+            measured.height + padding * 2.0,
+        );
+        // Editor messages belong to a spot in the text, not to the whole
+        // editor, unless a placement was asked for.
+        let pointer = self.pointer.filter(|_| {
+            by == Dwell::Pointer && in_editor && tooltip.placement == TooltipPlacement::Auto
+        });
+        let rect = match pointer {
+            Some(pointer) => {
+                let y = pointer.y + 18.0;
+                Rect {
+                    x: pointer.x.clamp(0.0, (window.width - size.width).max(0.0)),
+                    y: if y + size.height > window.height {
+                        (pointer.y - size.height - TOOLTIP_GAP).max(0.0)
+                    } else {
+                        y
+                    },
+                    width: size.width,
+                    height: size.height,
+                }
+            }
+            None => place_tooltip(tooltip.placement, rtl, anchor, size, window),
+        };
         self.painted_overlay(rect);
         scene.primitives.push(Primitive::Quad {
             rect,
-            color: self.theme.popup,
-            radius: 6.0,
+            color: custom
+                .and_then(|style| style.background)
+                .unwrap_or(self.theme.popup),
+            radius,
         });
         scene.primitives.push(Primitive::StyledText {
             rect: Rect {
@@ -163,9 +395,11 @@ impl Context {
                 width: measured.width,
                 height: measured.height,
             },
-            text,
+            text: tooltip.text,
             style,
-            color: self.theme.text,
+            color: custom
+                .and_then(|style| style.foreground)
+                .unwrap_or(self.theme.text),
         });
     }
 

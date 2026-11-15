@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Align, Axis, Length, MenuItem, PopoverOptions, SplitOptions, Tab, TextInput};
+use crate::{Align, Axis, Length, MenuItem, PopoverOptions, SplitOptions, Tab, TextInput, Tooltip};
 use glassmere_scene::Color;
 use std::rc::Rc;
 
@@ -41,12 +41,21 @@ impl<M> CommandPalette<M> {
 }
 
 impl<'a, M: 'static> Ui<'a, M> {
-    /// Attaches hover help to the previously declared widget. It appears after a
-    /// short dwell and doubles as the widget's accessible description.
+    /// Attaches help to the previously declared widget. It appears after a
+    /// short dwell of the pointer or of keyboard focus, and doubles as the
+    /// widget's accessible description. The same as
+    /// `tooltip_with(Tooltip::new(text))`.
     #[track_caller]
     pub fn tooltip(&mut self, text: impl Into<String>) {
+        self.tooltip_with(Tooltip::new(text));
+    }
+
+    /// `tooltip` with a say in where the tooltip goes, how long it waits and how
+    /// it looks. Text alone is a tooltip: `ui.tooltip_with("Save")`.
+    #[track_caller]
+    pub fn tooltip_with(&mut self, tooltip: impl Into<Tooltip>) {
         if let Some(element) = self.declared() {
-            element.tooltip = Some(text.into());
+            element.tooltip = Some(Box::new(tooltip.into()));
         }
     }
 
@@ -210,7 +219,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                                     offset: Some((0.0, 0.0)),
                                     ..Style::button()
                                 },
-                                tooltip: Some(name),
+                                tooltip: Some(Box::new(Tooltip::new(name))),
                                 control: Control::StripScroll { end },
                                 ..Element::new(WidgetKey::Named(key.into()), Kind::Button)
                             });
@@ -474,6 +483,45 @@ impl<'a, M: 'static> Ui<'a, M> {
             true,
             Length::Px(220.0),
         );
+        self.context_area(key, popup, items.to_vec(), style, content);
+        self.set_handler(pick);
+    }
+
+    /// Content with a right-click (or Shift+F10 / Menu key) menu that is
+    /// `menu`: its commands, separators and submenus, which open beside the
+    /// menu they are in to any depth. Choosing a command activates it,
+    /// exactly as in [`Ui::menu_bar`]: through the command the view declared,
+    /// with [`Ui::command_button`]. A command that is disabled cannot be
+    /// chosen.
+    #[track_caller]
+    pub fn command_context_menu(
+        &mut self,
+        menu: &crate::Menu,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_, M>),
+    ) {
+        let key = self.next_key();
+        let chosen = self.take_command(&key, Kind::ContextArea, &menu.entries);
+        let items = crate::platform::level_items(&menu.entries);
+        let owner = self.context.child(self.parent, &key, Kind::ContextArea);
+        let popup = self.menu_level(owner, &menu.entries, &items, Length::Px(220.0));
+        self.context_area(key, popup, items, style, content);
+        if let Some(id) = chosen {
+            self.host.commands.push(id);
+        }
+    }
+
+    /// The area of a context menu, with `popup` (its open levels, if any)
+    /// ahead of `content`.
+    #[track_caller]
+    fn context_area(
+        &mut self,
+        key: WidgetKey,
+        popup: Vec<Element>,
+        items: Vec<MenuItem>,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_, M>),
+    ) {
         self.group(key, Kind::ContextArea, style, |ui| {
             // The popup panel must be the first child, like combo and menu owners.
             ui.elements.extend(popup);
@@ -482,10 +530,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             }
             content(ui);
         });
-        self.set_handler(pick);
-        self.set_control(Control::ContextMenu {
-            items: items.to_vec(),
-        });
+        self.set_control(Control::ContextMenu { items });
     }
 
     /// An anchored, non-modal panel below the previously declared widget,

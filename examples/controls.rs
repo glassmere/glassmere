@@ -1,6 +1,6 @@
 use glassmere::{
-    App, AppOptions, Button, Color, DirectionChoice, Effects, FontFamily, Label, Length, MenuItem,
-    NumberOptions, Size, Style, TextInput, TextWrap, Toast, Ui, run, suggest,
+    Align, App, AppOptions, Button, Color, DirectionChoice, Effects, FontFamily, Label, Length,
+    Link, MenuItem, NumberOptions, Size, Style, TextInput, TextWrap, Toast, Ui, run, suggest,
 };
 use std::time::Duration;
 
@@ -23,6 +23,10 @@ enum Msg {
     Password(String),
     Submitted,
     Notify(bool),
+    Airplane(bool),
+    Advanced(bool),
+    Budget(std::ops::RangeInclusive<f64>),
+    Documentation,
     Mode(usize),
     Volume(f64),
     Theme(usize),
@@ -39,6 +43,10 @@ struct Controls {
     name: String,
     password: String,
     notifications: bool,
+    airplane: bool,
+    advanced: bool,
+    budget: std::ops::RangeInclusive<f64>,
+    opened: u32,
     mode: usize,
     volume: f64,
     theme: usize,
@@ -46,6 +54,7 @@ struct Controls {
     city: String,
     action: String,
     submissions: u32,
+    exporting: bool,
 }
 
 /// The menu's items, shared by the view and the `Action` message.
@@ -66,6 +75,10 @@ impl App for Controls {
             Msg::Password(password) => self.password = password,
             Msg::Submitted => self.submissions += 1,
             Msg::Notify(on) => self.notifications = on,
+            Msg::Airplane(on) => self.airplane = on,
+            Msg::Advanced(open) => self.advanced = open,
+            Msg::Budget(range) => self.budget = range,
+            Msg::Documentation => self.opened += 1,
             Msg::Mode(mode) => self.mode = mode,
             Msg::Volume(volume) => self.volume = volume,
             Msg::Theme(theme) => self.theme = theme,
@@ -87,6 +100,7 @@ impl App for Controls {
             }
             Msg::Undo => self.action = "save undone".into(),
             Msg::Export => {
+                self.exporting = true;
                 // Work on a thread; what it sends arrives as a message.
                 let _ = effects.spawn(
                     "export",
@@ -97,9 +111,12 @@ impl App for Controls {
                     |()| Msg::ExportFailed,
                 );
             }
-            Msg::ExportFailed => effects.toast(Toast::error(
-                "Export failed: the disk is full. Free some space and try again.",
-            )),
+            Msg::ExportFailed => {
+                self.exporting = false;
+                effects.toast(Toast::error(
+                    "Export failed: the disk is full. Free some space and try again.",
+                ));
+            }
         }
     }
 
@@ -215,21 +232,62 @@ impl App for Controls {
                         )
                         .style(hint),
                     );
+                    // The pointer or Shift + arrows select it and Ctrl/Cmd + C copies it; nothing edits it.
+                    ui.label(
+                        Label::new(
+                            "Order 4711 shipped on Monday. Select any of this text to copy it.",
+                        )
+                        .selectable()
+                        .style(wrapped.clone()),
+                    );
                     ui.label(Label::new("Shaped serif · bold italic").style(serif));
                     ui.label(Label::new("let native = true;").style(mono));
                     // Disabled, so it never sends: the name's message is only a placeholder here.
                     ui.enabled(false, |ui| {
                         ui.text_input("Unavailable field", "Unavailable field", Msg::Name);
                     });
+                    // Busy indicators only while the export runs, so the window is idle after.
+                    let centered = Style {
+                        gap: 12.0,
+                        align_items: Align::Center,
+                        ..Style::default()
+                    };
+                    ui.row(centered, |ui| {
+                        ui.button(Button::new("Export in the background").on_click(Msg::Export));
+                        if self.exporting {
+                            ui.spinner("Exporting");
+                        }
+                    });
+                    if self.exporting {
+                        ui.progress("Export progress", None);
+                    }
+                    // Enter activates a focused link; opening the page is the application's to do.
+                    ui.link(Link::new("Read the documentation").on_click(Msg::Documentation));
+                    if self.opened > 0 {
+                        ui.label(format!("Documentation opened: {}", self.opened));
+                    }
                 });
                 ui.column(choice_column, |ui| {
                     ui.label(Label::new("02 / Choices & actions").style(bold));
                     ui.checkbox("Notifications", self.notifications, Msg::Notify);
+                    ui.switch("Airplane mode", self.airplane, Msg::Airplane);
                     ui.row(Style::default().gap(8.0), |ui| {
                         ui.radio("Quiet", self.mode, 0, Msg::Mode);
                         ui.radio("Balanced", self.mode, 1, Msg::Mode);
                     });
                     ui.slider("Volume", self.volume, 0.0..=100.0, 5.0, Msg::Volume);
+                    ui.progress("Volume level", Some(self.volume / 100.0));
+                    // Two thumbs that never cross; each is a slider of its own for the keyboard.
+                    ui.range_slider("Budget", self.budget.clone(), 0.0..=100.0, 5.0, Msg::Budget);
+                    // The application owns whether it is open; Right opens it and Left closes it.
+                    ui.collapsible("Advanced", self.advanced, Msg::Advanced, |ui| {
+                        ui.label(
+                            Label::new("Only declared while the section is open.").style(Style {
+                                foreground: Some(muted),
+                                ..wrapped.clone()
+                            }),
+                        );
+                    });
                     ui.label("Theme");
                     ui.combo_box(
                         "Theme",
@@ -251,7 +309,6 @@ impl App for Controls {
                         self.notifications, self.mode, self.volume, self.theme
                     ));
                     ui.label(format!("Fields: {} kg / {}", self.quantity, self.city));
-                    ui.button(Button::new("Export in the background").on_click(Msg::Export));
                 });
             });
             ui.label(
@@ -273,7 +330,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     run(
         AppOptions {
             title: "Glassmere / Text and controls".into(),
-            size: Size::new(880.0, 740.0),
+            size: Size::new(880.0, 960.0),
             frame_limit: smoke.then_some(3),
             direction,
             ..AppOptions::default()
@@ -282,6 +339,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             name: String::from("Hello, 世界 👩‍💻"),
             password: String::new(),
             notifications: false,
+            airplane: false,
+            advanced: false,
+            budget: 20.0..=80.0,
+            opened: 0,
             mode: 0,
             volume: 50.0,
             theme: 0,
@@ -289,6 +350,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             city: String::new(),
             action: String::from("none"),
             submissions: 0,
+            exporting: false,
         },
     )
 }

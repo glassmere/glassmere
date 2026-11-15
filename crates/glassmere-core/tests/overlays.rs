@@ -6,7 +6,7 @@ use glassmere_core::{
 };
 use glassmere_scene::{Point, Primitive, Size};
 use std::time::Duration;
-use support::{Driven, center, click, on};
+use support::{Driven, center, click, on, shows};
 
 const ROOT: Size = Size::new(500.0, 400.0);
 
@@ -352,6 +352,32 @@ fn context_menus_open_at_the_pointer_or_focus_navigate_and_choose_once() {
         "inner",
         "focus returns to where the menu was opened"
     );
+}
+
+#[test]
+fn a_press_on_empty_space_outside_an_open_context_menu_closes_and_repaints_it_at_once() {
+    let mut driven = Driven::new(ROOT, Menu::default(), menu_page);
+    driven
+        .context
+        .event(Event::ContextMenu(Point { x: 100.0, y: 120.0 }));
+    driven.frame();
+    assert!(driven.context.find(&["area", "$popup"]).is_some());
+    assert!(shows(&driven.context, "Paste"));
+
+    // Nothing is under the pointer here, so the press itself changes nothing else.
+    let empty = Point { x: 480.0, y: 380.0 };
+    driven.context.event(Event::PointerMoved(empty));
+    assert!(
+        driven.context.event(Event::PointerDown),
+        "a host redraws only for a handled event"
+    );
+    driven.frame();
+    assert!(driven.context.find(&["area", "$popup"]).is_none());
+    assert!(
+        !shows(&driven.context, "Paste"),
+        "the menu is no longer drawn"
+    );
+    assert!(driven.state().picks.is_empty());
 }
 
 #[derive(Default)]

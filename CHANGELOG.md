@@ -4,6 +4,43 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [0.1.6] - 2026-11-15
+
+### Added
+
+- Basic controls, each taking a spec with `new(label)` and `style(..)`, and shown in `examples/controls.rs`:
+  - `Ui::progress`, a bar for a value from 0 to 1, or an indeterminate one for `None`.
+  - `Ui::spinner`, a busy indicator.
+  - `Ui::switch`, an on and off toggle whose thumb eases with the style's transition.
+  - `Ui::collapsible`, a header that shows or hides the content under it. The application owns the open state.
+  - `Ui::link`, underlined text that sends a message.
+  - `Ui::range_slider`, a slider with two thumbs that cannot cross.
+  - `Label::selectable`, a label whose text can be selected and copied.
+- Stylesheet variables and nesting. `--name: value` declares a variable and `var(--name)` or `var(--name, fallback)` uses it. A class may contain `&:state` and `&.name` blocks. Both work in files and in `style_sheet!`.
+- Animated GIF, WebP and APNG play in image widgets. `Image::animated` builds one from `ImageFrame`s, and `Image::frames` and `Image::loops` read it back. A background image shows the first frame.
+- Rows of a list or tree can differ in height: `ListModel::row_heights` returns a `RowHeights`, and `TreeModel::set_row_height` sets one row of a tree. Scrolling, paging and the scrollbar follow the real heights.
+- Property grid:
+  - A grid with a `height` declares only the rows in view, however many properties there are. Its rows and group headers are then 44 px high.
+  - Several objects can be edited at once: `PropertyGrid::mixed` shows "Mixed" where they differ, and `#[derive(Properties)]` generates `properties_many`. A `flatten` group shows the first object's rows unless it is `#[property(flatten, many)]`, which needs `properties_many` on the nested type.
+  - A fieldless enum that derives `PropertyChoice` is edited as a drop-down of its variants.
+  - An `Option<T>` field is edited as `T` beside a box that sets or clears it, through `PropertyGrid::optional`.
+- `Ui::calendar`, a month grid, and `Ui::date_picker`, a field that opens one, both on `Date` with `min`, `max` and the first weekday. `Date::new` checks a date, `Date::weekday` returns the new `Weekday`. `today` marks a day with a dot and is where a calendar without a selection starts. Month and weekday names are catalog keys, with German and Czech in `glassmere-fluent`. See `examples/dates.rs`.
+- `Ui::command_menu` and `Ui::command_context_menu` show a `Menu` with separators and nested submenus, as a menu button and as a context menu. Their commands are sent the way `Ui::menu_bar` sends them.
+- `Ui::tooltip_with` takes a `Tooltip` with a placement (`TooltipPlacement`: auto, above, below, before or after), a delay and a style. A placed tooltip flips at the window edge, and before and after mirror in a right-to-left window.
+- `GridModel::footer` gives a data grid rows pinned under its body, for totals.
+
+### Changed
+
+- A tooltip also shows when its widget gets the focus from the keyboard, and hides on blur, on Escape or on a key that changes the value. A tooltip shown this way takes that Escape.
+- A tooltip shows sooner when the pointer moves to it right after another one was on show.
+- A submenu opens after the pointer has rested on its row for 200 ms, and stays open while the pointer crosses other rows on the way to it. A click, Enter and the arrow keys open it at once.
+
+### Fixed
+
+- A dock panel keeps its scroll position and undo history while another tab of its group is selected. Before, selecting another tab rebuilt the panel's content.
+- A press on empty space outside a context menu removes it at once. Before, it could stay painted until the next redraw.
+- A submenu that fits on neither side of its row in a narrow window stays inside the window and clear of the row that opened it, instead of covering its parent menu.
+
 ## [0.1.5] - 2026-11-14
 
 ### Changed

@@ -12,6 +12,13 @@ impl Context {
         false
     }
 
+    /// Whether `id` is in the tree, as opposed to removed or parked: dock
+    /// panel content whose tab is not selected keeps its nodes, which nothing
+    /// may focus, press or run a command of.
+    pub(super) fn attached(&self, id: NodeId) -> bool {
+        self.within(id, self.root)
+    }
+
     /// Scope ancestors of `id`, innermost first.
     fn scopes_of(&self, id: NodeId) -> Vec<NodeId> {
         let mut scopes = Vec::new();
@@ -149,6 +156,7 @@ impl Context {
         }
         let previous = self.noted_focus;
         self.noted_focus = focused;
+        self.blur_tooltip();
         if let Some(old) = previous.filter(|old| Some(*old) != focused) {
             self.queue_blur(old);
         }

@@ -1,3 +1,4 @@
+use super::control_paint::slider_track;
 use super::*;
 use crate::{TextMove, controls::slider_value};
 
@@ -32,6 +33,15 @@ impl Context {
         let Some(node) = self.nodes.get_mut(&id).filter(|node| node.enabled) else {
             return false;
         };
+        // Selected and copied, never edited.
+        if node.read_only()
+            && !matches!(
+                edit,
+                TextEdit::Move { .. } | TextEdit::Select { .. } | TextEdit::SelectAll
+            )
+        {
+            return false;
+        }
         let Some(editor) = &mut node.editor else {
             return false;
         };
@@ -98,9 +108,10 @@ impl Context {
 
     fn slider_pointer(&mut self, id: NodeId, position: Point) -> bool {
         let node = &self.nodes[&id];
-        let Control::Slider { min, max, .. } = node.control else {
+        let Control::Slider { min, max, span, .. } = node.control else {
             return false;
         };
+        let (low, high) = span.unwrap_or((min, max));
         let fraction = ((position.x - node.bounds.x - 12.0) / (node.bounds.width - 24.0).max(1.0))
             .clamp(0.0, 1.0);
         // A right-to-left slider has its minimum on the right.
@@ -109,7 +120,56 @@ impl Context {
         } else {
             fraction
         };
-        self.set_number(id, min + f64::from(fraction) * (max - min))
+        self.set_number(id, low + f64::from(fraction) * (high - low))
+    }
+
+    /// The thumb of a range slider that a press at `position` takes: the
+    /// nearer of its two, and of two on top of each other the one that can
+    /// move toward the press. Anything else is taken as it is.
+    fn range_thumb_at(&self, id: NodeId, position: Point) -> NodeId {
+        let Some(owner) = self.nodes[&id]
+            .parent
+            .filter(|parent| self.nodes[parent].kind == Kind::RangeSlider)
+        else {
+            return id;
+        };
+        let [low, high] = self.nodes[&owner].children[..] else {
+            return id;
+        };
+        let x = |thumb: NodeId| {
+            let node = &self.nodes[&thumb];
+            let Control::Slider {
+                value,
+                span: Some((from, to)),
+                ..
+            } = node.control
+            else {
+                return node.bounds.x;
+            };
+            let fraction = ((value - from) / (to - from)) as f32;
+            let track = slider_track(node.bounds);
+            track.x
+                + track.width
+                    * if node.resolved.rtl() {
+                        1.0 - fraction
+                    } else {
+                        fraction
+                    }
+        };
+        let (near, far) = (x(low) - position.x, x(high) - position.x);
+        match near.abs().total_cmp(&far.abs()) {
+            std::cmp::Ordering::Less => low,
+            std::cmp::Ordering::Greater => high,
+            // On the thumbs or midway between them: toward the greater value.
+            std::cmp::Ordering::Equal => {
+                let greater_is_right = !self.nodes[&low].resolved.rtl();
+                if (position.x > x(low)) == greater_is_right {
+                    high
+                } else {
+                    low
+                }
+            }
+        }
     }
 
     pub(super) fn editor_pointer(&mut self, id: NodeId, position: Point, extend: bool) -> bool {
@@ -117,9 +177,22 @@ impl Context {
         let Some(editor) = &node.editor else {
             return false;
         };
+        // A label's text is where it is drawn; a field's is its scrolled content box.
+        let origin = if node.read_only() {
+            let text = self.text_place(node).0;
+            Point {
+                x: text.x,
+                y: text.y,
+            }
+        } else {
+            Point {
+                x: node.bounds.x + node.style.padding - editor.scroll_x + editor.align_x,
+                y: node.bounds.y + node.style.padding,
+            }
+        };
         let local = Point {
-            x: position.x - node.bounds.x - node.style.padding + editor.scroll_x - editor.align_x,
-            y: position.y - node.bounds.y - node.style.padding,
+            x: position.x - origin.x,
+            y: position.y - origin.y,
         };
         let (cursor, affinity) = editor.geometry.hit_affinity(local);
         let cursor = editor.display_offset(cursor);
@@ -207,7 +280,7 @@ impl Context {
         Some((panel.parent?, index))
     }
 
-    fn is_submenu(&self, id: NodeId) -> bool {
+    pub(super) fn is_submenu(&self, id: NodeId) -> bool {
         self.nodes
             .get(&id)
             .is_some_and(|node| matches!(node.control, Control::Submenu { .. }))
@@ -226,7 +299,7 @@ impl Context {
 
     /// Closes the submenus opened from `owner`'s menu, so that it is the
     /// innermost one. False when `owner` has no open menu.
-    fn close_levels_below(&mut self, owner: NodeId) -> bool {
+    pub(super) fn close_levels_below(&mut self, owner: NodeId) -> bool {
         if self.popup_of(owner).is_none() {
             return false;
         }
@@ -256,7 +329,8 @@ impl Context {
         true
     }
 
-    fn close_popup(&mut self) -> bool {
+    pub(super) fn close_popup(&mut self) -> bool {
+        self.menu_dwell = None;
         let innermost = self.popup.take();
         // Focus goes back to where the outermost menu took it from.
         let Some(popup) = self.popup_parents.drain(..).next().or(innermost) else {
@@ -273,27 +347,34 @@ impl Context {
         true
     }
 
-    fn open_popup(&mut self, owner: NodeId) -> bool {
+    pub(super) fn open_popup(&mut self, owner: NodeId) -> bool {
         self.open_popup_at(owner, None)
     }
 
     pub(super) fn open_popup_at(&mut self, owner: NodeId, anchor: Option<Point>) -> bool {
+        self.menu_dwell = None;
         let Some(node) = self.nodes.get(&owner).filter(|node| node.enabled) else {
             return false;
         };
+        // A calendar has no rows to highlight: its own cursor is the one.
+        let calendar = matches!(node.control, Control::DatePicker { .. });
         let selected = match &node.control {
             Control::Combo { selected, .. } => *selected,
             _ => 0,
         };
-        let Some(items) = self.popup_items(owner) else {
-            return false;
-        };
-        let highlighted = if items.get(selected).is_some_and(|item| item.enabled) {
-            selected
-        } else if let Some(index) = items.iter().position(|item| item.enabled) {
-            index
+        let highlighted = if calendar {
+            0
         } else {
-            return false;
+            let Some(items) = self.popup_items(owner) else {
+                return false;
+            };
+            if items.get(selected).is_some_and(|item| item.enabled) {
+                selected
+            } else if let Some(index) = items.iter().position(|item| item.enabled) {
+                index
+            } else {
+                return false;
+            }
         };
         // A row of an open menu opens its own beside it, and that menu stays.
         if let Some((parent, index)) = self
@@ -321,7 +402,7 @@ impl Context {
         self.popup = Some(PopupState {
             owner,
             highlighted,
-            reveal_highlight: true,
+            reveal_highlight: !calendar,
             anchor,
             return_focus,
         });
@@ -505,7 +586,7 @@ impl Context {
             return false;
         };
         match node.control {
-            Control::Combo { .. } | Control::Menu { .. } => {
+            Control::Combo { .. } | Control::Menu { .. } | Control::DatePicker { .. } => {
                 if self.popup_of(id).is_some() {
                     self.close_popup()
                 } else {
@@ -527,6 +608,12 @@ impl Context {
                 self.choose(owner, index)
             }
             Control::Tab { .. } => self.select_tab(id),
+            Control::CalendarDay { date, .. } => self
+                .calendar_grid_of(id)
+                .is_some_and(|grid| self.calendar_pick(grid, date)),
+            Control::CalendarStep { months } => self
+                .calendar_grid_of(id)
+                .is_some_and(|grid| self.calendar_step(grid, months)),
             Control::StripScroll { end } => {
                 let Some(strip) = node.parent else {
                     return false;
@@ -560,6 +647,14 @@ impl Context {
 
     fn popup_key(&mut self, key: Key) -> Option<bool> {
         let popup = self.popup?;
+        // The keyboard has the menu now, wherever the pointer rests.
+        self.menu_dwell = None;
+        if matches!(
+            self.nodes.get(&popup.owner).map(|owner| &owner.control),
+            Some(Control::DatePicker { .. })
+        ) {
+            return self.date_picker_key(popup.owner, key);
+        }
         // An autocomplete field keeps typing while its list is open: only the
         // arrows and Escape belong to the list, and Enter only with a highlight.
         if self
@@ -663,37 +758,30 @@ impl Context {
                         self.divider_pointer(id, *position);
                         return Some(true);
                     }
-                    if self.nodes[&id].kind == Kind::TextInput {
+                    if self.nodes[&id].editor.is_some() {
                         self.pointer = Some(*position);
                         return Some(self.editor_pointer(id, *position, true));
                     }
                 }
-                if let Some(id) = self.hit_test(*position)
-                    && let Some((owner, index)) = self.row_place(id)
-                    && self.popup_of(owner).is_some()
-                    // The row whose submenu is open keeps it; any other row
-                    // of that menu closes it and takes the highlight.
-                    && self.popup_of(id).is_none()
-                {
-                    let opens = self.is_submenu(id) && self.nodes[&id].enabled;
-                    let mut changed = self.close_levels_below(owner);
-                    if let Some(popup) = &mut self.popup {
-                        popup.highlighted = index;
-                        popup.reveal_highlight = false;
-                    }
-                    if opens {
-                        self.pointer = Some(*position);
-                        changed |= self.open_popup(id);
-                    }
-                    if changed {
-                        self.pointer = Some(*position);
-                        return Some(true);
-                    }
+                // A row of an open menu waits for the pointer to rest on it
+                // before it opens a submenu or closes the one that is open.
+                // The row whose submenu is open keeps it, and a pointer off
+                // the rows waits for nothing.
+                match self
+                    .hit_test(*position)
+                    .and_then(|id| Some((id, self.row_place(id)?)))
+                    .filter(|(id, (owner, _))| {
+                        self.popup_of(*owner).is_some() && self.popup_of(*id).is_none()
+                    }) {
+                    Some((id, (owner, index))) => self.hover_menu_row(id, owner, index),
+                    None => self.menu_dwell = None,
                 }
             }
             Event::PointerDown | Event::PointerDownWithShift => {
                 let position = self.pointer?;
-                let target = self.hit_test(position);
+                let target = self
+                    .hit_test(position)
+                    .map(|id| self.range_thumb_at(id, position));
                 let outermost = self.popup_levels().next();
                 if let Some(popup) = outermost {
                     let inside = self
@@ -714,17 +802,18 @@ impl Context {
                         self.captured = Some(id);
                         return Some(true);
                     }
-                    if matches!(kind, Kind::TextInput | Kind::Slider) {
+                    if matches!(kind, Kind::TextInput | Kind::Slider) || self.nodes[&id].read_only()
+                    {
                         self.focus_control(id);
                         self.captured = Some(id);
-                        if kind == Kind::TextInput {
+                        if kind == Kind::Slider {
+                            self.slider_pointer(id, position);
+                        } else {
                             self.editor_pointer(
                                 id,
                                 position,
                                 matches!(event, Event::PointerDownWithShift),
                             );
-                        } else {
-                            self.slider_pointer(id, position);
                         }
                         return Some(true);
                     }
@@ -758,10 +847,21 @@ impl Context {
                             return Some(handled);
                         }
                     }
+                    Kind::Disclosure => {
+                        if let Some(handled) = self.disclosure_key(id, *key) {
+                            return Some(handled);
+                        }
+                    }
+                    Kind::Calendar => {
+                        if let Some(handled) = self.calendar_key(id, *key) {
+                            return Some(handled);
+                        }
+                    }
                     _ => {}
                 }
                 let node = &self.nodes[&id];
                 if node.editor.is_some() {
+                    let read_only = node.read_only();
                     let steps = match key {
                         Key::ArrowUp => 1.0,
                         Key::ArrowDown => -1.0,
@@ -797,10 +897,10 @@ impl Context {
                             select: *shift,
                             word: false,
                         },
-                        Key::Backspace => TextEdit::Backspace { word: false },
-                        Key::Delete => TextEdit::Delete { word: false },
-                        Key::Escape => TextEdit::CancelComposition,
-                        Key::Enter => {
+                        Key::Backspace if !read_only => TextEdit::Backspace { word: false },
+                        Key::Delete if !read_only => TextEdit::Delete { word: false },
+                        Key::Escape if !read_only => TextEdit::CancelComposition,
+                        Key::Enter if !read_only => {
                             self.queue_submit(id);
                             return Some(true);
                         }
@@ -857,7 +957,9 @@ impl Context {
                     self.activate(siblings[next]);
                     return Some(true);
                 }
+                // A date picker opens with Alt+Down, which is no key of its own.
                 if matches!(node.kind, Kind::ComboBox | Kind::MenuButton)
+                    && !matches!(node.control, Control::DatePicker { .. })
                     && matches!(key, Key::ArrowDown | Key::ArrowUp)
                 {
                     return Some(self.open_popup(id));
@@ -866,6 +968,18 @@ impl Context {
             _ => {}
         }
         None
+    }
+
+    /// Right opens a section and Left closes it, whichever way the text
+    /// runs, as they do on a tree row.
+    fn disclosure_key(&mut self, id: NodeId, key: Key) -> Option<bool> {
+        let Control::Disclosure { open, .. } = self.nodes[&id].control else {
+            return None;
+        };
+        match (key, open) {
+            (Key::ArrowRight, false) | (Key::ArrowLeft, true) => Some(self.activate(id)),
+            _ => None,
+        }
     }
 
     pub(super) fn control_action(&mut self, target: NodeId, action: &Action) -> Option<bool> {
@@ -913,6 +1027,12 @@ impl Context {
             }
             Action::SetSelection { anchor, focus } => {
                 Some(self.set_selection(target, *anchor, *focus))
+            }
+            Action::Expand | Action::Collapse if node.kind == Kind::Disclosure => {
+                let opens = matches!(action, Action::Expand);
+                let changes =
+                    matches!(node.control, Control::Disclosure { open, .. } if open != opens);
+                Some(changes && self.activate(target))
             }
             Action::Expand => Some(self.open_popup(target)),
             Action::Collapse => Some(self.popup_of(target).is_some() && self.close_popup()),
