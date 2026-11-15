@@ -95,7 +95,7 @@ impl Context {
             .iter()
             .filter_map(|(id, node)| {
                 (node.resolved.rtl()
-                    && node.kind == Kind::Slider
+                    && matches!(node.kind, Kind::Slider | Kind::RangeSlider)
                     && node.changed_frame == self.frame)
                     .then_some(*id)
             })
@@ -292,42 +292,58 @@ impl Context {
             }
             Control::Spinner { .. } => self.paint_spinner(node, scene),
             Control::Switch { .. } => self.paint_switch(node, shown.knob, scene),
+            Control::RangeSlider { .. } => self.paint_range_track(node, scene),
             Control::Disclosure { open, .. } => {
                 self.paint_chevron(node, open, shown.foreground, scene)
             }
             _ => {}
         }
         if let Control::Slider {
-            value, min, max, ..
+            value,
+            min,
+            max,
+            span,
+            ..
         } = node.control
         {
-            let track = Rect {
-                x: node.bounds.x + 12.0,
-                y: node.bounds.y + node.bounds.height - 17.0,
-                width: (node.bounds.width - 24.0).max(1.0),
-                height: 4.0,
-            };
-            let fraction = ((value - min) / (max - min)) as f32;
+            let (low, high) = span.unwrap_or((min, max));
+            let track = slider_track(node.bounds);
+            let fraction = ((value - low) / (high - low)) as f32;
             let rtl = node.resolved.rtl();
             let thumb = if rtl { 1.0 - fraction } else { fraction };
-            scene.primitives.push(Primitive::Quad {
-                rect: track,
-                color: self.theme.track,
-                radius: 2.0,
-            });
-            scene.primitives.push(Primitive::Quad {
-                rect: Rect {
-                    x: if rtl {
-                        track.x + track.width * thumb
-                    } else {
-                        track.x
+            // The thumbs of a range slider sit on the track that the control
+            // holding them draws.
+            if span.is_none() {
+                scene.primitives.push(Primitive::Quad {
+                    rect: track,
+                    color: self.theme.track,
+                    radius: 2.0,
+                });
+                scene.primitives.push(Primitive::Quad {
+                    rect: Rect {
+                        x: if rtl {
+                            track.x + track.width * thumb
+                        } else {
+                            track.x
+                        },
+                        width: track.width * fraction,
+                        ..track
                     },
-                    width: track.width * fraction,
-                    ..track
-                },
-                color: self.theme.accent,
-                radius: 2.0,
-            });
+                    color: self.theme.accent,
+                    radius: 2.0,
+                });
+            } else if self.focused == Some(id) && self.quiet_focus != Some(id) {
+                scene.primitives.push(Primitive::Quad {
+                    rect: Rect {
+                        x: track.x + track.width * thumb - 9.0,
+                        y: track.y - 7.0,
+                        width: 18.0,
+                        height: 18.0,
+                    },
+                    color: self.theme.focus,
+                    radius: 9.0,
+                });
+            }
             scene.primitives.push(Primitive::Quad {
                 rect: Rect {
                     x: track.x + track.width * thumb - 7.0,
@@ -343,6 +359,47 @@ impl Context {
                 radius: 7.0,
             });
         }
+    }
+
+    /// A range slider's track, with the part between its thumbs filled. The
+    /// thumbs are its children, so they are drawn over it.
+    fn paint_range_track(&self, node: &Node, scene: &mut Scene) {
+        let thumbs: Vec<(f64, (f64, f64))> = node
+            .children
+            .iter()
+            .filter_map(|child| match self.nodes[child].control {
+                Control::Slider {
+                    value,
+                    span: Some(span),
+                    ..
+                } => Some((value, span)),
+                _ => None,
+            })
+            .collect();
+        let [(low, span), (high, _)] = thumbs[..] else {
+            return;
+        };
+        let track = slider_track(node.bounds);
+        let at = |value: f64| ((value - span.0) / (span.1 - span.0)) as f32;
+        let (from, to) = if node.resolved.rtl() {
+            (1.0 - at(high), 1.0 - at(low))
+        } else {
+            (at(low), at(high))
+        };
+        scene.primitives.push(Primitive::Quad {
+            rect: track,
+            color: self.theme.track,
+            radius: 2.0,
+        });
+        scene.primitives.push(Primitive::Quad {
+            rect: Rect {
+                x: track.x + track.width * from,
+                width: track.width * (to - from),
+                ..track
+            },
+            color: self.theme.accent,
+            radius: 2.0,
+        });
     }
 
     /// The part of a progress bar that is done, or the segment that sweeps
@@ -547,5 +604,16 @@ impl Context {
             .editor
             .as_ref()
             .and_then(|editor| editor.selected_text())
+    }
+}
+
+/// Where a slider's track runs: along the bottom of its box, inset to leave
+/// room for the thumb at either end.
+pub(super) fn slider_track(bounds: Rect) -> Rect {
+    Rect {
+        x: bounds.x + 12.0,
+        y: bounds.y + bounds.height - 17.0,
+        width: (bounds.width - 24.0).max(1.0),
+        height: 4.0,
     }
 }

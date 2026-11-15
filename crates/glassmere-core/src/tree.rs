@@ -342,6 +342,7 @@ impl Node {
                 | Control::Disclosure { label, .. }
                 | Control::Radio { label, .. }
                 | Control::Slider { label, .. }
+                | Control::RangeSlider { label }
                 | Control::Progress { label, .. }
                 | Control::Spinner { label }
                 | Control::Combo { label, .. }

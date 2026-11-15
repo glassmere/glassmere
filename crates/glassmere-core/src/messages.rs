@@ -94,6 +94,8 @@ pub const BUILTIN_MESSAGES: &[(&str, &str)] = &[
     ("glassmere-maximize", "Maximize"),
     ("glassmere-restore", "Restore"),
     ("glassmere-close", "Close"),
+    ("glassmere-range-minimum", "{ $name } minimum"),
+    ("glassmere-range-maximum", "{ $name } maximum"),
 ];
 
 /// Substitutes `{ $name }` placeholders, the subset of Fluent the built-in

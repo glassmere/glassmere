@@ -3,7 +3,9 @@
 
 use super::*;
 use crate::app::Handler;
+use crate::controls::slider_value;
 use crate::{Length, TextWrap, Transition};
+use std::ops::RangeInclusive;
 
 impl<'a, M: 'static> Ui<'a, M> {
     /// A progress bar: `Some(fraction)` fills that share of it, clamped to
@@ -162,5 +164,107 @@ impl<'a, M: 'static> Ui<'a, M> {
             self.set_handler(Handler::Message(message));
         }
         response
+    }
+
+    /// A slider with two thumbs for the ends of `value` over `range`: a drag
+    /// or a key on either sends `on_change` of the whole range it reaches,
+    /// snapped to `step`. The thumbs never cross, and each is read as a
+    /// slider of its own, named "minimum" or "maximum" after the label. A
+    /// `value` outside `range` or in the wrong order is shown clamped and
+    /// ordered.
+    #[track_caller]
+    pub fn range_slider(
+        &mut self,
+        slider: impl Into<RangeSlider>,
+        value: RangeInclusive<f64>,
+        range: RangeInclusive<f64>,
+        step: f64,
+        on_change: impl Fn(RangeInclusive<f64>) -> M + 'static,
+    ) -> Response<'a> {
+        let (min, max) = (*range.start(), *range.end());
+        if !(min.is_finite() && max.is_finite() && min < max && step.is_finite() && step > 0.0) {
+            self.misuse(
+                "range_slider requires finite ordered bounds and a positive step".to_owned(),
+            );
+            return Response::default();
+        }
+        let slider = slider.into();
+        let key = self.next_key();
+        let mut low = slider_value(*value.start(), min, max, step);
+        let mut high = slider_value(*value.end(), min, max, step);
+        if low > high {
+            std::mem::swap(&mut low, &mut high);
+        }
+        let on_change = std::rc::Rc::new(on_change);
+        let parent = self.context.child(self.parent, &key, Kind::RangeSlider);
+        let mut inner = self.scope(parent);
+        // Each thumb can reach as far as the other, and covers the whole box
+        // so that the track is one place to press.
+        for (name, message, thumb, reach, is_low) in [
+            (
+                "$minimum",
+                "glassmere-range-minimum",
+                low,
+                (min, high),
+                true,
+            ),
+            (
+                "$maximum",
+                "glassmere-range-maximum",
+                high,
+                (low, max),
+                false,
+            ),
+        ] {
+            inner.keyed(name, |ui| {
+                let key = ui.next_key();
+                let label = ui.tr_args(message, &[("name", slider.label.as_str().into())]);
+                ui.push(Element {
+                    style: Style {
+                        width: Length::Percent(1.0),
+                        height: Length::Percent(1.0),
+                        ..Style::default().offset(0.0, 0.0)
+                    },
+                    enabled: ui.enabled,
+                    control: Control::Slider {
+                        label,
+                        value: thumb,
+                        min: reach.0,
+                        max: reach.1,
+                        step,
+                        span: Some((min, max)),
+                    },
+                    ..Element::new(key, Kind::Slider)
+                });
+                let on_change = std::rc::Rc::clone(&on_change);
+                ui.set_handler(Handler::Map(Box::new(move |update| match update {
+                    ControlUpdate::Number(number) => {
+                        let number = slider_value(number, reach.0, reach.1, step);
+                        Some(on_change(if is_low {
+                            number..=reach.1
+                        } else {
+                            reach.0..=number
+                        }))
+                    }
+                    _ => None,
+                })));
+            });
+        }
+        let children = inner.elements;
+        self.push(Element {
+            text: format!("{}: {low:.2} \u{2013} {high:.2}", slider.label),
+            style: slider.style.unwrap_or(Style {
+                width: Length::Px(280.0),
+                height: Length::Px(64.0),
+                padding: 10.0,
+                ..Style::button()
+            }),
+            enabled: self.enabled,
+            control: Control::RangeSlider {
+                label: slider.label,
+            },
+            children,
+            ..Element::new(key, Kind::RangeSlider)
+        })
     }
 }

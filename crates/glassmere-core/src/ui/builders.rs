@@ -145,6 +145,32 @@ impl<M> Link<M> {
     }
 }
 
+/// A slider with two thumbs. `ui.range_slider("Price", low..=high, range,
+/// step, Msg::Price)` is the short form of `RangeSlider::new("Price")`; the
+/// label is written above the track, and names each thumb as "Price minimum"
+/// and "Price maximum".
+#[derive(Clone, Debug, Default)]
+pub struct RangeSlider {
+    pub(crate) label: String,
+    pub(crate) style: Option<Style>,
+}
+
+impl RangeSlider {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            style: None,
+        }
+    }
+
+    /// Replaces the default style, which is 280 by 64 pixels with the
+    /// caption in its padding. The thumbs fill the box, so give it a size.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+}
+
 /// A single-line text field. `ui.text_input("Name", &mut name)` is the short
 /// form of `TextInput::new("Name")`; the string it edits stays a separate
 /// argument, so the builder can be reused and the borrow ends with the call.
@@ -382,4 +408,5 @@ from_text!(Progress);
 from_text!(Spinner);
 from_text!(Switch);
 from_text!(Collapsible);
+from_text!(RangeSlider);
 from_text!(Link<M>);

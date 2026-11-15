@@ -25,6 +25,7 @@ enum Msg {
     Notify(bool),
     Airplane(bool),
     Advanced(bool),
+    Budget(std::ops::RangeInclusive<f64>),
     Documentation,
     Mode(usize),
     Volume(f64),
@@ -44,6 +45,7 @@ struct Controls {
     notifications: bool,
     airplane: bool,
     advanced: bool,
+    budget: std::ops::RangeInclusive<f64>,
     opened: u32,
     mode: usize,
     volume: f64,
@@ -75,6 +77,7 @@ impl App for Controls {
             Msg::Notify(on) => self.notifications = on,
             Msg::Airplane(on) => self.airplane = on,
             Msg::Advanced(open) => self.advanced = open,
+            Msg::Budget(range) => self.budget = range,
             Msg::Documentation => self.opened += 1,
             Msg::Mode(mode) => self.mode = mode,
             Msg::Volume(volume) => self.volume = volume,
@@ -266,6 +269,8 @@ impl App for Controls {
                     });
                     ui.slider("Volume", self.volume, 0.0..=100.0, 5.0, Msg::Volume);
                     ui.progress("Volume level", Some(self.volume / 100.0));
+                    // Two thumbs that never cross; each is a slider of its own for the keyboard.
+                    ui.range_slider("Budget", self.budget.clone(), 0.0..=100.0, 5.0, Msg::Budget);
                     // The application owns whether it is open; Right opens it and Left closes it.
                     ui.collapsible("Advanced", self.advanced, Msg::Advanced, |ui| {
                         ui.label(
@@ -328,6 +333,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             notifications: false,
             airplane: false,
             advanced: false,
+            budget: 20.0..=80.0,
             opened: 0,
             mode: 0,
             volume: 50.0,

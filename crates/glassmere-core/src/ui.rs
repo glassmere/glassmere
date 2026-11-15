@@ -8,7 +8,7 @@ use std::panic::Location;
 use std::sync::Arc;
 mod builders;
 pub use builders::{
-    Button, Collapsible, ComboBox, Label, Link, Progress, Spinner, Switch, TextInput,
+    Button, Collapsible, ComboBox, Label, Link, Progress, RangeSlider, Spinner, Switch, TextInput,
 };
 mod collections;
 mod controls;
@@ -128,6 +128,7 @@ pub(crate) enum Kind {
     Link,
     Radio,
     Slider,
+    RangeSlider,
     Progress,
     Spinner,
     ComboBox,

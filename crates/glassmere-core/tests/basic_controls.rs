@@ -6,6 +6,7 @@ use glassmere_core::{
     Progress, Role, Spinner, Style, Switch, Transition, Ui,
 };
 use glassmere_scene::{Color, Point, Primitive, Rect, Segment, Size};
+use std::ops::RangeInclusive;
 use std::time::Duration;
 use support::{Driven, act, center, click, on};
 
@@ -1099,4 +1100,368 @@ fn a_link_in_right_to_left_text_is_underlined_where_its_text_is_at_the_end_edge(
         node.x + node.width - 3.0,
         "the text ends at the end edge, the right"
     );
+}
+
+struct Prices {
+    low: f64,
+    high: f64,
+    changes: Vec<(f64, f64)>,
+}
+
+fn price_slider(state: &Prices, ui: &mut Ui<'_, Msg<Prices>>) {
+    ui.keyed("price", |ui| {
+        ui.range_slider(
+            "Price",
+            state.low..=state.high,
+            0.0..=100.0,
+            10.0,
+            on(|s: &mut Prices, range: RangeInclusive<f64>| {
+                (s.low, s.high) = (*range.start(), *range.end());
+                s.changes.push((s.low, s.high));
+            }),
+        );
+    });
+}
+
+fn prices(low: f64, high: f64) -> Driven<Prices> {
+    Driven::new(
+        ROOT,
+        Prices {
+            low,
+            high,
+            changes: Vec::new(),
+        },
+        price_slider,
+    )
+}
+
+const MINIMUM: [&str; 2] = ["price", "$minimum"];
+const MAXIMUM: [&str; 2] = ["price", "$maximum"];
+
+/// Where the thumb for `fraction` of the range is, in a box that runs left to right.
+fn along(context: &Context, fraction: f32) -> Point {
+    let bounds = bounds(context, &["price"]);
+    Point {
+        x: bounds.x + 12.0 + 256.0 * fraction,
+        y: bounds.y + 49.0,
+    }
+}
+
+fn press_at(app: &mut Driven<Prices>, fraction: f32) {
+    let at = along(&app.context, fraction);
+    click(&mut app.context, at);
+    app.frame();
+}
+
+fn pressed(app: &Driven<Prices>) -> (f64, f64) {
+    (app.state().low, app.state().high)
+}
+
+#[test]
+fn a_range_slider_is_two_sliders_named_after_the_label_with_their_own_values() {
+    let app = prices(20.0, 80.0);
+    let node = |path: &[&str]| app.context.node(app.context.find(path).unwrap()).unwrap();
+    let (low, high) = (node(&MINIMUM), node(&MAXIMUM));
+    for (thumb, label) in [(&low, "Price minimum"), (&high, "Price maximum")] {
+        assert_eq!(thumb.semantics.role, Role::Slider);
+        assert_eq!(thumb.semantics.label, label);
+        assert!(thumb.semantics.focusable && !thumb.semantics.disabled);
+    }
+    // Each can go as far as the other: that is what its range is.
+    let numeric = |n: Option<glassmere_core::NumericValue>| {
+        n.map(|n| (n.value, n.min, n.max, n.step)).unwrap()
+    };
+    assert_eq!(numeric(low.numeric), (20.0, 0.0, 80.0, 10.0));
+    assert_eq!(numeric(high.numeric), (80.0, 20.0, 100.0, 10.0));
+    let group = node(&["price"]);
+    assert_eq!(group.semantics.role, Role::Group);
+    assert_eq!(group.semantics.label, "Price");
+    assert!(!group.semantics.focusable);
+    assert!(support::shows(&app.context, "Price: 20.00 \u{2013} 80.00"));
+}
+
+#[test]
+fn a_value_outside_the_range_or_in_the_wrong_order_is_shown_clamped_and_ordered() {
+    let app = prices(90.0, 10.0);
+    let value = |path: &[&str]| {
+        app.context
+            .node(app.context.find(path).unwrap())
+            .unwrap()
+            .numeric
+            .unwrap()
+            .value
+    };
+    assert_eq!((value(&MINIMUM), value(&MAXIMUM)), (10.0, 90.0));
+    let app = prices(-5.0, 500.0);
+    let value = |path: &[&str]| {
+        app.context
+            .node(app.context.find(path).unwrap())
+            .unwrap()
+            .numeric
+            .unwrap()
+            .value
+    };
+    assert_eq!((value(&MINIMUM), value(&MAXIMUM)), (0.0, 100.0));
+}
+
+#[test]
+fn each_thumb_takes_the_keyboard_in_turn_and_sends_the_whole_range() {
+    let mut app = prices(20.0, 80.0);
+    press(&mut app.context, Key::Tab);
+    assert_eq!(app.context.focused(), app.context.find(&MINIMUM));
+    press(&mut app.context, Key::ArrowRight);
+    app.frame();
+    assert_eq!(pressed(&app), (30.0, 80.0));
+    press(&mut app.context, Key::Tab);
+    assert_eq!(app.context.focused(), app.context.find(&MAXIMUM));
+    press(&mut app.context, Key::ArrowLeft);
+    app.frame();
+    assert_eq!(pressed(&app), (30.0, 70.0));
+    press(&mut app.context, Key::End);
+    app.frame();
+    assert_eq!(pressed(&app), (30.0, 100.0));
+    press(&mut app.context, Key::PageDown);
+    app.frame();
+    assert_eq!(pressed(&app), (30.0, 30.0), "as low as the other thumb");
+    assert_eq!(
+        app.state().changes,
+        [(30.0, 80.0), (30.0, 70.0), (30.0, 100.0), (30.0, 30.0)]
+    );
+}
+
+#[test]
+fn the_thumbs_never_cross() {
+    let mut app = prices(50.0, 60.0);
+    press(&mut app.context, Key::Tab);
+    press(&mut app.context, Key::PageUp);
+    app.frame();
+    assert_eq!(pressed(&app), (60.0, 60.0));
+    press(&mut app.context, Key::ArrowRight);
+    app.frame();
+    assert_eq!(app.state().changes, [(60.0, 60.0)], "no further");
+    press(&mut app.context, Key::Tab);
+    press(&mut app.context, Key::ArrowLeft);
+    app.frame();
+    assert_eq!(app.state().changes.len(), 1, "the other does not pass it");
+    press(&mut app.context, Key::ArrowRight);
+    app.frame();
+    assert_eq!(pressed(&app), (60.0, 70.0));
+}
+
+#[test]
+fn a_press_takes_the_nearer_thumb_and_moves_it_to_the_press() {
+    let mut app = prices(20.0, 80.0);
+    press_at(&mut app, 0.1);
+    assert_eq!(pressed(&app), (10.0, 80.0));
+    assert_eq!(app.context.focused(), app.context.find(&MINIMUM));
+    press_at(&mut app, 0.9);
+    assert_eq!(pressed(&app), (10.0, 90.0));
+    assert_eq!(app.context.focused(), app.context.find(&MAXIMUM));
+    // Beyond the end of the track is the end.
+    press_at(&mut app, 1.0);
+    assert_eq!(pressed(&app), (10.0, 100.0));
+    // Between them, the one that is nearer.
+    press_at(&mut app, 0.3);
+    assert_eq!(pressed(&app), (30.0, 100.0));
+}
+
+#[test]
+fn halfway_between_the_thumbs_a_press_takes_the_greater_and_on_both_the_one_that_can_move() {
+    let mut app = prices(20.0, 80.0);
+    press_at(&mut app, 0.5);
+    assert_eq!(pressed(&app), (20.0, 50.0));
+
+    let mut app = prices(60.0, 60.0);
+    press_at(&mut app, 0.9);
+    assert_eq!(pressed(&app), (60.0, 90.0), "right of both: the greater");
+    let mut app = prices(60.0, 60.0);
+    press_at(&mut app, 0.2);
+    assert_eq!(pressed(&app), (20.0, 60.0), "left of both: the lesser");
+}
+
+#[test]
+fn a_drag_follows_the_pointer_and_stops_at_the_other_thumb() {
+    let mut app = prices(20.0, 80.0);
+    let (from, to) = (along(&app.context, 0.2), along(&app.context, 0.95));
+    app.context.event(Event::PointerMoved(from));
+    app.context.event(Event::PointerDown);
+    app.context
+        .event(Event::PointerMoved(along(&app.context, 0.5)));
+    app.frame();
+    assert_eq!(pressed(&app), (50.0, 80.0));
+    app.context.event(Event::PointerMoved(to));
+    app.frame();
+    assert_eq!(pressed(&app), (80.0, 80.0));
+    app.context.event(Event::PointerUp);
+    app.frame();
+    assert!(app.state().changes.iter().all(|(low, high)| low <= high));
+    assert_eq!(app.state().changes.last(), Some(&(80.0, 80.0)));
+    // The drag took the thumb it began on, and keeps it.
+    assert_eq!(app.context.focused(), app.context.find(&MINIMUM));
+}
+
+#[test]
+fn a_drag_repaints_only_the_slider() {
+    let mut app = prices(20.0, 80.0);
+    let node = bounds(&app.context, &["price"]);
+    let from = along(&app.context, 0.2);
+    app.context.event(Event::PointerMoved(from));
+    app.context.event(Event::PointerDown);
+    app.context
+        .event(Event::PointerMoved(along(&app.context, 0.5)));
+    app.frame();
+    let regions = app.context.damage_regions();
+    assert!(!regions.is_empty());
+    for region in regions {
+        assert!(
+            region.x >= node.x - 1.0
+                && region.y >= node.y - 1.0
+                && region.x + region.width <= node.x + node.width + 1.0
+                && region.y + region.height <= node.y + node.height + 1.0,
+            "{region:?} is outside the slider {node:?}"
+        );
+    }
+}
+
+#[test]
+fn a_disabled_range_slider_takes_neither_keys_nor_presses() {
+    let mut app = Driven::new(
+        ROOT,
+        Prices {
+            low: 20.0,
+            high: 80.0,
+            changes: Vec::new(),
+        },
+        |state, ui| ui.enabled(false, |ui| price_slider(state, ui)),
+    );
+    for path in [MINIMUM, MAXIMUM] {
+        let id = app.context.find(&path).unwrap();
+        let node = app.context.node(id).unwrap();
+        assert!(node.semantics.disabled && !node.semantics.focusable);
+        assert!(!app.context.action(id, Action::Increment));
+    }
+    press(&mut app.context, Key::Tab);
+    assert_eq!(app.context.focused(), None);
+    press_at(&mut app, 0.5);
+    press_at(&mut app, 0.1);
+    assert!(app.state().changes.is_empty());
+}
+
+#[test]
+fn assistive_technology_steps_and_sets_each_thumb() {
+    let mut app = prices(20.0, 80.0);
+    let (low, high) = (
+        app.context.find(&MINIMUM).unwrap(),
+        app.context.find(&MAXIMUM).unwrap(),
+    );
+    assert!(app.context.action(low, Action::Increment));
+    app.frame();
+    assert_eq!(pressed(&app), (30.0, 80.0));
+    assert!(app.context.action(high, Action::SetNumber(55.0)));
+    app.frame();
+    assert_eq!(pressed(&app), (30.0, 60.0), "snapped to the step");
+    assert!(app.context.action(low, Action::SetNumber(95.0)));
+    app.frame();
+    assert_eq!(pressed(&app), (60.0, 60.0), "no further than the other");
+    assert!(!app.context.action(high, Action::Decrement));
+}
+
+/// The centers of the two thumbs, minimum first.
+fn thumb_centers(context: &Context) -> Vec<f32> {
+    let thumbs = quads(context, context.theme().thumb);
+    assert_eq!(thumbs.len(), 2, "two thumbs are drawn");
+    thumbs
+        .iter()
+        .map(|rect| {
+            assert_eq!((rect.width, rect.height), (14.0, 14.0));
+            rect.x + rect.width / 2.0
+        })
+        .collect()
+}
+
+/// The halos drawn around a focused thumb.
+fn rings(context: &Context) -> Vec<Rect> {
+    quads(context, context.theme().focus)
+        .into_iter()
+        .filter(|rect| (rect.width, rect.height) == (18.0, 18.0))
+        .collect()
+}
+
+#[test]
+fn the_track_is_filled_between_the_thumbs_and_the_focused_thumb_has_a_ring() {
+    let mut app = prices(20.0, 80.0);
+    let node = bounds(&app.context, &["price"]);
+    let centers = thumb_centers(&app.context);
+    assert_eq!(centers, [node.x + 12.0 + 51.2, node.x + 12.0 + 204.8]);
+    let fill: Vec<Rect> = quads(&app.context, app.context.theme().accent)
+        .into_iter()
+        .filter(|rect| rect.height == 4.0)
+        .collect();
+    assert_eq!(fill.len(), 1);
+    assert!((fill[0].x - centers[0]).abs() < 0.01);
+    assert!((fill[0].x + fill[0].width - centers[1]).abs() < 0.01);
+    assert!(rings(&app.context).is_empty());
+    press(&mut app.context, Key::Tab);
+    app.frame();
+    let ring = rings(&app.context);
+    assert_eq!(ring.len(), 1, "one ring, on the focused thumb");
+    assert_eq!(
+        ring[0].x + ring[0].width / 2.0,
+        thumb_centers(&app.context)[0]
+    );
+    press(&mut app.context, Key::Tab);
+    app.frame();
+    let ring = rings(&app.context);
+    assert_eq!(ring.len(), 1);
+    assert_eq!(
+        ring[0].x + ring[0].width / 2.0,
+        thumb_centers(&app.context)[1]
+    );
+}
+
+#[test]
+fn in_right_to_left_text_the_minimum_is_at_the_right_and_the_arrows_follow_the_screen() {
+    let mut app = prices(20.0, 80.0);
+    app.context.set_direction(Direction::Rtl);
+    app.frame();
+    let node = bounds(&app.context, &["price"]);
+    let centers = thumb_centers(&app.context);
+    assert_eq!(centers, [node.x + 12.0 + 204.8, node.x + 12.0 + 51.2]);
+    let fill: Vec<Rect> = quads(&app.context, app.context.theme().accent)
+        .into_iter()
+        .filter(|rect| rect.height == 4.0)
+        .collect();
+    assert_eq!(fill.len(), 1);
+    assert!((fill[0].x - centers[1]).abs() < 0.01);
+    assert!((fill[0].x + fill[0].width - centers[0]).abs() < 0.01);
+    press(&mut app.context, Key::Tab);
+    press(&mut app.context, Key::ArrowLeft);
+    app.frame();
+    assert_eq!(pressed(&app), (30.0, 80.0), "Left goes toward the greater");
+    // A press near the right edge is near the minimum.
+    let at = Point {
+        x: node.x + node.width - 14.0,
+        y: node.y + 49.0,
+    };
+    click(&mut app.context, at);
+    app.frame();
+    assert_eq!(pressed(&app), (0.0, 80.0));
+}
+
+#[test]
+#[should_panic(expected = "range_slider requires")]
+fn a_range_slider_without_a_step_is_misuse() {
+    let mut context = Context::new();
+    frame_at(&mut context, 0, |ui| {
+        ui.range_slider("Price", 1.0..=2.0, 0.0..=10.0, 0.0, |_| ());
+    });
+}
+
+#[test]
+#[should_panic(expected = "range_slider requires")]
+fn a_range_slider_over_an_empty_range_is_misuse() {
+    let mut context = Context::new();
+    frame_at(&mut context, 0, |ui| {
+        ui.range_slider("Price", 5.0..=5.0, 5.0..=5.0, 1.0, |_| ());
+    });
 }

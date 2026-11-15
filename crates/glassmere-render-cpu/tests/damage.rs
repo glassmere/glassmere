@@ -770,3 +770,79 @@ fn a_switch_easing_repaints_its_own_box_and_not_the_window() {
         at += 20;
     }
 }
+
+/// Dragging a thumb of a range slider moves it, the fill between the thumbs
+/// and its ring; every frame is painted from damage as it is in full, and
+/// none of it repaints much of the window.
+#[test]
+fn dragging_a_range_slider_thumb_repaints_the_slider_and_not_the_window() {
+    let view = |ui: &mut Ui<'_>, low: f64, high: f64| {
+        ui.keyed("page", |ui| {
+            ui.column(Style::default().padding(8.0).gap(6.0), |ui| {
+                ui.keyed("title", |ui| ui.label("Range"));
+                ui.keyed("price", |ui| {
+                    ui.range_slider("Price", low..=high, 0.0..=100.0, 10.0, |_| ())
+                });
+                ui.keyed("rest", |ui| ui.label(Label::new("The rest of the page")));
+            })
+        });
+    };
+    let mut context = Context::new();
+    let mut incremental = CpuRenderer::with_text_system(fonts());
+    let mut whole = CpuRenderer::with_text_system(fonts());
+    let physical = [SIZE.width as u32, SIZE.height as u32];
+    let area = u64::from(physical[0]) * u64::from(physical[1]);
+    let mut frame = |context: &mut Context, low: f64, high: f64| {
+        context.run(SIZE, &mut MonospaceMeasurer, |ui| view(ui, low, high));
+        let damage: Vec<_> = context.damage_regions().to_vec();
+        let scene = context.scene();
+        let partial = incremental
+            .render_damaged(physical, 1.0, scene, CLEAR, &damage)
+            .to_vec();
+        let full = whole.render(physical, 1.0, scene, CLEAR).to_vec();
+        assert_frames_match(&partial, &full, physical[0] as usize, "range slider");
+        incremental.stats().redrawn
+    };
+    let values = |context: &Context| {
+        let value = |name: &str| {
+            let id = context.find(&["page", "price", name]).unwrap();
+            context.node(id).unwrap().numeric.unwrap().value
+        };
+        (value("$minimum"), value("$maximum"))
+    };
+    let (mut low, mut high) = (20.0, 80.0);
+    frame(&mut context, low, high);
+    let bounds = context
+        .node(context.find(&["page", "price"]).unwrap())
+        .unwrap()
+        .bounds;
+    let at = |fraction: f32| Point {
+        x: bounds.x + 12.0 + (bounds.width - 24.0) * fraction,
+        y: bounds.y + bounds.height - 15.0,
+    };
+    context.event(Event::PointerMoved(at(0.2)));
+    context.event(Event::PointerDown);
+    for step in [0.3, 0.4, 0.55, 0.9] {
+        context.event(Event::PointerMoved(at(step)));
+        (low, high) = values(&context);
+        let redrawn = frame(&mut context, low, high);
+        assert!(redrawn < area / 4, "repainted {redrawn} of {area}");
+    }
+    context.event(Event::PointerUp);
+    assert_eq!((low, high), (80.0, 80.0), "stopped at the other thumb");
+    // The other thumb, and the ring that follows the keyboard.
+    context.event(Event::PointerMoved(at(0.8)));
+    context.event(Event::PointerDown);
+    context.event(Event::PointerMoved(at(0.4)));
+    (low, high) = values(&context);
+    frame(&mut context, low, high);
+    context.event(Event::PointerUp);
+    context.event(Event::KeyDown {
+        key: Key::Tab,
+        shift: false,
+        repeat: false,
+    });
+    context.event(Event::KeyUp(Key::Tab));
+    let redrawn = frame(&mut context, low, high);
+    assert!(redrawn < area / 4, "repainted {redrawn} of {area}");
+}

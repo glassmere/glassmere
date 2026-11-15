@@ -39,3 +39,5 @@ glassmere-minimize = Minimalizovat
 glassmere-maximize = Maximalizovat
 glassmere-restore = Obnovit
 glassmere-close = Zavřít
+glassmere-range-minimum = { $name }, minimum
+glassmere-range-maximum = { $name }, maximum

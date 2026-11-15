@@ -39,3 +39,5 @@ glassmere-minimize = Minimieren
 glassmere-maximize = Maximieren
 glassmere-restore = Wiederherstellen
 glassmere-close = Schließen
+glassmere-range-minimum = { $name }, Minimum
+glassmere-range-maximum = { $name }, Maximum

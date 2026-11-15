@@ -887,6 +887,8 @@ glassmere-core   fn PropertyGridOptions::height(mut self, height: f32) -> Self
 glassmere-core   fn PropertyGridOptions::new(label: impl Into<String>) -> Self
 glassmere-core   fn PropertyGridOptions::style(mut self, style: Style) -> Self
 glassmere-core   fn PropertyGridState::apply(&mut self, message: &PropertyMsg)
+glassmere-core   fn RangeSlider::new(label: impl Into<String>) -> Self
+glassmere-core   fn RangeSlider::style(mut self, style: Style) -> Self
 glassmere-core   fn ResizeEdge::name(self) -> &'static str
 glassmere-core   fn ResolvedText::from_theme(theme: &Theme) -> Self
 glassmere-core   fn ResolvedText::rtl(&self) -> bool
@@ -1169,6 +1171,7 @@ glassmere-core   fn Ui::popover(&mut self, open: bool, options: PopoverOptions, 
 glassmere-core   fn Ui::progress(&mut self, progress: impl Into<Progress>, value: Option<f64>) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::property_grid(&mut self, state: &PropertyGridState, options: PropertyGridOptions, on: impl Fn(PropertyMsg) -> M + 'static, content: impl FnOnce(&mut PropertyGrid<'_, '_, M>)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::radio(&mut self, label: impl Into<String>, selected: usize, option: usize, on_select: impl Fn(usize) -> M) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
+glassmere-core   fn Ui::range_slider(&mut self, slider: impl Into<RangeSlider>, value: RangeInclusive<f64>, range: RangeInclusive<f64>, step: f64, on_change: impl Fn(RangeInclusive<f64>) -> M + 'static) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::request_redraw(&mut self) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::resize_frame(&mut self, thickness: f32) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::responsive(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_, M>, f32)) -> f32 #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
@@ -1684,6 +1687,7 @@ glassmere-core impl From<&String> for ComboBox
 glassmere-core impl From<&String> for Label
 glassmere-core impl From<&String> for MessageArg
 glassmere-core impl From<&String> for Progress
+glassmere-core impl From<&String> for RangeSlider
 glassmere-core impl From<&String> for Spinner
 glassmere-core impl From<&String> for Switch
 glassmere-core impl From<&str> for Collapsible
@@ -1691,6 +1695,7 @@ glassmere-core impl From<&str> for ComboBox
 glassmere-core impl From<&str> for Label
 glassmere-core impl From<&str> for MessageArg
 glassmere-core impl From<&str> for Progress
+glassmere-core impl From<&str> for RangeSlider
 glassmere-core impl From<&str> for Spinner
 glassmere-core impl From<&str> for Switch
 glassmere-core impl From<String> for Collapsible
@@ -1698,6 +1703,7 @@ glassmere-core impl From<String> for ComboBox
 glassmere-core impl From<String> for Label
 glassmere-core impl From<String> for MessageArg
 glassmere-core impl From<String> for Progress
+glassmere-core impl From<String> for RangeSlider
 glassmere-core impl From<String> for Spinner
 glassmere-core impl From<String> for Switch
 glassmere-core impl From<f32> for MessageArg
@@ -1711,6 +1717,7 @@ glassmere-core impl From<std::borrow::Cow<'_, str>> for Collapsible
 glassmere-core impl From<std::borrow::Cow<'_, str>> for ComboBox
 glassmere-core impl From<std::borrow::Cow<'_, str>> for Label
 glassmere-core impl From<std::borrow::Cow<'_, str>> for Progress
+glassmere-core impl From<std::borrow::Cow<'_, str>> for RangeSlider
 glassmere-core impl From<std::borrow::Cow<'_, str>> for Spinner
 glassmere-core impl From<std::borrow::Cow<'_, str>> for Switch
 glassmere-core impl From<u16> for MessageArg
@@ -1849,6 +1856,7 @@ glassmere-core struct Progress #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct PropertyGrid<'a, 'u, M: 'static = ()> (private fields)
 glassmere-core struct PropertyGridOptions #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct PropertyGridState #[derive(Clone, Debug, PartialEq)]
+glassmere-core struct RangeSlider #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct ResolvedText #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct Response<'a> #[derive(Clone, Copy, Default)] (private fields)
 glassmere-core struct RichDocument #[derive(Clone, Debug)] (private fields)
@@ -2044,6 +2052,7 @@ glassmere-core use PropertyMsg = property_grid::PropertyMsg
 glassmere-core use RELAYOUT_FRAMES = tree::diagnostics::RELAYOUT_FRAMES
 glassmere-core use REPAINT_FRAMES = tree::diagnostics::REPAINT_FRAMES
 glassmere-core use REPAINT_MIN_NODES = tree::diagnostics::REPAINT_MIN_NODES
+glassmere-core use RangeSlider = ui::RangeSlider
 glassmere-core use Repeat = animation::Repeat
 glassmere-core use ResizeEdge = window::ResizeEdge
 glassmere-core use ResolvedText = style::ResolvedText

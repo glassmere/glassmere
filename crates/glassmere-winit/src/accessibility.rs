@@ -1240,6 +1240,32 @@ mod tests {
     }
 
     #[test]
+    fn a_range_slider_reports_two_sliders_that_each_report_their_own_value() {
+        let mut context = Context::new();
+        context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
+            ui.keyed("price", |ui| {
+                ui.range_slider("Price", 20.0..=80.0, 0.0..=100.0, 10.0, |_| ());
+            });
+        });
+        let update = tree(&context, "Prices", 1.0);
+        for (path, label, value, min, max) in [
+            ("$minimum", "Price minimum", 20.0, 0.0, 80.0),
+            ("$maximum", "Price maximum", 80.0, 20.0, 100.0),
+        ] {
+            let thumb = context.find(&["price", path]).unwrap();
+            let node = node_in(&update, NodeId(thumb.0));
+            assert_eq!(node.role(), Role::Slider);
+            assert_eq!(node.label(), Some(label));
+            assert_eq!(node.numeric_value(), Some(value));
+            assert_eq!(node.min_numeric_value(), Some(min));
+            assert_eq!(node.max_numeric_value(), Some(max));
+            assert_eq!(node.numeric_value_step(), Some(10.0));
+            assert!(node.supports_action(Action::Increment));
+            assert!(node.supports_action(Action::Focus));
+        }
+    }
+
+    #[test]
     fn a_view_that_overflows_sideways_reports_and_takes_horizontal_scrolling() {
         let mut context = Context::new();
         context.run(Size::new(200.0, 200.0), &mut MonospaceMeasurer, |ui| {
