@@ -258,6 +258,34 @@ impl Switch {
     }
 }
 
+/// A section that its header opens and closes. `ui.collapsible("Advanced",
+/// open, Msg::Advanced, |ui| ..)` is the short form of
+/// `Collapsible::new("Advanced")`; the label is written in the header and is
+/// its accessible name.
+#[derive(Clone, Debug, Default)]
+pub struct Collapsible {
+    pub(crate) label: String,
+    pub(crate) style: Option<Style>,
+}
+
+impl Collapsible {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            style: None,
+        }
+    }
+
+    /// Replaces the default style of the header, which is a padded row with
+    /// no background of its own. The header's label stays on one line
+    /// whatever the style's wrapping says; the content is styled by what the
+    /// application declares in it.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+}
+
 /// `impl From<&str>` and `impl From<String>` for a builder whose first field
 /// is its text, so `ui.button("Save")` and `ui.button(Button::new("Save"))`
 /// are the same call.
@@ -296,3 +324,4 @@ from_text!(ComboBox);
 from_text!(Progress);
 from_text!(Spinner);
 from_text!(Switch);
+from_text!(Collapsible);

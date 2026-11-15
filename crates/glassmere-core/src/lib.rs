@@ -92,9 +92,9 @@ pub use tree::{
     SwipeDirection, TouchPhase,
 };
 pub use ui::{
-    AreaBuilder, Autocomplete, Button, ComboBox, CommandPalette, DockOptions, DockPanel,
-    DragSourceBuilder, DropTargetBuilder, GestureBuilder, Label, Progress, PropertyGrid, Response,
-    Spinner, Switch, TextInput, Ui, suggest,
+    AreaBuilder, Autocomplete, Button, Collapsible, ComboBox, CommandPalette, DockOptions,
+    DockPanel, DragSourceBuilder, DropTargetBuilder, GestureBuilder, Label, Progress, PropertyGrid,
+    Response, Spinner, Switch, TextInput, Ui, suggest,
 };
 pub use widget::{CustomWidget, WidgetBuilder, WidgetInput};
 pub use window::{ResizeEdge, WindowCommand, WindowId, WindowInfo, WindowRequest};

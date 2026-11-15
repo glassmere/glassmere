@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::panic::Location;
 use std::sync::Arc;
 mod builders;
-pub use builders::{Button, ComboBox, Label, Progress, Spinner, Switch, TextInput};
+pub use builders::{Button, Collapsible, ComboBox, Label, Progress, Spinner, Switch, TextInput};
 mod collections;
 mod controls;
 mod dock;
@@ -122,6 +122,7 @@ pub(crate) enum Kind {
     TextInput,
     Checkbox,
     Switch,
+    Disclosure,
     Radio,
     Slider,
     Progress,
@@ -147,6 +148,7 @@ impl Kind {
                 | Self::Button
                 | Self::Checkbox
                 | Self::Switch
+                | Self::Disclosure
                 | Self::Radio
                 | Self::Choice
                 | Self::MenuButton
@@ -161,6 +163,7 @@ impl Kind {
     pub(crate) fn indicator_width(self) -> f32 {
         match self {
             Self::Switch => SWITCH_TRACK.0 + 10.0,
+            Self::Disclosure => 20.0,
             _ => 0.0,
         }
     }

@@ -251,6 +251,11 @@ pub(crate) enum Control {
         label: String,
         value: Option<f64>,
     },
+    /// The header of a collapsible section.
+    Disclosure {
+        label: String,
+        open: bool,
+    },
     /// An on/off switch.
     Switch {
         label: String,

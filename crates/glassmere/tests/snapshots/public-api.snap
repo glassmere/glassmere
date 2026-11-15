@@ -555,6 +555,8 @@ glassmere-core   fn Clip::is_empty(&self) -> bool
 glassmere-core   fn Clip::text(text: impl Into<String>) -> Self
 glassmere-core   fn Clip::with_image(mut self, image: Image) -> Self
 glassmere-core   fn Clip::with_text(mut self, text: impl Into<String>) -> Self
+glassmere-core   fn Collapsible::new(label: impl Into<String>) -> Self
+glassmere-core   fn Collapsible::style(mut self, style: Style) -> Self
 glassmere-core   fn ComboBox::new(label: impl Into<String>) -> Self
 glassmere-core   fn ComboBox::style(mut self, style: Style) -> Self
 glassmere-core   fn Command::new(label: impl Into<String>, shortcut: Option<Shortcut>) -> Self
@@ -1122,6 +1124,7 @@ glassmere-core   fn Ui::button(&mut self, button: impl Into<Button<M>>) -> Respo
 glassmere-core   fn Ui::checkbox(&mut self, label: impl Into<String>, checked: bool, on_toggle: impl Fn(bool) -> M) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::class(&mut self, name: &str) -> Style #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::code_editor(&mut self, document: &TextDocument, options: CodeEditorOptions<'_>, on: impl Fn(TextOp) -> M + 'static) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
+glassmere-core   fn Ui::collapsible(&mut self, section: impl Into<Collapsible>, open: bool, on_toggle: impl Fn(bool) -> M + 'static, content: impl FnOnce(&mut Ui<'_, M>)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::column(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_, M>)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::combo_box(&mut self, combo: impl Into<ComboBox>, selected: usize, items: &[&str], on_choose: impl Fn(usize) -> M + 'static) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::command(&self, command: &crate::Command) -> crate::Command #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
@@ -1670,18 +1673,21 @@ glassmere-core impl Default for Style
 glassmere-core impl Default for TextDocument
 glassmere-core impl Default for Transform
 glassmere-core impl Default for VirtualListOptions
+glassmere-core impl From<&String> for Collapsible
 glassmere-core impl From<&String> for ComboBox
 glassmere-core impl From<&String> for Label
 glassmere-core impl From<&String> for MessageArg
 glassmere-core impl From<&String> for Progress
 glassmere-core impl From<&String> for Spinner
 glassmere-core impl From<&String> for Switch
+glassmere-core impl From<&str> for Collapsible
 glassmere-core impl From<&str> for ComboBox
 glassmere-core impl From<&str> for Label
 glassmere-core impl From<&str> for MessageArg
 glassmere-core impl From<&str> for Progress
 glassmere-core impl From<&str> for Spinner
 glassmere-core impl From<&str> for Switch
+glassmere-core impl From<String> for Collapsible
 glassmere-core impl From<String> for ComboBox
 glassmere-core impl From<String> for Label
 glassmere-core impl From<String> for MessageArg
@@ -1695,6 +1701,7 @@ glassmere-core impl From<i32> for MessageArg
 glassmere-core impl From<i64> for MessageArg
 glassmere-core impl From<i8> for MessageArg
 glassmere-core impl From<isize> for MessageArg
+glassmere-core impl From<std::borrow::Cow<'_, str>> for Collapsible
 glassmere-core impl From<std::borrow::Cow<'_, str>> for ComboBox
 glassmere-core impl From<std::borrow::Cow<'_, str>> for Label
 glassmere-core impl From<std::borrow::Cow<'_, str>> for Progress
@@ -1757,6 +1764,7 @@ glassmere-core struct Button<M = ()> #[derive(Clone, Debug)] (private fields)
 glassmere-core struct Cancel #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct Clip #[derive(Clone, Debug, Default, PartialEq)]
 glassmere-core struct CodeEditorOptions<'a>
+glassmere-core struct Collapsible #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct CollectionInfo #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 glassmere-core struct ComboBox #[derive(Clone, Debug, Default)] (private fields)
 glassmere-core struct Command #[derive(Clone, Debug, PartialEq)]
@@ -1904,6 +1912,7 @@ glassmere-core use CellEditor = collection::CellEditor
 glassmere-core use CellValue = collection::CellValue
 glassmere-core use Clip = clipboard::Clip
 glassmere-core use CodeEditorOptions = text_area::CodeEditorOptions
+glassmere-core use Collapsible = ui::Collapsible
 glassmere-core use CollectionInfo = tree::CollectionInfo
 glassmere-core use ComboBox = ui::ComboBox
 glassmere-core use Command = command::Command

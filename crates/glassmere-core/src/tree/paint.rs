@@ -361,6 +361,13 @@ impl Context {
                 background = Some(theme.control_hover);
             }
         }
+        if node.kind == Kind::Disclosure && node.enabled && node.style.background.is_none() {
+            if pressed {
+                background = Some(theme.control_pressed);
+            } else if hovered {
+                background = Some(theme.control_hover);
+            }
+        }
         if !node.enabled {
             foreground = theme.text_disabled;
         }

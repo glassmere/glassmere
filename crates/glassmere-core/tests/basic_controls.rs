@@ -2,12 +2,12 @@ mod support;
 
 use glassmere_core::app::Action as Msg;
 use glassmere_core::{
-    Action, Context, Direction, Event, Key, Length, MonospaceMeasurer, Progress, Role, Spinner,
-    Style, Switch, Transition, Ui,
+    Action, Button, Collapsible, Context, Direction, Event, Key, Length, MonospaceMeasurer,
+    Progress, Role, Spinner, Style, Switch, Transition, Ui,
 };
-use glassmere_scene::{Color, Primitive, Rect, Size};
+use glassmere_scene::{Color, Point, Primitive, Rect, Segment, Size};
 use std::time::Duration;
-use support::{Driven, center, click, on};
+use support::{Driven, act, center, click, on};
 
 const ROOT: Size = Size::new(400.0, 300.0);
 
@@ -595,4 +595,281 @@ fn a_switch_label_is_written_after_the_pill_inside_the_box() {
         text.x + text.width <= node.x + node.width,
         "the label fits the box"
     );
+}
+
+struct Sections {
+    open: bool,
+    toggles: Vec<bool>,
+    resets: u32,
+}
+
+fn sections_view(state: &Sections, ui: &mut Ui<'_, Msg<Sections>>) {
+    ui.keyed("advanced", |ui| {
+        ui.collapsible(
+            "Advanced",
+            state.open,
+            on(|s: &mut Sections, open: bool| {
+                s.open = open;
+                s.toggles.push(open);
+            }),
+            |ui| {
+                ui.keyed("reset", |ui| {
+                    ui.button(Button::new("Reset").on_click(act(|s: &mut Sections| s.resets += 1)))
+                });
+            },
+        )
+    });
+}
+
+fn sections(open: bool) -> Driven<Sections> {
+    Driven::new(
+        ROOT,
+        Sections {
+            open,
+            toggles: Vec::new(),
+            resets: 0,
+        },
+        sections_view,
+    )
+}
+
+const HEADER: [&str; 2] = ["advanced", "$header"];
+const RESET: [&str; 3] = ["advanced", "$content", "reset"];
+
+#[test]
+fn a_collapsible_declares_its_content_only_while_open() {
+    let mut app = sections(false);
+    assert!(app.context.find(&HEADER).is_some());
+    assert!(app.context.find(&RESET).is_none());
+    app.state_mut().open = true;
+    app.frame();
+    assert!(app.context.find(&RESET).is_some());
+    assert!(support::shows(&app.context, "Reset"));
+    app.state_mut().open = false;
+    app.frame();
+    assert!(app.context.find(&RESET).is_none());
+    assert!(!support::shows(&app.context, "Reset"));
+}
+
+#[test]
+fn a_collapsible_header_is_a_button_that_reports_whether_it_is_expanded() {
+    let mut app = sections(false);
+    let header = app.context.find(&HEADER).unwrap();
+    let node = app.context.node(header).unwrap();
+    assert_eq!(node.semantics.role, Role::Button);
+    assert_eq!(node.semantics.label, "Advanced");
+    assert!(node.semantics.focusable);
+    assert_eq!(node.expanded, Some(false));
+    app.state_mut().open = true;
+    app.frame();
+    assert_eq!(app.context.node(header).unwrap().expanded, Some(true));
+    assert!(support::shows(&app.context, "Advanced"));
+}
+
+#[test]
+fn clicking_the_header_sends_the_state_it_asks_for_once() {
+    let mut app = sections(false);
+    click_on(&mut app.context, &HEADER);
+    app.frame();
+    assert_eq!(app.state().toggles, [true]);
+    assert!(app.context.find(&RESET).is_some());
+    click_on(&mut app.context, &HEADER);
+    app.frame();
+    assert_eq!(app.state().toggles, [true, false]);
+    assert!(app.context.find(&RESET).is_none());
+    app.frame();
+    assert_eq!(app.state().toggles.len(), 2);
+}
+
+#[test]
+fn enter_and_space_toggle_and_the_content_is_reachable_by_tab_only_while_open() {
+    let mut app = sections(false);
+    press(&mut app.context, Key::Tab);
+    assert_eq!(app.context.focused(), app.context.find(&HEADER));
+    press(&mut app.context, Key::Space);
+    app.frame();
+    assert_eq!(app.state().toggles, [true]);
+    press(&mut app.context, Key::Tab);
+    assert_eq!(app.context.focused(), app.context.find(&RESET));
+    press(&mut app.context, Key::Tab);
+    assert_eq!(app.context.focused(), app.context.find(&HEADER));
+    press(&mut app.context, Key::Enter);
+    app.frame();
+    assert_eq!(app.state().toggles, [true, false]);
+    press(&mut app.context, Key::Tab);
+    assert_eq!(app.context.focused(), app.context.find(&HEADER));
+}
+
+#[test]
+fn right_opens_and_left_closes_and_the_other_arrow_does_nothing() {
+    let mut app = sections(false);
+    press(&mut app.context, Key::Tab);
+    press(&mut app.context, Key::ArrowLeft);
+    app.frame();
+    assert!(app.state().toggles.is_empty(), "Left on a closed section");
+    press(&mut app.context, Key::ArrowRight);
+    app.frame();
+    assert_eq!(app.state().toggles, [true]);
+    press(&mut app.context, Key::ArrowRight);
+    app.frame();
+    assert_eq!(app.state().toggles, [true], "Right on an open section");
+    press(&mut app.context, Key::ArrowLeft);
+    app.frame();
+    assert_eq!(app.state().toggles, [true, false]);
+}
+
+#[test]
+fn the_arrows_are_not_mirrored_in_right_to_left_text() {
+    let mut app = sections(false);
+    app.context.set_direction(Direction::Rtl);
+    app.frame();
+    press(&mut app.context, Key::Tab);
+    press(&mut app.context, Key::ArrowLeft);
+    app.frame();
+    assert!(app.state().toggles.is_empty());
+    press(&mut app.context, Key::ArrowRight);
+    app.frame();
+    assert_eq!(app.state().toggles, [true]);
+    press(&mut app.context, Key::ArrowLeft);
+    app.frame();
+    assert_eq!(app.state().toggles, [true, false]);
+}
+
+#[test]
+fn assistive_technology_expands_and_collapses_only_when_that_changes_something() {
+    let mut app = sections(false);
+    let header = app.context.find(&HEADER).unwrap();
+    assert!(!app.context.action(header, Action::Collapse));
+    assert!(app.context.action(header, Action::Expand));
+    app.frame();
+    assert!(!app.context.action(header, Action::Expand));
+    assert!(app.context.action(header, Action::Collapse));
+    app.frame();
+    assert_eq!(app.state().toggles, [true, false]);
+    assert!(app.context.action(header, Action::Activate));
+    app.frame();
+    assert_eq!(app.state().toggles, [true, false, true]);
+}
+
+#[test]
+fn a_disabled_collapsible_cannot_be_toggled_and_disables_what_it_shows() {
+    let mut app = Driven::new(
+        ROOT,
+        Sections {
+            open: true,
+            toggles: Vec::new(),
+            resets: 0,
+        },
+        |state, ui| ui.enabled(false, |ui| sections_view(state, ui)),
+    );
+    let header = app.context.find(&HEADER).unwrap();
+    let node = app.context.node(header).unwrap();
+    assert!(node.semantics.disabled);
+    assert!(!node.semantics.focusable);
+    assert!(!app.context.action(header, Action::Collapse));
+    click_on(&mut app.context, &HEADER);
+    click_on(&mut app.context, &RESET);
+    app.frame();
+    assert!(app.state().toggles.is_empty());
+    assert_eq!(app.state().resets, 0);
+}
+
+#[test]
+fn the_content_keeps_working_while_the_section_is_open() {
+    let mut app = sections(true);
+    click_on(&mut app.context, &RESET);
+    app.frame();
+    assert_eq!(app.state().resets, 1);
+}
+
+/// The points of the chevron the header draws.
+fn chevron(context: &Context) -> Vec<Point> {
+    let paths: Vec<_> = context
+        .scene()
+        .primitives
+        .iter()
+        .filter_map(|primitive| match primitive {
+            Primitive::Path { path, .. } => Some(path.segments().to_vec()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(paths.len(), 1, "one chevron is drawn");
+    paths[0]
+        .iter()
+        .filter_map(|segment| match segment {
+            Segment::Move(point) | Segment::Line(point) => Some(*point),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn the_chevron_points_along_the_line_when_closed_and_down_when_open() {
+    let mut app = sections(false);
+    let header = bounds(&app.context, &HEADER);
+    let closed = chevron(&app.context);
+    assert_eq!(closed.len(), 3);
+    assert!(closed[1].x > closed[0].x, "the tip is toward the end");
+    assert_eq!(closed[0].y + closed[2].y, closed[1].y * 2.0);
+    assert!(closed.iter().all(|point| point.x < header.x + 20.0));
+    app.state_mut().open = true;
+    app.frame();
+    let open = chevron(&app.context);
+    assert!(open[1].y > open[0].y, "the tip is down");
+    assert_eq!(open[0].x + open[2].x, open[1].x * 2.0);
+}
+
+#[test]
+fn the_chevron_and_the_label_swap_sides_in_right_to_left_text() {
+    let mut app = sections(false);
+    app.context.set_direction(Direction::Rtl);
+    app.frame();
+    let header = bounds(&app.context, &HEADER);
+    let closed = chevron(&app.context);
+    assert!(
+        closed[1].x < closed[0].x,
+        "the tip is toward the end, the left"
+    );
+    assert!(
+        closed
+            .iter()
+            .all(|point| point.x > header.x + header.width - 20.0)
+    );
+    let text = label_rect(&app.context, "Advanced");
+    assert!(
+        text.x + text.width <= header.x + header.width - 20.0,
+        "the label is beside the chevron: {text:?}"
+    );
+}
+
+#[test]
+fn hovering_the_header_paints_a_background_and_a_header_style_replaces_the_default() {
+    let mut app = sections(false);
+    assert!(quads(&app.context, app.context.theme().control_hover).is_empty());
+    let at = center(&app.context, &HEADER);
+    app.context.event(Event::PointerMoved(at));
+    app.frame();
+    let header = bounds(&app.context, &HEADER);
+    assert_eq!(
+        quads(&app.context, app.context.theme().control_hover),
+        [header]
+    );
+
+    let mut context = Context::new();
+    frame_at(&mut context, 0, |ui| {
+        ui.keyed("advanced", |ui| {
+            ui.collapsible(
+                Collapsible::new("Advanced").style(Style {
+                    width: Length::Px(300.0),
+                    padding: 20.0,
+                    ..Style::default()
+                }),
+                false,
+                |_| (),
+                |_| (),
+            )
+        });
+    });
+    let header = bounds(&context, &HEADER);
+    assert_eq!(header.width, 300.0);
 }

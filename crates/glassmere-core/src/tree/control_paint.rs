@@ -292,6 +292,9 @@ impl Context {
             }
             Control::Spinner { .. } => self.paint_spinner(node, scene),
             Control::Switch { .. } => self.paint_switch(node, shown.knob, scene),
+            Control::Disclosure { open, .. } => {
+                self.paint_chevron(node, open, shown.foreground, scene)
+            }
             _ => {}
         }
         if let Control::Slider {
@@ -418,6 +421,39 @@ impl Context {
             },
             color: thumb,
             radius: diameter / 2.0,
+        });
+    }
+
+    /// A chevron at the start edge: pointing along the line when the section
+    /// is closed, which is toward its end, and down when it is open.
+    fn paint_chevron(&self, node: &Node, open: bool, color: Color, scene: &mut Scene) {
+        let content = node.content_box();
+        let rtl = node.resolved.rtl();
+        let x = if rtl {
+            content.x + content.width - 6.0
+        } else {
+            content.x + 6.0
+        };
+        let y = content.y + content.height / 2.0;
+        let toward_end = if rtl { -1.0 } else { 1.0 };
+        let point = |dx: f32, dy: f32| glassmere_scene::Point {
+            x: x + dx,
+            y: y + dy,
+        };
+        let mut path = glassmere_scene::Path::new();
+        if open {
+            path.move_to(point(-4.5, -2.0))
+                .line_to(point(0.0, 2.5))
+                .line_to(point(4.5, -2.0));
+        } else {
+            path.move_to(point(-2.0 * toward_end, -4.5))
+                .line_to(point(2.5 * toward_end, 0.0))
+                .line_to(point(-2.0 * toward_end, 4.5));
+        }
+        scene.primitives.push(Primitive::Path {
+            path,
+            fill: None,
+            stroke: Some(glassmere_scene::Stroke { width: 1.8, color }),
         });
     }
 

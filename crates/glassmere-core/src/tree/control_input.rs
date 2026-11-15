@@ -758,6 +758,11 @@ impl Context {
                             return Some(handled);
                         }
                     }
+                    Kind::Disclosure => {
+                        if let Some(handled) = self.disclosure_key(id, *key) {
+                            return Some(handled);
+                        }
+                    }
                     _ => {}
                 }
                 let node = &self.nodes[&id];
@@ -868,6 +873,18 @@ impl Context {
         None
     }
 
+    /// Right opens a section and Left closes it, whichever way the text
+    /// runs, as they do on a tree row.
+    fn disclosure_key(&mut self, id: NodeId, key: Key) -> Option<bool> {
+        let Control::Disclosure { open, .. } = self.nodes[&id].control else {
+            return None;
+        };
+        match (key, open) {
+            (Key::ArrowRight, false) | (Key::ArrowLeft, true) => Some(self.activate(id)),
+            _ => None,
+        }
+    }
+
     pub(super) fn control_action(&mut self, target: NodeId, action: &Action) -> Option<bool> {
         let node = self.nodes.get(&target)?;
         if !node.enabled {
@@ -913,6 +930,12 @@ impl Context {
             }
             Action::SetSelection { anchor, focus } => {
                 Some(self.set_selection(target, *anchor, *focus))
+            }
+            Action::Expand | Action::Collapse if node.kind == Kind::Disclosure => {
+                let opens = matches!(action, Action::Expand);
+                let changes =
+                    matches!(node.control, Control::Disclosure { open, .. } if open != opens);
+                Some(changes && self.activate(target))
             }
             Action::Expand => Some(self.open_popup(target)),
             Action::Collapse => Some(self.popup_of(target).is_some() && self.close_popup()),

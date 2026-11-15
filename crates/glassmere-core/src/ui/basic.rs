@@ -87,4 +87,51 @@ impl<'a, M: 'static> Ui<'a, M> {
         self.set_handler(Handler::Message(on_toggle(!on)));
         response
     }
+
+    /// A section whose header, a chevron and the label, opens and closes it:
+    /// a click, Enter, Space, or Right to open and Left to close, send
+    /// `on_toggle` of the state they ask for. `content` is declared only
+    /// while `open`, so the application owns the state as it does for
+    /// [`Ui::tabs`]. The header is a button that reports whether it is
+    /// expanded.
+    #[track_caller]
+    pub fn collapsible(
+        &mut self,
+        section: impl Into<Collapsible>,
+        open: bool,
+        on_toggle: impl Fn(bool) -> M + 'static,
+        content: impl FnOnce(&mut Ui<'_, M>),
+    ) {
+        let section = section.into();
+        let key = self.next_key();
+        let message = on_toggle(!open);
+        self.group(key, Kind::Column, Style::default().gap(4.0), |ui| {
+            ui.keyed("$header", |ui| {
+                let key = ui.next_key();
+                ui.push(Element {
+                    text: section.label.clone(),
+                    style: Style {
+                        wrap: TextWrap::None,
+                        ..section.style.unwrap_or(Style {
+                            padding: 8.0,
+                            radius: 6.0,
+                            ..Style::default()
+                        })
+                    },
+                    enabled: ui.enabled,
+                    control: Control::Disclosure {
+                        label: section.label,
+                        open,
+                    },
+                    ..Element::new(key, Kind::Disclosure)
+                });
+                ui.set_handler(Handler::Message(message));
+            });
+            if open {
+                ui.keyed("$content", |ui| {
+                    ui.column(Style::default().padding(8.0).gap(8.0), content);
+                });
+            }
+        });
+    }
 }

@@ -142,7 +142,7 @@ impl Context {
                 Control::Toast { .. } => Some(Live::Polite),
                 _ => None,
             },
-            expanded: if let Control::CollectionRow { expanded, .. } = node.control { expanded } else {
+            expanded: if let Control::CollectionRow { expanded, .. } = node.control { expanded } else if let Control::Disclosure { open, .. } = node.control { Some(open) } else {
                 let suggests = matches!(node.control, Control::TextInput { suggestions: Some(_), .. });
                 // An autocomplete list is open only while it has rows to show.
                 let submenu = matches!(node.control, Control::Submenu { .. });

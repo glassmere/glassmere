@@ -187,6 +187,7 @@ impl Node {
                     | Kind::TextInput
                     | Kind::Checkbox
                     | Kind::Switch
+                    | Kind::Disclosure
                     | Kind::Radio
                     | Kind::Slider
                     | Kind::ComboBox
@@ -237,6 +238,7 @@ impl Node {
                 Kind::Button
                     | Kind::Checkbox
                     | Kind::Switch
+                    | Kind::Disclosure
                     | Kind::Radio
                     | Kind::ComboBox
                     | Kind::MenuButton
@@ -301,7 +303,7 @@ impl Node {
                     Kind::Label | Kind::RichText => Role::Label,
                     // An image without a name is decorative.
                     Kind::Image if !self.text.is_empty() => Role::Image,
-                    Kind::Button => Role::Button,
+                    Kind::Button | Kind::Disclosure => Role::Button,
                     Kind::Scroll => Role::ScrollView,
                     Kind::TextInput => Role::TextInput,
                     Kind::TextArea | Kind::RichEditor => Role::MultilineTextInput,
@@ -334,6 +336,7 @@ impl Node {
                 Control::TextInput { label, .. }
                 | Control::Checkbox { label, .. }
                 | Control::Switch { label, .. }
+                | Control::Disclosure { label, .. }
                 | Control::Radio { label, .. }
                 | Control::Slider { label, .. }
                 | Control::Progress { label, .. }

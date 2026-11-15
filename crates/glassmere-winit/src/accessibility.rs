@@ -1176,6 +1176,47 @@ mod tests {
     }
 
     #[test]
+    fn a_collapsible_header_reports_and_takes_expand_and_collapse() {
+        use std::cell::Cell;
+        let open = Cell::new(false);
+        let mut context = Context::new();
+        let declare = |context: &mut Context| {
+            context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
+                ui.keyed("section", |ui| {
+                    ui.collapsible("Advanced", open.get(), |_| (), |ui| ui.label("Inside"));
+                });
+            });
+        };
+        declare(&mut context);
+        let header = context.find(&["section", "$header"]).unwrap();
+        let request = |action| ActionRequest {
+            action,
+            target_tree: TreeId::ROOT,
+            target_node: NodeId(header.0),
+            data: None,
+        };
+        let update = tree(&context, "Section", 1.0);
+        let node = node_in(&update, NodeId(header.0));
+        assert_eq!(node.role(), Role::Button);
+        assert_eq!(node.label(), Some("Advanced"));
+        assert_eq!(node.is_expanded(), Some(false));
+        assert!(node.supports_action(Action::Expand));
+        assert!(!node.supports_action(Action::Collapse));
+        assert!(node.supports_action(Action::Click));
+
+        // The application is what opens it; the request only asks.
+        assert!(action(&mut context, request(Action::Expand), 1.0));
+        open.set(true);
+        declare(&mut context);
+        let update = tree(&context, "Section", 1.0);
+        let node = node_in(&update, NodeId(header.0));
+        assert_eq!(node.is_expanded(), Some(true));
+        assert!(node.supports_action(Action::Collapse));
+        assert!(action(&mut context, request(Action::Collapse), 1.0));
+        assert!(!action(&mut context, request(Action::Expand), 1.0));
+    }
+
+    #[test]
     fn a_view_that_overflows_sideways_reports_and_takes_horizontal_scrolling() {
         let mut context = Context::new();
         context.run(Size::new(200.0, 200.0), &mut MonospaceMeasurer, |ui| {

@@ -24,6 +24,7 @@ enum Msg {
     Submitted,
     Notify(bool),
     Airplane(bool),
+    Advanced(bool),
     Mode(usize),
     Volume(f64),
     Theme(usize),
@@ -41,6 +42,7 @@ struct Controls {
     password: String,
     notifications: bool,
     airplane: bool,
+    advanced: bool,
     mode: usize,
     volume: f64,
     theme: usize,
@@ -70,6 +72,7 @@ impl App for Controls {
             Msg::Submitted => self.submissions += 1,
             Msg::Notify(on) => self.notifications = on,
             Msg::Airplane(on) => self.airplane = on,
+            Msg::Advanced(open) => self.advanced = open,
             Msg::Mode(mode) => self.mode = mode,
             Msg::Volume(volume) => self.volume = volume,
             Msg::Theme(theme) => self.theme = theme,
@@ -255,6 +258,15 @@ impl App for Controls {
                     });
                     ui.slider("Volume", self.volume, 0.0..=100.0, 5.0, Msg::Volume);
                     ui.progress("Volume level", Some(self.volume / 100.0));
+                    // The application owns whether it is open; Right opens it and Left closes it.
+                    ui.collapsible("Advanced", self.advanced, Msg::Advanced, |ui| {
+                        ui.label(
+                            Label::new("Only declared while the section is open.").style(Style {
+                                foreground: Some(muted),
+                                ..wrapped.clone()
+                            }),
+                        );
+                    });
                     ui.label("Theme");
                     ui.combo_box(
                         "Theme",
@@ -307,6 +319,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             password: String::new(),
             notifications: false,
             airplane: false,
+            advanced: false,
             mode: 0,
             volume: 50.0,
             theme: 0,
