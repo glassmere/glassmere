@@ -995,6 +995,20 @@ struct Window<'a> {
     pages: Option<(usize, usize)>,
 }
 
+/// The rows a list of one row height shows at `offset`, with its overscan.
+pub(crate) fn realized_rows(
+    len: usize,
+    offset: f32,
+    options: &VirtualListOptions,
+) -> std::ops::Range<usize> {
+    let first = (offset / options.row_height).floor() as usize;
+    let start = first.saturating_sub(options.overscan).min(len);
+    let end = (((offset + options.height) / options.row_height).ceil() as usize)
+        .saturating_add(options.overscan)
+        .min(len);
+    start..end
+}
+
 /// Where a declaration's rows stand: all `fixed` high, or as the model's
 /// heights say. Without heights the arithmetic is that of one row height.
 #[derive(Clone, Copy)]
