@@ -59,9 +59,10 @@ mod tr;
 /// `style_sheet!("styles/app.style")`.
 ///
 /// The path is relative to the crate's manifest. An unknown property, a
-/// value the parser cannot read and an unclosed rule are compile errors that
-/// name the line, and editing the file rebuilds the crate. It expands to a
-/// `StyleSheet`, already parsed, that cannot fail at start.
+/// value the parser cannot read, an undeclared variable and an unclosed or
+/// unsupported nested rule are compile errors that name the line, and editing
+/// the file rebuilds the crate. It expands to a `StyleSheet`, already parsed,
+/// that cannot fail at start.
 #[proc_macro]
 pub fn style_sheet(input: TokenStream) -> TokenStream {
     let path = parse_macro_input!(input as LitStr);
