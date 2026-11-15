@@ -4,13 +4,14 @@
 mod support;
 
 use glassmere_core::{
-    Action, Command, Context, Direction, Event, Key, Menu, MenuEntry, NodeSnapshot, Role, Shortcut,
-    Style, Ui,
+    Action, Command, Context, Direction, Event, Key, Length, Menu, MenuEntry, NodeSnapshot, Role,
+    Shortcut, Style, TouchPhase, Ui,
 };
 use glassmere_scene::{Point, Rect, Size};
-use support::{Driven, act, shows};
+use std::time::Duration;
+use support::{Driven, act, center, shows};
 
-/// Room for three menus side by side.
+/// Room for a menu and the submenus that open beside it.
 const WIDE: Size = Size::new(900.0, 400.0);
 
 /// The message type of a `Driven` view over state `S`.
@@ -451,4 +452,304 @@ fn a_command_menu_opens_a_submenu_on_the_other_side_where_the_window_ends() {
         panel.bounds
     );
     assert!(panel.bounds.x >= 0.0);
+}
+
+fn area_page(_: &Page, ui: &mut Ui<'_, Handler<Page>>) {
+    ui.keyed("area", |ui| {
+        ui.command_context_menu(
+            &menu(),
+            Style::default()
+                .width(Length::Percent(1.0))
+                .height(Length::Px(200.0)),
+            |ui| {
+                ui.keyed("text", |ui| ui.label("Right-click me"));
+                ui.keyed("inner", |ui| ui.button("Inner"));
+            },
+        );
+    });
+    ui.keyed("outside", |ui| ui.button("Outside"));
+    commands(ui);
+}
+
+const AREA: [&str; 1] = ["area"];
+
+fn open_area(driven: &mut Driven<Page>, at: Point) {
+    assert!(driven.context.event(Event::ContextMenu(at)));
+    driven.frame();
+}
+
+#[test]
+fn a_command_context_menu_opens_at_the_pointer_with_rules_hints_and_submenus() {
+    let mut driven = Driven::new(WIDE, Page::default(), area_page);
+    assert!(driven.context.find(&at(&AREA, &["$popup"])).is_none());
+    assert!(
+        !driven
+            .context
+            .event(Event::ContextMenu(Point { x: 10.0, y: 300.0 })),
+        "outside the area"
+    );
+    open_area(&mut driven, Point { x: 100.0, y: 60.0 });
+    let panel = node(&driven.context, &at(&AREA, &["$popup"]));
+    assert_eq!((panel.bounds.x, panel.bounds.y), (100.0, 60.0));
+    assert_eq!(panel.bounds.width, 220.0);
+    assert_eq!(panel.semantics.role, Role::Menu);
+    assert!(panel.is_popup);
+    let open = node(&driven.context, &at(&AREA, &["$popup", "0"]));
+    assert_eq!(open.semantics.role, Role::MenuItem);
+    assert_eq!(
+        open.semantics.label,
+        format!("Open..., {}", Shortcut::primary('o').describe())
+    );
+    assert!(
+        node(&driven.context, &at(&AREA, &["$popup", "1"]))
+            .semantics
+            .disabled
+    );
+    let row = node(&driven.context, &at(&AREA, &["$popup", "2"]));
+    assert_eq!(row.semantics.label, "Recent");
+    assert_eq!(row.expanded, Some(false));
+    assert!(
+        node(&driven.context, &at(&AREA, &["$popup", "4"]))
+            .semantics
+            .disabled
+    );
+}
+
+#[test]
+fn a_command_context_menu_nests_from_the_keyboard_and_a_pick_activates_its_command() {
+    let mut driven = Driven::new(WIDE, Page::default(), area_page);
+    // The keyboard opens the menu below the focused control inside the area.
+    let inner = driven.context.find(&at(&AREA, &["inner"])).unwrap();
+    driven.context.action(inner, Action::Focus);
+    let inner_bounds = driven.context.node(inner).unwrap().bounds;
+    press(&mut driven.context, Key::ContextMenu);
+    driven.frame();
+    let panel = node(&driven.context, &at(&AREA, &["$popup"]));
+    assert_eq!(
+        (panel.bounds.x, panel.bounds.y),
+        (inner_bounds.x, inner_bounds.y + inner_bounds.height)
+    );
+    // Escape closes it, and the focus is where it was.
+    press(&mut driven.context, Key::Escape);
+    driven.frame();
+    assert!(driven.context.find(&at(&AREA, &["$popup"])).is_none());
+    assert!(node(&driven.context, &at(&AREA, &["inner"])).focused);
+
+    open_area(&mut driven, Point { x: 100.0, y: 60.0 });
+    press(&mut driven.context, Key::ArrowDown);
+    press(&mut driven.context, Key::ArrowRight);
+    driven.frame();
+    let row = node(&driven.context, &at(&AREA, &["$popup", "2"]));
+    assert_eq!(row.expanded, Some(true));
+    let panel = found(&driven.context, &recent(&AREA)).expect("Recent is open");
+    assert!((panel.bounds.x - (row.bounds.x + row.bounds.width - 2.0)).abs() < 0.5);
+    press(&mut driven.context, Key::ArrowDown);
+    press(&mut driven.context, Key::Enter);
+    driven.frame();
+    assert!(found(&driven.context, &more(&AREA)).is_some());
+    press(&mut driven.context, Key::Enter);
+    driven.frame();
+    driven.frame();
+    assert_eq!(driven.state().picked, ["b"]);
+    assert!(driven.context.find(&at(&AREA, &["$popup"])).is_none());
+    assert!(node(&driven.context, &at(&AREA, &["inner"])).focused);
+    driven.frame();
+    assert_eq!(driven.state().picked, ["b"], "a pick is sent once");
+
+    // Left goes back out a level, and Escape out of the menu, with no pick.
+    open_area(&mut driven, Point { x: 100.0, y: 60.0 });
+    press(&mut driven.context, Key::ArrowDown);
+    press(&mut driven.context, Key::ArrowRight);
+    driven.frame();
+    press(&mut driven.context, Key::ArrowLeft);
+    driven.frame();
+    assert!(found(&driven.context, &recent(&AREA)).is_none());
+    press(&mut driven.context, Key::Escape);
+    driven.frame();
+    assert!(driven.context.find(&at(&AREA, &["$popup"])).is_none());
+    assert_eq!(driven.state().picked, ["b"]);
+
+    // A command on the first level is chosen the same way.
+    open_area(&mut driven, Point { x: 100.0, y: 60.0 });
+    press(&mut driven.context, Key::Enter);
+    driven.frame();
+    driven.frame();
+    assert_eq!(driven.state().picked, ["b", "open"]);
+}
+
+#[test]
+fn a_command_context_menu_opens_a_submenu_at_once_on_a_click_and_picks_with_the_pointer() {
+    let mut driven = Driven::new(WIDE, Page::default(), area_page);
+    open_area(&mut driven, Point { x: 100.0, y: 60.0 });
+    let row = node(&driven.context, &at(&AREA, &["$popup", "2"])).bounds;
+    driven.context.event(Event::PointerMoved(point(row)));
+    driven.context.event(Event::PointerDown);
+    driven.context.event(Event::PointerUp);
+    driven.frame();
+    assert!(found(&driven.context, &recent(&AREA)).is_some());
+    assert!(driven.state().picked.is_empty(), "a submenu is not a pick");
+    let a = node(&driven.context, &at(&AREA, &["$popup", "2", "$popup", "0"]));
+    driven.context.event(Event::PointerMoved(point(a.bounds)));
+    driven.context.event(Event::PointerDown);
+    driven.context.event(Event::PointerUp);
+    driven.frame();
+    driven.frame();
+    assert_eq!(driven.state().picked, ["a"]);
+    assert!(driven.context.find(&at(&AREA, &["$popup"])).is_none());
+
+    // A press outside every level closes them all and picks nothing.
+    open_area(&mut driven, Point { x: 100.0, y: 60.0 });
+    let row = node(&driven.context, &at(&AREA, &["$popup", "2"])).bounds;
+    driven.context.event(Event::PointerMoved(point(row)));
+    driven.context.event(Event::PointerDown);
+    driven.context.event(Event::PointerUp);
+    driven.frame();
+    let outside = center(&driven.context, &["outside"]);
+    driven.context.event(Event::PointerMoved(outside));
+    driven.context.event(Event::PointerDown);
+    driven.context.event(Event::PointerUp);
+    driven.frame();
+    assert!(driven.context.find(&at(&AREA, &["$popup"])).is_none());
+    assert_eq!(driven.state().picked, ["a"]);
+}
+
+#[test]
+fn a_resting_touch_opens_a_command_context_menu_and_a_tap_in_a_submenu_picks() {
+    let touch = |context: &mut Context, id: u64, phase: TouchPhase, position: Point| {
+        context.event(Event::Touch {
+            id,
+            phase,
+            position,
+            force: None,
+            pen: None,
+        })
+    };
+    let mut driven = Driven::new(WIDE, Page::default(), area_page);
+    let text = center(&driven.context, &at(&AREA, &["text"]));
+    driven.context.set_now(Duration::from_secs(1));
+    touch(&mut driven.context, 1, TouchPhase::Started, text);
+    driven.context.set_now(Duration::from_millis(1500));
+    driven.frame();
+    assert!(driven.context.find(&at(&AREA, &["$popup"])).is_some());
+    touch(&mut driven.context, 1, TouchPhase::Ended, text);
+    driven.frame();
+    assert!(driven.context.find(&at(&AREA, &["$popup"])).is_some());
+    // A tap on a submenu row opens it; a tap in it picks.
+    let row = node(&driven.context, &at(&AREA, &["$popup", "2"])).bounds;
+    touch(&mut driven.context, 2, TouchPhase::Started, point(row));
+    touch(&mut driven.context, 2, TouchPhase::Ended, point(row));
+    driven.frame();
+    let a = node(&driven.context, &at(&AREA, &["$popup", "2", "$popup", "0"]));
+    touch(&mut driven.context, 3, TouchPhase::Started, point(a.bounds));
+    touch(&mut driven.context, 3, TouchPhase::Ended, point(a.bounds));
+    driven.frame();
+    driven.frame();
+    assert_eq!(driven.state().picked, ["a"]);
+}
+
+#[test]
+fn assistive_technology_reaches_the_commands_of_a_command_context_menu() {
+    let mut driven = Driven::new(WIDE, Page::default(), area_page);
+    open_area(&mut driven, Point { x: 100.0, y: 60.0 });
+    let row = driven.context.find(&at(&AREA, &["$popup", "2"])).unwrap();
+    assert!(driven.context.action(row, Action::Expand));
+    driven.frame();
+    assert_eq!(driven.context.node(row).unwrap().expanded, Some(true));
+    let inner = driven
+        .context
+        .find(&at(&AREA, &["$popup", "2", "$popup", "1"]))
+        .unwrap();
+    assert!(driven.context.action(inner, Action::Expand));
+    driven.frame();
+    assert!(found(&driven.context, &more(&AREA)).is_some());
+    let blocked = driven
+        .context
+        .find(&at(&AREA, &["$popup", "2", "$popup", "1", "$popup", "1"]))
+        .unwrap();
+    assert!(!driven.context.action(blocked, Action::Activate));
+    driven.frame();
+    assert!(driven.state().picked.is_empty());
+    let unavailable = driven.context.find(&at(&AREA, &["$popup", "4"])).unwrap();
+    assert!(!driven.context.action(unavailable, Action::Expand));
+    let b = driven
+        .context
+        .find(&at(&AREA, &["$popup", "2", "$popup", "1", "$popup", "0"]))
+        .unwrap();
+    assert!(driven.context.action(b, Action::Activate));
+    driven.frame();
+    driven.frame();
+    assert_eq!(driven.state().picked, ["b"]);
+    assert!(driven.context.find(&at(&AREA, &["$popup"])).is_none());
+}
+
+#[test]
+fn a_right_to_left_command_context_menu_opens_its_submenus_on_the_left() {
+    let mut driven = Driven::new(WIDE, Page::default(), area_page);
+    driven.context.set_direction(Direction::Rtl);
+    driven.frame();
+    open_area(&mut driven, Point { x: 500.0, y: 60.0 });
+    let row = node(&driven.context, &at(&AREA, &["$popup", "2"]));
+    press(&mut driven.context, Key::ArrowDown);
+    press(&mut driven.context, Key::ArrowRight);
+    driven.frame();
+    assert!(
+        found(&driven.context, &recent(&AREA)).is_none(),
+        "the wrong arrow opens nothing"
+    );
+    press(&mut driven.context, Key::ArrowLeft);
+    driven.frame();
+    let panel = found(&driven.context, &recent(&AREA)).expect("Recent is open");
+    assert!(
+        (panel.bounds.x + panel.bounds.width - (row.bounds.x + 2.0)).abs() < 0.5,
+        "{:?} beside {:?}",
+        panel.bounds,
+        row.bounds
+    );
+    press(&mut driven.context, Key::ArrowRight);
+    driven.frame();
+    assert!(found(&driven.context, &recent(&AREA)).is_none());
+    assert!(driven.context.find(&at(&AREA, &["$popup"])).is_some());
+}
+
+#[test]
+fn a_command_context_menu_opens_a_submenu_on_the_other_side_where_the_window_ends() {
+    let mut driven = Driven::new(WIDE, Page::default(), area_page);
+    // The menu fits, and a submenu beside it would not.
+    open_area(&mut driven, Point { x: 640.0, y: 60.0 });
+    press(&mut driven.context, Key::ArrowDown);
+    press(&mut driven.context, Key::ArrowRight);
+    driven.frame();
+    let row = node(&driven.context, &at(&AREA, &["$popup", "2"])).bounds;
+    let panel = found(&driven.context, &recent(&AREA)).expect("Recent is open");
+    assert!(
+        row.x + row.width + panel.bounds.width > WIDE.width,
+        "{row:?}"
+    );
+    assert!(
+        (panel.bounds.x + panel.bounds.width - (row.x + 2.0)).abs() < 0.5,
+        "{:?} beside {row:?}",
+        panel.bounds
+    );
+}
+
+#[test]
+fn a_disabled_command_context_menu_does_not_open() {
+    let mut driven = Driven::new(WIDE, Page::default(), |_, ui| {
+        ui.keyed("area", |ui| {
+            ui.enabled(false, |ui| {
+                ui.command_context_menu(
+                    &menu(),
+                    Style::default()
+                        .width(Length::Px(400.0))
+                        .height(Length::Px(200.0)),
+                    |ui| ui.label("Nothing"),
+                );
+            });
+        });
+    });
+    driven
+        .context
+        .event(Event::ContextMenu(Point { x: 100.0, y: 60.0 }));
+    driven.frame();
+    assert!(driven.context.find(&at(&AREA, &["$popup"])).is_none());
 }

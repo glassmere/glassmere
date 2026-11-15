@@ -474,6 +474,45 @@ impl<'a, M: 'static> Ui<'a, M> {
             true,
             Length::Px(220.0),
         );
+        self.context_area(key, popup, items.to_vec(), style, content);
+        self.set_handler(pick);
+    }
+
+    /// Content with a right-click (or Shift+F10 / Menu key) menu that is
+    /// `menu`: its commands, separators and submenus, which open beside the
+    /// menu they are in to any depth. Choosing a command activates it,
+    /// exactly as in [`Ui::menu_bar`]: through the command the view declared,
+    /// with [`Ui::command_button`]. A command that is disabled cannot be
+    /// chosen.
+    #[track_caller]
+    pub fn command_context_menu(
+        &mut self,
+        menu: &crate::Menu,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_, M>),
+    ) {
+        let key = self.next_key();
+        let chosen = self.take_command(&key, Kind::ContextArea, &menu.entries);
+        let items = crate::platform::level_items(&menu.entries);
+        let owner = self.context.child(self.parent, &key, Kind::ContextArea);
+        let popup = self.menu_level(owner, &menu.entries, &items, Length::Px(220.0));
+        self.context_area(key, popup, items, style, content);
+        if let Some(id) = chosen {
+            self.host.commands.push(id);
+        }
+    }
+
+    /// The area of a context menu, with `popup` (its open levels, if any)
+    /// ahead of `content`.
+    #[track_caller]
+    fn context_area(
+        &mut self,
+        key: WidgetKey,
+        popup: Vec<Element>,
+        items: Vec<MenuItem>,
+        style: Style,
+        content: impl FnOnce(&mut Ui<'_, M>),
+    ) {
         self.group(key, Kind::ContextArea, style, |ui| {
             // The popup panel must be the first child, like combo and menu owners.
             ui.elements.extend(popup);
@@ -482,10 +521,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             }
             content(ui);
         });
-        self.set_handler(pick);
-        self.set_control(Control::ContextMenu {
-            items: items.to_vec(),
-        });
+        self.set_control(Control::ContextMenu { items });
     }
 
     /// An anchored, non-modal panel below the previously declared widget,

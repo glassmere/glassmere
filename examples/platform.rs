@@ -190,6 +190,18 @@ impl App for Platform {
                     Msg::Quit,
                 );
             });
+            // A right click, the menu key or a long press opens the same
+            // `Menu` where the pointer is, with its submenus.
+            ui.command_context_menu(
+                &menu(self.saved),
+                Style::default()
+                    .width(Length::Percent(1.0))
+                    .height(Length::Px(48.0))
+                    .padding(12.0),
+                |ui| {
+                    ui.label("Right-click here for the same menu.");
+                },
+            );
             let opened: Vec<String> = ui
                 .opened_files()
                 .iter()

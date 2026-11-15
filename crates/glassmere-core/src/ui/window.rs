@@ -317,7 +317,7 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// The popup of one level of a menu while `owner` has it open, with the
     /// popups of the submenus open under it.
     #[track_caller]
-    fn menu_level(
+    pub(super) fn menu_level(
         &mut self,
         owner: Option<NodeId>,
         entries: &[crate::MenuEntry],
