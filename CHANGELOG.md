@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [0.1.7] - 2026-11-16
+
+### Added
+
+- Markup: a view can be written in a `.glass` file and read while the application runs, behind the `markup` feature (`glassmere::markup`, the new `glassmere-markup` crate). See [Markup and the designer](docs/markup.md) and `examples/markup.rs`.
+  - Elements for the layout containers and the basic controls, stylesheet properties and classes on any element, expressions over the application's `Values`, `if`, `for`, components with parameters, `on-*` events and two-way `bind`.
+  - `Markup::parse` for a view compiled into the binary, and `LiveMarkup` for one that follows its file on disk and keeps the last version that parsed.
+  - Errors carry the line, the column and what was expected.
+- `glassmere-designer`, a live preview and visual editor for markup files: an outline, picking an element in the preview, editing its text, class and properties, adding, moving and deleting elements, test data and an event log. Every change is written back to the file. `editors/vscode` adds syntax highlighting and a preview command to VS Code.
+- Embedded: `glassmere-core` and `glassmere-scene` build for `no_std` targets with `alloc` when their new default `std` feature is off, and the new `glassmere-embedded` crate renders to a plain pixel buffer. See [Embedded](docs/embedded.md).
+  - `EmbeddedRenderer` paints a scene into a `Framebuffer` of `Rgb565`, `Rgb888`, `Xrgb8888`, `Gray8` or `Mono` pixels: a whole frame, a band of one or only the damaged rectangles.
+  - Bitmap fonts built in (6x13 and 9x18, regular and bold, about 35 KiB), with a `TextMeasurer` that agrees with them.
+  - `EmbeddedUi` runs an `App` from a firmware loop: touch and key input in, the time from a hardware timer, damage out.
+  - `examples/embedded-firmware` is a firmware crate checked for `thumbv7em-none-eabihf`, and `examples/embedded.rs` shows it in a window. The `embedded` feature re-exports the crate as `glassmere::embedded`.
+- `Style::set_property` sets one property from its stylesheet name and value.
+- `Ui::context` reads the tree as the previous frame left it, for hit tests from a view.
+
+### Changed
+
+- `glassmere-core` and `glassmere-scene` have a `std` feature, on by default. A dependency on either with `default-features = false` now has to ask for `std` to keep threads, files, channels and the text editors. The `regex` feature of `glassmere-core` implies `std`.
+
 ## [0.1.6] - 2026-11-15
 
 ### Added
