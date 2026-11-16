@@ -32,7 +32,7 @@ pub struct Element {
     /// The line it starts on, from 1.
     pub line: usize,
     /// The style properties whose values are fixed, already applied.
-    pub(crate) fixed: Style,
+    pub(crate) fixed: Box<Style>,
     pub(crate) styled: bool,
 }
 

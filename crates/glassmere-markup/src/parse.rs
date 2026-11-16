@@ -114,8 +114,12 @@ struct Parser<'s> {
     /// The elements whose bodies are open, innermost last.
     parents: Vec<String>,
     /// Where each component is used, and with which properties.
-    uses: Vec<(String, usize, Vec<(String, usize)>)>,
+    uses: Vec<Use>,
 }
+
+/// A component's name, where it is used, and the properties it is given
+/// there with where each is.
+type Use = (String, usize, Vec<(String, usize)>);
 
 type Res<T> = Result<T, MarkupError>;
 
@@ -697,11 +701,11 @@ impl<'s> Parser<'s> {
         {
             return Err(self.error(at, "`tabs` holds `tab` elements only"));
         }
-        let mut fixed = if kind_name == "button" {
+        let mut fixed = Box::new(if kind_name == "button" {
             Style::button()
         } else {
             Style::default()
-        };
+        });
         let mut styled = false;
         let mut properties = Vec::new();
         let mut used = Vec::new();

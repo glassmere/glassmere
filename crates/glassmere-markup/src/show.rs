@@ -135,7 +135,7 @@ impl<M: 'static> Shower<'_, M> {
                 }
                 style
             }
-            None => element.fixed.clone(),
+            None => (*element.fixed).clone(),
         };
         for property in &element.properties {
             if let PropertyKind::DynamicStyle(pieces) = &property.kind {

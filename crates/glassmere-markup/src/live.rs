@@ -79,8 +79,10 @@ impl LiveMarkup {
         values: &Values,
         on: impl Fn(MarkupEvent) -> M + 'static,
     ) {
-        let mut options = ShowOptions::default();
-        options.base_dir = self.path.parent().map(Path::to_path_buf);
+        let options = ShowOptions {
+            base_dir: self.path.parent().map(Path::to_path_buf),
+            ..ShowOptions::default()
+        };
         self.show_with(ui, values, &options, on);
     }
 
