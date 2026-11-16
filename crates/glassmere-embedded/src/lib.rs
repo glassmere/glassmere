@@ -87,9 +87,13 @@ mod raster;
 mod renderer;
 mod shader;
 mod text;
+#[cfg(feature = "ui")]
+mod ui;
 
 pub use font::{BitmapFont, FontFace, FontSet, GlyphRange};
 pub use framebuffer::Framebuffer;
 pub use pixel::{Gray8, Mono, Pixel, Rgb565, Rgb888, Xrgb8888};
 pub use renderer::{EmbeddedRenderer, ImageFilter, RenderOptions};
 pub use text::EmbeddedMeasurer;
+#[cfg(feature = "ui")]
+pub use ui::EmbeddedUi;

@@ -1035,6 +1035,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
 
 [[package]]
+name = "embedded-firmware"
+version = "0.0.0"
+dependencies = [
+ "glassmere-core",
+ "glassmere-embedded",
+]
+
+[[package]]
 name = "endi"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1595,6 +1603,7 @@ dependencies = [
  "glassmere-core",
  "glassmere-derive",
  "glassmere-devtools",
+ "glassmere-embedded",
  "glassmere-fluent",
  "glassmere-icu",
  "glassmere-image",
@@ -1670,6 +1679,7 @@ dependencies = [
 name = "glassmere-examples"
 version = "0.1.6"
 dependencies = [
+ "embedded-firmware",
  "glassmere",
 ]
 

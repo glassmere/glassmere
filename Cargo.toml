@@ -1,5 +1,7 @@
 [workspace]
 resolver = "2"
+# Built for a bare-metal target, with its own lock file.
+exclude = ["examples/embedded-firmware"]
 members = [
     "crates/glassmere",
     "crates/glassmere-core",
@@ -68,7 +70,6 @@ accesskit_winit = "0.32.2"
 unicode-segmentation = "1.13"
 arboard = { version = "3.6.1", default-features = false }
 sys-locale = "0.3.2"
-libm = "0.2"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

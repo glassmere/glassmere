@@ -7,9 +7,9 @@ with built-in bitmap fonts and a `TextMeasurer` that lays text out on the same
 grid the renderer draws it on.
 
 `#![no_std]` with `alloc`; the only dependencies are `glassmere-scene` and
-`libm`. Unsafe code is forbidden. Note that `glassmere-scene` itself still uses
-`std`, so the crate builds for hosts today and for bare-metal targets once the
-scene crate does.
+`libm`, plus `glassmere-core` for `EmbeddedUi` (the default `ui` feature),
+which runs an application on the display: input in, damaged pixels out. Unsafe
+code is forbidden. CI checks the crate for `thumbv7em-none-eabihf`.
 
 ```rust
 use glassmere_embedded::{EmbeddedMeasurer, EmbeddedRenderer, Framebuffer, Rgb565};

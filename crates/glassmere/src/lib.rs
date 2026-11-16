@@ -7,6 +7,8 @@ pub use glassmere_core::*;
 #[cfg(feature = "derive")]
 pub use glassmere_derive::{Properties, PropertyChoice, style_sheet, tr};
 pub use glassmere_devtools as devtools;
+#[cfg(feature = "embedded")]
+pub use glassmere_embedded as embedded;
 #[cfg(feature = "fluent")]
 pub use glassmere_fluent as fluent;
 #[cfg(feature = "icu")]
