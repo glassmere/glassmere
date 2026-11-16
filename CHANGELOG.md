@@ -25,6 +25,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `glassmere-core` and `glassmere-scene` have a `std` feature, on by default. A dependency on either with `default-features = false` now has to ask for `std` to keep threads, files, channels and the text editors. The `regex` feature of `glassmere-core` implies `std`.
 
+### Fixed
+
+- An event that reaches an event area over content that does not react to it is handled at once. Before, the area's message waited for the next unrelated event, such as the pointer leaving the window.
+- On Windows, the system's minimize, maximize and close buttons work in a window that does not draw its own. Before, their clicks were kept from Windows.
+
 ## [0.1.6] - 2026-11-15
 
 ### Added
