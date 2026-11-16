@@ -1691,6 +1691,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "glassmere-markup"
+version = "0.1.6"
+dependencies = [
+ "glassmere-core",
+ "glassmere-scene",
+ "glassmere-testing",
+]
+
+[[package]]
 name = "glassmere-render-cpu"
 version = "0.1.6"
 dependencies = [

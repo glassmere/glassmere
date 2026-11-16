@@ -18,6 +18,13 @@ impl<'a, M: 'static> Ui<'a, M> {
         self.context.window_info()
     }
 
+    /// The tree as the previous frame left it: bounds, hit testing and
+    /// snapshots of what was declared then. Nothing declared in this view is
+    /// in it yet.
+    pub fn context(&self) -> &crate::Context {
+        self.context
+    }
+
     /// The window's logical size, which is what `Ui::resize_frame` places
     /// its grips by.
     #[track_caller]
