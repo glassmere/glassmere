@@ -30,6 +30,7 @@ glassmere use fluent = glassmere_fluent #[cfg(feature = "fluent")]
 glassmere use hot = glassmere_winit::hot #[cfg(feature = "desktop")]
 glassmere use icu = glassmere_icu #[cfg(feature = "icu")]
 glassmere use image = glassmere_image #[cfg(feature = "images")]
+glassmere use markup = glassmere_markup #[cfg(feature = "markup")]
 glassmere use render = glassmere_render_wgpu #[cfg(feature = "desktop")]
 glassmere use run = glassmere_winit::run #[cfg(feature = "desktop")]
 glassmere use run_with = glassmere_winit::run_with #[cfg(feature = "desktop")]
@@ -1044,6 +1045,7 @@ glassmere-core   fn Style::radius(mut self, value: f32) -> Self
 glassmere-core   fn Style::resolve_text(&self, inherited: &ResolvedText) -> ResolvedText
 glassmere-core   fn Style::row_gap(mut self, value: f32) -> Self
 glassmere-core   fn Style::rows(mut self, value: Vec<Track>) -> Self
+glassmere-core   fn Style::set_property(&mut self, name: &str, value: &str) -> Result<(), String>
 glassmere-core   fn Style::shadow(mut self, shadow: Shadow) -> Self
 glassmere-core   fn Style::shrink(mut self, value: f32) -> Self
 glassmere-core   fn Style::transform(mut self, value: Transform) -> Self
@@ -1177,6 +1179,7 @@ glassmere-core   fn Ui::command_menu(&mut self, label: impl Into<String>, menu: 
 glassmere-core   fn Ui::command_palette(&mut self, open: bool, query: &str, commands: &[crate::Command], palette: CommandPalette<M>) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::component<C: Component>(&mut self, style: Style, component: &C, f: impl Fn(C::Message) -> M + 'static) #[track_caller] [impl<M: 'static> Ui<'_, M>]
 glassmere-core   fn Ui::container(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_, M>)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
+glassmere-core   fn Ui::context(&self) -> &crate::Context [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::context_menu(&mut self, items: &[MenuItem], style: Style, on_pick: impl Fn(usize) -> M + 'static, content: impl FnOnce(&mut Ui<'_, M>)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::custom(&mut self, style: Style, widget: CustomWidget, on_click: M) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::data_grid(&mut self, model: &impl GridModel, state: &GridState, options: VirtualListOptions, on: impl Fn(GridMsg) -> Msg + 'static) #[track_caller] [impl<'a, Msg: 'static> Ui<'a, Msg>]

@@ -49,7 +49,7 @@ Values are expressions over the application's `Values`: names and `a.b` paths, n
 - `component Card(title, body) { ... }` at the top level defines an element, used as `Card { title: "Hello"; body: text }` or, for the first parameter, `Card "Hello"`.
 - `data { ... }` holds the values the designer previews with. `Markup::defaults` returns them, so an application can start from the same ones.
 
-A mistake is reported with its line and column, and names what was expected: `2:5: unknown element 'buton'`.
+A mistake is reported with its line and column, and names what was expected: ``line 2, column 5: unknown element `buton` ``.
 
 ## In an application
 
