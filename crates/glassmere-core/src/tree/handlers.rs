@@ -7,6 +7,9 @@ use crate::WindowId;
 use crate::app::Shared;
 use crate::app::{Handler, HandlerSlab, Requests};
 use crate::collection::CollectionInput;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 impl Context {
     /// Input for `id` that no handler will answer waits for a declaration
@@ -93,7 +96,7 @@ impl Context {
 
     /// The slab of the `App` driving this context, taken out so that the
     /// nodes can be changed beside it. Put it back with `self.handlers`.
-    fn take_slab<M: 'static>(&mut self) -> Box<dyn std::any::Any> {
+    fn take_slab<M: 'static>(&mut self) -> Box<dyn core::any::Any> {
         let slab = self
             .handlers
             .take()
@@ -121,7 +124,7 @@ impl Context {
         }
         let mut boxed = self.take_slab::<M>();
         let slab = boxed.downcast_mut::<HandlerSlab<M>>().unwrap();
-        let mut queued = std::mem::take(&mut self.queued);
+        let mut queued = core::mem::take(&mut self.queued);
         for (id, kind) in queued.drain(..) {
             let Some(node) = self.nodes.get(&id) else {
                 continue;
@@ -357,7 +360,7 @@ impl Context {
         view: impl FnOnce(&mut Ui<'_, M>),
     ) -> FrameStats {
         let mut boxed = self.take_slab::<M>();
-        let mut frame = std::mem::take(&mut boxed.downcast_mut::<HandlerSlab<M>>().unwrap().frame);
+        let mut frame = core::mem::take(&mut boxed.downcast_mut::<HandlerSlab<M>>().unwrap().frame);
         self.handlers = Some(boxed);
         self.declare(size, measurer, &mut frame, view);
         let mut boxed = self.take_slab::<M>();
@@ -507,6 +510,7 @@ impl Context {
             self.paste_requested = true;
         }
         // One dialog at a time: the next waits for the answer to this one.
+        #[cfg(feature = "std")]
         if !requests.file_busy.contains(&window)
             && let Some(first) = requests
                 .files
@@ -541,6 +545,7 @@ impl Context {
         self.clip_in.take()
     }
 
+    #[cfg(feature = "std")]
     pub(crate) fn take_chosen_files(&mut self) -> Option<Vec<std::path::PathBuf>> {
         self.chosen_files.take()
     }

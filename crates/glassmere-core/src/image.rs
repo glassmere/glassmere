@@ -1,5 +1,8 @@
 use crate::Style;
+use alloc::string::String;
+use alloc::vec::Vec;
 use glassmere_scene::{Color, Image, Rect, Size};
+#[cfg(feature = "std")]
 use std::path::PathBuf;
 
 /// How an image fills a box whose shape differs from its own.
@@ -70,6 +73,7 @@ pub enum ImageSource {
     Image(Image),
     /// Loaded by the host like `Ui::image_file`; nothing is painted until it
     /// arrives.
+    #[cfg(feature = "std")]
     File(PathBuf),
 }
 
@@ -93,6 +97,7 @@ impl BackgroundImage {
         Self::from_source(ImageSource::Image(image.clone()))
     }
 
+    #[cfg(feature = "std")]
     pub fn file(path: impl Into<PathBuf>) -> Self {
         Self::from_source(ImageSource::File(path.into()))
     }

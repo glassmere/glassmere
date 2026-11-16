@@ -13,5 +13,11 @@ categories = ["rendering", "gui"]
 [lints]
 workspace = true
 
+[features]
+default = ["std"]
+# Without it the crate builds for `no_std` targets that have `alloc`.
+std = []
+
 [dependencies]
 unicode-segmentation.workspace = true
+libm = "0.2"

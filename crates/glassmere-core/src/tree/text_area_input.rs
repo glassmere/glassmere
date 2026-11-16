@@ -1,6 +1,10 @@
 use super::*;
 use crate::text_area::{AreaLine, Granularity, MarkKind, TextOp};
 use crate::{EditorCommand, Motion, TextEdit, TextMove};
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec;
+use alloc::vec::Vec;
 use glassmere_scene::{Affinity, FontFamily, TextGeometry, TextSpan};
 
 struct LineLayout {
@@ -45,6 +49,7 @@ pub(super) struct AreaState {
 
 /// What a declaration needs to know about the previous frame.
 #[derive(Clone, Copy)]
+#[cfg_attr(not(feature = "std"), allow(dead_code))]
 pub(crate) struct AreaView {
     pub scroll_y: f32,
     pub viewport: f32,
@@ -62,6 +67,7 @@ fn text_style(font_size: f32, base: Option<bool>) -> TextStyle {
 }
 
 impl Context {
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
     pub(crate) fn area_view(&self, id: NodeId) -> Option<AreaView> {
         let node = self.nodes.get(&id)?;
         Some(AreaView {
@@ -590,7 +596,7 @@ impl Context {
             } else {
                 0.0
             };
-            let mut old: Vec<Option<LineLayout>> = std::mem::take(&mut area.layouts)
+            let mut old: Vec<Option<LineLayout>> = core::mem::take(&mut area.layouts)
                 .into_iter()
                 .map(Some)
                 .collect();

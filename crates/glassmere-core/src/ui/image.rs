@@ -1,5 +1,7 @@
 use super::*;
 use crate::{ImageOptions, Length};
+#[cfg(feature = "std")]
+use alloc::borrow::ToOwned;
 use glassmere_scene::Image;
 
 impl<'a, M: 'static> Ui<'a, M> {
@@ -21,6 +23,7 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// changes on disk. Until it arrives, and when it cannot be decoded, a
     /// placeholder fills the box, so give the style a size to keep the layout
     /// from jumping. See `Context::image_error` for failures.
+    #[cfg(feature = "std")]
     #[track_caller]
     pub fn image_file(&mut self, path: impl AsRef<std::path::Path>, options: ImageOptions) {
         let key = self.next_key();

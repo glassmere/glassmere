@@ -1,6 +1,8 @@
 use super::*;
 use crate::{Axis, Length, Tooltip, TooltipPlacement, panes::TOOLTIP_DELAY};
-use std::borrow::Cow;
+use alloc::borrow::Cow;
+use alloc::format;
+use alloc::vec::Vec;
 
 /// How soon after a tooltip goes away the next one is shown without its full
 /// delay, and the delay it then has at most: someone moving along a row of
@@ -671,7 +673,7 @@ impl Context {
 
     /// Focuses the first control of popovers created by this declaration.
     pub(super) fn focus_new_popovers(&mut self) {
-        for popover in std::mem::take(&mut self.new_popovers) {
+        for popover in core::mem::take(&mut self.new_popovers) {
             if !self.nodes.contains_key(&popover) {
                 continue;
             }

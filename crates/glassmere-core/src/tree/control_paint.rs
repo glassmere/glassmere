@@ -1,4 +1,5 @@
 use super::*;
+use alloc::vec::Vec;
 
 /// A small flag at the top of a caret in mixed-direction text, pointing the
 /// way the text at the caret runs.
@@ -530,7 +531,7 @@ impl Context {
         let color = self.busy_color(node);
         let head = self.busy_phase(Duration::from_millis(900)) * DOTS as f32;
         for index in 0..DOTS {
-            let angle = index as f32 / DOTS as f32 * std::f32::consts::TAU;
+            let angle = index as f32 / DOTS as f32 * core::f32::consts::TAU;
             let behind = (head - index as f32).rem_euclid(DOTS as f32) / DOTS as f32;
             let strength = 1.0 - 0.85 * behind;
             scene.primitives.push(Primitive::Quad {

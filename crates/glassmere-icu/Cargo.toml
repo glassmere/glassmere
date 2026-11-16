@@ -11,12 +11,12 @@ keywords = ["gui", "icu", "cldr", "i18n", "formatting"]
 categories = ["internationalization", "value-formatting"]
 
 [dependencies]
-glassmere-core.workspace = true
+glassmere-core = { workspace = true, features = ["std"] }
 # CLDR data is compiled in: correct for every locale, about a megabyte as used here.
 icu = "2.3.1"
 
 [dev-dependencies]
-glassmere-scene.workspace = true
+glassmere-scene = { workspace = true, features = ["std"] }
 
 [lints]
 workspace = true

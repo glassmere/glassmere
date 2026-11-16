@@ -1,7 +1,8 @@
 use super::*;
 use crate::RichRun;
+use alloc::vec::Vec;
+use core::ops::Range;
 use glassmere_scene::{FontFamily, TextGeometry, TextSpan};
-use std::ops::Range;
 
 /// Retained shaping of a rich text block and its keyboard-active link.
 #[derive(Default)]

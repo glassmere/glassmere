@@ -1,3 +1,5 @@
+#[cfg(not(feature = "std"))]
+use crate::float::FloatExt as _;
 use crate::{
     CustomWidget, Length, Shortcut, Style, Ui,
     focus::ScopeState,
@@ -11,6 +13,11 @@ use crate::{
     controls::{Control, ControlUpdate, PopupState},
     editor::Editor,
 };
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use glassmere_scene::{
     Color, Point, Primitive, Rect, Scene, Size, TextMeasurer, TextStyle, TextWrap,
 };
@@ -43,12 +50,11 @@ mod text_area_input;
 mod toasts;
 mod touch_input;
 mod types;
+use crate::clock::Instant;
+use crate::collections::{HashMap, HashSet};
+use alloc::sync::Arc;
+use core::time::Duration;
 use measure::*;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-    time::{Duration, Instant},
-};
 pub use touch_input::{GestureResponse, Pen, Swipe, SwipeDirection, TouchPhase};
 pub use types::*;
 
@@ -134,8 +140,8 @@ struct Node {
     /// Whether the view read this node's hover or focus when it last
     /// declared it, and whether the declaration running now has. A change in
     /// an observed state declares again; in any other it only repaints.
-    observed: std::cell::Cell<bool>,
-    observing: std::cell::Cell<bool>,
+    observed: core::cell::Cell<bool>,
+    observing: core::cell::Cell<bool>,
 }
 
 impl Node {
@@ -411,6 +417,7 @@ impl Node {
 }
 
 /// A file the host keeps current for `Ui::watched_bytes`.
+#[cfg(feature = "std")]
 struct Watched {
     bytes: Arc<[u8]>,
     text: Option<Arc<str>>,
@@ -451,22 +458,22 @@ pub struct Context {
     /// then costs a lookup.
     areas: HashMap<NodeId, crate::EventArea>,
     /// A cell because `Ui` holds the context by a shared reference.
-    pending_area_events: std::cell::RefCell<HashMap<NodeId, Vec<crate::UiEvent>>>,
+    pending_area_events: core::cell::RefCell<HashMap<NodeId, Vec<crate::UiEvent>>>,
     /// Nodes that contain something with input waiting, so that a memoized
     /// container above it declares again. Rebuilt for each declaration.
     awaiting: HashSet<NodeId>,
     /// Subtrees the declaration just skipped. A cell because `Ui` only holds
     /// a shared reference to the context.
-    skipped: std::cell::Cell<usize>,
+    skipped: core::cell::Cell<usize>,
     /// Elements the view built, and the bytes of key and text in them.
-    declared: std::cell::Cell<usize>,
-    declared_bytes: std::cell::Cell<usize>,
+    declared: core::cell::Cell<usize>,
+    declared_bytes: core::cell::Cell<usize>,
     /// Font families the declaration named, for the host to check.
-    families: std::cell::RefCell<std::collections::BTreeSet<String>>,
+    families: core::cell::RefCell<alloc::collections::BTreeSet<String>>,
     /// Element vectors from earlier declarations, waiting to be filled
     /// again. A declaration is thrown away every frame; the memory it used
     /// does not have to be.
-    spare: std::cell::RefCell<Vec<Vec<Element>>>,
+    spare: core::cell::RefCell<Vec<Vec<Element>>>,
     submitted: HashSet<NodeId>,
     pub(crate) popup: Option<PopupState>,
     /// The menus the open popup is a submenu of, outermost first. `popup`
@@ -491,8 +498,11 @@ pub struct Context {
     paste_requested: bool,
     clip_in: Option<crate::Clip>,
     /// What the host has been asked for, and what it has answered.
+    #[cfg(feature = "std")]
     file_request: Option<crate::FileRequest>,
+    #[cfg(feature = "std")]
     chosen_files: Option<Vec<std::path::PathBuf>>,
+    #[cfg(feature = "std")]
     opened_files: Vec<std::path::PathBuf>,
     notifications: Vec<crate::Notification>,
     menu_out: Option<crate::Menu>,
@@ -521,9 +531,13 @@ pub struct Context {
     redraw_requested: bool,
     caret_movement: crate::CaretMovement,
     direction: crate::Direction,
+    #[cfg(feature = "std")]
     watched: HashMap<std::path::PathBuf, Watched>,
+    #[cfg(feature = "std")]
     watch_requests: Vec<std::path::PathBuf>,
+    #[cfg(feature = "std")]
     images: HashMap<std::path::PathBuf, image::LoadedImage>,
+    #[cfg(feature = "std")]
     image_requests: Vec<std::path::PathBuf>,
     /// Animated images being shown, by the node that shows them.
     image_plays: HashMap<NodeId, image::Play>,
@@ -542,7 +556,7 @@ pub struct Context {
     edge_scroll_at: Option<Duration>,
     pub(crate) messages: Option<Box<dyn crate::Messages>>,
     pub(crate) format: Option<Box<dyn crate::LocaleFormat>>,
-    pub(crate) missing_messages: std::sync::Mutex<Vec<String>>,
+    pub(crate) missing_messages: core::cell::RefCell<Vec<String>>,
     theme: Theme,
     stylesheet: StyleSheet,
     style_warnings: Vec<String>,
@@ -564,40 +578,40 @@ pub struct Context {
     ghosts: Vec<animation_state::Ghost>,
     /// The handler slab of the `App` driving this context, typed by its
     /// message; `None` before an `App` has declared.
-    handlers: Option<Box<dyn std::any::Any>>,
+    handlers: Option<Box<dyn core::any::Any>>,
     /// What reconcile did to handlers, for the typed code to apply: the
     /// declared handler each node now has, and the slots of removed nodes.
     handler_moves: Vec<(NodeId, Option<u32>)>,
     freed_handlers: Vec<u32>,
     /// Pending filters each grid declared, read by the next batch.
-    grid_filters: std::cell::RefCell<Vec<(NodeId, crate::collection::FilterNote)>>,
+    grid_filters: core::cell::RefCell<Vec<(NodeId, crate::collection::FilterNote)>>,
     /// The filter delays of grids, by the node of their rows.
     grid_timers: HashMap<NodeId, crate::collection::FilterTimer>,
     /// What grids declared with `data_grid` keep: cursor, sideways scroll
     /// and the cell being edited, by the node of their rows.
-    grid_nodes: std::cell::RefCell<HashMap<NodeId, crate::collection::GridNode>>,
+    grid_nodes: core::cell::RefCell<HashMap<NodeId, crate::collection::GridNode>>,
     /// Collection input a declaration queued for the next batch.
-    grid_pending: std::cell::RefCell<Vec<(NodeId, crate::collection::CollectionInput)>>,
+    grid_pending: core::cell::RefCell<Vec<(NodeId, crate::collection::CollectionInput)>>,
     /// Nodes whose text the user edited in the batch being resolved.
     text_typed: HashSet<NodeId>,
     /// The selection a message-form collection last scrolled into view.
-    revealed: std::cell::RefCell<HashMap<NodeId, (Option<crate::ItemId>, u32)>>,
+    revealed: core::cell::RefCell<HashMap<NodeId, (Option<crate::ItemId>, u32)>>,
     /// The top row of each message-form list, kept in place across a reorder.
-    list_anchors: std::cell::RefCell<HashMap<NodeId, crate::collection::ListAnchor>>,
+    list_anchors: core::cell::RefCell<HashMap<NodeId, crate::collection::ListAnchor>>,
     /// The selection each message-form collection last reported as lost, so
     /// an application that keeps it is told once, not every batch.
-    lost_selections: std::cell::RefCell<HashMap<NodeId, crate::ItemId>>,
+    lost_selections: core::cell::RefCell<HashMap<NodeId, crate::ItemId>>,
     /// Activations, edits and submissions in the order they arrived, beside
     /// the per-kind maps.
     queued: Vec<(NodeId, Queued)>,
     /// Elements whose hover or focus the view read before their node existed.
-    observed_new: std::cell::RefCell<Vec<u32>>,
+    observed_new: core::cell::RefCell<Vec<u32>>,
     /// Something the view reads may have changed since it last declared.
     view_stale: bool,
     /// The dock being declared or reconciled, whose panels are found by id
     /// wherever they sit. A cell because `Ui` only holds a shared reference
     /// to the context.
-    dock: std::cell::Cell<Option<NodeId>>,
+    dock: core::cell::Cell<Option<NodeId>>,
     /// The node of each panel's content, by dock and panel id. The content
     /// of a panel whose tab is not selected stays here, parked: its nodes
     /// have no parent and the tree does not reach them.
@@ -659,8 +673,8 @@ impl Default for Context {
             churn: 0,
             layout_rect: Rect::default(),
             handler: None,
-            observed: std::cell::Cell::new(false),
-            observing: std::cell::Cell::new(false),
+            observed: core::cell::Cell::new(false),
+            observing: core::cell::Cell::new(false),
             control: Control::None,
             editor: None,
             changed: Dirty::all(),
@@ -694,13 +708,13 @@ impl Default for Context {
             updates: HashMap::new(),
             bindings: HashMap::new(),
             areas: HashMap::new(),
-            pending_area_events: std::cell::RefCell::new(HashMap::new()),
+            pending_area_events: core::cell::RefCell::new(HashMap::new()),
             awaiting: HashSet::new(),
-            skipped: std::cell::Cell::new(0),
-            declared: std::cell::Cell::new(0),
-            declared_bytes: std::cell::Cell::new(0),
-            families: std::cell::RefCell::new(std::collections::BTreeSet::new()),
-            spare: std::cell::RefCell::new(Vec::new()),
+            skipped: core::cell::Cell::new(0),
+            declared: core::cell::Cell::new(0),
+            declared_bytes: core::cell::Cell::new(0),
+            families: core::cell::RefCell::new(alloc::collections::BTreeSet::new()),
+            spare: core::cell::RefCell::new(Vec::new()),
             submitted: HashSet::new(),
             popup: None,
             popup_parents: Vec::new(),
@@ -715,8 +729,11 @@ impl Default for Context {
             clip_out: None,
             paste_requested: false,
             clip_in: None,
+            #[cfg(feature = "std")]
             file_request: None,
+            #[cfg(feature = "std")]
             chosen_files: None,
+            #[cfg(feature = "std")]
             opened_files: Vec::new(),
             notifications: Vec::new(),
             menu_out: None,
@@ -732,10 +749,14 @@ impl Default for Context {
             redraw_requested: false,
             caret_movement: crate::CaretMovement::Visual,
             direction: crate::Direction::Ltr,
+            #[cfg(feature = "std")]
             watched: HashMap::new(),
+            #[cfg(feature = "std")]
             images: HashMap::new(),
+            #[cfg(feature = "std")]
             image_requests: Vec::new(),
             image_plays: HashMap::new(),
+            #[cfg(feature = "std")]
             watch_requests: Vec::new(),
             hot_save: false,
             settings: (0, 0, 0),
@@ -748,7 +769,7 @@ impl Default for Context {
             edge_scroll_at: None,
             messages: None,
             format: None,
-            missing_messages: std::sync::Mutex::new(Vec::new()),
+            missing_messages: core::cell::RefCell::new(Vec::new()),
             theme,
             stylesheet: StyleSheet::default(),
             style_warnings: Vec::new(),
@@ -777,9 +798,9 @@ impl Default for Context {
             list_anchors: Default::default(),
             lost_selections: Default::default(),
             queued: Vec::new(),
-            observed_new: std::cell::RefCell::new(Vec::new()),
+            observed_new: core::cell::RefCell::new(Vec::new()),
             view_stale: true,
-            dock: std::cell::Cell::new(None),
+            dock: core::cell::Cell::new(None),
             panels: HashMap::new(),
             calendar_views: HashMap::new(),
         }
@@ -828,21 +849,24 @@ impl Context {
 
     /// Files the last declaration asked for through `Ui::watched_bytes`. Hosts
     /// load them, watch them for changes and report through `set_watched_file`.
+    #[cfg(feature = "std")]
     pub fn watched_paths(&self) -> &[std::path::PathBuf] {
         &self.watch_requests
     }
 
     /// Whether the host has delivered this file (or an error for it) yet.
+    #[cfg(feature = "std")]
     pub fn watched_known(&self, path: &std::path::Path) -> bool {
         self.watched.contains_key(path)
     }
 
     /// Delivers a file's content or a read error. An error keeps the last good
     /// content. Returns whether a declaration should follow.
+    #[cfg(feature = "std")]
     pub fn set_watched_file(
         &mut self,
         path: &std::path::Path,
-        content: std::result::Result<Vec<u8>, String>,
+        content: core::result::Result<Vec<u8>, String>,
     ) -> bool {
         let old = self.watched.get(path);
         let changed = match content {
@@ -850,7 +874,7 @@ impl Context {
                 if old.is_some_and(|old| *old.bytes == *bytes && old.error.is_none()) {
                     return false;
                 }
-                let text = std::str::from_utf8(&bytes).ok().map(Arc::from);
+                let text = core::str::from_utf8(&bytes).ok().map(Arc::from);
                 self.watched.insert(
                     path.to_owned(),
                     Watched {
@@ -883,16 +907,19 @@ impl Context {
     }
 
     /// Why the last load of a watched file failed, if it did.
+    #[cfg(feature = "std")]
     pub fn watch_error(&self, path: &std::path::Path) -> Option<&str> {
         self.watched.get(path)?.error.as_deref()
     }
 
+    #[cfg(feature = "std")]
     pub(crate) fn watched_bytes(&self, path: &std::path::Path) -> Option<Arc<[u8]>> {
         let watched = self.watched.get(path)?;
         // A file that never loaded has no content to show.
         (watched.error.is_none() || !watched.bytes.is_empty()).then(|| watched.bytes.clone())
     }
 
+    #[cfg(feature = "std")]
     pub(crate) fn watched_text(&self, path: &std::path::Path) -> Option<Arc<str>> {
         self.watched.get(path)?.text.clone()
     }
@@ -962,9 +989,9 @@ impl Context {
     pub fn memory(&self) -> MemoryReport {
         let mut report = MemoryReport {
             nodes: self.nodes.len(),
-            node_bytes: self.nodes.len() * std::mem::size_of::<Node>(),
+            node_bytes: self.nodes.len() * core::mem::size_of::<Node>(),
             scene_primitives: self.scene.primitives.len(),
-            scene_bytes: self.scene.primitives.len() * std::mem::size_of::<Primitive>(),
+            scene_bytes: self.scene.primitives.len() * core::mem::size_of::<Primitive>(),
             ..MemoryReport::default()
         };
         for node in self.nodes.values() {
@@ -980,6 +1007,7 @@ impl Context {
                 report.cached_primitives += chunk.count();
             }
         }
+        #[cfg(feature = "std")]
         for loaded in self.images.values() {
             report.images += 1;
             report.image_bytes += loaded
@@ -1002,7 +1030,7 @@ impl Context {
     /// Whether the application asked for what is on the clipboard. Answer with
     /// `set_clip`, which asks for a declaration of its own.
     pub fn take_paste_request(&mut self) -> bool {
-        std::mem::take(&mut self.paste_requested)
+        core::mem::take(&mut self.paste_requested)
     }
 
     /// What the host read from the clipboard.
@@ -1014,7 +1042,7 @@ impl Context {
     /// What the application asked the window to do: move it, resize it, minimize,
     /// maximize or close it. Hosts take these after a declaration.
     pub fn take_window_commands(&mut self) -> Vec<crate::WindowCommand> {
-        std::mem::take(&mut self.window_commands)
+        core::mem::take(&mut self.window_commands)
     }
 
     /// What the host says about the window. Hosts set it before declaring;
@@ -1085,11 +1113,13 @@ impl Context {
 
     /// A file dialog a view asked for. Hosts put it up after the
     /// declaration and answer with `set_chosen_files`.
+    #[cfg(feature = "std")]
     pub fn take_file_request(&mut self) -> Option<crate::FileRequest> {
         self.file_request.take()
     }
 
     /// What the dialog answered; an empty list means it was cancelled.
+    #[cfg(feature = "std")]
     pub fn set_chosen_files(&mut self, paths: Vec<std::path::PathBuf>) {
         self.chosen_files = Some(paths);
         self.redraw_requested = true;
@@ -1097,18 +1127,20 @@ impl Context {
 
     /// Files the operating system asked the application to open. Hosts set
     /// this before the first declaration and whenever more arrive.
+    #[cfg(feature = "std")]
     pub fn set_opened_files(&mut self, paths: Vec<std::path::PathBuf>) {
         self.opened_files = paths;
         self.redraw_requested = true;
     }
 
+    #[cfg(feature = "std")]
     pub(crate) fn opened_files(&self) -> &[std::path::PathBuf] {
         &self.opened_files
     }
 
     /// Notifications a view asked for, in the order it asked.
     pub fn take_notifications(&mut self) -> Vec<crate::Notification> {
-        std::mem::take(&mut self.notifications)
+        core::mem::take(&mut self.notifications)
     }
 
     /// The native menu a view last declared, taken once so that a host

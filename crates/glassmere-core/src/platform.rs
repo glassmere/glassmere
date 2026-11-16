@@ -6,10 +6,14 @@
 //! and a host that cannot do one of them does not.
 
 use crate::Command;
+use alloc::string::String;
+use alloc::vec::Vec;
 use glassmere_scene::Image;
+#[cfg(feature = "std")]
 use std::path::PathBuf;
 
 /// What a file dialog is for.
+#[cfg(feature = "std")]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum FileKind {
     #[default]
@@ -23,6 +27,7 @@ pub enum FileKind {
 /// A file dialog to put up after the batch. The answer arrives as the message
 /// [`crate::Effects::choose_files`] was given, in a later batch, because a
 /// dialog is modal and `update` cannot wait inside itself.
+#[cfg(feature = "std")]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FileRequest {
     pub kind: FileKind,
@@ -36,6 +41,7 @@ pub struct FileRequest {
     pub file_name: Option<String>,
 }
 
+#[cfg(feature = "std")]
 impl FileRequest {
     pub fn open(title: impl Into<String>) -> Self {
         Self {

@@ -1,5 +1,7 @@
 use super::*;
 use crate::{DragPayload, DropKind, drag::DragState};
+use alloc::boxed::Box;
+use alloc::vec::Vec;
 
 impl Context {
     pub(super) fn cancel_drag(&mut self) -> bool {
@@ -105,7 +107,9 @@ impl Context {
             return false;
         }
         // Hosts report one file per drop event; merge them into one delivery.
+        #[cfg_attr(not(feature = "std"), allow(clippy::match_single_binding))]
         match (self.updates.get_mut(&target), payload) {
+            #[cfg(feature = "std")]
             (
                 Some(ControlUpdate::Drop(DragPayload::Files(existing))),
                 DragPayload::Files(paths),

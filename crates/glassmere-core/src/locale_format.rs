@@ -3,6 +3,10 @@
 //! without one, numbers are plain and dates are ISO-like.
 
 /// A calendar date in the proleptic Gregorian calendar.
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::string::String;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Date {
     pub year: i32,

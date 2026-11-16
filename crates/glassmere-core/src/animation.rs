@@ -1,7 +1,11 @@
 //! Animation vocabulary: easing, transitions, visual transforms, enter/exit
 //! effects and keyframes. The retained engine lives in `tree::animation_state`.
+#[cfg(not(feature = "std"))]
+use crate::float::FloatExt as _;
+use alloc::vec;
+use alloc::vec::Vec;
+use core::time::Duration;
 use glassmere_scene::{Affine, Color, Point, Rect};
-use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Easing {

@@ -4,7 +4,9 @@ use crate::rich_editor::{RichOp, views};
 use crate::{
     Align, BlockKind, Length, Mark, RichDocument, RichEditorOptions, RichEditorResponse, Theme,
 };
-use std::rc::Rc;
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::rc::Rc;
 
 /// The mark buttons of the toolbar.
 const MARKS: [(&str, &str, Mark); 5] = [

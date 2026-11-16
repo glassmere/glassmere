@@ -1,4 +1,10 @@
 use super::*;
+use alloc::borrow::ToOwned;
+use alloc::format;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec;
+use alloc::vec::Vec;
 
 impl<'a, M: 'static> Ui<'a, M> {
     /// The window's native menu bar. Declaring the same menu again changes
@@ -46,7 +52,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         }
         // A row, so that a title, a menu and the buttons sit side by side
         // the way a title bar's do.
-        let outer = std::mem::replace(&mut self.host.in_title_bar, true);
+        let outer = core::mem::replace(&mut self.host.in_title_bar, true);
         self.row(style, content);
         self.host.in_title_bar = outer;
         self.set_control(Control::TitleBar);

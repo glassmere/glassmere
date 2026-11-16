@@ -41,8 +41,8 @@ platform = ["desktop", "glassmere-winit/platform"]
 serde = ["glassmere-core/serde"]
 
 [dependencies]
-glassmere-core.workspace = true
-glassmere-scene.workspace = true
+glassmere-core = { workspace = true, features = ["std"] }
+glassmere-scene = { workspace = true, features = ["std"] }
 glassmere-devtools.workspace = true
 glassmere-render-cpu.workspace = true
 glassmere-winit = { workspace = true, optional = true }

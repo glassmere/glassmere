@@ -1,7 +1,19 @@
 //! Renderer-independent geometry, text measurement, and ordered paint commands.
+#![no_std]
+extern crate alloc;
+#[cfg(feature = "std")]
+extern crate std;
+
+#[cfg(not(feature = "std"))]
+mod float;
 mod image;
 mod path;
 mod text;
+#[cfg(not(feature = "std"))]
+use float::FloatExt as _;
+
+use alloc::string::String;
+use alloc::vec::Vec;
 pub use image::{Image, ImageFrame, VectorImage};
 pub use path::{Path, Segment, Stroke};
 pub use text::{

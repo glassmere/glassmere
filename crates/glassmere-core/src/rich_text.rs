@@ -1,4 +1,6 @@
 //! Styled runs for read-only rich text blocks.
+use alloc::string::String;
+use alloc::vec::Vec;
 use glassmere_scene::Color;
 
 /// One run of a rich text block. Font size and wrapping belong to the block.

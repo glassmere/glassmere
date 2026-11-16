@@ -14,20 +14,32 @@ categories = ["gui"]
 all-features = true
 
 [features]
+default = ["std"]
+# Threads, file paths, the text editors and everything that needs them. Without
+# it the crate builds for `no_std` targets that have `alloc`.
+std = [
+    "glassmere-scene/std",
+    "taffy/std",
+    "tracing/std",
+    "dep:ropey",
+    "serde?/std",
+]
 serde = ["dep:serde"]
 # Regular expressions in the editor's find bar. Without it a search that asks
 # for one reports that the feature is off.
-regex = ["dep:regex"]
+regex = ["dep:regex", "std"]
 
 [dependencies]
 serde = { workspace = true, optional = true }
 regex = { version = "1.11", optional = true }
-glassmere-scene.workspace = true
+glassmere-scene = { workspace = true }
 bitflags.workspace = true
 tracing.workspace = true
-taffy.workspace = true
+taffy = { workspace = true, features = ["alloc"] }
 unicode-segmentation.workspace = true
-ropey.workspace = true
+ropey = { workspace = true, optional = true }
+hashbrown.workspace = true
+libm.workspace = true
 
 [lints]
 workspace = true

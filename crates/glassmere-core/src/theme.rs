@@ -1,3 +1,4 @@
+use alloc::string::String;
 use glassmere_scene::{Color, FontFamily};
 
 /// Design tokens every built-in control paints with. Applications read them

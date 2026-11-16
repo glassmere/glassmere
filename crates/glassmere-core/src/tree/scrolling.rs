@@ -1,6 +1,8 @@
 //! Scroll offsets on both axes, wheel routing and revealing a node.
 
 use super::*;
+use alloc::format;
+use alloc::vec::Vec;
 
 impl Context {
     pub(super) fn set_scroll(&mut self, id: NodeId, offset: f32) -> bool {

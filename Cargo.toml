@@ -32,8 +32,9 @@ readme = "README.md"
 repository = "https://github.com/glassmere/glassmere"
 
 [workspace.dependencies]
-glassmere-core = { path = "crates/glassmere-core", version = "0.1.6" }
-glassmere-scene = { path = "crates/glassmere-scene", version = "0.1.6" }
+# `default-features = false` lets the two kernel crates build without `std`; each member asks for it.
+glassmere-core = { path = "crates/glassmere-core", version = "0.1.6", default-features = false }
+glassmere-scene = { path = "crates/glassmere-scene", version = "0.1.6", default-features = false }
 glassmere-text = { path = "crates/glassmere-text", version = "0.1.6" }
 glassmere-render-cpu = { path = "crates/glassmere-render-cpu", version = "0.1.6" }
 glassmere-render-wgpu = { path = "crates/glassmere-render-wgpu", version = "0.1.6" }
@@ -47,10 +48,12 @@ glassmere-fluent = { path = "crates/glassmere-fluent", version = "0.1.6" }
 glassmere-icu = { path = "crates/glassmere-icu", version = "0.1.6" }
 glassmere-win32 = { path = "crates/glassmere-win32", version = "0.1.6" }
 bitflags = "2.13"
+hashbrown = { version = "0.17", default-features = false, features = ["default-hasher"] }
+libm = "0.2"
 ropey = "1.6"
-serde = { version = "1.0.229", features = ["derive"] }
-tracing = { version = "0.1.44", default-features = false, features = ["std"] }
-taffy = { version = "0.10.1", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid"] }
+serde = { version = "1.0.229", default-features = false, features = ["derive", "alloc"] }
+tracing = { version = "0.1.44", default-features = false }
+taffy = { version = "0.10.1", default-features = false, features = ["taffy_tree", "flexbox", "grid"] }
 wgpu = "29.0.4"
 winit = "0.30.13"
 # The version glyphon uses, so that both share one font system type.

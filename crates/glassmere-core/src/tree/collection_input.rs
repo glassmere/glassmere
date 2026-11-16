@@ -2,6 +2,7 @@ use super::*;
 use crate::collection::{
     CollectionInput, CollectionKind, FILTER_DELAY, FilterNote, FilterTimer, GridNode, ListAnchor,
 };
+use alloc::vec::Vec;
 
 impl Context {
     /// Records what a grid's view wants of its filters. The next batch
@@ -14,7 +15,7 @@ impl Context {
     /// filters since the last batch. Firing is in `due_grid_filters`.
     pub(crate) fn start_grid_timers(&mut self) {
         let now = self.now;
-        for (rows, note) in std::mem::take(&mut *self.grid_filters.borrow_mut()) {
+        for (rows, note) in core::mem::take(&mut *self.grid_filters.borrow_mut()) {
             match note {
                 FilterNote::Applied => {
                     self.grid_timers.remove(&rows);
@@ -116,7 +117,7 @@ impl Context {
 
     /// Moves what declarations queued into the collections' input.
     pub(super) fn flush_grid_pending(&mut self) {
-        let pending = std::mem::take(self.grid_pending.get_mut());
+        let pending = core::mem::take(self.grid_pending.get_mut());
         for (rows, input) in pending {
             self.collection_queue(rows, input);
         }

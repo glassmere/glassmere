@@ -7,7 +7,11 @@ use crate::{
     Align, Button, CodeEditorOptions, EditorCommand, FindState, FocusScope, Length, Severity,
     TextDocument, TextInput,
 };
-use std::rc::Rc;
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::rc::Rc;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 /// Lines declared beyond the viewport on each side, so small scrolls and the
 /// first frame after a resize already have their text.
@@ -206,8 +210,9 @@ impl<'a, M: 'static> Ui<'a, M> {
         // Decorations inside the declared window of lines.
         let window = document.line_range(first).start
             ..document.line_range(last.saturating_sub(1).max(first)).end;
-        let inside =
-            |range: &std::ops::Range<usize>| range.start <= window.end && range.end >= window.start;
+        let inside = |range: &core::ops::Range<usize>| {
+            range.start <= window.end && range.end >= window.start
+        };
         let mut marks: Vec<AreaMark> = Vec::new();
         if let Some(find) = options.find
             && find.open
