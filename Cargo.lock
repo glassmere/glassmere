@@ -1681,6 +1681,7 @@ version = "0.1.6"
 dependencies = [
  "embedded-firmware",
  "glassmere",
+ "glassmere-testing",
 ]
 
 [[package]]

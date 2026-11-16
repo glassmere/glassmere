@@ -19,6 +19,9 @@ platform = ["glassmere/platform"]
 glassmere = { path = "../crates/glassmere", features = ["embedded"] }
 embedded-firmware = { path = "embedded-firmware" }
 
+[dev-dependencies]
+glassmere-testing.workspace = true
+
 [lints]
 workspace = true
 
