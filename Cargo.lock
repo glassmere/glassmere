@@ -1657,6 +1657,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "glassmere-embedded"
+version = "0.1.6"
+dependencies = [
+ "glassmere-core",
+ "glassmere-render-cpu",
+ "glassmere-scene",
+ "libm",
+]
+
+[[package]]
 name = "glassmere-examples"
 version = "0.1.6"
 dependencies = [
