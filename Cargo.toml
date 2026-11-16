@@ -19,6 +19,7 @@ members = [
     "crates/glassmere-win32",
     "crates/glassmere-allocations",
     "crates/glassmere-markup",
+    "crates/glassmere-designer",
     "examples",
     # A widget built the way a third party would build one.
     "examples/dial-widget",

@@ -144,7 +144,8 @@ impl<M: 'static> Shower<'_, M> {
         }
         if selected {
             let mut ring = Shadow::new(ui.theme().accent, 0.0);
-            ring.spread = 2.0;
+            // Inset, the shape that is left clear shrinks by the spread.
+            ring.spread = -2.0;
             ring.inset = true;
             style.shadow = Some(Box::new(ring));
         }

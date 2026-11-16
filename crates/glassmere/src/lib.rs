@@ -13,6 +13,8 @@ pub use glassmere_fluent as fluent;
 pub use glassmere_icu as icu;
 #[cfg(feature = "images")]
 pub use glassmere_image as image;
+#[cfg(feature = "markup")]
+pub use glassmere_markup as markup;
 /// Renders a scene to pixels without a graphics adapter.
 pub use glassmere_render_cpu::{CpuRenderer, CpuStats};
 /// The GPU renderer, for applications that draw with wgpu themselves through

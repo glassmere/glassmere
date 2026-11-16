@@ -215,21 +215,32 @@ impl Markup {
     /// The element shown at `position`, going by the tree of the last frame:
     /// `Markup::pick(ui.context(), point)`.
     pub fn pick(context: &Context, position: glassmere_scene::Point) -> Option<usize> {
-        let mut at: Option<NodeId> = context.hit_test(position);
-        while let Some(id) = at {
-            let key = context.details(id)?.key;
-            if let Some(start) = key.rfind("gm") {
-                let digits: String = key[start + 2..]
+        // Not the tree's hit test: that one answers for the pointer, and
+        // finds nothing under an area that consumes it.
+        fn inside(
+            context: &Context,
+            id: NodeId,
+            position: glassmere_scene::Point,
+        ) -> Option<usize> {
+            let node = context.node(id)?;
+            if !node.bounds.contains(position) {
+                return None;
+            }
+            let deeper = node
+                .children
+                .iter()
+                .rev()
+                .find_map(|child| inside(context, *child, position));
+            deeper.or_else(|| {
+                let key = context.details(id)?.key;
+                let digits: String = key[key.rfind("gm")? + 2..]
                     .chars()
                     .take_while(char::is_ascii_digit)
                     .collect();
-                if let Ok(element) = digits.parse() {
-                    return Some(element);
-                }
-            }
-            at = context.node(id)?.parent;
+                digits.parse().ok()
+            })
         }
-        None
+        inside(context, context.root(), position)
     }
 
     /// The names the file reads from [`Values`]: the first part of every
