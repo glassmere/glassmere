@@ -1,6 +1,8 @@
 use super::*;
 use crate::animation::{Shown, lerp_rect};
 use crate::{Effect, Transform, Transition};
+use alloc::boxed::Box;
+use alloc::vec::Vec;
 use glassmere_scene::Affine;
 
 /// One interpolation between two displayed states.
@@ -87,7 +89,7 @@ impl Context {
 
     /// Marks last frame's animated nodes dirty so this frame re-evaluates them.
     pub(super) fn begin_animation_frame(&mut self) {
-        for id in std::mem::take(&mut self.animating_nodes) {
+        for id in core::mem::take(&mut self.animating_nodes) {
             self.invalidate_paint(id);
         }
         if !self.ghosts.is_empty() {

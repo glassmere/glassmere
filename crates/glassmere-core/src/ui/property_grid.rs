@@ -7,10 +7,15 @@ use crate::{
     Align, Axis, Button, ComboBox, Length, NumberOptions, PropertyGridOptions, PropertyGridState,
     PropertyMsg, SplitOptions, TextInput, VirtualListOptions,
 };
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::rc::Rc;
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::any::Any;
+use core::cell::Cell;
 use glassmere_scene::Color;
-use std::any::Any;
-use std::cell::Cell;
-use std::rc::Rc;
 
 /// Gap between the name and the value, and the width of the header's divider,
 /// so the columns line up with the header.
@@ -78,7 +83,7 @@ fn take_default_from<T: Any, M: 'static>(
         Err(_) => {
             ui.misuse(format!(
                 "property `{name}` holds a {} but its default is a {given}",
-                std::any::type_name::<T>()
+                core::any::type_name::<T>()
             ));
             None
         }
@@ -89,7 +94,7 @@ fn take_default_from<T: Any, M: 'static>(
 /// the view declares them, in order, and only those in `range` become nodes;
 /// the rest are stood in for by a spacer of their height, as in a virtual list.
 struct Window {
-    range: std::ops::Range<usize>,
+    range: core::ops::Range<usize>,
     /// Rows and headers counted so far, in view or not.
     counted: Cell<usize>,
     offset: f32,
@@ -144,7 +149,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
             self.ui
                 .misuse("PropertyGrid::default was not followed by a row".to_owned());
         }
-        if std::mem::take(&mut self.mixed) {
+        if core::mem::take(&mut self.mixed) {
             self.ui
                 .misuse("PropertyGrid::mixed was not followed by a row".to_owned());
         }
@@ -203,7 +208,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
     /// Gives the next row a reset button that sends `value` again; it is
     /// enabled while the property differs. The type must be the row's type.
     pub fn default<T: Any>(&mut self, value: T) -> &mut Self {
-        self.default = Some((Box::new(value), std::any::type_name::<T>()));
+        self.default = Some((Box::new(value), core::any::type_name::<T>()));
         self
     }
 
@@ -258,7 +263,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         let first = window.map(|window| window.counted.get());
         // What was passed over before the group is a spacer inside it, if the
         // group has anything in view.
-        let carried = std::mem::take(&mut self.skipped);
+        let carried = core::mem::take(&mut self.skipped);
         let (mut rows, mut skipped, mut shown) = (0, 0, false);
         let style = Style {
             width: Length::Percent(1.0),
@@ -422,7 +427,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
             ..Style::default()
         });
         let on: Rc<dyn Fn(f64) -> M> = Rc::new(on);
-        let mixed = std::mem::take(&mut self.mixed);
+        let mixed = core::mem::take(&mut self.mixed);
         let reset = self.reset(name, &value, mixed, &on);
         self.row(name, reset, |ui, label| {
             ui.at("$value")
@@ -444,7 +449,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
     /// A checkbox row: a click sends `on` of the opposite of `value`.
     pub fn bool_with(&mut self, name: &str, value: bool, on: impl Fn(bool) -> M + 'static) {
         let on: Rc<dyn Fn(bool) -> M> = Rc::new(on);
-        let mixed = std::mem::take(&mut self.mixed);
+        let mixed = core::mem::take(&mut self.mixed);
         let reset = self.reset(name, &value, mixed, &on);
         self.row(name, reset, |ui, label| {
             // The name is already in the first column; the box alone shows,
@@ -474,7 +479,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
     /// A text row: edits send `on` of the text.
     pub fn text_with(&mut self, name: &str, value: &str, on: impl Fn(String) -> M + 'static) {
         let on: Rc<dyn Fn(String) -> M> = Rc::new(on);
-        let mixed = std::mem::take(&mut self.mixed);
+        let mixed = core::mem::take(&mut self.mixed);
         let reset = self.reset(name, &value.to_owned(), mixed, &on);
         self.row(name, reset, |ui, label| {
             let hint = if mixed {
@@ -510,7 +515,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
         on: impl Fn(usize) -> M + 'static,
     ) {
         let on: Rc<dyn Fn(usize) -> M> = Rc::new(on);
-        let mixed = std::mem::take(&mut self.mixed);
+        let mixed = core::mem::take(&mut self.mixed);
         let reset = self.reset(name, &value, mixed, &on);
         self.row(name, reset, |ui, label| {
             let (selected, hint) = if mixed {
@@ -550,7 +555,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
     /// keeps what was typed until the colour changes.
     pub fn color_with(&mut self, name: &str, value: Color, on: impl Fn(Color) -> M + 'static) {
         let on: Rc<dyn Fn(Color) -> M> = Rc::new(on);
-        let mixed = std::mem::take(&mut self.mixed);
+        let mixed = core::mem::take(&mut self.mixed);
         let reset = self.reset(name, &value, mixed, &on);
         self.row(name, reset, |ui, label| {
             let row = Style {
@@ -644,7 +649,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
     /// A value that is shown, not edited.
     pub fn readonly(&mut self, name: &str, text: impl Into<String>) {
         let mut text = text.into();
-        let mixed = std::mem::take(&mut self.mixed);
+        let mixed = core::mem::take(&mut self.mixed);
         self.finish();
         self.row(name, None, |ui, _| {
             if mixed {
@@ -713,18 +718,19 @@ impl<'a, M: 'static> Ui<'a, M> {
                     move |text| send(PropertyMsg::Filter(text)),
                 );
             }
-            let header = |key: &'static str| {
+            let header = |key: &'static str, indent: f32| {
                 move |ui: &mut Ui<'_, M>| {
                     let text = ui.context.tr(key, &[]);
-                    ui.label_at(
-                        "$title",
-                        text,
-                        Style {
-                            font_size: Some(12.0),
-                            foreground: Some(ui.context.theme().text_muted),
-                            ..Style::default()
-                        },
-                    );
+                    let title = Style {
+                        font_size: Some(12.0),
+                        foreground: Some(ui.context.theme().text_muted),
+                        ..Style::default()
+                    };
+                    // Clear of the divider, over the text of the fields.
+                    ui.row_at("$cell", Style::default().gap(indent), |ui| {
+                        ui.label_at("$indent", "", Style::default());
+                        ui.label_at("$title", text, title);
+                    });
                 }
             };
             let share = send.clone();
@@ -740,8 +746,8 @@ impl<'a, M: 'static> Ui<'a, M> {
                         .height(Length::Px(22.0)),
                 },
                 move |share_now| share(PropertyMsg::NameShare(share_now)),
-                header("glassmere-property-column"),
-                header("glassmere-value-column"),
+                header("glassmere-property-column", 0.0),
+                header("glassmere-value-column", 12.0),
             );
             // A grid that scrolls declares the rows in view and a few beyond,
             // like a virtual list, where the last declaration left the scroll.

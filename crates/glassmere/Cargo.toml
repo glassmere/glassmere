@@ -15,7 +15,7 @@ categories = ["gui", "graphics"]
 messages = "../../examples/locales/en.ftl"
 
 [package.metadata.docs.rs]
-features = ["diagnostics", "icu", "serde"]
+features = ["diagnostics", "embedded", "icu", "markup", "serde"]
 
 [features]
 default = ["desktop", "syntax", "images", "derive", "fluent", "regex"]
@@ -30,6 +30,12 @@ images = ["dep:glassmere-image", "glassmere-winit?/images"]
 icu = ["dep:glassmere-icu"]
 # `glassmere::fluent`: Fluent catalogs for `Ui::tr`.
 fluent = ["dep:glassmere-fluent"]
+# `glassmere::embedded`: the framebuffer renderer for microcontrollers, to
+# simulate a device on the desk. Firmware depends on `glassmere-core` and
+# `glassmere-embedded` directly.
+embedded = ["dep:glassmere-embedded"]
+# `glassmere::markup`: views read from markup files at run time.
+markup = ["dep:glassmere-markup"]
 # `#[derive(Properties)]` for property grids.
 derive = ["dep:glassmere-derive"]
 # Regular expressions in the code editor's find bar.
@@ -41,8 +47,8 @@ platform = ["desktop", "glassmere-winit/platform"]
 serde = ["glassmere-core/serde"]
 
 [dependencies]
-glassmere-core.workspace = true
-glassmere-scene.workspace = true
+glassmere-core = { workspace = true, features = ["std"] }
+glassmere-scene = { workspace = true, features = ["std"] }
 glassmere-devtools.workspace = true
 glassmere-render-cpu.workspace = true
 glassmere-winit = { workspace = true, optional = true }
@@ -51,7 +57,9 @@ glassmere-syntax = { workspace = true, optional = true }
 glassmere-image = { workspace = true, optional = true }
 glassmere-derive = { workspace = true, optional = true }
 glassmere-fluent = { workspace = true, optional = true }
+glassmere-embedded = { workspace = true, optional = true }
 glassmere-icu = { workspace = true, optional = true }
+glassmere-markup = { workspace = true, optional = true }
 
 [dev-dependencies]
 glassmere-testing.workspace = true

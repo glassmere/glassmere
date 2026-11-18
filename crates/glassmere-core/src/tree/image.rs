@@ -1,15 +1,21 @@
 use super::*;
 use crate::{ImageSource, ImageTint};
+use alloc::vec::Vec;
+#[cfg(feature = "std")]
+use alloc::{borrow::ToOwned, string::String};
 use glassmere_scene::Image;
+#[cfg(feature = "std")]
 use std::path::{Path, PathBuf};
 
 /// An image file the host decodes for `Ui::image_file`.
+#[cfg(feature = "std")]
 #[derive(Default)]
 pub(super) struct LoadedImage {
     image: Option<Image>,
     error: Option<String>,
 }
 
+#[cfg(feature = "std")]
 impl LoadedImage {
     /// The decoded pixels, when it is a raster image that loaded.
     pub(super) fn pixels(&self) -> Option<(u32, u32, &[u8])> {
@@ -19,6 +25,7 @@ impl LoadedImage {
 
 /// Decoded pixels kept for files no declaration asks for any more, so that
 /// switching back to a view does not decode again. Past this they are dropped.
+#[cfg(feature = "std")]
 const UNUSED_IMAGE_BYTES: usize = 64 << 20;
 
 /// An animated image a node shows: which one, when it started, and when its
@@ -31,6 +38,7 @@ pub(super) struct Play {
 }
 
 /// Decoded bytes an image holds, all frames of an animation included.
+#[cfg(feature = "std")]
 fn pixel_bytes(image: &Image) -> usize {
     let bytes = |image: &Image| image.pixels().map_or(0, |(_, _, pixels)| pixels.len());
     match image.frames() {
@@ -68,11 +76,13 @@ impl Context {
     /// Image files the last declaration asked for through `Ui::image_file`.
     /// Hosts decode them off the UI thread, watch them for changes and report
     /// through `set_image_file`.
+    #[cfg(feature = "std")]
     pub fn image_paths(&self) -> &[PathBuf] {
         &self.image_requests
     }
 
     /// Whether the host has delivered this image (or an error for it) yet.
+    #[cfg(feature = "std")]
     pub fn image_known(&self, path: &Path) -> bool {
         self.images.contains_key(path)
     }
@@ -80,10 +90,11 @@ impl Context {
     /// Delivers a decoded image file or the reason it could not be loaded. An
     /// error keeps the last good image. Returns whether a declaration should
     /// follow.
+    #[cfg(feature = "std")]
     pub fn set_image_file(
         &mut self,
         path: &Path,
-        image: std::result::Result<Image, String>,
+        image: core::result::Result<Image, String>,
     ) -> bool {
         let entry = self.images.entry(path.to_owned()).or_default();
         match image {
@@ -107,11 +118,13 @@ impl Context {
     }
 
     /// Why the last load of an image file failed, if it did.
+    #[cfg(feature = "std")]
     pub fn image_error(&self, path: &Path) -> Option<&str> {
         self.images.get(path)?.error.as_deref()
     }
 
     /// The image to show and whether there is none because loading failed.
+    #[cfg(feature = "std")]
     pub(crate) fn image_file(&self, path: &Path) -> (Option<Image>, bool) {
         self.images.get(path).map_or((None, false), |loaded| {
             (
@@ -193,6 +206,7 @@ impl Context {
     }
 
     /// After a declaration: forget images nothing shows once they add up.
+    #[cfg(feature = "std")]
     pub(super) fn trim_images(&mut self) {
         let unused = |(path, _): &(&PathBuf, &LoadedImage)| !self.image_requests.contains(path);
         let bytes: usize = self
@@ -220,9 +234,12 @@ impl Context {
             return;
         };
         // A file that has not arrived yet paints nothing.
+        #[cfg(feature = "std")]
         let ImageSource::Image(image) = &background.source else {
             return;
         };
+        #[cfg(not(feature = "std"))]
+        let ImageSource::Image(image) = &background.source;
         let tint = match background.tint {
             ImageTint::None => None,
             ImageTint::Foreground => Some(foreground),

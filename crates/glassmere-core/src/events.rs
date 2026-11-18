@@ -5,6 +5,7 @@
 //! it, one that takes an event before the widgets do, or a widget that tells
 //! its container something without the application threading state through.
 use crate::Key;
+use alloc::string::String;
 use glassmere_scene::Point;
 
 /// What reached an area, in the order it arrived.

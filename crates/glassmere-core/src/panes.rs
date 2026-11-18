@@ -1,6 +1,8 @@
 use crate::{Length, Style};
-use std::borrow::Cow;
-use std::time::Duration;
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
+use alloc::string::String;
+use core::time::Duration;
 
 /// Hover time before a tooltip appears.
 pub const TOOLTIP_DELAY: Duration = Duration::from_millis(500);

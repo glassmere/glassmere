@@ -3,6 +3,10 @@ use super::text_area_input::insert_span;
 use super::*;
 use crate::rich_editor::{RichBlockView, RichGranularity, RichOp};
 use crate::{BlockKind, EditorCommand, Mark, RichMotion, RichPosition, TextEdit, TextMove};
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use glassmere_scene::{Affinity, FontFamily, TextGeometry};
 
 /// Space between blocks; list items sit closer together.
@@ -613,7 +617,7 @@ impl Context {
                 && state.font_size == *font_size
                 && state.rtl == base.rtl
                 && state.base == base.base;
-            let old = std::mem::take(&mut state.layouts);
+            let old = core::mem::take(&mut state.layouts);
             let mut changed = !same_frame || old.len() != blocks.len();
             // What shapes a block is its kind and spans; the number and the
             // rules are only painted, and come from the declared view again.
@@ -882,7 +886,7 @@ impl Context {
                     color: node.resolved.foreground,
                 });
             }
-            let mut rule = |range: std::ops::Range<usize>, at: f32, color: Color| {
+            let mut rule = |range: core::ops::Range<usize>, at: f32, color: Color| {
                 for rect in line_boxes(&layout.geometry, range) {
                     scene.primitives.push(Primitive::Quad {
                         rect: Rect {

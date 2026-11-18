@@ -22,13 +22,13 @@ platform = ["dep:rfd", "dep:notify-rust", "dep:muda", "dep:tray-icon"]
 images = ["dep:glassmere-image", "arboard/image-data"]
 
 [dependencies]
-glassmere-core.workspace = true
-glassmere-scene.workspace = true
+glassmere-core = { workspace = true, features = ["std"] }
+glassmere-scene = { workspace = true, features = ["std"] }
 glassmere-render-wgpu.workspace = true
 glassmere-render-cpu.workspace = true
 glassmere-devtools.workspace = true
 glassmere-image = { workspace = true, optional = true }
-tracing.workspace = true
+tracing = { workspace = true, features = ["std"] }
 wgpu.workspace = true
 winit.workspace = true
 # Hands the CPU renderer's pixels to a window when there is no usable adapter.

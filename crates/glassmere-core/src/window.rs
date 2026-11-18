@@ -7,6 +7,8 @@
 //! lasts.
 
 /// Which edge or corner a resize pulls.
+use alloc::string::String;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ResizeEdge {
     North,

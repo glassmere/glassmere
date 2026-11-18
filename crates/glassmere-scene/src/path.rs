@@ -1,6 +1,7 @@
 //! Shapes of straight and curved segments.
 
 use crate::{Color, Point, Rect};
+use alloc::vec::Vec;
 
 /// A shape of straight and curved segments, in the same logical coordinates
 /// as the rest of the scene. Each `move_to` starts a subpath; `close` joins a

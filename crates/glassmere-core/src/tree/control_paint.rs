@@ -1,4 +1,5 @@
 use super::*;
+use alloc::vec::Vec;
 
 /// A small flag at the top of a caret in mixed-direction text, pointing the
 /// way the text at the caret runs.
@@ -292,6 +293,8 @@ impl Context {
             }
             Control::Spinner { .. } => self.paint_spinner(node, scene),
             Control::Switch { .. } => self.paint_switch(node, shown.knob, scene),
+            Control::Checkbox { checked, .. } => self.paint_mark(node, false, checked, scene),
+            Control::Radio { selected, .. } => self.paint_mark(node, true, selected, scene),
             Control::RangeSlider { .. } => self.paint_range_track(node, scene),
             Control::Disclosure { open, .. } => {
                 self.paint_chevron(node, open, shown.foreground, scene)
@@ -481,6 +484,90 @@ impl Context {
         });
     }
 
+    /// The box of a checkbox or the ring of a radio button at the start
+    /// edge, drawn rather than taken from a font, so that it is the same
+    /// size set and unset and the same on every platform and renderer.
+    fn paint_mark(&self, node: &Node, round: bool, set: bool, scene: &mut Scene) {
+        let side = crate::ui::MARK;
+        let content = node.content_box();
+        let rect = Rect {
+            x: if node.resolved.rtl() {
+                content.x + content.width - side
+            } else {
+                content.x
+            },
+            y: content.y + (content.height - side) / 2.0,
+            width: side,
+            height: side,
+        };
+        let (rim, fill, tick) = if node.enabled {
+            (self.theme.text_muted, self.theme.accent, self.theme.window)
+        } else {
+            (
+                self.theme.text_disabled,
+                self.theme.text_disabled,
+                self.theme.control_disabled,
+            )
+        };
+        let radius = if round { side / 2.0 } else { 4.0 };
+        if set && !round {
+            scene.primitives.push(Primitive::Quad {
+                rect,
+                color: fill,
+                radius,
+            });
+            let point = |dx: f32, dy: f32| glassmere_scene::Point {
+                x: rect.x + side * dx,
+                y: rect.y + side * dy,
+            };
+            let mut path = glassmere_scene::Path::new();
+            path.move_to(point(0.24, 0.52))
+                .line_to(point(0.43, 0.70))
+                .line_to(point(0.77, 0.31));
+            scene.primitives.push(Primitive::Path {
+                path,
+                fill: None,
+                stroke: Some(glassmere_scene::Stroke {
+                    width: 2.0,
+                    color: tick,
+                }),
+            });
+            return;
+        }
+        // A rim of one and a half pixels: the shape, and the same shape
+        // inside it in whatever is behind the control.
+        let rim_width = 1.5;
+        scene.primitives.push(Primitive::Path {
+            path: rounded(
+                Rect {
+                    x: rect.x + rim_width / 2.0,
+                    y: rect.y + rim_width / 2.0,
+                    width: side - rim_width,
+                    height: side - rim_width,
+                },
+                radius - rim_width / 2.0,
+            ),
+            fill: None,
+            stroke: Some(glassmere_scene::Stroke {
+                width: rim_width,
+                color: if set { fill } else { rim },
+            }),
+        });
+        if set {
+            let dot = side * 0.5;
+            scene.primitives.push(Primitive::Quad {
+                rect: Rect {
+                    x: rect.x + (side - dot) / 2.0,
+                    y: rect.y + (side - dot) / 2.0,
+                    width: dot,
+                    height: dot,
+                },
+                color: fill,
+                radius: dot / 2.0,
+            });
+        }
+    }
+
     /// A chevron at the start edge: pointing along the line when the section
     /// is closed, which is toward its end, and down when it is open.
     fn paint_chevron(&self, node: &Node, open: bool, color: Color, scene: &mut Scene) {
@@ -530,7 +617,7 @@ impl Context {
         let color = self.busy_color(node);
         let head = self.busy_phase(Duration::from_millis(900)) * DOTS as f32;
         for index in 0..DOTS {
-            let angle = index as f32 / DOTS as f32 * std::f32::consts::TAU;
+            let angle = index as f32 / DOTS as f32 * core::f32::consts::TAU;
             let behind = (head - index as f32).rem_euclid(DOTS as f32) / DOTS as f32;
             let strength = 1.0 - 0.85 * behind;
             scene.primitives.push(Primitive::Quad {
@@ -616,4 +703,44 @@ pub(super) fn slider_track(bounds: Rect) -> Rect {
         width: (bounds.width - 24.0).max(1.0),
         height: 4.0,
     }
+}
+
+/// The outline of a rectangle with round corners; a circle when `radius` is
+/// half its side.
+fn rounded(rect: Rect, radius: f32) -> glassmere_scene::Path {
+    // How far a cubic's handles reach to follow a quarter circle.
+    const ARC: f32 = 0.552_284_8;
+    let r = radius.min(rect.width / 2.0).min(rect.height / 2.0);
+    let k = r * (1.0 - ARC);
+    let (left, top) = (rect.x, rect.y);
+    let (right, bottom) = (rect.x + rect.width, rect.y + rect.height);
+    let point = |x: f32, y: f32| glassmere_scene::Point { x, y };
+    let mut path = glassmere_scene::Path::new();
+    path.move_to(point(left + r, top))
+        .line_to(point(right - r, top))
+        .cubic_to(
+            point(right - k, top),
+            point(right, top + k),
+            point(right, top + r),
+        )
+        .line_to(point(right, bottom - r))
+        .cubic_to(
+            point(right, bottom - k),
+            point(right - k, bottom),
+            point(right - r, bottom),
+        )
+        .line_to(point(left + r, bottom))
+        .cubic_to(
+            point(left + k, bottom),
+            point(left, bottom - k),
+            point(left, bottom - r),
+        )
+        .line_to(point(left, top + r))
+        .cubic_to(
+            point(left, top + k),
+            point(left + k, top),
+            point(left + r, top),
+        )
+        .close();
+    path
 }

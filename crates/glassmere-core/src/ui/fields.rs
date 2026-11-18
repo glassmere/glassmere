@@ -3,6 +3,10 @@ use super::*;
 use crate::app::Handler;
 use crate::editor::single_line;
 use crate::{Length, MenuItem, NumberOptions, NumericValue};
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 /// What an autocomplete field sends besides its edits; see
 /// [`Ui::autocomplete_with`].
@@ -11,8 +15,8 @@ pub struct Autocomplete<M = ()> {
     on_submit: Option<M>,
 }
 
-impl<M> std::fmt::Debug for Autocomplete<M> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<M> core::fmt::Debug for Autocomplete<M> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Autocomplete").finish_non_exhaustive()
     }
 }
@@ -438,6 +442,7 @@ impl<'a, M: 'static> Ui<'a, M> {
     }
 
     #[track_caller]
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
     pub(crate) fn focus_scope_at(
         &mut self,
         key: impl Into<String>,

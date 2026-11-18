@@ -1,0 +1,28 @@
+[package]
+name = "glassmere-embedded"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+description = "Software renderer for glassmere scenes on microcontrollers: no_std, a plain framebuffer, built-in bitmap fonts."
+keywords = ["gui", "embedded", "no-std", "renderer", "framebuffer"]
+categories = ["embedded", "no-std", "rendering", "gui"]
+
+[features]
+default = ["ui"]
+# `EmbeddedUi`, which runs a glassmere-core application on the display.
+ui = ["dep:glassmere-core"]
+
+[dependencies]
+glassmere-core = { workspace = true, optional = true }
+glassmere-scene.workspace = true
+libm.workspace = true
+
+[dev-dependencies]
+glassmere-core.workspace = true
+glassmere-render-cpu.workspace = true
+
+[lints]
+workspace = true

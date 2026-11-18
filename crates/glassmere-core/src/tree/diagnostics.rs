@@ -1,4 +1,7 @@
 use super::*;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 /// What a framework diagnostic is about.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -152,6 +155,7 @@ impl Context {
     /// A file that could not be used. Named rather than pointed at, because
     /// the node that asked for it is often long gone by the time the host
     /// answers.
+    #[cfg(feature = "std")]
     pub(super) fn diagnose_resource(&mut self, path: &std::path::Path, error: &str) {
         self.diagnose(
             DiagnosticKind::Resource,
@@ -293,7 +297,7 @@ impl Context {
     pub(super) fn diagnose_layout(&mut self, ran: bool) {
         let state = &mut self.diagnostic;
         let cause = state.layout_cause.take();
-        let moved = std::mem::take(&mut state.bounds_changed);
+        let moved = core::mem::take(&mut state.bounds_changed);
         if !state.enabled {
             return;
         }
@@ -359,6 +363,9 @@ impl Context {
 #[cfg(test)]
 mod tests {
     use crate::{Context, DiagnosticKind, MonospaceMeasurer, PopoverOptions, Ui};
+    use alloc::format;
+    use alloc::string::String;
+    use alloc::vec::Vec;
     use glassmere_scene::Size;
 
     /// A context that treats misuse as a release build does, with the other
@@ -404,6 +411,8 @@ mod tests {
         assert_eq!(signal.get(), 0, "a refused write changed the value");
         let misuses = misuses(&context);
         assert_eq!(misuses.len(), 1, "{misuses:?}");
+        // Without `std` the report counts the refused writes and names none.
+        #[cfg(feature = "std")]
         assert!(misuses[0].contains("`count`"), "{misuses:?}");
         // Outside a declaration the same write goes ahead.
         signal.set(2);

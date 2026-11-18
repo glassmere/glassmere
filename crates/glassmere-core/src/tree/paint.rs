@@ -1,6 +1,9 @@
 //! Bounds, damage and the paint chunks the scene is assembled from.
 
 use super::*;
+use alloc::borrow::ToOwned;
+use alloc::vec;
+use alloc::vec::Vec;
 
 /// A frame names no more rectangles than this, so that a renderer does not
 /// draw an unbounded number of scissored passes.
@@ -99,8 +102,8 @@ impl Context {
             .children
             .iter()
             .filter(|child| {
-                !matches!(self.nodes[child].kind, Kind::Popup | Kind::Popover)
-                    && !matches!(self.nodes[child].control, Control::StripScroll { .. })
+                !matches!(self.nodes[*child].kind, Kind::Popup | Kind::Popover)
+                    && !matches!(self.nodes[*child].control, Control::StripScroll { .. })
             })
             .map(|child| *self.layout.layout(self.nodes[child].layout_id).unwrap())
             .fold(
@@ -141,7 +144,7 @@ impl Context {
             width: layout.size.width,
             height: layout.size.height,
         };
-        let old_layout_rect = std::mem::replace(&mut node.layout_rect, layout_rect);
+        let old_layout_rect = core::mem::replace(&mut node.layout_rect, layout_rect);
         let clip = if matches!(node.kind, Kind::Popup | Kind::Popover) {
             // Context menus anchor at the request point instead of below the owner.
             let anchored = (node.kind == Kind::Popup)
@@ -548,6 +551,21 @@ impl Context {
             self.paint_rich_text(id, &mut scene, foreground);
         } else if node.kind == Kind::Image {
             self.paint_image(id, &mut scene, foreground, radius, frame);
+        } else if node.kind == Kind::Choice
+            && !node.enabled
+            && node.text == crate::platform::SEPARATOR
+        {
+            // A rule from edge to edge of the menu, whatever its width.
+            let inner = node.content_box();
+            scene.primitives.push(Primitive::Quad {
+                rect: Rect {
+                    y: node.bounds.y + (node.bounds.height - 1.0) / 2.0,
+                    height: 1.0,
+                    ..inner
+                },
+                color: self.theme.track,
+                radius: 0.0,
+            });
         } else if !node.text.is_empty() {
             self.paint_selection(id, node, &mut scene);
             self.paint_text(node, foreground, &mut scene);
@@ -574,7 +592,7 @@ impl Context {
             .copied()
             .filter(|child| !matches!(self.nodes[child].kind, Kind::Popup | Kind::Popover))
             .collect::<Vec<_>>();
-        let before = std::mem::take(&mut scene.primitives);
+        let before = core::mem::take(&mut scene.primitives);
         self.paint_scrollbars(id, &mut scene);
         self.paint_strip_edges(id, &mut scene);
         self.paint_calendar_today(id, &mut scene);
@@ -763,6 +781,17 @@ impl Context {
                 _ if node.resolved.rtl() => spare,
                 _ => 0.0,
             };
+        }
+        if let Some(size) = measured.filter(|size| size.height > rect.height)
+            && node.style.wrap == TextWrap::None
+        {
+            // A line taller than the room its padding leaves takes the
+            // padding, as far as the box goes, rather than lose its
+            // descenders: a cell of a dense grid is such a box.
+            let height = size.height.min(node.bounds.height);
+            let top = rect.y - (height - rect.height) / 2.0;
+            rect.y = top.clamp(node.bounds.y, node.bounds.y + node.bounds.height - height);
+            rect.height = height;
         }
         if let Some(size) = measured.filter(|size| size.height > 0.0) {
             let spare = (rect.height - size.height).max(0.0);

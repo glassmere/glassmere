@@ -2,6 +2,10 @@
 //! nodes there were, and removing what it no longer declares.
 
 use super::*;
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 impl Context {
     /// Declare once after an event or application update. An unchanged declaration
@@ -37,11 +41,11 @@ impl Context {
         self.begin_frame(size);
         let declare_started = Instant::now();
         let declare_span = tracing::trace_span!("glassmere.declare").entered();
-        let mut clicks = std::mem::take(&mut self.clicks);
-        let mut updates = std::mem::take(&mut self.updates);
+        let mut clicks = core::mem::take(&mut self.clicks);
+        let mut updates = core::mem::take(&mut self.updates);
         // A submit is only ever a handler's: nothing declared reads one.
         self.submitted.clear();
-        let mut warnings = std::mem::take(&mut self.style_warnings);
+        let mut warnings = core::mem::take(&mut self.style_warnings);
         let mut observed = None;
         let mut redraw = false;
         let mut focus = None;
@@ -164,17 +168,20 @@ impl Context {
 
     /// Takes in what the view asked the host for during the declaration.
     fn apply_outbox(&mut self, mut host: crate::ui::HostOutbox) {
-        for (node, message) in std::mem::take(&mut host.misuse) {
+        for (node, message) in core::mem::take(&mut host.misuse) {
             self.misuse(node, message);
         }
-        for id in std::mem::take(&mut host.commands) {
+        for id in core::mem::take(&mut host.commands) {
             // The command's button reports this on the next declaration, and
             // no input follows a menu pick to bring one.
             if self.event(crate::Event::Command(id)) {
                 self.redraw_requested = true;
             }
         }
-        self.watch_requests = host.watched;
+        #[cfg(feature = "std")]
+        {
+            self.watch_requests = host.watched;
+        }
         if let Some(menu) = host.menu
             && self.menu_shown.as_ref() != Some(&menu)
         {
@@ -187,8 +194,11 @@ impl Context {
             self.tray_shown = tray.clone();
             self.tray_out = Some(tray);
         }
-        self.image_requests = host.images;
-        self.trim_images();
+        #[cfg(feature = "std")]
+        {
+            self.image_requests = host.images;
+            self.trim_images();
+        }
         self.apply_toasts(host.toasts);
     }
 
@@ -334,7 +344,7 @@ impl Context {
             self.refresh_bounds(size);
         }
         // A tab that became the selected one is brought into its strip.
-        for tab in std::mem::take(&mut self.reveal_tabs) {
+        for tab in core::mem::take(&mut self.reveal_tabs) {
             if let Some(strip) = self.nodes.get(&tab).and_then(|node| node.parent) {
                 self.reveal_in_strip(strip, tab);
             }
@@ -375,7 +385,7 @@ impl Context {
         // Whatever the overlays drew last time is repainted whether they
         // draw it again or not, because nothing else knows they were
         // there.
-        for rect in std::mem::take(&mut self.painted_overlays) {
+        for rect in core::mem::take(&mut self.painted_overlays) {
             self.add_damage(rect);
         }
         self.paint_dock_drag(&mut scene, measurer);
@@ -757,10 +767,10 @@ impl Context {
                 churn: 0,
                 layout_rect: Rect::default(),
                 handler: None,
-                observed: std::cell::Cell::new(
+                observed: core::cell::Cell::new(
                     element.seq != 0 && self.observed_new.borrow().contains(&element.seq),
                 ),
-                observing: std::cell::Cell::new(false),
+                observing: core::cell::Cell::new(false),
                 key: element.key,
                 kind: element.kind,
                 parent: Some(parent),

@@ -1,4 +1,6 @@
 use super::*;
+use alloc::format;
+use alloc::string::String;
 
 impl<'a, M: 'static> Ui<'a, M> {
     /// A dialog layer over the whole window while `open`. Modal dialogs paint

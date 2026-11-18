@@ -1,0 +1,56 @@
+// The view of `cargo run --example markup`, and a file to open in the designer:
+//     cargo run -p glassmere-designer -- examples/markup.glass
+// Save it while either runs and the change shows at once.
+
+// What the designer previews with. The example starts from the same values.
+data {
+    name: "Ada"
+    count: 3
+    volume: 40
+    notify: true
+    plan: 1
+    tasks: [
+        { title: "Write the view in markup", done: true }
+        { title: "Open it in the designer", done: true }
+        { title: "Change it while it runs", done: false }
+    ]
+}
+
+component Task(title, done) {
+    row { gap: 8; align-items: center
+        label "{done ? "✓" : "•"}" { foreground: {done ? "#34d399" : "#8a97a8"}; width: 16 }
+        label "{title}" { opacity: {done ? 0.6 : 1} }
+    }
+}
+
+column { padding: 28; gap: 16; width: 100%
+    label "Hello, {name}" { font-size: 28; font-weight: 700 }
+    label "A view written in markup. Clicked {count} {count == 1 ? "time" : "times"}." { foreground: #8a97a8 }
+
+    row { gap: 8
+        button "Decrease" { on-click: decrease; enabled: count > 0 }
+        button "Increase" { on-click: increase; background: #16695f; hover.background: #1b8076 }
+        button "Reset" { on-click: reset; enabled: count != 0; tooltip: "Back to zero" }
+    }
+
+    box { padding: 16; gap: 12; radius: 12; background: #182331; width: 100%
+        input "Name" { bind: name; placeholder: "Who are you?" }
+        slider "Volume" { bind: volume; max: 100 }
+        progress "Volume level" { value: volume / 100 }
+        switch "Notifications" { bind: notify }
+        if notify {
+            row { gap: 12
+                radio "Daily" { bind: plan; option: 0 }
+                radio "Weekly" { bind: plan; option: 1 }
+                radio "Never" { bind: plan; option: 2 }
+            }
+        } else {
+            label "Notifications are off." { foreground: #8a97a8 }
+        }
+    }
+
+    label "TASKS" { font-size: 12; font-weight: 700; foreground: #67e8ce }
+    for task in tasks {
+        Task { title: task.title; done: task.done }
+    }
+}

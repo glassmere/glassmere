@@ -1,5 +1,10 @@
+use crate::collections::{HashMap, HashSet};
 use crate::{Length, Style};
-use std::collections::{HashMap, HashSet};
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 
 /// What a grid, list or tree view sends when the user changes it. The
 /// application applies it to its [`GridState`] with [`GridState::apply`] in
@@ -136,7 +141,7 @@ impl RowHeights {
     /// `index` is not a row.
     pub fn set(&mut self, index: usize, height: Option<f32>) {
         let height = Self::valid(height);
-        let was = std::mem::replace(&mut self.rows[index], height);
+        let was = core::mem::replace(&mut self.rows[index], height);
         let sum = height.map_or(0.0, f64::from) - was.map_or(0.0, f64::from);
         let count = i32::from(height.is_some()) - i32::from(was.is_some());
         let mut at = index + 1;
@@ -218,12 +223,12 @@ pub enum ModelError {
     MissingParent(ItemId),
     Cycle(ItemId),
 }
-impl std::fmt::Display for ModelError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for ModelError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "invalid collection model: {self:?}")
     }
 }
-impl std::error::Error for ModelError {}
+impl core::error::Error for ModelError {}
 
 #[derive(Clone, Debug)]
 pub struct VirtualListOptions {
@@ -401,8 +406,8 @@ pub struct TreeModel {
     row_heights: RowHeights,
 }
 
-impl std::fmt::Debug for TreeModel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for TreeModel {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("TreeModel")
             .field("items", &self.items.len())
             .finish_non_exhaustive()
@@ -679,7 +684,7 @@ pub fn text_matches(cell: &str, filter: &str) -> bool {
 
 /// How long the filter fields wait after the last keystroke before the model
 /// filters, so that typing a word filters once.
-pub const FILTER_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
+pub const FILTER_DELAY: core::time::Duration = core::time::Duration::from_millis(200);
 
 /// The filters of a grid: `(model column, text)` pairs, trimmed and non-empty.
 pub(crate) type Filters = Vec<(usize, String)>;
@@ -699,7 +704,7 @@ pub(crate) enum FilterNote {
 /// they are due, and whether `FiltersApplied` has been queued for them.
 #[derive(Clone, Debug)]
 pub(crate) struct FilterTimer {
-    pub due: std::time::Duration,
+    pub due: core::time::Duration,
     pub filters: Filters,
     pub fired: bool,
 }
@@ -716,7 +721,7 @@ pub struct GridState {
     pub scroll_x: f32,
     /// Text of the filter fields by model column. Changing it from code
     /// filters at the next declaration, without the typing delay.
-    pub filters: std::collections::BTreeMap<usize, String>,
+    pub filters: alloc::collections::BTreeMap<usize, String>,
     /// What the model was last asked to filter by.
     pub(crate) applied_filters: Vec<(usize, String)>,
     /// The last refused edit, and how many there have been, so that the
@@ -838,9 +843,9 @@ pub struct GridColumns {
     /// are ignored.
     pub order: Vec<usize>,
     /// Widths the user chose, by model column index.
-    pub widths: std::collections::BTreeMap<usize, f32>,
+    pub widths: alloc::collections::BTreeMap<usize, f32>,
     /// Hidden model column indices.
-    pub hidden: std::collections::BTreeSet<usize>,
+    pub hidden: alloc::collections::BTreeSet<usize>,
     /// How many of the leading visible columns stay in place while the rest
     /// scroll sideways.
     pub frozen: usize,

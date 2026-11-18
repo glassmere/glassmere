@@ -1,0 +1,21 @@
+[package]
+name = "glassmere-markup"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "A markup language for glassmere views, read at run time so a view can be edited while the app runs."
+keywords = ["gui", "markup", "hot-reload", "declarative"]
+categories = ["gui"]
+
+[dependencies]
+glassmere-core = { workspace = true, features = ["std"] }
+glassmere-scene = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+glassmere-testing.workspace = true
+
+[lints]
+workspace = true

@@ -1,6 +1,12 @@
 use super::*;
 use crate::{Length, MenuItem, app::Handler, controls::slider_value, editor::single_line};
-use std::ops::RangeInclusive;
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
+use core::ops::RangeInclusive;
 
 /// What makes a text field a number or autocomplete field.
 #[derive(Default)]
@@ -221,9 +227,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         self.control(
             key,
             Kind::Checkbox,
-            format!("{}  {shown}", if checked { "☑" } else { "☐" })
-                .trim_end()
-                .to_owned(),
+            shown.to_owned(),
             Style::button(),
             Control::Checkbox { label, checked },
         )
@@ -250,7 +254,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         self.control(
             key,
             Kind::Radio,
-            format!("{}  {label}", if selected { "●" } else { "○" }),
+            label.clone(),
             Style::button(),
             Control::Radio { label, selected },
         )

@@ -120,12 +120,20 @@ cargo run -p glassmere-examples --example platform --features platform
 | `titlebar` | A window that draws its own title bar. |
 | `windows` | Several windows sharing one app. |
 | `platform` | File dialogs, notifications, tray and menu. Needs the `platform` feature, as above. |
+| `embedded` | The firmware of [`examples/embedded-firmware`](examples/embedded-firmware) in a window, drawn by the embedded renderer. |
+| `markup` | A view written in [`examples/markup.glass`](examples/markup.glass), reloaded as the file changes. |
 | `dials` | [`examples/dial-widget`](examples/dial-widget): a custom widget crate built only on the public API. |
 
 To work on an app with hot restart:
 
 ```sh
 cargo run -p glassmere-dev -- -p glassmere-examples --example counter
+```
+
+To preview and edit a markup view:
+
+```sh
+cargo run -p glassmere-designer -- examples/markup.glass
 ```
 
 ## Guides
@@ -136,10 +144,12 @@ cargo run -p glassmere-dev -- -p glassmere-examples --example counter
 | [State](docs/state.md) | Where state lives, threads, docking layouts and the reactive store. |
 | [Widgets](docs/widgets.md) | The built-in controls and writing your own. |
 | [Styling](docs/styling.md) | Styles, themes, stylesheets, motion and direction. |
+| [Markup and the designer](docs/markup.md) | Views in `.glass` files, live reload and the visual editor. |
 | [Text](docs/text.md) | Fields, editors, IME, clipboard and localization. |
 | [Platform](docs/platform.md) | Windows, graphics backends, input, native services and the dev runner. |
 | [Accessibility](docs/accessibility.md) | What each node exposes and how to test it. |
 | [Performance](docs/performance.md) | What a frame costs and how to see it. |
+| [Embedded](docs/embedded.md) | Running on a microcontroller: `no_std`, framebuffers, bitmap fonts. |
 | [Renderers](docs/renderers.md) | The scene contract and writing a renderer. |
 | [API stability](docs/api-stability.md) | What is public and how it changes. |
 | [Known limitations](docs/limitations.md) | What does not work yet. |
@@ -154,6 +164,7 @@ cargo run -p glassmere-dev -- -p glassmere-examples --example counter
 | `glassmere-text` | Font loading and shaping on cosmic-text, shared by both renderers. |
 | `glassmere-render-wgpu` | The GPU renderer. |
 | `glassmere-render-cpu` | A software renderer for headless use, screenshots and as a fallback. |
+| `glassmere-embedded` | A `no_std` renderer and app loop for microcontroller displays: plain framebuffers, bitmap fonts. |
 | `glassmere-winit` | Windows, input, AccessKit and presentation. |
 | `glassmere-win32` | Windows 11 snap layouts. The only crate with `unsafe`. |
 | `glassmere-image` | Image decoding and the background loader. |
@@ -163,6 +174,8 @@ cargo run -p glassmere-dev -- -p glassmere-examples --example counter
 | `glassmere-devtools` | The inspector. |
 | `glassmere-testing` | Headless test harness. |
 | `glassmere-dev` | The hot-restart runner. |
+| `glassmere-markup` | Views read from `.glass` markup files at run time. |
+| `glassmere-designer` | Live preview and visual editor for markup files. |
 
 ## Building
 

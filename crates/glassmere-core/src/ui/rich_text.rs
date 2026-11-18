@@ -1,5 +1,8 @@
 use super::*;
 use crate::RichText;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 impl<'a, M: 'static> Ui<'a, M> {
     /// A read-only block of styled runs that wraps as one paragraph. A link

@@ -1,5 +1,10 @@
+#[cfg(not(feature = "std"))]
+use crate::float::FloatExt as _;
 use crate::{Point, Rect, Size};
-use std::ops::Range;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
+use core::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]

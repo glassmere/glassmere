@@ -1,11 +1,19 @@
 use super::*;
 use super::{DragSourceBuilder, DropTargetBuilder};
+#[cfg(not(feature = "std"))]
+use crate::float::FloatExt as _;
 use crate::{
     GridModel, GridMsg, GridState, Length, ListModel, ListState, RowHeights, SortDirection,
     VirtualListOptions,
     collection::{After, CollectionInput, CollectionKind, FilterNote, GridNode, NodeEdit},
 };
-use std::rc::Rc;
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::rc::Rc;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 impl<'a, Msg: 'static> Ui<'a, Msg> {
     /// A list whose selection is sent as [`GridMsg::Select`], Enter on a row
@@ -181,7 +189,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
         let selected = state.rows.selected();
         // What the next batch is to send: the edits, and the row to go to.
         let mut sends = Vec::new();
-        let mut inputs = std::mem::take(&mut grid.inbox);
+        let mut inputs = core::mem::take(&mut grid.inbox);
         if !self.enabled {
             inputs.clear();
         }
@@ -755,7 +763,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
                     });
                 }
                 plan.scrollbar(ui, rtl);
-                if focus_rows || std::mem::take(&mut grid.refocus) {
+                if focus_rows || core::mem::take(&mut grid.refocus) {
                     ui.request_focus("$rows");
                 }
             },
@@ -1027,7 +1035,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
 struct Window<'a> {
     selected: Option<crate::ItemId>,
     offset: f32,
-    realized: std::ops::Range<usize>,
+    realized: core::ops::Range<usize>,
     geometry: Geometry<'a>,
     pages: Option<(usize, usize)>,
 }
@@ -1037,7 +1045,7 @@ pub(crate) fn realized_rows(
     len: usize,
     offset: f32,
     options: &VirtualListOptions,
-) -> std::ops::Range<usize> {
+) -> core::ops::Range<usize> {
     let first = (offset / options.row_height).floor() as usize;
     let start = first.saturating_sub(options.overscan).min(len);
     let end = (((offset + options.height) / options.row_height).ceil() as usize)
@@ -1110,7 +1118,7 @@ impl Geometry<'_> {
         len: usize,
         offset: f32,
         options: &VirtualListOptions,
-    ) -> std::ops::Range<usize> {
+    ) -> core::ops::Range<usize> {
         let start = self
             .row_at(offset)
             .saturating_sub(options.overscan)
@@ -1570,11 +1578,16 @@ impl ColumnPlan {
         } else {
             travelled
         };
-        let color = ui.context.theme().scrollbar;
+        let (color, fill) = {
+            let theme = ui.context.theme();
+            (theme.scrollbar, theme.surface)
+        };
         let line = Style::default()
             .height(Length::Px(self.bar_height()))
             .gap(0.0);
-        ui.row_at("$hbar", line.clone(), |ui| {
+        // Filled like the rows, so that the bar is the grid's last line
+        // rather than a thumb adrift under it.
+        ui.row_at("$hbar", line.clone().background(fill), |ui| {
             ui.label_at("$frozen", "", line.clone().width(Length::Px(frozen)));
             ui.container_at("$track", line.clone().width(Length::Px(self.view)), |ui| {
                 let thumb = Style::default()

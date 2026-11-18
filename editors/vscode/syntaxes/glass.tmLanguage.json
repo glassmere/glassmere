@@ -1,0 +1,55 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Glassmere Markup",
+  "scopeName": "source.glass",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#string" },
+    {
+      "match": "\\b(component)\\s+([A-Z][A-Za-z0-9_]*)",
+      "captures": { "1": { "name": "keyword.other.glass" }, "2": { "name": "entity.name.type.glass" } }
+    },
+    { "match": "\\b(if|else|for|in)\\b", "name": "keyword.control.glass" },
+    { "match": "\\b(data)\\b(?=\\s*\\{)", "name": "keyword.other.glass" },
+    { "match": "\\b(true|false|none)\\b", "name": "constant.language.glass" },
+    {
+      "match": "\\b(on-[a-z-]+|bind)\\s*(:)",
+      "captures": { "1": { "name": "entity.other.attribute-name.event.glass" }, "2": { "name": "punctuation.separator.glass" } }
+    },
+    {
+      "match": "\\b([a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)?)\\s*(:)",
+      "captures": { "1": { "name": "support.type.property-name.glass" }, "2": { "name": "punctuation.separator.glass" } }
+    },
+    { "match": "#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?\\b", "name": "constant.other.color.glass" },
+    { "match": "-?\\b\\d+(?:\\.\\d+)?(?:px|fr|%)?", "name": "constant.numeric.glass" },
+    {
+      "match": "\\b(column|row|box|grid|scroll|spacer|label|button|link|checkbox|switch|radio|slider|input|number|progress|spinner|combo|image|tabs|tab|collapsible)\\b(?:(\\.)([A-Za-z_][A-Za-z0-9_-]*))?",
+      "captures": {
+        "1": { "name": "entity.name.tag.glass" },
+        "2": { "name": "punctuation.accessor.glass" },
+        "3": { "name": "entity.other.attribute-name.class.glass" }
+      }
+    },
+    { "match": "\\b[A-Z][A-Za-z0-9_]*\\b", "name": "entity.name.type.glass" },
+    { "match": "&&|\\|\\||==|!=|<=|>=|[-+*/%<>!?]", "name": "keyword.operator.glass" }
+  ],
+  "repository": {
+    "comment": { "match": "//.*$", "name": "comment.line.double-slash.glass" },
+    "string": {
+      "begin": "\"",
+      "end": "\"",
+      "name": "string.quoted.double.glass",
+      "patterns": [
+        { "match": "\\\\.|\\{\\{|\\}\\}", "name": "constant.character.escape.glass" },
+        {
+          "begin": "\\{",
+          "end": "\\}",
+          "beginCaptures": { "0": { "name": "punctuation.section.interpolation.begin.glass" } },
+          "endCaptures": { "0": { "name": "punctuation.section.interpolation.end.glass" } },
+          "contentName": "meta.embedded.expression.glass",
+          "patterns": [{ "include": "$self" }]
+        }
+      ]
+    }
+  }
+}

@@ -12,6 +12,7 @@
 //! [`Ui::keyed`](crate::Ui::keyed) names one when that is not enough.
 
 use crate::{Date, DateStyle, Style, Weekday};
+use alloc::string::String;
 
 /// Text. `ui.label("Ready")` is the short form of `Label::new("Ready")`.
 #[derive(Clone, Debug, Default)]
@@ -526,8 +527,8 @@ macro_rules! from_text {
             }
         }
 
-        impl$(<$message>)? From<std::borrow::Cow<'_, str>> for $type$(<$message>)? {
-            fn from(text: std::borrow::Cow<'_, str>) -> Self {
+        impl$(<$message>)? From<alloc::borrow::Cow<'_, str>> for $type$(<$message>)? {
+            fn from(text: alloc::borrow::Cow<'_, str>) -> Self {
                 Self::new(text.into_owned())
             }
         }

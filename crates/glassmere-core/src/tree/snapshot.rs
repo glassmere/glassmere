@@ -2,6 +2,8 @@
 //! accessibility.
 
 use super::*;
+use alloc::format;
+use alloc::vec::Vec;
 
 impl Context {
     /// Parent-first snapshots for platform accessibility adapters and inspectors.
@@ -169,7 +171,7 @@ impl Context {
                         .and_then(|panel| self.nodes[panel].children.get(popup.highlighted))
                         .copied()
                 }).or_else(|| if node.kind == Kind::Calendar { self.calendar_cursor_cell(id) } else { None }).or_else(|| if matches!(node.control, Control::DatePicker { .. }) { self.date_picker_cursor(id) } else { None }).or_else(|| if let Control::Collection { selected: Some(selected), .. } = node.control {
-                    node.children.iter().find(|id| matches!(self.nodes[id].control, Control::CollectionRow { item, .. } if item == selected)).copied()
+                    node.children.iter().find(|id| matches!(self.nodes[*id].control, Control::CollectionRow { item, .. } if item == selected)).copied()
                 } else { None }),
             text_selection: node.editor.as_ref().map(|editor| editor.selection),
             is_popup: matches!(node.kind, Kind::Popup | Kind::Popover),

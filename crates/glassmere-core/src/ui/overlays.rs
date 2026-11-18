@@ -1,7 +1,13 @@
 use super::*;
 use crate::{Align, Axis, Length, MenuItem, PopoverOptions, SplitOptions, Tab, TextInput, Tooltip};
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::rc::Rc;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 use glassmere_scene::Color;
-use std::rc::Rc;
 
 /// What a command palette sends; see [`Ui::command_palette`].
 pub struct CommandPalette<M = ()> {
@@ -10,8 +16,8 @@ pub struct CommandPalette<M = ()> {
     on_pick: Option<Rc<dyn Fn(usize) -> M>>,
 }
 
-impl<M> std::fmt::Debug for CommandPalette<M> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<M> core::fmt::Debug for CommandPalette<M> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("CommandPalette").finish_non_exhaustive()
     }
 }
@@ -185,6 +191,9 @@ impl<'a, M: 'static> Ui<'a, M> {
                                         padding: 6.0,
                                         radius: 6.0,
                                         background: Some(Color::TRANSPARENT),
+                                        // Level with the tab's label, not
+                                        // on the strip's bottom edge.
+                                        align_self: Some(Align::Center),
                                         ..Style::default()
                                     },
                                 );

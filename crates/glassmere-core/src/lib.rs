@@ -1,19 +1,30 @@
 //! Stable identity, reconciliation, layout, input, and semantic metadata.
+#![no_std]
 #![forbid(unsafe_code)]
+extern crate alloc;
+#[cfg(feature = "std")]
+extern crate std;
+
 mod animation;
 pub mod app;
 mod calendar;
 mod clipboard;
+mod clock;
 mod collection;
+mod collections;
 mod command;
 mod controls;
 mod dock;
+#[cfg(feature = "std")]
 mod document;
 mod drag;
 mod editor;
+#[cfg(not(feature = "std"))]
+mod float;
 mod focus;
 mod image;
 mod locale_format;
+#[cfg(feature = "std")]
 mod mailbox;
 mod messages;
 mod panes;
@@ -23,8 +34,10 @@ mod reactive;
 mod rich_document;
 mod rich_editor;
 mod rich_text;
+mod selection;
 mod style;
 mod stylesheet;
+#[cfg(feature = "std")]
 mod task;
 mod text_area;
 mod theme;
@@ -50,7 +63,8 @@ pub use dock::{
     DockArea, DockFloat, DockLayout, DockLayoutError, DockNode, DockPlace, DockTabs, DockTarget,
     DockWindow, DockWindowId, DockZone,
 };
-pub use document::{Indentation, Motion, Selection, TextDocument};
+#[cfg(feature = "std")]
+pub use document::TextDocument;
 pub use drag::{DragInfo, DragOutcome, DragPayload, DropKind};
 pub use editor::{CaretMovement, TextEdit, TextMove, TextSelection};
 pub use events::{EventArea, UiEvent};
@@ -59,12 +73,15 @@ pub use glassmere_scene::{FontFamily, TextSpan, TextStyle, TextWrap};
 pub use glassmere_scene::{MonospaceMeasurer, TextMeasurer};
 pub use image::{BackgroundImage, ImageFit, ImageOptions, ImageSource, ImageTint};
 pub use locale_format::{Date, DateStyle, LocaleFormat, Time, Weekday};
+#[cfg(feature = "std")]
 pub use mailbox::{Mailbox, MessageSender, message_channel};
 pub use messages::{BUILTIN_MESSAGES, MessageArg, Messages};
 pub use panes::{
     Axis, PopoverOptions, SplitOptions, TOOLTIP_DELAY, Tab, Tooltip, TooltipPlacement,
 };
-pub use platform::{FileKind, FileRequest, Menu, MenuEntry, Notification, Tray};
+#[cfg(feature = "std")]
+pub use platform::{FileKind, FileRequest};
+pub use platform::{Menu, MenuEntry, Notification, Tray};
 pub use property_grid::{PropertyChoice, PropertyGridOptions, PropertyGridState, PropertyMsg};
 pub use reactive::{GraphNode, Memo, Signal, StateKind, Store};
 pub use rich_document::{
@@ -72,18 +89,21 @@ pub use rich_document::{
 };
 pub use rich_editor::{RichEditorOptions, RichEditorResponse, RichOp};
 pub use rich_text::{RichRun, RichText};
+pub use selection::{Indentation, Motion, Selection};
 pub use style::{
     Align, AutoFlow, Direction, Gradient, GridArea, Justify, Length, Paint, ResolvedText, Shadow,
     StateStyles, Style, Track, TrackSize,
 };
 pub use stylesheet::{StyleSheet, StyleSheetError};
+#[cfg(feature = "std")]
 pub use task::{Cancel, TaskSender, Tasks};
-pub use text_area::{
-    CodeEditorOptions, Diagnostic, EditorCommand, FindEdit, FindState, HighlightSpan, Highlighter,
-    Severity, TextOp,
-};
+#[cfg(feature = "std")]
+pub use text_area::{CodeEditorOptions, FindState, Highlighter};
+pub use text_area::{Diagnostic, EditorCommand, FindEdit, HighlightSpan, Severity, TextOp};
 pub use theme::{TOKENS, Theme};
-pub use toast::{Toast, ToastAction, ToastId, ToastKind, ToastSender};
+#[cfg(feature = "std")]
+pub use toast::ToastSender;
+pub use toast::{Toast, ToastAction, ToastId, ToastKind};
 pub use tree::diagnostics::{
     DiagnosticKind, FrameDiagnostic, HUGE_CHILDREN, LAYER_AREA, RELAYOUT_FRAMES, REPAINT_FRAMES,
     REPAINT_MIN_NODES, UNSTABLE_ID_FRAMES,

@@ -1,0 +1,20 @@
+[package]
+name = "glassmere-designer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "Live preview and visual editor for glassmere markup files."
+keywords = ["gui", "designer", "preview", "markup"]
+categories = ["development-tools", "gui"]
+
+[dependencies]
+glassmere = { path = "../glassmere", version = "0.1.7", default-features = false, features = ["desktop", "images", "markup"] }
+
+[dev-dependencies]
+glassmere-testing.workspace = true
+
+[lints]
+workspace = true

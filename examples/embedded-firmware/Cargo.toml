@@ -1,0 +1,13 @@
+# Firmware for a microcontroller with a 320x240 RGB565 panel. Not a member of
+# the workspace: it is built for a bare-metal target,
+#     cargo check --manifest-path examples/embedded-firmware/Cargo.toml --target thumbv7em-none-eabihf
+[package]
+name = "embedded-firmware"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.90"
+publish = false
+
+[dependencies]
+glassmere-core = { path = "../../crates/glassmere-core", default-features = false }
+glassmere-embedded = { path = "../../crates/glassmere-embedded" }

@@ -1,6 +1,11 @@
 //! The app-owned model of the WYSIWYG editor: blocks of marked runs, one
 //! selection, snapshot undo and a Markdown subset for loading and saving.
-use std::ops::Range;
+use alloc::borrow::ToOwned;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
+use core::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -945,7 +950,7 @@ fn inline(text: &str, marks: &Marks, out: &mut Vec<InlineRun>) {
     let flush = |plain: &mut String, out: &mut Vec<InlineRun>| {
         if !plain.is_empty() {
             out.push(InlineRun {
-                text: std::mem::take(plain),
+                text: core::mem::take(plain),
                 marks: marks.clone(),
             });
         }

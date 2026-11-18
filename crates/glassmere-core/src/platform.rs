@@ -6,10 +6,14 @@
 //! and a host that cannot do one of them does not.
 
 use crate::Command;
+use alloc::string::String;
+use alloc::vec::Vec;
 use glassmere_scene::Image;
+#[cfg(feature = "std")]
 use std::path::PathBuf;
 
 /// What a file dialog is for.
+#[cfg(feature = "std")]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum FileKind {
     #[default]
@@ -23,6 +27,7 @@ pub enum FileKind {
 /// A file dialog to put up after the batch. The answer arrives as the message
 /// [`crate::Effects::choose_files`] was given, in a later batch, because a
 /// dialog is modal and `update` cannot wait inside itself.
+#[cfg(feature = "std")]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FileRequest {
     pub kind: FileKind,
@@ -36,6 +41,7 @@ pub struct FileRequest {
     pub file_name: Option<String>,
 }
 
+#[cfg(feature = "std")]
 impl FileRequest {
     pub fn open(title: impl Into<String>) -> Self {
         Self {
@@ -139,6 +145,10 @@ impl MenuEntry {
     }
 }
 
+/// The label of the item a separator becomes. A popup draws a rule across
+/// itself for it; what reads the label aloud still has a line of dashes.
+pub(crate) const SEPARATOR: &str = "────────────";
+
 /// One level of a menu as the items of a popup: a command with its
 /// shortcut, a rule for a separator, and a submenu by its label, enabled
 /// while anything in it is.
@@ -154,7 +164,7 @@ pub(crate) fn level_items(entries: &[MenuEntry]) -> Vec<crate::MenuItem> {
         .iter()
         .map(|entry| match entry {
             MenuEntry::Command(command) => crate::MenuItem::command(command),
-            MenuEntry::Separator => crate::MenuItem::disabled("─".repeat(12)),
+            MenuEntry::Separator => crate::MenuItem::disabled(SEPARATOR),
             MenuEntry::Submenu { label, entries } => crate::MenuItem {
                 label: label.clone(),
                 enabled: any_enabled(entries),

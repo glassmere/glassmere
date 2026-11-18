@@ -2,6 +2,8 @@
 //! events themselves.
 
 use super::*;
+use alloc::vec;
+use alloc::vec::Vec;
 
 impl Context {
     /// What has reached an event area since its last declaration.
@@ -215,10 +217,18 @@ impl Context {
         }
         // Areas see an event before and after the widgets, and may keep it
         // from them.
+        let waiting = |context: &Self| -> usize {
+            let pending = context.pending_area_events.borrow();
+            pending.values().map(Vec::len).sum()
+        };
+        let waited = waiting(self);
         if self.travelled(&event) {
             self.note_focus();
             return true;
         }
+        // What reached an area is handed over at the next declaration, so
+        // there has to be one even when no widget made anything of the event.
+        let arrived = waiting(self) > waited;
         match event {
             Event::Touch {
                 id,
@@ -273,7 +283,7 @@ impl Context {
         let draft = matches!(event, Event::Text(_))
             && self.focused.is_some_and(|id| self.sends_numbers(id));
         self.view_stale |= handled && !moved && !draft;
-        handled
+        handled || arrived
     }
 
     pub(super) fn handle_event(&mut self, event: Event) -> bool {

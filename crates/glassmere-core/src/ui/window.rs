@@ -1,4 +1,10 @@
 use super::*;
+use alloc::borrow::ToOwned;
+use alloc::format;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec;
+use alloc::vec::Vec;
 
 impl<'a, M: 'static> Ui<'a, M> {
     /// The window's native menu bar. Declaring the same menu again changes
@@ -16,6 +22,13 @@ impl<'a, M: 'static> Ui<'a, M> {
     #[track_caller]
     pub fn window(&self) -> crate::WindowInfo {
         self.context.window_info()
+    }
+
+    /// The tree as the previous frame left it: bounds, hit testing and
+    /// snapshots of what was declared then. Nothing declared in this view is
+    /// in it yet.
+    pub fn context(&self) -> &crate::Context {
+        self.context
     }
 
     /// The window's logical size, which is what `Ui::resize_frame` places
@@ -46,7 +59,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         }
         // A row, so that a title, a menu and the buttons sit side by side
         // the way a title bar's do.
-        let outer = std::mem::replace(&mut self.host.in_title_bar, true);
+        let outer = core::mem::replace(&mut self.host.in_title_bar, true);
         self.row(style, content);
         self.host.in_title_bar = outer;
         self.set_control(Control::TitleBar);
@@ -154,7 +167,9 @@ impl<'a, M: 'static> Ui<'a, M> {
     pub fn resize_frame(&mut self, thickness: f32) {
         let size = self.window_size();
         let side = thickness.max(1.0);
-        if size.width <= side * 2.0 || size.height <= side * 2.0 {
+        // A maximized window has no edge to pull, and its top row belongs to
+        // the title bar: the corner of the screen is the close button's.
+        if self.window().maximized || size.width <= side * 2.0 || size.height <= side * 2.0 {
             return;
         }
         // Out of flow and over the whole window, so that the grips sit on

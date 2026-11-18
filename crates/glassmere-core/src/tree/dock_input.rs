@@ -1,6 +1,11 @@
 use super::*;
 use crate::controls::DockAction;
 use crate::{DockArea, DockTarget, DockZone};
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 
 /// A tab being dragged out of a dock group.
 pub(super) struct DockDrag {
@@ -478,7 +483,7 @@ impl Context {
             let tabs: Vec<Rect> = strip
                 .children
                 .iter()
-                .filter(|id| self.nodes[id].kind == Kind::Tab)
+                .filter(|id| self.nodes[*id].kind == Kind::Tab)
                 .map(|id| self.nodes[id].bounds)
                 .collect();
             let index = tabs

@@ -2,6 +2,8 @@
 //! and statistics.
 
 use super::*;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 /// Monotonic within a Context; a removed node's identity is never reused there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

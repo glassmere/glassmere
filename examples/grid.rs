@@ -117,7 +117,7 @@ impl GridModel for People {
             2 => CITIES[person.city].into(),
             3 => person.age.to_string(),
             4 => format!("{} €", person.salary),
-            5 => if person.active { "☑" } else { "☐" }.into(),
+            5 => if person.active { "✓" } else { "" }.into(),
             6 => format!(
                 "{}@example.test",
                 person.name.to_lowercase().replace(' ', ".")

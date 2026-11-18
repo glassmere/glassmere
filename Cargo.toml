@@ -1,5 +1,7 @@
 [workspace]
 resolver = "2"
+# Built for a bare-metal target, with its own lock file.
+exclude = ["examples/embedded-firmware"]
 members = [
     "crates/glassmere",
     "crates/glassmere-core",
@@ -7,6 +9,7 @@ members = [
     "crates/glassmere-text",
     "crates/glassmere-render-wgpu",
     "crates/glassmere-render-cpu",
+    "crates/glassmere-embedded",
     "crates/glassmere-winit",
     "crates/glassmere-testing",
     "crates/glassmere-devtools",
@@ -18,13 +21,15 @@ members = [
     "crates/glassmere-dev",
     "crates/glassmere-win32",
     "crates/glassmere-allocations",
+    "crates/glassmere-markup",
+    "crates/glassmere-designer",
     "examples",
     # A widget built the way a third party would build one.
     "examples/dial-widget",
 ]
 
 [workspace.package]
-version = "0.1.6"
+version = "0.1.7"
 edition = "2024"
 rust-version = "1.90"
 license = "Apache-2.0"
@@ -32,25 +37,30 @@ readme = "README.md"
 repository = "https://github.com/glassmere/glassmere"
 
 [workspace.dependencies]
-glassmere-core = { path = "crates/glassmere-core", version = "0.1.6" }
-glassmere-scene = { path = "crates/glassmere-scene", version = "0.1.6" }
-glassmere-text = { path = "crates/glassmere-text", version = "0.1.6" }
-glassmere-render-cpu = { path = "crates/glassmere-render-cpu", version = "0.1.6" }
-glassmere-render-wgpu = { path = "crates/glassmere-render-wgpu", version = "0.1.6" }
-glassmere-winit = { path = "crates/glassmere-winit", version = "0.1.6" }
-glassmere-testing = { path = "crates/glassmere-testing", version = "0.1.6" }
-glassmere-devtools = { path = "crates/glassmere-devtools", version = "0.1.6" }
-glassmere-syntax = { path = "crates/glassmere-syntax", version = "0.1.6" }
-glassmere-image = { path = "crates/glassmere-image", version = "0.1.6" }
-glassmere-derive = { path = "crates/glassmere-derive", version = "0.1.6" }
-glassmere-fluent = { path = "crates/glassmere-fluent", version = "0.1.6" }
-glassmere-icu = { path = "crates/glassmere-icu", version = "0.1.6" }
-glassmere-win32 = { path = "crates/glassmere-win32", version = "0.1.6" }
+# `default-features = false` lets the two kernel crates build without `std`; each member asks for it.
+glassmere-core = { path = "crates/glassmere-core", version = "0.1.7", default-features = false }
+glassmere-scene = { path = "crates/glassmere-scene", version = "0.1.7", default-features = false }
+glassmere-text = { path = "crates/glassmere-text", version = "0.1.7" }
+glassmere-render-cpu = { path = "crates/glassmere-render-cpu", version = "0.1.7" }
+glassmere-embedded = { path = "crates/glassmere-embedded", version = "0.1.7" }
+glassmere-render-wgpu = { path = "crates/glassmere-render-wgpu", version = "0.1.7" }
+glassmere-winit = { path = "crates/glassmere-winit", version = "0.1.7" }
+glassmere-testing = { path = "crates/glassmere-testing", version = "0.1.7" }
+glassmere-devtools = { path = "crates/glassmere-devtools", version = "0.1.7" }
+glassmere-syntax = { path = "crates/glassmere-syntax", version = "0.1.7" }
+glassmere-image = { path = "crates/glassmere-image", version = "0.1.7" }
+glassmere-derive = { path = "crates/glassmere-derive", version = "0.1.7" }
+glassmere-fluent = { path = "crates/glassmere-fluent", version = "0.1.7" }
+glassmere-icu = { path = "crates/glassmere-icu", version = "0.1.7" }
+glassmere-win32 = { path = "crates/glassmere-win32", version = "0.1.7" }
+glassmere-markup = { path = "crates/glassmere-markup", version = "0.1.7" }
 bitflags = "2.13"
+hashbrown = { version = "0.17", default-features = false, features = ["default-hasher"] }
+libm = "0.2"
 ropey = "1.6"
-serde = { version = "1.0.229", features = ["derive"] }
-tracing = { version = "0.1.44", default-features = false, features = ["std"] }
-taffy = { version = "0.10.1", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid"] }
+serde = { version = "1.0.229", default-features = false, features = ["derive", "alloc"] }
+tracing = { version = "0.1.44", default-features = false }
+taffy = { version = "0.10.1", default-features = false, features = ["taffy_tree", "flexbox", "grid"] }
 wgpu = "29.0.4"
 winit = "0.30.13"
 # The version glyphon uses, so that both share one font system type.

@@ -1,4 +1,5 @@
 use crate::{Length, NodeId, Style};
+use alloc::string::String;
 
 /// Focus behavior of a `Ui::focus_scope` group.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

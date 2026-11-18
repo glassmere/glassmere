@@ -1,4 +1,6 @@
 use super::*;
+use alloc::boxed::Box;
+use alloc::string::String;
 
 impl<'a, M: 'static> Ui<'a, M> {
     /// A widget of the application's own, with the input, state, style and
@@ -91,8 +93,8 @@ pub struct DragSourceBuilder<M = ()> {
     on_drag_end: Option<Box<dyn Fn(crate::DragOutcome) -> M>>,
 }
 
-impl<M> std::fmt::Debug for DragSourceBuilder<M> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<M> core::fmt::Debug for DragSourceBuilder<M> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("DragSourceBuilder").finish_non_exhaustive()
     }
 }
@@ -121,8 +123,8 @@ pub struct DropTargetBuilder<M = ()> {
     on_drop: Option<Box<dyn Fn(crate::DragPayload) -> M>>,
 }
 
-impl<M> std::fmt::Debug for DropTargetBuilder<M> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<M> core::fmt::Debug for DropTargetBuilder<M> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("DropTargetBuilder").finish_non_exhaustive()
     }
 }
@@ -149,8 +151,8 @@ pub struct GestureBuilder<M = ()> {
     on_gesture: Option<Box<dyn Fn(crate::GestureResponse) -> M>>,
 }
 
-impl<M> std::fmt::Debug for GestureBuilder<M> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<M> core::fmt::Debug for GestureBuilder<M> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("GestureBuilder").finish_non_exhaustive()
     }
 }
@@ -181,8 +183,8 @@ pub struct AreaBuilder<M = ()> {
     on_event: Option<Box<dyn Fn(crate::UiEvent) -> Option<M>>>,
 }
 
-impl<M> std::fmt::Debug for AreaBuilder<M> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<M> core::fmt::Debug for AreaBuilder<M> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("AreaBuilder").finish_non_exhaustive()
     }
 }

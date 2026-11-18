@@ -10,7 +10,9 @@
 //! it and keeps going after release; a press that rests opens the context
 //! menu, or picks up a drag source; there is no hover once the finger lifts.
 use super::*;
-use std::collections::VecDeque;
+use alloc::boxed::Box;
+use alloc::collections::VecDeque;
+use alloc::vec::Vec;
 
 /// Movement that turns a press into a pan, in logical pixels.
 const SLOP: f32 = 10.0;
@@ -163,14 +165,14 @@ impl Context {
     /// Exchanges the context's pointer state with a contact's. Called in
     /// pairs around whatever should see the contact as the pointer.
     fn swap_touch(&mut self, touch: &mut Touch) {
-        std::mem::swap(&mut self.pointer, &mut touch.pointer);
-        std::mem::swap(&mut self.hovered, &mut touch.hovered);
-        std::mem::swap(&mut self.captured, &mut touch.captured);
-        std::mem::swap(&mut self.drag, &mut touch.drag);
-        std::mem::swap(&mut self.dock_drag, &mut touch.dock_drag);
-        std::mem::swap(&mut self.dock_grab, &mut touch.dock_grab);
-        std::mem::swap(&mut self.scrollbar_grab, &mut touch.scrollbar_grab);
-        std::mem::swap(&mut self.track_hold, &mut touch.track_hold);
+        core::mem::swap(&mut self.pointer, &mut touch.pointer);
+        core::mem::swap(&mut self.hovered, &mut touch.hovered);
+        core::mem::swap(&mut self.captured, &mut touch.captured);
+        core::mem::swap(&mut self.drag, &mut touch.drag);
+        core::mem::swap(&mut self.dock_drag, &mut touch.dock_drag);
+        core::mem::swap(&mut self.dock_grab, &mut touch.dock_grab);
+        core::mem::swap(&mut self.scrollbar_grab, &mut touch.scrollbar_grab);
+        core::mem::swap(&mut self.track_hold, &mut touch.track_hold);
     }
 
     /// Runs `events` with the contact as the pointer.
@@ -227,7 +229,7 @@ impl Context {
 
     pub(super) fn stop_touches(&mut self) {
         self.fling = None;
-        for (_, mut touch) in std::mem::take(&mut self.touches) {
+        for (_, mut touch) in core::mem::take(&mut self.touches) {
             self.as_touch(&mut touch, Self::release_press);
         }
     }
@@ -361,7 +363,7 @@ impl Context {
                 // second finger down nothing is a tap any more.
                 let partner = self.gesture_partner(area);
                 if touch.travelled || partner.is_some() {
-                    let from = std::mem::replace(&mut touch.last, position);
+                    let from = core::mem::replace(&mut touch.last, position);
                     self.gesture_moved(area, from, position, partner)
                 } else {
                     false
@@ -686,8 +688,9 @@ impl Context {
             if length_before > 1.0 && length_after > 1.0 {
                 gesture.scale *= length_after / length_before;
                 let turn = after.1.atan2(after.0) - before.1.atan2(before.0);
-                gesture.rotation += (turn + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU)
-                    - std::f32::consts::PI;
+                gesture.rotation += (turn + core::f32::consts::PI)
+                    .rem_euclid(core::f32::consts::TAU)
+                    - core::f32::consts::PI;
             }
         })
     }

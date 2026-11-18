@@ -142,7 +142,13 @@ impl App for Theming {
                     ui.label("Nested rows inherit too.");
                 });
             });
-            ui.row(Style::default().gap(16.0), |ui| {
+            // A panel around them, as ancestors clip: its padding is the room
+            // the shadow falls into.
+            let swatches = Style {
+                gap: 16.0,
+                ..panel.clone()
+            };
+            ui.row(swatches, |ui| {
                 // A ramp and a shadow, from the typed API.
                 let lifted = Style {
                     width: Length::Px(220.0),

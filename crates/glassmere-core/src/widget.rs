@@ -1,4 +1,8 @@
 use crate::{EventArea, Semantics, UiEvent};
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec::Vec;
 use glassmere_scene::{Point, Primitive, Rect, Size};
 
 /// A leaf with explicit intrinsic size, local paint commands and semantics.
@@ -39,8 +43,8 @@ pub struct WidgetBuilder<F, M = ()> {
     pub(crate) on_event: Option<Box<dyn Fn(crate::UiEvent) -> Option<M>>>,
 }
 
-impl<F, M> std::fmt::Debug for WidgetBuilder<F, M> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<F, M> core::fmt::Debug for WidgetBuilder<F, M> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("WidgetBuilder").finish_non_exhaustive()
     }
 }

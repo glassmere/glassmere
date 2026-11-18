@@ -2,7 +2,11 @@
 //! (the `glassmere-fluent` crate provides one for Fluent catalogs); `Ui::tr`
 //! looks a key up in it, then in the framework's built-in English, and shows
 //! the key itself when neither has it.
-use std::fmt::Write as _;
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::fmt::Write as _;
 
 /// A value substituted into a message.
 #[derive(Clone, Debug, PartialEq)]
@@ -163,10 +167,7 @@ impl crate::Context {
     /// changes while the app runs.
     pub fn set_messages(&mut self, messages: Option<Box<dyn Messages>>) {
         self.messages = messages;
-        self.missing_messages
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clear();
+        self.missing_messages.borrow_mut().clear();
         self.repaint_all();
     }
 
@@ -191,10 +192,7 @@ impl crate::Context {
         if let Some(pattern) = builtin(key) {
             return substitute(pattern, args);
         }
-        let mut missing = self
-            .missing_messages
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut missing = self.missing_messages.borrow_mut();
         // A linear scan of at most 256 keys; a set if apps miss more.
         if missing.len() < 256 && !missing.iter().any(|known| known == key) {
             missing.push(key.to_owned());
@@ -205,10 +203,7 @@ impl crate::Context {
     /// Keys that were asked for and had no text anywhere, in the order they
     /// were first missed, since the messages were last installed.
     pub fn missing_messages(&self) -> Vec<String> {
-        self.missing_messages
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
+        self.missing_messages.borrow().clone()
     }
 }
 

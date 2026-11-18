@@ -1,5 +1,10 @@
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use alloc::string::String;
+use core::time::Duration;
+#[cfg(feature = "std")]
+use {
+    alloc::{boxed::Box, sync::Arc, vec::Vec},
+    std::sync::Mutex,
+};
 
 /// What a toast is about; it picks the accent colour and how urgently
 /// assistive technology announces it.
@@ -95,12 +100,14 @@ pub struct ToastAction {
 
 /// Raises toasts in one window from any thread and wakes that window. Get it
 /// from `Ui::toast_sender` during a declaration and hand clones to workers.
+#[cfg(feature = "std")]
 #[derive(Clone)]
 pub struct ToastSender {
     pub(crate) inbox: Arc<Mutex<Vec<Toast>>>,
     pub(crate) wake: Arc<Mutex<Box<dyn Fn() + Send>>>,
 }
 
+#[cfg(feature = "std")]
 impl ToastSender {
     pub fn send(&self, toast: Toast) {
         // A worker that panicked while holding the lock must not silence the rest.
@@ -115,8 +122,9 @@ impl ToastSender {
     }
 }
 
-impl std::fmt::Debug for ToastSender {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+#[cfg(feature = "std")]
+impl core::fmt::Debug for ToastSender {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str("ToastSender")
     }
 }
