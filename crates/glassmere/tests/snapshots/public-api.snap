@@ -26,6 +26,7 @@ glassmere use Stroke = glassmere_scene::Stroke
 glassmere use ThemeChoice = glassmere_winit::ThemeChoice #[cfg(feature = "desktop")]
 glassmere use VectorImage = glassmere_scene::VectorImage
 glassmere use devtools = glassmere_devtools
+glassmere use embedded = glassmere_embedded #[cfg(feature = "embedded")]
 glassmere use fluent = glassmere_fluent #[cfg(feature = "fluent")]
 glassmere use hot = glassmere_winit::hot #[cfg(feature = "desktop")]
 glassmere use icu = glassmere_icu #[cfg(feature = "icu")]

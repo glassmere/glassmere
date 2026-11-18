@@ -32,6 +32,8 @@ jobs:
           rustup target add thumbv7em-none-eabihf
           cargo check -p glassmere-scene --no-default-features --target thumbv7em-none-eabihf --locked
           cargo check -p glassmere-core --no-default-features --target thumbv7em-none-eabihf --locked
+          cargo check -p glassmere-embedded --lib --target thumbv7em-none-eabihf --locked
+          cargo check --manifest-path examples/embedded-firmware/Cargo.toml --target thumbv7em-none-eabihf --locked
       # A real window on every platform, not only a build of one. Linux has
       # no display in CI, so Xvfb provides one and the CPU renderer paints
       # into it; the point is that the whole host path runs.

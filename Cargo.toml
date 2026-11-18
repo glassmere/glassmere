@@ -1,5 +1,7 @@
 [workspace]
 resolver = "2"
+# Built for a bare-metal target, with its own lock file.
+exclude = ["examples/embedded-firmware"]
 members = [
     "crates/glassmere",
     "crates/glassmere-core",
@@ -7,6 +9,7 @@ members = [
     "crates/glassmere-text",
     "crates/glassmere-render-wgpu",
     "crates/glassmere-render-cpu",
+    "crates/glassmere-embedded",
     "crates/glassmere-winit",
     "crates/glassmere-testing",
     "crates/glassmere-devtools",
@@ -37,6 +40,7 @@ glassmere-core = { path = "crates/glassmere-core", version = "0.1.6", default-fe
 glassmere-scene = { path = "crates/glassmere-scene", version = "0.1.6", default-features = false }
 glassmere-text = { path = "crates/glassmere-text", version = "0.1.6" }
 glassmere-render-cpu = { path = "crates/glassmere-render-cpu", version = "0.1.6" }
+glassmere-embedded = { path = "crates/glassmere-embedded", version = "0.1.6" }
 glassmere-render-wgpu = { path = "crates/glassmere-render-wgpu", version = "0.1.6" }
 glassmere-winit = { path = "crates/glassmere-winit", version = "0.1.6" }
 glassmere-testing = { path = "crates/glassmere-testing", version = "0.1.6" }
