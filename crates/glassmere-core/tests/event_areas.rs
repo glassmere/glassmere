@@ -341,3 +341,26 @@ fn pointer_moves_that_send_nothing_do_not_declare() {
         }
     }
 }
+
+#[test]
+fn an_event_that_reaches_an_area_asks_for_a_frame() {
+    // Nothing under the pointer reacts to a press, so the area's handler is
+    // the only thing waiting, and it runs at the next declaration.
+    fn view(_: &Seen, ui: &mut Ui<'_, Action<Seen>>) {
+        ui.event_area(
+            Style::default()
+                .width(Length::Px(200.0))
+                .height(Length::Px(200.0)),
+            AreaBuilder::new(EventArea::pointer().capturing()).on_event(outer_event),
+            |ui| ui.label("Inert"),
+        );
+    }
+    let mut driven = Driven::new(ROOT, Seen::default(), view);
+    driven
+        .context
+        .event(Event::PointerMoved(Point { x: 50.0, y: 50.0 }));
+    driven.frame();
+    assert!(driven.context.event(Event::PointerDown));
+    driven.frame();
+    assert!(driven.context.event(Event::PointerUp));
+}
