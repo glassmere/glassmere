@@ -29,6 +29,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - An event that reaches an event area over content that does not react to it is handled at once. Before, the area's message waited for the next unrelated event, such as the pointer leaving the window.
 - On Windows, the system's minimize, maximize and close buttons work in a window that does not draw its own. Before, their clicks were kept from Windows.
+- A maximized window with a drawn title bar reacts to the pointer in its top 8 pixels. Before, the resize edge covered them.
+- A line of text taller than the room its box leaves for it is no longer cut at the descenders, as in a grid cell.
+- Checkboxes and radio buttons draw their marks as shapes, so they no longer depend on the font having the glyphs.
+- A menu separator is a rule across the menu instead of a row of dashes.
+- The close button of a tab and the labels of the rich text toolbar are centred, the strip beside a grid's sideways scrollbar is filled, and the "Value" header of a property grid clears the divider.
+- A markup file may start with a byte order mark.
 
 ## [0.1.6] - 2026-11-15
 
