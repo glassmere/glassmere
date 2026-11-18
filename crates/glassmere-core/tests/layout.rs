@@ -829,3 +829,52 @@ fn a_text_leaf_is_placed_in_its_box_by_the_same_properties_a_container_uses() {
     assert!((padded.x - centre.x).abs() < 0.01, "{padded:?}");
     assert!((padded.y - centre.y).abs() < 0.01, "{padded:?}");
 }
+
+#[test]
+fn a_line_taller_than_its_padding_leaves_room_for_keeps_its_height() {
+    use glassmere_scene::Primitive;
+    let mut context = Context::new();
+    let mut measurer = MonospaceMeasurer;
+    let natural = {
+        context.run(
+            Size::new(200.0, 100.0),
+            &mut measurer,
+            |ui: &mut Ui<'_, ()>| {
+                ui.label("gyp");
+            },
+        );
+        context
+            .scene()
+            .primitives
+            .iter()
+            .find_map(|primitive| match primitive {
+                Primitive::Text { rect, .. } => Some(rect.height),
+                _ => None,
+            })
+            .expect("the label's text")
+    };
+    // A box whose padding leaves less than the line: a cell of a dense grid.
+    let tight = natural + 4.0;
+    context.run(
+        Size::new(200.0, 100.0),
+        &mut measurer,
+        |ui: &mut Ui<'_, ()>| {
+            ui.label(Label::new("gyp").style(Style {
+                height: Length::Px(tight),
+                padding: 6.0,
+                ..Style::default()
+            }));
+        },
+    );
+    let rect = context
+        .scene()
+        .primitives
+        .iter()
+        .find_map(|primitive| match primitive {
+            Primitive::Text { rect, .. } => Some(*rect),
+            _ => None,
+        })
+        .expect("the label's text");
+    assert_eq!(rect.height, natural, "the whole line is drawn");
+    assert_eq!(rect.y, 2.0, "centred in its box");
+}

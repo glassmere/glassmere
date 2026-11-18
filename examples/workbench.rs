@@ -175,17 +175,17 @@ fn custom_action(count: u32) -> CustomWidget {
         primitives: vec![
             Primitive::Quad {
                 rect: Rect {
-                    x: 4.0,
-                    y: 4.0,
-                    width: 222.0,
-                    height: 36.0,
+                    x: 0.0,
+                    y: 0.0,
+                    width: 230.0,
+                    height: 44.0,
                 },
                 color: Color::rgb(22, 105, 99),
                 radius: 8.0,
             },
             Primitive::Text {
                 rect: Rect {
-                    x: 14.0,
+                    x: 12.0,
                     y: 10.0,
                     width: 205.0,
                     height: 30.0,

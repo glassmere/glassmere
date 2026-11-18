@@ -238,3 +238,18 @@ fn a_window_too_small_for_its_own_edges_has_none() {
     });
     assert!(context.find(&["edges", "north"]).is_none());
 }
+
+#[test]
+fn a_maximized_window_has_no_edges_over_its_title_bar() {
+    let mut h = Host::new(Chrome::default(), ROOT);
+    h.context.set_window_info(WindowInfo {
+        maximized: true,
+        focused: true,
+    });
+    h.frame();
+    h.frame();
+    assert!(h.context.find(&["edges", "north"]).is_none());
+    // The top row of the screen is the title bar's, as it is the system's.
+    press(&mut h.context, Point { x: 200.0, y: 1.0 });
+    assert_eq!(h.context.take_window_commands(), [WindowCommand::Drag]);
+}

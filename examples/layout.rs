@@ -54,6 +54,7 @@ impl App for Layout {
             .clone()
             .columns(vec![Track::repeat(3, vec![Track::Fr(1.0)])])
             .auto_rows(vec![Track::Px(90.0)])
+            .align_items(Align::Stretch)
             .gap(12.0);
         let form = full
             .clone()

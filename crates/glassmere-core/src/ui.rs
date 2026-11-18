@@ -147,6 +147,8 @@ pub(crate) enum Kind {
 
 /// Width and height of a switch's track.
 pub(crate) const SWITCH_TRACK: (f32, f32) = (40.0, 22.0);
+/// The side of a checkbox's box and of a radio button's ring.
+pub(crate) const MARK: f32 = 18.0;
 
 impl Kind {
     pub(crate) fn text_leaf(self) -> bool {
@@ -173,6 +175,7 @@ impl Kind {
         match self {
             Self::Switch => SWITCH_TRACK.0 + 10.0,
             Self::Disclosure => 20.0,
+            Self::Checkbox | Self::Radio => MARK + 10.0,
             _ => 0.0,
         }
     }

@@ -154,7 +154,9 @@ impl<'a, M: 'static> Ui<'a, M> {
     pub fn resize_frame(&mut self, thickness: f32) {
         let size = self.window_size();
         let side = thickness.max(1.0);
-        if size.width <= side * 2.0 || size.height <= side * 2.0 {
+        // A maximized window has no edge to pull, and its top row belongs to
+        // the title bar: the corner of the screen is the close button's.
+        if self.window().maximized || size.width <= side * 2.0 || size.height <= side * 2.0 {
             return;
         }
         // Out of flow and over the whole window, so that the grips sit on

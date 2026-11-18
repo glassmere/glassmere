@@ -185,6 +185,9 @@ impl<'a, M: 'static> Ui<'a, M> {
                                         padding: 6.0,
                                         radius: 6.0,
                                         background: Some(Color::TRANSPARENT),
+                                        // Level with the tab's label, not
+                                        // on the strip's bottom edge.
+                                        align_self: Some(Align::Center),
                                         ..Style::default()
                                     },
                                 );

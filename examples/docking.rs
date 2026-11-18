@@ -1,6 +1,7 @@
 use glassmere::{
     App, AppOptions, Button, DockAction, DockLayout, DockNode, DockOptions, DockPanel, DockTarget,
-    DockWindowId, Effects, Label, Length, Size, Style, TextWrap, Ui, WindowId, WindowRequest, run,
+    DockWindowId, Effects, Label, Length, Size, Style, TextInput, TextWrap, Ui, WindowId,
+    WindowRequest, run,
 };
 use std::path::PathBuf;
 
@@ -69,7 +70,15 @@ impl Docking {
         match id {
             "editor" => {
                 ui.label("Notes");
-                ui.text_input("Notes", &self.notes, Msg::Notes);
+                ui.text_input(
+                    TextInput::new("Notes").style(
+                        Style::button()
+                            .width(Length::Percent(1.0))
+                            .height(Length::Px(44.0)),
+                    ),
+                    &self.notes,
+                    Msg::Notes,
+                );
                 let (body, style) = text(
                     "Drag a tab onto a drop indicator, another tab strip or empty space. \
                      Right-click a tab, press Shift+F10 on it or use the ▾ button for the same moves.",

@@ -210,6 +210,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     run(
         AppOptions {
             title: "Glassmere / Counter".into(),
+            size: Size::new(900.0, 720.0),
             gpu: hook.then(|| {
                 GpuSetup::new(move |renderer| {
                     let counted = counted.clone();
