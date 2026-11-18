@@ -1,5 +1,6 @@
 use crate::Style;
-use std::collections::HashSet;
+use crate::collections::HashSet;
+use alloc::string::String;
 
 /// What a property grid sends when the user does something to it. A value
 /// names its row by path, such as `Layout/Width`; the grid's own state (the

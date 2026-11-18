@@ -1,7 +1,9 @@
 //! Options, response and queued operations of the WYSIWYG rich text editor.
 use crate::{BlockKind, Length, Mark, Marks, RichDocument, RichMotion, RichPosition, Style};
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::ops::Range;
 use glassmere_scene::{Color, FontFamily, TextSpan};
-use std::ops::Range;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RichEditorOptions {

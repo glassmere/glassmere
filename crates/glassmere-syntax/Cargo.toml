@@ -11,8 +11,8 @@ keywords = ["gui", "syntax-highlighting", "syntect", "editor"]
 categories = ["text-editors", "gui"]
 
 [dependencies]
-glassmere-core.workspace = true
-glassmere-scene.workspace = true
+glassmere-core = { workspace = true, features = ["std"] }
+glassmere-scene = { workspace = true, features = ["std"] }
 # Pure-Rust regex engine: no C toolchain needed to build.
 syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
 

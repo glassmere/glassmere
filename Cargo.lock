@@ -1035,6 +1035,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
 
 [[package]]
+name = "embedded-firmware"
+version = "0.0.0"
+dependencies = [
+ "glassmere-core",
+ "glassmere-embedded",
+]
+
+[[package]]
 name = "endi"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1595,6 +1603,7 @@ dependencies = [
  "glassmere-core",
  "glassmere-derive",
  "glassmere-devtools",
+ "glassmere-embedded",
  "glassmere-fluent",
  "glassmere-icu",
  "glassmere-image",
@@ -1624,6 +1633,8 @@ version = "0.1.6"
 dependencies = [
  "bitflags 2.13.2",
  "glassmere-scene",
+ "hashbrown 0.17.1",
+ "libm",
  "regex",
  "ropey",
  "serde",
@@ -1664,10 +1675,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "glassmere-embedded"
+version = "0.1.6"
+dependencies = [
+ "glassmere-core",
+ "glassmere-render-cpu",
+ "glassmere-scene",
+ "libm",
+]
+
+[[package]]
 name = "glassmere-examples"
 version = "0.1.6"
 dependencies = [
+ "embedded-firmware",
  "glassmere",
+ "glassmere-testing",
 ]
 
 [[package]]
@@ -1738,6 +1761,7 @@ dependencies = [
 name = "glassmere-scene"
 version = "0.1.6"
 dependencies = [
+ "libm",
  "unicode-segmentation",
 ]
 
@@ -2048,6 +2072,9 @@ name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+dependencies = [
+ "foldhash 0.2.0",
+]
 
 [[package]]
 name = "heck"

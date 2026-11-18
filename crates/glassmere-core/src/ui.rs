@@ -1,11 +1,18 @@
+use crate::collections::HashMap;
+use crate::collections::HashSet;
 use crate::controls::{Control, ControlUpdate};
 use crate::window::caption;
 use crate::{Component, Context, CustomWidget, NodeId, Style};
+#[cfg(feature = "std")]
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::string::String;
+#[cfg(feature = "std")]
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use core::panic::Location;
 use glassmere_scene::Color;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::panic::Location;
-use std::sync::Arc;
 mod builders;
 pub use builders::{
     Button, Calendar, Collapsible, ComboBox, DatePicker, Label, Link, Progress, RangeSlider,
@@ -28,6 +35,7 @@ pub use areas::{AreaBuilder, DragSourceBuilder, DropTargetBuilder, GestureBuilde
 mod dialog;
 mod rich_editor;
 mod rich_text;
+#[cfg(feature = "std")]
 mod text_area;
 mod toasts;
 mod window;
@@ -70,6 +78,7 @@ impl WidgetKey {
 /// What a declaration hands to the host besides the tree.
 #[derive(Default)]
 pub(crate) struct HostOutbox {
+    #[cfg(feature = "std")]
     pub watched: Vec<std::path::PathBuf>,
     /// The native menu and tray icon as the view last declared them.
     pub menu: Option<crate::Menu>,
@@ -78,6 +87,7 @@ pub(crate) struct HostOutbox {
     pub tray: Option<Option<crate::Tray>>,
     /// Commands a menu the framework drew itself chose.
     pub commands: Vec<String>,
+    #[cfg(feature = "std")]
     pub images: Vec<std::path::PathBuf>,
     pub toasts: ToastOutbox,
     /// Misuses a release build skipped, with the parent they were declared in.
@@ -236,8 +246,8 @@ enum Observed {
     Element(u32),
 }
 
-impl std::fmt::Debug for Response<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for Response<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Response")
             .field("hovered", &self.hovered)
             .field("pressed", &self.pressed)
@@ -341,6 +351,7 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// Files the operating system asked the application to open, from the
     /// command line or from an association. Empty when it was started
     /// without any.
+    #[cfg(feature = "std")]
     #[track_caller]
     pub fn opened_files(&self) -> &[std::path::PathBuf] {
         self.context.opened_files()
@@ -366,6 +377,7 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// declaration that asks for it, reloaded when it changes on disk, and a
     /// redraw follows each change. `None` until the first load; a failed
     /// reload keeps the last good content (see `Context::watch_error`).
+    #[cfg(feature = "std")]
     #[track_caller]
     pub fn watched_bytes(&mut self, path: impl AsRef<std::path::Path>) -> Option<Arc<[u8]>> {
         let path = path.as_ref();
@@ -376,6 +388,7 @@ impl<'a, M: 'static> Ui<'a, M> {
     }
 
     /// `watched_bytes` for UTF-8 text files; `None` also for invalid UTF-8.
+    #[cfg(feature = "std")]
     #[track_caller]
     pub fn watched_text(&mut self, path: impl AsRef<std::path::Path>) -> Option<Arc<str>> {
         let path = path.as_ref();
@@ -412,6 +425,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         element.enabled &= self.enabled;
         // A background file becomes its image once the host has delivered it,
         // and that style change is what repaints the node.
+        #[cfg(feature = "std")]
         if let Some(background) = &mut element.style.background_image
             && let crate::ImageSource::File(path) = &background.source
         {
@@ -614,10 +628,10 @@ impl<'a, M: 'static> Ui<'a, M> {
             parent: self.parent,
             pending_key: self.pending_key.take(),
             clicks: &mut *self.clicks,
-            elements: std::mem::take(&mut self.elements),
-            keys: std::mem::take(&mut self.keys),
+            elements: core::mem::take(&mut self.elements),
+            keys: core::mem::take(&mut self.keys),
             declared: self.declared,
-            sites: std::mem::take(&mut self.sites),
+            sites: core::mem::take(&mut self.sites),
             updates: &mut *self.updates,
             warnings: &mut *self.warnings,
             observed: &mut *self.observed,
@@ -636,7 +650,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         self.declared = inner.declared;
         self.sites = inner.sites;
         if !handlers.is_empty() {
-            let f: std::rc::Rc<dyn Fn(N) -> M> = std::rc::Rc::new(f);
+            let f: alloc::rc::Rc<dyn Fn(N) -> M> = alloc::rc::Rc::new(f);
             self.handlers
                 .extend(handlers.into_iter().map(|handler| handler.map(&f)));
         }
@@ -696,15 +710,15 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// for a large subtree over stable data, not for a handful of widgets.
     /// Returns whether the content ran.
     #[track_caller]
-    pub fn memo<S: std::hash::Hash>(
+    pub fn memo<S: core::hash::Hash>(
         &mut self,
         state: &S,
         style: Style,
         content: impl FnOnce(&mut Ui<'_, M>),
     ) -> bool {
-        use std::hash::Hasher;
+        use core::hash::Hasher;
         let key = self.next_key();
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        let mut hasher = crate::collections::StableHasher::new();
         state.hash(&mut hasher);
         let hash = hasher.finish();
         let existing = self.context.child(self.parent, &key, Kind::Memo);

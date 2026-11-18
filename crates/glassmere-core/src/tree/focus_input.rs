@@ -1,4 +1,5 @@
 use super::*;
+use alloc::vec::Vec;
 
 impl Context {
     pub(super) fn within(&self, id: NodeId, ancestor: NodeId) -> bool {
@@ -90,7 +91,7 @@ impl Context {
                 let radios = || {
                     siblings
                         .iter()
-                        .filter(|id| self.nodes[id].kind == Kind::Radio && self.nodes[id].enabled)
+                        .filter(|id| self.nodes[*id].kind == Kind::Radio && self.nodes[*id].enabled)
                 };
                 return !radios().any(|id| {
                     matches!(

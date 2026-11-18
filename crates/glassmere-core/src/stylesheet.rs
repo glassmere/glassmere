@@ -57,11 +57,18 @@
 //! `focused.`/`disabled.` prefixed background, foreground, radius, opacity,
 //! translate, scale and rotate. One property per line or `;`-separated.
 use crate::animation::{Easing, Effect, Transform, Transition};
+use crate::collections::HashMap;
+#[cfg(not(feature = "std"))]
+use crate::float::FloatExt as _;
 use crate::style::template_areas;
 use crate::{Align, AutoFlow, GridArea, Justify, Length, Paint, Style, Theme, Track, TrackSize};
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::time::Duration;
 use glassmere_scene::{Color, FontFamily, TextWrap};
-use std::collections::HashMap;
-use std::time::Duration;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StyleSheet {
@@ -78,12 +85,12 @@ pub struct StyleSheetError {
     pub message: String,
 }
 
-impl std::fmt::Display for StyleSheetError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for StyleSheetError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "line {}: {}", self.line, self.message)
     }
 }
-impl std::error::Error for StyleSheetError {}
+impl core::error::Error for StyleSheetError {}
 
 impl StyleSheet {
     pub fn class(&self, name: &str) -> Option<&Style> {
@@ -96,6 +103,7 @@ impl StyleSheet {
 
     /// Resolves relative `background-image` files against `directory`, the
     /// folder of the sheet's own file. Hosts call this after parsing.
+    #[cfg(feature = "std")]
     pub fn rebase(&mut self, directory: &std::path::Path) {
         for style in self.classes.values_mut() {
             if let Some(background) = &mut style.background_image
@@ -726,23 +734,29 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
             style.background_image = if value == "none" {
                 None
             } else {
-                let path = value
-                    .strip_prefix("url(")
-                    .and_then(|rest| rest.strip_suffix(')'))
-                    .map(|path| {
-                        path.trim()
-                            .trim_matches(|quote| quote == '"' || quote == '\'')
-                    })
-                    .filter(|path| !path.is_empty())
-                    .ok_or_else(|| {
-                        format!("background-image is `url(file)` or none, got `{value}`")
-                    })?;
-                // Fit, slice and tint set before the image stay.
-                let mut image = crate::BackgroundImage::file(path);
-                if let Some(old) = &style.background_image {
-                    (image.fit, image.slice, image.tint) = (old.fit, old.slice, old.tint);
+                // Image files are paths, which need `std`.
+                #[cfg(not(feature = "std"))]
+                return Err("background-image needs the `std` feature".to_owned());
+                #[cfg(feature = "std")]
+                {
+                    let path = value
+                        .strip_prefix("url(")
+                        .and_then(|rest| rest.strip_suffix(')'))
+                        .map(|path| {
+                            path.trim()
+                                .trim_matches(|quote| quote == '"' || quote == '\'')
+                        })
+                        .filter(|path| !path.is_empty())
+                        .ok_or_else(|| {
+                            format!("background-image is `url(file)` or none, got `{value}`")
+                        })?;
+                    // Fit, slice and tint set before the image stay.
+                    let mut image = crate::BackgroundImage::file(path);
+                    if let Some(old) = &style.background_image {
+                        (image.fit, image.slice, image.tint) = (old.fit, old.slice, old.tint);
+                    }
+                    Some(image)
                 }
-                Some(image)
             };
         }
         "background-fit" | "background-slice" | "background-tint" => {

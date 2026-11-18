@@ -11,12 +11,12 @@ keywords = ["gui", "fluent", "localization", "i18n"]
 categories = ["localization", "gui"]
 
 [dependencies]
-glassmere-core.workspace = true
+glassmere-core = { workspace = true, features = ["std"] }
 fluent-bundle = "0.16.0"
 unic-langid = "0.9.6"
 
 [dev-dependencies]
-glassmere-scene.workspace = true
+glassmere-scene = { workspace = true, features = ["std"] }
 
 [lints]
 workspace = true

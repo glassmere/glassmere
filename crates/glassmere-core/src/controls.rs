@@ -1,3 +1,9 @@
+#[cfg(not(feature = "std"))]
+use crate::float::DoubleExt as _;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MenuItem {
     pub label: String,
@@ -391,6 +397,7 @@ pub(crate) enum Control {
     },
     /// A multi-line editor over an app-owned document: the declared window of
     /// lines plus what is needed to paint and navigate it.
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
     TextArea {
         label: String,
         lines: Vec<crate::text_area::AreaLine>,

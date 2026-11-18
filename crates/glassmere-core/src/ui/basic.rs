@@ -5,7 +5,10 @@ use super::*;
 use crate::app::Handler;
 use crate::controls::slider_value;
 use crate::{Length, TextWrap, Transition};
-use std::ops::RangeInclusive;
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::format;
+use core::ops::RangeInclusive;
 
 impl<'a, M: 'static> Ui<'a, M> {
     /// A progress bar: `Some(fraction)` fills that share of it, clamped to
@@ -193,9 +196,9 @@ impl<'a, M: 'static> Ui<'a, M> {
         let mut low = slider_value(*value.start(), min, max, step);
         let mut high = slider_value(*value.end(), min, max, step);
         if low > high {
-            std::mem::swap(&mut low, &mut high);
+            core::mem::swap(&mut low, &mut high);
         }
-        let on_change = std::rc::Rc::new(on_change);
+        let on_change = alloc::rc::Rc::new(on_change);
         let parent = self.context.child(self.parent, &key, Kind::RangeSlider);
         let mut inner = self.scope(parent);
         // Each thumb can reach as far as the other, and covers the whole box
@@ -236,7 +239,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                     },
                     ..Element::new(key, Kind::Slider)
                 });
-                let on_change = std::rc::Rc::clone(&on_change);
+                let on_change = alloc::rc::Rc::clone(&on_change);
                 ui.set_handler(Handler::Map(Box::new(move |update| match update {
                     ControlUpdate::Number(number) => {
                         let number = slider_value(number, reach.0, reach.1, step);

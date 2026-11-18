@@ -1,4 +1,6 @@
 use crate::Key;
+use alloc::format;
+use alloc::string::String;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ShortcutKey {

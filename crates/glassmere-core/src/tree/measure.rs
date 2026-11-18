@@ -2,6 +2,9 @@
 //! style and a measured leaf.
 
 use super::*;
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 /// The application's measurer, timed. Wrapping it rather than the call sites
 /// means every path through the framework is counted, including the ones

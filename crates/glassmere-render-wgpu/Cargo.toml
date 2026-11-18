@@ -11,7 +11,7 @@ keywords = ["gui", "renderer", "wgpu", "gpu"]
 categories = ["rendering", "gui"]
 
 [dependencies]
-glassmere-scene.workspace = true
+glassmere-scene = { workspace = true, features = ["std"] }
 glassmere-text.workspace = true
 wgpu.workspace = true
 glyphon.workspace = true

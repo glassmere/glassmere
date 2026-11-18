@@ -11,7 +11,7 @@ keywords = ["gui", "text", "shaping", "fonts"]
 categories = ["text-processing", "gui"]
 
 [dependencies]
-glassmere-scene.workspace = true
+glassmere-scene = { workspace = true, features = ["std"] }
 cosmic-text.workspace = true
 unicode-segmentation.workspace = true
 

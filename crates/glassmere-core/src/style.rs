@@ -1,5 +1,11 @@
 use crate::Theme;
 use crate::animation::{Animation, Effect, Transform, Transition};
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use glassmere_scene::{Color, FontFamily, TextStyle, TextWrap};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

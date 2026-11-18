@@ -5,18 +5,28 @@
 //! reporting what happened through their `Response`, so the view reads state
 //! that is already up to date and runs at most once per batch of input.
 
+use crate::collections::HashMap;
 use crate::controls::ControlUpdate;
+#[cfg(feature = "std")]
+use crate::{Cancel, FileRequest, MessageSender, TaskSender, Tasks};
 use crate::{
-    Cancel, Clip, Context, FileRequest, FrameStats, LocaleFormat, MessageSender, Messages,
-    Notification, NumberOptions, Shortcut, TaskSender, Tasks, TextMeasurer, Theme, Toast,
-    ToastAction, ToastId, Ui, UiEvent, WindowCommand, WindowId, WindowRequest,
+    Clip, Context, FrameStats, LocaleFormat, Messages, Notification, NumberOptions, Shortcut,
+    TextMeasurer, Theme, Toast, ToastAction, ToastId, Ui, UiEvent, WindowCommand, WindowId,
+    WindowRequest,
 };
+#[cfg(feature = "std")]
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::rc::Rc;
+use alloc::string::String;
+#[cfg(feature = "std")]
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+#[cfg(feature = "std")]
+use core::any::{Any, TypeId};
 use glassmere_scene::Size;
-use std::any::{Any, TypeId};
-use std::collections::HashMap;
+#[cfg(feature = "std")]
 use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
 
 /// An application: its state, how a message changes it, and what it looks
 /// like. `view` reads `&self` and declares; only `update` changes the state.
@@ -177,6 +187,7 @@ impl<M> Default for HandlerSlab<M> {
 /// Turns what a worker or a channel delivered, behind `&mut Option<T>`, into
 /// a message. Erasing `T` this way lets `Effects::map` compose it without
 /// knowing it.
+#[cfg(feature = "std")]
 type Lift<M> = Box<dyn Fn(&mut dyn Any) -> Option<M>>;
 
 /// What a toast's action button sends, built from the action taken.
@@ -184,9 +195,11 @@ type OnToastAction<M> = Box<dyn Fn(ToastAction) -> M>;
 
 /// What a paste or a file dialog sends once answered, and for which window.
 type OnPaste<M> = (WindowId, Box<dyn Fn(Clip) -> M>);
+#[cfg(feature = "std")]
 type OnFiles<M> = (WindowId, Box<dyn Fn(Vec<PathBuf>) -> M>);
 
 /// Delivered values waiting in one task table or channel.
+#[cfg(feature = "std")]
 trait Delivery {
     /// Up to `limit` values, each as `&mut Option<T>` with its task key.
     fn deliver(&mut self, limit: usize, out: &mut dyn FnMut(Option<&str>, &mut dyn Any));
@@ -202,6 +215,7 @@ trait Delivery {
     fn as_any(&mut self) -> &mut dyn Any;
 }
 
+#[cfg(feature = "std")]
 impl<T: Send + 'static> Delivery for Tasks<String, T> {
     fn deliver(&mut self, limit: usize, out: &mut dyn FnMut(Option<&str>, &mut dyn Any)) {
         for (key, value) in self.drain(limit) {
@@ -226,6 +240,7 @@ impl<T: Send + 'static> Delivery for Tasks<String, T> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<T: Send + 'static> Delivery for crate::Mailbox<T> {
     fn deliver(&mut self, limit: usize, out: &mut dyn FnMut(Option<&str>, &mut dyn Any)) {
         for value in self.drain(limit) {
@@ -240,7 +255,9 @@ impl<T: Send + 'static> Delivery for crate::Mailbox<T> {
 
 /// How many values a task table or a channel hands over per batch, and how
 /// many may wait in one.
+#[cfg(feature = "std")]
 const DELIVERED_PER_BATCH: usize = 256;
+#[cfg(feature = "std")]
 const TASK_CAPACITY: usize = 1024;
 
 /// What `update` asked for that does not depend on the message type.
@@ -257,9 +274,11 @@ pub(crate) struct Requests {
     /// applies it: the window whose input sent the message `update` is
     /// running on, the main window for a message from anywhere else, or the
     /// one `Effects::in_window` names.
+    #[cfg(feature = "std")]
     pub files: Vec<(WindowId, FileRequest)>,
     /// Windows with a file dialog asked for and not yet answered; the next
     /// request for one waits for the answer.
+    #[cfg(feature = "std")]
     pub file_busy: Vec<WindowId>,
     pub paste: Vec<WindowId>,
     pub focus: Vec<(WindowId, String)>,
@@ -276,7 +295,9 @@ pub(crate) struct Requests {
     pub open_windows: Vec<(WindowId, WindowRequest)>,
     pub close_windows: Vec<WindowId>,
     next_window: u64,
+    #[cfg(feature = "std")]
     tasks: HashMap<TypeId, Box<dyn Delivery>>,
+    #[cfg(feature = "std")]
     wake: Arc<dyn Fn() -> bool + Send + Sync>,
 }
 
@@ -286,8 +307,11 @@ trait Sink<M> {
     fn requests(&mut self) -> &mut Requests;
     fn requests_ref(&self) -> &Requests;
     fn paste(&mut self, window: WindowId, message: Box<dyn Fn(Clip) -> M>);
+    #[cfg(feature = "std")]
     fn files(&mut self, window: WindowId, message: Box<dyn Fn(Vec<PathBuf>) -> M>);
+    #[cfg(feature = "std")]
     fn task(&mut self, kind: TypeId, key: String, lift: Lift<M>);
+    #[cfg(feature = "std")]
     fn channel(&mut self, mailbox: Box<dyn Delivery>, lift: Lift<M>);
     fn toast(&mut self, window: WindowId, toast: Toast, action: Option<OnToastAction<M>>);
 }
@@ -297,8 +321,11 @@ struct EffectState<M> {
     requests: Requests,
     /// What each window's pastes and file dialogs send, oldest first.
     paste: Vec<OnPaste<M>>,
+    #[cfg(feature = "std")]
     files: Vec<OnFiles<M>>,
+    #[cfg(feature = "std")]
     task_messages: HashMap<TypeId, HashMap<String, Lift<M>>>,
+    #[cfg(feature = "std")]
     channels: Vec<(Box<dyn Delivery>, Lift<M>)>,
     /// What the action of a toast of `requests.toasts` sends, by its number.
     toast_actions: HashMap<u64, OnToastAction<M>>,
@@ -319,10 +346,12 @@ impl<M> Sink<M> for EffectState<M> {
         self.paste.push((window, message));
     }
 
+    #[cfg(feature = "std")]
     fn files(&mut self, window: WindowId, message: Box<dyn Fn(Vec<PathBuf>) -> M>) {
         self.files.push((window, message));
     }
 
+    #[cfg(feature = "std")]
     fn task(&mut self, kind: TypeId, key: String, lift: Lift<M>) {
         self.task_messages
             .entry(kind)
@@ -330,6 +359,7 @@ impl<M> Sink<M> for EffectState<M> {
             .insert(key, lift);
     }
 
+    #[cfg(feature = "std")]
     fn channel(&mut self, mailbox: Box<dyn Delivery>, lift: Lift<M>) {
         self.channels.push((mailbox, lift));
     }
@@ -366,18 +396,21 @@ impl<N: 'static, M: 'static> Sink<N> for Mapped<'_, N, M> {
             .paste(window, Box::new(move |clip| f(message(clip))));
     }
 
+    #[cfg(feature = "std")]
     fn files(&mut self, window: WindowId, message: Box<dyn Fn(Vec<PathBuf>) -> N>) {
         let f = self.f.clone();
         self.inner
             .files(window, Box::new(move |paths| f(message(paths))));
     }
 
+    #[cfg(feature = "std")]
     fn task(&mut self, kind: TypeId, key: String, lift: Lift<N>) {
         let f = self.f.clone();
         self.inner
             .task(kind, key, Box::new(move |value| lift(value).map(|n| f(n))));
     }
 
+    #[cfg(feature = "std")]
     fn channel(&mut self, mailbox: Box<dyn Delivery>, lift: Lift<N>) {
         let f = self.f.clone();
         self.inner
@@ -495,6 +528,7 @@ impl<M: 'static> Effects<'_, M> {
 
     /// Puts up a file dialog; the paths chosen arrive as `message(paths)`,
     /// empty when it was cancelled.
+    #[cfg(feature = "std")]
     pub fn choose_files(
         &mut self,
         request: FileRequest,
@@ -559,6 +593,7 @@ impl<M: 'static> Effects<'_, M> {
     /// `message(value)`, in batches of its own; a newer job under the same
     /// key supersedes this one, and nothing a superseded or cancelled job
     /// sends arrives.
+    #[cfg(feature = "std")]
     pub fn spawn<T: Send + 'static>(
         &mut self,
         key: impl Into<String>,
@@ -586,6 +621,7 @@ impl<M: 'static> Effects<'_, M> {
     }
 
     /// Stops the job under this key, whatever it sends.
+    #[cfg(feature = "std")]
     pub fn cancel(&mut self, key: &str) {
         for tasks in self.requests().tasks.values_mut() {
             tasks.cancel(key);
@@ -593,6 +629,7 @@ impl<M: 'static> Effects<'_, M> {
     }
 
     /// Whether a job under this key is still running.
+    #[cfg(feature = "std")]
     pub fn running(&self, key: &str) -> bool {
         self.sink_ref()
             .requests_ref()
@@ -603,6 +640,7 @@ impl<M: 'static> Effects<'_, M> {
 
     /// A channel for values from anywhere: each arrives as `message(value)`,
     /// in a batch of its own. Typically opened in `init`.
+    #[cfg(feature = "std")]
     pub fn channel<T: Send + 'static>(
         &mut self,
         capacity: usize,
@@ -671,6 +709,9 @@ impl<M: Clone + 'static> AppDriver<M> {
     /// `wake` asks the host for a frame; workers and channels call it from
     /// other threads when they deliver.
     pub fn new(wake: impl Fn() -> bool + Send + Sync + 'static) -> Self {
+        // Only threads and channels wake the host.
+        #[cfg(not(feature = "std"))]
+        let _ = wake;
         Self {
             effects: EffectState {
                 requests: Requests {
@@ -679,7 +720,9 @@ impl<M: Clone + 'static> AppDriver<M> {
                     format: (0, None),
                     bindings: Vec::new(),
                     clip: None,
+                    #[cfg(feature = "std")]
                     files: Vec::new(),
+                    #[cfg(feature = "std")]
                     file_busy: Vec::new(),
                     paste: Vec::new(),
                     focus: Vec::new(),
@@ -692,12 +735,17 @@ impl<M: Clone + 'static> AppDriver<M> {
                     open_windows: Vec::new(),
                     close_windows: Vec::new(),
                     next_window: 0,
+                    #[cfg(feature = "std")]
                     tasks: HashMap::new(),
+                    #[cfg(feature = "std")]
                     wake: Arc::new(wake),
                 },
                 paste: Vec::new(),
+                #[cfg(feature = "std")]
                 files: Vec::new(),
+                #[cfg(feature = "std")]
                 task_messages: HashMap::new(),
+                #[cfg(feature = "std")]
                 channels: Vec::new(),
                 toast_actions: HashMap::new(),
                 toast_messages: HashMap::new(),
@@ -729,8 +777,8 @@ impl<M: Clone + 'static> AppDriver<M> {
     /// for the host to carry out.
     pub fn take_windows(&mut self) -> (Vec<(WindowId, WindowRequest)>, Vec<WindowId>) {
         let requests = &mut self.effects.requests;
-        let opened = std::mem::take(&mut requests.open_windows);
-        let closed = std::mem::take(&mut requests.close_windows);
+        let opened = core::mem::take(&mut requests.open_windows);
+        let closed = core::mem::take(&mut requests.close_windows);
         for window in &closed {
             self.forget_window(*window);
         }
@@ -751,8 +799,11 @@ impl<M: Clone + 'static> AppDriver<M> {
     fn forget_window(&mut self, window: WindowId) {
         let effects = &mut self.effects;
         let requests = &mut effects.requests;
-        requests.files.retain(|(target, _)| *target != window);
-        requests.file_busy.retain(|target| *target != window);
+        #[cfg(feature = "std")]
+        {
+            requests.files.retain(|(target, _)| *target != window);
+            requests.file_busy.retain(|target| *target != window);
+        }
         requests.paste.retain(|target| *target != window);
         requests.focus.retain(|(target, _)| *target != window);
         requests
@@ -767,6 +818,7 @@ impl<M: Clone + 'static> AppDriver<M> {
             keep
         });
         effects.paste.retain(|(target, _)| *target != window);
+        #[cfg(feature = "std")]
         effects.files.retain(|(target, _)| *target != window);
         effects
             .toast_messages
@@ -794,6 +846,7 @@ impl<M: Clone + 'static> AppDriver<M> {
             .for_each(|(window, _)| note(*window));
         requests.focus.iter().for_each(|(window, _)| note(*window));
         requests.paste.iter().for_each(|window| note(*window));
+        #[cfg(feature = "std")]
         for (window, _) in &requests.files {
             if !requests.file_busy.contains(window) {
                 note(*window);
@@ -832,7 +885,7 @@ impl<M: Clone + 'static> AppDriver<M> {
             self.effects.requests.origin = WindowId::MAIN;
             app.init(&mut Effects::new(&mut self.effects));
         }
-        let mut batch = std::mem::take(&mut self.batch);
+        let mut batch = core::mem::take(&mut self.batch);
         batch.append(&mut self.sent);
         let sent = batch.len();
         context.update_edge_scroll();
@@ -871,7 +924,7 @@ impl<M: Clone + 'static> AppDriver<M> {
         messages: usize,
     ) -> FrameStats {
         context.answer_hot_save(|| app.save_state());
-        let forced = std::mem::take(&mut pacing.force);
+        let forced = core::mem::take(&mut pacing.force);
         let declare = !pacing.declared || forced || context.view_wanted(size, pacing.interaction);
         if declare {
             pacing.declared = true;
@@ -920,7 +973,7 @@ impl<M: Clone + 'static> AppDriver<M> {
         if dirty {
             self.own.invalidate();
         }
-        let mut pacing = std::mem::take(&mut self.own);
+        let mut pacing = core::mem::take(&mut self.own);
         let stats = self.declare(&*app, context, size, measurer, None, &mut pacing, messages);
         self.own = pacing;
         stats
@@ -950,6 +1003,7 @@ impl<M: Clone + 'static> AppDriver<M> {
                 out.push(message(clip.clone()));
             }
         }
+        #[cfg(feature = "std")]
         if let Some(first) = effects
             .files
             .iter()
@@ -964,6 +1018,7 @@ impl<M: Clone + 'static> AppDriver<M> {
             out.push(message(paths));
         }
         let own_end = out.len();
+        #[cfg(feature = "std")]
         for (kind, tasks) in &mut effects.requests.tasks {
             let messages = effects.task_messages.get(kind);
             tasks.deliver(DELIVERED_PER_BATCH, &mut |key, value| {
@@ -977,6 +1032,7 @@ impl<M: Clone + 'static> AppDriver<M> {
                 messages.retain(|key, _| tasks.tracks(key));
             }
         }
+        #[cfg(feature = "std")]
         for (mailbox, lift) in &mut effects.channels {
             mailbox.deliver(DELIVERED_PER_BATCH, &mut |_, value| out.extend(lift(value)));
         }

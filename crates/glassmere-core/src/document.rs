@@ -1,65 +1,18 @@
 //! The app-owned text document behind code and rich text editors: a rope,
 //! one or more selections and edit-based undo. Offsets are `char` indexes.
+use crate::{Indentation, Motion, Selection};
+use alloc::borrow::ToOwned;
+use alloc::format;
+use alloc::string::String;
+#[cfg(feature = "regex")]
+use alloc::string::ToString;
+use alloc::vec;
+use alloc::vec::Vec;
+use core::ops::Range;
 use ropey::Rope;
 use std::collections::{HashMap, VecDeque};
-use std::ops::Range;
 use std::sync::OnceLock;
 use unicode_segmentation::UnicodeSegmentation;
-
-/// A caret (`anchor == cursor`) or a directed range, in chars.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Selection {
-    pub anchor: usize,
-    pub cursor: usize,
-}
-
-impl Selection {
-    pub fn caret(at: usize) -> Self {
-        Self {
-            anchor: at,
-            cursor: at,
-        }
-    }
-    pub fn range(self) -> Range<usize> {
-        self.anchor.min(self.cursor)..self.anchor.max(self.cursor)
-    }
-    pub fn is_caret(self) -> bool {
-        self.anchor == self.cursor
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Motion {
-    Left,
-    Right,
-    WordLeft,
-    WordRight,
-    /// First non-blank character, or column zero when already there.
-    LineStart,
-    LineEnd,
-    Up,
-    Down,
-    /// Up or down by this many lines, keeping the column.
-    Lines(isize),
-    DocumentStart,
-    DocumentEnd,
-}
-
-/// What Tab inserts and how wide a tab character counts.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Indentation {
-    pub unit: String,
-    pub tab_width: usize,
-}
-
-impl Default for Indentation {
-    fn default() -> Self {
-        Self {
-            unit: "    ".into(),
-            tab_width: 4,
-        }
-    }
-}
 
 #[derive(Clone, Debug)]
 struct Edit {
@@ -143,7 +96,7 @@ impl TextDocument {
 
     /// Replaces the content, clearing history and selections.
     pub fn set_text(&mut self, text: &str) {
-        let indentation = std::mem::take(&mut self.indentation);
+        let indentation = core::mem::take(&mut self.indentation);
         let revision = self.revision + 1;
         *self = Self::from_text(text);
         self.indentation = indentation;
@@ -362,7 +315,7 @@ impl TextDocument {
 
     fn merge_selections(&mut self, primary: Option<Selection>) {
         let primary = primary.unwrap_or_else(|| self.primary());
-        let mut order: Vec<Selection> = std::mem::take(&mut self.selections);
+        let mut order: Vec<Selection> = core::mem::take(&mut self.selections);
         order.sort_by_key(|selection| (selection.range().start, selection.range().end));
         let mut merged: Vec<Selection> = Vec::new();
         for selection in order {
@@ -904,7 +857,7 @@ impl TextDocument {
     /// Moves every cursor. Without `select`, a range collapses to its edge in
     /// the direction of a horizontal move, as editors do.
     pub fn move_cursors(&mut self, motion: Motion, select: bool) {
-        let mut goals = std::mem::take(&mut self.goals);
+        let mut goals = core::mem::take(&mut self.goals);
         goals.resize(self.selections.len(), None);
         let moved: Vec<Selection> = self
             .selections
@@ -1448,7 +1401,7 @@ mod tests {
         |line| {
             let text = document.line(line);
             if text.starts_with('#') {
-                return std::iter::once(0..text.len()).collect();
+                return core::iter::once(0..text.len()).collect();
             }
             let mut ranges = Vec::new();
             let mut open = None;

@@ -11,13 +11,13 @@ keywords = ["gui", "renderer", "software", "rasterizer"]
 categories = ["rendering", "gui"]
 
 [dependencies]
-glassmere-scene.workspace = true
+glassmere-scene = { workspace = true, features = ["std"] }
 glassmere-text.workspace = true
 # The version resvg uses, so the tree holds one rasterizer.
 tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
 
 [dev-dependencies]
-glassmere-core.workspace = true
+glassmere-core = { workspace = true, features = ["std"] }
 glassmere-render-wgpu.workspace = true
 wgpu.workspace = true
 pollster.workspace = true

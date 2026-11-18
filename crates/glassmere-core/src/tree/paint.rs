@@ -1,6 +1,9 @@
 //! Bounds, damage and the paint chunks the scene is assembled from.
 
 use super::*;
+use alloc::borrow::ToOwned;
+use alloc::vec;
+use alloc::vec::Vec;
 
 /// A frame names no more rectangles than this, so that a renderer does not
 /// draw an unbounded number of scissored passes.
@@ -99,8 +102,8 @@ impl Context {
             .children
             .iter()
             .filter(|child| {
-                !matches!(self.nodes[child].kind, Kind::Popup | Kind::Popover)
-                    && !matches!(self.nodes[child].control, Control::StripScroll { .. })
+                !matches!(self.nodes[*child].kind, Kind::Popup | Kind::Popover)
+                    && !matches!(self.nodes[*child].control, Control::StripScroll { .. })
             })
             .map(|child| *self.layout.layout(self.nodes[child].layout_id).unwrap())
             .fold(
@@ -141,7 +144,7 @@ impl Context {
             width: layout.size.width,
             height: layout.size.height,
         };
-        let old_layout_rect = std::mem::replace(&mut node.layout_rect, layout_rect);
+        let old_layout_rect = core::mem::replace(&mut node.layout_rect, layout_rect);
         let clip = if matches!(node.kind, Kind::Popup | Kind::Popover) {
             // Context menus anchor at the request point instead of below the owner.
             let anchored = (node.kind == Kind::Popup)
@@ -589,7 +592,7 @@ impl Context {
             .copied()
             .filter(|child| !matches!(self.nodes[child].kind, Kind::Popup | Kind::Popover))
             .collect::<Vec<_>>();
-        let before = std::mem::take(&mut scene.primitives);
+        let before = core::mem::take(&mut scene.primitives);
         self.paint_scrollbars(id, &mut scene);
         self.paint_strip_edges(id, &mut scene);
         self.paint_calendar_today(id, &mut scene);

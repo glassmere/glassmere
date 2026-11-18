@@ -1,11 +1,18 @@
 //! Shared vocabulary of the multi-line editors: highlighting, search,
 //! diagnostics, options and the operations input queues until the next
 //! declaration can apply them to the app-owned document.
-use crate::{Length, Motion, Style, TextDocument};
+use crate::Motion;
+#[cfg(feature = "std")]
+use crate::{Length, Style, TextDocument};
+#[cfg(feature = "std")]
+use alloc::borrow::Cow;
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+use alloc::vec::Vec;
+#[cfg(feature = "std")]
+use core::cell::RefCell;
+use core::ops::Range;
 use glassmere_scene::{Color, Point, TextSpan};
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::ops::Range;
 
 /// Colour and font changes for a byte range of one line.
 #[derive(Clone, Debug, PartialEq)]
@@ -19,6 +26,7 @@ pub struct HighlightSpan {
 /// Syntax colouring, asked line by line for the visible lines in ascending
 /// order. Implementations keep their own per-line state and use
 /// `TextDocument::revision` and `changed_since` to reuse it across frames.
+#[cfg(feature = "std")]
 pub trait Highlighter {
     /// Called once per declaration before the visible lines are asked for.
     fn begin(&mut self, _document: &TextDocument) {}
@@ -99,6 +107,7 @@ pub enum EditorCommand {
 
 /// App-owned search state of one editor. While `open`, the editor shows its
 /// find bar and highlights every match.
+#[cfg(feature = "std")]
 #[derive(Clone, Debug, Default)]
 pub struct FindState {
     pub open: bool,
@@ -116,6 +125,7 @@ pub struct FindState {
     error: Option<String>,
 }
 
+#[cfg(feature = "std")]
 impl FindState {
     /// Matches of the last declaration, ascending.
     pub fn matches(&self) -> &[Range<usize>] {
@@ -279,6 +289,7 @@ impl FindState {
     }
 }
 
+#[cfg(feature = "std")]
 pub struct CodeEditorOptions<'a> {
     /// Accessible name.
     pub label: String,
@@ -300,6 +311,7 @@ pub struct CodeEditorOptions<'a> {
     pub match_brackets: bool,
 }
 
+#[cfg(feature = "std")]
 impl Default for CodeEditorOptions<'_> {
     fn default() -> Self {
         Self {
@@ -386,6 +398,7 @@ pub enum FindEdit {
 impl TextOp {
     /// Whether the op changes the text. A read-only editor drops these and
     /// keeps the ones that move, select, copy or search.
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
     pub(crate) fn is_edit(&self) -> bool {
         matches!(
             self,
@@ -404,6 +417,7 @@ impl TextOp {
     }
 }
 
+#[cfg(feature = "std")]
 impl TextDocument {
     /// [`TextDocument::apply`] that also puts the text of a copy or cut on the
     /// clipboard, through `effects`, before applying it. A copy or cut is
@@ -521,6 +535,7 @@ pub(crate) struct AreaSelection {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(not(feature = "std"), allow(dead_code))]
 pub(crate) enum MarkKind {
     Match,
     CurrentMatch,
@@ -538,6 +553,7 @@ pub(crate) struct AreaMark {
 }
 
 /// Splits a char range into per-line marks inside the declared lines.
+#[cfg(feature = "std")]
 pub(crate) fn marks_for(
     document: &TextDocument,
     range: Range<usize>,
@@ -565,6 +581,7 @@ pub(crate) fn marks_for(
 }
 
 /// Styled runs for a line: highlighter spans with the gaps filled in.
+#[cfg_attr(not(feature = "std"), allow(dead_code))]
 pub(crate) fn line_spans(text: &str, highlights: &[HighlightSpan]) -> Vec<TextSpan> {
     let mut spans = Vec::new();
     let mut at = 0;

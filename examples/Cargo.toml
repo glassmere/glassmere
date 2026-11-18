@@ -16,7 +16,11 @@ icu = ["glassmere/icu"]
 platform = ["glassmere/platform"]
 
 [dependencies]
-glassmere = { path = "../crates/glassmere", features = ["markup"] }
+glassmere = { path = "../crates/glassmere", features = ["embedded", "markup"] }
+embedded-firmware = { path = "embedded-firmware" }
+
+[dev-dependencies]
+glassmere-testing.workspace = true
 
 [lints]
 workspace = true
@@ -72,6 +76,10 @@ path = "layout.rs"
 [[example]]
 name = "localization"
 path = "localization.rs"
+
+[[example]]
+name = "embedded"
+path = "embedded.rs"
 
 [[example]]
 name = "markup"

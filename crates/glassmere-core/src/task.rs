@@ -9,6 +9,7 @@
 //! current one.
 
 use crate::mailbox::{Mailbox, MessageSender, message_channel};
+use alloc::vec::Vec;
 use std::{
     collections::HashMap,
     hash::Hash,
@@ -262,7 +263,7 @@ impl<K: Clone + Eq + Hash, T> Tasks<K, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicUsize;
+    use core::sync::atomic::AtomicUsize;
 
     fn counted<K: Clone + Eq + Hash, T>(capacity: usize) -> (Tasks<K, T>, Arc<AtomicUsize>) {
         let wakes = Arc::new(AtomicUsize::new(0));
@@ -347,12 +348,12 @@ mod tests {
             flag.store(true, Ordering::Release);
         });
         while !done.load(Ordering::Acquire) {
-            std::hint::spin_loop();
+            core::hint::spin_loop();
         }
         // Ending wakes the window on its own, so a view that shows the job as
         // running is asked to declare again even when nothing was sent.
         while wakes.load(Ordering::Relaxed) < 2 {
-            std::hint::spin_loop();
+            core::hint::spin_loop();
         }
         assert!(!tasks.running(&7));
         assert_eq!(tasks.drain(10), [(7, 70)]);
@@ -366,13 +367,13 @@ mod tests {
         let flag = stopped.clone();
         let cancel = tasks.spawn("loop", move |out| {
             while !out.cancelled() {
-                std::hint::spin_loop();
+                core::hint::spin_loop();
             }
             flag.store(true, Ordering::Release);
         });
         cancel.cancel();
         while !stopped.load(Ordering::Acquire) {
-            std::hint::spin_loop();
+            core::hint::spin_loop();
         }
         assert!(stopped.load(Ordering::Acquire));
     }

@@ -17,7 +17,13 @@
 //! ```
 use crate::Axis;
 use crate::controls::DockAction;
-use std::fmt::Write as _;
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
+use core::fmt::Write as _;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -122,12 +128,12 @@ pub struct DockLayoutError {
     pub line: usize,
     pub message: String,
 }
-impl std::fmt::Display for DockLayoutError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for DockLayoutError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "dock layout line {}: {}", self.line, self.message)
     }
 }
-impl std::error::Error for DockLayoutError {}
+impl core::error::Error for DockLayoutError {}
 
 impl DockTabs {
     fn of(panel: &str) -> Self {
@@ -235,7 +241,7 @@ impl DockNode {
 
     fn wrap(&mut self, zone: DockZone, panel: &str) {
         let fresh = Self::Tabs(DockTabs::of(panel));
-        let old = std::mem::replace(self, Self::Tabs(DockTabs::default()));
+        let old = core::mem::replace(self, Self::Tabs(DockTabs::default()));
         *self = match zone {
             DockZone::Left => Self::row(0.5, fresh, old),
             DockZone::Right => Self::row(0.5, old, fresh),
@@ -722,7 +728,7 @@ impl DockLayout {
     /// removes duplicate ids and repairs out-of-range numbers. `Ui::dock`
     /// calls this, so hand-edited or deserialized layouts are safe to use.
     pub fn normalize(&mut self) {
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = crate::collections::HashSet::new();
         for tabs in self.all_groups_mut() {
             tabs.panels.retain(|id| seen.insert(id.clone()));
         }
@@ -741,8 +747,8 @@ impl DockLayout {
             float.height = finite_or(float.height, 240.0).max(100.0);
             !float.tabs.panels.is_empty()
         });
-        let mut ids = std::collections::HashSet::new();
-        self.windows = std::mem::take(&mut self.windows)
+        let mut ids = crate::collections::HashSet::new();
+        self.windows = core::mem::take(&mut self.windows)
             .into_iter()
             .filter_map(|window| {
                 Some(DockWindow {
@@ -797,7 +803,7 @@ impl DockLayout {
         while let Some((line, token)) = parser.next() {
             match token {
                 Token::Word(word) if word == "main" => {
-                    if std::mem::replace(&mut main_seen, true) {
+                    if core::mem::replace(&mut main_seen, true) {
                         return fail(line, "`main` appears twice");
                     }
                     parser.open()?;
@@ -866,8 +872,8 @@ enum Token {
     Text(String),
 }
 
-impl std::fmt::Display for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Token {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Open => f.write_str("`{`"),
             Self::Close => f.write_str("`}`"),

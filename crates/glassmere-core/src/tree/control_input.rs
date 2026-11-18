@@ -1,6 +1,10 @@
 use super::control_paint::slider_track;
 use super::*;
 use crate::{TextMove, controls::slider_value};
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec;
+use alloc::vec::Vec;
 
 /// What a text field holds between declarations.
 pub(crate) struct FieldState {
@@ -158,10 +162,10 @@ impl Context {
         };
         let (near, far) = (x(low) - position.x, x(high) - position.x);
         match near.abs().total_cmp(&far.abs()) {
-            std::cmp::Ordering::Less => low,
-            std::cmp::Ordering::Greater => high,
+            core::cmp::Ordering::Less => low,
+            core::cmp::Ordering::Greater => high,
             // On the thumbs or midway between them: toward the greater value.
-            std::cmp::Ordering::Equal => {
+            core::cmp::Ordering::Equal => {
                 let greater_is_right = !self.nodes[&low].resolved.rtl();
                 if (position.x > x(low)) == greater_is_right {
                     high

@@ -1,8 +1,14 @@
 use super::*;
-use crate::{Toast, ToastAction, ToastId, ToastSender};
-use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+#[cfg(feature = "std")]
+use crate::ToastSender;
+use crate::{Toast, ToastAction, ToastId};
+#[cfg(feature = "std")]
+use alloc::boxed::Box;
+use alloc::collections::VecDeque;
+use alloc::vec::Vec;
+use core::cell::Cell;
+#[cfg(feature = "std")]
+use {alloc::sync::Arc, std::sync::Mutex};
 
 /// Toasts on screen at once; later ones wait and their time starts when shown.
 pub(crate) const VISIBLE_TOASTS: usize = 4;
@@ -18,11 +24,12 @@ struct Queued {
 
 pub(super) struct ToastState {
     queue: Vec<Queued>,
-    /// Shared with the toast senders of other threads.
-    next_id: AtomicU64,
+    next_id: Cell<u64>,
     paused: bool,
     actions: VecDeque<ToastAction>,
+    #[cfg(feature = "std")]
     inbox: Arc<Mutex<Vec<Toast>>>,
+    #[cfg(feature = "std")]
     wake: Arc<Mutex<Box<dyn Fn() + Send>>>,
 }
 
@@ -30,10 +37,12 @@ impl Default for ToastState {
     fn default() -> Self {
         Self {
             queue: Vec::new(),
-            next_id: AtomicU64::new(1),
+            next_id: Cell::new(1),
             paused: false,
             actions: VecDeque::new(),
+            #[cfg(feature = "std")]
             inbox: Arc::default(),
+            #[cfg(feature = "std")]
             wake: Arc::new(Mutex::new(Box::new(|| {}))),
         }
     }
@@ -48,7 +57,9 @@ impl Context {
     }
 
     pub(crate) fn next_toast_id(&self) -> ToastId {
-        ToastId(self.toast.next_id.fetch_add(1, Ordering::Relaxed))
+        let id = self.toast.next_id.get();
+        self.toast.next_id.set(id + 1);
+        ToastId(id)
     }
 
     fn queue_toast(&mut self, id: ToastId, toast: Toast) -> ToastId {
@@ -83,6 +94,7 @@ impl Context {
     }
 
     /// How `ToastSender::send` wakes this context's window; hosts install it.
+    #[cfg(feature = "std")]
     pub fn set_toast_wake(&mut self, wake: impl Fn() + Send + 'static) {
         *self
             .toast
@@ -91,6 +103,7 @@ impl Context {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Box::new(wake);
     }
 
+    #[cfg(feature = "std")]
     pub(crate) fn toast_sender(&self) -> ToastSender {
         ToastSender {
             inbox: self.toast.inbox.clone(),
@@ -134,15 +147,18 @@ impl Context {
     /// Before a declaration: toasts from other threads arrive, time starts for
     /// the ones that became visible, and the ones whose time is up leave.
     pub(super) fn update_toasts(&mut self) {
-        let arrived = std::mem::take(
-            &mut *self
-                .toast
-                .inbox
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        );
-        for toast in arrived {
-            self.push_toast(toast);
+        #[cfg(feature = "std")]
+        {
+            let arrived = core::mem::take(
+                &mut *self
+                    .toast
+                    .inbox
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            );
+            for toast in arrived {
+                self.push_toast(toast);
+            }
         }
         // Reading or reaching for a toast keeps all of them; afterwards each
         // gets a moment more, however long the pointer rested.

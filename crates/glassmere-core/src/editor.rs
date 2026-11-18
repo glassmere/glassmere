@@ -1,5 +1,10 @@
+use alloc::borrow::ToOwned;
+use alloc::collections::VecDeque;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::ops::Range;
 use glassmere_scene::{Affinity, Rect, TextGeometry, TextMeasurer, TextStyle, TextWrap};
-use std::{collections::VecDeque, ops::Range};
 use unicode_segmentation::UnicodeSegmentation;
 
 /// What the Left and Right arrow keys mean in bidirectional text.
@@ -121,7 +126,7 @@ pub(crate) fn single_line(text: &str) -> String {
 fn boundary(text: &str, byte: usize) -> usize {
     text.grapheme_indices(true)
         .map(|(index, _)| index)
-        .chain(std::iter::once(text.len()))
+        .chain(core::iter::once(text.len()))
         .take_while(|index| *index <= byte)
         .last()
         .unwrap_or(0)

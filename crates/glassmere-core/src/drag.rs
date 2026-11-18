@@ -1,4 +1,7 @@
 use crate::{ItemId, NodeId};
+use alloc::string::String;
+#[cfg(feature = "std")]
+use alloc::vec::Vec;
 use glassmere_scene::Point;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -13,7 +16,11 @@ pub enum DropKind {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DragPayload {
     Text(String),
-    Item { domain: String, id: ItemId },
+    Item {
+        domain: String,
+        id: ItemId,
+    },
+    #[cfg(feature = "std")]
     Files(Vec<std::path::PathBuf>),
 }
 impl DragPayload {
@@ -21,6 +28,7 @@ impl DragPayload {
         match self {
             Self::Text(_) => DropKind::Text,
             Self::Item { .. } => DropKind::Item,
+            #[cfg(feature = "std")]
             Self::Files(_) => DropKind::Files,
         }
     }

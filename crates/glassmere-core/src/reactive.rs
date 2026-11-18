@@ -10,50 +10,135 @@
 //! memo recomputes when next read, not when the change happened. The recorded
 //! reads are also the dependency graph the inspector shows.
 
-use std::{
-    cell::{Cell, RefCell},
-    rc::Rc,
-};
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::rc::Rc;
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::cell::{Cell, RefCell};
 
-/// The view declaring on this thread, if one is: whether a refused write
-/// panics, and the messages of the writes it refused.
-struct Declaration {
-    panics: bool,
-    refused: Vec<String>,
+pub(crate) use declaration::declaring;
+
+#[cfg(feature = "std")]
+mod declaration {
+    use alloc::string::String;
+    use alloc::vec::Vec;
+    use core::cell::RefCell;
+
+    /// The view declaring on this thread, if one is: whether a refused write
+    /// panics, and the messages of the writes it refused.
+    struct Declaration {
+        panics: bool,
+        refused: Vec<String>,
+    }
+
+    std::thread_local! {
+        static DECLARATION: RefCell<Option<Declaration>> = const { RefCell::new(None) };
+    }
+
+    /// Runs a view's declaration with writes to signals refused, and returns
+    /// what they tried to write, for the context to report as misuses.
+    pub(crate) fn declaring<R>(panics: bool, declare: impl FnOnce() -> R) -> (R, Vec<String>) {
+        /// Puts back the declaration that was running before this one, even when
+        /// the view panics.
+        struct Restore(Option<Declaration>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                DECLARATION.with(|declaration| *declaration.borrow_mut() = self.0.take());
+            }
+        }
+        let outer = DECLARATION.with(|declaration| {
+            declaration.replace(Some(Declaration {
+                panics,
+                refused: Vec::new(),
+            }))
+        });
+        let restore = Restore(outer);
+        let value = declare();
+        let refused = DECLARATION.with(|declaration| {
+            declaration
+                .borrow_mut()
+                .as_mut()
+                .map(|declaration| core::mem::take(&mut declaration.refused))
+                .unwrap_or_default()
+        });
+        drop(restore);
+        (value, refused)
+    }
+
+    /// Whether a write may go ahead. Inside a declaration it may not: a debug
+    /// build panics with the message, a release build keeps it for `declaring`.
+    pub(super) fn allows(message: impl FnOnce() -> String) -> bool {
+        DECLARATION.with(|declaration| {
+            let mut declaration = declaration.borrow_mut();
+            let Some(Declaration { panics, refused }) = declaration.as_mut() else {
+                return true;
+            };
+            let message = message();
+            assert!(!*panics, "{message}");
+            refused.push(message);
+            false
+        })
+    }
 }
 
-thread_local! {
-    static DECLARATION: RefCell<Option<Declaration>> = const { RefCell::new(None) };
-}
+/// Without `std` there is no thread-local to hold the messages, so the
+/// declaration is a flag and a count, and the misuse reported is the count. It
+/// is one flag for the whole program, which suits a UI that runs on one thread.
+#[cfg(not(feature = "std"))]
+mod declaration {
+    use alloc::format;
+    use alloc::string::String;
+    use alloc::vec::Vec;
+    use core::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 
-/// Runs a view's declaration with writes to signals refused, and returns
-/// what they tried to write, for the context to report as misuses.
-pub(crate) fn declaring<R>(panics: bool, declare: impl FnOnce() -> R) -> (R, Vec<String>) {
-    /// Puts back the declaration that was running before this one, even when
-    /// the view panics.
-    struct Restore(Option<Declaration>);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            DECLARATION.with(|declaration| *declaration.borrow_mut() = self.0.take());
+    const IDLE: u8 = 0;
+    const REFUSING: u8 = 1;
+    const PANICKING: u8 = 2;
+
+    static MODE: AtomicU8 = AtomicU8::new(IDLE);
+    static REFUSED: AtomicUsize = AtomicUsize::new(0);
+
+    /// Runs a view's declaration with writes to signals refused, and returns
+    /// what they tried to write, for the context to report as misuses.
+    pub(crate) fn declaring<R>(panics: bool, declare: impl FnOnce() -> R) -> (R, Vec<String>) {
+        /// Puts back the declaration that was running before this one, even when
+        /// the view panics.
+        struct Restore(u8, usize);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                MODE.store(self.0, Ordering::Relaxed);
+                REFUSED.store(self.1, Ordering::Relaxed);
+            }
+        }
+        let mode = if panics { PANICKING } else { REFUSING };
+        let restore = Restore(
+            MODE.swap(mode, Ordering::Relaxed),
+            REFUSED.swap(0, Ordering::Relaxed),
+        );
+        let value = declare();
+        let refused = REFUSED.load(Ordering::Relaxed);
+        drop(restore);
+        let report = (refused > 0).then(|| {
+            format!(
+                "{refused} state write(s) were made while a view was declaring; a view reads state and `update` writes it"
+            )
+        });
+        (value, report.into_iter().collect())
+    }
+
+    /// Whether a write may go ahead. Inside a declaration it may not: a debug
+    /// build panics with the message, a release build counts the refusal.
+    pub(super) fn allows(message: impl FnOnce() -> String) -> bool {
+        match MODE.load(Ordering::Relaxed) {
+            IDLE => true,
+            PANICKING => panic!("{}", message()),
+            _ => {
+                REFUSED.fetch_add(1, Ordering::Relaxed);
+                false
+            }
         }
     }
-    let outer = DECLARATION.with(|declaration| {
-        declaration.replace(Some(Declaration {
-            panics,
-            refused: Vec::new(),
-        }))
-    });
-    let restore = Restore(outer);
-    let value = declare();
-    let refused = DECLARATION.with(|declaration| {
-        declaration
-            .borrow_mut()
-            .as_mut()
-            .map(|declaration| std::mem::take(&mut declaration.refused))
-            .unwrap_or_default()
-    });
-    drop(restore);
-    (value, refused)
 }
 
 /// What a value in a [`Store`] is.
@@ -174,18 +259,11 @@ impl Inner {
     /// release build drops it and hands the message to the declaration, which
     /// reports it as a misuse.
     fn declaration_allows(&self, id: usize) -> bool {
-        DECLARATION.with(|declaration| {
-            let mut declaration = declaration.borrow_mut();
-            let Some(Declaration { panics, refused }) = declaration.as_mut() else {
-                return true;
-            };
+        declaration::allows(|| {
             let name = self.slots.borrow()[id].name.clone();
-            let message = format!(
+            format!(
                 "`{name}` was written while a view was declaring; a view reads state and `update` writes it"
-            );
-            assert!(!*panics, "{message}");
-            refused.push(message);
-            false
+            )
         })
     }
 
@@ -200,7 +278,7 @@ impl Inner {
             );
             slots[id].computing = true;
             // The reads are recorded again, so the old edges go.
-            for input in std::mem::take(&mut slots[id].inputs) {
+            for input in core::mem::take(&mut slots[id].inputs) {
                 slots[input].dependents.retain(|dependent| *dependent != id);
             }
         }
@@ -235,8 +313,8 @@ impl Inner {
 #[derive(Clone, Default)]
 pub struct Store(Rc<Inner>);
 
-impl std::fmt::Debug for Store {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for Store {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Store")
             .field("version", &self.version())
             .finish_non_exhaustive()
@@ -308,8 +386,8 @@ pub struct Signal<T> {
     value: Rc<RefCell<T>>,
 }
 
-impl<T> std::fmt::Debug for Signal<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T> core::fmt::Debug for Signal<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Signal")
             .field("id", &self.id)
             .finish_non_exhaustive()
@@ -382,8 +460,8 @@ pub struct Memo<T> {
     state: Rc<RefCell<MemoState<T>>>,
 }
 
-impl<T> std::fmt::Debug for Memo<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T> core::fmt::Debug for Memo<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Memo")
             .field("id", &self.id)
             .finish_non_exhaustive()

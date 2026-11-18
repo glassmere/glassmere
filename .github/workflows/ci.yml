@@ -47,6 +47,15 @@ jobs:
       - run: cargo test --workspace --all-targets --all-features --locked
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - run: cargo check -p glassmere --no-default-features --locked
+      # The kernel crates build without `std`, for a target that has no OS.
+      - name: Kernel on a bare-metal target
+        if: runner.os == 'Linux'
+        run: |
+          rustup target add thumbv7em-none-eabihf
+          cargo check -p glassmere-scene --no-default-features --target thumbv7em-none-eabihf --locked
+          cargo check -p glassmere-core --no-default-features --target thumbv7em-none-eabihf --locked
+          cargo check -p glassmere-embedded --lib --target thumbv7em-none-eabihf --locked
+          cargo check --manifest-path examples/embedded-firmware/Cargo.toml --target thumbv7em-none-eabihf --locked
 
       # A real window on every platform, not only a build of one. Linux has
       # no display in CI, so Xvfb provides one and the CPU renderer paints

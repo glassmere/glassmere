@@ -4,6 +4,8 @@
 //! a struct rather than a choice: a copied shape is bytes to this application
 //! and a line of text to everything else, and both go on together.
 
+use alloc::string::String;
+use alloc::vec::Vec;
 use glassmere_scene::Image;
 
 /// One copy, in every form it has.

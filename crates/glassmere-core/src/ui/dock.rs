@@ -5,9 +5,14 @@ use crate::{
     DockArea, DockFloat, DockLayout, DockNode, DockTabs, DockTarget, DockWindowId, DockZone,
     Length, MenuItem, SplitOptions, Tab,
 };
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::rc::Rc;
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::cell::RefCell;
 use glassmere_scene::Color;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 /// A panel the app can show in a dock. Layout ids without a declared panel are
 /// skipped, and declared panels missing from the layout stay hidden until

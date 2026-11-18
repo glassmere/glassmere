@@ -1,10 +1,12 @@
 //! Images as the scene sees them: decoded pixels or a vector source that a
 //! renderer rasterizes at the size it is drawn. Decoding lives elsewhere.
 use crate::Size;
-use std::num::NonZeroU32;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use alloc::boxed::Box;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use core::num::NonZeroU32;
+use core::sync::atomic::Ordering;
+use core::time::Duration;
 
 /// A resolution-independent image. Renderers call `rasterize` for the pixel
 /// size they need and cache the result per image and size.
@@ -54,8 +56,8 @@ impl PartialEq for Image {
     }
 }
 
-impl std::fmt::Debug for Image {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for Image {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let size = self.size();
         write!(
             f,
@@ -75,8 +77,17 @@ impl std::fmt::Debug for Image {
 }
 
 fn next_id() -> u64 {
-    static NEXT: AtomicU64 = AtomicU64::new(1);
-    NEXT.fetch_add(1, Ordering::Relaxed)
+    #[cfg(target_has_atomic = "64")]
+    {
+        static NEXT: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(1);
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    }
+    // Targets without 64-bit atomics count in 32 bits.
+    #[cfg(not(target_has_atomic = "64"))]
+    {
+        static NEXT: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(1);
+        u64::from(NEXT.fetch_add(1, Ordering::Relaxed))
+    }
 }
 
 impl Image {
@@ -199,6 +210,7 @@ impl Image {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
 
     struct Flat;
     impl VectorImage for Flat {

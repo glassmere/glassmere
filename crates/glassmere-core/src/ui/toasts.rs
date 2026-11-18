@@ -1,5 +1,9 @@
 use super::*;
-use crate::{Align, Effect, Length, Toast, ToastId, ToastKind, ToastSender, Transition};
+#[cfg(feature = "std")]
+use crate::ToastSender;
+use crate::{Align, Effect, Length, Toast, ToastId, ToastKind, Transition};
+use alloc::format;
+use alloc::vec::Vec;
 use glassmere_scene::{Color, TextWrap};
 
 /// What a declaration did with toasts; applied by the context afterwards.
@@ -22,6 +26,7 @@ fn accent(kind: ToastKind, info: Color) -> Color {
 
 impl<'a, M: 'static> Ui<'a, M> {
     /// For raising toasts in this window from other threads.
+    #[cfg(feature = "std")]
     #[track_caller]
     pub fn toast_sender(&self) -> ToastSender {
         self.context.toast_sender()

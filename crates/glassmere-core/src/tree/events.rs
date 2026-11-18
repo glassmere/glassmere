@@ -2,6 +2,8 @@
 //! events themselves.
 
 use super::*;
+use alloc::vec;
+use alloc::vec::Vec;
 
 impl Context {
     /// What has reached an event area since its last declaration.

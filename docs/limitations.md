@@ -31,6 +31,7 @@ What does not work, is partial, or has not been tried. Grouped by area.
 - Paths fill by the non-zero rule only. Strokes have mitred corners (bevelled past four widths) and square-cut ends: no round joins or caps, no dashes, no gradient fills. There are no conic gradients and no gradient or shadow animation.
 - The GPU anti-aliases a path's edges with a fringe one pixel wide. Where outlines cross or pass within a pixel of each other, it can differ from the CPU renderer by a few pixels.
 - The CPU renderer and the wgpu renderer differ at edges: a quad edge is covered by its exact area in one and feathered by the shader in the other. Resampled images and transformed layers are filtered in sRGB in one and in linear light in the other.
+- The embedded renderer draws text with bitmap fonts on a character grid, left to right only, ignores scale, rotation and skew on layers, and skips vector images. It has been built for a Cortex-M target and tested on a host, not run or timed on hardware. See [Embedded](embedded.md).
 - `Primitive::Custom` is a wgpu callback. A window painted by the CPU renderer leaves it empty.
 - Damage is at most eight rectangles: ones that overlap or lie within 8 logical pixels join, and past eight the closest pair do, so crowded changes still redraw the gaps between them. A node animating a transform (a slide or zoom in, a layout transition, keyframes) still repaints the whole window while it runs; an exit animation does not.
 - The glyph atlas size is not reported: glyphon does not expose it, so no memory total includes it.

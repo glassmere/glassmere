@@ -3,8 +3,11 @@
 
 use super::*;
 use crate::{EditorCharacter, EditorLine, EditorPoint, EditorSelection, EditorText};
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
+use core::ops::Range;
 use glassmere_scene::{TextCluster, TextGeometry, TextLine};
-use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// A character's length is a single byte in the platform's tree.
