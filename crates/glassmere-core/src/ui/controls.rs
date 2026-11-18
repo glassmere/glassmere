@@ -227,9 +227,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         self.control(
             key,
             Kind::Checkbox,
-            format!("{}  {shown}", if checked { "☑" } else { "☐" })
-                .trim_end()
-                .to_owned(),
+            shown.to_owned(),
             Style::button(),
             Control::Checkbox { label, checked },
         )
@@ -256,7 +254,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         self.control(
             key,
             Kind::Radio,
-            format!("{}  {label}", if selected { "●" } else { "○" }),
+            label.clone(),
             Style::button(),
             Control::Radio { label, selected },
         )

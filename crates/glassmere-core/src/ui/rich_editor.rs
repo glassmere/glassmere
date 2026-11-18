@@ -37,6 +37,8 @@ fn toolbar_style(theme: &Theme, active: bool) -> Style {
         padding: 6.0,
         radius: 6.0,
         min_width: Length::Px(34.0),
+        // One or two letters, in the middle of a button wider than they are.
+        justify_content: crate::Justify::Center,
         ..Style::button()
     };
     if active {

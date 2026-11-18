@@ -1,5 +1,5 @@
 use glassmere::{
-    App, AppOptions, Axis, Button, Color, DirectionChoice, Effects, Label, Length, MenuItem,
+    Align, App, AppOptions, Axis, Button, Color, DirectionChoice, Effects, Label, Length, MenuItem,
     PopoverOptions, Size, SplitOptions, Style, Tab, TextWrap, Tooltip, TooltipPlacement, Ui, run,
 };
 use std::time::Duration;
@@ -106,7 +106,7 @@ impl App for Panes {
             .padding(12.0)
             .background(theme.surface);
         ui.column(page, |ui| {
-            ui.row(Style::default().gap(8.0), |ui| {
+            ui.row(Style::default().gap(8.0).align_items(Align::Center), |ui| {
                 ui.button("New");
                 ui.tooltip("Create a new document (Ctrl+N)");
                 ui.button("Open…");

@@ -229,6 +229,9 @@ unsafe extern "system" fn caption(
         // SAFETY: forwarding the message this procedure was given.
         unsafe { DefSubclassProc(window, message, wparam, lparam) }
     };
+    // Only over a button the application drew: the system's own caption
+    // buttons, which report the same codes, stay with Windows.
+    let own = || client_point(window, lparam).is_some_and(|(x, y)| shared.hit(x, y).is_some());
     match message {
         WM_NCHITTEST => {
             // The default answer first, so borders and everything else keep
@@ -248,13 +251,13 @@ unsafe extern "system" fn caption(
         }
         // Kept from Windows, which would otherwise start a move or track a
         // caption button the window does not have.
-        WM_NCLBUTTONDOWN | WM_NCLBUTTONDBLCLK if is_button(wparam) => {
+        WM_NCLBUTTONDOWN | WM_NCLBUTTONDBLCLK if is_button(wparam) && own() => {
             if let Some((x, y)) = client_point(window, lparam) {
                 shared.saw(CaptionInput::Down(x, y));
             }
             0
         }
-        WM_NCLBUTTONUP if is_button(wparam) => {
+        WM_NCLBUTTONUP if is_button(wparam) && own() => {
             if let Some((x, y)) = client_point(window, lparam) {
                 shared.saw(CaptionInput::Up(x, y));
             }

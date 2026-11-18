@@ -21,6 +21,8 @@ members = [
     "crates/glassmere-dev",
     "crates/glassmere-win32",
     "crates/glassmere-allocations",
+    "crates/glassmere-markup",
+    "crates/glassmere-designer",
     "examples",
     # A widget built the way a third party would build one.
     "examples/dial-widget",
@@ -51,6 +53,7 @@ glassmere-derive = { path = "crates/glassmere-derive", version = "0.1.6" }
 glassmere-fluent = { path = "crates/glassmere-fluent", version = "0.1.6" }
 glassmere-icu = { path = "crates/glassmere-icu", version = "0.1.6" }
 glassmere-win32 = { path = "crates/glassmere-win32", version = "0.1.6" }
+glassmere-markup = { path = "crates/glassmere-markup", version = "0.1.6" }
 bitflags = "2.13"
 hashbrown = { version = "0.17", default-features = false, features = ["default-hasher"] }
 libm = "0.2"

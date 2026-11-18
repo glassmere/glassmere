@@ -1607,6 +1607,7 @@ dependencies = [
  "glassmere-fluent",
  "glassmere-icu",
  "glassmere-image",
+ "glassmere-markup",
  "glassmere-render-cpu",
  "glassmere-render-wgpu",
  "glassmere-scene",
@@ -1651,6 +1652,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "glassmere-designer"
+version = "0.1.6"
+dependencies = [
+ "glassmere",
+ "glassmere-testing",
 ]
 
 [[package]]
@@ -1711,6 +1720,15 @@ dependencies = [
  "image",
  "moxcms",
  "resvg",
+]
+
+[[package]]
+name = "glassmere-markup"
+version = "0.1.6"
+dependencies = [
+ "glassmere-core",
+ "glassmere-scene",
+ "glassmere-testing",
 ]
 
 [[package]]

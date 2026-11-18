@@ -718,18 +718,19 @@ impl<'a, M: 'static> Ui<'a, M> {
                     move |text| send(PropertyMsg::Filter(text)),
                 );
             }
-            let header = |key: &'static str| {
+            let header = |key: &'static str, indent: f32| {
                 move |ui: &mut Ui<'_, M>| {
                     let text = ui.context.tr(key, &[]);
-                    ui.label_at(
-                        "$title",
-                        text,
-                        Style {
-                            font_size: Some(12.0),
-                            foreground: Some(ui.context.theme().text_muted),
-                            ..Style::default()
-                        },
-                    );
+                    let title = Style {
+                        font_size: Some(12.0),
+                        foreground: Some(ui.context.theme().text_muted),
+                        ..Style::default()
+                    };
+                    // Clear of the divider, over the text of the fields.
+                    ui.row_at("$cell", Style::default().gap(indent), |ui| {
+                        ui.label_at("$indent", "", Style::default());
+                        ui.label_at("$title", text, title);
+                    });
                 }
             };
             let share = send.clone();
@@ -745,8 +746,8 @@ impl<'a, M: 'static> Ui<'a, M> {
                         .height(Length::Px(22.0)),
                 },
                 move |share_now| share(PropertyMsg::NameShare(share_now)),
-                header("glassmere-property-column"),
-                header("glassmere-value-column"),
+                header("glassmere-property-column", 0.0),
+                header("glassmere-value-column", 12.0),
             );
             // A grid that scrolls declares the rows in view and a few beyond,
             // like a virtual list, where the last declaration left the scroll.

@@ -298,7 +298,7 @@ impl App for Application {
         let panel = Style {
             padding: 12.0,
             radius: 8.0,
-            width: Length::Px(180.0),
+            width: Length::Px(165.0),
             height: Length::Px(72.0),
             ..Style::default()
         };
@@ -428,11 +428,9 @@ impl App for Application {
                                     ..panel.clone()
                                 };
                                 ui.drag_source(style, source, |ui| {
-                                    ui.label(
-                                        selected.map_or("Select a ticket to drag".into(), |id| {
-                                            format!("Drag ticket #{}", id.0)
-                                        }),
-                                    );
+                                    ui.label(selected.map_or("Select a ticket".into(), |id| {
+                                        format!("Drag ticket #{}", id.0)
+                                    }));
                                 });
                             });
                             let archive = DropTargetBuilder::new("Archive", DropKind::Item)
@@ -452,7 +450,7 @@ impl App for Application {
                             };
                             ui.drop_target(style, files, |ui| {
                                 ui.label(if self.files.is_empty() {
-                                    "Drop files from the OS here".into()
+                                    "Drop files here".into()
                                 } else {
                                     self.files.join(", ")
                                 });

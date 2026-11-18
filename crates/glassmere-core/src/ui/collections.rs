@@ -1578,11 +1578,16 @@ impl ColumnPlan {
         } else {
             travelled
         };
-        let color = ui.context.theme().scrollbar;
+        let (color, fill) = {
+            let theme = ui.context.theme();
+            (theme.scrollbar, theme.surface)
+        };
         let line = Style::default()
             .height(Length::Px(self.bar_height()))
             .gap(0.0);
-        ui.row_at("$hbar", line.clone(), |ui| {
+        // Filled like the rows, so that the bar is the grid's last line
+        // rather than a thumb adrift under it.
+        ui.row_at("$hbar", line.clone().background(fill), |ui| {
             ui.label_at("$frozen", "", line.clone().width(Length::Px(frozen)));
             ui.container_at("$track", line.clone().width(Length::Px(self.view)), |ui| {
                 let thumb = Style::default()
