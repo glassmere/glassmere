@@ -4,8 +4,8 @@
 //! untranslated on purpose, to show the fallback to English.
 use glassmere::fluent::FluentMessages;
 use glassmere::{
-    App, AppOptions, Button, Date, DateStyle, Effects, Label, Length, Messages, NumberOptions,
-    Size, Style, TextWrap, Toast, Ui, run, tr,
+    Align, App, AppOptions, Button, Date, DateStyle, Effects, Label, Length, Messages,
+    NumberOptions, Size, Style, TextWrap, Toast, Ui, run, tr,
 };
 
 const LOCALES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/locales");
@@ -91,7 +91,7 @@ impl App for Localization {
                         .wrap(TextWrap::Word),
                 ),
             );
-            ui.row(Style::default().gap(8.0), |ui| {
+            ui.row(Style::default().gap(8.0).align_items(Align::Center), |ui| {
                 ui.label(ui.tr("language"));
                 for (locale, label) in [("en", "English"), ("cs-CZ", "Čeština"), ("de", "Deutsch")]
                 {
@@ -145,7 +145,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     run(
         AppOptions {
             title: "Glassmere / Localization".into(),
-            size: Size::new(760.0, 560.0),
+            size: Size::new(760.0, 640.0),
             frame_limit: smoke.then_some(4),
             ..AppOptions::default()
         },
