@@ -11,7 +11,7 @@ keywords = ["gui", "designer", "preview", "markup"]
 categories = ["development-tools", "gui"]
 
 [dependencies]
-glassmere = { path = "../glassmere", version = "0.1.6", default-features = false, features = ["desktop", "images", "markup"] }
+glassmere = { path = "../glassmere", version = "0.1.7", default-features = false, features = ["desktop", "images", "markup"] }
 
 [dev-dependencies]
 glassmere-testing.workspace = true
