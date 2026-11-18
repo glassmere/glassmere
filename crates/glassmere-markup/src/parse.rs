@@ -126,7 +126,12 @@ type Res<T> = Result<T, MarkupError>;
 pub(crate) fn parse(src: &str) -> Res<Parsed> {
     let mut parser = Parser {
         src,
-        pos: 0,
+        // Editors on Windows put a byte-order mark first.
+        pos: if src.starts_with('\u{feff}') {
+            '\u{feff}'.len_utf8()
+        } else {
+            0
+        },
         end: src.len(),
         ids: 0,
         parents: Vec::new(),

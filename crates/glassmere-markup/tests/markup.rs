@@ -302,3 +302,9 @@ fn the_other_widgets_declare() {
         Some(&Value::Number(1.0))
     );
 }
+
+#[test]
+fn a_file_may_start_with_a_byte_order_mark() {
+    let view = Markup::parse(&format!("\u{feff}{COUNTER}")).unwrap();
+    assert!(matches!(view.nodes(), [Node::Element(root)] if root.kind == "column"));
+}
