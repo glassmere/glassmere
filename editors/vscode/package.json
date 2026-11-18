@@ -1,0 +1,51 @@
+{
+  "name": "glassmere-markup",
+  "displayName": "Glassmere Markup",
+  "description": "Syntax highlighting and a live preview for Glassmere .glass views.",
+  "version": "0.1.7",
+  "publisher": "glassmere",
+  "license": "Apache-2.0",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages", "Visualization"],
+  "main": "./extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "languages": [
+      {
+        "id": "glass",
+        "aliases": ["Glassmere Markup", "glass"],
+        "extensions": [".glass"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      { "language": "glass", "scopeName": "source.glass", "path": "./syntaxes/glass.tmLanguage.json" }
+    ],
+    "commands": [
+      { "command": "glassmere.showPreview", "title": "Glassmere: Show Preview", "icon": "$(open-preview)" }
+    ],
+    "menus": {
+      "editor/title": [
+        { "command": "glassmere.showPreview", "when": "editorLangId == glass", "group": "navigation" }
+      ],
+      "commandPalette": [
+        { "command": "glassmere.showPreview", "when": "editorLangId == glass" }
+      ]
+    },
+    "configuration": {
+      "title": "Glassmere",
+      "properties": {
+        "glassmere.designerPath": {
+          "type": "string",
+          "default": "glassmere-designer",
+          "description": "The glassmere-designer program: a name on PATH or a full path. Install it with `cargo install glassmere-designer`."
+        },
+        "glassmere.stylesheet": {
+          "type": "string",
+          "default": "",
+          "description": "Stylesheet for the preview, relative to the workspace folder. Empty uses the .style file next to the view, if there is one."
+        }
+      }
+    }
+  }
+}

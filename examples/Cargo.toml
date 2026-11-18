@@ -16,7 +16,7 @@ icu = ["glassmere/icu"]
 platform = ["glassmere/platform"]
 
 [dependencies]
-glassmere = { path = "../crates/glassmere" }
+glassmere = { path = "../crates/glassmere", features = ["markup"] }
 
 [lints]
 workspace = true
@@ -72,6 +72,10 @@ path = "layout.rs"
 [[example]]
 name = "localization"
 path = "localization.rs"
+
+[[example]]
+name = "markup"
+path = "markup.rs"
 
 [[example]]
 name = "panes"

@@ -238,6 +238,15 @@ impl StyleSheet {
     }
 }
 
+impl Style {
+    /// Sets one property the way a line of a stylesheet class does:
+    /// `set_property("padding", "12")`, `set_property("hover.background",
+    /// "#22b0a0")`. The error says what was wrong with the name or the value.
+    pub fn set_property(&mut self, name: &str, value: &str) -> Result<(), String> {
+        apply(self, name.trim(), value.trim())
+    }
+}
+
 /// Variables by name, with `--`, and their values with every `var()` resolved.
 type Variables = HashMap<String, String>;
 
