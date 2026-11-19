@@ -91,12 +91,12 @@ A timing moves by a few percent from one run to the next, more on a busy machine
 
 ```sh
 cargo build -p glassmere-bench --profile profiling --bin profile
-valgrind --tool=callgrind --callgrind-out=relayout.out \
+valgrind --tool=callgrind --toggle-collect='profile::run' --callgrind-out=relayout.out \
     target/profiling/profile form/relayout --steps 100
 callgrind_annotate relayout.out | head -40
 ```
 
-Callgrind (Linux and macOS, part of Valgrind) reports instructions executed, in total and for each function, and the totals of two runs of the same build agree to a fraction of a percent. Compare the total before and after a change; `callgrind_annotate --inclusive=yes` shows the cost of a function with everything it calls. It runs the program some fifty times slower, so keep `--steps` small.
+Callgrind (Linux and macOS, part of Valgrind) reports instructions executed, in total and for each function, and the totals of two runs of the same build agree to a fraction of a percent. `--toggle-collect='profile::run'` counts only the steps: not building the scenario, which for a tree of 100,000 nodes is most of the run, and not the steps that warm it up. Compare the total before and after a change; `callgrind_annotate --inclusive=yes` shows the cost of a function with everything it calls. It runs the program some fifty times slower, so keep `--steps` small.
 
 `valgrind --tool=dhat` on the same command counts allocations and says where they are made: a step that allocates less is nearly always a step that costs less.
 
