@@ -91,7 +91,7 @@ A timing moves by a few percent from one run to the next, more on a busy machine
 
 ```sh
 cargo build -p glassmere-bench --profile profiling --bin profile
-valgrind --tool=callgrind --toggle-collect='profile::run' --callgrind-out=relayout.out \
+valgrind --tool=callgrind --toggle-collect='profile::run' --callgrind-out-file=relayout.out \
     target/profiling/profile form/relayout --steps 100
 callgrind_annotate relayout.out | head -40
 ```
