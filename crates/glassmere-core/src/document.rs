@@ -48,8 +48,9 @@ pub struct TextDocument {
     saved: u64,
     changes: VecDeque<(u64, usize)>,
     crlf: bool,
-    /// The line with the most display columns, found on first use after an edit.
-    widest: OnceLock<usize>,
+    /// The line with the most display columns, found by a pass over the text
+    /// on first use and kept up to date by each edit after that.
+    widest: OnceLock<Widest>,
     pub indentation: Indentation,
 }
 
@@ -57,6 +58,15 @@ impl Default for TextDocument {
     fn default() -> Self {
         Self::from_text("")
     }
+}
+
+/// The widest line of a document as it was last known.
+#[derive(Clone, Copy, Debug)]
+struct Widest {
+    line: usize,
+    columns: usize,
+    /// The tab width the columns were counted with.
+    tab: usize,
 }
 
 fn word_class(ch: char) -> u8 {
@@ -147,31 +157,102 @@ impl TextDocument {
     }
 
     /// The line with the most display columns (the first of equals), for sizing
-    /// a view's horizontal range. Found by one pass over the text, then kept
-    /// until the next edit.
+    /// a view's horizontal range. Found by one pass over the text the first
+    /// time; after that an edit looks only at the lines it changed, and the
+    /// text is read again only when the widest line itself got narrower.
     pub(crate) fn widest_line(&self) -> usize {
-        *self.widest.get_or_init(|| {
-            let tab = self.indentation.tab_width.max(1);
-            let (mut widest, mut most) = (0, 0);
-            let (mut line, mut columns) = (0, 0);
-            for ch in self.rope.chars() {
-                match ch {
-                    '\n' => {
-                        if columns > most {
-                            (widest, most) = (line, columns);
-                        }
-                        line += 1;
-                        columns = 0;
+        let tab = self.indentation.tab_width.max(1);
+        if let Some(known) = self.widest.get().filter(|known| known.tab == tab) {
+            return known.line;
+        }
+        let (mut widest, mut most) = (0, 0);
+        let (mut line, mut columns) = (0, 0);
+        for ch in self.rope.chars() {
+            match ch {
+                '\n' => {
+                    if columns > most {
+                        (widest, most) = (line, columns);
                     }
-                    '\t' => columns += tab - columns % tab,
-                    _ => columns += 1,
+                    line += 1;
+                    columns = 0;
                 }
+                '\t' => columns += tab - columns % tab,
+                _ => columns += 1,
             }
-            if columns > most {
-                widest = line;
+        }
+        if columns > most {
+            (widest, most) = (line, columns);
+        }
+        // A width counted for another tab width stays until the next edit
+        // drops it; the answer is right either way.
+        let _ = self.widest.set(Widest {
+            line: widest,
+            columns: most,
+            tab,
+        });
+        widest
+    }
+
+    /// The display columns of one line, counted as `widest_line` counts them.
+    fn line_columns(&self, line: usize, tab: usize) -> usize {
+        self.rope
+            .line(line)
+            .chars()
+            .fold(0, |columns, ch| match ch {
+                '\n' => columns,
+                '\t' => columns + tab - columns % tab,
+                _ => columns + 1,
+            })
+    }
+
+    /// Every change to the text: `remove` characters at `at` go and `insert`
+    /// takes their place. What is known of the widest line is kept true by
+    /// looking at the lines the change left behind.
+    fn splice(&mut self, at: usize, remove: usize, insert: &str) {
+        let first = self.rope.char_to_line(at);
+        let last_old = self.rope.char_to_line(at + remove);
+        self.rope.remove(at..at + remove);
+        self.rope.insert(at, insert);
+        let Some(known) = self.widest.take() else {
+            return;
+        };
+        let tab = self.indentation.tab_width.max(1);
+        if known.tab != tab {
+            return;
+        }
+        let last_new = self.rope.char_to_line(at + insert.chars().count());
+        // The widest of the lines the change left, the first of equals.
+        let (mut line, mut columns) = (first, 0);
+        for changed in first..=last_new {
+            let width = self.line_columns(changed, tab);
+            if width > columns {
+                (line, columns) = (changed, width);
             }
-            widest
-        })
+        }
+        let updated = if (first..=last_old).contains(&known.line) {
+            // The widest line was in the change. No line before it was as
+            // wide, so what replaced it is the widest if it is no narrower;
+            // if it is narrower, some other line may be, and only a pass
+            // over the text can say which.
+            (columns >= known.columns).then_some(Widest { line, columns, tab })
+        } else {
+            let shifted = if known.line > last_old {
+                known.line + last_new - last_old
+            } else {
+                known.line
+            };
+            if columns > known.columns || (columns == known.columns && line < shifted) {
+                Some(Widest { line, columns, tab })
+            } else {
+                Some(Widest {
+                    line: shifted,
+                    ..known
+                })
+            }
+        };
+        if let Some(updated) = updated {
+            let _ = self.widest.set(updated);
+        }
     }
 
     /// Bumped by every content change, undo and redo included.
@@ -368,8 +449,7 @@ impl TextDocument {
         let first_line = self.rope.char_to_line(edits[0].0.start);
         for (range, text) in edits.iter().rev() {
             let removed = String::from(self.rope.slice(range.clone()));
-            self.rope.remove(range.clone());
-            self.rope.insert(range.start, text);
+            self.splice(range.start, range.len(), text);
             recorded.push(Edit {
                 at: range.start,
                 removed,
@@ -420,7 +500,6 @@ impl TextDocument {
 
     fn touch(&mut self, line: usize) {
         self.revision += 1;
-        self.widest.take();
         self.changes.push_back((self.revision, line));
         if self.changes.len() > CHANGE_LOG {
             self.changes.pop_front();
@@ -1188,8 +1267,7 @@ impl TextDocument {
         // Earlier edits are restored first, so each `at` is valid again.
         for edit in &transaction.edits {
             let inserted = edit.inserted.chars().count();
-            self.rope.remove(edit.at..edit.at + inserted);
-            self.rope.insert(edit.at, &edit.removed);
+            self.splice(edit.at, inserted, &edit.removed);
         }
         self.restore(&transaction.before);
         let line = self
@@ -1206,8 +1284,7 @@ impl TextDocument {
         };
         for edit in transaction.edits.iter().rev() {
             let removed = edit.removed.chars().count();
-            self.rope.remove(edit.at..edit.at + removed);
-            self.rope.insert(edit.at, &edit.inserted);
+            self.splice(edit.at, removed, &edit.inserted);
         }
         self.restore(&transaction.after);
         transaction.typing = false;
@@ -1240,6 +1317,73 @@ mod tests {
 
     fn carets(document: &TextDocument) -> Vec<usize> {
         document.selections().iter().map(|s| s.cursor).collect()
+    }
+
+    #[test]
+    fn the_widest_line_stays_right_through_edits_without_reading_the_text_again() {
+        // What a document that has just been opened would answer.
+        let fresh = |document: &TextDocument| {
+            let mut copy = TextDocument::from_text(&document.text());
+            copy.indentation.tab_width = document.indentation.tab_width;
+            copy.widest_line()
+        };
+        let mut document = TextDocument::from_text("short\na longer line here\n\tx\nmid line\n");
+        assert_eq!(document.widest_line(), 1);
+        // A small generator, so that the same edits run every time.
+        let mut seed = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = |limit: usize| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed % limit.max(1) as u64) as usize
+        };
+        let pieces = [
+            "x",
+            "wide wide wide wide",
+            "\n",
+            "\t",
+            "a\nbb\nccc",
+            "\n\n",
+            "the longest piece of them all, by some way\n",
+        ];
+        for step in 0..3000 {
+            let len = document.len_chars();
+            match next(10) {
+                0..=4 => {
+                    let at = next(len + 1);
+                    document.replace_range(at..at, pieces[next(pieces.len())]);
+                }
+                5..=7 => {
+                    let start = next(len + 1);
+                    let end = (start + next(40)).min(len);
+                    document.replace_range(start..end, "");
+                }
+                8 => {
+                    let start = next(len + 1);
+                    let end = (start + next(25)).min(len);
+                    document.replace_range(start..end, pieces[next(pieces.len())]);
+                }
+                _ => {
+                    if next(2) == 0 {
+                        document.undo();
+                    } else {
+                        document.redo();
+                    }
+                }
+            }
+            assert_eq!(
+                document.widest_line(),
+                fresh(&document),
+                "after step {step}: {:?}",
+                document.text()
+            );
+        }
+        // A tab width that changes is counted again.
+        document.replace_range(0..0, "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\n");
+        document.indentation.tab_width = 16;
+        assert_eq!(document.widest_line(), fresh(&document));
+        document.replace_range(0..0, "y");
+        assert_eq!(document.widest_line(), fresh(&document));
     }
 
     #[test]
