@@ -69,6 +69,10 @@ fn parse(mut arguments: impl Iterator<Item = String>) -> Option<Options> {
 
 /// Runs `step` for about `seconds`, or exactly `steps` times, and returns
 /// how many steps that was and how long they took.
+///
+/// Never inlined, so that a tool can be told to count what happens inside
+/// it and nothing else: not building the scenario, and not warming it up.
+#[inline(never)]
 fn run(step: &mut dyn FnMut(), seconds: f64, steps: Option<u64>) -> (u64, Duration) {
     let started = Instant::now();
     if let Some(steps) = steps {
