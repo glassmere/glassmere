@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - The kernel's own maps, over node identities, widget keys and call sites, use a fast hash in place of std's attack-resistant one.
   - The tree is walked for popovers, on every paint and hit test, only when it holds one.
   - The CPU renderer, painting over its last frame, does not stroke paths or look up text outside the damage. Its text cache is then cleared by a frame painted whole once it has grown well past what the last whole frame used.
+
 ### Fixed
 
 - Typing in the code editor or a text area no longer reads the whole document on every keystroke. The widest line, which sizes the horizontal scroll range, was found again after each edit; it is now kept up to date from the lines the edit changed, and the text is read again only when the widest line itself gets narrower. In a 40,000-line file a keystroke went from 8.5 ms to 37 µs.
