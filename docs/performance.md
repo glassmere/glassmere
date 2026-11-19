@@ -1,6 +1,6 @@
 # The performance model
 
-What makes a frame expensive here, what it costs, and how to see it. The numbers were measured on Windows 11 with a 24-thread Ryzen and an RTX 3070 and are orders of magnitude, not guarantees.
+What makes a frame expensive here, what it costs, and how to see it. [Measuring and profiling](profiling.md) is how to check a number here on your own machine and find where a frame's time goes. The numbers were measured on Windows 11 with a 24-thread Ryzen and an RTX 3070 and are orders of magnitude, not guarantees.
 
 ## The five phases of a frame
 

@@ -149,6 +149,7 @@ cargo run -p glassmere-designer -- examples/markup.glass
 | [Platform](docs/platform.md) | Windows, graphics backends, input, native services and the dev runner. |
 | [Accessibility](docs/accessibility.md) | What each node exposes and how to test it. |
 | [Performance](docs/performance.md) | What a frame costs and how to see it. |
+| [Measuring and profiling](docs/profiling.md) | Benchmarks, flamegraphs and where a frame's time goes. |
 | [Embedded](docs/embedded.md) | Running on a microcontroller: `no_std`, framebuffers, bitmap fonts. |
 | [Renderers](docs/renderers.md) | The scene contract and writing a renderer. |
 | [API stability](docs/api-stability.md) | What is public and how it changes. |
@@ -174,6 +175,7 @@ cargo run -p glassmere-designer -- examples/markup.glass
 | `glassmere-devtools` | The inspector. |
 | `glassmere-testing` | Headless test harness. |
 | `glassmere-dev` | The hot-restart runner. |
+| `glassmere-bench` | Benchmarks and the profiling runner. Not published. |
 | `glassmere-markup` | Views read from `.glass` markup files at run time. |
 | `glassmere-designer` | Live preview and visual editor for markup files. |
 

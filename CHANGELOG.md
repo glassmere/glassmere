@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- Benchmarks and profiling, in the new `glassmere-bench` crate (not published). Thirteen headless scenarios cover frames of a form, a table, a tree and the code editor, the CPU renderer and text shaping; `cargo bench -p glassmere-bench` times them and compares against a saved baseline, and its `profile` binary runs one for a profiler and, on Linux and macOS, writes a flamegraph itself. The `profiling` build profile now has line tables. See [measuring and profiling](docs/profiling.md).
+
 ## [0.1.7] - 2026-11-18
 
 ### Added

@@ -21,6 +21,7 @@ members = [
     "crates/glassmere-dev",
     "crates/glassmere-win32",
     "crates/glassmere-allocations",
+    "crates/glassmere-bench",
     "crates/glassmere-markup",
     "crates/glassmere-designer",
     "examples",
@@ -86,3 +87,5 @@ debug = 1
 # An optimized build that can be profiled without replacing a running release app.
 [profile.profiling]
 inherits = "release"
+# Names for a sampling profiler to put on the stacks it reads.
+debug = "line-tables-only"
