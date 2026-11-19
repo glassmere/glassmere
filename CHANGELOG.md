@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Benchmarks and profiling, in the new `glassmere-bench` crate (not published). Thirteen headless scenarios cover frames of a form, a table, a tree and the code editor, the CPU renderer and text shaping; `cargo bench -p glassmere-bench` times them and compares against a saved baseline, and its `profile` binary runs one for a profiler and, on Linux and macOS, writes a flamegraph itself. The `profiling` build profile now has line tables. See [measuring and profiling](docs/profiling.md).
 
+### Changed
+
+- Frames cost less. Measured with the new benchmarks, on a form of 1,200 widgets: a frame with no input takes half the time, declaring it again unchanged 40% less, repainting or laying out every row 40 to 50% less; scrolling a million-row table or a 100,000-node tree 20 to 30% less. The CPU renderer repaints a damaged row in a quarter of the time. Nothing an application calls has changed:
+  - What every frame prepared for its controls walked every node seven times; it walks them once, and a text field compares its text without allocating.
+  - Children are matched where they were last frame before a map of their keys is built, and a node declared as it was does not rebuild its layout style to find that out.
+  - The kernel's own maps, over node identities, widget keys and call sites, use a fast hash in place of std's attack-resistant one.
+  - The tree is walked for popovers, on every paint and hit test, only when it holds one.
+  - The CPU renderer, painting over its last frame, does not stroke paths or look up text outside the damage. Its text cache is then cleared by a frame painted whole once it has grown well past what the last whole frame used.
+
 ## [0.1.7] - 2026-11-18
 
 ### Added

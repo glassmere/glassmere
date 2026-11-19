@@ -660,3 +660,68 @@ fn paths_fill_by_the_non_zero_rule_and_stroke_over_the_fill() {
     // Mitred: the corner is square, not cut.
     assert_near(pixel(&pixels, 6, 6), [0, 0, 255, 255]);
 }
+
+#[test]
+fn frames_painted_in_part_draw_what_a_whole_frame_would_and_do_not_hoard_text() {
+    // A line of text and a stroked path inside the damage, and one of each
+    // outside it, which a frame painted in part has no need to look at.
+    let scene = |round: usize| {
+        let mut tick = Path::new();
+        tick.move_to(Point { x: 4.0, y: 20.0 })
+            .line_to(Point { x: 10.0, y: 26.0 })
+            .line_to(Point { x: 22.0, y: 12.0 });
+        let stroke = Stroke {
+            width: 2.0,
+            color: BLUE,
+        };
+        Scene {
+            size: Size::new(SIDE as f32, SIDE as f32),
+            primitives: vec![
+                Primitive::Text {
+                    rect: rect(2.0, 0.0, 60.0, 12.0),
+                    text: format!("r{round}"),
+                    font_size: 10.0,
+                    color: RED,
+                },
+                Primitive::Path {
+                    path: tick.clone(),
+                    fill: None,
+                    stroke: Some(stroke),
+                },
+                Primitive::Text {
+                    rect: rect(2.0, 48.0, 60.0, 12.0),
+                    text: "still".into(),
+                    font_size: 10.0,
+                    color: RED,
+                },
+                Primitive::Path {
+                    path: tick.translated(Point { x: 30.0, y: 20.0 }),
+                    fill: None,
+                    stroke: Some(stroke),
+                },
+            ],
+        }
+    };
+    let size = [SIDE as u32; 2];
+    // The top half changes every frame; the bottom half never does.
+    let damage = [rect(0.0, 0.0, SIDE as f32, 32.0)];
+    let mut partial = renderer();
+    partial.render(size, 1.0, &scene(0), Color::WHITE);
+    let mut most = 0;
+    for round in 1..=1200 {
+        let painted = partial
+            .render_damaged(size, 1.0, &scene(round), Color::WHITE, &damage)
+            .to_vec();
+        most = most.max(partial.text_system().buffers.len());
+        if round % 150 == 0 {
+            let whole = renderer()
+                .render(size, 1.0, &scene(round), Color::WHITE)
+                .to_vec();
+            assert!(painted == whole, "round {round} differs from a whole frame");
+        }
+    }
+    // 1,200 different texts went by. The cache was let grow for a while and
+    // then cleared by a frame painted whole, more than once.
+    assert!(most < 700, "the text cache reached {most}");
+    assert!(partial.text_system().buffers.len() < 700);
+}

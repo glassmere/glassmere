@@ -64,6 +64,8 @@ pub struct CpuRenderer {
     /// The size and scale the kept frame was painted at. Anything else, and
     /// what is in the target is not the previous picture.
     painted: Option<([u32; 2], u32)>,
+    /// How many shaped texts the last whole frame kept.
+    text_kept: usize,
     /// Texels ready to sample, by image and pixel size, with the frame that
     /// used them last: vector images rasterized, translucent ones converted.
     rasters: HashMap<(u64, [u32; 2]), (Pixmap, u64)>,
@@ -366,6 +368,7 @@ impl CpuRenderer {
             swash: SwashCache::new(),
             target: None,
             painted: None,
+            text_kept: 0,
             rasters: HashMap::new(),
             gamma: Gamma::new(),
             stats: CpuStats::default(),
@@ -426,6 +429,8 @@ impl CpuRenderer {
         // Only a frame this renderer painted at the same size and scale can
         // be painted over rather than replaced.
         let kept = self.painted == Some((physical_size, scale.to_bits()));
+        // Painting over the last frame: only what the damage shows is drawn.
+        let partial = kept && !damage.is_empty();
         let regions = match (kept, damage.is_empty()) {
             (true, false) => coalesce(damage),
             _ => vec![Rect {
@@ -459,7 +464,14 @@ impl CpuRenderer {
                     *pixel = clear;
                 }
             }
-            root = self.paint(scene, region, root);
+            root = self.paint(scene, region, root, partial);
+        }
+        // A frame painted in part leaves the text cache alone, so text
+        // that has gone is still in it. When that has let it grow well past
+        // what the last whole frame needed, the next frame is painted whole,
+        // which clears it out.
+        if partial && self.text.buffers.len() > self.text_kept * 2 + 256 {
+            self.painted = None;
         }
         let frame = self.stats.frames;
         self.rasters.retain(|_, (_, used)| frame - *used < 2);
@@ -468,7 +480,11 @@ impl CpuRenderer {
     }
 
     /// `region` is what may be painted: the whole viewport, or the damage.
-    fn paint(&mut self, scene: &Scene, region: Rect, root: Surface) -> Surface {
+    ///
+    /// A `partial` frame is painted over the last one. Text and paths
+    /// outside the region are then not looked at, where a whole frame looks
+    /// at every text to know which shaped text it can let go of.
+    fn paint(&mut self, scene: &Scene, region: Rect, root: Surface, partial: bool) -> Surface {
         // Oversized layers render at a lower resolution, as on the GPU.
         let cap = root.size().map(|side| side.saturating_mul(2).min(MAX_SIDE));
         // Every draw is clipped, so bounding the stack bounds the frame.
@@ -704,6 +720,22 @@ impl CpuRenderer {
                 // not, and leaves the rectangle as it is.
                 Primitive::Custom { .. } => {}
                 Primitive::Path { path, fill, stroke } => {
+                    // Outside the clip nothing of it shows, and stroking it
+                    // to find that out is most of what drawing it costs. A
+                    // mitred corner reaches up to twice the width out.
+                    let bounds = path.bounds();
+                    let reach = stroke
+                        .as_ref()
+                        .map_or(0.0, |stroke| stroke.width * 2.0 + 1.0);
+                    let touched = surface.pixels(clip.intersect(Rect {
+                        x: bounds.x - reach,
+                        y: bounds.y - reach,
+                        width: bounds.width + 2.0 * reach,
+                        height: bounds.height + 2.0 * reach,
+                    }));
+                    if touched[2] == 0 || touched[3] == 0 {
+                        continue;
+                    }
                     let Some(shape) = skia_path(path) else {
                         continue;
                     };
@@ -734,6 +766,10 @@ impl CpuRenderer {
                 Primitive::Text { rect, color, .. }
                 | Primitive::StyledText { rect, color, .. }
                 | Primitive::RichText { rect, color, .. } => {
+                    let visible = surface.pixels(clip.intersect(*rect));
+                    if partial && (visible[2] == 0 || visible[3] == 0) {
+                        continue;
+                    }
                     let key = match primitive {
                         Primitive::Text {
                             text, font_size, ..
@@ -746,15 +782,19 @@ impl CpuRenderer {
                         }
                         _ => unreachable!(),
                     };
-                    active_text.insert(key.clone());
-                    let visible = surface.pixels(clip.intersect(*rect));
+                    if !partial {
+                        active_text.insert(key.clone());
+                    }
                     if visible[2] > 0 && visible[3] > 0 {
                         self.glyphs(surface, &key, *rect, visible, *color);
                     }
                 }
             }
         }
-        self.text.retain(&active_text);
+        if !partial {
+            self.text.retain(&active_text);
+            self.text_kept = self.text.buffers.len();
+        }
         surfaces.swap_remove(0)
     }
 
