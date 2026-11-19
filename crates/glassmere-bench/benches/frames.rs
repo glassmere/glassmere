@@ -10,8 +10,8 @@ use criterion::{Criterion, criterion_group, criterion_main};
 
 fn frames(criterion: &mut Criterion) {
     for scenario in glassmere_bench::scenarios() {
-        let mut step = (scenario.build)();
-        criterion.bench_function(scenario.name, |bencher| bencher.iter(&mut step));
+        let mut built = (scenario.build)();
+        criterion.bench_function(scenario.name, |bencher| bencher.iter(|| built.step()));
     }
 }
 
