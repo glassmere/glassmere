@@ -128,7 +128,7 @@ struct Node {
     kind: Kind,
     parent: Option<NodeId>,
     children: Vec<NodeId>,
-    children_by_key: HashMap<WidgetKey, NodeId>,
+    children_by_key: crate::collections::FastMap<WidgetKey, NodeId>,
     text: String,
     style: Style,
     enabled: bool,
@@ -452,7 +452,7 @@ struct Watched {
 }
 
 pub struct Context {
-    nodes: HashMap<NodeId, Node>,
+    nodes: crate::collections::FastMap<NodeId, Node>,
     layout: taffy::TaffyTree<Measurement>,
     root: NodeId,
     frame: u64,
@@ -473,6 +473,8 @@ pub struct Context {
     scene: Scene,
     stats: FrameStats,
     geometry_dirty: bool,
+    /// How many popovers the tree holds.
+    popover_count: usize,
     /// The nodes `prepare_controls` found last frame, kept for their room.
     preparing: Preparing,
     /// Tabs that became selected in this declaration; layout scrolls their
@@ -683,7 +685,7 @@ impl Default for Context {
             kind: Kind::Column,
             parent: None,
             children: Vec::new(),
-            children_by_key: HashMap::new(),
+            children_by_key: Default::default(),
             text: String::new(),
             style,
             enabled: true,
@@ -714,7 +716,7 @@ impl Default for Context {
             tooltip: None,
         };
         Self {
-            nodes: HashMap::from([(root, node)]),
+            nodes: crate::collections::FastMap::from_iter([(root, node)]),
             layout,
             root,
             frame: 0,
@@ -731,6 +733,7 @@ impl Default for Context {
             scene: Scene::default(),
             stats: FrameStats::default(),
             geometry_dirty: false,
+            popover_count: 0,
             preparing: Preparing::default(),
             reveal_tabs: Vec::new(),
             pending_damage: Vec::new(),

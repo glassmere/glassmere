@@ -69,9 +69,9 @@ impl Context {
             pending_key: None,
             clicks: &mut clicks,
             elements: self.take_spare(),
-            keys: HashSet::new(),
+            keys: Default::default(),
             declared: None,
-            sites: HashMap::new(),
+            sites: Default::default(),
             updates: &mut updates,
             warnings: &mut warnings,
             observed: &mut observed,
@@ -410,7 +410,7 @@ impl Context {
         // for there first. Only when one is not is a map of the children
         // not yet matched built, with a copy of each of their keys.
         let mut matched = alloc::vec![false; old_children.len()];
-        let mut available: Option<HashMap<WidgetKey, NodeId>> = None;
+        let mut available: Option<crate::collections::FastMap<WidgetKey, NodeId>> = None;
         let mut children = Vec::with_capacity(elements.len());
         let (mut created_here, mut removed_here) = (0usize, 0usize);
         for (place, element) in elements.drain(..).enumerate() {
@@ -797,6 +797,9 @@ impl Context {
             Control::SelectableText => Some(Box::new(Editor::block(&element.text))),
             _ => None,
         };
+        if element.kind == Kind::Popover {
+            self.popover_count += 1;
+        }
         self.nodes.insert(
             id,
             Node {
@@ -817,7 +820,7 @@ impl Context {
                 kind: element.kind,
                 parent: Some(parent),
                 children: Vec::new(),
-                children_by_key: HashMap::new(),
+                children_by_key: Default::default(),
                 text: element.text,
                 style: element.style,
                 enabled: element.enabled,
@@ -890,6 +893,9 @@ impl Context {
             return;
         }
         let node = self.nodes.remove(&id).unwrap();
+        if node.kind == Kind::Popover {
+            self.popover_count -= 1;
+        }
         if node.kind == Kind::Dock {
             // The panels parked while their tabs were not selected go with it;
             // the others are children, removed below.
