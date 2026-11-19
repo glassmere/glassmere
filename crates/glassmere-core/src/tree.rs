@@ -60,6 +60,33 @@ pub use types::*;
 
 /// A second press on a title bar this soon and this near the first means
 /// "maximize" rather than another move.
+/// What one walk over the nodes finds for `prepare_controls`, by what each
+/// needs done.
+#[derive(Default)]
+struct Preparing {
+    baseline_rows: Vec<NodeId>,
+    text_areas: Vec<NodeId>,
+    rich_texts: Vec<NodeId>,
+    rich_editors: Vec<NodeId>,
+    /// Sliders whose label is measured.
+    labelled: Vec<NodeId>,
+    /// Rows whose hint is measured.
+    hinted: Vec<NodeId>,
+    editors: Vec<NodeId>,
+}
+
+impl Preparing {
+    fn clear(&mut self) {
+        self.baseline_rows.clear();
+        self.text_areas.clear();
+        self.rich_texts.clear();
+        self.rich_editors.clear();
+        self.labelled.clear();
+        self.hinted.clear();
+        self.editors.clear();
+    }
+}
+
 /// The key of the panel menu a dock puts at the end of a tab strip.
 const STRIP_MENU: &str = "$menu";
 /// How wide the buttons that scroll an overflowing tab strip are.
@@ -446,6 +473,8 @@ pub struct Context {
     scene: Scene,
     stats: FrameStats,
     geometry_dirty: bool,
+    /// The nodes `prepare_controls` found last frame, kept for their room.
+    preparing: Preparing,
     /// Tabs that became selected in this declaration; layout scrolls their
     /// strips to show them.
     reveal_tabs: Vec<NodeId>,
@@ -702,6 +731,7 @@ impl Default for Context {
             scene: Scene::default(),
             stats: FrameStats::default(),
             geometry_dirty: false,
+            preparing: Preparing::default(),
             reveal_tabs: Vec::new(),
             pending_damage: Vec::new(),
             damage: Vec::new(),

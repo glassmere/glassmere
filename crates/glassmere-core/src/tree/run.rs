@@ -406,15 +406,34 @@ impl Context {
         let outer = (self.nodes[&parent].kind == Kind::Dock).then(|| self.enter_dock(Some(parent)));
         let old_children = self.nodes[&parent].children.clone();
         let inherited = self.nodes[&parent].resolved.clone();
-        let mut available: HashMap<_, _> = old_children
-            .iter()
-            .map(|id| (self.nodes[id].key.clone(), *id))
-            .collect();
+        // A child is nearly always where it was last time, so it is looked
+        // for there first. Only when one is not is a map of the children
+        // not yet matched built, with a copy of each of their keys.
+        let mut matched = alloc::vec![false; old_children.len()];
+        let mut available: Option<HashMap<WidgetKey, NodeId>> = None;
         let mut children = Vec::with_capacity(elements.len());
         let (mut created_here, mut removed_here) = (0usize, 0usize);
-        for element in elements.drain(..) {
-            let existing = available
-                .remove(&element.key)
+        for (place, element) in elements.drain(..).enumerate() {
+            let in_place = available.is_none()
+                && old_children
+                    .get(place)
+                    .is_some_and(|id| self.nodes[id].key == element.key);
+            let found = if in_place {
+                matched[place] = true;
+                Some(old_children[place])
+            } else {
+                available
+                    .get_or_insert_with(|| {
+                        old_children
+                            .iter()
+                            .zip(&matched)
+                            .filter(|(_, matched)| !**matched)
+                            .map(|(id, _)| (self.nodes[id].key.clone(), *id))
+                            .collect()
+                    })
+                    .remove(&element.key)
+            };
+            let existing = found
                 .or_else(|| self.claim_panel(parent, &element))
                 .filter(|id| {
                     if self.nodes[id].kind == element.kind {
@@ -453,7 +472,16 @@ impl Context {
             children.push(id);
         }
         self.give_spare(elements);
-        for id in available.into_values() {
+        let unmatched: Vec<NodeId> = match available {
+            Some(available) => available.into_values().collect(),
+            None => old_children
+                .iter()
+                .zip(&matched)
+                .filter(|(_, matched)| !**matched)
+                .map(|(id, _)| *id)
+                .collect(),
+        };
+        for id in unmatched {
             // A dock panel another parent claimed is no longer a child here.
             if self
                 .nodes
@@ -574,17 +602,27 @@ impl Context {
         let node = self.nodes.get_mut(&id).unwrap();
         // Declared again: observed now is what this declaration read.
         node.observed.set(node.observing.take());
-        let paint_changed = node.text != element.text
-            || node.style != element.style
-            || node.resolved != resolved
+        // Most nodes are declared as they were. Each of these comparisons
+        // is made once, and what follows from two things being equal is not
+        // computed to find that out again: a style that is the same lays
+        // out the same, and text resolved the same has the same text style.
+        let style_same = node.style == element.style;
+        let control_same = node.control == element.control;
+        let resolved_same = node.resolved == resolved;
+        let text_same = node.text == element.text;
+        let paint_changed = !text_same
+            || !style_same
+            || !resolved_same
             || node.enabled != element.enabled
             || node.custom != element.custom
-            || node.control != element.control;
+            || !control_same;
         // Colors repaint; only font and wrapping changes re-measure.
-        let text_changed = node.text != element.text
-            || node.text_style() != resolved.text_style(element.style.wrap)
+        let text_style_same = (resolved_same && node.style.wrap == element.style.wrap)
+            || node.text_style() == resolved.text_style(element.style.wrap);
+        let text_changed = !text_same
+            || !text_style_same
             // Bold, italic and code runs change advances without changing the text.
-            || (element.kind == Kind::RichText && node.control != element.control);
+            || (element.kind == Kind::RichText && !control_same);
         let mut changed = Dirty::empty();
         if paint_changed {
             changed |= Dirty::PAINT;
@@ -592,16 +630,13 @@ impl Context {
         if text_changed {
             changed |= Dirty::TEXT;
         }
-        if node.style != element.style {
+        if !style_same {
             changed |= Dirty::STYLE;
         }
-        if node.style.layout(Flow::Column) != element.style.layout(Flow::Column) {
+        if !style_same && node.style.layout(Flow::Column) != element.style.layout(Flow::Column) {
             changed |= Dirty::LAYOUT;
         }
-        if node.enabled != element.enabled
-            || node.control != element.control
-            || node.tooltip != element.tooltip
-        {
+        if node.enabled != element.enabled || !control_same || node.tooltip != element.tooltip {
             changed |= Dirty::ACCESSIBILITY;
         }
         if node.tooltip != element.tooltip {
@@ -648,16 +683,23 @@ impl Context {
                 .unwrap();
             self.pending |= Dirty::LAYOUT;
         }
-        let mut layout_style = layout_style(&element.style, element.kind, resolved.direction);
-        if let Some(measurement) = self.layout.get_node_context(node.layout_id) {
-            anchor_minimum(&mut layout_style, &element, measurement.size);
+        // The layout style comes from the style, the kind, the direction
+        // and, for a text leaf that anchors an overlay, its measured size.
+        // With none of those changed it is the one the layout already has.
+        let anchors =
+            element.kind.text_leaf() && (!element.children.is_empty() || !node.children.is_empty());
+        if !style_same || anchors || node.resolved.direction != resolved.direction {
+            let mut layout_style = layout_style(&element.style, element.kind, resolved.direction);
+            if let Some(measurement) = self.layout.get_node_context(node.layout_id) {
+                anchor_minimum(&mut layout_style, &element, measurement.size);
+            }
+            if *self.layout.style(node.layout_id).unwrap() != layout_style {
+                self.layout.set_style(node.layout_id, layout_style).unwrap();
+                self.pending |= Dirty::LAYOUT;
+                self.diagnostic.layout_cause.get_or_insert(id);
+            }
         }
-        if *self.layout.style(node.layout_id).unwrap() != layout_style {
-            self.layout.set_style(node.layout_id, layout_style).unwrap();
-            self.pending |= Dirty::LAYOUT;
-            self.diagnostic.layout_cause.get_or_insert(id);
-        }
-        if node.style != element.style {
+        if !style_same {
             self.pending |= Dirty::STYLE | Dirty::PAINT;
         }
         if node.enabled != element.enabled {

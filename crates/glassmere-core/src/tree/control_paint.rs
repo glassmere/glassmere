@@ -53,15 +53,7 @@ impl Context {
     /// Lines the children of a row up by the baseline of their text rather
     /// than by their boxes, which is what makes labels of different sizes sit
     /// on one line.
-    fn align_baselines(&mut self, measurer: &mut impl TextMeasurer) {
-        let rows: Vec<NodeId> = self
-            .nodes
-            .iter()
-            .filter(|(_, node)| {
-                node.style.align_items == crate::Align::Baseline && node.children.len() > 1
-            })
-            .map(|(id, _)| *id)
-            .collect();
+    fn align_baselines(&mut self, rows: Vec<NodeId>, measurer: &mut impl TextMeasurer) {
         for row in rows {
             let children = self.nodes[&row].children.clone();
             let baselines: Vec<Option<f32>> = children
@@ -89,38 +81,49 @@ impl Context {
     }
 
     pub(super) fn prepare_controls(&mut self, measurer: &mut impl TextMeasurer) {
-        self.align_baselines(measurer);
-        self.prepare_text_areas(measurer);
-        let labelled: Vec<_> = self
-            .nodes
-            .iter()
-            .filter_map(|(id, node)| {
-                (node.resolved.rtl()
-                    && matches!(node.kind, Kind::Slider | Kind::RangeSlider)
-                    && node.changed_frame == self.frame)
-                    .then_some(*id)
-            })
-            .collect();
-        for id in labelled {
-            let node = self.nodes.get_mut(&id).unwrap();
+        // One walk over the nodes finds everything that needs preparing.
+        // Each kind used to walk them all itself, which was seven walks a
+        // frame whether anything had changed or not.
+        let frame = self.frame;
+        let mut found = core::mem::take(&mut self.preparing);
+        found.clear();
+        for (id, node) in &self.nodes {
+            if node.style.align_items == crate::Align::Baseline && node.children.len() > 1 {
+                found.baseline_rows.push(*id);
+            }
+            match node.kind {
+                Kind::TextArea => found.text_areas.push(*id),
+                Kind::RichText => found.rich_texts.push(*id),
+                Kind::RichEditor => found.rich_editors.push(*id),
+                Kind::Slider | Kind::RangeSlider
+                    if node.changed_frame == frame && node.resolved.rtl() =>
+                {
+                    found.labelled.push(*id);
+                }
+                _ => {}
+            }
+            if node.changed_frame == frame
+                && matches!(&node.control,
+                    Control::Choice { hint, .. }
+                    | Control::Submenu { hint, .. }
+                    | Control::Hint(hint) if !hint.is_empty())
+            {
+                found.hinted.push(*id);
+            }
+            if node.editor.is_some() {
+                found.editors.push(*id);
+            }
+        }
+        self.align_baselines(core::mem::take(&mut found.baseline_rows), measurer);
+        self.prepare_text_areas(&found.text_areas, measurer);
+        for id in &found.labelled {
+            let node = self.nodes.get_mut(id).unwrap();
             node.label_width = measurer
                 .measure_styled(&node.text, &node.text_style(), None)
                 .width;
         }
-        let hinted: Vec<_> = self
-            .nodes
-            .iter()
-            .filter_map(|(id, node)| {
-                (node.changed_frame == self.frame
-                    && matches!(&node.control,
-                        Control::Choice { hint, .. }
-                        | Control::Submenu { hint, .. }
-                        | Control::Hint(hint) if !hint.is_empty()))
-                .then_some(*id)
-            })
-            .collect();
-        for id in hinted {
-            let node = &self.nodes[&id];
+        for id in &found.hinted {
+            let node = &self.nodes[id];
             let (Control::Choice { hint, .. }
             | Control::Submenu { hint, .. }
             | Control::Hint(hint)) = &node.control
@@ -130,29 +133,28 @@ impl Context {
             let width = measurer
                 .measure_styled(hint, &node.text_style(), None)
                 .width;
-            self.nodes.get_mut(&id).unwrap().hint_width = width;
+            self.nodes.get_mut(id).unwrap().hint_width = width;
         }
-        self.prepare_rich_text(measurer);
-        self.prepare_rich_editors(measurer);
-        // Only the editors whose layout changed are collected, so an idle
-        // frame allocates nothing here.
-        let reflowed: Vec<_> = self
-            .nodes
-            .iter_mut()
-            .filter_map(|(id, node)| {
-                let width = (node.bounds.width - node.style.padding.max(0.0) * 2.0).max(1.0);
-                let text_style = node.text_style();
-                // A forced paragraph direction aligns the text as it reads.
-                let rtl = text_style.base.unwrap_or(node.resolved.rtl());
-                node.editor
-                    .as_mut()?
-                    .prepare(measurer, text_style, width, rtl)
-                    .then_some(*id)
-            })
-            .collect();
-        for id in reflowed {
-            self.invalidate_paint(id);
+        self.prepare_rich_text(&found.rich_texts, measurer);
+        self.prepare_rich_editors(&found.rich_editors, measurer);
+        for id in &found.editors {
+            let Some(node) = self.nodes.get_mut(id) else {
+                continue;
+            };
+            let width = (node.bounds.width - node.style.padding.max(0.0) * 2.0).max(1.0);
+            let text_style = node.text_style();
+            // A forced paragraph direction aligns the text as it reads.
+            let rtl = text_style.base.unwrap_or(node.resolved.rtl());
+            let reflowed = node
+                .editor
+                .as_mut()
+                .is_some_and(|editor| editor.prepare(measurer, text_style, width, rtl));
+            if reflowed {
+                self.invalidate_paint(*id);
+            }
         }
+        // The lists keep their room for the next frame.
+        self.preparing = found;
         if let Some(popup) = self.popup
             && popup.reveal_highlight
             && let Some(panel) = self

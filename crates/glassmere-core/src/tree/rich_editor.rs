@@ -588,13 +588,12 @@ impl Context {
     // The first frame and a change of width shape every block, not just the
     // visible ones, so documents of thousands of paragraphs would need
     // per-block virtualization.
-    pub(super) fn prepare_rich_editors(&mut self, measurer: &mut impl TextMeasurer) {
-        let ids: Vec<_> = self
-            .nodes
-            .iter()
-            .filter_map(|(id, node)| (node.kind == Kind::RichEditor).then_some(*id))
-            .collect();
-        for id in ids {
+    pub(super) fn prepare_rich_editors(
+        &mut self,
+        ids: &[NodeId],
+        measurer: &mut impl TextMeasurer,
+    ) {
+        for id in ids.iter().copied() {
             // Operations still queued have not reached the document.
             let queued = self.updates.contains_key(&id);
             let node = self.nodes.get_mut(&id).unwrap();

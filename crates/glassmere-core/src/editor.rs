@@ -523,10 +523,21 @@ impl Editor {
             style.wrap = TextWrap::None;
             None
         };
-        let text = self.shown();
-        let key = (text, style);
-        let changed = self.geometry_key.as_ref() != Some(&key) || self.geometry_limit != limit;
+        // Most frames find the text as it was shaped, so the comparison
+        // must not cost an allocation: what is shown is built only when it
+        // is not simply the text.
+        let same = self.geometry_limit == limit
+            && self.geometry_key.as_ref().is_some_and(|(text, known)| {
+                *known == style
+                    && if self.masked || self.composition.is_some() {
+                        *text == self.shown()
+                    } else {
+                        *text == self.text
+                    }
+            });
+        let changed = !same;
         if changed {
+            let key = (self.shown(), style);
             self.geometry = measurer.geometry(&key.0, &key.1, limit);
             self.geometry_key = Some(key);
             self.geometry_limit = limit;

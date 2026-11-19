@@ -559,13 +559,8 @@ impl Context {
 
     /// Shapes the declared lines, sizes the gutter, keeps the primary caret in
     /// view horizontally and publishes the scroll range.
-    pub(super) fn prepare_text_areas(&mut self, measurer: &mut impl TextMeasurer) {
-        let ids: Vec<_> = self
-            .nodes
-            .iter()
-            .filter_map(|(id, node)| (node.kind == Kind::TextArea).then_some(*id))
-            .collect();
-        for id in ids {
+    pub(super) fn prepare_text_areas(&mut self, ids: &[NodeId], measurer: &mut impl TextMeasurer) {
+        for id in ids.iter().copied() {
             // Operations still queued have not reached the document.
             let queued = self.updates.contains_key(&id);
             let node = self.nodes.get_mut(&id).unwrap();
