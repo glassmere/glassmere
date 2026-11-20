@@ -3,8 +3,8 @@ mod support;
 use glassmere_core::MonospaceMeasurer;
 use glassmere_core::app::Action as Msg;
 use glassmere_core::{
-    Action, Autocomplete, Context, Event, Key, NodeId, NumberOptions, Role, TextEdit, TextInput,
-    TextMove, Ui, suggest,
+    Action, Autocomplete, Context, Event, Key, Length, NodeId, NumberOptions, Role, Style,
+    TextEdit, TextInput, TextMove, Ui, suggest,
 };
 use glassmere_scene::{Point, Primitive, Size, TextMeasurer};
 use support::{Driven, act, on};
@@ -727,4 +727,68 @@ fn a_drag_held_past_the_edge_of_a_field_keeps_scrolling_it_until_release() {
     assert_eq!(app.context.next_wake(), None);
     // Nothing was typed, so the application's text is as it was.
     assert_eq!(app.state().text.len(), 200);
+}
+
+#[test]
+fn a_field_left_idle_still_follows_its_caret_when_the_window_narrows() {
+    #[derive(Default)]
+    struct Form {
+        text: String,
+    }
+    let form = || {
+        Driven::new(
+            ROOT,
+            Form {
+                text: "0123456789".repeat(20),
+            },
+            |state: &Form, ui: &mut Ui<'_, Msg<Form>>| {
+                ui.keyed("field", |ui| {
+                    ui.text_input(
+                        TextInput::new("Text").style(Style {
+                            width: Length::Percent(0.5),
+                            height: Length::Px(44.0),
+                            padding: 10.0,
+                            ..Style::default()
+                        }),
+                        &state.text,
+                        on(|s: &mut Form, text: String| s.text = text),
+                    );
+                });
+            },
+        )
+    };
+    let idle = |app: &mut Driven<Form>| {
+        for _ in 0..3 {
+            app.frame();
+        }
+    };
+    let scene = |app: &Driven<Form>| format!("{:?}", app.context.scene().primitives);
+    let focus_end = |app: &mut Driven<Form>| {
+        let field = app.context.find(&["field"]).unwrap();
+        click(&mut app.context, field);
+        key(&mut app.context, Key::End);
+        idle(app);
+    };
+
+    // A fresh context at each width and caret is the reference.
+    let mut app = form();
+    focus_end(&mut app);
+    for width in [600.0, 300.0, 140.0] {
+        app.size = Size::new(width, 400.0);
+        idle(&mut app);
+        let mut fresh = form();
+        fresh.size = app.size;
+        focus_end(&mut fresh);
+        assert_eq!(scene(&app), scene(&fresh), "end, {width} wide");
+    }
+    for (name, edge) in [("home", Key::Home), ("end", Key::End)] {
+        key(&mut app.context, edge);
+        idle(&mut app);
+        let mut fresh = form();
+        fresh.size = app.size;
+        focus_end(&mut fresh);
+        key(&mut fresh.context, edge);
+        idle(&mut fresh);
+        assert_eq!(scene(&app), scene(&fresh), "{name}");
+    }
 }

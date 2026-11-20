@@ -82,6 +82,18 @@ struct Composition {
     selection: Option<(usize, usize)>,
 }
 
+/// What `prepare` read when it last found everything in place: floats by
+/// their bits, so that equal means the same.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Settled {
+    selection: TextSelection,
+    affinity: Affinity,
+    width: u32,
+    rtl: bool,
+    scroll_x: u32,
+    align_x: u32,
+}
+
 pub(crate) struct Editor {
     pub text: String,
     pub selection: TextSelection,
@@ -93,6 +105,10 @@ pub(crate) struct Editor {
     geometry_key: Option<(String, TextStyle)>,
     /// The width the geometry wraps at, for text that wraps.
     geometry_limit: Option<f32>,
+    /// The inputs of the last `prepare` that found the geometry current and
+    /// moved nothing. The same inputs move nothing again. Whatever writes
+    /// `geometry` outside `prepare` must clear it.
+    settled: Option<Settled>,
     /// The text of a label: it keeps its line breaks and wraps at its box
     /// as drawn, instead of being one line that scrolls.
     pub wrapped: bool,
@@ -149,6 +165,7 @@ impl Editor {
             scroll_x: 0.0,
             geometry_key: None,
             geometry_limit: None,
+            settled: None,
             wrapped: false,
             affinity: Affinity::Downstream,
             visual: true,
@@ -541,9 +558,24 @@ impl Editor {
             self.geometry = measurer.geometry(&key.0, &key.1, limit);
             self.geometry_key = Some(key);
             self.geometry_limit = limit;
+            self.settled = None;
         }
         if self.wrapped {
             return changed;
+        }
+        // The caret of a field that is masked or composing depends on more
+        // than these inputs.
+        let plain = !self.masked && self.composition.is_none();
+        let inputs = Settled {
+            selection: self.selection,
+            affinity: self.affinity,
+            width: width.to_bits(),
+            rtl,
+            scroll_x: self.scroll_x.to_bits(),
+            align_x: self.align_x.to_bits(),
+        };
+        if !changed && plain && self.settled == Some(inputs) {
+            return false;
         }
         let old_scroll = self.scroll_x;
         if let Some(caret) = self.caret() {
@@ -562,7 +594,13 @@ impl Editor {
         } else {
             0.0
         };
-        changed || self.scroll_x != old_scroll || self.align_x != old_align
+        let moved = changed || self.scroll_x != old_scroll || self.align_x != old_align;
+        self.settled = (!moved
+            && plain
+            && self.scroll_x.to_bits() == inputs.scroll_x
+            && self.align_x.to_bits() == inputs.align_x)
+            .then_some(inputs);
+        moved
     }
 
     pub fn caret(&self) -> Option<Rect> {
@@ -585,6 +623,7 @@ impl Editor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use glassmere_scene::MonospaceMeasurer;
 
     #[test]
     fn grapheme_delete_undo_redo_and_selection_preserve_utf8() {
@@ -621,5 +660,268 @@ mod tests {
         editor.apply(TextEdit::Undo);
         assert_eq!(editor.text, "hello");
         assert_eq!(editor.selected_text(), Some("hello"));
+    }
+
+    fn style(font_size: f32) -> TextStyle {
+        TextStyle {
+            font_size,
+            ..TextStyle::default()
+        }
+    }
+
+    /// `prepare` as if nothing were known about the last call.
+    fn prepare_cold(editor: &mut Editor, size: f32, width: f32, rtl: bool) -> bool {
+        editor.settled = None;
+        editor.prepare(&mut MonospaceMeasurer, style(size), width, rtl)
+    }
+
+    fn prepare_warm(editor: &mut Editor, size: f32, width: f32, rtl: bool) -> bool {
+        editor.prepare(&mut MonospaceMeasurer, style(size), width, rtl)
+    }
+
+    const LONG: &str = "the quick brown fox jumps over the lazy dog again and again";
+
+    /// A long text with the caret at its end, scrolled there and settled.
+    fn settled_editor() -> Editor {
+        let mut editor = Editor::new(LONG);
+        assert!(prepare_warm(&mut editor, 16.0, 100.0, false));
+        assert!(!prepare_warm(&mut editor, 16.0, 100.0, false));
+        assert!(editor.settled.is_some());
+        assert!(editor.scroll_x > 0.0);
+        editor
+    }
+
+    fn assert_idle(editor: &mut Editor, width: f32, rtl: bool) {
+        let (scroll, align) = (editor.scroll_x.to_bits(), editor.align_x.to_bits());
+        for _ in 0..2 {
+            assert!(!prepare_warm(editor, 16.0, width, rtl));
+            assert_eq!(editor.scroll_x.to_bits(), scroll);
+            assert_eq!(editor.align_x.to_bits(), align);
+        }
+    }
+
+    #[test]
+    fn a_settled_editor_moves_nothing_on_idle_calls() {
+        let mut editor = settled_editor();
+        assert_idle(&mut editor, 100.0, false);
+    }
+
+    #[test]
+    fn a_selection_change_is_noticed_after_settling() {
+        let mut editor = settled_editor();
+        editor.apply(TextEdit::Move {
+            direction: TextMove::Start,
+            select: false,
+            word: false,
+        });
+        assert!(prepare_warm(&mut editor, 16.0, 100.0, false));
+        assert_eq!(editor.scroll_x, 0.0);
+        assert_idle(&mut editor, 100.0, false);
+    }
+
+    #[test]
+    fn a_scroll_written_from_outside_is_noticed_after_settling() {
+        let mut editor = settled_editor();
+        let at = editor.scroll_x;
+        editor.scroll_x = 0.0;
+        assert!(prepare_warm(&mut editor, 16.0, 100.0, false));
+        assert_eq!(editor.scroll_x, at);
+        assert_idle(&mut editor, 100.0, false);
+    }
+
+    #[test]
+    fn a_narrower_field_is_noticed_after_settling() {
+        let mut editor = settled_editor();
+        let at = editor.scroll_x;
+        assert!(prepare_warm(&mut editor, 16.0, 60.0, false));
+        assert!(editor.scroll_x > at);
+        assert_idle(&mut editor, 60.0, false);
+    }
+
+    #[test]
+    fn an_affinity_change_is_noticed_after_settling() {
+        let mut editor = Editor::new("abc \u{5d0}\u{5d1}\u{5d2} def");
+        editor.apply(TextEdit::Move {
+            direction: TextMove::Start,
+            select: false,
+            word: false,
+        });
+        editor.apply(TextEdit::Select {
+            anchor: 4,
+            cursor: 4,
+        });
+        prepare_warm(&mut editor, 16.0, 40.0, false);
+        prepare_warm(&mut editor, 16.0, 40.0, false);
+        assert!(editor.settled.is_some());
+        let mut cold = Editor::new(&editor.text);
+        cold.selection = editor.selection;
+        cold.scroll_x = editor.scroll_x;
+        cold.affinity = Affinity::Upstream;
+        editor.affinity = Affinity::Upstream;
+        let moved = prepare_warm(&mut editor, 16.0, 40.0, false);
+        assert_eq!(moved, prepare_cold(&mut cold, 16.0, 40.0, false));
+        assert_eq!(editor.scroll_x.to_bits(), cold.scroll_x.to_bits());
+        assert_idle(&mut editor, 40.0, false);
+    }
+
+    #[test]
+    fn the_direction_is_noticed_after_settling() {
+        let mut editor = Editor::new("short");
+        assert!(prepare_warm(&mut editor, 16.0, 300.0, false));
+        assert!(!prepare_warm(&mut editor, 16.0, 300.0, false));
+        assert!(editor.settled.is_some());
+        assert_eq!(editor.align_x, 0.0);
+        assert!(prepare_warm(&mut editor, 16.0, 300.0, true));
+        assert!(editor.align_x > 0.0);
+        assert_idle(&mut editor, 300.0, true);
+        assert!(prepare_warm(&mut editor, 16.0, 300.0, false));
+        assert_eq!(editor.align_x, 0.0);
+    }
+
+    #[test]
+    fn a_preedit_equal_to_the_selection_still_moves_the_caret() {
+        let tail = LONG.len() - 30..LONG.len();
+        let mut warm = settled_editor();
+        let mut cold = settled_editor();
+        for editor in [&mut warm, &mut cold] {
+            editor.apply(TextEdit::Select {
+                anchor: tail.start,
+                cursor: tail.end,
+            });
+            prepare_cold(editor, 16.0, 100.0, false);
+        }
+        prepare_warm(&mut warm, 16.0, 100.0, false);
+        assert!(warm.settled.is_some());
+        let at = warm.scroll_x;
+        for editor in [&mut warm, &mut cold] {
+            editor.apply(TextEdit::Preedit {
+                text: LONG[tail.clone()].into(),
+                selection: Some((0, 0)),
+            });
+        }
+        let moved = prepare_warm(&mut warm, 16.0, 100.0, false);
+        assert_eq!(moved, prepare_cold(&mut cold, 16.0, 100.0, false));
+        assert!(warm.scroll_x < at);
+        assert_eq!(warm.scroll_x.to_bits(), cold.scroll_x.to_bits());
+        assert!(warm.settled.is_none());
+    }
+
+    #[test]
+    fn a_masked_editor_never_settles() {
+        let mut editor = Editor::new("");
+        editor.masked = true;
+        for _ in 0..3 {
+            prepare_warm(&mut editor, 16.0, 100.0, false);
+            assert!(editor.settled.is_none());
+        }
+        editor.masked = false;
+        prepare_warm(&mut editor, 16.0, 100.0, false);
+        prepare_warm(&mut editor, 16.0, 100.0, false);
+        assert!(editor.settled.is_some());
+        editor.masked = true;
+        editor.apply(TextEdit::Insert("secret words".into()));
+        prepare_warm(&mut editor, 16.0, 40.0, false);
+        assert!(editor.settled.is_none());
+    }
+
+    #[test]
+    fn a_wrapped_editor_does_not_settle() {
+        let mut editor = Editor::block("some words to wrap");
+        let wrapped = TextStyle {
+            wrap: TextWrap::Word,
+            ..TextStyle::default()
+        };
+        for _ in 0..3 {
+            editor.prepare(&mut MonospaceMeasurer, wrapped.clone(), 60.0, false);
+            assert!(editor.settled.is_none());
+        }
+    }
+
+    /// Whatever is done to an editor, preparing it with a memory of the
+    /// last call gives what preparing it afresh each time gives.
+    #[test]
+    fn remembering_the_last_call_never_changes_what_prepare_does() {
+        let mut state = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = move |bound: u64| {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (state >> 33) % bound
+        };
+        let words = [
+            "a",
+            "abc",
+            "\u{5d0}\u{5d1}",
+            "long words here",
+            "e\u{301}",
+            "",
+        ];
+        for _ in 0..40 {
+            let mut warm = Editor::new("start of the text");
+            let mut cold = Editor::new("start of the text");
+            let (mut size, mut width, mut rtl) = (16.0_f32, 90.0_f32, false);
+            for _ in 0..120 {
+                let word = words[next(words.len() as u64) as usize];
+                let edit = match next(14) {
+                    0 => Some(TextEdit::Insert(word.into())),
+                    1 => Some(TextEdit::Backspace { word: false }),
+                    2..=5 => Some(TextEdit::Move {
+                        direction: [
+                            TextMove::Left,
+                            TextMove::Right,
+                            TextMove::Start,
+                            TextMove::End,
+                        ][next(4) as usize],
+                        select: next(2) == 0,
+                        word: false,
+                    }),
+                    6 => Some(TextEdit::SelectAll),
+                    7 => Some(TextEdit::Undo),
+                    8 => Some(TextEdit::Redo),
+                    9 => {
+                        let text = if next(2) == 0 {
+                            warm.text[warm.selection.range()].to_owned()
+                        } else {
+                            word.to_owned()
+                        };
+                        let selection =
+                            [None, Some((0, 0)), Some((text.len(), text.len()))][next(3) as usize];
+                        Some(TextEdit::Preedit { text, selection })
+                    }
+                    10 => Some(TextEdit::CancelComposition),
+                    _ => None,
+                };
+                if let Some(edit) = edit {
+                    warm.apply(edit.clone());
+                    cold.apply(edit);
+                }
+                match next(10) {
+                    0 => {
+                        let to = next(60) as f32 * 2.0;
+                        warm.scroll_x = to;
+                        cold.scroll_x = to;
+                    }
+                    1 => {
+                        warm.affinity = Affinity::Upstream;
+                        cold.affinity = Affinity::Upstream;
+                    }
+                    2 => width = [30.0, 90.0, 400.0][next(3) as usize],
+                    3 => rtl = !rtl,
+                    4 => {
+                        warm.masked = !warm.masked;
+                        cold.masked = !cold.masked;
+                    }
+                    5 => size = [12.0, 16.0][next(2) as usize],
+                    _ => {}
+                }
+                for _ in 0..1 + next(3) {
+                    let remembered = prepare_warm(&mut warm, size, width, rtl);
+                    let fresh = prepare_cold(&mut cold, size, width, rtl);
+                    assert_eq!(remembered, fresh);
+                    assert_eq!(warm.scroll_x.to_bits(), cold.scroll_x.to_bits());
+                    assert_eq!(warm.align_x.to_bits(), cold.align_x.to_bits());
+                }
+            }
+        }
     }
 }
