@@ -413,7 +413,15 @@ impl TextSystem {
         font_size: f32,
         width: Option<f32>,
     ) -> Buffer {
-        let mut buffer = Buffer::new(fonts, Metrics::new(font_size, font_size * 1.4));
+        let metrics = Metrics::new(font_size, font_size * 1.4);
+        // Buffer::new shapes and lays out an empty line that set_text then
+        // drops. set_rich_text reuses that line instead, so a rich block
+        // starts from it.
+        let mut buffer = if spans.is_empty() {
+            Buffer::new_empty(metrics)
+        } else {
+            Buffer::new(fonts, metrics)
+        };
         buffer.set_wrap(
             fonts,
             if style.wrap == TextWrap::None {
@@ -1109,6 +1117,190 @@ mod tests {
         assert_eq!(system.ensure_styled("hello", &style, None), key);
         assert_eq!(system.buffers[&key].metrics().line_height, 80.0);
         assert_eq!(system.buffers.len(), 1);
+    }
+
+    fn fira() -> TextSystem {
+        TextSystem::with_fonts([include_bytes!(
+            "../../glassmere-render-wgpu/fonts/FiraMono-Regular.ttf"
+        )
+        .to_vec()])
+    }
+
+    /// A block shaped from a buffer that starts with an empty shaped line,
+    /// the plain way: wrap, size, text, alignment, then layout.
+    fn reference(
+        fonts: &mut FontSystem,
+        text: &str,
+        style: &TextStyle,
+        font_size: f32,
+        width: Option<f32>,
+    ) -> Buffer {
+        let mut buffer = Buffer::new(fonts, Metrics::new(font_size, font_size * 1.4));
+        buffer.set_wrap(
+            fonts,
+            if style.wrap == TextWrap::None {
+                Wrap::None
+            } else {
+                Wrap::WordOrGlyph
+            },
+        );
+        buffer.set_size(fonts, width, None);
+        let base = attrs(&style.family, style.weight, style.italic);
+        buffer.set_text(fonts, text, &base, Shaping::Advanced, None);
+        if style.rtl && width.is_some() {
+            for line in &mut buffer.lines {
+                line.set_align(Some(cosmic_text::Align::Right));
+            }
+        }
+        buffer.shape_until_scroll(fonts, false);
+        buffer
+    }
+
+    fn same(left: &Buffer, right: &Buffer) {
+        assert_eq!(format!("{:?}", left.lines), format!("{:?}", right.lines));
+        assert_eq!(left.metrics(), right.metrics());
+        assert_eq!(left.size(), right.size());
+        assert_eq!(left.wrap(), right.wrap());
+        assert_eq!(left.scroll(), right.scroll());
+        assert_eq!(left.redraw(), right.redraw());
+    }
+
+    #[test]
+    fn a_plain_block_equals_one_built_from_a_shaped_empty_line() {
+        let texts = [
+            "",
+            "a",
+            "a\nb",
+            "a\n",
+            "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda",
+            MIXED,
+        ];
+        for text in texts {
+            for wrap in [TextWrap::None, TextWrap::Word] {
+                for width in [None, Some(80.0)] {
+                    for rtl in [false, true] {
+                        let style = TextStyle {
+                            wrap,
+                            rtl,
+                            ..TextStyle::default()
+                        };
+                        let mut system = fira();
+                        let key = system.ensure_styled(text, &style, width);
+                        let (_, font_size, width) = TextSystem::key(text, &[], &style, width);
+                        let mut fonts = fira().fonts;
+                        let expected = reference(&mut fonts, text, &style, font_size, width);
+                        same(&system.buffers[&key], &expected);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_rich_block_is_built_as_before() {
+        let wrapped = TextStyle {
+            wrap: TextWrap::Word,
+            ..TextStyle::default()
+        };
+        let base = attrs(&wrapped.family, wrapped.weight, wrapped.italic);
+        let red = base.clone().color(cosmic_text::Color::rgba(255, 0, 0, 255));
+        let bold = base.clone().weight(cosmic_text::Weight(700));
+        let left = mark(false);
+        let cases = [
+            (
+                vec![TextSpan::new("alpha beta").weight(700)],
+                wrapped.clone(),
+                vec![("alpha beta", bold.clone())],
+            ),
+            (
+                vec![
+                    TextSpan::new("alpha ").color(glassmere_scene::Color(255, 0, 0, 255)),
+                    TextSpan::new("beta gamma").weight(700),
+                ],
+                wrapped.clone(),
+                vec![("alpha ", red), ("beta gamma", bold.clone())],
+            ),
+            (
+                vec![TextSpan::new("")],
+                wrapped.clone(),
+                vec![("", base.clone())],
+            ),
+            (
+                vec![TextSpan::new("alpha").weight(700)],
+                TextStyle {
+                    base: Some(false),
+                    ..wrapped.clone()
+                },
+                vec![(left, base.clone()), ("alpha", bold)],
+            ),
+        ];
+        for (spans, style, runs) in cases {
+            let mut system = fira();
+            let key = system.ensure_rich(&spans, &style, Some(80.0));
+            let mut fonts = fira().fonts;
+            let mut expected = Buffer::new(&mut fonts, Metrics::new(16.0, 16.0 * 1.4));
+            expected.set_wrap(&mut fonts, Wrap::WordOrGlyph);
+            expected.set_size(&mut fonts, Some(80.0), None);
+            let unused = base
+                .clone()
+                .weight(cosmic_text::Weight(style.weight.clamp(100, 900) ^ 1));
+            expected.set_rich_text(&mut fonts, runs, &unused, Shaping::Advanced, None);
+            expected.shape_until_scroll(&mut fonts, false);
+            same(&system.buffers[&key], &expected);
+        }
+    }
+
+    #[test]
+    fn the_first_block_shaped_matches_the_same_block_shaped_later() {
+        let style = TextStyle::default();
+        let bold = TextStyle {
+            weight: 700,
+            family: FontFamily::Monospace,
+            ..TextStyle::default()
+        };
+        let mut first = fira();
+        let key = first.ensure_styled("Hello", &style, None);
+        let mut later = fira();
+        for text in ["other", "\u{5d0}\u{5d1}", "x y z"] {
+            later.ensure_styled(text, &bold, None);
+            later.ensure_styled(text, &style, Some(40.0));
+        }
+        assert_eq!(later.ensure_styled("Hello", &style, None), key);
+        same(&first.buffers[&key], &later.buffers[&key]);
+    }
+
+    #[test]
+    fn empty_and_newline_terminated_text_keep_their_lines() {
+        let mut system = fira();
+        let style = TextStyle::default();
+        assert_eq!(system.measure_styled("", &style, None).height, 16.0 * 1.4);
+        assert_eq!(system.geometry("a\n", &style, None).lines.len(), 2);
+        let wrapped = TextStyle {
+            wrap: TextWrap::Word,
+            ..TextStyle::default()
+        };
+        let text = "alpha beta gamma delta epsilon";
+        let one = system.measure_styled("alpha", &wrapped, Some(60.0)).height;
+        assert!(system.measure_styled(text, &wrapped, Some(60.0)).height > one);
+    }
+
+    #[test]
+    fn forced_and_rtl_blocks_are_laid_out() {
+        let mut system = fira();
+        let rtl = TextStyle {
+            wrap: TextWrap::Word,
+            rtl: true,
+            ..TextStyle::default()
+        };
+        for (style, width) in [
+            (rtl, Some(100.0)),
+            (forced(true), None),
+            (forced(false), None),
+        ] {
+            let key = system.ensure_styled(MIXED, &style, width);
+            assert!(system.buffers[&key].layout_runs().next().is_some());
+            assert!(!system.geometry(MIXED, &style, width).lines.is_empty());
+        }
     }
 
     #[test]
