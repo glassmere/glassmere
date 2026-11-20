@@ -99,27 +99,29 @@ const TITLE_DOUBLE_PRESS: Duration = Duration::from_millis(400);
 const TITLE_DOUBLE_PRESS_NEAR: f32 = 24.0;
 
 struct PaintChunk {
-    before: Vec<Primitive>,
+    /// What the node draws itself: the first `split` of them go before its
+    /// children and the rest after.
+    primitives: Vec<Primitive>,
+    split: usize,
     children: Vec<Rc<PaintChunk>>,
-    after: Vec<Primitive>,
     /// Primitives in this chunk and everything under it.
     total: usize,
     /// The assembly that last put this chunk into the scene and the index it
     /// put it at, or `(0, 0)` before any has. A chunk never changes, so
     /// until something else is written over that range, the range holds it.
-    /// Anything that rewrote the `before`, `children` or `after` of a chunk
-    /// would have to set this back to `(0, 0)`.
+    /// Anything that rewrote the `primitives`, `split` or `children` of a
+    /// chunk would have to set this back to `(0, 0)`.
     placed: core::cell::Cell<(u64, usize)>,
 }
 
 impl PaintChunk {
-    fn new(before: Vec<Primitive>, children: Vec<Rc<PaintChunk>>, after: Vec<Primitive>) -> Self {
-        let total =
-            before.len() + after.len() + children.iter().map(|child| child.total).sum::<usize>();
+    fn new(primitives: Vec<Primitive>, split: usize, children: Vec<Rc<PaintChunk>>) -> Self {
+        debug_assert!(split <= primitives.len());
+        let total = primitives.len() + children.iter().map(|child| child.total).sum::<usize>();
         Self {
-            before,
+            primitives,
+            split,
             children,
-            after,
             total,
             placed: core::cell::Cell::new((0, 0)),
         }
@@ -131,11 +133,12 @@ impl PaintChunk {
     }
 
     fn append_to(&self, output: &mut Vec<Primitive>) {
-        output.extend_from_slice(&self.before);
+        let (before, after) = self.primitives.split_at(self.split);
+        output.extend_from_slice(before);
         for child in &self.children {
             child.append_to(output);
         }
-        output.extend_from_slice(&self.after);
+        output.extend_from_slice(after);
     }
 
     /// Writes what `append_to` would append into `output` from the index
@@ -157,11 +160,12 @@ impl PaintChunk {
             *at = end;
             return;
         }
-        place_slice(&self.before, output, at);
+        let (before, after) = self.primitives.split_at(self.split);
+        place_slice(before, output, at);
         for child in &self.children {
             child.place(output, at, assembly);
         }
-        place_slice(&self.after, output, at);
+        place_slice(after, output, at);
         debug_assert_eq!(*at, end);
     }
 
@@ -169,11 +173,12 @@ impl PaintChunk {
     /// `from` on, and returns the index after it.
     #[cfg(debug_assertions)]
     fn assert_placed(&self, scene: &[Primitive], from: usize) -> usize {
-        let mut at = assert_primitives(scene, &self.before, from);
+        let (before, after) = self.primitives.split_at(self.split);
+        let mut at = assert_primitives(scene, before, from);
         for child in &self.children {
             at = child.assert_placed(scene, at);
         }
-        assert_primitives(scene, &self.after, at)
+        assert_primitives(scene, after, at)
     }
 }
 
@@ -1593,7 +1598,10 @@ mod tests {
         children: Vec<Rc<PaintChunk>>,
         after: Vec<Primitive>,
     ) -> Rc<PaintChunk> {
-        Rc::new(PaintChunk::new(before, children, after))
+        let split = before.len();
+        let mut primitives = before;
+        primitives.extend(after);
+        Rc::new(PaintChunk::new(primitives, split, children))
     }
 
     /// The scene `chunks` flatten to.
@@ -1909,7 +1917,8 @@ mod tests {
                 children.insert(at, gained);
             }
             let (before, after) = if self.dice.below(2) == 0 {
-                (old.before.clone(), old.after.clone())
+                let (before, after) = old.primitives.split_at(old.split);
+                (before.to_vec(), after.to_vec())
             } else {
                 (self.primitives(), self.primitives())
             };
@@ -1981,6 +1990,125 @@ mod tests {
                     buffer.push(quad(-1.0 - tail as f32));
                 }
             }
+        }
+    }
+
+    #[test]
+    fn the_chunks_of_a_painted_tree_count_what_they_flatten_to() {
+        let mut context = Context::new();
+        let view = Style::default()
+            .width(Length::Px(100.0))
+            .height(Length::Px(30.0));
+        context.run(
+            Size::new(300.0, 200.0),
+            &mut crate::MonospaceMeasurer,
+            |ui| {
+                ui.keyed("view", |ui| {
+                    ui.scroll(view, |ui| {
+                        for row in 0..3 {
+                            ui.keyed(format!("row{row}"), |ui| ui.label("row"));
+                        }
+                    })
+                });
+            },
+        );
+        let root = context.nodes[&context.root].paint_cache.clone().unwrap();
+        // Nothing is drawn over the tree, so the scene is the root's chunk.
+        assert_eq!(root.count(), context.scene.primitives.len());
+        counted(&root);
+
+        // A row draws a clip, its text and the pop, which is 3. The view draws
+        // its clip, the rows, the thumb of its scroll bar and the pop: 12. The
+        // root has a clip and a pop around the view: 14.
+        let report = context.memory();
+        assert_eq!((report.nodes, report.cached_nodes), (5, 5));
+        assert_eq!(report.cached_primitives, 14 + 12 + 3 * 3);
+        let mut flattened = 0;
+        for node in context.nodes.values() {
+            let mut flat = Vec::new();
+            node.paint_cache.as_ref().unwrap().append_to(&mut flat);
+            flattened += flat.len();
+        }
+        assert_eq!(report.cached_primitives, flattened);
+    }
+
+    /// A leaf of the application's own that draws `count` quads. The clip
+    /// around them and its pop make its chunk `count + 2` primitives.
+    fn quads(count: usize) -> CustomWidget {
+        CustomWidget {
+            size: Size::new(40.0, 20.0),
+            primitives: (0..count).map(|at| quad(at as f32)).collect(),
+            ..CustomWidget::default()
+        }
+    }
+
+    /// The chunk that the node at `path` was painted into.
+    fn painted(context: &Context, path: &[&str]) -> Rc<PaintChunk> {
+        let id = context.find(path).unwrap();
+        context.nodes[&id].paint_cache.clone().unwrap()
+    }
+
+    #[test]
+    fn a_node_that_draws_eight_primitives_or_fewer_holds_them_in_a_vector_of_eight() {
+        let mut context = Context::new();
+        context.run(
+            Size::new(300.0, 200.0),
+            &mut crate::MonospaceMeasurer,
+            |ui| {
+                ui.keyed("button", |ui| ui.button("Button"));
+                for count in [0, 2, 4, 5, 6] {
+                    ui.keyed(format!("quads{count}"), |ui| {
+                        ui.custom(Style::default(), quads(count), ())
+                    });
+                }
+                // A layer and its pop are two primitives more: four quads draw
+                // eight.
+                ui.keyed("layered", |ui| {
+                    ui.custom(Style::default().opacity(0.5), quads(4), ())
+                });
+            },
+        );
+        for (path, drawn) in [
+            ("button", 4),
+            ("quads0", 2),
+            ("quads2", 4),
+            ("quads4", 6),
+            ("quads5", 7),
+            ("quads6", 8),
+            ("layered", 8),
+        ] {
+            let chunk = painted(&context, &[path]);
+            assert_eq!(chunk.primitives.len(), drawn, "{path}");
+            // Room for eight whatever the node draws: the vector did not start
+            // with less, grow to what it holds or shrink to it afterwards.
+            assert_eq!(chunk.primitives.capacity(), 8, "{path}");
+        }
+    }
+
+    #[test]
+    fn a_widget_that_draws_many_primitives_has_room_for_its_pops_and_not_for_as_many_again() {
+        let mut context = Context::new();
+        context.run(
+            Size::new(300.0, 200.0),
+            &mut crate::MonospaceMeasurer,
+            |ui| {
+                ui.keyed("plain", |ui| ui.custom(Style::default(), quads(100), ()));
+                ui.keyed("layered", |ui| {
+                    ui.custom(Style::default().opacity(0.5), quads(100), ())
+                });
+            },
+        );
+        for (path, drawn) in [("plain", 102), ("layered", 104)] {
+            let chunk = painted(&context, &[path]);
+            assert_eq!(chunk.primitives.len(), drawn, "{path}");
+            // Extending a vector makes it just big enough for what is added,
+            // and a pop pushed after that would move all of it to one twice as
+            // big.
+            let room = chunk.primitives.capacity();
+            assert!(
+                room < drawn + drawn / 2,
+                "{path} draws {drawn} primitives and has room for {room}"
+            );
         }
     }
 

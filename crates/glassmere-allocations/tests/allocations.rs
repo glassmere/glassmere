@@ -3,9 +3,9 @@
 #![allow(unsafe_code)]
 use glassmere_core::{
     Action, App, AppDriver, Button, Context, Effects, Event, FrameStats, MonospaceMeasurer, NodeId,
-    TextEdit, Ui,
+    Shadow, Style, TextEdit, Ui,
 };
-use glassmere_scene::{Point, Size};
+use glassmere_scene::{Color, Point, Size};
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
@@ -131,6 +131,25 @@ impl App for Ticks {
                 ui.checkbox("Tick", index % 2 == 0, |_| Msg::Increase);
             });
         }
+    }
+}
+
+/// A plain button, keyed "0", and a button with a shadow, keyed "1".
+struct Raised;
+
+impl App for Raised {
+    type Message = Msg;
+
+    fn update(&mut self, _: Msg, _: &mut Effects<'_, Msg>) {}
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        ui.keyed("0", |ui| {
+            ui.button("Plain");
+        });
+        ui.keyed("1", |ui| {
+            let shadow = Shadow::lift(Color(0, 0, 0, 90), 6.0, 2.0);
+            ui.button(Button::new("Raised").style(Style::button().shadow(shadow)));
+        });
     }
 }
 
@@ -265,6 +284,25 @@ fn hover_cost<A: App>(app: A) -> usize {
     })
 }
 
+/// What it costs to paint the button of `Raised` keyed `key` again, when the
+/// pointer comes onto it. With `focus` it has the keyboard focus first, and so
+/// a ring around it.
+fn repaint_of(key: &str, focus: bool) -> usize {
+    let mut running = Running::new(Raised);
+    let button = running.context.find(&[key]).unwrap();
+    if focus {
+        running.context.action(button, Action::Focus);
+        running.frame();
+    }
+    let bounds = running.context.node(button).unwrap().bounds;
+    running.allocated_by(|running| {
+        running.context.event(Event::PointerMoved(Point {
+            x: bounds.x + bounds.width / 2.0,
+            y: bounds.y + bounds.height / 2.0,
+        }));
+    })
+}
+
 #[test]
 fn a_batch_without_input_allocates_nothing_and_does_not_declare() {
     let mut running = Running::new(Counter::new(20, true));
@@ -377,5 +415,19 @@ fn a_repaint_leaves_the_check_boxes_alone_and_allocates_the_same_at_20_and_200_o
     assert!(
         large <= small + 8,
         "moving the pointer allocated {small} times with 20 check boxes and {large} with 200"
+    );
+}
+
+// A node's primitives are held in one vector with room for eight. A plain
+// button draws four: a clip, its fill, its text and the pop. One with a shadow
+// and the focus draws six: the shadow too, and two quads for its ring and fill.
+// None of those allocates, so painting either button again costs the same as
+// long as the vector holds what is drawn.
+#[test]
+fn a_repaint_allocates_the_same_for_a_node_of_four_primitives_and_one_of_six() {
+    let (plain, raised) = (repaint_of("0", false), repaint_of("1", true));
+    assert_eq!(
+        raised, plain,
+        "painting a button of six primitives allocated {raised} times, one of four {plain}"
     );
 }

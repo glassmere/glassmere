@@ -13,6 +13,11 @@ const DAMAGE_REGIONS: usize = 8;
 const DAMAGE_GAP: f32 = 8.0;
 /// How far a submenu's panel laps the row it opens beside.
 const LAP: f32 = 2.0;
+/// How many primitives the chunk of a node has room for from the start. Most
+/// nodes draw fewer, the pops that close them included. A vector that starts
+/// empty has room for four, and its fifth primitive moves it to a new
+/// allocation.
+const CHUNK_PRIMITIVES: usize = 8;
 
 /// The row a submenu's panel opens beside, and the menu that row is in.
 #[derive(Clone, Copy)]
@@ -503,7 +508,7 @@ impl Context {
             .map(|_| node.clip)
             .filter(|clip| *clip != node.bounds);
         if strip_clip.is_some_and(|clip| clip.width <= 0.0 || clip.height <= 0.0) {
-            let chunk = Rc::new(PaintChunk::new(Vec::new(), Vec::new(), Vec::new()));
+            let chunk = Rc::new(PaintChunk::new(Vec::new(), 0, Vec::new()));
             self.nodes.get_mut(&id).unwrap().paint_cache = Some(chunk.clone());
             return chunk;
         }
@@ -522,7 +527,10 @@ impl Context {
             self.diagnose_layer(id, bounds);
         }
         let node = &self.nodes[&id];
-        let mut scene = Scene::default();
+        let mut scene = Scene {
+            primitives: Vec::with_capacity(CHUNK_PRIMITIVES),
+            ..Scene::default()
+        };
         if let Some(clip) = strip_clip {
             scene.primitives.push(Primitive::PushClip(clip));
         }
@@ -573,6 +581,13 @@ impl Context {
                 x: node.bounds.x,
                 y: node.bounds.y,
             };
+            // Room for the pops that close the node, which are pushed after
+            // these. Extending alone makes the vector just big enough for
+            // these, and the first pop would move all of them to one twice as
+            // big.
+            let pops = 1 + usize::from(layer.is_some());
+            let room = widget.primitives.len() + pops;
+            scene.primitives.reserve_exact(room);
             scene.primitives.extend(
                 widget
                     .primitives
@@ -588,7 +603,10 @@ impl Context {
             .copied()
             .filter(|child| !matches!(self.nodes[child].kind, Kind::Popup | Kind::Popover))
             .collect::<Vec<_>>();
-        let before = core::mem::take(&mut scene.primitives);
+        // Everything from here on is drawn after the children. It is only
+        // ever pushed, never read, moved or removed, so the length now is
+        // where it starts.
+        let split = scene.primitives.len();
         self.paint_scrollbars(id, &mut scene);
         self.paint_strip_edges(id, &mut scene);
         self.paint_calendar_today(id, &mut scene);
@@ -600,12 +618,11 @@ impl Context {
         if strip_clip.is_some() {
             scene.primitives.push(Primitive::PopClip);
         }
-        let after = scene.primitives;
         let children = children
             .into_iter()
             .map(|child| self.paint(child))
             .collect();
-        let chunk = Rc::new(PaintChunk::new(before, children, after));
+        let chunk = Rc::new(PaintChunk::new(scene.primitives, split, children));
         self.nodes.get_mut(&id).unwrap().paint_cache = Some(chunk.clone());
         chunk
     }
