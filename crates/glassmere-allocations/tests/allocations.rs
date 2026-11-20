@@ -2,12 +2,13 @@
 //! own, so the tests of this binary do not count each other.
 #![allow(unsafe_code)]
 use glassmere_core::{
-    Action, App, AppDriver, Button, Context, Effects, Event, FrameStats, MonospaceMeasurer, NodeId,
-    Shadow, Style, TextEdit, Ui,
+    Action, App, AppDriver, Button, Context, Effects, Event, FrameStats, Label, Length,
+    MonospaceMeasurer, NodeId, Shadow, Style, TextEdit, Transition, Ui,
 };
 use glassmere_scene::{Color, Point, Size};
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
+use std::time::Duration;
 
 struct Counting;
 
@@ -149,6 +150,40 @@ impl App for Raised {
         ui.keyed("1", |ui| {
             let shadow = Shadow::lift(Color(0, 0, 0, 90), 6.0, 2.0);
             ui.button(Button::new("Raised").style(Style::button().shadow(shadow)));
+        });
+    }
+}
+
+/// `cells` labels in a row that ease to a colour, which `lit` chooses. While
+/// they do, every one of them is painted again in every frame.
+struct Wall {
+    cells: usize,
+    lit: bool,
+}
+
+impl App for Wall {
+    type Message = Msg;
+
+    fn update(&mut self, _: Msg, _: &mut Effects<'_, Msg>) {}
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        ui.row(Style::default(), |ui| {
+            for index in 0..self.cells {
+                ui.keyed(index.to_string(), |ui| {
+                    ui.label(
+                        Label::new("*").style(
+                            Style::default()
+                                .width(Length::Px(20.0))
+                                .background(if self.lit {
+                                    Color::rgb(220, 40, 60)
+                                } else {
+                                    Color::rgb(40, 60, 220)
+                                })
+                                .transition(Transition::new(300)),
+                        ),
+                    );
+                });
+            }
         });
     }
 }
@@ -303,6 +338,24 @@ fn repaint_of(key: &str, focus: bool) -> usize {
     })
 }
 
+/// What a frame allocates in which each of `cells` cells is painted again, in
+/// the middle of the time they take to ease to the colour that the view gave
+/// them. The frames before it are the ones that make the room that this one
+/// goes on using.
+fn easing_cost(cells: usize) -> usize {
+    let mut running = Running::new(Wall { cells, lit: false });
+    let at = |frame: u64| Duration::from_millis(frame * 16);
+    running.app.lit = true;
+    running.driver.invalidate();
+    running.context.set_now(at(1));
+    running.frame();
+    for frame in 2..5 {
+        running.context.set_now(at(frame));
+        running.frame();
+    }
+    running.allocated_by(|running| running.context.set_now(at(5)))
+}
+
 #[test]
 fn a_batch_without_input_allocates_nothing_and_does_not_declare() {
     let mut running = Running::new(Counter::new(20, true));
@@ -429,5 +482,19 @@ fn a_repaint_allocates_the_same_for_a_node_of_four_primitives_and_one_of_six() {
     assert_eq!(
         raised, plain,
         "painting a button of six primitives allocated {raised} times, one of four {plain}"
+    );
+}
+
+// A node painted again is written into the chunk it had: the chunk, the vector
+// of its primitives and the buffer of its text are used again. Without that,
+// every cell would allocate three times in every frame it eases in, 540 more
+// for 200 cells than for 20. What is left is the lists the cells are in, which
+// grow by doubling.
+#[test]
+fn a_frame_that_paints_every_cell_again_allocates_the_same_at_20_and_200_cells() {
+    let (small, large) = (easing_cost(20), easing_cost(200));
+    assert!(
+        large <= small + 8,
+        "painting 20 cells again allocated {small} times and 200 cells {large}"
     );
 }

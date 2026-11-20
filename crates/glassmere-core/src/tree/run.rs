@@ -383,6 +383,9 @@ impl Context {
         for panel in self.popup_panels() {
             above.push(self.paint(panel));
         }
+        // The chunks that nothing was written over, a removed node's among
+        // them, are let go.
+        self.spare_chunks.clear();
         let mut over = Scene {
             size,
             primitives: Vec::new(),

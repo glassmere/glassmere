@@ -107,10 +107,11 @@ struct PaintChunk {
     /// Primitives in this chunk and everything under it.
     total: usize,
     /// The assembly that last put this chunk into the scene and the index it
-    /// put it at, or `(0, 0)` before any has. A chunk never changes, so
-    /// until something else is written over that range, the range holds it.
-    /// Anything that rewrote the `primitives`, `split` or `children` of a
-    /// chunk would have to set this back to `(0, 0)`.
+    /// put it at, or `(0, 0)` before any has. A chunk is only ever replaced,
+    /// whole, by a value that starts at `(0, 0)`, so until something else is
+    /// written over that range, the range holds it. Anything that rewrote the
+    /// `primitives`, `split` or `children` of a chunk would have to set this
+    /// back to `(0, 0)`.
     placed: core::cell::Cell<(u64, usize)>,
 }
 
@@ -124,6 +125,44 @@ impl PaintChunk {
             children,
             total,
             placed: core::cell::Cell::new((0, 0)),
+        }
+    }
+
+    /// Takes what a chunk that is to be written over has room for: its
+    /// primitives, emptied, and the buffer of the first text among them. It
+    /// lets go of its children first, and of the list they are in, so that the
+    /// chunk of a child, which is painted after this one, is held by no other
+    /// chunk and can be written over too. What is left of the chunk is not fit
+    /// to be read: `put_in` writes it over.
+    fn take_room(&mut self) -> (Vec<Primitive>, Option<String>) {
+        self.children = Vec::new();
+        let text = self
+            .primitives
+            .iter_mut()
+            .find_map(|primitive| match primitive {
+                Primitive::Text { text, .. } | Primitive::StyledText { text, .. } => {
+                    Some(core::mem::take(text))
+                }
+                _ => None,
+            });
+        self.primitives.clear();
+        (core::mem::take(&mut self.primitives), text)
+    }
+
+    /// This chunk in the allocation `spare` is, written over, when nothing
+    /// else holds that, and in a new one when something does. What is written
+    /// is the whole chunk, so that nothing of the one it replaces is left in
+    /// it: not its total, and not where it was placed.
+    fn put_in(self, spare: Option<Rc<Self>>) -> Rc<Self> {
+        match spare {
+            Some(mut spare) => match Rc::get_mut(&mut spare) {
+                Some(slot) => {
+                    *slot = self;
+                    spare
+                }
+                None => Rc::new(self),
+            },
+            None => Rc::new(self),
         }
     }
 
@@ -625,6 +664,11 @@ pub struct Context {
     /// remember. It starts at 1 and is raised before each assembly, so the
     /// first is 2 and none is 0, the number of a chunk not yet in a scene.
     assembly: u64,
+    /// The chunks that nodes had when their paint was invalidated, by node,
+    /// until they are painted again: the new chunk is written over the old one
+    /// when nothing else holds it. A node is cached by its `paint_cache` alone;
+    /// what is here is not, and is never looked at to tell.
+    spare_chunks: crate::collections::FastMap<NodeId, Rc<PaintChunk>>,
     stats: FrameStats,
     geometry_dirty: bool,
     /// How many popovers the tree holds.
@@ -886,6 +930,7 @@ impl Default for Context {
             pending: Dirty::all(),
             scene: Scene::default(),
             assembly: 1,
+            spare_chunks: Default::default(),
             stats: FrameStats::default(),
             geometry_dirty: false,
             popover_count: 0,
@@ -2227,5 +2272,202 @@ mod tests {
         assemble(&mut scene, core::slice::from_ref(&tree), 2);
         scene.pop();
         tree.assert_placed(&scene, 0);
+    }
+
+    #[test]
+    fn a_chunk_nothing_else_holds_is_written_over_whole() {
+        let inner = chunk(vec![quad(1.0)], vec![], vec![]);
+        let spare = chunk(
+            vec![quad(0.0), text(2.0, "text")],
+            vec![inner],
+            vec![quad(3.0)],
+        );
+        let mut scene = Vec::new();
+        assemble(&mut scene, core::slice::from_ref(&spare), 2);
+        assert_eq!(spare.placed.get(), (2, 0));
+        assert_eq!(spare.total, 4);
+        let at = Rc::as_ptr(&spare);
+
+        let written = PaintChunk::new(vec![quad(5.0)], 1, vec![]).put_in(Some(spare));
+        // The same allocation holds a chunk that has nothing of the old one:
+        // not its primitives, its children, its total or where it was placed.
+        assert_eq!(Rc::as_ptr(&written), at);
+        assert_eq!(written.primitives, [quad(5.0)]);
+        assert_eq!((written.split, written.total), (1, 1));
+        assert!(written.children.is_empty());
+        assert_eq!(written.placed.get(), (0, 0));
+    }
+
+    #[test]
+    fn a_chunk_that_something_else_holds_is_left_as_it_is() {
+        let spare = chunk(vec![quad(0.0)], vec![], vec![quad(3.0)]);
+        let held = spare.clone();
+        let mut scene = Vec::new();
+        assemble(&mut scene, core::slice::from_ref(&spare), 2);
+        let at = Rc::as_ptr(&spare);
+
+        let written = PaintChunk::new(vec![quad(5.0)], 1, vec![]).put_in(Some(spare));
+        assert_ne!(Rc::as_ptr(&written), at);
+        assert_eq!(written.primitives, [quad(5.0)]);
+        assert_eq!(written.placed.get(), (0, 0));
+        assert_eq!(held.primitives, [quad(0.0), quad(3.0)]);
+        assert_eq!((held.split, held.total), (1, 2));
+        assert_eq!(held.placed.get(), (2, 0));
+
+        let alone = PaintChunk::new(vec![quad(6.0)], 0, vec![]).put_in(None);
+        assert_eq!(alone.primitives, [quad(6.0)]);
+    }
+
+    #[test]
+    fn the_room_of_a_chunk_is_taken_and_its_children_are_let_go_of() {
+        let inner = chunk(vec![quad(1.0)], vec![], vec![]);
+        let mut spare = chunk(
+            vec![
+                quad(0.0),
+                text(1.0, "the first text"),
+                styled(2.0, "second"),
+            ],
+            vec![inner.clone()],
+            vec![quad(3.0)],
+        );
+        assert_eq!(Rc::strong_count(&inner), 2);
+        let room = spare.primitives.capacity();
+
+        let (primitives, taken) = Rc::get_mut(&mut spare).unwrap().take_room();
+        assert!(primitives.is_empty());
+        assert_eq!(primitives.capacity(), room);
+        let taken = taken.expect("a text was taken");
+        assert_eq!(taken, "the first text");
+        // Nothing holds the chunk of the child but the one that has it.
+        assert_eq!(Rc::strong_count(&inner), 1);
+        assert!(spare.children.is_empty());
+
+        // A chunk with no text has no buffer to give.
+        let mut bare = chunk(vec![quad(0.0)], vec![], vec![quad(3.0)]);
+        let (_, taken) = Rc::get_mut(&mut bare).unwrap().take_room();
+        assert_eq!(taken, None);
+    }
+
+    fn frame(context: &mut Context, view: impl FnOnce(&mut Ui<'_>)) {
+        context.run(Size::new(300.0, 200.0), &mut crate::MonospaceMeasurer, view);
+    }
+
+    fn ids(context: &Context) -> Vec<u64> {
+        let mut ids: Vec<u64> = context.spare_chunks.keys().map(|id| id.0).collect();
+        ids.sort_unstable();
+        ids
+    }
+
+    #[test]
+    fn a_node_whose_paint_is_invalidated_is_not_cached_while_its_chunk_waits_to_be_written_over() {
+        let view = |ui: &mut Ui<'_>| {
+            ui.keyed("a", |ui| ui.button("A"));
+            ui.keyed("b", |ui| ui.button("B"));
+        };
+        let mut context = Context::new();
+        frame(&mut context, view);
+        assert!(ids(&context).is_empty());
+        let cached = context.memory();
+        let (a, root) = (context.find(&["a"]).unwrap(), context.root);
+
+        context.invalidate_paint(a);
+        // What the node and the root drew waits, and neither is cached.
+        let mut waiting = vec![a.0, root.0];
+        waiting.sort_unstable();
+        assert_eq!(ids(&context), waiting);
+        assert!(context.nodes[&a].paint_cache.is_none());
+        assert!(context.nodes[&root].paint_cache.is_none());
+        let invalidated = context.memory();
+        assert_eq!(invalidated.cached_nodes, cached.cached_nodes - 2);
+        assert!(invalidated.cached_primitives < cached.cached_primitives);
+        // The node is found invalid again, and what waits is not touched.
+        context.invalidate_paint(a);
+        assert_eq!(ids(&context), waiting);
+        assert_eq!(context.memory(), invalidated);
+
+        frame(&mut context, view);
+        assert!(ids(&context).is_empty());
+        assert_eq!(context.memory(), cached);
+    }
+
+    #[test]
+    fn the_chunk_of_a_node_that_is_removed_before_it_is_painted_again_is_not_kept() {
+        let mut context = Context::new();
+        frame(&mut context, |ui| {
+            ui.keyed("a", |ui| ui.button("A"));
+            ui.keyed("b", |ui| ui.button("B"));
+        });
+        let b = context.find(&["b"]).unwrap();
+        context.invalidate_paint(b);
+        assert!(ids(&context).contains(&b.0));
+        frame(&mut context, |ui| {
+            ui.keyed("a", |ui| ui.button("A"));
+        });
+        assert!(context.find(&["b"]).is_none());
+        assert!(ids(&context).is_empty());
+    }
+
+    /// The room a node's chunk has for primitives, and how many it holds.
+    fn primitives_room(context: &Context, path: &[&str]) -> (usize, usize) {
+        let chunk = painted(context, path);
+        (chunk.primitives.capacity(), chunk.primitives.len())
+    }
+
+    #[test]
+    fn a_node_painted_again_has_the_room_its_primitives_had_but_not_much_more_than_it_needs() {
+        let mut context = Context::new();
+        let mut paint = |count| {
+            frame(&mut context, |ui| {
+                ui.keyed("quads", |ui| ui.custom(Style::default(), quads(count), ()));
+            });
+            primitives_room(&context, &["quads"])
+        };
+        // The clip and its pop are two more than the quads.
+        assert_eq!(paint(20), (22, 22));
+        // Fewer primitives go in the room there is.
+        assert_eq!(paint(10), (22, 12));
+        assert_eq!(paint(11), (22, 13));
+        assert_eq!(paint(100), (102, 102));
+        // A node that is down to a few has room for eight, and not for a hundred.
+        let (room, drawn) = paint(2);
+        assert_eq!(drawn, 4);
+        assert!((8..=32).contains(&room), "{room}");
+    }
+
+    /// Whether the label at `key` draws its text as a styled text, and the room
+    /// the buffer of the text has.
+    fn text_room(context: &Context, key: &str) -> (bool, usize) {
+        painted(context, &[key])
+            .primitives
+            .iter()
+            .find_map(|primitive| match primitive {
+                Primitive::Text { text, .. } => Some((false, text.capacity())),
+                Primitive::StyledText { text, .. } => Some((true, text.capacity())),
+                _ => None,
+            })
+            .expect("the label draws its text")
+    }
+
+    #[test]
+    fn a_label_painted_again_has_the_room_its_text_had_but_not_much_more_than_it_needs() {
+        let mut context = Context::new();
+        let mut paint = |text: &str| {
+            frame(&mut context, |ui| {
+                ui.keyed("label", |ui| ui.label(text.to_owned()));
+                // A bold label draws its text as a styled text.
+                ui.keyed("bold", |ui| {
+                    ui.label(crate::Label::new(text).style(Style::default().font_weight(700)))
+                });
+            });
+            [text_room(&context, "label"), text_room(&context, "bold")]
+        };
+        let both = |room| [(false, room), (true, room)];
+        assert_eq!(paint("a text of twenty chars"), both(22));
+        // A shorter one goes in the room there is, and so does one as long.
+        assert_eq!(paint("ten chars!"), both(22));
+        assert_eq!(paint("another twenty chars!!"), both(22));
+        // A longer one needs another, and a short one after it does not keep it.
+        assert_eq!(paint(&"long ".repeat(200)), both(1000));
+        assert_eq!(paint("ab"), both(2));
     }
 }

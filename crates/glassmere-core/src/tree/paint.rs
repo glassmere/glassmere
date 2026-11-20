@@ -388,8 +388,11 @@ impl Context {
         while let Some(id) = next {
             let node = self.nodes.get_mut(&id).unwrap();
             next = node.parent;
-            if node.paint_cache.take().is_none() {
-                break;
+            match node.paint_cache.take() {
+                Some(chunk) => {
+                    self.spare_chunks.insert(id, chunk);
+                }
+                None => break,
             }
         }
         self.pending |= Dirty::PAINT;
@@ -499,6 +502,10 @@ impl Context {
         }
         self.stats.paint_nodes += 1;
         self.nodes.get_mut(&id).unwrap().painted_frame = self.frame;
+        // What the chunk of this node was before its paint was invalidated.
+        // The new chunk is written over it when nothing else holds it, which
+        // saves the allocations of the chunk, its primitives and its text.
+        let mut spare = self.spare_chunks.remove(&id);
         // A child of a tab strip is drawn only where the strip shows tabs,
         // which stops short of a pinned panel menu.
         let node = &self.nodes[&id];
@@ -508,7 +515,7 @@ impl Context {
             .map(|_| node.clip)
             .filter(|clip| *clip != node.bounds);
         if strip_clip.is_some_and(|clip| clip.width <= 0.0 || clip.height <= 0.0) {
-            let chunk = Rc::new(PaintChunk::new(Vec::new(), 0, Vec::new()));
+            let chunk = PaintChunk::new(Vec::new(), 0, Vec::new()).put_in(spare);
             self.nodes.get_mut(&id).unwrap().paint_cache = Some(chunk.clone());
             return chunk;
         }
@@ -527,8 +534,18 @@ impl Context {
             self.diagnose_layer(id, bounds);
         }
         let node = &self.nodes[&id];
+        let (mut primitives, mut text) = match spare.as_mut().and_then(Rc::get_mut) {
+            Some(old) => old.take_room(),
+            None => {
+                // Another chunk holds it too, so it is left as it is.
+                spare = None;
+                (Vec::new(), None)
+            }
+        };
+        // The room the chunk had is kept, and this is the least a node has.
+        primitives.reserve_exact(CHUNK_PRIMITIVES);
         let mut scene = Scene {
-            primitives: Vec::with_capacity(CHUNK_PRIMITIVES),
+            primitives,
             ..Scene::default()
         };
         if let Some(clip) = strip_clip {
@@ -572,7 +589,7 @@ impl Context {
             });
         } else if !node.text.is_empty() {
             self.paint_selection(id, node, &mut scene);
-            self.paint_text(node, foreground, &mut scene);
+            self.paint_text(node, foreground, text.take(), &mut scene);
         }
         self.paint_hint(node, &mut scene);
         paint_shadow(node, radius, true, &mut scene);
@@ -622,7 +639,13 @@ impl Context {
             .into_iter()
             .map(|child| self.paint(child))
             .collect();
-        let chunk = Rc::new(PaintChunk::new(scene.primitives, split, children));
+        // A node that drew a great many primitives once does not keep the
+        // room for them.
+        let room = scene.primitives.len().max(CHUNK_PRIMITIVES);
+        if scene.primitives.capacity() > room.saturating_mul(4) {
+            scene.primitives.shrink_to(room);
+        }
+        let chunk = PaintChunk::new(scene.primitives, split, children).put_in(spare);
         self.nodes.get_mut(&id).unwrap().paint_cache = Some(chunk.clone());
         chunk
     }
@@ -813,7 +836,9 @@ impl Context {
         (rect, measured, width)
     }
 
-    fn paint_text(&self, node: &Node, foreground: Color, scene: &mut Scene) {
+    /// The text goes in `spare`, a buffer from the chunk this one replaces,
+    /// when there is one.
+    fn paint_text(&self, node: &Node, foreground: Color, spare: Option<String>, scene: &mut Scene) {
         let (rect, measured, width) = self.text_place(node);
         if node.kind == Kind::Link
             && let Some(size) = measured.filter(|size| size.width > 0.0)
@@ -855,16 +880,20 @@ impl Context {
                 ..TextStyle::default()
             })
         {
+            let mut text = spare.unwrap_or_default();
+            refill(&mut text, &node.text);
             scene.primitives.push(Primitive::Text {
                 rect,
-                text: node.text.clone(),
+                text,
                 font_size: node.resolved.font_size,
                 color: foreground,
             });
         } else {
+            let mut text = spare.unwrap_or_default();
+            refill(&mut text, &node.text);
             scene.primitives.push(Primitive::StyledText {
                 rect,
-                text: node.text.clone(),
+                text,
                 style: node.text_style(),
                 color: foreground,
             });
