@@ -651,6 +651,9 @@ pub struct Context {
     layout: taffy::TaffyTree<Measurement>,
     root: NodeId,
     frame: u64,
+    /// The number of the last layout computation begun; a measurer's answer
+    /// that a leaf remembers is good only within the one that got it.
+    layout_run: u64,
     next_id: u64,
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
@@ -934,6 +937,7 @@ impl Default for Context {
             layout,
             root,
             frame: 0,
+            layout_run: 0,
             next_id: 2,
             hovered: None,
             focused: None,

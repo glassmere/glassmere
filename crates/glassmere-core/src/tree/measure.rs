@@ -67,6 +67,22 @@ pub(super) struct Measurement {
     pub(super) wrapped: Option<(String, TextStyle)>,
     /// Rich blocks measure their styled runs instead of the plain text.
     pub(super) spans: Option<Vec<glassmere_scene::TextSpan>>,
+    /// What the measurer last answered for this leaf; never part of equality.
+    pub(super) remembered: Remembered,
+}
+
+/// The layout pass, the width given to the measurer (as bits, so every value
+/// compares) and its answer. Taffy asks for a wrapped leaf's size several
+/// times at one width in a pass, and the measurer answers the same each time.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct Remembered(pub(super) Option<(u64, Option<u32>, Size)>);
+
+/// Two leaves that differ only in what was remembered are the same
+/// measurement: it must not make a node's context look changed.
+impl PartialEq for Remembered {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
 }
 
 pub(super) fn layout_style(style: &Style, kind: Kind, direction: crate::Direction) -> taffy::Style {
@@ -125,6 +141,7 @@ impl Measurement {
             size,
             wrapped: None,
             spans: None,
+            remembered: Remembered::default(),
         }
     }
     pub(super) fn text(
@@ -136,6 +153,7 @@ impl Measurement {
             size: measurer.measure_styled(text, &text_style, None),
             wrapped: (text_style.wrap == TextWrap::Word).then(|| (text.to_owned(), text_style)),
             spans: None,
+            remembered: Remembered::default(),
         }
     }
     /// An image's natural size; nothing until a file has loaded.
@@ -180,6 +198,7 @@ impl Measurement {
             size: measurer.geometry_rich(&spans, &text_style, None).size,
             wrapped: (text_style.wrap == TextWrap::Word).then(|| (String::new(), text_style)),
             spans: Some(spans),
+            remembered: Remembered::default(),
         }
     }
 }

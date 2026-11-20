@@ -321,6 +321,11 @@ impl TextSpan {
 
 /// Shared shaping contract. Desktop implementations use the renderer's fonts;
 /// the synthetic implementation below is for deterministic headless tests.
+///
+/// Within one layout pass the framework may answer a repeated request for the
+/// same text, style and width from an earlier answer, so the sizes from
+/// `measure_styled` and `geometry_rich` must be the same for the same
+/// arguments, and how often they are called is not specified.
 pub trait TextMeasurer {
     fn measure_styled(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> Size;
     fn geometry(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> TextGeometry;

@@ -303,6 +303,8 @@ impl Context {
         self.diagnose_accessibility();
         if self.pending.contains(Dirty::LAYOUT) {
             let root = self.nodes[&self.root].layout_id;
+            self.layout_run += 1;
+            let pass = self.layout_run;
             self.layout
                 .compute_layout_with_measure(
                     root,
@@ -314,6 +316,7 @@ impl Context {
                         let measured = if let Some(Measurement {
                             wrapped: Some((text, style)),
                             spans,
+                            remembered,
                             ..
                         }) = context
                         {
@@ -323,9 +326,22 @@ impl Context {
                                 taffy::AvailableSpace::MaxContent => None,
                             });
                             self.stats.text_measures += 1;
-                            match spans {
-                                Some(spans) => measurer.geometry_rich(spans, style, width).size,
-                                None => measurer.measure_styled(text, style, width),
+                            let bits = width.map(f32::to_bits);
+                            // The measurer gives one answer to identical
+                            // arguments within a pass, so a repeat is
+                            // answered from the leaf.
+                            match remembered.0 {
+                                Some((at, same, size)) if at == pass && same == bits => size,
+                                _ => {
+                                    let size = match spans {
+                                        Some(spans) => {
+                                            measurer.geometry_rich(spans, style, width).size
+                                        }
+                                        None => measurer.measure_styled(text, style, width),
+                                    };
+                                    remembered.0 = Some((pass, bits, size));
+                                    size
+                                }
                             }
                         } else {
                             context.map(|context| context.size).unwrap_or_default()
