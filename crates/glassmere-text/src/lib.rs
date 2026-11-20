@@ -8,23 +8,156 @@ use glassmere_scene::{
     CaretStop, FontFamily, Rect, Size, TextCluster, TextGeometry, TextLine, TextMeasurer, TextSpan,
     TextStyle, TextWrap,
 };
+use std::collections::hash_map::RandomState;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
+use std::hash::{BuildHasher, Hash, Hasher};
+use std::sync::OnceLock;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Identifies one shaped block: its text and everything that shapes it.
+///
+/// A key feeds a hasher one word, computed when the key is built, so a lookup
+/// does not hash the text again. Only `TextSystem::key` builds one.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TextKey {
-    text: String,
-    size: u32,
-    family: FontFamily,
-    weight: u16,
-    italic: bool,
-    wrap: TextWrap,
-    rtl: bool,
-    base: Option<bool>,
-    width: Option<u32>,
+    text: Hashed,
+    size: Skip<u32>,
+    family: Skip<FontFamily>,
+    weight: Skip<u16>,
+    italic: Skip<bool>,
+    wrap: Skip<TextWrap>,
+    rtl: Skip<bool>,
+    base: Skip<Option<bool>>,
+    width: Skip<Option<u32>>,
     /// Byte length and overrides of each run of a rich block; empty for plain text.
-    spans: Vec<SpanKey>,
+    spans: Skip<Vec<SpanKey>>,
+}
+
+/// The text of a key with the hash of the whole key.
+#[derive(Clone)]
+struct Hashed {
+    hash: u64,
+    text: String,
+}
+
+impl Hash for Hashed {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(self.hash);
+    }
+}
+
+// Equal keys have equal fields and so equal hashes; the hash only lets
+// unequal keys differ early, the fields decide.
+impl PartialEq for Hashed {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash == other.hash && self.text == other.text
+    }
+}
+
+impl Eq for Hashed {}
+
+impl fmt::Debug for Hashed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.text, f)
+    }
+}
+
+/// A field that is compared but is already part of the key's cached hash.
+#[derive(Clone)]
+struct Skip<T>(T);
+
+impl<T> Hash for Skip<T> {
+    fn hash<H: Hasher>(&self, _: &mut H) {}
+}
+
+impl<T: PartialEq> PartialEq for Skip<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<T: Eq> Eq for Skip<T> {}
+
+impl<T: fmt::Debug> fmt::Debug for Skip<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.0, f)
+    }
+}
+
+/// The seed and odd multiplier of the key hash, drawn once per process so
+/// that every text system and thread hashes a key alike and the hash cannot
+/// be predicted by whoever supplies the text. They must stay random and
+/// secret: with a constant seed or an even multiplier, text can be crafted
+/// that collides in every bucket of a map.
+fn seed() -> (u64, u64) {
+    static SEED: OnceLock<(u64, u64)> = OnceLock::new();
+    *SEED.get_or_init(|| {
+        let random = RandomState::new();
+        (
+            random.hash_one(0x6b65_795f_7365_6564_u64),
+            random.hash_one(0x6b65_795f_6d75_6c74_u64) | 1,
+        )
+    })
+}
+
+/// Hashes a key's fields a word at a time, folding each product of the
+/// running state and a word back on itself.
+struct Fold {
+    state: u64,
+    mul: u64,
+}
+
+impl Fold {
+    fn new() -> Self {
+        let (state, mul) = seed();
+        Self { state, mul }
+    }
+
+    fn add(&mut self, word: u64) {
+        let product = u128::from(self.state ^ word) * u128::from(self.mul);
+        self.state = (product as u64) ^ ((product >> 64) as u64);
+    }
+}
+
+impl Hasher for Fold {
+    fn write(&mut self, bytes: &[u8]) {
+        let (words, tail) = bytes.as_chunks::<8>();
+        for word in words {
+            self.add(u64::from_le_bytes(*word));
+        }
+        if !tail.is_empty() {
+            let mut word = [0; 8];
+            word[..tail.len()].copy_from_slice(tail);
+            self.add(u64::from_le_bytes(word));
+        }
+        // Without the length, "a" and "a\0" would give the same words.
+        self.add(bytes.len() as u64);
+    }
+
+    fn write_u8(&mut self, value: u8) {
+        self.add(u64::from(value));
+    }
+
+    fn write_u16(&mut self, value: u16) {
+        self.add(u64::from(value));
+    }
+
+    fn write_u32(&mut self, value: u32) {
+        self.add(u64::from(value));
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.add(value);
+    }
+
+    fn write_usize(&mut self, value: usize) {
+        self.add(value as u64);
+    }
+
+    fn finish(&self) -> u64 {
+        self.state
+    }
 }
 
 type SpanKey = (
@@ -201,6 +334,10 @@ impl TextSystem {
     }
 
     /// The cache key of a block, with the font size and width it is shaped at.
+    ///
+    /// Every field of the key is folded into its hash from the same value
+    /// that is stored, so keys that are equal have equal hashes. A field added
+    /// to `TextKey` is folded in here and wrapped in `Skip`.
     fn key(
         text: &str,
         spans: &[TextSpan],
@@ -219,33 +356,51 @@ impl TextSystem {
                 .filter(|width| width.is_finite())
                 .map(|width| width.max(1.0))
         };
+        let size = font_size.to_bits();
+        let weight = style.weight.clamp(100, 900);
+        // Alignment needs a width, which only wrapped blocks have.
+        let rtl = style.rtl && width.is_some();
+        let width_bits = width.map(f32::to_bits);
+        let spans: Vec<SpanKey> = spans
+            .iter()
+            .map(|span| {
+                (
+                    span.text.len(),
+                    span.color.map(|color| [color.0, color.1, color.2, color.3]),
+                    span.weight,
+                    span.italic,
+                    span.family.clone(),
+                )
+            })
+            .collect();
+        let mut fold = Fold::new();
+        (
+            size,
+            &style.family,
+            weight,
+            style.italic,
+            style.wrap,
+            rtl,
+            style.base,
+            width_bits,
+            &spans,
+        )
+            .hash(&mut fold);
+        text.hash(&mut fold);
         let key = TextKey {
-            text: text.into(),
-            size: font_size.to_bits(),
-            family: style.family.clone(),
-            weight: style.weight.clamp(100, 900),
-            italic: style.italic,
-            wrap: style.wrap,
-            // Alignment needs a width, which only wrapped blocks have.
-            rtl: style.rtl && width.is_some(),
-            base: style.base,
-            width: width.map(f32::to_bits),
-            spans: if spans.is_empty() {
-                Vec::new()
-            } else {
-                spans
-                    .iter()
-                    .map(|span| {
-                        (
-                            span.text.len(),
-                            span.color.map(|color| [color.0, color.1, color.2, color.3]),
-                            span.weight,
-                            span.italic,
-                            span.family.clone(),
-                        )
-                    })
-                    .collect()
+            text: Hashed {
+                hash: fold.finish(),
+                text: text.into(),
             },
+            size: Skip(size),
+            family: Skip(style.family.clone()),
+            weight: Skip(weight),
+            italic: Skip(style.italic),
+            wrap: Skip(style.wrap),
+            rtl: Skip(rtl),
+            base: Skip(style.base),
+            width: Skip(width_bits),
+            spans: Skip(spans),
         };
         (key, font_size, width)
     }
@@ -1111,12 +1266,327 @@ mod tests {
             system.ensure_styled(text, &rtl_wrapped, Some(f32::NAN)),
             system.ensure_styled(text, &rtl_wrapped, None)
         );
-        assert!(!system.ensure_styled(text, &rtl_wrapped, None).rtl);
-        assert!(system.ensure_styled(text, &rtl_wrapped, Some(50.0)).rtl);
+        assert!(!system.ensure_styled(text, &rtl_wrapped, None).rtl.0);
+        assert!(system.ensure_styled(text, &rtl_wrapped, Some(50.0)).rtl.0);
         // A wrap-less block shaped through the measure path is laid out
         // unwrapped whatever width is offered.
         let narrow = system.measure_styled(text, &none, Some(20.0));
         assert_eq!(narrow, system.measure_styled(text, &none, None));
         assert!(narrow.width > 20.0);
+    }
+
+    fn plain_key(text: &str, style: &TextStyle, width: Option<f32>) -> TextKey {
+        TextSystem::key(text, &[], style, width).0
+    }
+
+    fn map_hash(state: &RandomState, key: &TextKey) -> u64 {
+        state.hash_one(key)
+    }
+
+    #[test]
+    fn inputs_that_normalise_alike_give_equal_keys_and_one_buffer() {
+        let state = RandomState::new();
+        let style = |edit: fn(&mut TextStyle)| {
+            let mut style = TextStyle::default();
+            edit(&mut style);
+            style
+        };
+        let wrapped = |edit: fn(&mut TextStyle)| TextStyle {
+            wrap: TextWrap::Word,
+            ..style(edit)
+        };
+        let cases: [(TextStyle, Option<f32>, TextStyle, Option<f32>); 8] = [
+            (
+                style(|s| s.weight = 950),
+                None,
+                style(|s| s.weight = 900),
+                None,
+            ),
+            (
+                style(|s| s.weight = 20),
+                None,
+                style(|s| s.weight = 100),
+                None,
+            ),
+            (
+                style(|s| s.font_size = f32::NAN),
+                None,
+                TextStyle::default(),
+                None,
+            ),
+            (
+                style(|s| s.font_size = 0.25),
+                None,
+                style(|s| s.font_size = 1.0),
+                None,
+            ),
+            (
+                style(|s| s.font_size = f32::INFINITY),
+                None,
+                TextStyle::default(),
+                None,
+            ),
+            (
+                style(|s| s.rtl = true),
+                None,
+                style(|s| s.rtl = false),
+                None,
+            ),
+            (TextStyle::default(), Some(80.0), TextStyle::default(), None),
+            (
+                wrapped(|s| s.rtl = true),
+                Some(f32::NAN),
+                wrapped(|s| s.rtl = false),
+                None,
+            ),
+        ];
+        for (index, (left, left_width, right, right_width)) in cases.into_iter().enumerate() {
+            let a = plain_key("same", &left, left_width);
+            let b = plain_key("same", &right, right_width);
+            assert_eq!(a, b, "case {index}");
+            assert_eq!(map_hash(&state, &a), map_hash(&state, &b), "case {index}");
+            let mut system = TextSystem::default();
+            system.ensure_styled("same", &left, left_width);
+            system.ensure_styled("same", &right, right_width);
+            assert_eq!(system.buffers.len(), 1, "case {index}");
+        }
+        let wide = wrapped(|s| s.rtl = true);
+        let a = plain_key("same", &wide, Some(0.25));
+        let b = plain_key("same", &wide, Some(1.0));
+        assert_eq!(a, b);
+        assert_eq!(map_hash(&state, &a), map_hash(&state, &b));
+    }
+
+    #[test]
+    fn keys_that_differ_in_one_field_are_all_distinct() {
+        let wrapped = TextStyle {
+            wrap: TextWrap::Word,
+            ..TextStyle::default()
+        };
+        let with = |edit: fn(&mut TextStyle)| {
+            let mut style = wrapped.clone();
+            edit(&mut style);
+            plain_key("ab", &style, Some(100.0))
+        };
+        let rich = |spans: &[TextSpan]| {
+            let text: String = spans.iter().map(|span| span.text.as_str()).collect();
+            TextSystem::key(&text, spans, &wrapped, Some(100.0)).0
+        };
+        let keys = vec![
+            plain_key("ab", &wrapped, Some(100.0)),
+            plain_key("ac", &wrapped, Some(100.0)),
+            plain_key("ab", &wrapped, Some(101.0)),
+            plain_key("ab", &wrapped, None),
+            with(|s| s.font_size = 17.0),
+            with(|s| s.family = FontFamily::Serif),
+            with(|s| s.family = FontFamily::Named("a".into())),
+            with(|s| s.family = FontFamily::Named("b".into())),
+            with(|s| s.weight = 700),
+            with(|s| s.italic = true),
+            with(|s| s.wrap = TextWrap::None),
+            with(|s| s.rtl = true),
+            with(|s| s.base = Some(false)),
+            with(|s| s.base = Some(true)),
+            rich(&[TextSpan::new("ab")]),
+            rich(&[TextSpan::new("a"), TextSpan::new("b")]),
+            rich(&[TextSpan::new("ab"), TextSpan::new("")]),
+            rich(&[TextSpan::new("ab").weight(700)]),
+            rich(&[TextSpan::new("ab").italic(true)]),
+            rich(&[TextSpan::new("ab").family(FontFamily::Monospace)]),
+            rich(&[TextSpan::new("ab").color(glassmere_scene::Color(1, 2, 3, 4))]),
+            rich(&[TextSpan::new("a"), TextSpan::new("b").weight(700)]),
+            plain_key("", &wrapped, Some(100.0)),
+            plain_key("\0", &wrapped, Some(100.0)),
+        ];
+        let state = RandomState::new();
+        let set: HashSet<&TextKey> = keys.iter().collect();
+        assert_eq!(set.len(), keys.len());
+        for (i, a) in keys.iter().enumerate() {
+            for (j, b) in keys.iter().enumerate() {
+                assert_eq!(a == b, i == j, "{i} against {j}");
+                assert_eq!(
+                    a.text.hash == b.text.hash,
+                    i == j,
+                    "cached hashes of {i} and {j}"
+                );
+                assert_eq!(map_hash(&state, a) == map_hash(&state, b), i == j);
+            }
+        }
+    }
+
+    #[test]
+    fn keys_with_one_hash_are_told_apart_by_their_fields() {
+        let style = TextStyle::default();
+        let a = plain_key("first", &style, None);
+        let mut other_text = a.clone();
+        other_text.text.text = "second".into();
+        let mut other_width = a.clone();
+        other_width.width = Skip(Some(7));
+        let mut other_family = a.clone();
+        other_family.family = Skip(FontFamily::Monospace);
+        let mut other_spans = a.clone();
+        other_spans.spans = Skip(vec![(5, None, None, None, None)]);
+        let keys = [a, other_text, other_width, other_family, other_spans];
+        let state = RandomState::new();
+        for (i, left) in keys.iter().enumerate() {
+            assert_eq!(left.text.hash, keys[0].text.hash);
+            for (j, right) in keys.iter().enumerate() {
+                assert_eq!(left == right, i == j, "{i} against {j}");
+                assert_eq!(map_hash(&state, left), map_hash(&state, right));
+            }
+        }
+        let map: HashMap<TextKey, usize> = keys.iter().cloned().zip(0..).collect();
+        assert_eq!(map.len(), keys.len());
+        for (index, key) in keys.iter().enumerate() {
+            assert_eq!(map[key], index);
+        }
+    }
+
+    #[test]
+    fn a_key_feeds_a_hasher_one_word() {
+        #[derive(Default)]
+        struct Recorder {
+            calls: Vec<String>,
+        }
+        impl Hasher for Recorder {
+            fn write(&mut self, bytes: &[u8]) {
+                self.calls.push(format!("write {bytes:?}"));
+            }
+            fn write_u8(&mut self, value: u8) {
+                self.calls.push(format!("u8 {value}"));
+            }
+            fn write_u16(&mut self, value: u16) {
+                self.calls.push(format!("u16 {value}"));
+            }
+            fn write_u32(&mut self, value: u32) {
+                self.calls.push(format!("u32 {value}"));
+            }
+            fn write_u64(&mut self, value: u64) {
+                self.calls.push(format!("u64 {value}"));
+            }
+            fn write_usize(&mut self, value: usize) {
+                self.calls.push(format!("usize {value}"));
+            }
+            fn finish(&self) -> u64 {
+                0
+            }
+        }
+        let spans = [TextSpan::new("ab"), TextSpan::new("cd").weight(700)];
+        let style = TextStyle {
+            family: FontFamily::Named("x".into()),
+            ..TextStyle::default()
+        };
+        let plain = plain_key("hello", &style, None);
+        let rich = TextSystem::key("abcd", &spans, &style, Some(5.0)).0;
+        for key in [plain, rich] {
+            let mut recorder = Recorder::default();
+            key.hash(&mut recorder);
+            assert_eq!(recorder.calls, [format!("u64 {}", key.text.hash)]);
+        }
+    }
+
+    #[test]
+    fn a_key_prints_the_way_its_fields_print() {
+        let style = TextStyle::default();
+        let plain = plain_key("hi", &style, None);
+        assert_eq!(
+            format!("{plain:?}"),
+            "TextKey { text: \"hi\", size: 1098907648, family: SansSerif, weight: 400, \
+             italic: false, wrap: None, rtl: false, base: None, width: None, spans: [] }"
+        );
+        assert_eq!(
+            format!("{plain:#?}"),
+            "TextKey {\n    text: \"hi\",\n    size: 1098907648,\n    family: SansSerif,\n    \
+             weight: 400,\n    italic: false,\n    wrap: None,\n    rtl: false,\n    \
+             base: None,\n    width: None,\n    spans: [],\n}"
+        );
+        let spans = [
+            TextSpan::new("a"),
+            TextSpan::new("b")
+                .weight(700)
+                .italic(true)
+                .family(FontFamily::Named("z".into()))
+                .color(glassmere_scene::Color(1, 2, 3, 4)),
+        ];
+        let style = TextStyle {
+            family: FontFamily::Named("q".into()),
+            wrap: TextWrap::Word,
+            base: Some(true),
+            ..TextStyle::default()
+        };
+        let rich = TextSystem::key("ab", &spans, &style, Some(50.0)).0;
+        assert_eq!(
+            format!("{rich:?}"),
+            "TextKey { text: \"ab\", size: 1098907648, family: Named(\"q\"), weight: 400, \
+             italic: false, wrap: Word, rtl: false, base: Some(true), width: Some(1112014848), \
+             spans: [(1, None, None, None, None), \
+             (1, Some([1, 2, 3, 4]), Some(700), Some(true), Some(Named(\"z\")))] }"
+        );
+        assert_eq!(
+            format!("{rich:#?}"),
+            "TextKey {\n    text: \"ab\",\n    size: 1098907648,\n    family: Named(\n        \
+             \"q\",\n    ),\n    weight: 400,\n    italic: false,\n    wrap: Word,\n    \
+             rtl: false,\n    base: Some(\n        true,\n    ),\n    width: Some(\n        \
+             1112014848,\n    ),\n    spans: [\n        (\n            1,\n            None,\n            \
+             None,\n            None,\n            None,\n        ),\n        (\n            1,\n            \
+             Some(\n                [\n                    1,\n                    2,\n                    \
+             3,\n                    4,\n                ],\n            ),\n            \
+             Some(\n                700,\n            ),\n            Some(\n                \
+             true,\n            ),\n            Some(\n                Named(\n                    \
+             \"z\",\n                ),\n            ),\n        ),\n    ],\n}"
+        );
+    }
+
+    #[test]
+    fn a_key_finds_its_buffer_in_another_system_and_thread() {
+        let style = TextStyle {
+            wrap: TextWrap::Word,
+            ..TextStyle::default()
+        };
+        let mut first = TextSystem::default();
+        let mut second = TextSystem::default();
+        let made = first.ensure_styled("shared words", &style, Some(60.0));
+        second.ensure_styled("shared words", &style, Some(60.0));
+        second.ensure_styled("other words", &style, Some(60.0));
+        assert!(second.buffers.contains_key(&made));
+        let elsewhere = std::thread::scope(|scope| {
+            scope
+                .spawn(|| plain_key("shared words", &style, Some(60.0)))
+                .join()
+                .unwrap()
+        });
+        assert_eq!(elsewhere, made);
+        assert!(second.buffers.contains_key(&elsewhere));
+        second.retain(&HashSet::from([made.clone()]));
+        assert_eq!(second.buffers.len(), 1);
+        assert!(second.buffers.contains_key(&elsewhere));
+        second.retain(&HashSet::from([elsewhere]));
+        assert_eq!(second.buffers.len(), 1);
+    }
+
+    #[test]
+    fn texts_that_pad_alike_hash_apart() {
+        let style = TextStyle::default();
+        let hash = |text: &str, style: &TextStyle| plain_key(text, style, None).text.hash;
+        let named = |name: &str| TextStyle {
+            family: FontFamily::Named(name.into()),
+            ..TextStyle::default()
+        };
+        let hashes = [
+            hash("a", &style),
+            hash("a\0", &style),
+            hash("", &style),
+            hash("\0", &style),
+            hash("\0\0\0\0\0\0\0", &style),
+            hash("\0\0\0\0\0\0\0\0", &style),
+            hash("abcdefgh", &style),
+            hash("abcdefgh\0", &style),
+            hash("ab", &named("")),
+            hash("a", &named("b")),
+            hash("ab", &named("c")),
+            hash("a", &named("bc")),
+        ];
+        let distinct: HashSet<u64> = hashes.into_iter().collect();
+        assert_eq!(distinct.len(), hashes.len());
     }
 }
