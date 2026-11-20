@@ -614,6 +614,63 @@ fn many_scattered_and_overlapping_rectangles_still_repaint_what_they_name() {
     assert!(redrawn < u64::from(physical[0]) * u64::from(physical[1]) / 4);
 }
 
+/// Damage that cuts through square quads between pixels: the part of each
+/// that is painted again is covered as the whole quad was, so that it joins
+/// what was kept without a seam.
+#[test]
+fn damage_cutting_through_square_quads_between_pixels_leaves_no_seam() {
+    let quad = |x: f32, y: f32, width: f32, height: f32, color: Color| Primitive::Quad {
+        rect: Rect {
+            x,
+            y,
+            width,
+            height,
+        },
+        color,
+        radius: 0.0,
+    };
+    // Two quads with every edge between pixels, one of them translucent, and
+    // a small one over both, which is the one that changes.
+    let quads = |small: Color| Scene {
+        size: SIZE,
+        primitives: vec![
+            quad(8.25, 6.5, 40.5, 20.25, Color::rgb(200, 40, 0)),
+            quad(10.75, 9.3, 30.4, 30.6, Color(0, 60, 220, 128)),
+            quad(14.5, 12.25, 6.25, 3.5, small),
+        ],
+    };
+    let (before, after) = (
+        quads(Color(240, 240, 0, 128)),
+        quads(Color(0, 200, 120, 200)),
+    );
+    // Around the small quad, through the middle of the other two.
+    let damage = [Rect {
+        x: 13.5,
+        y: 11.25,
+        width: 9.0,
+        height: 5.5,
+    }];
+    for scale in [1.0, 1.5] {
+        let physical = [(SIZE.width * scale) as u32, (SIZE.height * scale) as u32];
+        let mut incremental = CpuRenderer::with_text_system(fonts());
+        incremental.render(physical, scale, &before, CLEAR);
+        let partial = incremental
+            .render_damaged(physical, scale, &after, CLEAR, &damage)
+            .to_vec();
+        let redrawn = incremental.stats().redrawn;
+        let full = CpuRenderer::with_text_system(fonts())
+            .render(physical, scale, &after, CLEAR)
+            .to_vec();
+        assert_frames_match(
+            &partial,
+            &full,
+            physical[0] as usize,
+            &format!("damage at scale {scale}"),
+        );
+        assert!(redrawn > 0 && redrawn < 400, "repainted {redrawn} pixels");
+    }
+}
+
 /// A node that leaves with an effect is repainted where its ghost is, frame
 /// by frame, and the window around it is kept.
 #[test]

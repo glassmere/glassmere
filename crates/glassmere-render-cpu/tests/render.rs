@@ -146,6 +146,335 @@ fn clips_nest_and_a_stray_pop_does_not_unclip() {
     assert_eq!(pixel(&pixels, 0, 62), [0, 0, 255, 255]);
 }
 
+/// Square quads painted the plain way: every pixel on its own, from the area
+/// of it the rectangle covers and the colour's alpha, mixed in linear light
+/// through tables built the way the renderer builds its own.
+struct PerPixel {
+    /// 0..=255 to 0..=4095.
+    linear: [u16; 256],
+    back: [u8; 4096],
+}
+
+impl PerPixel {
+    fn new() -> Self {
+        let mut tables = Self {
+            linear: [0; 256],
+            back: [0; 4096],
+        };
+        for (byte, linear) in tables.linear.iter_mut().enumerate() {
+            let value = byte as f32 / 255.0;
+            let light = if value <= 0.040_45 {
+                value / 12.92
+            } else {
+                ((value + 0.055) / 1.055).powf(2.4)
+            };
+            *linear = (light * 4095.0).round() as u16;
+        }
+        for (light, byte) in tables.back.iter_mut().enumerate() {
+            let light = light as f32 / 4095.0;
+            let value = if light <= 0.003_130_8 {
+                light * 12.92
+            } else {
+                1.055 * light.powf(1.0 / 2.4) - 0.055
+            };
+            *byte = (value * 255.0).round() as u8;
+        }
+        tables
+    }
+
+    /// The frame `render` gives for clips and quads without a radius.
+    fn paint(&self, scale: f32, primitives: &[Primitive]) -> Vec<u8> {
+        let mut pixels = vec![255; SIDE * SIDE * 4];
+        let mut clips = vec![rect(0.0, 0.0, SIDE as f32 / scale, SIDE as f32 / scale)];
+        for primitive in primitives {
+            let clip = *clips.last().unwrap();
+            match primitive {
+                Primitive::PushClip(inner) => clips.push(clip.intersect(*inner)),
+                Primitive::PopClip => {
+                    if clips.len() > 1 {
+                        clips.pop();
+                    }
+                }
+                Primitive::Quad {
+                    rect,
+                    color,
+                    radius,
+                } if *radius <= 0.0 => {
+                    self.quad(&mut pixels, scale, clip.intersect(*rect), *rect, *color);
+                }
+                other => panic!("neither a clip nor a square quad: {other:?}"),
+            }
+        }
+        pixels
+    }
+
+    /// Lays `quad` over the pixels that `seen`, the part of it inside the
+    /// clip, touches.
+    fn quad(&self, pixels: &mut [u8], scale: f32, seen: Rect, quad: Rect, color: Color) {
+        if seen.width <= 0.0 || seen.height <= 0.0 {
+            return;
+        }
+        // A clip cuts at whole pixels, outward.
+        let first = |edge: f32| (edge * scale).floor().max(0.0).min(SIDE as f32) as usize;
+        let past = |edge: f32| (edge * scale).ceil().max(0.0).min(SIDE as f32) as usize;
+        let (left, top) = (quad.x * scale, quad.y * scale);
+        let (right, bottom) = (left + quad.width * scale, top + quad.height * scale);
+        // How much of pixel `at` lies between two edges, 0..=255.
+        let cover = |at: usize, from: f32, to: f32| {
+            ((to.min(at as f32 + 1.0) - from.max(at as f32)).clamp(0.0, 1.0) * 255.0).round() as u32
+        };
+        for y in first(seen.y)..past(seen.y + seen.height) {
+            for x in first(seen.x)..past(seen.x + seen.width) {
+                let alpha = cover(x, left, right) * cover(y, top, bottom) * u32::from(color.3)
+                    / (255 * 255);
+                let pixel = &mut pixels[(y * SIDE + x) * 4..][..4];
+                if alpha == 255 {
+                    pixel.copy_from_slice(&[color.0, color.1, color.2, 255]);
+                } else if alpha > 0 {
+                    let keep = 255 - alpha;
+                    for (channel, straight) in [color.0, color.1, color.2].into_iter().enumerate() {
+                        let over =
+                            (u32::from(self.linear[usize::from(straight)]) * alpha + 127) / 255;
+                        let under = u32::from(self.linear[usize::from(pixel[channel])]);
+                        let mixed = over + (under * keep + 127) / 255;
+                        pixel[channel] = self.back[mixed.min(4095) as usize];
+                    }
+                    pixel[3] = (alpha + (u32::from(pixel[3]) * keep + 127) / 255).min(255) as u8;
+                }
+            }
+        }
+    }
+}
+
+/// Fails, naming the first pixel that differs, unless the renderer paints
+/// `primitives` exactly as `PerPixel` does.
+#[track_caller]
+fn assert_per_pixel(
+    renderer: &mut CpuRenderer,
+    per_pixel: &PerPixel,
+    scale: f32,
+    primitives: Vec<Primitive>,
+    case: &str,
+) {
+    let expected = per_pixel.paint(scale, &primitives);
+    let painted = render(renderer, scale, primitives);
+    assert_eq!(painted.len(), expected.len());
+    for at in 0..SIDE * SIDE {
+        let (x, y) = (at % SIDE, at / SIDE);
+        assert_eq!(
+            pixel(&painted, x, y),
+            pixel(&expected, x, y),
+            "{case} at scale {scale}: ({x}, {y})"
+        );
+    }
+}
+
+#[test]
+fn square_quads_match_the_per_pixel_formula() {
+    let per_pixel = PerPixel::new();
+    let mut renderer = renderer();
+    // Every edge between pixels: columns and rows covered in part around a
+    // middle that is covered whole.
+    let between = rect(8.25, 8.5, 20.5, 10.25);
+    // Two colours side by side, for a translucent quad to lie across.
+    let ground = || {
+        vec![
+            quad(rect(0.0, 0.0, 14.0, 32.0), RED, 0.0),
+            quad(rect(14.0, 0.0, 18.0, 32.0), Color(20, 150, 60, 255), 0.0),
+        ]
+    };
+    for scale in [1.0, 1.5, 2.0] {
+        assert_per_pixel(
+            &mut renderer,
+            &per_pixel,
+            scale,
+            vec![quad(between, RED, 0.0)],
+            "opaque",
+        );
+        for alpha in [128, 1, 254] {
+            let mut primitives = ground();
+            primitives.push(quad(between, Color(0, 0, 255, alpha), 0.0));
+            assert_per_pixel(
+                &mut renderer,
+                &per_pixel,
+                scale,
+                primitives,
+                &format!("alpha {alpha}"),
+            );
+        }
+    }
+    // What the formula comes to: the middle is the colour itself, and three
+    // quarters of a column of red lie over white in linear light.
+    let pixels = render(&mut renderer, 1.0, vec![quad(between, RED, 0.0)]);
+    assert_eq!(pixel(&pixels, 9, 9), [255, 0, 0, 255]);
+    assert_near(pixel(&pixels, 8, 12), [255, 137, 137, 255]);
+    assert_eq!(pixel(&pixels, 7, 12), WHITE);
+}
+
+#[test]
+fn narrow_square_quads_match_the_per_pixel_formula() {
+    let per_pixel = PerPixel::new();
+    let mut renderer = renderer();
+    for scale in [1.0, 1.5, 2.0] {
+        for (case, narrow) in [
+            ("inside one column", rect(10.3, 4.0, 0.4, 20.0)),
+            ("one whole column", rect(10.0, 4.0, 1.0, 20.0)),
+            ("across two columns", rect(10.5, 4.0, 1.0, 20.0)),
+            ("inside one row", rect(4.0, 20.3, 24.0, 0.4)),
+        ] {
+            for color in [RED, Color(0, 0, 255, 128)] {
+                assert_per_pixel(
+                    &mut renderer,
+                    &per_pixel,
+                    scale,
+                    vec![quad(narrow, color, 0.0)],
+                    case,
+                );
+            }
+        }
+    }
+    // No column of it is covered whole, and it still shows, in one column.
+    let pixels = render(
+        &mut renderer,
+        1.0,
+        vec![quad(rect(10.3, 4.0, 0.4, 20.0), RED, 0.0)],
+    );
+    let faint = pixel(&pixels, 10, 12);
+    assert!(
+        faint[0] == 255 && faint[1] > 0 && faint[1] < 255,
+        "{faint:?}"
+    );
+    assert_eq!(pixel(&pixels, 9, 12), WHITE);
+    assert_eq!(pixel(&pixels, 11, 12), WHITE);
+}
+
+#[test]
+fn clipped_square_quads_match_the_per_pixel_formula() {
+    let per_pixel = PerPixel::new();
+    let mut renderer = renderer();
+    let glass = Color(0, 0, 255, 128);
+    // The clips leave one column of pixels, and two quads reach into it: one
+    // covers the column whole, the other has its edge inside it.
+    let one_column = || {
+        vec![
+            Primitive::PushClip(rect(10.0, 0.0, 9.0, 64.0)),
+            Primitive::PushClip(rect(0.0, 2.0, 10.5, 40.0)),
+            quad(rect(4.25, 6.5, 30.0, 8.0), RED, 0.0),
+            quad(rect(10.25, 20.5, 30.0, 8.0), glass, 0.0),
+        ]
+    };
+    for scale in [1.0, 1.5, 2.0] {
+        assert_per_pixel(
+            &mut renderer,
+            &per_pixel,
+            scale,
+            vec![quad(rect(-3.5, -3.5, 80.0, 80.0), glass, 0.0)],
+            "past every edge of the target",
+        );
+        for color in [RED, glass] {
+            assert_per_pixel(
+                &mut renderer,
+                &per_pixel,
+                scale,
+                vec![
+                    Primitive::PushClip(rect(12.5, 9.5, 7.25, 30.0)),
+                    quad(rect(8.25, 4.5, 20.5, 20.25), color, 0.0),
+                    Primitive::PopClip,
+                    quad(rect(2.5, 1.25, 4.0, 2.5), color, 0.0),
+                ],
+                "under a clip between pixels",
+            );
+        }
+        assert_per_pixel(&mut renderer, &per_pixel, scale, one_column(), "one column");
+    }
+    let pixels = render(&mut renderer, 1.0, one_column());
+    for y in [8, 24] {
+        assert_eq!(pixel(&pixels, 9, y), WHITE, "left of the column");
+        assert_ne!(pixel(&pixels, 10, y), WHITE, "the column");
+        assert_eq!(pixel(&pixels, 11, y), WHITE, "right of the column");
+    }
+}
+
+#[test]
+fn a_wide_square_quad_then_a_narrow_one_and_back() {
+    let per_pixel = PerPixel::new();
+    let mut renderer = renderer();
+    // Each quad's columns come from its own edges: none of a wide quad's are
+    // left over for the narrow ones after it, nor any of theirs for the wide
+    // one at the end.
+    assert_per_pixel(
+        &mut renderer,
+        &per_pixel,
+        1.0,
+        vec![
+            quad(rect(1.25, 2.0, 60.0, 8.0), RED, 0.0),
+            quad(rect(20.6, 14.0, 3.0, 8.0), BLUE, 0.0),
+            quad(rect(30.2, 26.0, 3.0, 8.0), BLUE, 0.0),
+            quad(rect(40.3, 38.0, 0.5, 8.0), BLUE, 0.0),
+            quad(rect(11.75, 50.0, 40.0, 8.0), Color(0, 0, 255, 128), 0.0),
+        ],
+        "wide, narrow, wide",
+    );
+}
+
+/// A column covered 254 steps of 255 is not covered whole: opaque red is mixed
+/// into it, not stored in its place. Each edge of this quad is 0.004 of a
+/// pixel in from a pixel boundary, so the columns and rows along them are
+/// covered 254 of 255 and the pixels at the corners come to 253.
+#[test]
+fn an_edge_one_step_short_of_whole_is_mixed_and_not_stored() {
+    let per_pixel = PerPixel::new();
+    let mut renderer = renderer();
+    let short = rect(10.004, 4.004, 10.992, 7.992);
+    assert_per_pixel(
+        &mut renderer,
+        &per_pixel,
+        1.0,
+        vec![quad(short, RED, 0.0)],
+        "one step short",
+    );
+    // A step of 255 of the white under the red is left, and shows as 13 in the
+    // green and the blue, the mix being in linear light. Two of these pixels
+    // are in the columns along the edges, two in the rows.
+    let pixels = render(&mut renderer, 1.0, vec![quad(short, RED, 0.0)]);
+    for (x, y) in [(10, 8), (20, 8), (15, 4), (15, 11)] {
+        assert_near(pixel(&pixels, x, y), [255, 13, 13, 255]);
+    }
+    assert_eq!(pixel(&pixels, 15, 8), [255, 0, 0, 255]);
+    assert_eq!(pixel(&pixels, 9, 8), WHITE);
+    assert_eq!(pixel(&pixels, 21, 8), WHITE);
+}
+
+/// A sliver 0.0019607842 of a pixel across is 0.49999997 of one step of 255
+/// and rounds to none. It is the one fraction of a pixel where adding a half
+/// and cutting off the rest comes out a step higher, the sum being 1.0, and a
+/// step of white shows on black.
+#[test]
+fn a_sliver_under_half_a_step_across_paints_nothing() {
+    const HALF_A_STEP: f32 = 0.001_960_784_2;
+    let mut renderer = renderer();
+    let mut over_black = |sliver: Rect| {
+        let ground = quad(rect(0.0, 0.0, 64.0, 64.0), Color::rgb(0, 0, 0), 0.0);
+        let sliver = quad(sliver, Color::WHITE, 0.0);
+        render(&mut renderer, 1.0, vec![ground, sliver])
+    };
+    // Down the left edge of the target, and along its top edge.
+    for sliver in [
+        rect(0.0, 4.0, HALF_A_STEP, 20.0),
+        rect(4.0, 0.0, 20.0, HALF_A_STEP),
+    ] {
+        let pixels = over_black(sliver);
+        let (frame, _) = pixels.as_chunks::<4>();
+        assert!(
+            frame.iter().all(|pixel| *pixel == [0, 0, 0, 255]),
+            "{sliver:?} marked the ground"
+        );
+    }
+    // One step across, 0.004, does show, faint as it is.
+    let pixels = over_black(rect(0.0, 4.0, 0.004, 20.0));
+    assert_near(pixel(&pixels, 0, 8), [13, 13, 13, 255]);
+}
+
 #[test]
 fn layers_fade_move_clip_their_content_and_close_themselves() {
     let mut renderer = renderer();
