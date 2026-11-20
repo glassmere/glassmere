@@ -12,12 +12,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- Frames cost less. Measured with the new benchmarks, on a form of 1,200 widgets: a frame with no input takes half the time, declaring it again unchanged 40% less, repainting or laying out every row 40 to 50% less; scrolling a million-row table or a 100,000-node tree 20 to 30% less. The CPU renderer repaints a damaged row in a quarter of the time. Nothing an application calls has changed:
+- Frames cost less. Measured with the new benchmarks, on a form of 1,200 widgets: a frame with no input takes half the time, declaring it again unchanged 40% less, repainting or laying out every row 40 to 50% less; scrolling a million-row table or a 100,000-node tree 20 to 30% less. The CPU renderer repaints a damaged row in a quarter of the time. A second pass, counting instructions in the same scenarios, took a further 55% off a frame in which the pointer moves to another widget, 39% off declaring a form of `Ui::memo` rows again, 27% off 400 animating cells, 16% off scrolling the form and 13% off repainting every row; the CPU renderer paints the whole form, and a damaged row of it, in less than half the instructions it needed. Nothing an application calls has changed:
   - What every frame prepared for its controls walked every node seven times; it walks them once, and a text field compares its text without allocating.
   - Children are matched where they were last frame before a map of their keys is built, and a node declared as it was does not rebuild its layout style to find that out.
   - The kernel's own maps, over node identities, widget keys and call sites, use a fast hash in place of std's attack-resistant one.
   - The tree is walked for popovers, on every paint and hit test, only when it holds one.
   - The CPU renderer, painting over its last frame, does not stroke paths or look up text outside the damage. Its text cache is then cleared by a frame painted whole once it has grown well past what the last whole frame used.
+  - The scene a renderer reads is written over the last one. A node whose paint did not change stays where it was in it, and only what moved or was painted again is copied; before, the whole scene was built again from nothing. A frame that moves the pointer over the form makes about 60 allocations, where it made about 1,600.
+  - A node keeps its own drawing commands in one vector with room for eight, and a node painted again is written over its old chunk, commands and text, in place of a new allocation. A frame of 400 animating cells makes about 80 allocations, where it made about 2,100.
+  - The CPU renderer works out how far a rectangle with square corners covers each of its columns once, and fills the columns it covers whole as one run, in place of working it out for every pixel.
 
 ### Fixed
 
