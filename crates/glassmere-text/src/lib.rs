@@ -200,13 +200,13 @@ impl TextSystem {
         self.ensure_buffer(&text, spans, style, width)
     }
 
-    fn ensure_buffer(
-        &mut self,
+    /// The cache key of a block, with the font size and width it is shaped at.
+    fn key(
         text: &str,
         spans: &[TextSpan],
         style: &TextStyle,
         width: Option<f32>,
-    ) -> TextKey {
+    ) -> (TextKey, f32, Option<f32>) {
         let font_size = if style.font_size.is_finite() {
             style.font_size.max(1.0)
         } else {
@@ -230,110 +230,151 @@ impl TextSystem {
             rtl: style.rtl && width.is_some(),
             base: style.base,
             width: width.map(f32::to_bits),
-            spans: spans
-                .iter()
-                .map(|span| {
-                    (
-                        span.text.len(),
-                        span.color.map(|color| [color.0, color.1, color.2, color.3]),
-                        span.weight,
-                        span.italic,
-                        span.family.clone(),
-                    )
-                })
-                .collect(),
-        };
-        self.buffers.entry(key.clone()).or_insert_with(|| {
-            let mut buffer = Buffer::new(&mut self.fonts, Metrics::new(font_size, font_size * 1.4));
-            buffer.set_wrap(
-                &mut self.fonts,
-                if style.wrap == TextWrap::None {
-                    Wrap::None
-                } else {
-                    Wrap::WordOrGlyph
-                },
-            );
-            buffer.set_size(&mut self.fonts, width, None);
-            let base = attrs(&style.family, style.weight, style.italic);
-            // A forced paragraph direction is a mark that starts each line.
-            let forced = style.base.map(|rtl| (mark(rtl), line_starts(text)));
-            if spans.is_empty() {
-                let marked = forced.as_ref().map(|(mark, starts)| {
-                    let mut marked = String::with_capacity(text.len() + MARK * starts.len());
-                    let mut at = 0;
-                    for &start in starts {
-                        marked.push_str(&text[at..start]);
-                        marked.push_str(mark);
-                        at = start;
-                    }
-                    marked.push_str(&text[at..]);
-                    marked
-                });
-                let text = marked.as_deref().unwrap_or(text);
-                buffer.set_text(&mut self.fonts, text, &base, Shaping::Advanced, None);
+            spans: if spans.is_empty() {
+                Vec::new()
             } else {
-                // A span colour overrides the text area's default colour per glyph.
-                // A text that ends with a line ending has no empty last line here.
-                let mut starts = forced
-                    .as_ref()
-                    .map_or(&[][..], |(_, starts)| starts)
+                spans
                     .iter()
-                    .filter(|&&start| start < text.len() || text.is_empty())
-                    .peekable();
-                let mark = forced.as_ref().map_or("", |(mark, _)| mark);
-                let mut runs = Vec::new();
+                    .map(|span| {
+                        (
+                            span.text.len(),
+                            span.color.map(|color| [color.0, color.1, color.2, color.3]),
+                            span.weight,
+                            span.italic,
+                            span.family.clone(),
+                        )
+                    })
+                    .collect()
+            },
+        };
+        (key, font_size, width)
+    }
+
+    fn shape(
+        fonts: &mut FontSystem,
+        text: &str,
+        spans: &[TextSpan],
+        style: &TextStyle,
+        font_size: f32,
+        width: Option<f32>,
+    ) -> Buffer {
+        let mut buffer = Buffer::new(fonts, Metrics::new(font_size, font_size * 1.4));
+        buffer.set_wrap(
+            fonts,
+            if style.wrap == TextWrap::None {
+                Wrap::None
+            } else {
+                Wrap::WordOrGlyph
+            },
+        );
+        buffer.set_size(fonts, width, None);
+        let base = attrs(&style.family, style.weight, style.italic);
+        // A forced paragraph direction is a mark that starts each line.
+        let forced = style.base.map(|rtl| (mark(rtl), line_starts(text)));
+        if spans.is_empty() {
+            let marked = forced.as_ref().map(|(mark, starts)| {
+                let mut marked = String::with_capacity(text.len() + MARK * starts.len());
                 let mut at = 0;
-                for span in spans {
-                    let run = attrs(
-                        span.family.as_ref().unwrap_or(&style.family),
-                        span.weight.unwrap_or(style.weight),
-                        span.italic.unwrap_or(style.italic),
-                    );
-                    let run = match span.color {
-                        Some(color) => {
-                            run.color(cosmic_text::Color::rgba(color.0, color.1, color.2, color.3))
-                        }
-                        None => run,
-                    };
-                    // The mark of a line goes before its first run, which may
-                    // begin inside a span.
-                    let mut rest = span.text.as_str();
-                    loop {
-                        while starts.next_if_eq(&&at).is_some() {
-                            runs.push((mark, base.clone()));
-                        }
-                        match starts.peek() {
-                            Some(&&next) if next < at + rest.len() => {
-                                let (head, tail) = rest.split_at(next - at);
-                                runs.push((head, run.clone()));
-                                (at, rest) = (next, tail);
-                            }
-                            _ => break,
-                        }
+                for &start in starts {
+                    marked.push_str(&text[at..start]);
+                    marked.push_str(mark);
+                    at = start;
+                }
+                marked.push_str(&text[at..]);
+                marked
+            });
+            let text = marked.as_deref().unwrap_or(text);
+            buffer.set_text(fonts, text, &base, Shaping::Advanced, None);
+        } else {
+            // A span colour overrides the text area's default colour per glyph.
+            // A text that ends with a line ending has no empty last line here.
+            let mut starts = forced
+                .as_ref()
+                .map_or(&[][..], |(_, starts)| starts)
+                .iter()
+                .filter(|&&start| start < text.len() || text.is_empty())
+                .peekable();
+            let mark = forced.as_ref().map_or("", |(mark, _)| mark);
+            let mut runs = Vec::new();
+            let mut at = 0;
+            for span in spans {
+                let run = attrs(
+                    span.family.as_ref().unwrap_or(&style.family),
+                    span.weight.unwrap_or(style.weight),
+                    span.italic.unwrap_or(style.italic),
+                );
+                let run = match span.color {
+                    Some(color) => {
+                        run.color(cosmic_text::Color::rgba(color.0, color.1, color.2, color.3))
                     }
-                    runs.push((rest, run));
-                    at += rest.len();
+                    None => run,
+                };
+                // The mark of a line goes before its first run, which may
+                // begin inside a span.
+                let mut rest = span.text.as_str();
+                loop {
+                    while starts.next_if_eq(&&at).is_some() {
+                        runs.push((mark, base.clone()));
+                    }
+                    match starts.peek() {
+                        Some(&&next) if next < at + rest.len() => {
+                            let (head, tail) = rest.split_at(next - at);
+                            runs.push((head, run.clone()));
+                            (at, rest) = (next, tail);
+                        }
+                        _ => break,
+                    }
                 }
-                while starts.next_if_eq(&&at).is_some() {
-                    runs.push((mark, base.clone()));
-                }
-                // cosmic-text shapes an ASCII word in one run when every explicit
-                // span overlapping it is compatible, and text with the default
-                // attributes is not an explicit span: "bold:" would be all bold.
-                // Defaults that no run uses make every run explicit.
-                let unused = base
-                    .clone()
-                    .weight(cosmic_text::Weight(style.weight.clamp(100, 900) ^ 1));
-                buffer.set_rich_text(&mut self.fonts, runs, &unused, Shaping::Advanced, None);
+                runs.push((rest, run));
+                at += rest.len();
             }
-            if style.rtl && width.is_some() {
-                for line in &mut buffer.lines {
-                    line.set_align(Some(cosmic_text::Align::Right));
-                }
+            while starts.next_if_eq(&&at).is_some() {
+                runs.push((mark, base.clone()));
             }
-            buffer.shape_until_scroll(&mut self.fonts, false);
-            buffer
-        });
+            // cosmic-text shapes an ASCII word in one run when every explicit
+            // span overlapping it is compatible, and text with the default
+            // attributes is not an explicit span: "bold:" would be all bold.
+            // Defaults that no run uses make every run explicit.
+            let unused = base
+                .clone()
+                .weight(cosmic_text::Weight(style.weight.clamp(100, 900) ^ 1));
+            buffer.set_rich_text(fonts, runs, &unused, Shaping::Advanced, None);
+        }
+        if style.rtl && width.is_some() {
+            for line in &mut buffer.lines {
+                line.set_align(Some(cosmic_text::Align::Right));
+            }
+        }
+        buffer.shape_until_scroll(fonts, false);
+        buffer
+    }
+
+    fn buffer(
+        &mut self,
+        text: &str,
+        spans: &[TextSpan],
+        style: &TextStyle,
+        width: Option<f32>,
+    ) -> &Buffer {
+        let (key, font_size, width) = Self::key(text, spans, style, width);
+        self.buffers
+            .entry(key)
+            .or_insert_with(|| Self::shape(&mut self.fonts, text, spans, style, font_size, width))
+    }
+
+    fn ensure_buffer(
+        &mut self,
+        text: &str,
+        spans: &[TextSpan],
+        style: &TextStyle,
+        width: Option<f32>,
+    ) -> TextKey {
+        let (key, font_size, width) = Self::key(text, spans, style, width);
+        if self.buffers.contains_key(&key) {
+            return key;
+        }
+        let buffer = Self::shape(&mut self.fonts, text, spans, style, font_size, width);
+        self.buffers.insert(key.clone(), buffer);
         key
     }
 
@@ -353,19 +394,20 @@ impl TextSystem {
 
 impl TextMeasurer for TextSystem {
     fn measure_styled(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> Size {
-        let key = self.ensure_styled(text, style, width);
-        Self::size(&self.buffers[&key])
+        Self::size(self.buffer(text, &[], style, width))
     }
 
     fn geometry(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> TextGeometry {
-        let key = self.ensure_styled(text, style, width);
-        Self::extract(&self.buffers[&key], text, key.base.is_some())
+        Self::extract(
+            self.buffer(text, &[], style, width),
+            text,
+            style.base.is_some(),
+        )
     }
 
     /// The font's own ascent for this size, from a line shaped with it.
     fn ascent(&mut self, style: &TextStyle) -> f32 {
-        let key = self.ensure_styled("M", style, None);
-        self.buffers[&key]
+        self.buffer("M", &[], style, None)
             .layout_runs()
             .next()
             .map_or(style.font_size * 0.8, |run| run.line_y)
@@ -377,8 +419,12 @@ impl TextMeasurer for TextSystem {
         style: &TextStyle,
         width: Option<f32>,
     ) -> TextGeometry {
-        let key = self.ensure_rich(spans, style, width);
-        Self::extract(&self.buffers[&key], &key.text, key.base.is_some())
+        let text: String = spans.iter().map(|span| span.text.as_str()).collect();
+        Self::extract(
+            self.buffer(&text, spans, style, width),
+            &text,
+            style.base.is_some(),
+        )
     }
 }
 
@@ -774,5 +820,303 @@ mod tests {
                 .flat_map(|run| run.glyphs)
                 .all(|glyph| glyph.font_id == expected)
         );
+    }
+
+    fn cases() -> Vec<(&'static str, TextStyle, Option<f32>)> {
+        let wrapped = TextStyle {
+            wrap: TextWrap::Word,
+            ..TextStyle::default()
+        };
+        let style = |font_size| TextStyle {
+            font_size,
+            ..wrapped.clone()
+        };
+        vec![
+            ("alpha beta gamma delta epsilon", TextStyle::default(), None),
+            (
+                "alpha beta gamma delta epsilon",
+                wrapped.clone(),
+                Some(120.0),
+            ),
+            (
+                "alpha beta gamma delta epsilon",
+                TextStyle::default(),
+                Some(50.0),
+            ),
+            (
+                "alpha beta gamma delta epsilon",
+                wrapped.clone(),
+                Some(f32::NAN),
+            ),
+            (
+                "alpha beta gamma delta epsilon",
+                wrapped.clone(),
+                Some(f32::INFINITY),
+            ),
+            (
+                "alpha beta gamma delta epsilon",
+                wrapped.clone(),
+                Some(0.25),
+            ),
+            (
+                "alpha beta gamma delta epsilon",
+                style(f32::NAN),
+                Some(90.0),
+            ),
+            ("alpha beta gamma delta epsilon", style(0.2), Some(90.0)),
+            ("abc \u{5d0}\u{5d1}\u{5d2}\ndef", forced(true), None),
+            (
+                "abc \u{5d0}\u{5d1}\u{5d2} def",
+                TextStyle {
+                    rtl: true,
+                    base: Some(false),
+                    ..wrapped
+                },
+                Some(80.0),
+            ),
+        ]
+    }
+
+    #[test]
+    fn measuring_and_ensuring_share_one_buffer() {
+        for (text, style, width) in cases() {
+            let mut system = TextSystem::default();
+            let measured = system.measure_styled(text, &style, width);
+            assert_eq!(system.buffers.len(), 1);
+            let key = system.ensure_styled(text, &style, width);
+            assert!(system.buffers.contains_key(&key));
+            assert_eq!(system.buffers.len(), 1);
+            system.geometry(text, &style, width);
+            assert_eq!(system.buffers.len(), 1);
+            // The buffer the measure path shaped is the one the ensure path
+            // would have shaped.
+            let mut fresh = TextSystem::default();
+            let fresh_key = fresh.ensure_styled(text, &style, width);
+            assert_eq!(fresh_key, key);
+            assert_eq!(TextSystem::size(&fresh.buffers[&fresh_key]), measured);
+            assert_eq!(
+                system.buffers[&key].metrics().font_size,
+                fresh.buffers[&fresh_key].metrics().font_size
+            );
+            assert_eq!(
+                system.buffers[&key].size(),
+                fresh.buffers[&fresh_key].size()
+            );
+
+            let mut system = TextSystem::default();
+            let key = system.ensure_styled(text, &style, width);
+            system.measure_styled(text, &style, width);
+            system.geometry(text, &style, width);
+            assert_eq!(system.buffers.len(), 1);
+            assert!(system.buffers.contains_key(&key));
+        }
+    }
+
+    #[test]
+    fn rich_geometry_and_ascent_share_the_buffer_of_their_ensure() {
+        let style = TextStyle {
+            base: Some(true),
+            ..TextStyle::default()
+        };
+        let spans = [TextSpan::new("ab").weight(700), TextSpan::new("cd")];
+        let mut system = TextSystem::default();
+        system.geometry_rich(&spans, &style, Some(60.0));
+        assert_eq!(system.buffers.len(), 1);
+        let key = system.ensure_rich(&spans, &style, Some(60.0));
+        assert!(system.buffers.contains_key(&key));
+        assert_eq!(system.buffers.len(), 1);
+
+        let mut system = TextSystem::default();
+        system.ascent(&style);
+        assert_eq!(system.buffers.len(), 1);
+        let key = system.ensure_styled("M", &style, None);
+        assert!(system.buffers.contains_key(&key));
+        assert_eq!(system.buffers.len(), 1);
+    }
+
+    #[test]
+    fn a_hit_reads_the_stored_buffer_and_does_not_shape_again() {
+        let style = TextStyle::default();
+        let mut system = TextSystem::default();
+        let key = system.ensure_styled("hello", &style, None);
+        let before = system.measure_styled("hello", &style, None);
+        {
+            let TextSystem { fonts, buffers } = &mut system;
+            buffers
+                .get_mut(&key)
+                .unwrap()
+                .set_metrics(fonts, Metrics::new(40.0, 80.0));
+        }
+        let after = system.measure_styled("hello", &style, None);
+        assert_ne!(after.height, before.height);
+        assert_eq!(after.height, 80.0);
+        assert_eq!(system.geometry("hello", &style, None).size.height, 80.0);
+        assert_eq!(system.ensure_styled("hello", &style, None), key);
+        assert_eq!(system.buffers[&key].metrics().line_height, 80.0);
+        assert_eq!(system.buffers.len(), 1);
+    }
+
+    #[test]
+    fn a_miss_inserts_one_entry_under_the_returned_key() {
+        let style = TextStyle::default();
+        let spans = [TextSpan::new("ab"), TextSpan::new("cd").weight(700)];
+        let mut system = TextSystem::default();
+        let plain = system.ensure("one", 16.0);
+        assert_eq!(system.buffers.len(), 1);
+        let styled = system.ensure_styled("two", &style, Some(30.0));
+        assert_eq!(system.buffers.len(), 2);
+        let rich = system.ensure_rich(&spans, &style, None);
+        assert_eq!(system.buffers.len(), 3);
+        for key in [&plain, &styled, &rich] {
+            assert!(system.buffers.contains_key(key));
+        }
+        assert_eq!(system.ensure("one", 16.0), plain);
+        assert_eq!(system.ensure_rich(&spans, &style, None), rich);
+        assert_eq!(system.buffers.len(), 3);
+        system.retain(&HashSet::from([rich.clone()]));
+        assert_eq!(system.buffers.len(), 1);
+        assert!(system.buffers.contains_key(&rich));
+        system.retain(&HashSet::new());
+        assert!(system.buffers.is_empty());
+    }
+
+    /// Position, font and colour of every glyph of a buffer; a colour is
+    /// the bits of its channels over a set bit, no colour is zero.
+    fn glyphs(buffer: &Buffer) -> Vec<[u64; 6]> {
+        buffer
+            .layout_runs()
+            .flat_map(|run| {
+                run.glyphs.iter().map(move |glyph| {
+                    let color = glyph.color_opt.map_or(0, |color| {
+                        1 << 32 | u64::from(u32::from_be_bytes(color.as_rgba()))
+                    });
+                    [
+                        glyph.start as u64,
+                        glyph.end as u64,
+                        u64::from(glyph.glyph_id) << 16 | u64::from(glyph.font_weight.0),
+                        color,
+                        u64::from(glyph.x.to_bits()),
+                        u64::from(run.line_top.to_bits()),
+                    ]
+                })
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_ensure_path_shapes_the_spans_like_the_measure_path() {
+        let red = glassmere_scene::Color(255, 0, 0, 255);
+        let spans = [
+            TextSpan::new("alpha ").color(red),
+            TextSpan::new("beta ").weight(700).italic(true),
+            TextSpan::new("gamma delta"),
+        ];
+        let wrapped = TextStyle {
+            wrap: TextWrap::Word,
+            base: Some(false),
+            ..TextStyle::default()
+        };
+        for (style, width) in [
+            (TextStyle::default(), None),
+            (wrapped.clone(), Some(60.0)),
+            (wrapped, None),
+        ] {
+            let mut ensured = TextSystem::default();
+            let key = ensured.ensure_rich(&spans, &style, width);
+            let mut measured = TextSystem::default();
+            measured.geometry_rich(&spans, &style, width);
+            assert_eq!(measured.buffers.len(), 1);
+            let expected = glyphs(&measured.buffers[&key]);
+            let shaped = glyphs(&ensured.buffers[&key]);
+            assert!(
+                expected
+                    .iter()
+                    .any(|glyph| glyph[3] == 1 << 32 | 0xff00_00ff)
+            );
+            assert!(expected.iter().any(|glyph| glyph[2] & 0xffff == 700));
+            assert_eq!(shaped, expected);
+            assert_eq!(ensured.buffers[&key].size(), measured.buffers[&key].size());
+        }
+    }
+
+    #[test]
+    fn measuring_agrees_with_the_buffer_of_the_ensure() {
+        let paragraph = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda";
+        let style = TextStyle {
+            wrap: TextWrap::Word,
+            ..TextStyle::default()
+        };
+        for width in [Some(120.0), Some(360.0), None] {
+            let mut system = TextSystem::default();
+            let measured = system.measure_styled(paragraph, &style, width);
+            let key = system.ensure_styled(paragraph, &style, width);
+            let buffer = &system.buffers[&key];
+            let mut expected = Size::new(0.0, buffer.metrics().line_height);
+            for run in buffer.layout_runs() {
+                expected.width = expected.width.max(run.line_w);
+                expected.height = expected.height.max(run.line_top + run.line_height);
+            }
+            assert_eq!(measured, expected);
+            assert_eq!(system.geometry(paragraph, &style, width).size, expected);
+        }
+    }
+
+    #[test]
+    fn keys_use_the_normalised_width_and_size() {
+        let mut system = TextSystem::default();
+        let text = "alpha beta gamma";
+        let none = TextStyle::default();
+        let wrapped = TextStyle {
+            wrap: TextWrap::Word,
+            ..TextStyle::default()
+        };
+        assert_eq!(
+            system.ensure_styled(text, &none, Some(50.0)),
+            system.ensure_styled(text, &none, None)
+        );
+        assert_eq!(
+            system.ensure_styled(text, &wrapped, Some(0.25)),
+            system.ensure_styled(text, &wrapped, Some(1.0))
+        );
+        assert_eq!(
+            system.ensure_styled(text, &wrapped, Some(f32::NAN)),
+            system.ensure_styled(text, &wrapped, None)
+        );
+        let nan_size = TextStyle {
+            font_size: f32::NAN,
+            ..wrapped.clone()
+        };
+        assert_eq!(
+            system.ensure_styled(text, &nan_size, Some(80.0)),
+            system.ensure_styled(text, &wrapped, Some(80.0))
+        );
+        // Alignment needs a width, which a wrap-less block does not have.
+        let rtl_none = TextStyle {
+            rtl: true,
+            ..none.clone()
+        };
+        assert_eq!(
+            system.ensure_styled(text, &rtl_none, Some(50.0)),
+            system.ensure_styled(text, &rtl_none, None)
+        );
+        assert_eq!(
+            system.ensure_styled(text, &rtl_none, None),
+            system.ensure_styled(text, &none, None)
+        );
+        let rtl_wrapped = TextStyle {
+            rtl: true,
+            ..wrapped.clone()
+        };
+        assert_eq!(
+            system.ensure_styled(text, &rtl_wrapped, Some(f32::NAN)),
+            system.ensure_styled(text, &rtl_wrapped, None)
+        );
+        assert!(!system.ensure_styled(text, &rtl_wrapped, None).rtl);
+        assert!(system.ensure_styled(text, &rtl_wrapped, Some(50.0)).rtl);
+        // A wrap-less block shaped through the measure path is laid out
+        // unwrapped whatever width is offered.
+        let narrow = system.measure_styled(text, &none, Some(20.0));
+        assert_eq!(narrow, system.measure_styled(text, &none, None));
+        assert!(narrow.width > 20.0);
     }
 }
