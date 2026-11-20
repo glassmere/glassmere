@@ -382,6 +382,9 @@ impl Context {
     pub(super) fn rich_editor_event(&mut self, event: &Event) -> Option<bool> {
         match event {
             Event::PointerDown | Event::PointerDownWithShift => {
+                if self.rich_editor_count == 0 {
+                    return None;
+                }
                 let point = self.pointer?;
                 let id = self.hit_test(point)?;
                 let node = self.nodes.get(&id)?;

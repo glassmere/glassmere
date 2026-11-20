@@ -324,6 +324,9 @@ impl Context {
     pub(super) fn text_area_event(&mut self, event: &Event) -> Option<bool> {
         match event {
             Event::PointerDown | Event::PointerDownWithShift => {
+                if self.text_area_count == 0 {
+                    return None;
+                }
                 let point = self.pointer?;
                 let id = self.hit_test(point)?;
                 let node = self.nodes.get(&id)?;
@@ -377,6 +380,9 @@ impl Context {
                 Some(self.area_text(id, edit))
             }
             Event::Editor(EditorCommand::AddCursorAt(point)) => {
+                if self.text_area_count == 0 {
+                    return None;
+                }
                 let id = self.hit_test(*point)?;
                 if self.nodes.get(&id)?.kind != Kind::TextArea {
                     return None;

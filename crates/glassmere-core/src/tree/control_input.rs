@@ -771,14 +771,19 @@ impl Context {
                 // before it opens a submenu or closes the one that is open.
                 // The row whose submenu is open keeps it, and a pointer off
                 // the rows waits for nothing.
-                match self
-                    .hit_test(*position)
-                    .and_then(|id| Some((id, self.row_place(id)?)))
-                    .filter(|(id, (owner, _))| {
-                        self.popup_of(*owner).is_some() && self.popup_of(*id).is_none()
-                    }) {
-                    Some((id, (owner, index))) => self.hover_menu_row(id, owner, index),
-                    None => self.menu_dwell = None,
+                if self.popup_levels().next().is_none() {
+                    // No menu is open, so the pointer is on no row of one.
+                    self.menu_dwell = None;
+                } else {
+                    match self
+                        .hit_test(*position)
+                        .and_then(|id| Some((id, self.row_place(id)?)))
+                        .filter(|(id, (owner, _))| {
+                            self.popup_of(*owner).is_some() && self.popup_of(*id).is_none()
+                        }) {
+                        Some((id, (owner, index))) => self.hover_menu_row(id, owner, index),
+                        None => self.menu_dwell = None,
+                    }
                 }
             }
             Event::PointerDown | Event::PointerDownWithShift => {

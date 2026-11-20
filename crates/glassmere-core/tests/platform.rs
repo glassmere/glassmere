@@ -561,6 +561,73 @@ fn a_submenu_opens_once_the_pointer_has_rested_on_its_row() {
     assert!(driven.context.find(&RECENT).is_some());
 }
 
+/// The menu bar of `nested_menu`, there only while `bar` is set, and a label
+/// to move the pointer over.
+struct Gone {
+    bar: bool,
+}
+
+fn gone_page(state: &Gone, ui: &mut Ui<'_, Handler<Gone>>) {
+    if state.bar {
+        ui.keyed("bar", |ui| ui.menu_bar(&nested_menu(false)));
+    }
+    ui.keyed("plain", |ui| ui.label("plain"));
+}
+
+#[test]
+fn a_wait_left_by_a_menu_that_closed_ends_with_the_next_pointer_move() {
+    let mut driven = Driven::new(WIDE, Gone { bar: true }, gone_page);
+    open_file_of(&mut driven);
+    let recent = row(&driven.context, &FILE, "1").bounds;
+    driven.context.set_now(Duration::from_secs(1));
+    hover(&mut driven.context, recent);
+    assert_eq!(
+        driven.context.next_wake(),
+        Some(Duration::from_millis(1200))
+    );
+    // The view stops declaring the menu: it closes with its owner, and the
+    // row's wait is still pending.
+    driven.state_mut().bar = false;
+    driven.frame();
+    assert!(driven.context.find(&FILE).is_none());
+    assert_eq!(
+        driven.context.next_wake(),
+        Some(Duration::from_millis(1200)),
+        "the wait outlives the menu"
+    );
+    // The next move is on no row of an open menu, and ends it.
+    let plain = driven.context.find(&["plain"]).unwrap();
+    let bounds = driven.context.node(plain).unwrap().bounds;
+    hover(&mut driven.context, bounds);
+    assert_eq!(driven.context.next_wake(), None);
+    driven.context.set_now(Duration::from_secs(3));
+    driven.frame();
+    assert!(driven.context.find(&RECENT).is_none());
+}
+
+#[test]
+fn a_submenu_opens_after_pointer_moves_made_with_no_menu_open() {
+    let mut driven = Driven::new(WIDE, Gone { bar: true }, gone_page);
+    let plain = driven.context.find(&["plain"]).unwrap();
+    let bounds = driven.context.node(plain).unwrap().bounds;
+    driven.context.set_now(Duration::from_millis(500));
+    hover(&mut driven.context, bounds);
+    assert_eq!(driven.context.next_wake(), None);
+    open_file_of(&mut driven);
+    let recent = row(&driven.context, &FILE, "1").bounds;
+    hover(&mut driven.context, recent);
+    assert_eq!(driven.context.next_wake(), Some(Duration::from_millis(700)));
+    driven.context.set_now(Duration::from_millis(700));
+    driven.frame();
+    assert!(driven.context.find(&RECENT).is_some());
+}
+
+fn open_file_of(driven: &mut Driven<Gone>) {
+    let file = driven.context.find(&["bar", "menu0"]).unwrap();
+    assert!(driven.context.action(file, Action::Expand));
+    driven.frame();
+}
+
 #[test]
 fn a_click_opens_a_submenu_at_once_and_ends_the_wait() {
     let mut driven = Driven::new(WIDE, Nested::default(), nested_page);

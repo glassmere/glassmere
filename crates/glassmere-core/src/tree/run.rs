@@ -832,6 +832,12 @@ impl Context {
         if element.kind == Kind::Popover {
             self.popover_count += 1;
         }
+        if element.kind == Kind::TextArea {
+            self.text_area_count += 1;
+        }
+        if element.kind == Kind::RichEditor {
+            self.rich_editor_count += 1;
+        }
         self.nodes.insert(
             id,
             Node {
@@ -927,6 +933,12 @@ impl Context {
         let node = self.nodes.remove(&id).unwrap();
         if node.kind == Kind::Popover {
             self.popover_count -= 1;
+        }
+        if node.kind == Kind::TextArea {
+            self.text_area_count -= 1;
+        }
+        if node.kind == Kind::RichEditor {
+            self.rich_editor_count -= 1;
         }
         if node.kind == Kind::Dock {
             // The panels parked while their tabs were not selected go with it;

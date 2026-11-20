@@ -879,4 +879,63 @@ mod tests {
         run(&mut context, Dialog::Plain);
         assert!(agrees(&context, &[Kind::DockFloat, Kind::Container]) > 12);
     }
+    /// How many nodes of each kind the editors' counters should hold.
+    fn recounted(context: &Context) -> (usize, usize) {
+        let count = |kind| {
+            context
+                .nodes
+                .values()
+                .filter(|node| node.kind == kind)
+                .count()
+        };
+        (count(Kind::TextArea), count(Kind::RichEditor))
+    }
+
+    #[test]
+    fn the_editor_counters_follow_the_nodes_that_come_and_go() {
+        use crate::{CodeEditorOptions, RichDocument, RichEditorOptions, TextDocument};
+        let text = TextDocument::from_text("one\ntwo");
+        let notes = RichDocument::new();
+        // Which of two text areas and one rich editor are declared, and
+        // whether a label stands in the first one's place.
+        let declare =
+            |context: &mut Context, first: bool, second: bool, rich: bool, label: bool| {
+                context.run(WINDOW, &mut MonospaceMeasurer, |ui| {
+                    if label {
+                        ui.keyed("first", |ui| ui.label("first"));
+                    }
+                    if first {
+                        ui.keyed("first", |ui| {
+                            ui.text_area(&text, CodeEditorOptions::default(), |_| ())
+                        });
+                    }
+                    if second {
+                        ui.keyed("second", |ui| {
+                            ui.code_editor(&text, CodeEditorOptions::default(), |_| ())
+                        });
+                    }
+                    if rich {
+                        ui.keyed("rich", |ui| {
+                            ui.rich_editor(&notes, RichEditorOptions::default(), |_| ());
+                        });
+                    }
+                });
+                (context.text_area_count, context.rich_editor_count)
+            };
+        let mut context = Context::new();
+        for (first, second, rich, label, expected) in [
+            (false, false, false, false, (0, 0)),
+            (true, false, false, false, (1, 0)),
+            (true, true, true, false, (2, 1)),
+            (true, true, true, false, (2, 1)),
+            (false, true, true, true, (1, 1)),
+            (true, true, false, false, (2, 0)),
+            (false, false, true, false, (0, 1)),
+            (false, false, false, false, (0, 0)),
+        ] {
+            let counts = declare(&mut context, first, second, rich, label);
+            assert_eq!(counts, expected);
+            assert_eq!(counts, recounted(&context));
+        }
+    }
 }

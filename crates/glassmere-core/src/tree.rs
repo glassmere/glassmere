@@ -673,6 +673,10 @@ pub struct Context {
     geometry_dirty: bool,
     /// How many popovers the tree holds.
     popover_count: usize,
+    /// How many text areas the tree holds.
+    text_area_count: usize,
+    /// How many rich editors the tree holds.
+    rich_editor_count: usize,
     /// The nodes `prepare_controls` found last frame, kept for their room.
     preparing: Preparing,
     /// Tabs that became selected in this declaration; layout scrolls their
@@ -706,7 +710,8 @@ pub struct Context {
     submitted: HashSet<NodeId>,
     pub(crate) popup: Option<PopupState>,
     /// The menus the open popup is a submenu of, outermost first. `popup`
-    /// is the innermost, which has the keyboard.
+    /// is the innermost, which has the keyboard. Empty whenever `popup` is
+    /// none.
     pub(crate) popup_parents: Vec<PopupState>,
     /// The row of an open menu the pointer is resting on, which opens a
     /// submenu or closes the open one when the wait is over.
@@ -934,6 +939,8 @@ impl Default for Context {
             stats: FrameStats::default(),
             geometry_dirty: false,
             popover_count: 0,
+            text_area_count: 0,
+            rich_editor_count: 0,
             preparing: Preparing::default(),
             reveal_tabs: Vec::new(),
             pending_damage: Vec::new(),
