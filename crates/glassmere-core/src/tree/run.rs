@@ -552,6 +552,7 @@ impl Context {
                 .collect();
             self.adopt_children(old, siblings);
         }
+        self.clips_valid = false;
         self.nodes.get_mut(&id)?.parent = Some(parent);
         Some(id)
     }
@@ -832,6 +833,9 @@ impl Context {
         if element.kind == Kind::Popover {
             self.popover_count += 1;
         }
+        if element.kind == Kind::Popup {
+            self.popup_count += 1;
+        }
         if element.kind == Kind::TextArea {
             self.text_area_count += 1;
         }
@@ -911,6 +915,7 @@ impl Context {
 
     /// Gives `parent` its new list of children, in the tree and in Taffy.
     fn adopt_children(&mut self, parent: NodeId, children: Vec<NodeId>) {
+        self.clips_valid = false;
         let layout_children: Vec<_> = children.iter().map(|id| self.nodes[id].layout_id).collect();
         self.layout
             .set_children(self.nodes[&parent].layout_id, &layout_children)
@@ -927,12 +932,16 @@ impl Context {
     }
 
     pub(super) fn remove(&mut self, id: NodeId) {
+        self.clips_valid = false;
         if self.park_panel(id) {
             return;
         }
         let node = self.nodes.remove(&id).unwrap();
         if node.kind == Kind::Popover {
             self.popover_count -= 1;
+        }
+        if node.kind == Kind::Popup {
+            self.popup_count -= 1;
         }
         if node.kind == Kind::TextArea {
             self.text_area_count -= 1;

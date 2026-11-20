@@ -671,8 +671,13 @@ pub struct Context {
     spare_chunks: crate::collections::FastMap<NodeId, Rc<PaintChunk>>,
     stats: FrameStats,
     geometry_dirty: bool,
+    /// Whether every clip was cut from its parent's by the last
+    /// `refresh_bounds` and no node has been given another parent since.
+    clips_valid: bool,
     /// How many popovers the tree holds.
     popover_count: usize,
+    /// How many popups the tree holds.
+    popup_count: usize,
     /// How many text areas the tree holds.
     text_area_count: usize,
     /// How many rich editors the tree holds.
@@ -938,7 +943,9 @@ impl Default for Context {
             spare_chunks: Default::default(),
             stats: FrameStats::default(),
             geometry_dirty: false,
+            clips_valid: false,
             popover_count: 0,
+            popup_count: 0,
             text_area_count: 0,
             rich_editor_count: 0,
             preparing: Preparing::default(),

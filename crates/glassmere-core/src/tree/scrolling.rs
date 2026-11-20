@@ -126,12 +126,11 @@ impl Context {
         // Innermost first. Trying one changes nothing unless it moves, so
         // the candidates can be found before any is tried.
         let mut candidates = Vec::new();
-        self.last_in_order(self.root, &mut |id, node| {
+        self.last_at(self.root, pointer, self.can_prune_at(), &mut |id, node| {
             if matches!(
                 node.kind,
                 Kind::Scroll | Kind::Popup | Kind::Collection | Kind::TextArea | Kind::RichEditor
-            ) && node.clip.contains(pointer)
-            {
+            ) {
                 candidates.push(id);
             }
             false
@@ -199,8 +198,8 @@ impl Context {
         let Some(pointer) = self.pointer else {
             return false;
         };
-        let strip = self.last_in_order(self.root, &mut |_, node| {
-            node.kind == Kind::TabList && node.scroll.maximum_x > 0.0 && node.clip.contains(pointer)
+        let strip = self.last_at(self.root, pointer, self.can_prune_at(), &mut |_, node| {
+            node.kind == Kind::TabList && node.scroll.maximum_x > 0.0
         });
         strip.is_some_and(|strip| {
             let node = &self.nodes[&strip];

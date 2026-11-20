@@ -38,6 +38,7 @@ impl Context {
         })
     }
 
+    /// `by` is never negative: hit tests rely on a clip not moving up.
     fn shift(&mut self, id: NodeId, by: f32) {
         let Some(node) = self.nodes.get_mut(&id) else {
             return;

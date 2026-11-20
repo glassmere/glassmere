@@ -93,6 +93,7 @@ impl Context {
             },
         );
         self.geometry_dirty = false;
+        self.clips_valid = true;
         self.pending |= Dirty::ACCESSIBILITY;
     }
 
@@ -196,6 +197,12 @@ impl Context {
         } else {
             clip
         };
+        // Hit tests skip what a clip rules out (`last_at`). Whatever else sets
+        // a clip must keep that true of every node but a popup or popover: a
+        // non-empty clip of a child starts no further left or up than its
+        // parent's, and a clip is empty where its parent's is. The one empty
+        // clip that does not start inside its parent's is that of a hidden
+        // strip scroll button.
         node.clip = clip.intersect(node.bounds);
         if matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection) {
             node.scroll.maximum =
@@ -1001,21 +1008,44 @@ impl Context {
         }
     }
 
+    /// Whether a search for nodes whose clip holds a point may skip the
+    /// subtrees it can tell hold none. Popups and popovers start their clip
+    /// again from the window, so with one in the tree a clip says nothing
+    /// about what lies under it. Nor does it between a change of the
+    /// links and the next `refresh_bounds`, which a frame that unwinds in
+    /// between leaves open.
+    pub(super) fn can_prune_at(&self) -> bool {
+        self.clips_valid && self.popover_count == 0 && self.popup_count == 0
+    }
+
     /// What `order` followed by a search from the back returns: the last
-    /// node of the subtree at `id`, in the order `order` lists them, that
-    /// `wanted` accepts. Children are tried last to first, then the node.
-    pub(super) fn last_in_order(
+    /// node of the subtree at `id`, in the order `order` lists them, whose
+    /// clip holds `at` and that `wanted` accepts. Children are tried last to
+    /// first, then the node.
+    ///
+    /// With `prune`, a subtree is left out when its root's clip is empty or
+    /// starts past `at` on the left or at the top: no clip under it can hold
+    /// `at` either, as a child's clip is its parent's cut down to its own
+    /// box. The far edges are not tested, as a baseline shift can put a
+    /// child below its parent's clip.
+    pub(super) fn last_at(
         &self,
         id: NodeId,
+        at: Point,
+        prune: bool,
         wanted: &mut impl FnMut(NodeId, &Node) -> bool,
     ) -> Option<NodeId> {
         let node = &self.nodes[&id];
+        let clip = node.clip;
+        if prune && (clip.width == 0.0 || clip.height == 0.0 || at.x < clip.x || at.y < clip.y) {
+            return None;
+        }
         for child in node.children.iter().rev() {
-            if let Some(found) = self.last_in_order(*child, wanted) {
+            if let Some(found) = self.last_at(*child, at, prune, wanted) {
                 return Some(found);
             }
         }
-        wanted(id, node).then_some(id)
+        (clip.contains(at) && wanted(id, node)).then_some(id)
     }
 }
 
