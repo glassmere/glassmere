@@ -52,6 +52,8 @@ mod touch_input;
 mod types;
 use crate::clock::Instant;
 use crate::collections::{HashMap, HashSet};
+use alloc::rc::Rc;
+#[cfg(feature = "std")]
 use alloc::sync::Arc;
 use core::time::Duration;
 use measure::*;
@@ -98,20 +100,34 @@ const TITLE_DOUBLE_PRESS_NEAR: f32 = 24.0;
 
 struct PaintChunk {
     before: Vec<Primitive>,
-    children: Vec<Arc<PaintChunk>>,
+    children: Vec<Rc<PaintChunk>>,
     after: Vec<Primitive>,
+    /// Primitives in this chunk and everything under it.
+    total: usize,
+    /// The assembly that last put this chunk into the scene and the index it
+    /// put it at, or `(0, 0)` before any has. A chunk never changes, so
+    /// until something else is written over that range, the range holds it.
+    /// Anything that rewrote the `before`, `children` or `after` of a chunk
+    /// would have to set this back to `(0, 0)`.
+    placed: core::cell::Cell<(u64, usize)>,
 }
 
 impl PaintChunk {
+    fn new(before: Vec<Primitive>, children: Vec<Rc<PaintChunk>>, after: Vec<Primitive>) -> Self {
+        let total =
+            before.len() + after.len() + children.iter().map(|child| child.total).sum::<usize>();
+        Self {
+            before,
+            children,
+            after,
+            total,
+            placed: core::cell::Cell::new((0, 0)),
+        }
+    }
+
     /// Primitives in this chunk and everything under it.
     fn count(&self) -> usize {
-        self.before.len()
-            + self.after.len()
-            + self
-                .children
-                .iter()
-                .map(|child| child.count())
-                .sum::<usize>()
+        self.total
     }
 
     fn append_to(&self, output: &mut Vec<Primitive>) {
@@ -121,6 +137,135 @@ impl PaintChunk {
         }
         output.extend_from_slice(&self.after);
     }
+
+    /// Writes what `append_to` would append into `output` from the index
+    /// `*at` on, over the primitives there, and moves `*at` past it.
+    /// `assembly` is the number of this assembly of the scene. It is at least
+    /// 2, so that the one before it is never the 0 of a chunk not yet placed.
+    ///
+    /// An assembly writes forward only and cuts the scene where it ends. A
+    /// chunk that the assembly before put at this very index is therefore
+    /// still whole there and is left alone, if the scene reaches that far: an
+    /// assembly that did not finish leaves it empty, and `*at` must not pass
+    /// its end.
+    fn place(&self, output: &mut Vec<Primitive>, at: &mut usize, assembly: u64) {
+        let here = *at;
+        let end = here + self.total;
+        let there = self.placed.get() == (assembly - 1, here) && end <= output.len();
+        self.placed.set((assembly, here));
+        if there {
+            *at = end;
+            return;
+        }
+        place_slice(&self.before, output, at);
+        for child in &self.children {
+            child.place(output, at, assembly);
+        }
+        place_slice(&self.after, output, at);
+        debug_assert_eq!(*at, end);
+    }
+
+    /// Checks that `scene` holds what `append_to` appends from the index
+    /// `from` on, and returns the index after it.
+    #[cfg(debug_assertions)]
+    fn assert_placed(&self, scene: &[Primitive], from: usize) -> usize {
+        let mut at = assert_primitives(scene, &self.before, from);
+        for child in &self.children {
+            at = child.assert_placed(scene, at);
+        }
+        assert_primitives(scene, &self.after, at)
+    }
+}
+
+/// Writes `source` into `output` from the index `*at` on, over the primitives
+/// there for as far as they reach and after them from there, and moves `*at`
+/// past it. Every slot written becomes a copy of its source.
+fn place_slice(source: &[Primitive], output: &mut Vec<Primitive>, at: &mut usize) {
+    let fits = source.len().min(output.len() - *at);
+    let (over, rest) = source.split_at(fits);
+    for (slot, primitive) in output[*at..*at + fits].iter_mut().zip(over) {
+        overwrite(slot, primitive);
+    }
+    output.extend_from_slice(rest);
+    *at += source.len();
+}
+
+/// Makes `slot` a copy of `source`, writing text over the text the slot held
+/// instead of allocating it again. No field is left alone for being equal
+/// already: 0.0 and -0.0 are equal, and are not the same.
+fn overwrite(slot: &mut Primitive, source: &Primitive) {
+    match (slot, source) {
+        (
+            Primitive::Text {
+                rect,
+                text,
+                font_size,
+                color,
+            },
+            Primitive::Text {
+                rect: source_rect,
+                text: source_text,
+                font_size: source_size,
+                color: source_color,
+            },
+        ) => {
+            *rect = *source_rect;
+            *font_size = *source_size;
+            *color = *source_color;
+            refill(text, source_text);
+        }
+        (
+            Primitive::StyledText {
+                rect,
+                text,
+                style,
+                color,
+            },
+            Primitive::StyledText {
+                rect: source_rect,
+                text: source_text,
+                style: source_style,
+                color: source_color,
+            },
+        ) => {
+            *rect = *source_rect;
+            *color = *source_color;
+            style.clone_from(source_style);
+            refill(text, source_text);
+        }
+        (slot, source) => *slot = source.clone(),
+    }
+}
+
+/// Makes `into` a copy of `from`. The room `into` has is kept when `from` fits
+/// in it and it is not more than twice the length of `from` plus 32 bytes: one
+/// long text must not leave its room to every text that comes after it.
+fn refill(into: &mut String, from: &String) {
+    let room = into.capacity();
+    if room >= from.len() && room <= from.len().saturating_mul(2).saturating_add(32) {
+        into.clone_from(from);
+    } else {
+        *into = from.clone();
+    }
+}
+
+/// Checks that `scene` holds `primitives` from the index `at` on, and returns
+/// the index after them. A primitive with a NaN in it is not equal to itself,
+/// so its text stands in for it.
+#[cfg(debug_assertions)]
+fn assert_primitives(scene: &[Primitive], primitives: &[Primitive], at: usize) -> usize {
+    for (index, primitive) in primitives.iter().enumerate() {
+        let placed = scene.get(at + index);
+        let same = |placed: &Primitive| {
+            placed == primitive || format!("{placed:?}") == format!("{primitive:?}")
+        };
+        assert!(
+            placed.is_some_and(same),
+            "{placed:?} is at {} of the scene, where {primitive:?} was placed",
+            at + index
+        );
+    }
+    at + primitives.len()
 }
 
 struct Node {
@@ -137,7 +282,7 @@ struct Node {
     clip: Rect,
     scroll: ScrollState,
     custom: Option<CustomWidget>,
-    paint_cache: Option<Arc<PaintChunk>>,
+    paint_cache: Option<Rc<PaintChunk>>,
     control: Control,
     // Labels and other controls pay one pointer, not an inline editing history.
     editor: Option<Box<Editor>>,
@@ -471,6 +616,10 @@ pub struct Context {
     pointer_clicks: HashSet<NodeId>,
     pending: Dirty,
     scene: Scene,
+    /// The number of the last scene assembly begun, which paint chunks
+    /// remember. It starts at 1 and is raised before each assembly, so the
+    /// first is 2 and none is 0, the number of a chunk not yet in a scene.
+    assembly: u64,
     stats: FrameStats,
     geometry_dirty: bool,
     /// How many popovers the tree holds.
@@ -731,6 +880,7 @@ impl Default for Context {
             pointer_clicks: HashSet::new(),
             pending: Dirty::all(),
             scene: Scene::default(),
+            assembly: 1,
             stats: FrameStats::default(),
             geometry_dirty: false,
             popover_count: 0,
@@ -1384,5 +1534,570 @@ impl Context {
 
     pub(crate) fn leave_dock(&self, outer: Option<NodeId>) {
         self.dock.set(outer);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::vec;
+    use glassmere_scene::{Affine, FontFamily, GradientStop, Image, Path, Stroke, TextSpan};
+
+    fn rect(x: f32) -> Rect {
+        Rect {
+            x,
+            y: 2.0,
+            width: 3.0,
+            height: 4.0,
+        }
+    }
+
+    /// A colour that tells the primitive at `x` from others.
+    fn color(x: f32) -> Color {
+        Color(x as u8, 2, 3, 255)
+    }
+
+    fn quad(x: f32) -> Primitive {
+        Primitive::Quad {
+            rect: rect(x),
+            color: color(x),
+            radius: 0.5,
+        }
+    }
+
+    fn text(x: f32, text: &str) -> Primitive {
+        Primitive::Text {
+            rect: rect(x),
+            text: text.into(),
+            font_size: 12.0 + x,
+            color: color(x),
+        }
+    }
+
+    fn styled(x: f32, text: &str) -> Primitive {
+        Primitive::StyledText {
+            rect: rect(x),
+            text: text.into(),
+            style: TextStyle {
+                font_size: 10.0 + x,
+                family: FontFamily::Named(format!("family {x}")),
+                weight: 700,
+                ..TextStyle::default()
+            },
+            color: color(x),
+        }
+    }
+
+    fn chunk(
+        before: Vec<Primitive>,
+        children: Vec<Rc<PaintChunk>>,
+        after: Vec<Primitive>,
+    ) -> Rc<PaintChunk> {
+        Rc::new(PaintChunk::new(before, children, after))
+    }
+
+    /// The scene `chunks` flatten to.
+    fn flattened(chunks: &[Rc<PaintChunk>]) -> Vec<Primitive> {
+        let mut flat = Vec::new();
+        for chunk in chunks {
+            chunk.append_to(&mut flat);
+        }
+        flat
+    }
+
+    /// Puts `chunks` one after another over `buffer` in assembly `assembly`
+    /// and cuts the buffer where they end, as the scene is assembled. Returns
+    /// where that is.
+    fn assemble(buffer: &mut Vec<Primitive>, chunks: &[Rc<PaintChunk>], assembly: u64) -> usize {
+        let mut at = 0;
+        for chunk in chunks {
+            chunk.place(buffer, &mut at, assembly);
+        }
+        buffer.truncate(at);
+        at
+    }
+
+    /// One primitive of every kind, told apart from those of another call by
+    /// `x`.
+    fn every_kind(x: f32) -> Vec<Primitive> {
+        let mut path = Path::new();
+        path.move_to(Point { x, y: 1.0 })
+            .line_to(Point { x: 3.0, y: 4.0 })
+            .close();
+        vec![
+            quad(x),
+            text(x, "text"),
+            styled(x, "styled"),
+            Primitive::RichText {
+                rect: rect(x),
+                spans: vec![TextSpan::new("one"), TextSpan::new("two").weight(700)],
+                style: TextStyle::default(),
+                color: Color(1, 1, 1, 255),
+            },
+            Primitive::Image {
+                rect: rect(x),
+                image: Image::from_rgba8(1, 1, vec![9, 8, 7, 255]).unwrap(),
+                source: rect(0.0),
+                tint: Some(Color(1, 2, 3, 4)),
+                radius: 1.0,
+            },
+            Primitive::PushClip(rect(x)),
+            Primitive::PopClip,
+            Primitive::PushLayer {
+                bounds: rect(x),
+                opacity: 0.5,
+                transform: Affine::translate(x, 2.0),
+            },
+            Primitive::Gradient {
+                rect: rect(x),
+                radius: 2.0,
+                from: Point { x: 0.0, y: 0.0 },
+                to: Point { x: 1.0, y: 1.0 },
+                stops: vec![
+                    GradientStop {
+                        at: 0.0,
+                        color: Color(0, 0, 0, 255),
+                    },
+                    GradientStop {
+                        at: 1.0,
+                        color: Color(255, 255, 255, 255),
+                    },
+                ],
+                radial: false,
+            },
+            Primitive::Shadow {
+                rect: rect(x),
+                radius: 1.0,
+                color: Color(0, 0, 0, 128),
+                blur: 4.0,
+                spread: 1.0,
+                offset: Point { x: 1.0, y: 2.0 },
+                inset: false,
+            },
+            Primitive::Custom {
+                rect: rect(x),
+                id: 7,
+            },
+            Primitive::PopLayer,
+            Primitive::Path {
+                path,
+                fill: Some(Color(1, 2, 3, 255)),
+                stroke: Some(Stroke {
+                    width: 1.0,
+                    color: Color(4, 5, 6, 255),
+                }),
+            },
+        ]
+    }
+
+    /// Where a kind of primitive is in `every_kind`. A kind added to the
+    /// scene fails to compile here until the list has one of it.
+    fn kind(primitive: &Primitive) -> usize {
+        match primitive {
+            Primitive::Quad { .. } => 0,
+            Primitive::Text { .. } => 1,
+            Primitive::StyledText { .. } => 2,
+            Primitive::RichText { .. } => 3,
+            Primitive::Image { .. } => 4,
+            Primitive::PushClip(_) => 5,
+            Primitive::PopClip => 6,
+            Primitive::PushLayer { .. } => 7,
+            Primitive::Gradient { .. } => 8,
+            Primitive::Shadow { .. } => 9,
+            Primitive::Custom { .. } => 10,
+            Primitive::PopLayer => 11,
+            Primitive::Path { .. } => 12,
+        }
+    }
+
+    #[test]
+    fn a_slot_of_any_kind_takes_a_primitive_of_any_kind() {
+        assert!(every_kind(0.0).iter().map(kind).eq(0..13));
+        for slot in every_kind(1.0) {
+            for source in every_kind(2.0) {
+                let mut written = slot.clone();
+                overwrite(&mut written, &source);
+                assert_eq!(written, source, "{slot:?} written over by {source:?}");
+                assert_eq!(format!("{written:?}"), format!("{source:?}"));
+            }
+        }
+    }
+
+    /// The text of a primitive that has some.
+    fn held(primitive: &Primitive) -> &String {
+        match primitive {
+            Primitive::Text { text, .. } | Primitive::StyledText { text, .. } => text,
+            other => panic!("{other:?} has no text"),
+        }
+    }
+
+    #[test]
+    fn a_text_slot_takes_text_of_any_length_whatever_room_it_has() {
+        let texts = ["", "a", "a longer text than most of the others", "ünï ✓"];
+        for old in texts {
+            for room in [0, 8, 4096] {
+                for new in texts {
+                    let mut plain = text(1.0, "");
+                    let mut styled_slot = styled(1.0, "");
+                    for slot in [&mut plain, &mut styled_slot] {
+                        let (Primitive::Text { text, .. } | Primitive::StyledText { text, .. }) =
+                            slot
+                        else {
+                            unreachable!()
+                        };
+                        *text = String::with_capacity(room);
+                        text.push_str(old);
+                    }
+                    for (mut slot, source) in
+                        [(plain, text(2.0, new)), (styled_slot, styled(2.0, new))]
+                    {
+                        let (capacity, allocation) = (held(&slot).capacity(), held(&slot).as_ptr());
+                        overwrite(&mut slot, &source);
+                        assert_eq!(slot, source, "{old:?} over {new:?} with room {room}");
+                        // Room that fits is used, not given back for a clone.
+                        if capacity >= new.len() && capacity <= new.len() * 2 + 32 {
+                            assert_eq!(held(&slot).as_ptr(), allocation, "room {room} for {new:?}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// A text, a styled text and a quad with `x` for every float they have.
+    fn floats(x: f32) -> [Primitive; 3] {
+        let (rect, color) = (Rect { x, ..rect(0.0) }, Color(1, 1, 1, 1));
+        [
+            Primitive::Text {
+                rect,
+                text: "text".into(),
+                font_size: x,
+                color,
+            },
+            Primitive::StyledText {
+                rect,
+                text: "text".into(),
+                style: TextStyle {
+                    font_size: x,
+                    ..TextStyle::default()
+                },
+                color,
+            },
+            Primitive::Quad {
+                rect,
+                color,
+                radius: x,
+            },
+        ]
+    }
+
+    #[test]
+    fn a_slot_takes_the_bits_of_its_source_and_not_only_a_value_equal_to_them() {
+        // 0.0 and -0.0 are equal and print differently, and NaN is not equal
+        // to itself. The primitives are compared as the text they print.
+        for (old, new) in [(0.0, -0.0), (-0.0, 0.0), (f32::NAN, 1.0), (1.0, f32::NAN)] {
+            let sources = floats(new);
+            for (mut slot, source) in floats(old).into_iter().zip(&sources) {
+                overwrite(&mut slot, source);
+                assert_eq!(
+                    format!("{slot:?}"),
+                    format!("{source:?}"),
+                    "{old} then {new}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn room_is_kept_when_it_fits_and_given_up_when_it_is_far_too_much_or_too_little() {
+        // The text needs 21 bytes and the room is 64: the allocation stays.
+        let mut into = String::with_capacity(64);
+        into.push_str("old text");
+        let (room, allocation) = (into.capacity(), into.as_ptr());
+        refill(&mut into, &"a text of some length".to_owned());
+        assert_eq!(into, "a text of some length");
+        assert_eq!((into.capacity(), into.as_ptr()), (room, allocation));
+
+        // A long text left room for 4096 bytes and the next one needs 5.
+        let mut into = String::with_capacity(4096);
+        into.push_str(&"long ".repeat(500));
+        refill(&mut into, &"short".to_owned());
+        assert_eq!(into, "short");
+        assert!(
+            into.capacity() <= 2 * 5 + 32,
+            "kept room for {}",
+            into.capacity()
+        );
+
+        // Too little room for the text that comes.
+        let mut into = String::from("ab");
+        refill(&mut into, &"a text that does not fit".to_owned());
+        assert_eq!(into, "a text that does not fit");
+
+        // Nothing to put, and nothing to put it in.
+        let mut into = String::new();
+        refill(&mut into, &String::new());
+        assert_eq!(into, "");
+    }
+
+    /// A small generator, so that a failure comes again.
+    struct Dice(u64);
+
+    impl Dice {
+        fn below(&mut self, bound: usize) -> usize {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            (self.0 % bound as u64) as usize
+        }
+    }
+
+    /// Chunks that change from one assembly to the next the way a tree's do,
+    /// each primitive told apart from every other by its position.
+    struct Forest {
+        dice: Dice,
+        next: f32,
+        /// Chunks that left the tree and may come back to it.
+        gone: Vec<Rc<PaintChunk>>,
+    }
+
+    impl Forest {
+        fn primitives(&mut self) -> Vec<Primitive> {
+            (0..self.dice.below(4))
+                .map(|_| {
+                    self.next += 1.0;
+                    let length = self.dice.below(40);
+                    match self.dice.below(4) {
+                        0 => quad(self.next),
+                        1 => text(self.next, &"t".repeat(length)),
+                        2 => styled(self.next, &"s".repeat(length)),
+                        _ => Primitive::PushClip(rect(self.next)),
+                    }
+                })
+                .collect()
+        }
+
+        fn grow(&mut self, depth: usize) -> Rc<PaintChunk> {
+            if self.dice.below(4) == 0 && !self.gone.is_empty() {
+                let back = self.dice.below(self.gone.len());
+                return self.gone.swap_remove(back);
+            }
+            let children = if depth == 0 { 0 } else { self.dice.below(4) };
+            let children = (0..children).map(|_| self.grow(depth - 1)).collect();
+            let (before, after) = (self.primitives(), self.primitives());
+            chunk(before, children, after)
+        }
+
+        /// What follows `old`: itself, or a new chunk that keeps, changes,
+        /// loses and gains children.
+        fn follow(&mut self, old: &Rc<PaintChunk>) -> Rc<PaintChunk> {
+            if self.dice.below(2) == 0 {
+                return old.clone();
+            }
+            let mut children: Vec<_> = old
+                .children
+                .iter()
+                .map(|child| self.follow(child))
+                .collect();
+            if !children.is_empty() && self.dice.below(3) == 0 {
+                let lost = children.remove(self.dice.below(children.len()));
+                self.gone.push(lost);
+            }
+            if self.dice.below(3) == 0 {
+                let at = self.dice.below(children.len() + 1);
+                let gained = self.grow(2);
+                children.insert(at, gained);
+            }
+            let (before, after) = if self.dice.below(2) == 0 {
+                (old.before.clone(), old.after.clone())
+            } else {
+                (self.primitives(), self.primitives())
+            };
+            chunk(before, children, after)
+        }
+    }
+
+    /// Every chunk counts the primitives that flattening it gives.
+    fn counted(chunk: &PaintChunk) {
+        let mut flat = Vec::new();
+        chunk.append_to(&mut flat);
+        assert_eq!(chunk.count(), flat.len());
+        for child in &chunk.children {
+            counted(child);
+        }
+    }
+
+    #[test]
+    fn placed_chunks_are_the_flattened_ones_whatever_the_buffer_and_the_history_were() {
+        for seed in 1..=30u64 {
+            let mut forest = Forest {
+                dice: Dice(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1),
+                next: 0.0,
+                gone: Vec::new(),
+            };
+            let count = forest.dice.below(3) + 1;
+            let mut roots: Vec<_> = (0..count).map(|_| forest.grow(3)).collect();
+            // Something in the buffer before the first assembly.
+            let mut buffer = forest.primitives();
+            let mut assembly = 1;
+            for step in 0..100 {
+                roots = roots.iter().map(|root| forest.follow(root)).collect();
+                match forest.dice.below(10) {
+                    // The same chunk twice in one scene.
+                    0 => roots.push(roots[0].clone()),
+                    1 if roots.len() > 1 => {
+                        roots.pop();
+                    }
+                    _ => {}
+                }
+                match forest.dice.below(10) {
+                    // A frame that does not paint.
+                    0 => continue,
+                    // A pass that stopped part of the way and left no scene.
+                    1 => {
+                        assembly += 1;
+                        let mut at = 0;
+                        let mut lost = core::mem::take(&mut buffer);
+                        let reached = forest.dice.below(roots.len() + 1);
+                        for root in roots.iter().take(reached) {
+                            root.place(&mut lost, &mut at, assembly);
+                        }
+                        continue;
+                    }
+                    _ => {}
+                }
+                assembly += 1;
+                let placed = assemble(&mut buffer, &roots, assembly);
+                let flat = flattened(&roots);
+                let at = format!("seed {seed}, step {step}");
+                assert_eq!(buffer, flat, "{at}");
+                assert_eq!(placed, flat.len(), "{at}");
+                if step % 10 == 0 {
+                    assert_eq!(format!("{buffer:?}"), format!("{flat:?}"), "{at}");
+                    roots.iter().for_each(|root| counted(root));
+                }
+                // What the overlays draw after the tree.
+                for tail in 0..forest.dice.below(5) {
+                    buffer.push(quad(-1.0 - tail as f32));
+                }
+            }
+        }
+    }
+
+    /// A chunk of two primitives inside another, which assembly 2 put at the
+    /// index 1 of a scene of four. Those two are overwritten with marks, so
+    /// that a later assembly shows by what it leaves of them whether it wrote
+    /// them again.
+    fn marked_scene() -> (Rc<PaintChunk>, Rc<PaintChunk>, Vec<Primitive>) {
+        let inner = chunk(vec![quad(1.0)], vec![], vec![quad(2.0)]);
+        let outer = around(vec![quad(0.0)], &inner);
+        let mut scene = Vec::new();
+        assemble(&mut scene, core::slice::from_ref(&outer), 2);
+        assert_eq!(scene.len(), 4);
+        scene[1] = quad(99.0);
+        scene[2] = quad(99.0);
+        (outer, inner, scene)
+    }
+
+    fn around(before: Vec<Primitive>, inner: &Rc<PaintChunk>) -> Rc<PaintChunk> {
+        chunk(before, vec![inner.clone()], vec![quad(3.0)])
+    }
+
+    #[test]
+    fn a_chunk_is_left_alone_only_where_the_assembly_before_put_it() {
+        let marks = [quad(99.0), quad(99.0)];
+
+        // The next assembly puts it at the same index again.
+        let (_, inner, mut scene) = marked_scene();
+        assemble(&mut scene, &[around(vec![quad(0.0)], &inner)], 3);
+        assert_eq!(scene[1..3], marks, "written again");
+        assert_eq!((scene[0].clone(), scene[3].clone()), (quad(0.0), quad(3.0)));
+
+        // So does a chunk that is put again whole.
+        let (outer, _, mut scene) = marked_scene();
+        scene[0] = quad(98.0);
+        assemble(&mut scene, &[outer], 3);
+        assert_eq!(scene[..3], [quad(98.0), quad(99.0), quad(99.0)]);
+
+        // And the one after, for as long as it stays where it is.
+        let (outer, _, mut scene) = marked_scene();
+        scene[0] = quad(98.0);
+        for assembly in 3..6 {
+            assemble(&mut scene, core::slice::from_ref(&outer), assembly);
+            assert_eq!(scene[..3], [quad(98.0), quad(99.0), quad(99.0)]);
+        }
+
+        // The assembly before was not the one that put it there.
+        let (_, inner, mut scene) = marked_scene();
+        let outer = around(vec![quad(0.0)], &inner);
+        assemble(&mut scene, core::slice::from_ref(&outer), 4);
+        assert_eq!(scene, flattened(&[outer]), "left alone");
+
+        // It lands at another index.
+        let (_, inner, mut scene) = marked_scene();
+        let shifted = around(vec![quad(0.0), quad(0.5)], &inner);
+        assemble(&mut scene, core::slice::from_ref(&shifted), 3);
+        assert_eq!(scene, flattened(&[shifted]), "left alone");
+
+        // The scene is too short to hold it where it was put.
+        let (_, inner, mut scene) = marked_scene();
+        scene.truncate(2);
+        let outer = around(vec![quad(0.0)], &inner);
+        assemble(&mut scene, core::slice::from_ref(&outer), 3);
+        assert_eq!(scene, flattened(&[outer]), "left alone");
+
+        // There is no scene, as after a pass that did not finish.
+        let (_, inner, _) = marked_scene();
+        let outer = around(vec![quad(0.0)], &inner);
+        let mut scene = Vec::new();
+        assemble(&mut scene, core::slice::from_ref(&outer), 3);
+        assert_eq!(scene, flattened(&[outer]), "left alone");
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn the_check_of_a_placed_chunk_accepts_what_was_placed_even_with_a_nan_in_it() {
+        let nan = Primitive::Quad {
+            rect: Rect {
+                x: f32::NAN,
+                ..rect(0.0)
+            },
+            color: color(1.0),
+            radius: f32::NAN,
+        };
+        let tree = chunk(
+            vec![quad(1.0)],
+            vec![chunk(vec![nan], vec![], vec![quad(2.0)])],
+            vec![quad(3.0)],
+        );
+        let mut scene = Vec::new();
+        assemble(&mut scene, core::slice::from_ref(&tree), 2);
+        assert_eq!(tree.assert_placed(&scene, 0), 4);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "of the scene, where")]
+    fn the_check_of_a_placed_chunk_finds_a_primitive_that_is_not_where_it_was_placed() {
+        let tree = chunk(
+            vec![quad(1.0)],
+            vec![chunk(vec![quad(2.0)], vec![], vec![])],
+            vec![quad(3.0)],
+        );
+        let mut scene = Vec::new();
+        assemble(&mut scene, core::slice::from_ref(&tree), 2);
+        scene[1] = quad(9.0);
+        tree.assert_placed(&scene, 0);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "of the scene, where")]
+    fn the_check_of_a_placed_chunk_finds_a_scene_that_ends_before_it_does() {
+        let tree = chunk(vec![quad(1.0), quad(2.0)], vec![], vec![quad(3.0)]);
+        let mut scene = Vec::new();
+        assemble(&mut scene, core::slice::from_ref(&tree), 2);
+        scene.pop();
+        tree.assert_placed(&scene, 0);
     }
 }

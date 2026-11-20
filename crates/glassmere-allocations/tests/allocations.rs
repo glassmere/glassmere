@@ -108,6 +108,32 @@ impl App for Counter {
     }
 }
 
+/// Two buttons, keyed "0" and "1", and `boxes` check boxes under them. Every
+/// check box draws a path, which is allocated again each time it is written
+/// into the scene.
+struct Ticks {
+    boxes: usize,
+}
+
+impl App for Ticks {
+    type Message = Msg;
+
+    fn update(&mut self, _: Msg, _: &mut Effects<'_, Msg>) {}
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        for key in ["0", "1"] {
+            ui.keyed(key, |ui| {
+                ui.button("Increase");
+            });
+        }
+        for index in 0..self.boxes {
+            ui.keyed(format!("box{index}"), |ui| {
+                ui.checkbox("Tick", index % 2 == 0, |_| Msg::Increase);
+            });
+        }
+    }
+}
+
 struct Running<A: App> {
     app: A,
     driver: AppDriver<A::Message>,
@@ -212,6 +238,33 @@ fn handler_cost(buttons: usize) -> isize {
     with as isize - without as isize
 }
 
+/// What repainting two buttons, keyed "0" and "1", costs when the pointer
+/// moves from one to the other. Their text stays what it was, and the rest of
+/// the scene is not touched, so what it costs is the repainted buttons and not
+/// the others.
+fn hover_cost<A: App>(app: A) -> usize {
+    let mut running = Running::new(app);
+    let middle = |running: &Running<A>, key: &str| {
+        let bounds = running
+            .context
+            .node(running.context.find(&[key]).unwrap())
+            .unwrap()
+            .bounds;
+        Point {
+            x: bounds.x + bounds.width / 2.0,
+            y: bounds.y + bounds.height / 2.0,
+        }
+    };
+    let first = middle(&running, "0");
+    let second = middle(&running, "1");
+    running.allocated_by(|running| {
+        running.context.event(Event::PointerMoved(first));
+    });
+    running.allocated_by(|running| {
+        running.context.event(Event::PointerMoved(second));
+    })
+}
+
 #[test]
 fn a_batch_without_input_allocates_nothing_and_does_not_declare() {
     let mut running = Running::new(Counter::new(20, true));
@@ -289,5 +342,40 @@ fn a_text_input_message_allocates_the_same_at_20_and_200_buttons() {
     assert_eq!(
         large, small,
         "typing's message path allocated {small} at 20 buttons and {large} at 200"
+    );
+}
+
+// The scene of the last frame is written over, so a button's text is not
+// allocated again and the scene is not grown from nothing: repainting two
+// buttons costs the same with 20 buttons as with 200. A button the pointer did
+// not touch is not written at all, and one that is written has its text put
+// over the old text; either alone keeps the cost down, and the test after this
+// one is the one that tells them apart. The vectors that hold a node for each
+// button grow by doubling, which is a few allocations more for ten times the
+// buttons; a text allocated again would be 180 more.
+#[test]
+fn a_repaint_that_changes_no_text_allocates_the_same_at_20_and_200_buttons() {
+    let (small, large) = (
+        hover_cost(Counter::new(20, true)),
+        hover_cost(Counter::new(200, true)),
+    );
+    assert!(
+        large <= small + 8,
+        "moving the pointer allocated {small} times at 20 buttons and {large} at 200"
+    );
+}
+
+// What the pointer did not touch is left where it is in the scene. A check box
+// that was written again would allocate its path again, 180 more at 200 check
+// boxes than at 20.
+#[test]
+fn a_repaint_leaves_the_check_boxes_alone_and_allocates_the_same_at_20_and_200_of_them() {
+    let (small, large) = (
+        hover_cost(Ticks { boxes: 20 }),
+        hover_cost(Ticks { boxes: 200 }),
+    );
+    assert!(
+        large <= small + 8,
+        "moving the pointer allocated {small} times with 20 check boxes and {large} with 200"
     );
 }

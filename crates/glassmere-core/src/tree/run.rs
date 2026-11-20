@@ -370,26 +370,55 @@ impl Context {
     fn paint_pass(&mut self, size: Size, measurer: &mut Timed<'_, impl TextMeasurer>) {
         let paint_started = Instant::now();
         let _paint_span = tracing::trace_span!("glassmere.paint").entered();
-        let mut scene = Scene {
+        // The application's measurer is called while the overlays are drawn,
+        // and it can unwind. So all the painting is done before the last scene
+        // is written over, and a pass that unwinds leaves it as it was. What
+        // is drawn over the tree waits in a scene of its own until the tree is
+        // in.
+        let root = self.paint(self.root);
+        let mut above = Vec::new();
+        for popover in self.popovers() {
+            above.push(self.paint(popover));
+        }
+        for panel in self.popup_panels() {
+            above.push(self.paint(panel));
+        }
+        let mut over = Scene {
             size,
             primitives: Vec::new(),
         };
-        self.paint(self.root).append_to(&mut scene.primitives);
-        for popover in self.popovers() {
-            self.paint(popover).append_to(&mut scene.primitives);
-        }
-        for panel in self.popup_panels() {
-            self.paint(panel).append_to(&mut scene.primitives);
-        }
-        self.paint_ghosts(&mut scene);
+        self.paint_ghosts(&mut over);
         // Whatever the overlays drew last time is repainted whether they
         // draw it again or not, because nothing else knows they were
         // there.
         for rect in core::mem::take(&mut self.painted_overlays) {
             self.add_damage(rect);
         }
-        self.paint_dock_drag(&mut scene, measurer);
-        self.paint_tooltip(&mut scene, measurer);
+        self.paint_dock_drag(&mut over, measurer);
+        self.paint_tooltip(&mut over, measurer);
+        // Nothing from here on runs the application's code. The chunks are
+        // written over the last scene's primitives, and what they do not
+        // reach is cut off.
+        self.assembly += 1;
+        let assembly = self.assembly;
+        let mut primitives = core::mem::take(&mut self.scene.primitives);
+        let mut at = 0;
+        for chunk in core::iter::once(root).chain(above) {
+            #[cfg(debug_assertions)]
+            let from = at;
+            chunk.place(&mut primitives, &mut at, assembly);
+            #[cfg(debug_assertions)]
+            assert_eq!(chunk.assert_placed(&primitives, from), at);
+        }
+        primitives.truncate(at);
+        primitives.append(&mut over.primitives);
+        let mut scene = Scene { size, primitives };
+        // A scene that has shrunk well below the room it holds gives back
+        // some of it.
+        let len = scene.primitives.len();
+        if scene.primitives.capacity() > len.max(256).saturating_mul(4) {
+            scene.primitives.shrink_to(len.saturating_mul(2));
+        }
         self.scene = scene;
         self.stats.scene_rebuilt = true;
         self.damage.append(&mut self.pending_damage);

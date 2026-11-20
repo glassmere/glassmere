@@ -487,7 +487,7 @@ impl Context {
         }
     }
 
-    pub(super) fn paint(&mut self, id: NodeId) -> Arc<PaintChunk> {
+    pub(super) fn paint(&mut self, id: NodeId) -> Rc<PaintChunk> {
         if let Some(chunk) = &self.nodes[&id].paint_cache {
             self.stats.paint_cache_hits += 1;
             return chunk.clone();
@@ -503,11 +503,7 @@ impl Context {
             .map(|_| node.clip)
             .filter(|clip| *clip != node.bounds);
         if strip_clip.is_some_and(|clip| clip.width <= 0.0 || clip.height <= 0.0) {
-            let chunk = Arc::new(PaintChunk {
-                before: Vec::new(),
-                children: Vec::new(),
-                after: Vec::new(),
-            });
+            let chunk = Rc::new(PaintChunk::new(Vec::new(), Vec::new(), Vec::new()));
             self.nodes.get_mut(&id).unwrap().paint_cache = Some(chunk.clone());
             return chunk;
         }
@@ -609,11 +605,7 @@ impl Context {
             .into_iter()
             .map(|child| self.paint(child))
             .collect();
-        let chunk = Arc::new(PaintChunk {
-            before,
-            children,
-            after,
-        });
+        let chunk = Rc::new(PaintChunk::new(before, children, after));
         self.nodes.get_mut(&id).unwrap().paint_cache = Some(chunk.clone());
         chunk
     }
