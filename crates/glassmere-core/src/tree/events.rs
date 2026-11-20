@@ -180,33 +180,34 @@ impl Context {
         {
             return None;
         }
-        let mut order = Vec::new();
-        self.order(self.root, &mut order);
-        for popover in self.popovers() {
-            self.order(popover, &mut order);
-        }
-        // A submenu is over the menu it opened from.
-        for panel in self.popup_panels() {
-            self.order(panel, &mut order);
-        }
-        order.into_iter().rev().find(|id| {
-            let node = &self.nodes[id];
-            let dialog_surface = match node.kind {
-                Kind::Dialog => matches!(node.control, Control::Dialog { modal: true, .. }),
-                Kind::Container => node
-                    .parent
-                    .is_some_and(|parent| self.nodes[&parent].kind == Kind::Dialog),
-                _ => false,
-            };
-            (node.takes_pointer()
-                // Floating groups block clicks to whatever lies under them.
-                || matches!(
-                    node.kind,
-                    Kind::Popup | Kind::Popover | Kind::DockFloat | Kind::Toast
-                )
-                || dialog_surface)
-                && node.clip.contains(position)
-        })
+        let popovers = self.popovers();
+        let panels = self.popup_panels();
+        let mut hit = |_, node: &Node| {
+            node.clip.contains(position) && {
+                let dialog_surface = match node.kind {
+                    Kind::Dialog => matches!(node.control, Control::Dialog { modal: true, .. }),
+                    Kind::Container => node
+                        .parent
+                        .is_some_and(|parent| self.nodes[&parent].kind == Kind::Dialog),
+                    _ => false,
+                };
+                node.takes_pointer()
+                    // Floating groups block clicks to whatever lies under them.
+                    || matches!(
+                        node.kind,
+                        Kind::Popup | Kind::Popover | Kind::DockFloat | Kind::Toast
+                    )
+                    || dialog_surface
+            }
+        };
+        // Popovers are over the root, and a submenu is over the menu it
+        // opened from: the last panel is searched first.
+        panels
+            .iter()
+            .rev()
+            .chain(popovers.iter().rev())
+            .chain(core::iter::once(&self.root))
+            .find_map(|top| self.last_in_order(*top, &mut hit))
     }
 
     /// Returns true if a declaration/redraw is needed. Pointer capture survives
@@ -606,3 +607,276 @@ type EventState = (
     Option<NodeId>,
     Option<(NodeId, Key)>,
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        Button, DialogOptions, DockFloat, DockLayout, DockNode, DockOptions, DockPanel, DockTabs,
+        Label, Length, MenuItem, MonospaceMeasurer, PopoverOptions, Style, Toast, Ui,
+    };
+    use alloc::collections::BTreeSet;
+    use glassmere_scene::Size;
+
+    const WINDOW: Size = Size::new(320.0, 260.0);
+
+    fn sized(width: f32, height: f32) -> Style {
+        Style::default()
+            .width(Length::Px(width))
+            .height(Length::Px(height))
+    }
+
+    fn button(ui: &mut Ui<'_>, key: &'static str, style: Style, enabled: bool) {
+        ui.keyed(key, |ui| {
+            ui.button(Button::new(key).enabled(enabled).style(style))
+        });
+    }
+
+    /// Overlapping siblings, nested scroll views, two popovers (one over the
+    /// anchor of the next), a context menu, a floating dock group and, when
+    /// asked, a modal dialog or a dialog that is not modal.
+    fn page(ui: &mut Ui<'_>, dialog: Dialog) {
+        ui.keyed("page", |ui| {
+            ui.column(Style::default().gap(0.0), |ui| {
+                ui.keyed("row", |ui| {
+                    ui.row(Style::default().gap(0.0), |ui| {
+                        button(ui, "a", sized(80.0, 40.0), true);
+                        button(ui, "b", sized(80.0, 40.0).offset(-30.0, 0.0), true);
+                        button(ui, "c", sized(80.0, 40.0).offset(-40.0, 10.0), false);
+                    })
+                });
+                ui.keyed("outer", |ui| {
+                    ui.scroll(sized(260.0, 120.0), |ui| {
+                        ui.keyed("inner", |ui| {
+                            ui.scroll(sized(200.0, 70.0), |ui| {
+                                for key in ["i1", "i2", "i3", "i4"] {
+                                    button(ui, key, sized(180.0, 30.0), true);
+                                }
+                            })
+                        });
+                        ui.keyed("label", |ui| {
+                            ui.label(Label::new("text").style(sized(90.0, 20.0)))
+                        });
+                        for key in ["o1", "o2", "o3"] {
+                            button(ui, key, sized(240.0, 40.0), true);
+                        }
+                    })
+                });
+                ui.keyed("menu", |ui| {
+                    ui.context_menu(
+                        &[MenuItem::new("Copy"), MenuItem::new("Paste")],
+                        sized(120.0, 40.0),
+                        |_: usize| (),
+                        |ui| button(ui, "inside", sized(60.0, 20.0), true),
+                    );
+                });
+                ui.keyed("anchor", |ui| ui.button("Anchor"));
+                ui.keyed("pop", |ui| {
+                    ui.popover(
+                        true,
+                        PopoverOptions::default(),
+                        |_| (),
+                        |ui| {
+                            button(ui, "p1", sized(100.0, 30.0), true);
+                        },
+                    );
+                });
+                ui.keyed("later", |ui| ui.button("Later"));
+                ui.keyed("dock", |ui| {
+                    let layout = DockLayout {
+                        root: Some(DockNode::Tabs(DockTabs {
+                            panels: vec!["main".into()],
+                            active: 0,
+                        })),
+                        floating: vec![DockFloat {
+                            x: 60.0,
+                            y: 20.0,
+                            width: 140.0,
+                            height: 90.0,
+                            tabs: DockTabs {
+                                panels: vec!["tools".into()],
+                                active: 0,
+                            },
+                        }],
+                        windows: Vec::new(),
+                    };
+                    ui.dock(
+                        &layout,
+                        &[
+                            DockPanel::new("main", "Main"),
+                            DockPanel::new("tools", "Tools"),
+                        ],
+                        DockOptions {
+                            style: sized(260.0, 150.0).offset(0.0, 0.0),
+                            ..DockOptions::default()
+                        },
+                        |_| (),
+                        |ui, id| ui.label(id),
+                    );
+                });
+                ui.keyed("pop2", |ui| {
+                    ui.popover(
+                        true,
+                        PopoverOptions::default(),
+                        |_| (),
+                        |ui| {
+                            button(ui, "p2", sized(120.0, 50.0), true);
+                        },
+                    );
+                });
+            })
+        });
+        ui.dialog(
+            "confirm",
+            dialog == Dialog::Modal,
+            DialogOptions::new("Sure?").modal(true),
+            |_| (),
+            |ui| button(ui, "yes", sized(60.0, 24.0), true),
+        );
+        ui.dialog(
+            "note",
+            dialog == Dialog::Plain,
+            DialogOptions::new("Note").modal(false),
+            |_| (),
+            |ui| button(ui, "ok", sized(50.0, 24.0), true),
+        );
+    }
+
+    #[derive(Clone, Copy, PartialEq)]
+    enum Dialog {
+        None,
+        Modal,
+        Plain,
+    }
+
+    /// The node a point is over, found the way a flat list of the whole tree
+    /// is searched from the back: the root, then the popovers, then the
+    /// panels.
+    fn reference(context: &Context, position: Point) -> Option<NodeId> {
+        let mut order = Vec::new();
+        context.order(context.root, &mut order);
+        for popover in context.popovers() {
+            context.order(popover, &mut order);
+        }
+        for panel in context.popup_panels() {
+            context.order(panel, &mut order);
+        }
+        order.into_iter().rev().find(|id| {
+            let node = &context.nodes[id];
+            let dialog_surface = match node.kind {
+                Kind::Dialog => matches!(node.control, Control::Dialog { modal: true, .. }),
+                Kind::Container => node
+                    .parent
+                    .is_some_and(|parent| context.nodes[&parent].kind == Kind::Dialog),
+                _ => false,
+            };
+            (node.takes_pointer()
+                || matches!(
+                    node.kind,
+                    Kind::Popup | Kind::Popover | Kind::DockFloat | Kind::Toast
+                )
+                || dialog_surface)
+                && node.clip.contains(position)
+        })
+    }
+
+    fn grid() -> Vec<Point> {
+        let mut points = vec![
+            Point {
+                x: f32::NAN,
+                y: 10.0,
+            },
+            Point {
+                x: 10.0,
+                y: f32::NAN,
+            },
+            Point {
+                x: f32::INFINITY,
+                y: 0.0,
+            },
+            Point { x: -5.0, y: -5.0 },
+            Point { x: 400.0, y: 300.0 },
+        ];
+        for row in 0..30 {
+            for column in 0..38 {
+                points.push(Point {
+                    x: column as f32 * 9.0 - 6.0,
+                    y: row as f32 * 9.0 - 6.0,
+                });
+            }
+        }
+        points
+    }
+
+    /// The grid, and a point just inside each corner and at the middle of
+    /// every node, so that thin or small nodes are tried too.
+    fn probes(context: &Context) -> Vec<Point> {
+        let mut points = grid();
+        for node in context.nodes.values() {
+            let rect = node.bounds;
+            for (x, y) in [
+                (rect.x + 1.0, rect.y + 1.0),
+                (rect.x + rect.width - 1.0, rect.y + rect.height - 1.0),
+                (rect.x + rect.width / 2.0, rect.y + rect.height / 2.0),
+            ] {
+                points.push(Point { x, y });
+            }
+        }
+        points
+    }
+
+    /// Hit tests the probes against the flat search, and returns how many
+    /// different nodes were found and whether one of each of `kinds` was.
+    fn agrees(context: &Context, kinds: &[Kind]) -> usize {
+        let mut found = BTreeSet::new();
+        for position in probes(context) {
+            let hit = context.hit_test(position);
+            assert_eq!(hit, reference(context, position), "at {position:?}");
+            found.insert(hit.map(|id| id.0));
+        }
+        for kind in kinds {
+            assert!(
+                found
+                    .iter()
+                    .flatten()
+                    .any(|id| context.nodes[&NodeId(*id)].kind == *kind),
+                "no point is over a {kind:?}"
+            );
+        }
+        found.len()
+    }
+
+    fn run(context: &mut Context, dialog: Dialog) {
+        context.run(WINDOW, &mut MonospaceMeasurer, |ui| page(ui, dialog));
+    }
+
+    #[test]
+    fn hit_test_finds_what_a_search_of_the_flattened_tree_finds() {
+        let mut context = Context::new();
+        run(&mut context, Dialog::None);
+        let inner = context.find(&["page", "outer", "inner"]).unwrap();
+        let outer = context.find(&["page", "outer"]).unwrap();
+        context.set_scroll(inner, 25.0);
+        context.set_scroll(outer, 40.0);
+        run(&mut context, Dialog::None);
+        context.push_toast(Toast::new("Saved"));
+        run(&mut context, Dialog::None);
+        // Open a menu over the page, so that its panel is searched first.
+        let area = context.find(&["page", "menu"]).unwrap();
+        let area = context.nodes[&area].bounds;
+        context.event(Event::ContextMenu(Point {
+            x: area.x + 10.0,
+            y: area.y + 10.0,
+        }));
+        run(&mut context, Dialog::None);
+        assert!(!context.popup_panels().is_empty());
+        assert_eq!(context.popovers().len(), 2);
+        assert!(agrees(&context, &[Kind::DockFloat, Kind::Toast]) > 12);
+        // A modal dialog stands over all of it.
+        run(&mut context, Dialog::Modal);
+        assert!(agrees(&context, &[Kind::Dialog, Kind::Container]) > 3);
+        // A dialog that is not modal leaves the page under it to the pointer.
+        run(&mut context, Dialog::Plain);
+        assert!(agrees(&context, &[Kind::DockFloat, Kind::Container]) > 12);
+    }
+}

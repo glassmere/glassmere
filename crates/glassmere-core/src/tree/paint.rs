@@ -1000,6 +1000,23 @@ impl Context {
             self.order(*child, result);
         }
     }
+
+    /// What `order` followed by a search from the back returns: the last
+    /// node of the subtree at `id`, in the order `order` lists them, that
+    /// `wanted` accepts. Children are tried last to first, then the node.
+    pub(super) fn last_in_order(
+        &self,
+        id: NodeId,
+        wanted: &mut impl FnMut(NodeId, &Node) -> bool,
+    ) -> Option<NodeId> {
+        let node = &self.nodes[&id];
+        for child in node.children.iter().rev() {
+            if let Some(found) = self.last_in_order(*child, wanted) {
+                return Some(found);
+            }
+        }
+        wanted(id, node).then_some(id)
+    }
 }
 
 /// A drop shadow behind the node, or an inset one inside it.
