@@ -75,6 +75,12 @@ struct Preparing {
     /// Rows whose hint is measured.
     hinted: Vec<NodeId>,
     editors: Vec<NodeId>,
+    /// Whether the lists hold what a walk over the nodes finds: set once
+    /// `prepare_controls` has stored them, dropped by every declaration. It
+    /// holds because nodes are created, removed, and given a kind, style,
+    /// children or editor only while a declaration reconciles; whatever
+    /// else starts to do that must drop it too.
+    valid: bool,
 }
 
 impl Preparing {

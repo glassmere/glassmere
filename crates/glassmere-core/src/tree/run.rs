@@ -39,6 +39,7 @@ impl Context {
             spent: Duration::ZERO,
         };
         self.begin_frame(size);
+        self.preparing.valid = false;
         let declare_started = Instant::now();
         let declare_span = tracing::trace_span!("glassmere.declare").entered();
         let mut clicks = core::mem::take(&mut self.clicks);
@@ -623,7 +624,9 @@ impl Context {
     }
 
     /// Brings a node that was declared again up to date with its element,
-    /// noting what changed. Returns the element's children.
+    /// noting what changed. Returns the element's children. The kind, style
+    /// and editor are changed only here and in `create_node`, and only by a
+    /// declaration: see `Preparing::valid`.
     fn update_node(
         &mut self,
         id: NodeId,
@@ -783,7 +786,8 @@ impl Context {
     }
 
     /// Creates the node for an element declared for the first time.
-    /// Returns its identity and the element's children.
+    /// Returns its identity and the element's children. Only a declaration
+    /// does this: see `Preparing::valid`.
     fn create_node(
         &mut self,
         parent: NodeId,
@@ -914,6 +918,7 @@ impl Context {
     }
 
     /// Gives `parent` its new list of children, in the tree and in Taffy.
+    /// Only a declaration does this: see `Preparing::valid`.
     fn adopt_children(&mut self, parent: NodeId, children: Vec<NodeId>) {
         self.clips_valid = false;
         let layout_children: Vec<_> = children.iter().map(|id| self.nodes[id].layout_id).collect();
@@ -931,6 +936,7 @@ impl Context {
         self.pending |= Dirty::TREE | Dirty::LAYOUT | Dirty::PAINT | Dirty::ACCESSIBILITY;
     }
 
+    /// Only a declaration removes nodes: see `Preparing::valid`.
     pub(super) fn remove(&mut self, id: NodeId) {
         self.clips_valid = false;
         if self.park_panel(id) {

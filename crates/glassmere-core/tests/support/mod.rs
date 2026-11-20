@@ -17,7 +17,9 @@ use glassmere_core::{
     WindowRequest,
 };
 use glassmere_core::{Event, Role};
-use glassmere_scene::{Point, Primitive, Rect, Size};
+use glassmere_scene::{
+    Point, Primitive, Rect, Size, TextGeometry, TextMeasurer, TextSpan, TextStyle,
+};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -89,11 +91,38 @@ pub struct Opened {
     pacing: Pacing,
 }
 
+/// The monospace measurer, counting the styled measurements it is asked for.
+#[derive(Default)]
+struct Counting {
+    styled: usize,
+}
+
+impl TextMeasurer for Counting {
+    fn measure_styled(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> Size {
+        self.styled += 1;
+        MonospaceMeasurer.measure_styled(text, style, width)
+    }
+
+    fn geometry(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> TextGeometry {
+        MonospaceMeasurer.geometry(text, style, width)
+    }
+
+    fn geometry_rich(
+        &mut self,
+        spans: &[TextSpan],
+        style: &TextStyle,
+        width: Option<f32>,
+    ) -> TextGeometry {
+        MonospaceMeasurer.geometry_rich(spans, style, width)
+    }
+}
+
 pub struct Driven<S: 'static> {
     app: Closures<S>,
     driver: AppDriver<Action<S>>,
     pub context: Context,
     pub size: Size,
+    measurer: Counting,
     main: Pacing,
     /// The windows `Effects::open_window` opened, until they are closed.
     windows: HashMap<WindowId, Opened>,
@@ -112,6 +141,7 @@ impl<S: 'static> Driven<S> {
             driver: AppDriver::new(|| true),
             context: Context::new(),
             size,
+            measurer: Counting::default(),
             main: Pacing::default(),
             windows: HashMap::new(),
         };
@@ -140,7 +170,7 @@ impl<S: 'static> Driven<S> {
             &self.app,
             &mut self.context,
             self.size,
-            &mut MonospaceMeasurer,
+            &mut self.measurer,
             None,
             &mut self.main,
             main_messages,
@@ -159,6 +189,12 @@ impl<S: 'static> Driven<S> {
             }
         }
         stats
+    }
+
+    /// How many styled measurements the main window's frames have asked the
+    /// measurer for.
+    pub fn styled_measurements(&self) -> usize {
+        self.measurer.styled
     }
 
     /// Closes the windows the last batches asked to close and opens the ones
