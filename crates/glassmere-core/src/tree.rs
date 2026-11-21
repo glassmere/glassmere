@@ -236,13 +236,16 @@ fn place_slice(source: &[Primitive], output: &mut Vec<Primitive>, at: &mut usize
     for (slot, primitive) in output[*at..*at + fits].iter_mut().zip(over) {
         overwrite(slot, primitive);
     }
-    output.extend_from_slice(rest);
+    if !rest.is_empty() {
+        output.extend_from_slice(rest);
+    }
     *at += source.len();
 }
 
 /// Makes `slot` a copy of `source`, writing text over the text the slot held
-/// instead of allocating it again. No field is left alone for being equal
-/// already: 0.0 and -0.0 are equal, and are not the same.
+/// instead of allocating it again, and the fields of a primitive that owns
+/// nothing one by one. No field is left alone for being equal already: 0.0
+/// and -0.0 are equal, and are not the same.
 fn overwrite(slot: &mut Primitive, source: &Primitive) {
     match (slot, source) {
         (
@@ -282,6 +285,68 @@ fn overwrite(slot: &mut Primitive, source: &Primitive) {
             *color = *source_color;
             style.clone_from(source_style);
             refill(text, source_text);
+        }
+        (
+            Primitive::Quad {
+                rect,
+                color,
+                radius,
+            },
+            Primitive::Quad {
+                rect: source_rect,
+                color: source_color,
+                radius: source_radius,
+            },
+        ) => {
+            *rect = *source_rect;
+            *color = *source_color;
+            *radius = *source_radius;
+        }
+        (Primitive::PushClip(rect), Primitive::PushClip(source_rect)) => *rect = *source_rect,
+        (Primitive::PopClip, Primitive::PopClip) | (Primitive::PopLayer, Primitive::PopLayer) => {}
+        (
+            Primitive::PushLayer {
+                bounds,
+                opacity,
+                transform,
+            },
+            Primitive::PushLayer {
+                bounds: source_bounds,
+                opacity: source_opacity,
+                transform: source_transform,
+            },
+        ) => {
+            *bounds = *source_bounds;
+            *opacity = *source_opacity;
+            *transform = *source_transform;
+        }
+        (
+            Primitive::Shadow {
+                rect,
+                radius,
+                color,
+                blur,
+                spread,
+                offset,
+                inset,
+            },
+            Primitive::Shadow {
+                rect: source_rect,
+                radius: source_radius,
+                color: source_color,
+                blur: source_blur,
+                spread: source_spread,
+                offset: source_offset,
+                inset: source_inset,
+            },
+        ) => {
+            *rect = *source_rect;
+            *radius = *source_radius;
+            *color = *source_color;
+            *blur = *source_blur;
+            *spread = *source_spread;
+            *offset = *source_offset;
+            *inset = *source_inset;
         }
         (slot, source) => *slot = source.clone(),
     }
@@ -680,6 +745,9 @@ pub struct Context {
     spare_chunks: crate::collections::FastMap<NodeId, Rc<PaintChunk>>,
     stats: FrameStats,
     geometry_dirty: bool,
+    /// Whether the bounds walk is the plain one the tests compare it with.
+    #[cfg(test)]
+    reference_walk: bool,
     /// Whether every clip was cut from its parent's by the last
     /// `refresh_bounds` and no node has been given another parent since.
     clips_valid: bool,
@@ -957,6 +1025,8 @@ impl Default for Context {
             spare_chunks: Default::default(),
             stats: FrameStats::default(),
             geometry_dirty: false,
+            #[cfg(test)]
+            reference_walk: false,
             clips_valid: false,
             popover_count: 0,
             popup_count: 0,
@@ -1903,6 +1973,189 @@ mod tests {
         }
     }
 
+    /// The kinds of primitive that own nothing, with a value of their own in
+    /// every field: `seed` and what is added to it for each field, through
+    /// `float`. Two seeds a few apart give primitives that differ in every
+    /// field, and no two fields of one primitive hold the same.
+    fn plain_with(seed: f32, float: fn(f32) -> f32) -> [Primitive; 6] {
+        let rect = |at: f32| Rect {
+            x: float(at),
+            y: float(at + 1.0),
+            width: float(at + 2.0),
+            height: float(at + 3.0),
+        };
+        let byte = |at: f32| (at as u32 % 250) as u8;
+        let color = |at: f32| Color(byte(at), byte(at + 1.0), byte(at + 2.0), byte(at + 3.0));
+        [
+            Primitive::Quad {
+                rect: rect(seed),
+                color: color(seed + 4.0),
+                radius: float(seed + 8.0),
+            },
+            Primitive::PushClip(rect(seed + 9.0)),
+            Primitive::PopClip,
+            Primitive::PushLayer {
+                bounds: rect(seed + 13.0),
+                opacity: float(seed + 17.0),
+                transform: Affine {
+                    a: float(seed + 18.0),
+                    b: float(seed + 19.0),
+                    c: float(seed + 20.0),
+                    d: float(seed + 21.0),
+                    e: float(seed + 22.0),
+                    f: float(seed + 23.0),
+                },
+            },
+            Primitive::PopLayer,
+            Primitive::Shadow {
+                rect: rect(seed + 24.0),
+                radius: float(seed + 28.0),
+                color: color(seed + 29.0),
+                blur: float(seed + 33.0),
+                spread: float(seed + 34.0),
+                offset: Point {
+                    x: float(seed + 35.0),
+                    y: float(seed + 36.0),
+                },
+                inset: (seed as u32 & 1) == 0,
+            },
+        ]
+    }
+
+    fn plain(seed: f32) -> [Primitive; 6] {
+        plain_with(seed, |x| x)
+    }
+
+    /// One primitive of every kind, those that own nothing with a value of
+    /// their own in every field.
+    fn distinct(seed: f32, float: fn(f32) -> f32) -> Vec<Primitive> {
+        let mut kinds = every_kind(seed);
+        for primitive in plain_with(seed, float) {
+            let at = kind(&primitive);
+            kinds[at] = primitive;
+        }
+        kinds
+    }
+
+    /// The fields of a primitive that owns nothing, as bits: `==` and `Debug`
+    /// do not tell 0.0 from -0.0 or one NaN from another. A primitive that
+    /// owns something has none.
+    fn words(primitive: &Primitive) -> Vec<u32> {
+        let rect = |rect: &Rect| [rect.x, rect.y, rect.width, rect.height].map(f32::to_bits);
+        let color = |color: &Color| [color.0, color.1, color.2, color.3].map(u32::from);
+        match primitive {
+            Primitive::Quad {
+                rect: at,
+                color: paint,
+                radius,
+            } => [&rect(at)[..], &color(paint), &[radius.to_bits()]].concat(),
+            Primitive::PushClip(at) => rect(at).to_vec(),
+            Primitive::PushLayer {
+                bounds,
+                opacity,
+                transform,
+            } => {
+                let Affine { a, b, c, d, e, f } = *transform;
+                let transform = [a, b, c, d, e, f].map(f32::to_bits);
+                [&rect(bounds)[..], &[opacity.to_bits()], &transform].concat()
+            }
+            Primitive::Shadow {
+                rect: at,
+                radius,
+                color: paint,
+                blur,
+                spread,
+                offset,
+                inset,
+            } => {
+                let floats = [radius, blur, spread, &offset.x, &offset.y].map(|x| x.to_bits());
+                [&rect(at)[..], &color(paint), &floats, &[u32::from(*inset)]].concat()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_slot_takes_every_field_of_its_source_whatever_kind_each_is_and_whatever_the_floats() {
+        fn same(x: f32) -> f32 {
+            x
+        }
+        fn zero(_: f32) -> f32 {
+            0.0
+        }
+        fn negative(_: f32) -> f32 {
+            -0.0
+        }
+        fn nan(_: f32) -> f32 {
+            f32::from_bits(0x7fc0_1234)
+        }
+        fn other_nan(_: f32) -> f32 {
+            f32::from_bits(0x7fc0_5678)
+        }
+        // How the floats of the slot and of its source are made.
+        type Floats = fn(f32) -> f32;
+        let cases: [(Floats, Floats); 7] = [
+            (same, same),
+            (zero, negative),
+            (negative, zero),
+            (zero, nan),
+            (nan, zero),
+            (other_nan, nan),
+            (nan, other_nan),
+        ];
+        for (slot_float, source_float) in cases {
+            let (slots, sources) = (distinct(100.0, slot_float), distinct(201.0, source_float));
+            assert!(slots.iter().map(kind).eq(0..13));
+            for slot in &slots {
+                for source in &sources {
+                    let mut written = slot.clone();
+                    overwrite(&mut written, source);
+                    let note = format!("{slot:?} written over by {source:?}");
+                    assert_eq!(format!("{written:?}"), format!("{source:?}"), "{note}");
+                    assert_eq!(words(&written), words(source), "{note}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_slice_that_fits_the_output_exactly_or_is_empty_leaves_its_length_and_room_alone() {
+        let source = [quad(1.0), text(2.0, "two"), styled(3.0, "three")];
+        for (length, at, source) in [
+            (4, 1, &source[..]),
+            (3, 0, &source[..]),
+            (4, 3, &source[..0]),
+        ] {
+            let mut output: Vec<Primitive> = (0..length).map(|x| quad(10.0 + x as f32)).collect();
+            output.reserve_exact(12);
+            let room = output.capacity();
+            let before = output.clone();
+            let mut next = at;
+            place_slice(source, &mut output, &mut next);
+            assert_eq!(next, at + source.len());
+            assert_eq!((output.len(), output.capacity()), (length, room));
+            assert_eq!(output[..at], before[..at]);
+            assert_eq!(output[at..next], *source);
+            assert_eq!(output[next..], before[next..]);
+        }
+    }
+
+    #[test]
+    fn a_slice_longer_than_the_output_has_left_is_appended_where_it_runs_out() {
+        let source = [quad(1.0), text(2.0, "two"), styled(3.0, "three"), quad(4.0)];
+        // Nothing to write over, one primitive, and all but the last two.
+        for (length, at) in [(2, 2), (2, 1), (3, 1), (0, 0)] {
+            let mut output: Vec<Primitive> = (0..length).map(|x| quad(10.0 + x as f32)).collect();
+            let before = output.clone();
+            let mut next = at;
+            place_slice(&source, &mut output, &mut next);
+            assert_eq!(next, at + source.len());
+            assert_eq!(output.len(), at + source.len());
+            assert_eq!(output[..at], before[..at]);
+            assert_eq!(output[at..], source);
+        }
+    }
+
     #[test]
     fn room_is_kept_when_it_fits_and_given_up_when_it_is_far_too_much_or_too_little() {
         // The text needs 21 bytes and the room is 64: the allocation stays.
@@ -1962,11 +2215,10 @@ mod tests {
                 .map(|_| {
                     self.next += 1.0;
                     let length = self.dice.below(40);
-                    match self.dice.below(4) {
-                        0 => quad(self.next),
-                        1 => text(self.next, &"t".repeat(length)),
-                        2 => styled(self.next, &"s".repeat(length)),
-                        _ => Primitive::PushClip(rect(self.next)),
+                    match self.dice.below(8) {
+                        0 => text(self.next, &"t".repeat(length)),
+                        1 => styled(self.next, &"s".repeat(length)),
+                        which => plain(self.next)[which - 2].clone(),
                     }
                 })
                 .collect()
@@ -2067,6 +2319,8 @@ mod tests {
                 let flat = flattened(&roots);
                 let at = format!("seed {seed}, step {step}");
                 assert_eq!(buffer, flat, "{at}");
+                let bits = |scene: &[Primitive]| scene.iter().map(words).collect::<Vec<_>>();
+                assert_eq!(bits(&buffer), bits(&flat), "{at}");
                 assert_eq!(placed, flat.len(), "{at}");
                 if step % 10 == 0 {
                     assert_eq!(format!("{buffer:?}"), format!("{flat:?}"), "{at}");

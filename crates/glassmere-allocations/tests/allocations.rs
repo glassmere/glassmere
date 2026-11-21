@@ -253,6 +253,33 @@ impl App for Leaves {
     }
 }
 
+/// A scroll container, keyed "list", of `count` keyed rows, each a label and a
+/// button, so that every row has children.
+struct Scrolling {
+    count: usize,
+}
+
+impl App for Scrolling {
+    type Message = Msg;
+
+    fn update(&mut self, _: Msg, _: &mut Effects<'_, Msg>) {}
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        ui.keyed("list", |ui| {
+            ui.scroll(Style::default().height(Length::Px(300.0)), |ui| {
+                for index in 0..self.count {
+                    ui.keyed(format!("row{index}"), |ui| {
+                        ui.row(Style::default(), |ui| {
+                            ui.label("name");
+                            ui.button("Open");
+                        });
+                    });
+                }
+            });
+        });
+    }
+}
+
 /// Longer than eight bytes, so that a text built a character at a time
 /// grows more than once.
 const SHOWN: &str = "hello world, 12";
@@ -666,5 +693,42 @@ fn a_row_declared_again_allocates_its_texts_and_one_list_of_its_children() {
     assert!(
         many - few <= (MANY - FEW) * PER_ROW + GROWTH,
         "{FEW} rows allocated {few} times in a declaration and {MANY} rows {many}"
+    );
+}
+
+/// What one notch of the wheel over a container of `count` rows allocates. The
+/// notch before it, and the frame after that, make the room that this one goes
+/// on using. The bounds of every node are worked out inside the event.
+fn notch_cost(count: usize) -> usize {
+    let mut running = Running::new(Scrolling { count });
+    let bounds = running
+        .context
+        .node(running.context.find(&["list"]).unwrap())
+        .unwrap()
+        .bounds;
+    running.context.event(Event::PointerMoved(Point {
+        x: bounds.x + bounds.width / 2.0,
+        y: bounds.y + bounds.height / 2.0,
+    }));
+    let notch = Event::Scroll {
+        delta_x: 0.0,
+        delta_y: 120.0,
+    };
+    running.context.event(notch.clone());
+    running.frame();
+    let before = allocations();
+    running.context.event(notch);
+    allocations() - before
+}
+
+// Working out the bounds again after a notch moves every row, and none of them
+// is copied or listed for it: a notch allocates no more for 200 rows than for
+// 20, however many of them have children.
+#[test]
+fn a_wheel_notch_allocates_the_same_at_20_and_200_rows() {
+    let (small, large) = (notch_cost(20), notch_cost(200));
+    assert!(
+        large <= small + 8,
+        "a notch over 20 rows allocated {small} times and over 200 rows {large}"
     );
 }
