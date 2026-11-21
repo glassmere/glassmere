@@ -34,6 +34,10 @@ name = "application"
 path = "application.rs"
 
 [[example]]
+name = "bindings"
+path = "bindings.rs"
+
+[[example]]
 name = "controls"
 path = "controls.rs"
 
