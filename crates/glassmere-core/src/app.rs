@@ -65,6 +65,77 @@ pub trait Component {
 /// applications of any size use an enum.
 pub type Action<S> = Rc<dyn Fn(&mut S)>;
 
+/// What a widget sends to write the value it reports into the state, for an
+/// application whose message has a place for a change: an [`Action`] is one
+/// already, and an enum is one with a variant that holds an `Action` and a
+/// `From` for it.
+///
+/// ```
+/// # use glassmere_core::app::{Action, bind};
+/// # use glassmere_core::{App, Effects, Ui};
+/// #[derive(Clone)]
+/// enum Msg {
+///     Set(Action<Form>),
+///     Submit,
+/// }
+///
+/// impl From<Action<Form>> for Msg {
+///     fn from(change: Action<Form>) -> Self {
+///         Self::Set(change)
+///     }
+/// }
+///
+/// struct Form {
+///     name: String,
+///     subscribed: bool,
+/// }
+///
+/// impl App for Form {
+///     type Message = Msg;
+///
+///     fn update(&mut self, message: Msg, _: &mut Effects<'_, Msg>) {
+///         match message {
+///             Msg::Set(change) => change(self),
+///             Msg::Submit => {}
+///         }
+///     }
+///
+///     fn view(&self, ui: &mut Ui<'_, Msg>) {
+///         ui.text_input("Name", &self.name, bind(|form: &mut Self, name| form.name = name));
+///         ui.checkbox(
+///             "Subscribe",
+///             self.subscribed,
+///             bind(|form: &mut Self, on| form.subscribed = on),
+///         );
+///     }
+/// }
+/// ```
+///
+/// A field then needs no variant of its own and no arm in `update`. What
+/// has consequences beyond the field (a request, a job, another window)
+/// stays a message with a name. The change is allocated when the widget
+/// reports, not when it is declared.
+pub fn bind<S, V, M>(set: impl Fn(&mut S, V) + 'static) -> impl Fn(V) -> M + 'static
+where
+    S: 'static,
+    V: Clone + 'static,
+    M: From<Action<S>>,
+{
+    let set = Rc::new(set);
+    move |value: V| {
+        let set = set.clone();
+        M::from(Rc::new(move |state: &mut S| set(state, value.clone())))
+    }
+}
+
+/// A message that changes the state and needs no name, for a button or a
+/// menu item of an application whose message has a place for a change; see
+/// [`bind`]. Unlike `bind` it is made when the widget is declared, which is
+/// one allocation per declaration.
+pub fn change<S: 'static, M: From<Action<S>>>(change: impl Fn(&mut S) + 'static) -> M {
+    M::from(Rc::new(change))
+}
+
 /// One message per operation a widget reports in one update, into `out`.
 type Batch<M> = Box<dyn Fn(ControlUpdate, &mut Vec<M>)>;
 

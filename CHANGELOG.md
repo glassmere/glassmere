@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Fields bound to the state. `app::bind` is what a widget sends to write the value it reports, and `app::change` is a message that changes the state and needs no name. An application gives its message one variant that holds an `app::Action` and a `From` for it, and a field then needs no variant and no arm in `update` of its own. See `examples/bindings.rs` and "Fields without messages" in [state](docs/state.md).
+
 ### Fixed
 
 - Typing in the code editor or a text area no longer reads the whole document on every keystroke. The widest line, which sizes the horizontal scroll range, was found again after each edit; it is now kept up to date from the lines the edit changed, and the text is read again only when the widest line itself gets narrower. In a 40,000-line file a keystroke went from 8.5 ms to 37 µs.
