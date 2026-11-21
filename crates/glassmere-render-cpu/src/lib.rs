@@ -20,13 +20,15 @@
 //! its exact area here and feathered by the shader there, and what is resampled
 //! is filtered on sRGB-encoded values here and in linear light there. Both show
 //! at edges, never across a flat area.
+mod text_memo;
 use glassmere_scene::{
     Affine, Color, GradientStop, Image, Path, Point, Primitive, Rect, Scene, Segment,
 };
 use glassmere_text::cosmic_text::{SwashCache, SwashContent};
 use glassmere_text::{TextKey, TextSystem};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
+use text_memo::{TextMemo, ensure_text};
 use tiny_skia::{
     FillRule, FilterQuality, Mask, PathBuilder, Pixmap, PixmapPaint, PixmapRef, Transform,
 };
@@ -66,6 +68,9 @@ pub struct CpuRenderer {
     painted: Option<([u32; 2], u32)>,
     /// How many shaped texts the last whole frame kept.
     text_kept: usize,
+    /// What the last whole frame asked of the text cache, to be checked
+    /// against rather than asked again.
+    text_memo: TextMemo,
     /// Texels ready to sample, by image and pixel size, with the frame that
     /// used them last: vector images rasterized, translucent ones converted.
     rasters: HashMap<(u64, [u32; 2]), (Pixmap, u64)>,
@@ -373,6 +378,7 @@ impl CpuRenderer {
             target: None,
             painted: None,
             text_kept: 0,
+            text_memo: TextMemo::default(),
             rasters: HashMap::new(),
             gamma: Gamma::new(),
             columns: Vec::new(),
@@ -496,7 +502,14 @@ impl CpuRenderer {
         let mut clips = vec![region];
         let mut surfaces = vec![root];
         let mut frames: Vec<LayerFrame> = Vec::new();
-        let mut active_text: HashSet<TextKey> = HashSet::new();
+        // Out of the renderer for the length of a whole frame and back at its
+        // end, so that a frame that unwinds leaves a memo that knows nothing
+        // about what it left in the cache.
+        let mut memo = (!partial).then(|| {
+            let mut memo = std::mem::take(&mut self.text_memo);
+            memo.begin();
+            memo
+        });
         let close = Primitive::PopLayer;
         let mut primitives = scene.primitives.iter();
         loop {
@@ -775,30 +788,24 @@ impl CpuRenderer {
                     if partial && (visible[2] == 0 || visible[3] == 0) {
                         continue;
                     }
-                    let key = match primitive {
-                        Primitive::Text {
-                            text, font_size, ..
-                        } => self.text.ensure(text, *font_size),
-                        Primitive::StyledText { text, style, .. } => {
-                            self.text.ensure_styled(text, style, Some(rect.width))
+                    let owned;
+                    let key: &TextKey = match memo.as_mut() {
+                        Some(memo) => memo.key(&mut self.text, primitive),
+                        None => {
+                            owned = ensure_text(&mut self.text, primitive);
+                            &owned
                         }
-                        Primitive::RichText { spans, style, .. } => {
-                            self.text.ensure_rich(spans, style, Some(rect.width))
-                        }
-                        _ => unreachable!(),
                     };
-                    if !partial {
-                        active_text.insert(key.clone());
-                    }
                     if visible[2] > 0 && visible[3] > 0 {
-                        self.glyphs(surface, &key, *rect, visible, *color);
+                        self.glyphs(surface, key, *rect, visible, *color);
                     }
                 }
             }
         }
-        if !partial {
-            self.text.retain(&active_text);
+        if let Some(mut memo) = memo {
+            memo.finish(&mut self.text);
             self.text_kept = self.text.buffers.len();
+            self.text_memo = memo;
         }
         surfaces.swap_remove(0)
     }

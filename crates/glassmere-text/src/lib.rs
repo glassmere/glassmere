@@ -361,18 +361,23 @@ impl TextSystem {
         // Alignment needs a width, which only wrapped blocks have.
         let rtl = style.rtl && width.is_some();
         let width_bits = width.map(f32::to_bits);
-        let spans: Vec<SpanKey> = spans
-            .iter()
-            .map(|span| {
-                (
-                    span.text.len(),
-                    span.color.map(|color| [color.0, color.1, color.2, color.3]),
-                    span.weight,
-                    span.italic,
-                    span.family.clone(),
-                )
-            })
-            .collect();
+        // Most blocks are plain, and there is nothing to collect for them.
+        let spans: Vec<SpanKey> = if spans.is_empty() {
+            Vec::new()
+        } else {
+            spans
+                .iter()
+                .map(|span| {
+                    (
+                        span.text.len(),
+                        span.color.map(|color| [color.0, color.1, color.2, color.3]),
+                        span.weight,
+                        span.italic,
+                        span.family.clone(),
+                    )
+                })
+                .collect()
+        };
         let mut fold = Fold::new();
         (
             size,
@@ -1604,6 +1609,26 @@ mod tests {
                 assert_eq!(map_hash(&state, a) == map_hash(&state, b), i == j);
             }
         }
+    }
+
+    #[test]
+    fn a_rich_block_without_spans_is_the_plain_block_of_no_text() {
+        let mut system = fira();
+        let style = TextStyle {
+            wrap: TextWrap::Word,
+            ..TextStyle::default()
+        };
+        let rich = system.ensure_rich(&[], &style, Some(80.0));
+        let plain = system.ensure_styled("", &style, Some(80.0));
+        assert_eq!(rich, plain);
+        assert_eq!(format!("{rich:?}"), format!("{plain:?}"));
+        assert!(format!("{rich:?}").ends_with("spans: [] }"));
+        assert_eq!(system.buffers.len(), 1);
+        // A span of no text is still a span, and tells the keys apart.
+        let one = system.ensure_rich(&[TextSpan::new("")], &style, Some(80.0));
+        assert_ne!(one, plain);
+        assert!(format!("{one:?}").ends_with("spans: [(0, None, None, None, None)] }"));
+        assert_eq!(system.buffers.len(), 2);
     }
 
     #[test]
