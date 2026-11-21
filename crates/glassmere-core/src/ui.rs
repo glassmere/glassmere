@@ -73,6 +73,16 @@ impl WidgetKey {
             Self::Panel(id) => format!("$panel:{id}"),
         }
     }
+
+    /// Whether two keys are equal, which is what `==` says too, with the
+    /// cheap fields compared before the file path of a call site.
+    fn same(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Named(a), Self::Named(b)) | (Self::Panel(a), Self::Panel(b)) => a == b,
+            (Self::Site(a, n), Self::Site(b, m)) => n == m && same_site(a, b),
+            _ => false,
+        }
+    }
 }
 
 /// How many source locations a scope counts in an array before it builds a
@@ -129,6 +139,91 @@ impl Sites {
         let before = *count;
         *count += 1;
         before
+    }
+}
+
+/// How many keys a scope compares a new one against, one by one, before it
+/// keeps a table of their hashes.
+const KEYS_SCANNED: usize = 8;
+
+/// Which keys of one scope are taken.
+///
+/// The keys of the siblings declared so far are in the scope's `elements`
+/// already, so a scope with few of them compares against those and keeps
+/// nothing of its own; only a bigger one keeps a table of hashes, and no key
+/// is copied into it.
+#[derive(Default)]
+pub(crate) struct Keys {
+    /// The hash of every key that is taken, once the scope is big enough to
+    /// want it. Equal keys have equal hashes, so a hash that is not here
+    /// belongs to a key that is free; one that is here is only a candidate.
+    index: Option<crate::collections::FastSet<u64>>,
+    /// How many of the first `elements` have their hash in `index`.
+    indexed: usize,
+    /// The keys of elements `take_declared` took back out, which stay taken.
+    retired: Vec<WidgetKey>,
+}
+
+/// The hash a scope's table holds a key by.
+fn digest_of(key: &WidgetKey) -> u64 {
+    use core::hash::BuildHasher;
+    crate::collections::FastState::default().hash_one(key)
+}
+
+impl Keys {
+    /// Whether `key` is free among the siblings in `elements`, and takes it
+    /// if so. The caller pushes the element onto `elements` right after a
+    /// `true`.
+    fn claim(&mut self, elements: &[Element], key: &WidgetKey) -> bool {
+        self.claim_with(elements, key, digest_of)
+    }
+
+    /// `claim` with the hash chosen, so that a test can make keys collide.
+    fn claim_with(
+        &mut self,
+        elements: &[Element],
+        key: &WidgetKey,
+        digest: fn(&WidgetKey) -> u64,
+    ) -> bool {
+        if self.index.is_none() && elements.len() + self.retired.len() <= KEYS_SCANNED {
+            return !elements.iter().any(|element| element.key.same(key))
+                && !self.retired.iter().any(|retired| retired.same(key));
+        }
+        let index = match &mut self.index {
+            Some(index) => index,
+            None => self.index.insert(self.retired.iter().map(digest).collect()),
+        };
+        // The siblings from before the table was built, and any added
+        // without a claim, such as a popup's, are not in it yet.
+        for element in &elements[self.indexed.min(elements.len())..] {
+            index.insert(digest(&element.key));
+        }
+        self.indexed = elements.len();
+        // Another key can have the same hash, so a hash that is there is
+        // looked for among the keys themselves.
+        if !index.insert(digest(key))
+            && (elements.iter().any(|element| element.key.same(key))
+                || self.retired.iter().any(|retired| retired.same(key)))
+        {
+            return false;
+        }
+        self.indexed = elements.len() + 1;
+        true
+    }
+
+    /// Keeps `key` taken after its element, the last of the scope, was taken
+    /// back out and `elements_len` are left.
+    fn retire(&mut self, key: WidgetKey, elements_len: usize) {
+        self.retire_with(key, elements_len, digest_of);
+    }
+
+    /// `retire` with the hash chosen, to go with `claim_with`.
+    fn retire_with(&mut self, key: WidgetKey, elements_len: usize, digest: fn(&WidgetKey) -> u64) {
+        if let Some(index) = &mut self.index {
+            index.insert(digest(&key));
+        }
+        self.indexed = self.indexed.min(elements_len);
+        self.retired.push(key);
     }
 }
 
@@ -372,8 +467,15 @@ pub struct Ui<'a, M: 'static = ()> {
     /// Clicks and changes that reached widgets without a handler: the
     /// framework's own composites, which read them while declaring.
     pub(crate) clicks: &'a mut HashSet<NodeId>,
+    /// The widgets declared in this scope, in order. Only `push` adds to it,
+    /// apart from the popup a context menu puts first, and only
+    /// `take_declared` takes one out, which leaves its key taken. No key is
+    /// changed in place, because `keys` reads the siblings' keys from here.
     pub(crate) elements: Vec<Element>,
-    pub(crate) keys: crate::collections::FastSet<WidgetKey>,
+    /// Which keys of `elements` and of the ones taken back out are taken. It
+    /// reads the siblings from `elements`, so a widget enters it by being
+    /// pushed there.
+    pub(crate) keys: Keys,
     /// Where in `elements` the last declaration went, or `None` when it was
     /// skipped as a misuse.
     pub(crate) declared: Option<usize>,
@@ -493,7 +595,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                 background.source = crate::ImageSource::Image(image);
             }
         }
-        if !self.keys.insert(element.key.clone()) {
+        if !self.keys.claim(&self.elements, &element.key) {
             self.misuse(format!(
                 "duplicate widget key among siblings: {:?}",
                 element.key
@@ -545,11 +647,17 @@ impl<'a, M: 'static> Ui<'a, M> {
         self.declared.and_then(|index| self.elements.get_mut(index))
     }
 
-    /// Takes the element the last declaration added back out.
+    /// Takes the element the last declaration added back out. Its key stays
+    /// taken.
     #[track_caller]
     pub(crate) fn take_declared(&mut self) -> Option<Element> {
         let index = self.declared.take()?;
-        (index + 1 == self.elements.len()).then(|| self.elements.pop())?
+        if index + 1 != self.elements.len() {
+            return None;
+        }
+        let element = self.elements.pop()?;
+        self.keys.retire(element.key.clone(), self.elements.len());
+        Some(element)
     }
 
     /// Gives the element just declared what it sends.
@@ -906,7 +1014,7 @@ impl<M: 'static> Ui<'_, M> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::collections::FastMap;
+    use crate::collections::{FastMap, FastSet};
     use alloc::vec;
 
     #[track_caller]
@@ -914,8 +1022,8 @@ mod tests {
         Location::caller()
     }
 
-    /// Places in this file that differ by line only, by column only, and by
-    /// both, more of them than a scope counts in its array.
+    /// Places that differ by line only, by column only, by both and by file
+    /// only, more of them than a scope counts in its array.
     fn places() -> Vec<&'static Location<'static>> {
         let mut places = vec![
             here(),
@@ -930,6 +1038,11 @@ mod tests {
             here(),
         ];
         places.extend([here(), here(), here(), here()]);
+        // Line 1, column 1 of two files.
+        places.extend([
+            include!("ui/places/first.rs"),
+            include!("ui/places/second.rs"),
+        ]);
         places
     }
 
@@ -956,6 +1069,9 @@ mod tests {
         assert!(differ(
             |a, b| a.line() != b.line() && a.column() != b.column()
         ));
+        assert!(differ(|a, b| {
+            a.line() == b.line() && a.column() == b.column() && a.file() != b.file()
+        }));
         for a in &places {
             for b in &places {
                 assert_eq!(same_site(a, b), a == b, "{a} and {b}");
@@ -1013,5 +1129,147 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The first `size` keys of a family of names, panels and call sites.
+    /// A name and a panel share their text, and a call site comes back with
+    /// a higher count once the places are used up.
+    fn alphabet(size: usize) -> Vec<WidgetKey> {
+        let places = places();
+        (0..size)
+            .map(|index| {
+                let at = index / 3;
+                match index % 3 {
+                    0 => WidgetKey::Named(format!("k{at}")),
+                    1 => WidgetKey::Panel(format!("k{at}")),
+                    _ => WidgetKey::Site(places[at % places.len()], (at / places.len()) as u32),
+                }
+            })
+            .collect()
+    }
+
+    /// The hashes a scope is tried with: its own, one that is the same for
+    /// every key, and one that tells only four keys apart.
+    const DIGESTS: [fn(&WidgetKey) -> u64; 3] = [digest_of, |_| 0, |key| digest_of(key) & 3];
+
+    /// What `Ui::push` does with a key: take it, and put its element in the
+    /// scope if it was free.
+    fn claim(
+        keys: &mut Keys,
+        elements: &mut Vec<Element>,
+        key: &WidgetKey,
+        digest: fn(&WidgetKey) -> u64,
+    ) -> bool {
+        let free = keys.claim_with(elements, key, digest);
+        if free {
+            elements.push(Element::new(key.clone(), Kind::Label));
+        }
+        free
+    }
+
+    #[test]
+    fn keys_are_the_same_exactly_when_they_are_equal() {
+        let keys = alphabet(90);
+        for a in &keys {
+            for b in &keys {
+                assert_eq!(a.same(b), a == b, "{a:?} and {b:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn keys_are_taken_exactly_like_the_members_of_a_set() {
+        let mut state = 0x2545_f491_4f6c_dd1d;
+        let (mut indexed, mut retired) = (0, 0);
+        for digest in DIGESTS {
+            for round in 0..300 {
+                let alphabet = alphabet(1 + round % 120);
+                let pick = |state: &mut u64| {
+                    alphabet[(next_random(state) % alphabet.len() as u64) as usize].clone()
+                };
+                let mut keys = Keys::default();
+                let mut elements: Vec<Element> = Vec::new();
+                let mut set: FastSet<WidgetKey> = FastSet::default();
+                let mut declared = None;
+                for step in 0..next_random(&mut state) % 160 {
+                    match next_random(&mut state) % 10 {
+                        0 | 1 => {
+                            // `Ui::take_declared`.
+                            if let Some(index) = declared.take()
+                                && index + 1 == elements.len()
+                                && let Some(element) = elements.pop()
+                            {
+                                keys.retire_with(element.key, elements.len(), digest);
+                            }
+                        }
+                        2 if step == 0 || next_random(&mut state).is_multiple_of(4) => {
+                            // An element that no claim saw, like a popup's.
+                            let key = pick(&mut state);
+                            set.insert(key.clone());
+                            elements.push(Element::new(key, Kind::Label));
+                            declared = Some(elements.len() - 1);
+                        }
+                        _ => {
+                            let key = pick(&mut state);
+                            let free = set.insert(key.clone());
+                            let taken = claim(&mut keys, &mut elements, &key, digest);
+                            assert_eq!(taken, free, "{key:?} at step {step} of round {round}");
+                            declared = free.then(|| elements.len() - 1);
+                        }
+                    }
+                }
+                // Everything the set holds is still taken, and nothing else.
+                for key in &alphabet {
+                    let free = set.insert(key.clone());
+                    assert_eq!(claim(&mut keys, &mut elements, key, digest), free);
+                }
+                indexed += usize::from(keys.index.is_some());
+                retired += usize::from(keys.retired.len() > KEYS_SCANNED);
+            }
+        }
+        // The scopes were big enough to build a table, and to take many back.
+        assert!(indexed > 300 && retired > 100, "{indexed} {retired}");
+    }
+
+    #[test]
+    fn keys_whose_hashes_are_equal_are_told_apart_by_comparing_them() {
+        let all = alphabet(40);
+        let mut keys = Keys::default();
+        let mut elements = Vec::new();
+        for key in &all {
+            assert!(claim(&mut keys, &mut elements, key, |_| 0), "{key:?}");
+        }
+        for key in &all {
+            assert!(!claim(&mut keys, &mut elements, key, |_| 0), "{key:?}");
+        }
+        assert_eq!(elements.len(), all.len());
+    }
+
+    /// Whether the next claim in a scope of `elements` that no claim saw and
+    /// `retired` taken back builds a table.
+    fn builds_a_table(elements: usize, retired: usize) -> bool {
+        let all = alphabet(elements + retired + 1);
+        let mut keys = Keys::default();
+        let scope: Vec<Element> = all[..elements]
+            .iter()
+            .map(|key| Element::new(key.clone(), Kind::Label))
+            .collect();
+        for key in &all[elements..elements + retired] {
+            keys.retire(key.clone(), elements);
+        }
+        assert!(keys.index.is_none());
+        assert!(keys.claim(&scope, &all[elements + retired]));
+        keys.index.is_some()
+    }
+
+    #[test]
+    fn a_table_is_built_when_the_elements_and_the_retired_keys_pass_the_limit() {
+        assert!(!builds_a_table(KEYS_SCANNED, 0));
+        assert!(builds_a_table(KEYS_SCANNED + 1, 0));
+        assert!(!builds_a_table(0, KEYS_SCANNED));
+        assert!(builds_a_table(0, KEYS_SCANNED + 1));
+        assert!(!builds_a_table(3, KEYS_SCANNED - 3));
+        assert!(builds_a_table(3, KEYS_SCANNED - 2));
+        assert!(builds_a_table(2, 100));
     }
 }

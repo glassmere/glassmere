@@ -208,6 +208,51 @@ impl App for Fields {
     }
 }
 
+/// `count` keyed rows of one label, or of four labels, each declared from a
+/// line of its own, when `wide`.
+struct Rows {
+    count: usize,
+    wide: bool,
+}
+
+impl App for Rows {
+    type Message = Msg;
+
+    fn update(&mut self, _: Msg, _: &mut Effects<'_, Msg>) {}
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        for index in 0..self.count {
+            ui.keyed(format!("row{index}"), |ui| {
+                ui.row(Style::default(), |ui| {
+                    ui.label("name");
+                    if self.wide {
+                        ui.label("kind");
+                        ui.label("size");
+                        ui.label("date");
+                    }
+                });
+            });
+        }
+    }
+}
+
+/// `count` keyed labels in one scope.
+struct Leaves {
+    count: usize,
+}
+
+impl App for Leaves {
+    type Message = Msg;
+
+    fn update(&mut self, _: Msg, _: &mut Effects<'_, Msg>) {}
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        for index in 0..self.count {
+            ui.keyed(format!("leaf{index}"), |ui| ui.label("leaf"));
+        }
+    }
+}
+
 /// Longer than eight bytes, so that a text built a character at a time
 /// grows more than once.
 const SHOWN: &str = "hello world, 12";
@@ -562,4 +607,45 @@ fn a_sweep_that_cancels_compositions_does_not_copy_field_texts() {
             "a sweep over {count} fields with text allocated {with_text} times, {without} without"
         );
     }
+}
+
+/// What a declaration of `count` rows allocates.
+fn rows_cost(count: usize, wide: bool) -> usize {
+    Running::new(Rows { count, wide }).allocated_by(|running| running.driver.invalidate())
+}
+
+/// What a declaration of `count` labels in one scope allocates.
+fn leaves_cost(count: usize) -> usize {
+    Running::new(Leaves { count }).allocated_by(|running| running.driver.invalidate())
+}
+
+// A container compares the key of a new widget with its siblings' and counts
+// the lines that declare them in an array, so a row of four labels builds no
+// table for either. Whatever else a row allocates, the three labels it has
+// beyond the first cost their texts and nothing more.
+#[test]
+fn the_siblings_of_a_small_scope_are_told_apart_without_a_table() {
+    const ROWS: usize = 100;
+    const TEXTS: usize = 3;
+    let (one, four) = (rows_cost(ROWS, false), rows_cost(ROWS, true));
+    assert!(
+        four - one <= ROWS * TEXTS,
+        "{ROWS} rows of one label allocated {one} times in a declaration and of four labels {four}"
+    );
+}
+
+// A scope with many widgets keeps a table of hashes, and no key is copied
+// into it, so a label costs its name and its text however many come before.
+#[test]
+fn the_siblings_of_a_big_scope_are_told_apart_without_copying_their_keys() {
+    const SMALL: usize = 100;
+    const LARGE: usize = 400;
+    const PER_LABEL: usize = 2;
+    // The table of hashes grows by a few steps for the extra labels.
+    const GROWTH: usize = 8;
+    let (small, large) = (leaves_cost(SMALL), leaves_cost(LARGE));
+    assert!(
+        large - small <= (LARGE - SMALL) * PER_LABEL + GROWTH,
+        "{SMALL} labels allocated {small} times in a declaration and {LARGE} labels {large}"
+    );
 }

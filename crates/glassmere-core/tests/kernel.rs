@@ -97,6 +97,17 @@ fn duplicate_sibling_keys_are_rejected() {
     });
 }
 
+#[test]
+#[should_panic(expected = "duplicate widget key")]
+fn a_duplicate_sibling_key_is_rejected_among_many_siblings() {
+    frame(&mut Context::new(), |ui| {
+        for index in 0..12 {
+            ui.keyed(format!("item{index}"), |ui| ui.label("item"));
+        }
+        ui.keyed("item3", |ui| ui.label("again"));
+    });
+}
+
 /// One view that shows a notice only sometimes, ahead of a button.
 fn notice_then_button(ui: &mut Ui<'_>, notice: bool) {
     if notice {
