@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- Frames cost less. Measured with the new benchmarks, on a form of 1,200 widgets: a frame with no input takes half the time, declaring it again unchanged 40% less, repainting or laying out every row 40 to 50% less; scrolling a million-row table or a 100,000-node tree 20 to 30% less. The CPU renderer repaints a damaged row in a quarter of the time. A second pass, counting instructions in the same scenarios, took a further 55% off a frame in which the pointer moves to another widget, 39% off declaring a form of `Ui::memo` rows again, 27% off 400 animating cells, 16% off scrolling the form and 13% off repainting every row; the CPU renderer paints the whole form, and a damaged row of it, in less than half the instructions it needed. Nothing an application calls has changed:
+- Frames cost less. Measured with the new benchmarks, on a form of 1,200 widgets: a frame with no input takes half the time, declaring it again unchanged 40% less, repainting or laying out every row 40 to 50% less; scrolling a million-row table or a 100,000-node tree 20 to 30% less. The CPU renderer repaints a damaged row in a quarter of the time. A second pass, counting instructions in the same scenarios, took a further 91% off a frame in which the pointer moves to another widget, 43% off declaring a form of `Ui::memo` rows again, 38% off 400 animating cells, 22% off scrolling the form, 17% off repainting every row and 27% off laying out every row; the CPU renderer paints the whole form in a third of the instructions it needed and a damaged row of it in less than half. Nothing an application calls has changed:
   - What every frame prepared for its controls walked every node seven times; it walks them once, and a text field compares its text without allocating.
   - Children are matched where they were last frame before a map of their keys is built, and a node declared as it was does not rebuild its layout style to find that out.
   - The kernel's own maps, over node identities, widget keys and call sites, use a fast hash in place of std's attack-resistant one.
@@ -21,6 +21,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - The scene a renderer reads is written over the last one. A node whose paint did not change stays where it was in it, and only what moved or was painted again is copied; before, the whole scene was built again from nothing. A frame that moves the pointer over the form makes about 60 allocations, where it made about 1,600.
   - A node keeps its own drawing commands in one vector with room for eight, and a node painted again is written over its old chunk, commands and text, in place of a new allocation. A frame of 400 animating cells makes about 80 allocations, where it made about 2,100.
   - The CPU renderer works out how far a rectangle with square corners covers each of its columns once, and fills the columns it covers whole as one run, in place of working it out for every pixel.
+  - A hit test searches the tree from the last node painted to the first and stops at the first match, in place of listing every node first, and leaves out the subtrees whose clip cannot hold the point. A pointer move no longer looks for a menu row while no menu is open, and a press does not look for text areas or rich editors in a tree that holds none.
+  - A frame that declared nothing does not walk the tree again to find the controls it prepares, and a single-line field whose text, caret and size did not change does not work out its caret and scroll again.
+  - Text keys carry a hash worked out once, a text block is looked up in the cache once, a plain block starts from an empty buffer, and a wrapped text leaf keeps the size it was measured at for the rest of a layout pass.
+  - The synthetic measurer used by tests and benchmarks counts the lines of a text in place of building its whole geometry. Shaped text is measured as before.
+  - The code editor reads the lines it declares in one pass over the text, and the undo history of a document drops its oldest step without moving the rest.
+  - Nodes that start the same transition in the same frame share one eased progress, and declared elements are reconciled in place instead of being moved on their way into the tree.
 
 ### Fixed
 
