@@ -600,6 +600,100 @@ mod tests {
         }
     }
 
+    /// What the images of a declaration did, in order.
+    #[cfg(feature = "std")]
+    type Log = std::sync::Arc<std::sync::Mutex<Vec<String>>>;
+
+    /// An image that notes when it is dropped.
+    #[cfg(feature = "std")]
+    struct Probe {
+        name: &'static str,
+        log: Log,
+    }
+
+    #[cfg(feature = "std")]
+    impl glassmere_scene::VectorImage for Probe {
+        fn size(&self) -> Size {
+            Size::new(1.0, 1.0)
+        }
+
+        fn rasterize(&self, width: u32, height: u32) -> Vec<u8> {
+            alloc::vec![0; (width * height * 4) as usize]
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl Drop for Probe {
+        fn drop(&mut self) {
+            self.log.lock().unwrap().push(format!("drop {}", self.name));
+        }
+    }
+
+    /// A style whose background is a probe that nothing else refers to.
+    #[cfg(feature = "std")]
+    fn probed(log: &Log, name: &'static str) -> Style {
+        let image = glassmere_scene::Image::from_vector(Probe {
+            name,
+            log: log.clone(),
+        });
+        Style::default().background_image(crate::BackgroundImage::new(&image))
+    }
+
+    #[cfg(feature = "std")]
+    fn note(log: &Log, what: &str) {
+        log.lock().unwrap().push(what.into());
+    }
+
+    // A widget left out for its key is dropped as its declaration ends,
+    // before the next one begins, like a widget that was never added.
+    #[cfg(feature = "std")]
+    #[test]
+    fn a_duplicate_is_dropped_as_its_declaration_ends() {
+        let log = Log::default();
+        let mut context = release();
+        frame(&mut context, |ui| {
+            ui.keyed("a", |ui| ui.column(probed(&log, "first"), |_| {}));
+            ui.keyed("a", |ui| ui.column(probed(&log, "duplicate"), |_| {}));
+            note(&log, "declared the duplicate");
+            ui.keyed("b", |ui| ui.column(probed(&log, "second"), |_| {}));
+            note(&log, "declared the second");
+        });
+        // The nodes keep the images of the two that were added.
+        let noted = core::mem::take(&mut *log.lock().unwrap());
+        assert_eq!(
+            noted,
+            [
+                "drop duplicate",
+                "declared the duplicate",
+                "declared the second"
+            ]
+        );
+        assert_eq!(context.stats().elements, 2);
+        assert_eq!(misuses(&context).len(), 1);
+    }
+
+    // The widget is out of the list before the misuse stops a debug build,
+    // so unwinding drops it before the list that holds the siblings.
+    #[cfg(feature = "std")]
+    #[test]
+    fn a_duplicate_is_dropped_before_the_siblings_when_the_misuse_panics() {
+        let log = Log::default();
+        let mut context = Context::new();
+        context.set_misuse_panics(true);
+        context.set_diagnostics(false);
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            frame(&mut context, |ui| {
+                ui.keyed("a", |ui| ui.column(probed(&log, "first"), |_| {}));
+                ui.keyed("a", |ui| ui.column(probed(&log, "duplicate"), |_| {}));
+                note(&log, "declared the duplicate");
+            });
+        }));
+        assert!(unwound.is_err());
+        let noted = core::mem::take(&mut *log.lock().unwrap());
+        assert_eq!(noted.first().map(String::as_str), Some("drop duplicate"));
+        assert!(!noted.iter().any(|entry| entry.starts_with("declared")));
+    }
+
     // The key is claimed before a font family is named, so a widget left
     // out for its key names none.
     #[test]

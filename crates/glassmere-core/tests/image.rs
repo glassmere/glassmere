@@ -291,6 +291,36 @@ fn background_files_load_through_the_host_and_repaint_when_they_arrive() {
 }
 
 #[test]
+fn a_background_file_that_has_arrived_shows_in_its_own_widget_only() {
+    let mut context = Context::new();
+    let (loaded, missing) = (Path::new("skin/loaded.png"), Path::new("skin/missing.png"));
+    context.set_image_file(loaded, Ok(picture(8, 8)));
+    context.run(ROOT, &mut MonospaceMeasurer, |ui| {
+        let panel = |path: &Path| {
+            Style::default()
+                .width(Length::Px(80.0))
+                .height(Length::Px(40.0))
+                .background_image(BackgroundImage::file(path).fit(ImageFit::Fill))
+        };
+        ui.keyed("title", |ui| ui.label("Panels"));
+        ui.keyed("first", |ui| ui.column(panel(loaded), |_| {}));
+        ui.keyed("second", |ui| ui.column(panel(missing), |_| {}));
+        ui.keyed("third", |ui| ui.column(Style::default(), |_| {}));
+        ui.keyed("fourth", |ui| ui.column(panel(loaded), |_| {}));
+    });
+    // Each file is asked for once, those that arrived as well.
+    assert_eq!(
+        context.image_paths(),
+        [loaded.to_owned(), missing.to_owned()]
+    );
+    let images = drawn(&context);
+    assert_eq!(images.len(), 2);
+    assert_eq!(images[0].0, bounds(&context, "first"));
+    assert_eq!(images[1].0, bounds(&context, "fourth"));
+    assert!(images.iter().all(|image| image.1.width == 8.0));
+}
+
+#[test]
 fn stylesheets_describe_background_images_relative_to_their_own_file() {
     let mut sheet = StyleSheet::parse(
         "class panel {\n\

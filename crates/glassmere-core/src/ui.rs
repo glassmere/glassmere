@@ -172,8 +172,8 @@ fn digest_of(key: &WidgetKey) -> u64 {
 
 impl Keys {
     /// Whether `key` is free among the siblings in `elements`, and takes it
-    /// if so. The caller pushes the element onto `elements` right after a
-    /// `true`.
+    /// if so. `elements` are the siblings before the element, which stays
+    /// right behind them after a `true`.
     fn claim(&mut self, elements: &[Element], key: &WidgetKey) -> bool {
         self.claim_with(elements, key, digest_of)
     }
@@ -472,9 +472,11 @@ pub struct Ui<'a, M: 'static = ()> {
     /// framework's own composites, which read them while declaring.
     pub(crate) clicks: &'a mut HashSet<NodeId>,
     /// The widgets declared in this scope, in order. Only `push` adds to it,
-    /// apart from the popup a context menu puts first, and only
-    /// `take_declared` takes one out, which leaves its key taken. No key is
-    /// changed in place, because `keys` reads the siblings' keys from here.
+    /// apart from the popup a context menu puts first. `take_declared` takes
+    /// one out and leaves its key taken; `push` takes out the one it just
+    /// added when its key was taken already, which leaves nothing to retire.
+    /// No key is changed in place, because `keys` reads the siblings' keys
+    /// from here.
     pub(crate) elements: Vec<Element>,
     /// Which keys of `elements` and of the ones taken back out are taken. It
     /// reads the siblings from `elements`, so a widget enters it by being
@@ -584,7 +586,16 @@ impl<'a, M: 'static> Ui<'a, M> {
     }
 
     #[track_caller]
-    fn push(&mut self, mut element: Element) -> Response<'a> {
+    fn push(&mut self, element: Element) -> Response<'a> {
+        // The element goes into its place before anything borrows, reads or
+        // changes it, and is finished there: an argument that is touched
+        // first is copied once more on its way. It is in the list from here
+        // on, so a way out before `declared` is set must pop it first, as a
+        // duplicate does.
+        let index = self.elements.len();
+        self.elements.push(element);
+        let (siblings, slot) = self.elements.split_at_mut(index);
+        let element = &mut slot[0];
         element.enabled &= self.enabled;
         // A background file becomes its image once the host has delivered it,
         // and that style change is what repaints the node.
@@ -599,11 +610,13 @@ impl<'a, M: 'static> Ui<'a, M> {
                 background.source = crate::ImageSource::Image(image);
             }
         }
-        if !self.keys.claim(&self.elements, &element.key) {
-            self.misuse(format!(
-                "duplicate widget key among siblings: {:?}",
-                element.key
-            ));
+        if !self.keys.claim(siblings, &element.key) {
+            let message = format!("duplicate widget key among siblings: {:?}", element.key);
+            // It leaves the list before `misuse`, which can panic, so that
+            // it is dropped where a widget that was never added is.
+            let duplicate = self.elements.pop();
+            self.misuse(message);
+            drop(duplicate);
             return Response::default();
         }
         if let Some(crate::FontFamily::Named(name)) = &element.style.font_family {
@@ -630,8 +643,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                 ..Response::default()
             },
         };
-        self.declared = Some(self.elements.len());
-        self.elements.push(element);
+        self.declared = Some(index);
         response
     }
 
@@ -1040,6 +1052,7 @@ impl<M: 'static> Ui<'_, M> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::Handler;
     use crate::collections::{FastMap, FastSet};
     use crate::{Button, Label, Length, Link, MonospaceMeasurer};
     use alloc::vec;
@@ -1570,6 +1583,49 @@ mod tests {
             |want| want.style = own.clone(),
             |ui| ui.scroll(own.clone(), |ui| ui.label("d")),
         );
+    }
+
+    // A widget left out for its key is not in the list and is not counted,
+    // and what is declared after it is the one the calls that follow reach.
+    #[test]
+    fn a_duplicate_is_left_out_and_the_calls_after_it_reach_the_next_widget() {
+        let mut context = Context::new();
+        context.set_misuse_panics(false);
+        let stats = context.run(Size::new(400.0, 400.0), &mut MonospaceMeasurer, |ui| {
+            ui.keyed("a", |ui| ui.label("first"));
+            assert_eq!(ui.declared, Some(0));
+            ui.keyed("a", |ui| ui.label("again"));
+            assert_eq!(ui.declared, None);
+            assert!(ui.declared().is_none());
+            assert_eq!(ui.elements.len(), 1);
+            // There is nothing to give a handler or a control to.
+            ui.set_handler(Handler::Message(()));
+            ui.set_control(Control::SelectableText);
+            assert!(ui.handlers.is_empty());
+            assert_eq!(ui.elements[0].handler, None);
+            assert_eq!(ui.elements[0].control, Control::None);
+            assert!(ui.take_declared().is_none());
+
+            ui.keyed("b", |ui| ui.label("second"));
+            assert_eq!(ui.declared, Some(1));
+            assert_eq!(ui.elements.len(), 2);
+            assert_eq!(ui.elements[1].text, "second");
+            // The duplicate was not counted.
+            assert_eq!((ui.elements[0].seq, ui.elements[1].seq), (1, 2));
+            ui.set_handler(Handler::Message(()));
+            ui.set_control(Control::SelectableText);
+            assert_eq!(ui.elements[0].handler, None);
+            assert_eq!(ui.elements[0].control, Control::None);
+            assert_eq!(ui.elements[1].handler, Some(0));
+            assert_eq!(ui.elements[1].control, Control::SelectableText);
+
+            let taken = ui.take_declared().unwrap();
+            assert_eq!(taken.text, "second");
+            assert_eq!(ui.elements.len(), 1);
+            assert_eq!(ui.elements[0].text, "first");
+            assert!(ui.declared.is_none());
+        });
+        assert_eq!(stats.elements, 2);
     }
 
     #[test]
