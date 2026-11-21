@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Fields bound to the state. `app::bind` is what a widget sends to write the value it reports, and `app::change` is a message that changes the state and needs no name. An application gives its message one variant that holds an `app::Action` and a `From` for it, and a field then needs no variant and no arm in `update` of its own. See `examples/bindings.rs` and "Fields without messages" in [state](docs/state.md).
 - Benchmarks and profiling, in the new `glassmere-bench` crate (not published). Twenty-two headless scenarios cover frames of a form (idle, declared again, repainted, laid out, hovered, scrolled, clicked and typed in), a combo box, animations, a table, a tree, the code editor, wrapped text, the CPU renderer and text shaping; `cargo bench -p glassmere-bench` times them and compares against a saved baseline. Its `profile` binary runs one for a profiler, or a fixed number of steps for a tool that counts instructions or allocations; on Linux and macOS it samples itself and writes a flamegraph or the folded stacks; and `--fingerprint` hashes everything each step left, to check that a change made a step cheaper and nothing else. The `profiling` build profile now has line tables. See [measuring and profiling](docs/profiling.md).
 
+### Fixed
+
+- Typing in the code editor or a text area no longer reads the whole document on every keystroke. The widest line, which sizes the horizontal scroll range, was found again after each edit; it is now kept up to date from the lines the edit changed, and the text is read again only when the widest line itself gets narrower. In a 40,000-line file a keystroke went from 8.5 ms to 37 µs.
+
 ## [0.1.7] - 2026-11-18
 
 ### Added
