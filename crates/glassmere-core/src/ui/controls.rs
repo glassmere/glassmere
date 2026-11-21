@@ -1,5 +1,10 @@
 use super::*;
-use crate::{Length, MenuItem, app::Handler, controls::slider_value, editor::single_line};
+use crate::{
+    Length, MenuItem,
+    app::Handler,
+    controls::slider_value,
+    editor::{single_line, single_line_owned},
+};
 use alloc::borrow::ToOwned;
 use alloc::boxed::Box;
 use alloc::format;
@@ -187,7 +192,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             children: extra.children,
             control: Control::TextInput {
                 label,
-                value: single_line(value),
+                value: single_line_owned(value),
                 placeholder: placeholder.into(),
                 number: extra.number,
                 suggestions: extra.suggestions,

@@ -188,6 +188,30 @@ impl App for Wall {
     }
 }
 
+/// `count` keyed text inputs, none of them focused, all showing `text`.
+struct Fields {
+    count: usize,
+    text: &'static str,
+}
+
+impl App for Fields {
+    type Message = Msg;
+
+    fn update(&mut self, _: Msg, _: &mut Effects<'_, Msg>) {}
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        for index in 0..self.count {
+            ui.keyed(format!("field{index}"), |ui| {
+                ui.text_input("Name", self.text, Msg::Name);
+            });
+        }
+    }
+}
+
+/// Longer than eight bytes, so that a text built a character at a time
+/// grows more than once.
+const SHOWN: &str = "hello world, 12";
+
 struct Running<A: App> {
     app: A,
     driver: AppDriver<A::Message>,
@@ -497,4 +521,45 @@ fn a_frame_that_paints_every_cell_again_allocates_the_same_at_20_and_200_cells()
         large <= small + 8,
         "painting 20 cells again allocated {small} times and 200 cells {large}"
     );
+}
+
+/// What a declaration of `count` fields showing `text` allocates.
+fn declaration_cost(count: usize, text: &'static str) -> usize {
+    Running::new(Fields { count, text }).allocated_by(|running| running.driver.invalidate())
+}
+
+/// What the sweep that cancels compositions allocates over `count` fields
+/// showing `text`.
+fn sweep_cost(count: usize, text: &'static str) -> usize {
+    let mut running = Running::new(Fields { count, text });
+    let before = allocations();
+    running.context.event(Event::FocusLost);
+    allocations() - before
+}
+
+// A field's text is copied once in a declaration: into the element, which
+// owns it. Comparing it with the editor's takes no copy of it, however long
+// it is, and neither does cancelling a composition.
+#[test]
+fn a_declared_field_text_costs_one_allocation_per_field() {
+    for count in [20, 50, 200] {
+        let (with_text, without) = (declaration_cost(count, SHOWN), declaration_cost(count, ""));
+        assert!(
+            with_text <= without + count,
+            "{count} fields with text allocated {with_text} times in a declaration, \
+             {without} without"
+        );
+    }
+}
+
+// The sweep visits every field and copies nothing.
+#[test]
+fn a_sweep_that_cancels_compositions_does_not_copy_field_texts() {
+    for count in [20, 200] {
+        let (with_text, without) = (sweep_cost(count, SHOWN), sweep_cost(count, ""));
+        assert_eq!(
+            with_text, without,
+            "a sweep over {count} fields with text allocated {with_text} times, {without} without"
+        );
+    }
 }

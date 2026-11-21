@@ -23,7 +23,7 @@ impl Context {
         for (id, node) in &mut self.nodes {
             if Some(*id) != keep
                 && let Some(editor) = &mut node.editor
-                && editor.apply(TextEdit::CancelComposition)
+                && editor.cancel_composition()
             {
                 changed.push(*id);
             }
@@ -1054,6 +1054,141 @@ impl Context {
                 }
             }
             _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::MonospaceMeasurer;
+    use glassmere_scene::{Affinity, Size};
+
+    fn declare(context: &mut Context) {
+        context.run(Size::new(320.0, 240.0), &mut MonospaceMeasurer, |ui| {
+            for key in ["a", "b", "c", "d"] {
+                ui.keyed(key, |ui| {
+                    ui.text_input("Name", "text", |_| ());
+                });
+            }
+        });
+    }
+
+    fn painted(context: &Context, id: NodeId) -> bool {
+        context.nodes[&id].paint_cache.is_some()
+    }
+
+    fn editor(context: &mut Context, id: NodeId) -> &mut Editor {
+        context.nodes.get_mut(&id).unwrap().editor.as_mut().unwrap()
+    }
+
+    fn preedit(editor: &mut Editor) {
+        editor.apply(TextEdit::Preedit {
+            text: "\u{306b}".into(),
+            selection: None,
+        });
+    }
+
+    #[test]
+    fn the_sweep_cancels_the_other_fields_and_repaints_those_that_changed() {
+        let mut context = Context::new();
+        declare(&mut context);
+        let [a, b, c, d] = ["a", "b", "c", "d"].map(|key| context.find(&[key]).unwrap());
+        context.focused = Some(b);
+        declare(&mut context);
+        for id in [a, b, c, d] {
+            assert!(painted(&context, id));
+        }
+
+        // A composes; B, the focused field, composes and sits at a boundary;
+        // C only sits at one; D has nothing to lose.
+        preedit(editor(&mut context, a));
+        preedit(editor(&mut context, b));
+        editor(&mut context, b).affinity = Affinity::Upstream;
+        editor(&mut context, c).affinity = Affinity::Upstream;
+        context.cancel_compositions_except(Some(b));
+
+        assert!(!editor(&mut context, a).composing());
+        assert_eq!(editor(&mut context, a).affinity, Affinity::Downstream);
+        assert_eq!(editor(&mut context, c).affinity, Affinity::Downstream);
+        assert!(!painted(&context, a) && !painted(&context, c));
+        assert!(editor(&mut context, b).composing());
+        assert_eq!(editor(&mut context, b).affinity, Affinity::Upstream);
+        assert!(painted(&context, b) && painted(&context, d));
+
+        // Nothing is left to cancel, so nothing is painted again.
+        declare(&mut context);
+        for id in [a, b, c, d] {
+            assert!(painted(&context, id));
+        }
+        context.cancel_compositions_except(Some(b));
+        for id in [a, b, c, d] {
+            assert!(painted(&context, id));
+        }
+        assert!(editor(&mut context, b).composing());
+
+        // With no field kept, the focused one goes too.
+        context.cancel_compositions_except(None);
+        assert!(!editor(&mut context, b).composing());
+        assert_eq!(editor(&mut context, b).affinity, Affinity::Downstream);
+        assert!(!painted(&context, b));
+        assert!(painted(&context, a) && painted(&context, c) && painted(&context, d));
+    }
+
+    #[test]
+    fn a_press_on_nothing_takes_the_focus_and_the_composition_with_it() {
+        let mut context = Context::new();
+        declare(&mut context);
+        let a = context.find(&["a"]).unwrap();
+        context.focus_control(a);
+        preedit(editor(&mut context, a));
+
+        assert!(context.event(Event::PointerDown));
+        assert_eq!(context.focused, None);
+        assert!(!editor(&mut context, a).composing());
+    }
+
+    #[test]
+    fn the_window_losing_the_focus_cancels_every_composition() {
+        let mut context = Context::new();
+        declare(&mut context);
+        let [a, b] = ["a", "b"].map(|key| context.find(&[key]).unwrap());
+        // No field has the focus, so nothing moves it away.
+        context.focused = None;
+        preedit(editor(&mut context, a));
+        preedit(editor(&mut context, b));
+
+        context.event(Event::FocusLost);
+        assert!(!editor(&mut context, a).composing());
+        assert!(!editor(&mut context, b).composing());
+    }
+
+    #[test]
+    fn a_field_holds_the_text_it_was_declared_with_less_its_control_characters() {
+        for (value, held) in [
+            ("", ""),
+            ("plain", "plain"),
+            ("a\tb\r\nc\u{7}d", "a b  cd"),
+            ("x\u{85}y\u{7f}", "xy"),
+            ("é£©¡ end", "é£©¡ end"),
+        ] {
+            let mut context = Context::new();
+            context.run(Size::new(320.0, 240.0), &mut MonospaceMeasurer, |ui| {
+                ui.keyed("field", |ui| {
+                    ui.text_input("Field", value, |_| ());
+                });
+            });
+            let id = context.find(&["field"]).unwrap();
+            let Control::TextInput {
+                value: declared, ..
+            } = &context.nodes[&id].control
+            else {
+                panic!("not a text field");
+            };
+            assert_eq!(declared, held);
+            let state = context.field_state(id).unwrap();
+            assert_eq!(state.text, held);
+            assert!(!state.draft, "{value:?} reads as typed");
         }
     }
 }

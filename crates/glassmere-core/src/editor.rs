@@ -139,6 +139,21 @@ pub(crate) fn single_line(text: &str) -> String {
         .collect()
 }
 
+/// Whether `single_line(text)` is `text`: it holds no control character,
+/// which `single_line` turns into a space or drops.
+fn is_single_line(text: &str) -> bool {
+    !text.chars().any(char::is_control)
+}
+
+/// `single_line(text)`, copied whole when there is nothing to strip.
+pub(crate) fn single_line_owned(text: &str) -> String {
+    if is_single_line(text) {
+        text.to_owned()
+    } else {
+        single_line(text)
+    }
+}
+
 fn boundary(text: &str, byte: usize) -> usize {
     text.grapheme_indices(true)
         .map(|(index, _)| index)
@@ -186,13 +201,15 @@ impl Editor {
     }
 
     pub fn synchronize(&mut self, text: &str) {
-        let text = if self.wrapped {
-            text.to_owned()
+        let stripped;
+        let text: &str = if self.wrapped || is_single_line(text) {
+            text
         } else {
-            single_line(text)
+            stripped = single_line(text);
+            &stripped
         };
         if text != self.text {
-            self.text = text;
+            self.text = text.to_owned();
             self.selection = TextSelection {
                 anchor: boundary(&self.text, self.selection.anchor),
                 cursor: boundary(&self.text, self.selection.cursor),
@@ -386,7 +403,20 @@ impl Editor {
         })
     }
 
+    /// What `apply(TextEdit::CancelComposition)` does, without the copies of
+    /// the text and the composition `apply` makes to tell whether anything
+    /// changed. True when the composition or the caret's affinity changed.
+    pub fn cancel_composition(&mut self) -> bool {
+        let composing = self.composition.take().is_some();
+        let moved = self.affinity != Affinity::Downstream;
+        self.affinity = Affinity::Downstream;
+        composing || moved
+    }
+
     pub fn apply(&mut self, edit: TextEdit) -> bool {
+        if matches!(edit, TextEdit::CancelComposition) {
+            return self.cancel_composition();
+        }
         let before = (
             self.text.clone(),
             self.selection,
@@ -402,6 +432,7 @@ impl Editor {
                     selection,
                 });
             }
+            // `cancel_composition` handles this edit before the match.
             TextEdit::CancelComposition => self.composition = None,
             TextEdit::Insert(text) | TextEdit::Commit(text) => {
                 self.composition = None;
@@ -623,6 +654,8 @@ impl Editor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
+    use alloc::vec;
     use glassmere_scene::MonospaceMeasurer;
 
     #[test]
@@ -923,5 +956,299 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// What `single_line` does, as a plain loop.
+    fn stripped(text: &str) -> String {
+        let mut out = String::new();
+        for ch in text.chars() {
+            if matches!(ch, '\n' | '\r' | '\t') {
+                out.push(' ');
+            } else if !ch.is_control() {
+                out.push(ch);
+            }
+        }
+        out
+    }
+
+    /// What `cancel_composition` must do, found the way `apply` tells that
+    /// anything changed: by comparing copies of what an edit can touch.
+    fn cancelled_by_comparing(editor: &mut Editor) -> bool {
+        let before = (
+            editor.text.clone(),
+            editor.selection,
+            editor.composition.clone(),
+            editor.affinity,
+        );
+        editor.composition = None;
+        editor.affinity = Affinity::Downstream;
+        before
+            != (
+                editor.text.clone(),
+                editor.selection,
+                editor.composition.clone(),
+                editor.affinity,
+            )
+    }
+
+    /// Everything an editor holds that a cancelled composition leaves alone,
+    /// and what it changes.
+    #[allow(clippy::type_complexity)]
+    fn held(
+        editor: &Editor,
+    ) -> (
+        String,
+        TextSelection,
+        Option<Composition>,
+        Affinity,
+        Vec<(String, TextSelection)>,
+        Vec<(String, TextSelection)>,
+        [u32; 2],
+        (bool, bool),
+    ) {
+        let history = |history: &VecDeque<Snapshot>| {
+            history
+                .iter()
+                .map(|entry| (entry.text.clone(), entry.selection))
+                .collect()
+        };
+        (
+            editor.text.clone(),
+            editor.selection,
+            editor.composition.clone(),
+            editor.affinity,
+            history(&editor.undo),
+            history(&editor.redo),
+            [editor.scroll_x.to_bits(), editor.align_x.to_bits()],
+            (editor.masked, editor.revealed),
+        )
+    }
+
+    /// A settled editor over "hello world" with `undo` and `redo` steps of
+    /// history, the selection in `bytes`, and the composition and affinity
+    /// given.
+    fn editor_in_state(
+        composition: Option<Option<(usize, usize)>>,
+        affinity: Affinity,
+        bytes: (usize, usize),
+        (undo, redo): (usize, usize),
+        masked: bool,
+    ) -> Editor {
+        let mut editor = Editor::new("hello world");
+        for index in 0..undo + redo {
+            editor.apply(TextEdit::Insert(index.to_string()));
+        }
+        for _ in 0..redo {
+            editor.apply(TextEdit::Undo);
+        }
+        editor.selection = TextSelection {
+            anchor: bytes.0,
+            cursor: bytes.1,
+        };
+        editor.masked = masked;
+        assert!(prepare_warm(&mut editor, 16.0, 60.0, false));
+        assert!(!prepare_warm(&mut editor, 16.0, 60.0, false));
+        if let Some(selection) = composition {
+            editor.apply(TextEdit::Preedit {
+                text: "\u{306b}\u{307b}\u{3093}".into(),
+                selection,
+            });
+        }
+        editor.affinity = affinity;
+        editor
+    }
+
+    #[test]
+    fn cancelling_a_composition_changes_what_apply_would_and_reports_it_the_same() {
+        let compositions = [None, Some(None), Some(Some((3, 3))), Some(Some((0, 9)))];
+        let affinities = [Affinity::Downstream, Affinity::Upstream];
+        let selections = [(0, 0), (2, 4), (11, 11)];
+        let histories = [(0, 0), (2, 0), (0, 1), (2, 1)];
+        for composition in compositions {
+            for affinity in affinities {
+                for bytes in selections {
+                    for history in histories {
+                        for masked in [false, true] {
+                            let build =
+                                || editor_in_state(composition, affinity, bytes, history, masked);
+                            let (mut cancelled, mut applied, mut compared) =
+                                (build(), build(), build());
+                            let settled = cancelled.settled;
+                            assert_eq!(settled.is_some(), !masked);
+                            let expected = cancelled_by_comparing(&mut compared);
+                            assert_eq!(
+                                expected,
+                                composition.is_some() || affinity == Affinity::Upstream
+                            );
+                            let case = (composition, affinity, bytes, history, masked);
+                            assert_eq!(cancelled.cancel_composition(), expected, "{case:?}");
+                            assert_eq!(applied.apply(TextEdit::CancelComposition), expected);
+                            assert_eq!(held(&cancelled), held(&compared), "{case:?}");
+                            assert_eq!(held(&applied), held(&compared), "{case:?}");
+                            assert!(cancelled.settled == settled && applied.settled == settled);
+                            assert!(!cancelled.composing());
+                            assert_eq!(cancelled.affinity, Affinity::Downstream);
+                            assert!(!cancelled.cancel_composition(), "{case:?}");
+                            assert!(!applied.apply(TextEdit::CancelComposition), "{case:?}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// An editor over `text` with a selection, a composition and one step of
+    /// undo and of redo to lose.
+    fn lived_in(text: &str) -> Editor {
+        let mut editor = Editor::new("x");
+        editor.apply(TextEdit::SelectAll);
+        editor.apply(TextEdit::Insert(text.into()));
+        editor.apply(TextEdit::Insert("a".into()));
+        editor.apply(TextEdit::Undo);
+        editor.apply(TextEdit::Select {
+            anchor: 1,
+            cursor: 2,
+        });
+        editor.apply(TextEdit::Preedit {
+            text: "\u{306b}".into(),
+            selection: None,
+        });
+        assert_eq!(editor.text, text);
+        editor
+    }
+
+    fn assert_lived_in(editor: &Editor, text: &str) {
+        assert_eq!(editor.text, text);
+        assert!(editor.composing());
+        assert_eq!(
+            editor.selection,
+            TextSelection {
+                anchor: 1,
+                cursor: 2
+            }
+        );
+        assert_eq!((editor.undo.len(), editor.redo.len()), (1, 1));
+    }
+
+    #[test]
+    fn synchronizing_with_the_text_it_holds_changes_nothing() {
+        let mut editor = lived_in("hello there");
+        editor.synchronize("hello there");
+        assert_lived_in(&editor, "hello there");
+
+        // Text that strips to the held text is the held text.
+        for input in [
+            "hello\nthere",
+            "hello\rthere",
+            "hello\tthere",
+            "hel\u{7}lo there",
+            "hello\u{7f} there",
+            "hello \u{85}there",
+            "\0hello there\0",
+            "hello there\u{9f}",
+        ] {
+            assert_eq!(stripped(input), "hello there");
+            editor.synchronize(input);
+            assert_lived_in(&editor, "hello there");
+        }
+        let mut editor = lived_in("a  b");
+        editor.synchronize("a\r\nb");
+        assert_lived_in(&editor, "a  b");
+    }
+
+    #[test]
+    fn synchronizing_with_other_text_resets_the_editor_to_the_stripped_text() {
+        for (input, expected) in [
+            ("hello", "hello"),
+            ("hello there!", "hello there!"),
+            ("wor\u{7}ld\n", "world "),
+            ("\u{85}", ""),
+            ("", ""),
+            ("e\u{301}\t\u{301}x", "e\u{301} \u{301}x"),
+        ] {
+            assert_eq!(stripped(input), expected);
+            let mut editor = lived_in("hello there");
+            editor.selection = TextSelection {
+                anchor: 1,
+                cursor: 8,
+            };
+            editor.synchronize(input);
+            assert_eq!(editor.text, expected);
+            assert_eq!(
+                editor.selection,
+                TextSelection {
+                    anchor: boundary(expected, 1),
+                    cursor: boundary(expected, 8),
+                }
+            );
+            assert!(!editor.composing());
+            assert!(editor.undo.is_empty() && editor.redo.is_empty());
+        }
+    }
+
+    #[test]
+    fn a_wrapped_editor_keeps_its_line_breaks_and_compares_them() {
+        let mut editor = Editor::block("a\nb");
+        editor.apply(TextEdit::Preedit {
+            text: "\u{306b}".into(),
+            selection: None,
+        });
+        editor.synchronize("a\nb");
+        assert_eq!(editor.text, "a\nb");
+        assert!(editor.composing());
+        editor.synchronize("a\r\nb");
+        assert_eq!(editor.text, "a\r\nb");
+        assert!(!editor.composing());
+        let mut editor = Editor::block("ab");
+        editor.synchronize("a\nb");
+        assert_eq!(editor.text, "a\nb");
+    }
+
+    #[test]
+    fn a_draft_the_application_does_not_accept_is_reverted() {
+        let mut editor = Editor::new("abc");
+        editor.apply(TextEdit::Insert("d".into()));
+        assert_eq!(editor.text, "abcd");
+        assert_eq!(editor.undo.len(), 1);
+        editor.synchronize("abc");
+        assert_eq!(editor.text, "abc");
+        assert!(editor.undo.is_empty() && editor.redo.is_empty());
+        editor.apply(TextEdit::Undo);
+        assert_eq!(editor.text, "abc");
+    }
+
+    #[test]
+    fn a_text_without_control_characters_is_single_line_and_copied_whole() {
+        let lone = |ch: char| ch.to_string();
+        let mut chars: Vec<char> = (0..=0x1ff).filter_map(char::from_u32).collect();
+        chars.extend(
+            [
+                0x2028, 0x2029, 0x200b, 0x200c, 0x200d, 0xad, 0xfeff, 0x301, 0x1f469, 0xe000,
+            ]
+            .into_iter()
+            .filter_map(char::from_u32),
+        );
+        let mut texts = vec![
+            String::new(),
+            "plain".into(),
+            "\u{1f469}\u{200d}\u{1f4bb} e\u{301}".into(),
+            "\u{1f1fa}\u{1f1f8}".into(),
+        ];
+        for ch in chars {
+            for text in [
+                lone(ch),
+                format!("ab{ch}cd"),
+                format!("{ch}{ch}"),
+                format!("\u{e9}\u{a3}\u{a9}\u{a1}{ch}"),
+            ] {
+                texts.push(text);
+            }
+        }
+        for text in texts {
+            assert_eq!(single_line(&text), stripped(&text), "{text:?}");
+            assert_eq!(is_single_line(&text), stripped(&text) == text, "{text:?}");
+            assert_eq!(single_line_owned(&text), stripped(&text), "{text:?}");
+        }
+        assert_eq!(single_line_owned("").capacity(), 0);
     }
 }
