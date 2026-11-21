@@ -42,7 +42,7 @@ pub struct TextDocument {
     primary: usize,
     /// Display columns vertical moves try to return to, parallel to `selections`.
     goals: Vec<Option<usize>>,
-    undo: Vec<Transaction>,
+    undo: VecDeque<Transaction>,
     redo: Vec<Transaction>,
     revision: u64,
     saved: u64,
@@ -93,7 +93,7 @@ impl TextDocument {
             selections: vec![Selection::default()],
             primary: 0,
             goals: vec![None],
-            undo: Vec::new(),
+            undo: VecDeque::new(),
             redo: Vec::new(),
             revision: 0,
             saved: 0,
@@ -491,27 +491,27 @@ impl TextDocument {
         self.primary = self.primary.min(self.selections.len() - 1);
         self.merge_selections(None);
         let merge = typing
-            && self.undo.last().is_some_and(|last| {
+            && self.undo.back().is_some_and(|last| {
                 last.typing && last.after == before && last.edits.len() == recorded.len()
             })
             && recorded
                 .iter()
                 .all(|edit| edit.removed.is_empty() && !edit.inserted.contains('\n'));
         if merge {
-            let last = self.undo.last_mut().unwrap();
+            let last = self.undo.back_mut().unwrap();
             for (old, new) in last.edits.iter_mut().zip(&recorded) {
                 old.inserted.push_str(&new.inserted);
             }
             last.after = self.selections.clone();
         } else {
-            self.undo.push(Transaction {
+            self.undo.push_back(Transaction {
                 edits: recorded,
                 before,
                 after: self.selections.clone(),
                 typing,
             });
             if self.undo.len() > HISTORY {
-                self.undo.remove(0);
+                self.undo.pop_front();
             }
         }
         self.redo.clear();
@@ -588,7 +588,7 @@ impl TextDocument {
         for selection in &mut self.selections {
             *selection = Selection::caret(selection.cursor - 1);
         }
-        if let Some(last) = self.undo.last_mut() {
+        if let Some(last) = self.undo.back_mut() {
             last.after = self.selections.clone();
         }
         changed
@@ -714,7 +714,7 @@ impl TextDocument {
             for (selection, back) in self.selections.iter_mut().zip(&splits) {
                 *selection = Selection::caret(selection.cursor - back);
             }
-            if let Some(last) = self.undo.last_mut() {
+            if let Some(last) = self.undo.back_mut() {
                 last.after = self.selections.clone();
             }
         }
@@ -784,7 +784,7 @@ impl TextDocument {
             })
             .collect();
         self.merge_selections(None);
-        if let Some(last) = self.undo.last_mut() {
+        if let Some(last) = self.undo.back_mut() {
             last.after = self.selections.clone();
         }
         changed
@@ -1269,7 +1269,7 @@ impl TextDocument {
     }
 
     fn break_typing(&mut self) {
-        if let Some(last) = self.undo.last_mut() {
+        if let Some(last) = self.undo.back_mut() {
             last.typing = false;
         }
     }
@@ -1282,7 +1282,7 @@ impl TextDocument {
     }
 
     pub fn undo(&mut self) -> bool {
-        let Some(transaction) = self.undo.pop() else {
+        let Some(transaction) = self.undo.pop_back() else {
             return false;
         };
         // Earlier edits are restored first, so each `at` is valid again.
@@ -1312,7 +1312,7 @@ impl TextDocument {
         let line = self
             .rope
             .char_to_line(transaction.edits[0].at.min(self.len_chars()));
-        self.undo.push(transaction);
+        self.undo.push_back(transaction);
         self.touch(line);
         true
     }
@@ -1559,6 +1559,172 @@ mod tests {
         document.undo();
         document.insert("x");
         assert!(!document.can_redo());
+    }
+
+    /// A document whose history is full: `HISTORY + extra` edits that cannot
+    /// merge, each adding a distinct token. Returns the text after each edit.
+    fn document_with_full_history(extra: usize) -> (TextDocument, Vec<String>) {
+        let mut document = TextDocument::from_text("");
+        let mut texts = vec![document.text()];
+        for n in 0..HISTORY + extra {
+            let end = document.len_chars();
+            assert!(document.replace_range(end..end, &format!("<{n}>")));
+            texts.push(document.text());
+        }
+        (document, texts)
+    }
+
+    #[test]
+    fn the_history_is_capped_and_drops_the_oldest_step() {
+        let extra = 50;
+        let (mut document, texts) = document_with_full_history(extra);
+        let last = texts.len() - 1;
+        for steps in 1..=HISTORY {
+            assert!(document.undo(), "undo {steps}");
+            assert_eq!(document.text(), texts[last - steps], "undo {steps}");
+        }
+        assert!(!document.can_undo());
+        assert!(!document.undo());
+        assert_eq!(document.text(), texts[extra]);
+        for steps in 1..=HISTORY {
+            assert!(document.redo(), "redo {steps}");
+            assert_eq!(document.text(), texts[extra + steps], "redo {steps}");
+        }
+        assert!(!document.redo());
+        assert_eq!(document.text(), texts[last]);
+        assert!(document.can_undo());
+    }
+
+    #[test]
+    fn typing_still_merges_after_the_history_wrapped() {
+        let (mut document, texts) = document_with_full_history(300);
+        let before = document.text();
+        assert!(document.insert("a"));
+        assert!(document.insert("b"));
+        assert_eq!(document.text(), format!("{before}ab"));
+        assert!(document.undo());
+        assert_eq!(document.text(), before);
+        assert!(document.can_undo());
+        let mut undone = 1;
+        while document.undo() {
+            undone += 1;
+        }
+        assert_eq!(undone, HISTORY);
+        assert_eq!(document.text(), texts[texts.len() - HISTORY]);
+    }
+
+    #[test]
+    fn moving_the_caret_still_ends_a_typing_step_after_the_history_wrapped() {
+        let (mut document, _) = document_with_full_history(300);
+        let before = document.text();
+        assert!(document.insert("a"));
+        document.move_cursors(Motion::Left, false);
+        document.move_cursors(Motion::Right, false);
+        assert!(document.insert("b"));
+        assert_eq!(document.text(), format!("{before}ab"));
+        assert!(document.undo());
+        assert_eq!(document.text(), format!("{before}a"));
+        assert!(document.undo());
+        assert_eq!(document.text(), before);
+    }
+
+    #[test]
+    fn pairs_newlines_and_indents_adjust_the_newest_step_after_the_history_wrapped() {
+        let (mut document, _) = document_with_full_history(120);
+        let steps: [fn(&mut TextDocument) -> bool; 3] = [
+            |document| document.insert_paired("{"),
+            |document| document.newline(),
+            |document| document.indent(),
+        ];
+        for (n, step) in steps.into_iter().enumerate() {
+            if n == 2 {
+                // Several lines selected: the lines are shifted as one step.
+                let end = document.len_chars();
+                document.set_selection(0, end);
+            }
+            let text = document.text();
+            let selections = document.selections().to_vec();
+            assert!(step(&mut document));
+            let changed = document.text();
+            let after = document.selections().to_vec();
+            assert_ne!(changed, text);
+            assert!(document.undo());
+            assert_eq!(document.text(), text);
+            assert_eq!(document.selections(), selections);
+            assert!(document.redo());
+            assert_eq!(document.text(), changed);
+            assert_eq!(document.selections(), after);
+        }
+    }
+
+    #[test]
+    fn a_clone_of_a_wrapped_history_undoes_the_same_steps() {
+        let (mut document, _) = document_with_full_history(250);
+        let mut copy = document.clone();
+        assert_eq!(format!("{document:?}"), format!("{copy:?}"));
+        loop {
+            let undone = document.undo();
+            assert_eq!(copy.undo(), undone);
+            assert_eq!(document.text(), copy.text());
+            assert_eq!(document.selections(), copy.selections());
+            if !undone {
+                break;
+            }
+        }
+        assert_eq!(format!("{document:?}"), format!("{copy:?}"));
+    }
+
+    #[test]
+    fn undo_and_redo_across_the_history_cap_follow_a_plain_model() {
+        let mut document = TextDocument::from_text("");
+        // The texts to go back to, oldest first, and the texts to go forward to.
+        let mut past: Vec<String> = Vec::new();
+        let mut future: Vec<String> = Vec::new();
+        let mut current = String::new();
+        let mut seed = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = |limit: usize| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed % limit as u64) as usize
+        };
+        for step in 0..5_000 {
+            // Mostly edits, so that the history fills and stays full.
+            match next(8) {
+                0 => {
+                    let undone = document.undo();
+                    assert_eq!(undone, !past.is_empty(), "undo at step {step}");
+                    if let Some(text) = past.pop() {
+                        future.push(std::mem::replace(&mut current, text));
+                    }
+                }
+                1 => {
+                    let redone = document.redo();
+                    assert_eq!(redone, !future.is_empty(), "redo at step {step}");
+                    if let Some(text) = future.pop() {
+                        past.push(std::mem::replace(&mut current, text));
+                    }
+                }
+                _ => {
+                    let at = next(current.chars().count() + 1);
+                    let token = format!("[{step}]");
+                    assert!(document.replace_range(at..at, &token));
+                    past.push(current.clone());
+                    if past.len() > HISTORY {
+                        past.remove(0);
+                    }
+                    future.clear();
+                    let byte = current
+                        .char_indices()
+                        .nth(at)
+                        .map_or(current.len(), |c| c.0);
+                    current.insert_str(byte, &token);
+                }
+            }
+            assert_eq!(document.text(), current, "step {step}");
+            assert_eq!(document.can_undo(), !past.is_empty(), "step {step}");
+            assert_eq!(document.can_redo(), !future.is_empty(), "step {step}");
+        }
     }
 
     #[test]
