@@ -462,7 +462,7 @@ impl Context {
         let mut available: Option<crate::collections::FastMap<WidgetKey, NodeId>> = None;
         let mut children = Vec::with_capacity(elements.len());
         let (mut created_here, mut removed_here) = (0usize, 0usize);
-        for (place, element) in elements.drain(..).enumerate() {
+        for (place, element) in elements.iter_mut().enumerate() {
             let in_place = available.is_none()
                 && old_children
                     .get(place)
@@ -483,7 +483,7 @@ impl Context {
                     .remove(&element.key)
             };
             let existing = found
-                .or_else(|| self.claim_panel(parent, &element))
+                .or_else(|| self.claim_panel(parent, element))
                 .filter(|id| {
                     if self.nodes[id].kind == element.kind {
                         true
@@ -509,6 +509,10 @@ impl Context {
                 }
                 None => {
                     created_here += 1;
+                    let element = core::mem::replace(
+                        element,
+                        Element::new(WidgetKey::Named(String::new()), Kind::Column),
+                    );
                     self.create_node(parent, element, resolved, measurer)
                 }
             };
@@ -646,7 +650,7 @@ impl Context {
     fn update_node(
         &mut self,
         id: NodeId,
-        element: Element,
+        element: &mut Element,
         resolved: ResolvedText,
         measurer: &mut impl TextMeasurer,
     ) -> Vec<Element> {
@@ -704,7 +708,7 @@ impl Context {
         }
         if text_changed && element.kind.text_leaf() {
             let measured =
-                Measurement::leaf(&element, resolved.text_style(element.style.wrap), measurer);
+                Measurement::leaf(element, resolved.text_style(element.style.wrap), measurer);
             self.stats.text_measures += 1;
             if self.layout.get_node_context(node.layout_id) != Some(&measured) {
                 self.layout
@@ -727,7 +731,7 @@ impl Context {
             }
             self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
         }
-        if let Some(measured) = Measurement::image(&element)
+        if let Some(measured) = Measurement::image(element)
             && self.layout.get_node_context(node.layout_id) != Some(&measured)
         {
             self.layout
@@ -743,7 +747,7 @@ impl Context {
         if !style_same || anchors || node.resolved.direction != resolved.direction {
             let mut layout_style = layout_style(&element.style, element.kind, resolved.direction);
             if let Some(measurement) = self.layout.get_node_context(node.layout_id) {
-                anchor_minimum(&mut layout_style, &element, measurement.size);
+                anchor_minimum(&mut layout_style, element, measurement.size);
             }
             if *self.layout.style(node.layout_id).unwrap() != layout_style {
                 self.layout.set_style(node.layout_id, layout_style).unwrap();
@@ -762,12 +766,21 @@ impl Context {
         {
             self.reveal_tabs.push(id);
         }
-        node.text = element.text;
-        node.style = element.style;
+        // Taking leaves an empty value in the element, so each old value is
+        // dropped here, in this order, and not when the declared elements
+        // are cleared. The style, the tooltip and the control can hold
+        // images of the application's, whose drop it sees; the text and the
+        // custom widget, whose images the painted chunk holds until the
+        // next paint anyway, are taken the same way to leave nothing
+        // behind. The control and the children are taken last because they
+        // are read until then (the children by the anchor's layout style);
+        // nothing reads the others again.
+        node.text = core::mem::take(&mut element.text);
+        node.style = core::mem::take(&mut element.style);
         node.resolved = resolved;
-        node.tooltip = element.tooltip;
+        node.tooltip = element.tooltip.take();
         node.enabled = element.enabled;
-        node.custom = element.custom;
+        node.custom = element.custom.take();
         if let Control::Collection { offset, .. }
         | Control::TextArea {
             scroll_y: offset, ..
@@ -794,11 +807,11 @@ impl Context {
         } else if node.kind == Kind::Label {
             node.editor = None;
         }
-        node.control = element.control;
+        node.control = core::mem::take(&mut element.control);
         if paint_changed {
             self.invalidate_paint(id);
         }
-        element.children
+        core::mem::take(&mut element.children)
     }
 
     /// Creates the node for an element declared for the first time.
