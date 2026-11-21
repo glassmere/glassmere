@@ -75,6 +75,63 @@ impl WidgetKey {
     }
 }
 
+/// How many source locations a scope counts in an array before it builds a
+/// table for them.
+const SITES_INLINE: usize = 8;
+
+/// How many widgets each source location has declared in one scope.
+///
+/// A scope declares its widgets from a handful of lines, so the counts sit
+/// in a short array, and only a scope that declares from more lines than
+/// that pays for a table.
+#[derive(Default)]
+pub(crate) struct Sites {
+    inline: [Option<(&'static Location<'static>, u32)>; SITES_INLINE],
+    /// Every count so far, once the array was full; then the array is not
+    /// read again.
+    spilled: Option<crate::collections::FastMap<&'static Location<'static>, u32>>,
+}
+
+/// Whether two locations are the same place in the source, which is what
+/// `==` says too. It looks at the line and column first, because the file
+/// path is long and most locations of one file differ before it.
+fn same_site(a: &'static Location<'static>, b: &'static Location<'static>) -> bool {
+    core::ptr::eq(a, b)
+        || (a.line() == b.line() && a.column() == b.column() && a.file() == b.file())
+}
+
+impl Sites {
+    /// How many widgets `site` has declared before this one, counting this
+    /// one from now on.
+    fn next(&mut self, site: &'static Location<'static>) -> u32 {
+        let counts = match &mut self.spilled {
+            Some(counts) => counts,
+            None => {
+                for slot in &mut self.inline {
+                    match slot {
+                        Some((seen, count)) if same_site(seen, site) => {
+                            let before = *count;
+                            *count += 1;
+                            return before;
+                        }
+                        Some(_) => {}
+                        None => {
+                            *slot = Some((site, 1));
+                            return 0;
+                        }
+                    }
+                }
+                self.spilled
+                    .insert(self.inline.iter().flatten().copied().collect())
+            }
+        };
+        let count = counts.entry(site).or_default();
+        let before = *count;
+        *count += 1;
+        before
+    }
+}
+
 /// What a declaration hands to the host besides the tree.
 #[derive(Default)]
 pub(crate) struct HostOutbox {
@@ -321,7 +378,7 @@ pub struct Ui<'a, M: 'static = ()> {
     /// skipped as a misuse.
     pub(crate) declared: Option<usize>,
     /// How many widgets each source location has declared here so far.
-    pub(crate) sites: crate::collections::FastMap<&'static Location<'static>, u32>,
+    pub(crate) sites: Sites,
     pub(crate) updates: &'a mut HashMap<NodeId, ControlUpdate>,
     pub(crate) warnings: &'a mut Vec<String>,
     /// The store `Ui::observe` asked for, read after the declaration so the
@@ -537,9 +594,8 @@ impl<'a, M: 'static> Ui<'a, M> {
             return WidgetKey::Named(key);
         }
         let site = Location::caller();
-        let nth = self.sites.entry(site).or_default();
-        *nth += 1;
-        WidgetKey::Site(site, *nth - 1)
+        let nth = self.sites.next(site);
+        WidgetKey::Site(site, nth)
     }
 
     /// Names the next widget declared inside, so the framework can follow it
@@ -844,5 +900,118 @@ impl<M: 'static> Ui<'_, M> {
         self.group(key, Kind::Container, style, |ui| {
             ui.map(f, |ui| component.view(ui));
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::collections::FastMap;
+    use alloc::vec;
+
+    #[track_caller]
+    fn here() -> &'static Location<'static> {
+        Location::caller()
+    }
+
+    /// Places in this file that differ by line only, by column only, and by
+    /// both, more of them than a scope counts in its array.
+    fn places() -> Vec<&'static Location<'static>> {
+        let mut places = vec![
+            here(),
+            here(),
+            here(),
+            here(),
+            here(),
+            here(),
+            here(),
+            here(),
+            here(),
+            here(),
+        ];
+        places.extend([here(), here(), here(), here()]);
+        places
+    }
+
+    fn next_random(state: &mut u64) -> u64 {
+        *state ^= *state << 13;
+        *state ^= *state >> 7;
+        *state ^= *state << 17;
+        *state
+    }
+
+    #[test]
+    fn places_are_the_same_exactly_when_they_are_equal() {
+        let places = places();
+        assert!(places.len() > SITES_INLINE);
+        let differ = |by: fn(&Location<'_>, &Location<'_>) -> bool| {
+            places.iter().any(|a| places.iter().any(|b| by(a, b)))
+        };
+        assert!(differ(
+            |a, b| a.line() != b.line() && a.column() == b.column()
+        ));
+        assert!(differ(
+            |a, b| a.line() == b.line() && a.column() != b.column()
+        ));
+        assert!(differ(
+            |a, b| a.line() != b.line() && a.column() != b.column()
+        ));
+        for a in &places {
+            for b in &places {
+                assert_eq!(same_site(a, b), a == b, "{a} and {b}");
+            }
+        }
+    }
+
+    #[test]
+    fn calls_from_one_line_are_counted_in_order() {
+        let mut sites = Sites::default();
+        for expected in 0..20 {
+            assert_eq!(sites.next(here()), expected);
+        }
+    }
+
+    #[test]
+    fn the_counts_of_the_first_places_carry_over_to_the_table() {
+        let places = places();
+        let mut sites = Sites::default();
+        // The array holds the first few places, one more call each than the
+        // one before.
+        for (index, place) in places.iter().take(SITES_INLINE).enumerate() {
+            for expected in 0..=index as u32 {
+                assert_eq!(sites.next(place), expected);
+            }
+        }
+        assert!(sites.spilled.is_none());
+        // The next place does not fit and moves the counts into a table.
+        for place in &places[SITES_INLINE..] {
+            assert_eq!(sites.next(place), 0);
+            assert_eq!(sites.next(place), 1);
+        }
+        assert!(sites.spilled.is_some());
+        for (index, place) in places.iter().take(SITES_INLINE).enumerate() {
+            assert_eq!(sites.next(place), index as u32 + 1);
+        }
+    }
+
+    #[test]
+    fn sites_number_calls_like_a_table_of_counts() {
+        let places = places();
+        let mut state = 0x9e37_79b9_7f4a_7c15;
+        for round in 0..400 {
+            let distinct = 1 + round % places.len();
+            let mut sites = Sites::default();
+            let mut table: FastMap<&Location<'_>, u32> = FastMap::default();
+            for call in 0..next_random(&mut state) % 200 {
+                let place = places[(next_random(&mut state) % distinct as u64) as usize];
+                let count = table.entry(place).or_default();
+                *count += 1;
+                assert_eq!(
+                    sites.next(place),
+                    *count - 1,
+                    "call {call} of round {round}"
+                );
+            }
+        }
     }
 }

@@ -158,6 +158,79 @@ fn repeats_of_one_call_site_are_told_apart_by_order() {
     assert_eq!(again, ids);
 }
 
+/// Nine lines of one container declare widgets, the first of them in a loop
+/// of four, and the round of them runs three times.
+fn nine_lines_three_rounds(ui: &mut Ui<'_>) {
+    ui.keyed("lines", |ui| {
+        ui.column(Style::default(), |ui| {
+            for round in 0..3 {
+                for item in 0..4 {
+                    ui.label(format!("loop {round} {item}"));
+                }
+                ui.label("two");
+                ui.label("three");
+                ui.label("four");
+                ui.label("five");
+                ui.label("six");
+                ui.label("seven");
+                ui.label("eight");
+                ui.label("nine");
+            }
+        });
+    });
+}
+
+#[test]
+fn call_site_numbers_go_on_counting_past_the_eighth_line_of_a_container() {
+    let mut context = Context::new();
+    frame(&mut context, nine_lines_three_rounds);
+    let column = context.find(&["lines"]).unwrap();
+    let children = |context: &Context| -> Vec<glassmere_core::NodeId> {
+        context
+            .snapshots()
+            .into_iter()
+            .filter(|node| node.parent == Some(column))
+            .map(|node| node.id)
+            .collect()
+    };
+    let ids = children(&context);
+    assert_eq!(ids.len(), 36);
+    let keys: Vec<String> = ids
+        .iter()
+        .map(|id| context.details(*id).unwrap().key)
+        .collect();
+    // The first widget the loop declares and the eight after it are the
+    // first of their lines, so their keys are the lines themselves.
+    let mut lines = vec![keys[0].as_str()];
+    lines.extend(keys[4..12].iter().map(|key| key.as_str()));
+    for (index, line) in lines.iter().enumerate() {
+        assert!(line.starts_with("kernel.rs:"), "{line}");
+        assert!(!lines[..index].contains(line), "{line} repeats a line");
+    }
+    let suffix = |count: usize| {
+        if count == 0 {
+            String::new()
+        } else {
+            format!("#{count}")
+        }
+    };
+    for round in 0..3 {
+        for item in 0..4 {
+            let expected = format!("{}{}", lines[0], suffix(round * 4 + item));
+            assert_eq!(keys[round * 12 + item], expected);
+        }
+        for line in 1..9 {
+            let expected = format!("{}{}", lines[line], suffix(round));
+            assert_eq!(keys[round * 12 + 3 + line], expected);
+        }
+    }
+    // The next frame finds every one of them again.
+    let stats = frame(&mut context, nine_lines_three_rounds);
+    assert_eq!(stats.created, 0);
+    assert_eq!(stats.removed, 0);
+    assert_eq!(children(&context), ids);
+}
+
 #[test]
 fn every_widget_is_identified_by_the_application_line_that_declared_it() {
     let mut context = Context::new();
