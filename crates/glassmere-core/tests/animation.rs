@@ -489,3 +489,195 @@ fn a_dialog_panel_with_an_exit_effect_fades_after_the_dialog_closes() {
     assert_eq!(layers(&app.context), 0);
     assert!(!app.context.animating());
 }
+
+/// One box that turns from `RED` to `BLUE` at `retarget_ms`.
+struct Fade {
+    name: &'static str,
+    transition: Transition,
+    retarget_ms: u64,
+}
+
+/// The background of every box at every time, from one context holding all
+/// the boxes, and whether anything is still animating after the last frame.
+fn fades(boxes: &[&Fade], times: &[u64]) -> (Vec<Vec<Color>>, bool) {
+    let mut context = Context::new();
+    let mut rects = Vec::new();
+    let mut colors = Vec::new();
+    for (index, &time) in times.iter().enumerate() {
+        frame_at(&mut context, time, |ui| {
+            for fade in boxes {
+                let color = if time >= fade.retarget_ms { BLUE } else { RED };
+                ui.keyed(fade.name, |ui| {
+                    ui.label(
+                        Label::new("x").style(
+                            Style::default()
+                                .background(color)
+                                .transition(fade.transition),
+                        ),
+                    )
+                });
+            }
+        });
+        if index == 0 {
+            rects = boxes
+                .iter()
+                .map(|fade| bounds(&context, &[fade.name]))
+                .collect();
+        }
+        colors.push(
+            rects
+                .iter()
+                .map(|&rect| quad_color(&context, rect).unwrap())
+                .collect(),
+        );
+    }
+    (colors, context.animating())
+}
+
+fn every_16_ms(frames: u64) -> Vec<u64> {
+    (0..frames).map(|frame| frame * 16).collect()
+}
+
+/// Each box moves as it does when it is the only one in its context.
+fn assert_alone_the_same(boxes: &[&Fade], times: &[u64]) -> Vec<Vec<Color>> {
+    let (together, _) = fades(boxes, times);
+    for (index, fade) in boxes.iter().enumerate() {
+        let (alone, _) = fades(&[fade], times);
+        for (frame, time) in times.iter().enumerate() {
+            assert_eq!(
+                together[frame][index], alone[frame][0],
+                "box {} at {time} ms",
+                fade.name
+            );
+        }
+    }
+    together
+}
+
+#[test]
+fn boxes_sharing_a_transition_and_a_start_move_as_if_alone_and_settle_together() {
+    let transition = Transition::new(300).easing(Easing::EaseInOut);
+    let boxes = ["a", "b", "c"].map(|name| Fade {
+        name,
+        transition,
+        retarget_ms: 16,
+    });
+    let boxes = boxes.iter().collect::<Vec<_>>();
+    let times = every_16_ms(26);
+    let together = assert_alone_the_same(&boxes, &times);
+    assert!(together.iter().any(|row| row[0] != RED && row[0] != BLUE));
+    for row in &together {
+        assert!(row.iter().all(|&color| color == row[0]));
+    }
+    // 300 ms after the retarget at 16 ms.
+    let settled = times.iter().position(|&time| time >= 316).unwrap();
+    assert!(together[settled].iter().all(|&color| color == BLUE));
+    let (_, animating) = fades(&boxes, &times);
+    assert!(!animating);
+    let (_, animating) = fades(&boxes, &times[..settled]);
+    assert!(animating);
+}
+
+#[test]
+fn a_box_started_a_frame_later_follows_the_first_one_a_frame_behind() {
+    let transition = Transition::new(300).easing(Easing::EaseInOut);
+    let first = Fade {
+        name: "a",
+        transition,
+        retarget_ms: 16,
+    };
+    let second = Fade {
+        name: "b",
+        transition,
+        retarget_ms: 32,
+    };
+    let times = every_16_ms(26);
+    let together = assert_alone_the_same(&[&first, &second], &times);
+    let mut apart = 0;
+    for frame in 2..times.len() {
+        assert_eq!(together[frame][1], together[frame - 1][0], "frame {frame}");
+        apart += usize::from(together[frame][1] != together[frame][0]);
+    }
+    assert!(apart > 10);
+}
+
+#[test]
+fn boxes_whose_transitions_differ_in_one_input_each_keep_their_own_progress() {
+    let base = Transition::new(300).easing(Easing::CubicBezier(0.2, 0.0, 0.0, 1.0));
+    let pairs = [
+        (base, Transition::new(360).easing(base.easing)),
+        (base, base.delay(48)),
+        (base.easing(Easing::EaseIn), base.easing(Easing::EaseOut)),
+        (base, base.easing(Easing::CubicBezier(0.25, 0.0, 0.0, 1.0))),
+        (base, base.easing(Easing::CubicBezier(0.2, 0.2, 0.0, 1.0))),
+        (base, base.easing(Easing::CubicBezier(0.2, 0.0, 0.3, 1.0))),
+        (base, base.easing(Easing::CubicBezier(0.2, 0.0, 0.0, 0.7))),
+    ];
+    let times = every_16_ms(30);
+    for (first, second) in pairs {
+        let first = Fade {
+            name: "a",
+            transition: first,
+            retarget_ms: 16,
+        };
+        let second = Fade {
+            name: "b",
+            transition: second,
+            retarget_ms: 16,
+        };
+        let together = assert_alone_the_same(&[&first, &second], &times);
+        assert!(
+            together.iter().any(|row| row[0] != row[1]),
+            "{:?} and {:?} never differ",
+            first.transition,
+            second.transition
+        );
+    }
+}
+
+#[test]
+fn boxes_started_less_than_a_millisecond_apart_keep_their_own_progress() {
+    let transition = Transition::new(10).easing(Easing::EaseInOut);
+    // Both boxes are 5 whole milliseconds in at the last frame, but at
+    // 5.4 ms and 5.1 ms of their own.
+    let retargets = [("a", 16_100), ("b", 16_400)];
+    let times = [0, 16_100, 16_400, 21_500];
+    let at = |boxes: &[(&'static str, u64)]| {
+        let mut context = Context::new();
+        let mut colors = Vec::new();
+        for &time in &times {
+            context.set_now(Duration::from_micros(time));
+            context.run(ROOT, &mut MonospaceMeasurer, |ui| {
+                for &(name, retarget) in boxes {
+                    let color = if time >= retarget { BLUE } else { RED };
+                    ui.keyed(name, |ui| {
+                        ui.label(
+                            Label::new("x")
+                                .style(Style::default().background(color).transition(transition)),
+                        )
+                    });
+                }
+            });
+            let rects = boxes.iter().map(|&(name, _)| bounds(&context, &[name]));
+            colors.push(
+                rects
+                    .map(|rect| quad_color(&context, rect).unwrap())
+                    .collect::<Vec<_>>(),
+            );
+        }
+        colors
+    };
+    let together = at(&retargets);
+    let last = together.last().unwrap();
+    assert_ne!(last[0], last[1]);
+    for (index, retarget) in retargets.iter().enumerate() {
+        let alone = at(&[*retarget]);
+        for (frame, row) in together.iter().enumerate() {
+            assert_eq!(
+                row[index], alone[frame][0],
+                "box {} frame {frame}",
+                retarget.0
+            );
+        }
+    }
+}

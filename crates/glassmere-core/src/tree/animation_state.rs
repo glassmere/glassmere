@@ -1,6 +1,6 @@
 use super::*;
 use crate::animation::{Shown, lerp_rect};
-use crate::{Effect, Transform, Transition};
+use crate::{Easing, Effect, Transform, Transition};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use glassmere_scene::Affine;
@@ -12,6 +12,58 @@ struct Track {
     to: Shown,
     start: Duration,
     transition: Transition,
+}
+
+/// The last transition progress worked out, kept because nodes that share a
+/// transition and a start ask for the same value in the same frame.
+#[derive(Clone, Copy)]
+pub(super) struct ProgressMemo {
+    transition: Transition,
+    elapsed: Duration,
+    result: (f32, bool),
+}
+
+impl ProgressMemo {
+    /// `transition.progress(elapsed)`, reusing the previous call when every
+    /// input of it is the same.
+    fn progress(
+        slot: &mut Option<Self>,
+        transition: &Transition,
+        elapsed: Duration,
+    ) -> (f32, bool) {
+        if let Some(memo) = slot
+            && memo.elapsed == elapsed
+            && same_inputs(&memo.transition, transition)
+        {
+            return memo.result;
+        }
+        let result = transition.progress(elapsed);
+        *slot = Some(Self {
+            transition: *transition,
+            elapsed,
+            result,
+        });
+        result
+    }
+}
+
+/// Whether two transitions give the same progress at the same elapsed time.
+/// Curve parameters are compared by bits, and NaN never matches.
+fn same_inputs(a: &Transition, b: &Transition) -> bool {
+    a.duration == b.duration
+        && a.delay == b.delay
+        && match (a.easing, b.easing) {
+            (Easing::CubicBezier(a1, a2, a3, a4), Easing::CubicBezier(b1, b2, b3, b4)) => {
+                [(a1, b1), (a2, b2), (a3, b3), (a4, b4)]
+                    .iter()
+                    .all(|(x, y)| x.to_bits() == y.to_bits() && !x.is_nan())
+            }
+            (Easing::Linear, Easing::Linear)
+            | (Easing::EaseIn, Easing::EaseIn)
+            | (Easing::EaseOut, Easing::EaseOut)
+            | (Easing::EaseInOut, Easing::EaseInOut) => true,
+            _ => false,
+        }
 }
 
 /// A layout animation from a previous parent-relative rectangle.
@@ -152,7 +204,9 @@ impl Context {
             }
         }
         if let Some(track) = anim.track {
-            let (progress, finished) = track.transition.progress(now.saturating_sub(track.start));
+            let elapsed = now.saturating_sub(track.start);
+            let (progress, finished) =
+                ProgressMemo::progress(&mut self.progress_memo, &track.transition, elapsed);
             anim.shown = Some(track.from.lerp(track.to, progress));
             if finished {
                 anim.shown = Some(track.to);
@@ -323,4 +377,123 @@ impl Context {
 fn layer_for(opacity: f32, affine: Affine) -> Option<(f32, Affine)> {
     let opacity = opacity.clamp(0.0, 1.0);
     (opacity < 1.0 || !affine.is_identity()).then_some((opacity, affine))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn same_result(a: (f32, bool), b: (f32, bool)) -> bool {
+        (a.0.to_bits() == b.0.to_bits() || (a.0.is_nan() && b.0.is_nan())) && a.1 == b.1
+    }
+
+    fn transitions() -> Vec<Transition> {
+        let mut all = Vec::new();
+        for easing in [
+            Easing::Linear,
+            Easing::EaseIn,
+            Easing::EaseOut,
+            Easing::EaseInOut,
+            Easing::CubicBezier(0.2, 0.0, 0.0, 1.0),
+            Easing::CubicBezier(0.0, 0.5, 1.0, 0.5),
+            Easing::CubicBezier(-0.0, 0.5, 1.0, 0.5),
+            Easing::CubicBezier(f32::NAN, 0.5, 1.0, 0.5),
+        ] {
+            for (duration, delay) in [(300, 0), (301, 0), (300, 16), (0, 0), (0, 16)] {
+                all.push(Transition::new(duration).easing(easing).delay(delay));
+            }
+        }
+        all
+    }
+
+    fn elapsed_times() -> [Duration; 11] {
+        [
+            Duration::ZERO,
+            Duration::from_nanos(1),
+            Duration::from_micros(15_999),
+            Duration::from_millis(15),
+            Duration::from_millis(16),
+            Duration::from_micros(150_000),
+            Duration::from_micros(150_001),
+            Duration::from_millis(150),
+            Duration::from_millis(300),
+            Duration::from_millis(316),
+            Duration::MAX,
+        ]
+    }
+
+    #[test]
+    fn the_memo_answers_what_a_direct_call_answers_in_any_order() {
+        let all = transitions();
+        let times = elapsed_times();
+        let mut slot = None;
+        // Each pair is asked three times in a row and then again after
+        // every other pair, so hits, misses and evictions all occur.
+        for _ in 0..2 {
+            for transition in &all {
+                for &elapsed in &times {
+                    for _ in 0..3 {
+                        let memoised = ProgressMemo::progress(&mut slot, transition, elapsed);
+                        assert!(
+                            same_result(memoised, transition.progress(elapsed)),
+                            "{transition:?} at {elapsed:?}"
+                        );
+                    }
+                }
+            }
+        }
+        for &elapsed in &times {
+            for transition in all.iter().rev() {
+                let memoised = ProgressMemo::progress(&mut slot, transition, elapsed);
+                assert!(
+                    same_result(memoised, transition.progress(elapsed)),
+                    "{transition:?} at {elapsed:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn transitions_that_differ_in_any_input_do_not_share_an_entry() {
+        let base = Transition::new(300).easing(Easing::CubicBezier(0.2, 0.0, 0.0, 1.0));
+        assert!(same_inputs(&base, &base));
+        let others = [
+            Transition::new(301).easing(base.easing),
+            base.delay(16),
+            base.easing(Easing::CubicBezier(0.25, 0.0, 0.0, 1.0)),
+            base.easing(Easing::CubicBezier(0.2, 0.1, 0.0, 1.0)),
+            base.easing(Easing::CubicBezier(0.2, 0.0, 0.1, 1.0)),
+            base.easing(Easing::CubicBezier(0.2, 0.0, 0.0, 0.9)),
+            base.easing(Easing::EaseOut),
+        ];
+        for other in &others {
+            assert!(!same_inputs(&base, other), "{other:?}");
+            assert!(!same_inputs(other, &base), "{other:?}");
+        }
+        let easings = [
+            Easing::Linear,
+            Easing::EaseIn,
+            Easing::EaseOut,
+            Easing::EaseInOut,
+            Easing::CubicBezier(0.2, 0.0, 0.0, 1.0),
+        ];
+        for (i, &first) in easings.iter().enumerate() {
+            for (j, &second) in easings.iter().enumerate() {
+                let (a, b) = (
+                    Transition::new(300).easing(first),
+                    Transition::new(300).easing(second),
+                );
+                assert_eq!(same_inputs(&a, &b), i == j, "{first:?} and {second:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn signed_zeros_and_nan_never_match() {
+        let curve = |x1: f32| Transition::new(300).easing(Easing::CubicBezier(x1, 0.5, 1.0, 0.5));
+        assert!(same_inputs(&curve(0.0), &curve(0.0)));
+        assert!(!same_inputs(&curve(0.0), &curve(-0.0)));
+        assert!(!same_inputs(&curve(-0.0), &curve(0.0)));
+        assert!(!same_inputs(&curve(f32::NAN), &curve(f32::NAN)));
+    }
 }

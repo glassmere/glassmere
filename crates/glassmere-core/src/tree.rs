@@ -824,6 +824,7 @@ pub struct Context {
     resizing: bool,
     animating_nodes: Vec<NodeId>,
     ghosts: Vec<animation_state::Ghost>,
+    progress_memo: Option<animation_state::ProgressMemo>,
     /// The handler slab of the `App` driving this context, typed by its
     /// message; `None` before an `App` has declared.
     handlers: Option<Box<dyn core::any::Any>>,
@@ -1043,6 +1044,7 @@ impl Default for Context {
             resizing: false,
             animating_nodes: Vec::new(),
             ghosts: Vec::new(),
+            progress_memo: None,
             handlers: None,
             handler_moves: Vec::new(),
             freed_handlers: Vec::new(),
