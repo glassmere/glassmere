@@ -98,6 +98,7 @@ cargo run -p glassmere-examples --example platform --features platform
 | Example | Shows |
 | --- | --- |
 | `counter` | The smallest app. |
+| `bindings` | A form whose fields are bound to the state, with no message per field. |
 | `controls` | Text editing and the standard controls. |
 | `application` | 50,000-row list, tree and grid, commands, drag and drop, two windows. |
 | `workbench` | Scrolling, components, a custom control and updates from a worker thread. |
