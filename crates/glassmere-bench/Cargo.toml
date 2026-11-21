@@ -1,0 +1,40 @@
+[package]
+name = "glassmere-bench"
+description = "Benchmarks and a profiling runner for glassmere: frames, the CPU renderer and text shaping, headless."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+license.workspace = true
+
+# Only `benches/frames.rs` is a benchmark, so that options after `--` reach
+# criterion and not the test harness.
+[lib]
+bench = false
+
+[[bin]]
+name = "profile"
+path = "src/bin/profile.rs"
+bench = false
+
+[dependencies]
+glassmere-core = { workspace = true, features = ["std"] }
+glassmere-scene = { workspace = true, features = ["std"] }
+glassmere-text.workspace = true
+glassmere-render-cpu.workspace = true
+
+# The sampling profiler behind `profile --flamegraph`. It reads the stack
+# from a signal handler, which Windows has no equivalent of; there the
+# runner is profiled from outside (see docs/profiling.md).
+[target.'cfg(unix)'.dependencies]
+pprof = { version = "0.15", default-features = false, features = ["flamegraph"] }
+
+[dev-dependencies]
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "frames"
+harness = false
+
+[lints]
+workspace = true
