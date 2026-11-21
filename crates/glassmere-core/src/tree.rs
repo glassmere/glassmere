@@ -721,6 +721,9 @@ pub struct Context {
     /// again. A declaration is thrown away every frame; the memory it used
     /// does not have to be.
     spare: core::cell::RefCell<Vec<Vec<Element>>>,
+    /// Emptied lists of node ids, which placing the children of a node copies
+    /// them into.
+    id_spare: Vec<Vec<NodeId>>,
     submitted: HashSet<NodeId>,
     pub(crate) popup: Option<PopupState>,
     /// The menus the open popup is a submenu of, outermost first. `popup`
@@ -973,6 +976,7 @@ impl Default for Context {
             declared_bytes: core::cell::Cell::new(0),
             families: core::cell::RefCell::new(alloc::collections::BTreeSet::new()),
             spare: core::cell::RefCell::new(Vec::new()),
+            id_spare: Vec::new(),
             submitted: HashSet::new(),
             popup: None,
             popup_parents: Vec::new(),
@@ -1550,6 +1554,18 @@ impl Context {
         if spare.len() < KEEP && vector.capacity() > 0 {
             vector.clear();
             spare.push(vector);
+        }
+    }
+
+    /// Keeps an emptied list for the next copy. The caps are well above a
+    /// real tree's depth and breadth, so a one-off container with a great
+    /// many children does not leave its room behind.
+    fn give_ids(&mut self, mut ids: Vec<NodeId>) {
+        const KEEP: usize = 256;
+        const LARGEST: usize = 4096;
+        if ids.capacity() > 0 && ids.capacity() <= LARGEST && self.id_spare.len() < KEEP {
+            ids.clear();
+            self.id_spare.push(ids);
         }
     }
 
@@ -2495,5 +2511,87 @@ mod tests {
         // A longer one needs another, and a short one after it does not keep it.
         assert_eq!(paint(&"long ".repeat(200)), both(1000));
         assert_eq!(paint("ab"), both(2));
+    }
+
+    /// A list of `len` ids that has room for `room`.
+    fn id_list(len: usize, room: usize) -> Vec<NodeId> {
+        let mut list = Vec::with_capacity(room);
+        list.extend((0..len as u64).map(|id| NodeId(id + 1)));
+        list
+    }
+
+    #[test]
+    fn a_list_of_ids_is_kept_emptied_and_only_while_it_is_small_and_few_are_kept() {
+        let mut context = Context::new();
+        // One with no room, and one with too much, are let go.
+        context.give_ids(Vec::new());
+        context.give_ids(id_list(4097, 4097));
+        assert!(context.id_spare.is_empty());
+        // The largest is kept, emptied.
+        context.give_ids(id_list(4096, 4096));
+        assert_eq!(context.id_spare.len(), 1);
+        assert!(context.id_spare[0].is_empty() && context.id_spare[0].capacity() >= 4096);
+        for _ in 0..400 {
+            context.give_ids(id_list(3, 4));
+        }
+        assert_eq!(context.id_spare.len(), 256);
+        assert!(context.id_spare.iter().all(Vec::is_empty));
+    }
+
+    // Placing the children of a node takes a list and gives it back, so the
+    // lists kept are those in use at the deepest place, not one for each
+    // node that has children.
+    #[test]
+    fn placing_the_children_of_many_nodes_keeps_a_list_for_each_level() {
+        let mut context = Context::new();
+        frame(&mut context, |ui| {
+            for at in 0..300 {
+                ui.keyed(format!("column{at}"), |ui| {
+                    ui.column(Style::default(), |ui| {
+                        ui.label("one");
+                        ui.label("two");
+                    })
+                });
+            }
+        });
+        let kept = context.id_spare.len();
+        assert!((1..=4).contains(&kept), "{kept}");
+    }
+
+    #[test]
+    fn the_lists_kept_for_copying_children_hold_nothing_whatever_the_frames_were() {
+        let mut context = Context::new();
+        let kept = |context: &Context| {
+            assert!(context.id_spare.len() <= 256);
+            assert!(context.id_spare.iter().all(|list| list.is_empty()));
+            assert!(context.id_spare.iter().all(|list| list.capacity() <= 4096));
+            context.id_spare.len()
+        };
+        fn nested(ui: &mut Ui<'_>, depth: usize, width: usize) {
+            for at in 0..width {
+                ui.keyed(format!("label{at}"), |ui| ui.label("a label"));
+            }
+            if depth > 0 {
+                ui.keyed("deeper", |ui| {
+                    ui.column(Style::default(), |ui| nested(ui, depth - 1, width))
+                });
+            }
+        }
+        for (depth, width) in [(10, 3), (10, 30), (4, 1), (0, 0), (10, 3)] {
+            frame(&mut context, |ui| nested(ui, depth, width));
+            frame(&mut context, |ui| nested(ui, depth, width));
+            kept(&context);
+        }
+        assert!(kept(&context) > 0);
+        // A container with more children than a list is kept at, then the
+        // same with few, then with many again, each placed afresh.
+        for count in [5000, 5, 5000] {
+            frame(&mut context, |ui| {
+                for at in 0..count {
+                    ui.keyed(format!("child{at}"), |ui| ui.label("x"));
+                }
+            });
+            kept(&context);
+        }
     }
 }

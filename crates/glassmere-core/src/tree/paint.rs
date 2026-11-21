@@ -233,7 +233,15 @@ impl Context {
             y: node.bounds.y - node.scroll.offset,
         };
         let clip = node.clip;
-        let children = node.children.clone();
+        // Placing a child needs the tree mutably, so the children are copied,
+        // into a list from an earlier frame when there is one. A node with no
+        // children has nothing to copy and takes none.
+        let mut children = if node.children.is_empty() {
+            Vec::new()
+        } else {
+            self.id_spare.pop().unwrap_or_default()
+        };
+        children.extend_from_slice(&node.children);
         // A tab strip that scrolls keeps its panel menu at the end edge, and
         // the tabs stop where the menu starts.
         let bounds = node.bounds;
@@ -279,7 +287,7 @@ impl Context {
             self.invalidate_paint(id);
         }
         self.note_layout_change(id, old_layout_rect, layout_rect);
-        for child in children {
+        for &child in &children {
             // The scroll buttons sit over the edges of the part that shows
             // tabs, and only on a side with tabs hidden past it.
             if let Control::StripScroll { end } = self.nodes[&child].control {
@@ -335,6 +343,7 @@ impl Context {
                 _ => self.update_bounds(child, origin, clip),
             }
         }
+        self.give_ids(children);
     }
 
     /// An overlay painted into the scene rather than declared as a node:

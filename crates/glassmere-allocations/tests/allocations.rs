@@ -649,3 +649,22 @@ fn the_siblings_of_a_big_scope_are_told_apart_without_copying_their_keys() {
         "{SMALL} labels allocated {small} times in a declaration and {LARGE} labels {large}"
     );
 }
+
+// Reconciling a container copies the ids of its children once, and builds no
+// list of its new children while they are the ones it had. A row of four
+// labels, declared again unchanged, costs its name, the texts of its labels
+// and that copy.
+#[test]
+fn a_row_declared_again_allocates_its_texts_and_one_list_of_its_children() {
+    const FEW: usize = 20;
+    const MANY: usize = 100;
+    // The name of a row, the text of each of its four labels, and the copy.
+    const PER_ROW: usize = 6;
+    // What the lists of the outer container grow by.
+    const GROWTH: usize = 8;
+    let (few, many) = (rows_cost(FEW, true), rows_cost(MANY, true));
+    assert!(
+        many - few <= (MANY - FEW) * PER_ROW + GROWTH,
+        "{FEW} rows allocated {few} times in a declaration and {MANY} rows {many}"
+    );
+}
