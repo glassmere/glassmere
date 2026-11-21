@@ -146,6 +146,27 @@ impl TextDocument {
         text
     }
 
+    /// The lines of `range`, each as `line` gives it, read in one pass over
+    /// the rope.
+    pub(crate) fn lines_in(&self, range: Range<usize>) -> impl Iterator<Item = String> + '_ {
+        let total = self.rope.len_lines();
+        let mut rest: Option<ropey::iter::Lines<'_>> = None;
+        range.map(move |line| {
+            if line >= total {
+                return String::new();
+            }
+            // Made at the first line that exists: `lines_at` panics past the end.
+            let Some(slice) = rest.get_or_insert_with(|| self.rope.lines_at(line)).next() else {
+                return self.line(line);
+            };
+            let mut text = String::from(slice);
+            if text.ends_with('\n') {
+                text.pop();
+            }
+            text
+        })
+    }
+
     fn line_len(&self, line: usize) -> usize {
         let slice = self.rope.line(line);
         let len = slice.len_chars();
@@ -1317,6 +1338,136 @@ mod tests {
 
     fn carets(document: &TextDocument) -> Vec<usize> {
         document.selections().iter().map(|s| s.cursor).collect()
+    }
+
+    /// Every window of a few lengths over a document, and all of it, against
+    /// reading the lines one at a time.
+    fn assert_lines_in_match_line(document: &TextDocument) {
+        let total = document.len_lines();
+        let each = |range: Range<usize>| range.map(|line| document.line(line)).collect::<Vec<_>>();
+        for start in 0..=total + 2 {
+            for length in [0, 1, 2, 33] {
+                let range = start..start + length;
+                assert_eq!(
+                    document.lines_in(range.clone()).collect::<Vec<_>>(),
+                    each(range.clone()),
+                    "{range:?} of {total} lines"
+                );
+            }
+        }
+        assert_eq!(
+            document.lines_in(0..total + 2).collect::<Vec<_>>(),
+            each(0..total + 2)
+        );
+    }
+
+    /// Enough lines for a rope several levels deep, of every length from 0 to
+    /// 130 bytes so that line breaks fall at every offset of a leaf, with
+    /// lines that hold multi-byte characters and the less usual line breaks.
+    fn varied_text(final_newline: bool) -> String {
+        let odd = [
+            "\u{e9}",
+            "\u{4e2d}\u{6587}",
+            "\u{1f600}",
+            "\u{2028}",
+            "\u{85}",
+            "\u{b}",
+            "\u{c}",
+        ];
+        let mut text = String::new();
+        for n in 0..3_100_usize {
+            if n % 97 == 5 {
+                text.push_str(odd[(n / 97) % odd.len()]);
+            }
+            for k in 0..n % 131 {
+                text.push(char::from(b'a' + ((n + k) % 26) as u8));
+            }
+            if n == 1_500 {
+                text.push_str(&"long ".repeat(1_000));
+            }
+            text.push('\n');
+        }
+        if !final_newline {
+            text.pop();
+        }
+        text
+    }
+
+    #[test]
+    fn lines_in_gives_the_lines_that_line_gives() {
+        for final_newline in [true, false] {
+            assert_lines_in_match_line(&TextDocument::from_text(&varied_text(final_newline)));
+        }
+        for text in ["", "a", "a\n", "\n", "\n\n", "a\n\nb", "\u{2028}"] {
+            assert_lines_in_match_line(&TextDocument::from_text(text));
+        }
+    }
+
+    #[test]
+    fn lines_in_follows_a_document_through_edits() {
+        let mut document = TextDocument::from_text(&varied_text(true));
+        let end = document.len_chars();
+        let middle = document.len_chars() / 2;
+        // A window of the sizes an editor asks for, at places that edits move.
+        let check = |document: &TextDocument| {
+            let total = document.len_lines();
+            for start in [0, 1, total / 2, total.saturating_sub(34), total - 1, total] {
+                let range = start..start + 33;
+                assert_eq!(
+                    document.lines_in(range.clone()).collect::<Vec<_>>(),
+                    range.map(|line| document.line(line)).collect::<Vec<_>>()
+                );
+            }
+        };
+        let edits: [(usize, &str); 6] = [
+            (0, "\n"),
+            (middle, "a\r\nb\rc"),
+            (end, "\n"),
+            (middle, "x"),
+            (end, "tail"),
+            (0, "head"),
+        ];
+        for (at, text) in edits {
+            let at = at.min(document.len_chars());
+            document.set_selection(at, at);
+            assert!(document.insert(text));
+            check(&document);
+        }
+        document.set_selection(1, 1);
+        assert!(document.backspace(false));
+        check(&document);
+        let from = document.len_chars() / 3;
+        document.set_selection(from, from + 4_000);
+        assert!(document.delete(false));
+        check(&document);
+        while document.undo() {
+            check(&document);
+        }
+        while document.redo() {
+            check(&document);
+        }
+        document.set_text("one\ntwo\n");
+        check(&document);
+    }
+
+    #[test]
+    fn lines_in_does_not_panic_for_any_range() {
+        let document = TextDocument::from_text("a\nb\n");
+        assert_eq!(document.len_lines(), 3);
+        let (low, high) = (2, 5);
+        assert_eq!(document.lines_in(high..low).count(), 0);
+        assert_eq!(document.lines_in(3..6).collect::<Vec<_>>(), ["", "", ""]);
+        assert_eq!(
+            document
+                .lines_in(usize::MAX - 1..usize::MAX)
+                .collect::<Vec<_>>(),
+            [""]
+        );
+        assert_eq!(document.lines_in(2..9).collect::<Vec<_>>()[..2], ["", ""]);
+        let empty = TextDocument::new();
+        assert_eq!(empty.lines_in(0..1).collect::<Vec<_>>(), [""]);
+        assert_eq!(empty.lines_in(1..2).collect::<Vec<_>>(), [""]);
+        assert_eq!(empty.lines_in(0..3).collect::<Vec<_>>(), ["", "", ""]);
     }
 
     #[test]

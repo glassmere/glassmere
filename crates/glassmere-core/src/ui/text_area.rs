@@ -188,8 +188,8 @@ impl<'a, M: 'static> Ui<'a, M> {
             highlighter.begin(document);
         }
         let lines = (first..last)
-            .map(|line| {
-                let text = document.line(line);
+            .zip(document.lines_in(first..last))
+            .map(|(line, text)| {
                 let highlights = highlighter.as_mut().map_or_else(Vec::new, |highlighter| {
                     highlighter.highlight(document, line)
                 });
