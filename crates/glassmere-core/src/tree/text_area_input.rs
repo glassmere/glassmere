@@ -324,6 +324,9 @@ impl Context {
     pub(super) fn text_area_event(&mut self, event: &Event) -> Option<bool> {
         match event {
             Event::PointerDown | Event::PointerDownWithShift => {
+                if self.text_area_count == 0 {
+                    return None;
+                }
                 let point = self.pointer?;
                 let id = self.hit_test(point)?;
                 let node = self.nodes.get(&id)?;
@@ -377,6 +380,9 @@ impl Context {
                 Some(self.area_text(id, edit))
             }
             Event::Editor(EditorCommand::AddCursorAt(point)) => {
+                if self.text_area_count == 0 {
+                    return None;
+                }
                 let id = self.hit_test(*point)?;
                 if self.nodes.get(&id)?.kind != Kind::TextArea {
                     return None;
@@ -559,13 +565,8 @@ impl Context {
 
     /// Shapes the declared lines, sizes the gutter, keeps the primary caret in
     /// view horizontally and publishes the scroll range.
-    pub(super) fn prepare_text_areas(&mut self, measurer: &mut impl TextMeasurer) {
-        let ids: Vec<_> = self
-            .nodes
-            .iter()
-            .filter_map(|(id, node)| (node.kind == Kind::TextArea).then_some(*id))
-            .collect();
-        for id in ids {
+    pub(super) fn prepare_text_areas(&mut self, ids: &[NodeId], measurer: &mut impl TextMeasurer) {
+        for id in ids.iter().copied() {
             // Operations still queued have not reached the document.
             let queued = self.updates.contains_key(&id);
             let node = self.nodes.get_mut(&id).unwrap();

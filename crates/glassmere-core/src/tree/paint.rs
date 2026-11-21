@@ -13,6 +13,11 @@ const DAMAGE_REGIONS: usize = 8;
 const DAMAGE_GAP: f32 = 8.0;
 /// How far a submenu's panel laps the row it opens beside.
 const LAP: f32 = 2.0;
+/// How many primitives the chunk of a node has room for from the start. Most
+/// nodes draw fewer, the pops that close them included. A vector that starts
+/// empty has room for four, and its fifth primitive moves it to a new
+/// allocation.
+const CHUNK_PRIMITIVES: usize = 8;
 
 /// The row a submenu's panel opens beside, and the menu that row is in.
 #[derive(Clone, Copy)]
@@ -88,6 +93,7 @@ impl Context {
             },
         );
         self.geometry_dirty = false;
+        self.clips_valid = true;
         self.pending |= Dirty::ACCESSIBILITY;
     }
 
@@ -191,6 +197,12 @@ impl Context {
         } else {
             clip
         };
+        // Hit tests skip what a clip rules out (`last_at`). Whatever else sets
+        // a clip must keep that true of every node but a popup or popover: a
+        // non-empty clip of a child starts no further left or up than its
+        // parent's, and a clip is empty where its parent's is. The one empty
+        // clip that does not start inside its parent's is that of a hidden
+        // strip scroll button.
         node.clip = clip.intersect(node.bounds);
         if matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection) {
             node.scroll.maximum =
@@ -383,8 +395,11 @@ impl Context {
         while let Some(id) = next {
             let node = self.nodes.get_mut(&id).unwrap();
             next = node.parent;
-            if node.paint_cache.take().is_none() {
-                break;
+            match node.paint_cache.take() {
+                Some(chunk) => {
+                    self.spare_chunks.insert(id, chunk);
+                }
+                None => break,
             }
         }
         self.pending |= Dirty::PAINT;
@@ -487,13 +502,17 @@ impl Context {
         }
     }
 
-    pub(super) fn paint(&mut self, id: NodeId) -> Arc<PaintChunk> {
+    pub(super) fn paint(&mut self, id: NodeId) -> Rc<PaintChunk> {
         if let Some(chunk) = &self.nodes[&id].paint_cache {
             self.stats.paint_cache_hits += 1;
             return chunk.clone();
         }
         self.stats.paint_nodes += 1;
         self.nodes.get_mut(&id).unwrap().painted_frame = self.frame;
+        // What the chunk of this node was before its paint was invalidated.
+        // The new chunk is written over it when nothing else holds it, which
+        // saves the allocations of the chunk, its primitives and its text.
+        let mut spare = self.spare_chunks.remove(&id);
         // A child of a tab strip is drawn only where the strip shows tabs,
         // which stops short of a pinned panel menu.
         let node = &self.nodes[&id];
@@ -503,11 +522,7 @@ impl Context {
             .map(|_| node.clip)
             .filter(|clip| *clip != node.bounds);
         if strip_clip.is_some_and(|clip| clip.width <= 0.0 || clip.height <= 0.0) {
-            let chunk = Arc::new(PaintChunk {
-                before: Vec::new(),
-                children: Vec::new(),
-                after: Vec::new(),
-            });
+            let chunk = PaintChunk::new(Vec::new(), 0, Vec::new()).put_in(spare);
             self.nodes.get_mut(&id).unwrap().paint_cache = Some(chunk.clone());
             return chunk;
         }
@@ -526,7 +541,20 @@ impl Context {
             self.diagnose_layer(id, bounds);
         }
         let node = &self.nodes[&id];
-        let mut scene = Scene::default();
+        let (mut primitives, mut text) = match spare.as_mut().and_then(Rc::get_mut) {
+            Some(old) => old.take_room(),
+            None => {
+                // Another chunk holds it too, so it is left as it is.
+                spare = None;
+                (Vec::new(), None)
+            }
+        };
+        // The room the chunk had is kept, and this is the least a node has.
+        primitives.reserve_exact(CHUNK_PRIMITIVES);
+        let mut scene = Scene {
+            primitives,
+            ..Scene::default()
+        };
         if let Some(clip) = strip_clip {
             scene.primitives.push(Primitive::PushClip(clip));
         }
@@ -568,7 +596,7 @@ impl Context {
             });
         } else if !node.text.is_empty() {
             self.paint_selection(id, node, &mut scene);
-            self.paint_text(node, foreground, &mut scene);
+            self.paint_text(node, foreground, text.take(), &mut scene);
         }
         self.paint_hint(node, &mut scene);
         paint_shadow(node, radius, true, &mut scene);
@@ -577,6 +605,13 @@ impl Context {
                 x: node.bounds.x,
                 y: node.bounds.y,
             };
+            // Room for the pops that close the node, which are pushed after
+            // these. Extending alone makes the vector just big enough for
+            // these, and the first pop would move all of them to one twice as
+            // big.
+            let pops = 1 + usize::from(layer.is_some());
+            let room = widget.primitives.len() + pops;
+            scene.primitives.reserve_exact(room);
             scene.primitives.extend(
                 widget
                     .primitives
@@ -592,7 +627,10 @@ impl Context {
             .copied()
             .filter(|child| !matches!(self.nodes[child].kind, Kind::Popup | Kind::Popover))
             .collect::<Vec<_>>();
-        let before = core::mem::take(&mut scene.primitives);
+        // Everything from here on is drawn after the children. It is only
+        // ever pushed, never read, moved or removed, so the length now is
+        // where it starts.
+        let split = scene.primitives.len();
         self.paint_scrollbars(id, &mut scene);
         self.paint_strip_edges(id, &mut scene);
         self.paint_calendar_today(id, &mut scene);
@@ -604,16 +642,17 @@ impl Context {
         if strip_clip.is_some() {
             scene.primitives.push(Primitive::PopClip);
         }
-        let after = scene.primitives;
         let children = children
             .into_iter()
             .map(|child| self.paint(child))
             .collect();
-        let chunk = Arc::new(PaintChunk {
-            before,
-            children,
-            after,
-        });
+        // A node that drew a great many primitives once does not keep the
+        // room for them.
+        let room = scene.primitives.len().max(CHUNK_PRIMITIVES);
+        if scene.primitives.capacity() > room.saturating_mul(4) {
+            scene.primitives.shrink_to(room);
+        }
+        let chunk = PaintChunk::new(scene.primitives, split, children).put_in(spare);
         self.nodes.get_mut(&id).unwrap().paint_cache = Some(chunk.clone());
         chunk
     }
@@ -804,7 +843,9 @@ impl Context {
         (rect, measured, width)
     }
 
-    fn paint_text(&self, node: &Node, foreground: Color, scene: &mut Scene) {
+    /// The text goes in `spare`, a buffer from the chunk this one replaces,
+    /// when there is one.
+    fn paint_text(&self, node: &Node, foreground: Color, spare: Option<String>, scene: &mut Scene) {
         let (rect, measured, width) = self.text_place(node);
         if node.kind == Kind::Link
             && let Some(size) = measured.filter(|size| size.width > 0.0)
@@ -846,16 +887,20 @@ impl Context {
                 ..TextStyle::default()
             })
         {
+            let mut text = spare.unwrap_or_default();
+            refill(&mut text, &node.text);
             scene.primitives.push(Primitive::Text {
                 rect,
-                text: node.text.clone(),
+                text,
                 font_size: node.resolved.font_size,
                 color: foreground,
             });
         } else {
+            let mut text = spare.unwrap_or_default();
+            refill(&mut text, &node.text);
             scene.primitives.push(Primitive::StyledText {
                 rect,
-                text: node.text.clone(),
+                text,
                 style: node.text_style(),
                 color: foreground,
             });
@@ -961,6 +1006,46 @@ impl Context {
         for child in &self.nodes[&id].children {
             self.order(*child, result);
         }
+    }
+
+    /// Whether a search for nodes whose clip holds a point may skip the
+    /// subtrees it can tell hold none. Popups and popovers start their clip
+    /// again from the window, so with one in the tree a clip says nothing
+    /// about what lies under it. Nor does it between a change of the
+    /// links and the next `refresh_bounds`, which a frame that unwinds in
+    /// between leaves open.
+    pub(super) fn can_prune_at(&self) -> bool {
+        self.clips_valid && self.popover_count == 0 && self.popup_count == 0
+    }
+
+    /// What `order` followed by a search from the back returns: the last
+    /// node of the subtree at `id`, in the order `order` lists them, whose
+    /// clip holds `at` and that `wanted` accepts. Children are tried last to
+    /// first, then the node.
+    ///
+    /// With `prune`, a subtree is left out when its root's clip is empty or
+    /// starts past `at` on the left or at the top: no clip under it can hold
+    /// `at` either, as a child's clip is its parent's cut down to its own
+    /// box. The far edges are not tested, as a baseline shift can put a
+    /// child below its parent's clip.
+    pub(super) fn last_at(
+        &self,
+        id: NodeId,
+        at: Point,
+        prune: bool,
+        wanted: &mut impl FnMut(NodeId, &Node) -> bool,
+    ) -> Option<NodeId> {
+        let node = &self.nodes[&id];
+        let clip = node.clip;
+        if prune && (clip.width == 0.0 || clip.height == 0.0 || at.x < clip.x || at.y < clip.y) {
+            return None;
+        }
+        for child in node.children.iter().rev() {
+            if let Some(found) = self.last_at(*child, at, prune, wanted) {
+                return Some(found);
+            }
+        }
+        (clip.contains(at) && wanted(id, node)).then_some(id)
     }
 }
 

@@ -39,6 +39,7 @@ impl Context {
             spent: Duration::ZERO,
         };
         self.begin_frame(size);
+        self.preparing.valid = false;
         let declare_started = Instant::now();
         let declare_span = tracing::trace_span!("glassmere.declare").entered();
         let mut clicks = core::mem::take(&mut self.clicks);
@@ -69,9 +70,9 @@ impl Context {
             pending_key: None,
             clicks: &mut clicks,
             elements: self.take_spare(),
-            keys: HashSet::new(),
+            keys: Default::default(),
             declared: None,
-            sites: HashMap::new(),
+            sites: Default::default(),
             updates: &mut updates,
             warnings: &mut warnings,
             observed: &mut observed,
@@ -302,6 +303,8 @@ impl Context {
         self.diagnose_accessibility();
         if self.pending.contains(Dirty::LAYOUT) {
             let root = self.nodes[&self.root].layout_id;
+            self.layout_run += 1;
+            let pass = self.layout_run;
             self.layout
                 .compute_layout_with_measure(
                     root,
@@ -313,6 +316,7 @@ impl Context {
                         let measured = if let Some(Measurement {
                             wrapped: Some((text, style)),
                             spans,
+                            remembered,
                             ..
                         }) = context
                         {
@@ -322,9 +326,22 @@ impl Context {
                                 taffy::AvailableSpace::MaxContent => None,
                             });
                             self.stats.text_measures += 1;
-                            match spans {
-                                Some(spans) => measurer.geometry_rich(spans, style, width).size,
-                                None => measurer.measure_styled(text, style, width),
+                            let bits = width.map(f32::to_bits);
+                            // The measurer gives one answer to identical
+                            // arguments within a pass, so a repeat is
+                            // answered from the leaf.
+                            match remembered.0 {
+                                Some((at, same, size)) if at == pass && same == bits => size,
+                                _ => {
+                                    let size = match spans {
+                                        Some(spans) => {
+                                            measurer.geometry_rich(spans, style, width).size
+                                        }
+                                        None => measurer.measure_styled(text, style, width),
+                                    };
+                                    remembered.0 = Some((pass, bits, size));
+                                    size
+                                }
                             }
                         } else {
                             context.map(|context| context.size).unwrap_or_default()
@@ -370,26 +387,58 @@ impl Context {
     fn paint_pass(&mut self, size: Size, measurer: &mut Timed<'_, impl TextMeasurer>) {
         let paint_started = Instant::now();
         let _paint_span = tracing::trace_span!("glassmere.paint").entered();
-        let mut scene = Scene {
+        // The application's measurer is called while the overlays are drawn,
+        // and it can unwind. So all the painting is done before the last scene
+        // is written over, and a pass that unwinds leaves it as it was. What
+        // is drawn over the tree waits in a scene of its own until the tree is
+        // in.
+        let root = self.paint(self.root);
+        let mut above = Vec::new();
+        for popover in self.popovers() {
+            above.push(self.paint(popover));
+        }
+        for panel in self.popup_panels() {
+            above.push(self.paint(panel));
+        }
+        // The chunks that nothing was written over, a removed node's among
+        // them, are let go.
+        self.spare_chunks.clear();
+        let mut over = Scene {
             size,
             primitives: Vec::new(),
         };
-        self.paint(self.root).append_to(&mut scene.primitives);
-        for popover in self.popovers() {
-            self.paint(popover).append_to(&mut scene.primitives);
-        }
-        for panel in self.popup_panels() {
-            self.paint(panel).append_to(&mut scene.primitives);
-        }
-        self.paint_ghosts(&mut scene);
+        self.paint_ghosts(&mut over);
         // Whatever the overlays drew last time is repainted whether they
         // draw it again or not, because nothing else knows they were
         // there.
         for rect in core::mem::take(&mut self.painted_overlays) {
             self.add_damage(rect);
         }
-        self.paint_dock_drag(&mut scene, measurer);
-        self.paint_tooltip(&mut scene, measurer);
+        self.paint_dock_drag(&mut over, measurer);
+        self.paint_tooltip(&mut over, measurer);
+        // Nothing from here on runs the application's code. The chunks are
+        // written over the last scene's primitives, and what they do not
+        // reach is cut off.
+        self.assembly += 1;
+        let assembly = self.assembly;
+        let mut primitives = core::mem::take(&mut self.scene.primitives);
+        let mut at = 0;
+        for chunk in core::iter::once(root).chain(above) {
+            #[cfg(debug_assertions)]
+            let from = at;
+            chunk.place(&mut primitives, &mut at, assembly);
+            #[cfg(debug_assertions)]
+            assert_eq!(chunk.assert_placed(&primitives, from), at);
+        }
+        primitives.truncate(at);
+        primitives.append(&mut over.primitives);
+        let mut scene = Scene { size, primitives };
+        // A scene that has shrunk well below the room it holds gives back
+        // some of it.
+        let len = scene.primitives.len();
+        if scene.primitives.capacity() > len.max(256).saturating_mul(4) {
+            scene.primitives.shrink_to(len.saturating_mul(2));
+        }
         self.scene = scene;
         self.stats.scene_rebuilt = true;
         self.damage.append(&mut self.pending_damage);
@@ -406,16 +455,35 @@ impl Context {
         let outer = (self.nodes[&parent].kind == Kind::Dock).then(|| self.enter_dock(Some(parent)));
         let old_children = self.nodes[&parent].children.clone();
         let inherited = self.nodes[&parent].resolved.clone();
-        let mut available: HashMap<_, _> = old_children
-            .iter()
-            .map(|id| (self.nodes[id].key.clone(), *id))
-            .collect();
+        // A child is nearly always where it was last time, so it is looked
+        // for there first. Only when one is not is a map of the children
+        // not yet matched built, with a copy of each of their keys.
+        let mut matched = alloc::vec![false; old_children.len()];
+        let mut available: Option<crate::collections::FastMap<WidgetKey, NodeId>> = None;
         let mut children = Vec::with_capacity(elements.len());
         let (mut created_here, mut removed_here) = (0usize, 0usize);
-        for element in elements.drain(..) {
-            let existing = available
-                .remove(&element.key)
-                .or_else(|| self.claim_panel(parent, &element))
+        for (place, element) in elements.iter_mut().enumerate() {
+            let in_place = available.is_none()
+                && old_children
+                    .get(place)
+                    .is_some_and(|id| self.nodes[id].key == element.key);
+            let found = if in_place {
+                matched[place] = true;
+                Some(old_children[place])
+            } else {
+                available
+                    .get_or_insert_with(|| {
+                        old_children
+                            .iter()
+                            .zip(&matched)
+                            .filter(|(_, matched)| !**matched)
+                            .map(|(id, _)| (self.nodes[id].key.clone(), *id))
+                            .collect()
+                    })
+                    .remove(&element.key)
+            };
+            let existing = found
+                .or_else(|| self.claim_panel(parent, element))
                 .filter(|id| {
                     if self.nodes[id].kind == element.kind {
                         true
@@ -441,6 +509,10 @@ impl Context {
                 }
                 None => {
                     created_here += 1;
+                    let element = core::mem::replace(
+                        element,
+                        Element::new(WidgetKey::Named(String::new()), Kind::Column),
+                    );
                     self.create_node(parent, element, resolved, measurer)
                 }
             };
@@ -453,7 +525,16 @@ impl Context {
             children.push(id);
         }
         self.give_spare(elements);
-        for id in available.into_values() {
+        let unmatched: Vec<NodeId> = match available {
+            Some(available) => available.into_values().collect(),
+            None => old_children
+                .iter()
+                .zip(&matched)
+                .filter(|(_, matched)| !**matched)
+                .map(|(id, _)| *id)
+                .collect(),
+        };
+        for id in unmatched {
             // A dock panel another parent claimed is no longer a child here.
             if self
                 .nodes
@@ -492,6 +573,7 @@ impl Context {
                 .collect();
             self.adopt_children(old, siblings);
         }
+        self.clips_valid = false;
         self.nodes.get_mut(&id)?.parent = Some(parent);
         Some(id)
     }
@@ -562,11 +644,13 @@ impl Context {
     }
 
     /// Brings a node that was declared again up to date with its element,
-    /// noting what changed. Returns the element's children.
+    /// noting what changed. Returns the element's children. The kind, style
+    /// and editor are changed only here and in `create_node`, and only by a
+    /// declaration: see `Preparing::valid`.
     fn update_node(
         &mut self,
         id: NodeId,
-        element: Element,
+        element: &mut Element,
         resolved: ResolvedText,
         measurer: &mut impl TextMeasurer,
     ) -> Vec<Element> {
@@ -574,17 +658,27 @@ impl Context {
         let node = self.nodes.get_mut(&id).unwrap();
         // Declared again: observed now is what this declaration read.
         node.observed.set(node.observing.take());
-        let paint_changed = node.text != element.text
-            || node.style != element.style
-            || node.resolved != resolved
+        // Most nodes are declared as they were. Each of these comparisons
+        // is made once, and what follows from two things being equal is not
+        // computed to find that out again: a style that is the same lays
+        // out the same, and text resolved the same has the same text style.
+        let style_same = node.style == element.style;
+        let control_same = node.control == element.control;
+        let resolved_same = node.resolved == resolved;
+        let text_same = node.text == element.text;
+        let paint_changed = !text_same
+            || !style_same
+            || !resolved_same
             || node.enabled != element.enabled
             || node.custom != element.custom
-            || node.control != element.control;
+            || !control_same;
         // Colors repaint; only font and wrapping changes re-measure.
-        let text_changed = node.text != element.text
-            || node.text_style() != resolved.text_style(element.style.wrap)
+        let text_style_same = (resolved_same && node.style.wrap == element.style.wrap)
+            || node.text_style() == resolved.text_style(element.style.wrap);
+        let text_changed = !text_same
+            || !text_style_same
             // Bold, italic and code runs change advances without changing the text.
-            || (element.kind == Kind::RichText && node.control != element.control);
+            || (element.kind == Kind::RichText && !control_same);
         let mut changed = Dirty::empty();
         if paint_changed {
             changed |= Dirty::PAINT;
@@ -592,16 +686,13 @@ impl Context {
         if text_changed {
             changed |= Dirty::TEXT;
         }
-        if node.style != element.style {
+        if !style_same {
             changed |= Dirty::STYLE;
         }
-        if node.style.layout(Flow::Column) != element.style.layout(Flow::Column) {
+        if !style_same && node.style.layout(Flow::Column) != element.style.layout(Flow::Column) {
             changed |= Dirty::LAYOUT;
         }
-        if node.enabled != element.enabled
-            || node.control != element.control
-            || node.tooltip != element.tooltip
-        {
+        if node.enabled != element.enabled || !control_same || node.tooltip != element.tooltip {
             changed |= Dirty::ACCESSIBILITY;
         }
         if node.tooltip != element.tooltip {
@@ -617,7 +708,7 @@ impl Context {
         }
         if text_changed && element.kind.text_leaf() {
             let measured =
-                Measurement::leaf(&element, resolved.text_style(element.style.wrap), measurer);
+                Measurement::leaf(element, resolved.text_style(element.style.wrap), measurer);
             self.stats.text_measures += 1;
             if self.layout.get_node_context(node.layout_id) != Some(&measured) {
                 self.layout
@@ -640,7 +731,7 @@ impl Context {
             }
             self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
         }
-        if let Some(measured) = Measurement::image(&element)
+        if let Some(measured) = Measurement::image(element)
             && self.layout.get_node_context(node.layout_id) != Some(&measured)
         {
             self.layout
@@ -648,16 +739,23 @@ impl Context {
                 .unwrap();
             self.pending |= Dirty::LAYOUT;
         }
-        let mut layout_style = layout_style(&element.style, element.kind, resolved.direction);
-        if let Some(measurement) = self.layout.get_node_context(node.layout_id) {
-            anchor_minimum(&mut layout_style, &element, measurement.size);
+        // The layout style comes from the style, the kind, the direction
+        // and, for a text leaf that anchors an overlay, its measured size.
+        // With none of those changed it is the one the layout already has.
+        let anchors =
+            element.kind.text_leaf() && (!element.children.is_empty() || !node.children.is_empty());
+        if !style_same || anchors || node.resolved.direction != resolved.direction {
+            let mut layout_style = layout_style(&element.style, element.kind, resolved.direction);
+            if let Some(measurement) = self.layout.get_node_context(node.layout_id) {
+                anchor_minimum(&mut layout_style, element, measurement.size);
+            }
+            if *self.layout.style(node.layout_id).unwrap() != layout_style {
+                self.layout.set_style(node.layout_id, layout_style).unwrap();
+                self.pending |= Dirty::LAYOUT;
+                self.diagnostic.layout_cause.get_or_insert(id);
+            }
         }
-        if *self.layout.style(node.layout_id).unwrap() != layout_style {
-            self.layout.set_style(node.layout_id, layout_style).unwrap();
-            self.pending |= Dirty::LAYOUT;
-            self.diagnostic.layout_cause.get_or_insert(id);
-        }
-        if node.style != element.style {
+        if !style_same {
             self.pending |= Dirty::STYLE | Dirty::PAINT;
         }
         if node.enabled != element.enabled {
@@ -668,12 +766,21 @@ impl Context {
         {
             self.reveal_tabs.push(id);
         }
-        node.text = element.text;
-        node.style = element.style;
+        // Taking leaves an empty value in the element, so each old value is
+        // dropped here, in this order, and not when the declared elements
+        // are cleared. The style, the tooltip and the control can hold
+        // images of the application's, whose drop it sees; the text and the
+        // custom widget, whose images the painted chunk holds until the
+        // next paint anyway, are taken the same way to leave nothing
+        // behind. The control and the children are taken last because they
+        // are read until then (the children by the anchor's layout style);
+        // nothing reads the others again.
+        node.text = core::mem::take(&mut element.text);
+        node.style = core::mem::take(&mut element.style);
         node.resolved = resolved;
-        node.tooltip = element.tooltip;
+        node.tooltip = element.tooltip.take();
         node.enabled = element.enabled;
-        node.custom = element.custom;
+        node.custom = element.custom.take();
         if let Control::Collection { offset, .. }
         | Control::TextArea {
             scroll_y: offset, ..
@@ -700,15 +807,16 @@ impl Context {
         } else if node.kind == Kind::Label {
             node.editor = None;
         }
-        node.control = element.control;
+        node.control = core::mem::take(&mut element.control);
         if paint_changed {
             self.invalidate_paint(id);
         }
-        element.children
+        core::mem::take(&mut element.children)
     }
 
     /// Creates the node for an element declared for the first time.
-    /// Returns its identity and the element's children.
+    /// Returns its identity and the element's children. Only a declaration
+    /// does this: see `Preparing::valid`.
     fn create_node(
         &mut self,
         parent: NodeId,
@@ -755,6 +863,18 @@ impl Context {
             Control::SelectableText => Some(Box::new(Editor::block(&element.text))),
             _ => None,
         };
+        if element.kind == Kind::Popover {
+            self.popover_count += 1;
+        }
+        if element.kind == Kind::Popup {
+            self.popup_count += 1;
+        }
+        if element.kind == Kind::TextArea {
+            self.text_area_count += 1;
+        }
+        if element.kind == Kind::RichEditor {
+            self.rich_editor_count += 1;
+        }
         self.nodes.insert(
             id,
             Node {
@@ -775,7 +895,7 @@ impl Context {
                 kind: element.kind,
                 parent: Some(parent),
                 children: Vec::new(),
-                children_by_key: HashMap::new(),
+                children_by_key: Default::default(),
                 text: element.text,
                 style: element.style,
                 enabled: element.enabled,
@@ -827,7 +947,9 @@ impl Context {
     }
 
     /// Gives `parent` its new list of children, in the tree and in Taffy.
+    /// Only a declaration does this: see `Preparing::valid`.
     fn adopt_children(&mut self, parent: NodeId, children: Vec<NodeId>) {
+        self.clips_valid = false;
         let layout_children: Vec<_> = children.iter().map(|id| self.nodes[id].layout_id).collect();
         self.layout
             .set_children(self.nodes[&parent].layout_id, &layout_children)
@@ -843,11 +965,25 @@ impl Context {
         self.pending |= Dirty::TREE | Dirty::LAYOUT | Dirty::PAINT | Dirty::ACCESSIBILITY;
     }
 
+    /// Only a declaration removes nodes: see `Preparing::valid`.
     pub(super) fn remove(&mut self, id: NodeId) {
+        self.clips_valid = false;
         if self.park_panel(id) {
             return;
         }
         let node = self.nodes.remove(&id).unwrap();
+        if node.kind == Kind::Popover {
+            self.popover_count -= 1;
+        }
+        if node.kind == Kind::Popup {
+            self.popup_count -= 1;
+        }
+        if node.kind == Kind::TextArea {
+            self.text_area_count -= 1;
+        }
+        if node.kind == Kind::RichEditor {
+            self.rich_editor_count -= 1;
+        }
         if node.kind == Kind::Dock {
             // The panels parked while their tabs were not selected go with it;
             // the others are children, removed below.

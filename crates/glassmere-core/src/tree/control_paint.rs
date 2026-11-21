@@ -38,6 +38,7 @@ impl Context {
         })
     }
 
+    /// `by` is never negative: hit tests rely on a clip not moving up.
     fn shift(&mut self, id: NodeId, by: f32) {
         let Some(node) = self.nodes.get_mut(&id) else {
             return;
@@ -53,16 +54,8 @@ impl Context {
     /// Lines the children of a row up by the baseline of their text rather
     /// than by their boxes, which is what makes labels of different sizes sit
     /// on one line.
-    fn align_baselines(&mut self, measurer: &mut impl TextMeasurer) {
-        let rows: Vec<NodeId> = self
-            .nodes
-            .iter()
-            .filter(|(_, node)| {
-                node.style.align_items == crate::Align::Baseline && node.children.len() > 1
-            })
-            .map(|(id, _)| *id)
-            .collect();
-        for row in rows {
+    fn align_baselines(&mut self, rows: &[NodeId], measurer: &mut impl TextMeasurer) {
+        for &row in rows {
             let children = self.nodes[&row].children.clone();
             let baselines: Vec<Option<f32>> = children
                 .iter()
@@ -88,39 +81,112 @@ impl Context {
         }
     }
 
+    /// In debug builds, holds the lists kept from an earlier frame to what a
+    /// walk over the nodes finds now. It allocates nothing.
+    #[cfg(debug_assertions)]
+    fn check_found(&self, found: &Preparing) {
+        let frame = self.frame;
+        let (mut rows, mut areas, mut texts, mut rich, mut editors) = (0, 0, 0, 0, 0);
+        for (id, node) in &self.nodes {
+            assert!(
+                node.changed_frame != frame,
+                "a node changed without a declaration"
+            );
+            if node.style.align_items == crate::Align::Baseline && node.children.len() > 1 {
+                assert_eq!(found.baseline_rows.get(rows), Some(id));
+                rows += 1;
+            }
+            match node.kind {
+                Kind::TextArea => {
+                    assert_eq!(found.text_areas.get(areas), Some(id));
+                    areas += 1;
+                }
+                Kind::RichText => {
+                    assert_eq!(found.rich_texts.get(texts), Some(id));
+                    texts += 1;
+                }
+                Kind::RichEditor => {
+                    assert_eq!(found.rich_editors.get(rich), Some(id));
+                    rich += 1;
+                }
+                _ => {}
+            }
+            if node.editor.is_some() {
+                assert_eq!(found.editors.get(editors), Some(id));
+                editors += 1;
+            }
+        }
+        assert_eq!(
+            [rows, areas, texts, rich, editors],
+            [
+                found.baseline_rows.len(),
+                found.text_areas.len(),
+                found.rich_texts.len(),
+                found.rich_editors.len(),
+                found.editors.len(),
+            ],
+            "the kept lists are out of date"
+        );
+    }
+
+    #[cfg(not(debug_assertions))]
+    fn check_found(&self, _found: &Preparing) {}
+
     pub(super) fn prepare_controls(&mut self, measurer: &mut impl TextMeasurer) {
-        self.align_baselines(measurer);
-        self.prepare_text_areas(measurer);
-        let labelled: Vec<_> = self
-            .nodes
-            .iter()
-            .filter_map(|(id, node)| {
-                (node.resolved.rtl()
-                    && matches!(node.kind, Kind::Slider | Kind::RangeSlider)
-                    && node.changed_frame == self.frame)
-                    .then_some(*id)
-            })
-            .collect();
-        for id in labelled {
-            let node = self.nodes.get_mut(&id).unwrap();
+        // One walk over the nodes finds everything that needs preparing.
+        // Each kind used to walk them all itself, which was seven walks a
+        // frame whether anything had changed or not.
+        let frame = self.frame;
+        let mut found = core::mem::take(&mut self.preparing);
+        if found.valid {
+            // Nodes come, go and change kind, style, children or editor only
+            // while a declaration reconciles, and a declaration starts by
+            // dropping the lists. What the last walk found is therefore still
+            // what a walk finds, in the same order. Nothing is marked changed
+            // in a frame that did not declare, so no label or hint is due.
+            found.labelled.clear();
+            found.hinted.clear();
+            self.check_found(&found);
+        } else {
+            found.clear();
+            for (id, node) in &self.nodes {
+                if node.style.align_items == crate::Align::Baseline && node.children.len() > 1 {
+                    found.baseline_rows.push(*id);
+                }
+                match node.kind {
+                    Kind::TextArea => found.text_areas.push(*id),
+                    Kind::RichText => found.rich_texts.push(*id),
+                    Kind::RichEditor => found.rich_editors.push(*id),
+                    Kind::Slider | Kind::RangeSlider
+                        if node.changed_frame == frame && node.resolved.rtl() =>
+                    {
+                        found.labelled.push(*id);
+                    }
+                    _ => {}
+                }
+                if node.changed_frame == frame
+                    && matches!(&node.control,
+                        Control::Choice { hint, .. }
+                        | Control::Submenu { hint, .. }
+                        | Control::Hint(hint) if !hint.is_empty())
+                {
+                    found.hinted.push(*id);
+                }
+                if node.editor.is_some() {
+                    found.editors.push(*id);
+                }
+            }
+        }
+        self.align_baselines(&found.baseline_rows, measurer);
+        self.prepare_text_areas(&found.text_areas, measurer);
+        for id in &found.labelled {
+            let node = self.nodes.get_mut(id).unwrap();
             node.label_width = measurer
                 .measure_styled(&node.text, &node.text_style(), None)
                 .width;
         }
-        let hinted: Vec<_> = self
-            .nodes
-            .iter()
-            .filter_map(|(id, node)| {
-                (node.changed_frame == self.frame
-                    && matches!(&node.control,
-                        Control::Choice { hint, .. }
-                        | Control::Submenu { hint, .. }
-                        | Control::Hint(hint) if !hint.is_empty()))
-                .then_some(*id)
-            })
-            .collect();
-        for id in hinted {
-            let node = &self.nodes[&id];
+        for id in &found.hinted {
+            let node = &self.nodes[id];
             let (Control::Choice { hint, .. }
             | Control::Submenu { hint, .. }
             | Control::Hint(hint)) = &node.control
@@ -130,29 +196,30 @@ impl Context {
             let width = measurer
                 .measure_styled(hint, &node.text_style(), None)
                 .width;
-            self.nodes.get_mut(&id).unwrap().hint_width = width;
+            self.nodes.get_mut(id).unwrap().hint_width = width;
         }
-        self.prepare_rich_text(measurer);
-        self.prepare_rich_editors(measurer);
-        // Only the editors whose layout changed are collected, so an idle
-        // frame allocates nothing here.
-        let reflowed: Vec<_> = self
-            .nodes
-            .iter_mut()
-            .filter_map(|(id, node)| {
-                let width = (node.bounds.width - node.style.padding.max(0.0) * 2.0).max(1.0);
-                let text_style = node.text_style();
-                // A forced paragraph direction aligns the text as it reads.
-                let rtl = text_style.base.unwrap_or(node.resolved.rtl());
-                node.editor
-                    .as_mut()?
-                    .prepare(measurer, text_style, width, rtl)
-                    .then_some(*id)
-            })
-            .collect();
-        for id in reflowed {
-            self.invalidate_paint(id);
+        self.prepare_rich_text(&found.rich_texts, measurer);
+        self.prepare_rich_editors(&found.rich_editors, measurer);
+        for id in &found.editors {
+            let Some(node) = self.nodes.get_mut(id) else {
+                continue;
+            };
+            let width = (node.bounds.width - node.style.padding.max(0.0) * 2.0).max(1.0);
+            let text_style = node.text_style();
+            // A forced paragraph direction aligns the text as it reads.
+            let rtl = text_style.base.unwrap_or(node.resolved.rtl());
+            let reflowed = node
+                .editor
+                .as_mut()
+                .is_some_and(|editor| editor.prepare(measurer, text_style, width, rtl));
+            if reflowed {
+                self.invalidate_paint(*id);
+            }
         }
+        // The lists keep their room for the next frame, and stand for the
+        // nodes until the next declaration.
+        found.valid = true;
+        self.preparing = found;
         if let Some(popup) = self.popup
             && popup.reveal_highlight
             && let Some(panel) = self
@@ -743,4 +810,29 @@ fn rounded(rect: Rect, radius: f32) -> glassmere_scene::Path {
         )
         .close();
     path
+}
+
+/// The kept lists are only worth anything if a frame without a declaration
+/// uses them, and the check of them is what shows that they are used.
+#[cfg(all(test, debug_assertions))]
+mod tests {
+    use super::*;
+    use crate::{MonospaceMeasurer, TextInput};
+
+    const WINDOW: Size = Size::new(320.0, 200.0);
+
+    #[test]
+    #[should_panic(expected = "the kept lists are out of date")]
+    fn a_frame_without_a_declaration_holds_the_kept_lists_to_the_nodes() {
+        let mut context = Context::new();
+        context.run(WINDOW, &mut MonospaceMeasurer, |ui| {
+            ui.keyed("name", |ui| {
+                ui.text_input(TextInput::new("Name"), "Ada", |_| ());
+            });
+        });
+        assert!(context.preparing.valid);
+        let root = context.root();
+        context.preparing.editors.push(root);
+        context.refresh(WINDOW, &mut MonospaceMeasurer);
+    }
 }

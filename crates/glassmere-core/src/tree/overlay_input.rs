@@ -407,6 +407,11 @@ impl Context {
 
     /// All open popovers in tree order.
     pub(super) fn popovers(&self) -> Vec<NodeId> {
+        // Asked on every paint and every hit test, and there are usually
+        // none: the tree is walked only when there is one to find.
+        if self.popover_count == 0 {
+            return Vec::new();
+        }
         let mut order = Vec::new();
         self.order(self.root, &mut order);
         order.retain(|id| self.nodes[id].kind == Kind::Popover);

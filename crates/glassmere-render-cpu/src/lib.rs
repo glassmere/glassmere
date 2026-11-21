@@ -64,10 +64,16 @@ pub struct CpuRenderer {
     /// The size and scale the kept frame was painted at. Anything else, and
     /// what is in the target is not the previous picture.
     painted: Option<([u32; 2], u32)>,
+    /// How many shaped texts the last whole frame kept.
+    text_kept: usize,
     /// Texels ready to sample, by image and pixel size, with the frame that
     /// used them last: vector images rasterized, translucent ones converted.
     rasters: HashMap<(u64, [u32; 2]), (Pixmap, u64)>,
     gamma: Gamma,
+    /// How much of each visible column the square quad being filled covers,
+    /// 0..=255. Every quad writes it afresh; it is kept only so that filling
+    /// one allocates nothing.
+    columns: Vec<u8>,
     stats: CpuStats,
 }
 
@@ -366,8 +372,10 @@ impl CpuRenderer {
             swash: SwashCache::new(),
             target: None,
             painted: None,
+            text_kept: 0,
             rasters: HashMap::new(),
             gamma: Gamma::new(),
+            columns: Vec::new(),
             stats: CpuStats::default(),
         }
     }
@@ -426,6 +434,8 @@ impl CpuRenderer {
         // Only a frame this renderer painted at the same size and scale can
         // be painted over rather than replaced.
         let kept = self.painted == Some((physical_size, scale.to_bits()));
+        // Painting over the last frame: only what the damage shows is drawn.
+        let partial = kept && !damage.is_empty();
         let regions = match (kept, damage.is_empty()) {
             (true, false) => coalesce(damage),
             _ => vec![Rect {
@@ -459,7 +469,14 @@ impl CpuRenderer {
                     *pixel = clear;
                 }
             }
-            root = self.paint(scene, region, root);
+            root = self.paint(scene, region, root, partial);
+        }
+        // A frame painted in part leaves the text cache alone, so text
+        // that has gone is still in it. When that has let it grow well past
+        // what the last whole frame needed, the next frame is painted whole,
+        // which clears it out.
+        if partial && self.text.buffers.len() > self.text_kept * 2 + 256 {
+            self.painted = None;
         }
         let frame = self.stats.frames;
         self.rasters.retain(|_, (_, used)| frame - *used < 2);
@@ -468,7 +485,11 @@ impl CpuRenderer {
     }
 
     /// `region` is what may be painted: the whole viewport, or the damage.
-    fn paint(&mut self, scene: &Scene, region: Rect, root: Surface) -> Surface {
+    ///
+    /// A `partial` frame is painted over the last one. Text and paths
+    /// outside the region are then not looked at, where a whole frame looks
+    /// at every text to know which shaped text it can let go of.
+    fn paint(&mut self, scene: &Scene, region: Rect, root: Surface, partial: bool) -> Surface {
         // Oversized layers render at a lower resolution, as on the GPU.
         let cap = root.size().map(|side| side.saturating_mul(2).min(MAX_SIDE));
         // Every draw is clipped, so bounding the stack bounds the frame.
@@ -704,6 +725,22 @@ impl CpuRenderer {
                 // not, and leaves the rectangle as it is.
                 Primitive::Custom { .. } => {}
                 Primitive::Path { path, fill, stroke } => {
+                    // Outside the clip nothing of it shows, and stroking it
+                    // to find that out is most of what drawing it costs. A
+                    // mitred corner reaches up to twice the width out.
+                    let bounds = path.bounds();
+                    let reach = stroke
+                        .as_ref()
+                        .map_or(0.0, |stroke| stroke.width * 2.0 + 1.0);
+                    let touched = surface.pixels(clip.intersect(Rect {
+                        x: bounds.x - reach,
+                        y: bounds.y - reach,
+                        width: bounds.width + 2.0 * reach,
+                        height: bounds.height + 2.0 * reach,
+                    }));
+                    if touched[2] == 0 || touched[3] == 0 {
+                        continue;
+                    }
                     let Some(shape) = skia_path(path) else {
                         continue;
                     };
@@ -734,6 +771,10 @@ impl CpuRenderer {
                 Primitive::Text { rect, color, .. }
                 | Primitive::StyledText { rect, color, .. }
                 | Primitive::RichText { rect, color, .. } => {
+                    let visible = surface.pixels(clip.intersect(*rect));
+                    if partial && (visible[2] == 0 || visible[3] == 0) {
+                        continue;
+                    }
                     let key = match primitive {
                         Primitive::Text {
                             text, font_size, ..
@@ -746,21 +787,25 @@ impl CpuRenderer {
                         }
                         _ => unreachable!(),
                     };
-                    active_text.insert(key.clone());
-                    let visible = surface.pixels(clip.intersect(*rect));
+                    if !partial {
+                        active_text.insert(key.clone());
+                    }
                     if visible[2] > 0 && visible[3] > 0 {
                         self.glyphs(surface, &key, *rect, visible, *color);
                     }
                 }
             }
         }
-        self.text.retain(&active_text);
+        if !partial {
+            self.text.retain(&active_text);
+            self.text_kept = self.text.buffers.len();
+        }
         surfaces.swap_remove(0)
     }
 
     /// Fills `rect` over the surface's `visible` pixels, which are already clipped.
     fn quad(
-        &self,
+        &mut self,
         surface: &mut Surface,
         visible: [u32; 4],
         rect: Rect,
@@ -783,23 +828,53 @@ impl CpuRenderer {
                 ((to.min(at as f32 + 1.0) - from.max(at as f32)).clamp(0.0, 1.0) * 255.0).round()
                     as u32
             };
+            // A column is covered alike on every row, so each is worked out
+            // once for the quad and not again for each of its pixels.
+            self.columns.clear();
+            self.columns.extend(
+                (0..visible[2]).map(|column| cover(visible[0] + column, left, right) as u8),
+            );
+            let columns = &self.columns[..];
+            // The first run of columns covered whole: along it a row has one
+            // alpha. The columns beside it are mixed one by one.
+            let whole = columns
+                .iter()
+                .position(|&coverage| coverage == 255)
+                .unwrap_or(columns.len());
+            let end = whole
+                + columns[whole..]
+                    .iter()
+                    .take_while(|&&coverage| coverage == 255)
+                    .count();
             let data = surface.pixmap.data_mut();
             for row in 0..visible[3] {
                 let rows = cover(visible[1] + row, top, bottom);
-                for (column, pixel) in data[start(row)..]
-                    .as_chunks_mut::<4>()
-                    .0
-                    .iter_mut()
-                    .take(visible[2] as usize)
-                    .enumerate()
-                {
-                    let alpha =
-                        cover(visible[0] + column as u32, left, right) * rows * u32::from(color.3)
-                            / (255 * 255);
+                let line = data[start(row)..].as_chunks_mut::<4>().0;
+                // No row is taken past the end of the surface, whatever `visible` says.
+                let shown = line.len().min(columns.len());
+                let line = &mut line[..shown];
+                let (from, to) = (whole.min(shown), end.min(shown));
+                let mix = |pixel: &mut [u8; 4], coverage: u8| {
+                    let alpha = u32::from(coverage) * rows * u32::from(color.3) / (255 * 255);
                     if alpha == 255 {
                         *pixel = opaque;
                     } else if alpha > 0 {
                         self.gamma.over(pixel, self.gamma.light(rgb, alpha), alpha);
+                    }
+                };
+                for (pixel, coverage) in line[..from].iter_mut().zip(&columns[..from]) {
+                    mix(pixel, *coverage);
+                }
+                for (pixel, coverage) in line[to..].iter_mut().zip(&columns[to..]) {
+                    mix(pixel, *coverage);
+                }
+                let alpha = 255 * rows * u32::from(color.3) / (255 * 255);
+                if alpha == 255 {
+                    line[from..to].fill(opaque);
+                } else if alpha > 0 {
+                    let source = self.gamma.light(rgb, alpha);
+                    for pixel in &mut line[from..to] {
+                        self.gamma.over(pixel, source, alpha);
                     }
                 }
             }

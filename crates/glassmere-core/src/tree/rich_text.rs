@@ -59,15 +59,10 @@ pub(super) fn line_boxes(geometry: &TextGeometry, range: Range<usize>) -> Vec<Re
 }
 
 impl Context {
-    pub(super) fn prepare_rich_text(&mut self, measurer: &mut impl TextMeasurer) {
+    pub(super) fn prepare_rich_text(&mut self, ids: &[NodeId], measurer: &mut impl TextMeasurer) {
         let frame = self.frame;
         let accent = self.theme.accent;
-        let ids: Vec<_> = self
-            .nodes
-            .iter()
-            .filter_map(|(id, node)| (node.kind == Kind::RichText).then_some(*id))
-            .collect();
-        for id in ids {
+        for id in ids.iter().copied() {
             let node = self.nodes.get_mut(&id).unwrap();
             let Control::RichText { runs, links } = &node.control else {
                 continue;

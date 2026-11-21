@@ -150,7 +150,13 @@ impl Context {
 
     /// The innermost scrolling node whose bar is under `point`.
     fn bar_under(&self, point: Point) -> Option<(NodeId, Bar)> {
-        let mut at = self.hit_test(point);
+        self.bar_over(self.hit_test(point), point)
+    }
+
+    /// The innermost scrolling node, from the node `hit` and up, whose bar is
+    /// under `point`.
+    fn bar_over(&self, hit: Option<NodeId>, point: Point) -> Option<(NodeId, Bar)> {
+        let mut at = hit;
         while let Some(id) = at {
             let node = &self.nodes[&id];
             if node.clip.contains(point)
@@ -182,11 +188,11 @@ impl Context {
         })
     }
 
-    /// A press on a grid's track: the thumb is taken, anywhere else pages.
-    fn grid_bar_press(&mut self, point: Point) -> Option<bool> {
-        let track = self
-            .hit_test(point)
-            .filter(|id| matches!(self.nodes[id].control, Control::GridScrollbar { .. }))?;
+    /// A press on a grid's track, where `hit` is the node under `point`: the
+    /// thumb is taken, anywhere else pages.
+    fn grid_bar_press(&mut self, hit: Option<NodeId>, point: Point) -> Option<bool> {
+        let track =
+            hit.filter(|id| matches!(self.nodes[id].control, Control::GridScrollbar { .. }))?;
         self.grid_of_track(track)?;
         let node = &self.nodes[&track];
         let thumb = self.nodes[node.children.first()?].bounds;
@@ -203,7 +209,13 @@ impl Context {
 
     /// The tab strip and the side of the scroll button under `point`.
     fn strip_button_at(&self, point: Point) -> Option<(NodeId, bool)> {
-        let node = &self.nodes[&self.hit_test(point)?];
+        self.strip_button_of(self.hit_test(point))
+    }
+
+    /// The tab strip and the side of the scroll button, if the node `hit` is
+    /// one.
+    fn strip_button_of(&self, hit: Option<NodeId>) -> Option<(NodeId, bool)> {
+        let node = &self.nodes[&hit?];
         let Control::StripScroll { end } = node.control else {
             return None;
         };
@@ -306,13 +318,14 @@ impl Context {
         match event {
             Event::PointerDown | Event::PointerDownWithShift => {
                 let point = self.pointer?;
+                let hit = self.hit_test(point);
                 // A tab strip's scroll buttons page like a track, and a
                 // press on one leaves the keyboard where it was.
-                if let Some((strip, end)) = self.strip_button_at(point) {
+                if let Some((strip, end)) = self.strip_button_of(hit) {
                     return Some(self.press_track(strip, false, end));
                 }
-                let Some((id, bar)) = self.bar_under(point) else {
-                    return self.grid_bar_press(point);
+                let Some((id, bar)) = self.bar_over(hit, point) else {
+                    return self.grid_bar_press(hit, point);
                 };
                 let along = bar.along(point);
                 let start = bar.thumb_start();

@@ -264,6 +264,62 @@ fn only_visible_lines_are_declared_and_scrolling_follows_wheel_pages_and_the_car
 }
 
 #[test]
+fn the_declared_lines_are_the_lines_of_the_document_wherever_the_view_is() {
+    // Lines of every length, a few longer than a leaf of the text rope.
+    let body = |count: usize, trailing: &str| -> String {
+        let mut text = String::new();
+        for n in 0..count {
+            if n > 0 {
+                text.push('\n');
+            }
+            let length = if n % 700 == 3 { 1_100 + n % 50 } else { n % 41 };
+            text.push_str(&format!("{n:>4} "));
+            text.extend((0..length).map(|k| char::from(b'a' + ((n + k) % 26) as u8)));
+        }
+        text.push_str(trailing);
+        text
+    };
+    for trailing in ["", "\n"] {
+        let mut app = started(&body(5_000, trailing));
+        let check = |app: &Driven<State>| {
+            let shown = lines(&app.context);
+            let document = &app.state().document;
+            // Every line starts with its number, which says which line it is.
+            let numbers: Vec<usize> = shown
+                .iter()
+                .map(|text| text.split_whitespace().next().unwrap().parse().unwrap())
+                .collect();
+            assert!(numbers.len() > 5);
+            assert!(numbers.windows(2).all(|pair| pair[1] == pair[0] + 1));
+            for (text, number) in shown.iter().zip(&numbers) {
+                assert_eq!(*text, document.line(*number), "line {number}");
+            }
+            (numbers[0], numbers[numbers.len() - 1])
+        };
+        assert_eq!(check(&app).0, 0);
+        app.context
+            .event(Event::PointerMoved(Point { x: 100.0, y: 100.0 }));
+        app.context.event(Event::Scroll {
+            delta_x: 0.0,
+            delta_y: LINE * 2_500.0,
+        });
+        app.frame();
+        assert!(check(&app).0 > 2_000);
+        // Text moves go to the focused editor.
+        click(&mut app.context, Point { x: 100.0, y: 100.0 });
+        app.frame();
+        app.context.event(Event::Text(TextEdit::Move {
+            direction: TextMove::DocumentEnd,
+            select: false,
+            word: false,
+        }));
+        app.frame();
+        app.frame();
+        assert_eq!(check(&app).1, 4_999);
+    }
+}
+
+#[test]
 fn clicks_drags_and_multi_clicks_place_carets_and_select_words_and_lines() {
     let mut app = started("let alpha = beta;\nsecond line\nthird");
     click(&mut app.context, cell(1, 3));
@@ -405,7 +461,8 @@ fn highlighters_colour_visible_lines_only() {
     app.frame();
     let calls = app.state().highlighter.borrow().calls.clone();
     assert!(!calls.is_empty() && calls.len() < 50, "{}", calls.len());
-    assert!(calls.windows(2).all(|pair| pair[0] < pair[1]));
+    // Each declared line once, in order, and nothing else.
+    assert!(calls.windows(2).all(|pair| pair[1] == pair[0] + 1));
     let context = &app.context;
     let Some(Primitive::RichText { spans, .. }) = context
         .scene()

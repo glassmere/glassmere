@@ -316,12 +316,12 @@ pub struct Ui<'a, M: 'static = ()> {
     /// framework's own composites, which read them while declaring.
     pub(crate) clicks: &'a mut HashSet<NodeId>,
     pub(crate) elements: Vec<Element>,
-    pub(crate) keys: HashSet<WidgetKey>,
+    pub(crate) keys: crate::collections::FastSet<WidgetKey>,
     /// Where in `elements` the last declaration went, or `None` when it was
     /// skipped as a misuse.
     pub(crate) declared: Option<usize>,
     /// How many widgets each source location has declared here so far.
-    pub(crate) sites: HashMap<&'static Location<'static>, u32>,
+    pub(crate) sites: crate::collections::FastMap<&'static Location<'static>, u32>,
     pub(crate) updates: &'a mut HashMap<NodeId, ControlUpdate>,
     pub(crate) warnings: &'a mut Vec<String>,
     /// The store `Ui::observe` asked for, read after the declaration so the
@@ -665,9 +665,9 @@ impl<'a, M: 'static> Ui<'a, M> {
             pending_key: None,
             clicks: self.clicks,
             elements: self.context.take_spare(),
-            keys: HashSet::new(),
+            keys: Default::default(),
             declared: None,
-            sites: HashMap::new(),
+            sites: Default::default(),
             updates: self.updates,
             warnings: self.warnings,
             observed: self.observed,
