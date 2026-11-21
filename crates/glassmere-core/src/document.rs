@@ -1538,6 +1538,73 @@ mod tests {
     }
 
     #[test]
+    fn the_widest_line_stays_right_through_edits_without_reading_the_text_again() {
+        // What a document that has just been opened would answer.
+        let fresh = |document: &TextDocument| {
+            let mut copy = TextDocument::from_text(&document.text());
+            copy.indentation.tab_width = document.indentation.tab_width;
+            copy.widest_line()
+        };
+        let mut document = TextDocument::from_text("short\na longer line here\n\tx\nmid line\n");
+        assert_eq!(document.widest_line(), 1);
+        // A small generator, so that the same edits run every time.
+        let mut seed = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = |limit: usize| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed % limit.max(1) as u64) as usize
+        };
+        let pieces = [
+            "x",
+            "wide wide wide wide",
+            "\n",
+            "\t",
+            "a\nbb\nccc",
+            "\n\n",
+            "the longest piece of them all, by some way\n",
+        ];
+        for step in 0..3000 {
+            let len = document.len_chars();
+            match next(10) {
+                0..=4 => {
+                    let at = next(len + 1);
+                    document.replace_range(at..at, pieces[next(pieces.len())]);
+                }
+                5..=7 => {
+                    let start = next(len + 1);
+                    let end = (start + next(40)).min(len);
+                    document.replace_range(start..end, "");
+                }
+                8 => {
+                    let start = next(len + 1);
+                    let end = (start + next(25)).min(len);
+                    document.replace_range(start..end, pieces[next(pieces.len())]);
+                }
+                _ => {
+                    if next(2) == 0 {
+                        document.undo();
+                    } else {
+                        document.redo();
+                    }
+                }
+            }
+            assert_eq!(
+                document.widest_line(),
+                fresh(&document),
+                "after step {step}: {:?}",
+                document.text()
+            );
+        }
+        // A tab width that changes is counted again.
+        document.replace_range(0..0, "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\n");
+        document.indentation.tab_width = 16;
+        assert_eq!(document.widest_line(), fresh(&document));
+        document.replace_range(0..0, "y");
+        assert_eq!(document.widest_line(), fresh(&document));
+    }
+
+    #[test]
     fn typing_merges_into_one_undo_step_and_moves_break_it() {
         let mut document = TextDocument::from_text("");
         for ch in ["h", "i", "!"] {
