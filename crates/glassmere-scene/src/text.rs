@@ -367,8 +367,45 @@ pub trait TextMeasurer {
 pub struct MonospaceMeasurer;
 
 impl TextMeasurer for MonospaceMeasurer {
+    // Counts what `geometry` lays out without building it: the size must stay
+    // bit for bit equal to `geometry(..).size`.
     fn measure_styled(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> Size {
-        self.geometry(text, style, width).size
+        let advance = style.font_size.max(1.0) * 0.6;
+        let line_height = style.font_size.max(1.0) * 1.4;
+        let limit = width
+            .filter(|width| width.is_finite())
+            .unwrap_or(f32::MAX)
+            .max(advance);
+        let per_line = if style.wrap == TextWrap::Word {
+            ((limit / advance).floor() as usize).max(1)
+        } else {
+            usize::MAX
+        };
+        let extent = |count: usize| {
+            let shift = match width {
+                Some(width) if style.rtl && width.is_finite() => {
+                    (width - count as f32 * advance).max(0.0)
+                }
+                _ => 0.0,
+            };
+            shift + count as f32 * advance
+        };
+        let mut lines = 1_usize;
+        let mut count = 0_usize;
+        let mut max_x = 0.0_f32;
+        for grapheme in text.graphemes(true) {
+            let hard = grapheme == "\n" || grapheme == "\r\n";
+            if hard || count >= per_line {
+                max_x = max_x.max(extent(count));
+                lines += 1;
+                count = 0;
+            }
+            if !hard {
+                count += 1;
+            }
+        }
+        max_x = max_x.max(extent(count));
+        Size::new(max_x, lines as f32 * line_height)
     }
 
     fn geometry(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> TextGeometry {
@@ -506,5 +543,136 @@ fn strong_rtl(ch: char) -> Option<bool> {
         '\u{0590}'..='\u{08FF}' | '\u{FB1D}'..='\u{FDFF}' | '\u{FE70}'..='\u{FEFF}' => Some(true),
         ch if ch.is_alphanumeric() => Some(false),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn style(font_size: f32, wrap: TextWrap, rtl: bool, base: Option<bool>) -> TextStyle {
+        TextStyle {
+            font_size,
+            wrap,
+            rtl,
+            base,
+            ..TextStyle::default()
+        }
+    }
+
+    fn measured(text: &str, style: &TextStyle, width: Option<f32>) -> Size {
+        MonospaceMeasurer.measure_styled(text, style, width)
+    }
+
+    #[test]
+    fn measuring_matches_the_geometry_size_bit_for_bit() {
+        let long = "x".repeat(200);
+        let texts = [
+            "",
+            "a",
+            "abc def ghi",
+            "a\n\nb",
+            "trailing\n",
+            "\n",
+            "\r\n",
+            "x\r\ny",
+            "a\rb",
+            "\r\r\n",
+            "\n\r",
+            "tab\tsep",
+            "\u{7f}",
+            "e\u{301}x",
+            "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467} ok",
+            "\u{1f1fa}\u{1f1f8}\u{1f1e9}\u{1f1ea}",
+            "\u{5d0}\u{5d1} ab",
+            "\u{d55c}\u{ae00} \u{1112}\u{1161}\u{11ab}",
+            long.as_str(),
+        ];
+        let widths = [
+            None,
+            Some(0.0),
+            Some(-0.0),
+            Some(-5.0),
+            Some(1.0),
+            Some(9.6),
+            Some(26.0),
+            Some(66.0),
+            Some(1000.0),
+            Some(f32::MAX),
+            Some(f32::INFINITY),
+            Some(f32::NAN),
+        ];
+        let sizes = [
+            0.0,
+            0.5,
+            1.0,
+            13.0,
+            16.0,
+            1e30,
+            f32::INFINITY,
+            f32::NAN,
+            -3.0,
+        ];
+        let bases = [None, Some(true), Some(false)];
+        for text in texts {
+            for width in widths {
+                for font_size in sizes {
+                    for wrap in [TextWrap::None, TextWrap::Word] {
+                        for rtl in [false, true] {
+                            for base in bases {
+                                let style = style(font_size, wrap, rtl, base);
+                                let fast = measured(text, &style, width);
+                                let slow = MonospaceMeasurer.geometry(text, &style, width).size;
+                                assert_eq!(
+                                    (fast.width.to_bits(), fast.height.to_bits()),
+                                    (slow.width.to_bits(), slow.height.to_bits()),
+                                    "{text:?} {width:?} {style:?}",
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn measuring_gives_known_sizes() {
+        let plain = style(10.0, TextWrap::None, false, None);
+        assert_eq!(measured("ab\ncd", &plain, None), Size::new(12.0, 28.0));
+        assert_eq!(measured("", &plain, None), Size::new(0.0, 14.0));
+        assert_eq!(measured("trailing\n", &plain, None), Size::new(48.0, 28.0));
+    }
+
+    #[test]
+    fn a_hard_break_on_a_full_line_adds_no_empty_line() {
+        let wrapped = style(10.0, TextWrap::Word, false, None);
+        // Two items fit on a line at this width.
+        assert_eq!(measured("ab\ncd", &wrapped, Some(12.0)).height, 28.0);
+        assert_eq!(measured("abc\n", &wrapped, Some(12.0)).height, 42.0);
+        assert_eq!(measured("abcdef", &wrapped, Some(12.0)).height, 42.0);
+    }
+
+    #[test]
+    fn empty_lines_of_right_to_left_text_take_the_whole_width() {
+        let rtl = style(10.0, TextWrap::None, true, None);
+        assert_eq!(measured("", &rtl, Some(100.0)).width, 100.0);
+        assert_eq!(measured("a\n", &rtl, Some(100.0)).width, 100.0);
+        // At this size the five items lose a little in rounding, so only an
+        // empty line reaches the width exactly.
+        let rtl = style(26.45, TextWrap::None, true, None);
+        for text in ["\nxxxxx", "xxxxx\n\nxxxxx"] {
+            let size = measured(text, &rtl, Some(759.09));
+            assert_eq!(size.width, 759.09, "{text:?}");
+            let slow = MonospaceMeasurer.geometry(text, &rtl, Some(759.09)).size;
+            assert_eq!(size, slow, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn a_lone_carriage_return_is_an_item_and_crlf_is_a_break() {
+        let plain = style(10.0, TextWrap::None, false, None);
+        assert_eq!(measured("a\rb", &plain, None), Size::new(18.0, 14.0));
+        assert_eq!(measured("a\r\nb", &plain, None), Size::new(6.0, 28.0));
     }
 }
