@@ -60,11 +60,17 @@ impl<'a, M: 'static> Ui<'a, M> {
         control: Control,
     ) -> Response<'a> {
         self.push(Element {
+            handler: None,
+            seq: 0,
+            key,
+            kind,
             text,
             style,
             enabled: self.enabled,
+            children: Vec::new(),
+            custom: None,
+            tooltip: None,
             control,
-            ..Element::new(key, kind)
         })
     }
 
@@ -187,9 +193,16 @@ impl<'a, M: 'static> Ui<'a, M> {
     ) -> Response<'a> {
         style.wrap = glassmere_scene::TextWrap::None;
         self.push(Element {
+            handler: None,
+            seq: 0,
+            key,
+            kind: Kind::TextInput,
+            text: String::new(),
             style,
             enabled: self.enabled,
             children: extra.children,
+            custom: None,
+            tooltip: None,
             control: Control::TextInput {
                 label,
                 value: single_line_owned(value),
@@ -199,7 +212,6 @@ impl<'a, M: 'static> Ui<'a, M> {
                 draft: extra.draft,
                 password: extra.password,
             },
-            ..Element::new(key, Kind::TextInput)
         })
     }
 

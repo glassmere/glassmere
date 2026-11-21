@@ -789,13 +789,17 @@ impl Context {
         // next paint anyway, are taken the same way to leave nothing
         // behind. The control and the children are taken last because they
         // are read until then (the children by the anchor's layout style);
-        // nothing reads the others again.
+        // nothing reads the others again. A None over a None is not written:
+        // the move would copy a whole widget or control to leave everything
+        // as it was.
         node.text = core::mem::take(&mut element.text);
         node.style = core::mem::take(&mut element.style);
         node.resolved = resolved;
         node.tooltip = element.tooltip.take();
         node.enabled = element.enabled;
-        node.custom = element.custom.take();
+        if node.custom.is_some() || element.custom.is_some() {
+            node.custom = element.custom.take();
+        }
         if let Control::Collection { offset, .. }
         | Control::TextArea {
             scroll_y: offset, ..
@@ -822,7 +826,9 @@ impl Context {
         } else if node.kind == Kind::Label {
             node.editor = None;
         }
-        node.control = core::mem::take(&mut element.control);
+        if !(matches!(node.control, Control::None) && matches!(element.control, Control::None)) {
+            node.control = core::mem::take(&mut element.control);
+        }
         if paint_changed {
             self.invalidate_paint(id);
         }
@@ -1109,7 +1115,8 @@ impl Context {
 mod tests {
     use super::*;
     use crate::collections::{FastMap, FastSet};
-    use crate::{Effect, Label, MonospaceMeasurer};
+    use crate::{CustomWidget, Effect, Label, MonospaceMeasurer};
+    use alloc::vec;
     use glassmere_scene::Primitive;
 
     const SIZE: Size = Size::new(400.0, 4000.0);
@@ -1348,5 +1355,48 @@ mod tests {
         // A table sized up front does hold some of these in another order,
         // so a different way of building it would be found out here.
         assert!(sized_differently > 10, "{sized_differently}");
+    }
+
+    // No builder gives a column a custom widget or a control, so these
+    // elements are made here. Declared again with any other pair, or with
+    // the same, the node holds the pair it was last declared with.
+    #[test]
+    fn a_node_declared_again_holds_the_custom_widget_and_the_control_it_was_given() {
+        let widget = |width: f32| CustomWidget {
+            size: Size::new(width, 10.0),
+            ..CustomWidget::default()
+        };
+        let checkbox = |checked: bool| Control::Checkbox {
+            label: "box".into(),
+            checked,
+        };
+        let pairs = [
+            (None, Control::None),
+            (Some(widget(10.0)), Control::None),
+            (None, checkbox(true)),
+            (Some(widget(10.0)), checkbox(true)),
+            (Some(widget(20.0)), checkbox(false)),
+            (None, Control::SelectableText),
+        ];
+        let declare = |context: &mut Context,
+                       (custom, control): &(Option<CustomWidget>, Control)| {
+            let mut element = Element::new(WidgetKey::named("node"), Kind::Column);
+            element.custom = custom.clone();
+            element.control = control.clone();
+            context.reconcile(context.root, vec![element], &mut MonospaceMeasurer);
+            let id = context.nodes[&context.root].children[0];
+            let node = &context.nodes[&id];
+            assert_eq!(node.custom, *custom);
+            assert_eq!(node.control, *control);
+        };
+        for first in &pairs {
+            for second in &pairs {
+                let mut context = Context::new();
+                declare(&mut context, first);
+                declare(&mut context, second);
+                declare(&mut context, second);
+                declare(&mut context, first);
+            }
+        }
     }
 }

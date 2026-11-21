@@ -361,7 +361,11 @@ pub(crate) struct Element {
 }
 
 impl Element {
-    /// An enabled element with no text, children, handler or control.
+    /// An enabled element with no text, children, handler or control. The
+    /// builders that run once per widget (`leaf`, `label`, `group`,
+    /// `control` and `text_field`) write every field themselves, so that no
+    /// element is built only to have most of it replaced; they spell out
+    /// these defaults and must be kept in step with them.
     pub(crate) fn new(key: WidgetKey, kind: Kind) -> Self {
         Element {
             handler: None,
@@ -687,10 +691,17 @@ impl<'a, M: 'static> Ui<'a, M> {
         enabled: bool,
     ) -> Response<'a> {
         self.push(Element {
+            handler: None,
+            seq: 0,
+            key,
+            kind,
             text,
             style,
             enabled,
-            ..Element::new(key, kind)
+            children: Vec::new(),
+            custom: None,
+            tooltip: None,
+            control: Control::None,
         })
     }
 
@@ -746,14 +757,21 @@ impl<'a, M: 'static> Ui<'a, M> {
         let label = label.into();
         let key = self.next_key();
         self.push(Element {
+            handler: None,
+            seq: 0,
+            key,
+            kind: Kind::Label,
             text: label.text,
             style: label.style.unwrap_or_default(),
+            enabled: true,
+            children: Vec::new(),
+            custom: None,
+            tooltip: None,
             control: if label.selectable {
                 Control::SelectableText
             } else {
                 Control::None
             },
-            ..Element::new(key, Kind::Label)
         });
     }
 
@@ -858,9 +876,17 @@ impl<'a, M: 'static> Ui<'a, M> {
         content(&mut child);
         let children = child.elements;
         self.push(Element {
+            handler: None,
+            seq: 0,
+            key,
+            kind,
+            text: String::new(),
             style,
+            enabled: true,
             children,
-            ..Element::new(key, kind)
+            custom: None,
+            tooltip: None,
+            control: Control::None,
         });
     }
 
@@ -1015,7 +1041,9 @@ impl<M: 'static> Ui<'_, M> {
 mod tests {
     use super::*;
     use crate::collections::{FastMap, FastSet};
+    use crate::{Button, Label, Length, Link, MonospaceMeasurer};
     use alloc::vec;
+    use glassmere_scene::{Size, TextWrap};
 
     #[track_caller]
     fn here() -> &'static Location<'static> {
@@ -1271,5 +1299,291 @@ mod tests {
         assert!(!builds_a_table(3, KEYS_SCANNED - 3));
         assert!(builds_a_table(3, KEYS_SCANNED - 2));
         assert!(builds_a_table(2, 100));
+    }
+
+    /// Declares one widget with `declare` and compares the element it added
+    /// with the one `Element::new` gives for the same key and kind once
+    /// `sets` has written what the widget sets: every other field is its
+    /// default. `children` is how many elements the widget holds, `handled`
+    /// whether it was given a handler, and `seen` how many elements the
+    /// declaration had before.
+    fn declared_as(
+        ui: &mut Ui<'_>,
+        seen: &mut u32,
+        (kind, children, handled): (Kind, usize, bool),
+        sets: impl FnOnce(&mut Element),
+        declare: impl FnOnce(&mut Ui<'_>),
+    ) {
+        let handler = ui.handlers.len() as u32;
+        declare(ui);
+        // A widget is counted after what it holds.
+        *seen += children as u32 + 1;
+        let element = ui.elements.last().unwrap();
+        let mut want = Element::new(element.key.clone(), kind);
+        want.handler = handled.then_some(handler);
+        want.seq = *seen;
+        sets(&mut want);
+        want.enabled &= ui.enabled;
+        let which = format!("{kind:?} with the scope enabled: {}", ui.enabled);
+        assert_eq!(element.handler, want.handler, "{which}");
+        assert_eq!(element.seq, want.seq, "{which}");
+        assert_eq!(element.key, want.key, "{which}");
+        assert_eq!(element.kind, want.kind, "{which}");
+        assert_eq!(element.text, want.text, "{which}");
+        assert_eq!(element.style, want.style, "{which}");
+        assert_eq!(element.enabled, want.enabled, "{which}");
+        assert_eq!(element.children.len(), children, "{which}");
+        assert_eq!(element.custom, want.custom, "{which}");
+        assert_eq!(element.tooltip, want.tooltip, "{which}");
+        assert_eq!(element.control, want.control, "{which}");
+    }
+
+    /// One of each widget that is built in one of the five builders.
+    fn declare_every_builder(ui: &mut Ui<'_>) {
+        let own = Style::default().width(Length::Px(300.0)).gap(3.0);
+        let mut seen = 0;
+        let seen = &mut seen;
+        declared_as(
+            ui,
+            seen,
+            (Kind::Label, 0, false),
+            |want| want.text = "plain".into(),
+            |ui| ui.label("plain"),
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Label, 0, false),
+            |want| {
+                want.text = "styled".into();
+                want.style = own.clone();
+            },
+            |ui| ui.label(Label::new("styled").style(own.clone())),
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Label, 0, false),
+            |want| {
+                want.text = "selectable".into();
+                want.control = Control::SelectableText;
+            },
+            |ui| ui.label(Label::new("selectable").selectable()),
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Button, 0, false),
+            |want| {
+                want.text = "Save".into();
+                want.style = Style::button();
+            },
+            |ui| {
+                ui.button("Save");
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Button, 0, true),
+            |want| {
+                want.text = "Send".into();
+                want.style = own.clone();
+            },
+            |ui| {
+                ui.button(Button::new("Send").style(own.clone()).on_click(()));
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Button, 0, false),
+            |want| {
+                want.text = "Off".into();
+                want.style = Style::button();
+                want.enabled = false;
+            },
+            |ui| {
+                ui.button(Button::new("Off").enabled(false));
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Link, 0, false),
+            |want| {
+                want.text = "Docs".into();
+                want.style = Style {
+                    padding: 3.0,
+                    radius: 3.0,
+                    wrap: TextWrap::None,
+                    ..Style::default()
+                };
+            },
+            |ui| {
+                ui.link("Docs");
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Link, 0, false),
+            |want| {
+                want.text = "Gone".into();
+                want.style = Style {
+                    wrap: TextWrap::None,
+                    ..own.clone()
+                };
+                want.enabled = false;
+            },
+            |ui| {
+                ui.link(Link::new("Gone").style(own.clone()).enabled(false));
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Checkbox, 0, true),
+            |want| {
+                want.text = "Agree".into();
+                want.style = Style::button();
+                want.control = Control::Checkbox {
+                    label: "Agree".into(),
+                    checked: true,
+                };
+            },
+            |ui| {
+                ui.checkbox("Agree", true, |_| ());
+            },
+        );
+        // The checkbox of a property grid shows no text and has no handler.
+        declared_as(
+            ui,
+            seen,
+            (Kind::Checkbox, 0, false),
+            |want| {
+                want.text = "shown".into();
+                want.style = Style::button();
+                want.control = Control::Checkbox {
+                    label: "Named".into(),
+                    checked: false,
+                };
+            },
+            |ui| {
+                ui.checkbox_shown("Named", "shown", false);
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Radio, 0, true),
+            |want| {
+                want.text = "One".into();
+                want.style = Style::button();
+                want.control = Control::Radio {
+                    label: "One".into(),
+                    selected: false,
+                };
+            },
+            |ui| {
+                ui.radio("One", 1, 0, |_| ());
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Slider, 0, true),
+            |want| {
+                want.text = "Volume: 5.00".into();
+                want.style = Style {
+                    width: Length::Px(280.0),
+                    height: Length::Px(64.0),
+                    padding: 10.0,
+                    ..Style::button()
+                };
+                want.control = Control::Slider {
+                    label: "Volume".into(),
+                    value: 5.0,
+                    min: 0.0,
+                    max: 10.0,
+                    step: 1.0,
+                    span: None,
+                };
+            },
+            |ui| {
+                ui.slider("Volume", 5.0, 0.0..=10.0, 1.0, |_| ());
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::TextInput, 0, true),
+            |want| {
+                want.style = Style {
+                    wrap: TextWrap::None,
+                    ..Ui::<()>::field_style()
+                };
+                want.control = Control::TextInput {
+                    label: "Name".into(),
+                    value: "ada".into(),
+                    placeholder: String::new(),
+                    number: None,
+                    suggestions: None,
+                    draft: false,
+                    password: false,
+                };
+            },
+            |ui| {
+                ui.text_input("Name", "ada", |_| ());
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Row, 2, false),
+            |want| want.style = own.clone(),
+            |ui| {
+                ui.row(own.clone(), |ui| {
+                    ui.label("a");
+                    ui.label("b");
+                })
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Column, 1, false),
+            |want| want.style = own.clone(),
+            |ui| ui.column(own.clone(), |ui| ui.label("c")),
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Container, 0, false),
+            |_| {},
+            |ui| ui.container(Style::default(), |_| {}),
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Scroll, 1, false),
+            |want| want.style = own.clone(),
+            |ui| ui.scroll(own.clone(), |ui| ui.label("d")),
+        );
+    }
+
+    #[test]
+    fn the_builders_that_write_every_field_give_the_base_element_with_what_they_set() {
+        for scope in [None, Some(true), Some(false)] {
+            let mut context = Context::new();
+            context.run(
+                Size::new(400.0, 4000.0),
+                &mut MonospaceMeasurer,
+                |ui| match scope {
+                    None => declare_every_builder(ui),
+                    Some(enabled) => ui.enabled(enabled, declare_every_builder),
+                },
+            );
+        }
     }
 }
