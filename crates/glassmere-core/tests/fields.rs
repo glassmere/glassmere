@@ -7,6 +7,7 @@ use glassmere_core::{
     TextEdit, TextInput, TextMove, Ui, suggest,
 };
 use glassmere_scene::{Point, Primitive, Size, TextMeasurer};
+use std::time::Duration;
 use support::{Driven, act, on};
 
 const ROOT: Size = Size::new(600.0, 400.0);
@@ -791,4 +792,33 @@ fn a_field_left_idle_still_follows_its_caret_when_the_window_narrows() {
         idle(&mut fresh);
         assert_eq!(scene(&app), scene(&fresh), "{name}");
     }
+}
+
+#[test]
+fn a_double_click_in_a_text_field_places_a_caret_and_selects_no_word() {
+    struct Name {
+        typed: String,
+    }
+    let mut app = Driven::new(
+        ROOT,
+        Name {
+            typed: "alpha beta gamma".into(),
+        },
+        |state: &Name, ui: &mut Ui<'_, Msg<Name>>| {
+            ui.keyed("name", |ui| {
+                ui.text_input(
+                    "Name",
+                    &state.typed,
+                    on(|s: &mut Name, text: String| s.typed = text),
+                );
+            });
+        },
+    );
+    let name = app.context.find(&["name"]).unwrap();
+    for when in [0, 100] {
+        app.context.set_now(Duration::from_millis(when));
+        click(&mut app.context, name);
+    }
+    let selection = app.context.node(name).unwrap().text_selection.unwrap();
+    assert_eq!(selection.anchor, selection.cursor);
 }
