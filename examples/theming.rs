@@ -95,8 +95,9 @@ impl App for Theming {
             ui.label(Label::new(format!("Theming · {} theme", theme.name)).style(title));
             ui.label(
                 Label::new(format!(
-                    "Edit {} while this window is open: classes and tokens reload within half a \
-                     second. The theme follows the OS preference until a button below overrides it.",
+                    "Edit {} while this window is open: classes and tokens reload within about a \
+                     tenth of a second. The theme follows the OS preference until a button \
+                     below overrides it.",
                     self.stylesheet.display()
                 ))
                 .style(muted.clone()),

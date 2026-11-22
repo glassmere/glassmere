@@ -256,15 +256,32 @@ impl Context {
             }
             Event::FocusLost => self.stop_touches(),
             // Any other way of scrolling or pressing ends a fling.
-            Event::PointerDown | Event::PointerDownWithShift | Event::Scroll { .. } => {
+            Event::PointerDown | Event::PointerDownWithShift => {
                 self.fling = None;
+                // Which press of a quick row this is, for a selectable label.
+                // A press that an area kept from the widgets is not counted,
+                // and neither is one without a pointer.
+                if let Some(point) = self.pointer {
+                    let node = self.hit_test(point);
+                    let count = press_count::next(self.last_press, self.now, point, node);
+                    self.last_press = Some(press_count::Press {
+                        when: self.now,
+                        point,
+                        node,
+                        count,
+                    });
+                    self.press_count = count;
+                }
             }
+            Event::Scroll { .. } => self.fling = None,
             _ => {}
         }
         let queued = self.queued.len();
         let focus = self.noted_focus;
         let menus = self.popup_levels().count();
         let mut handled = self.handle_event(event.clone());
+        // Only a press from here is counted: touch calls `handle_event` itself.
+        self.press_count = 1;
         // A press outside a menu closes it and still goes on to what is under
         // it, which may change nothing else, and the menu has to be redrawn.
         handled |= self.popup_levels().count() < menus;
