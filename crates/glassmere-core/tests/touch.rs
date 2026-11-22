@@ -3,9 +3,10 @@ mod support;
 use glassmere_core::app::Action;
 use glassmere_core::{Button, DragPayload, DragSourceBuilder, DropTargetBuilder};
 use glassmere_core::{
-    Context, DiagnosticKind, DropKind, Event, Length, MenuItem, Style, TextEdit, TouchPhase, Ui,
+    Context, DiagnosticKind, DropKind, Event, Label, Length, MenuItem, MonospaceMeasurer, Style,
+    TextEdit, TouchPhase, Ui,
 };
-use glassmere_scene::{Point, Rect, Size};
+use glassmere_scene::{Point, Primitive, Rect, Size};
 use std::time::Duration;
 use support::{Driven, act, center, on};
 
@@ -252,6 +253,22 @@ fn a_touch_stops_a_fling_and_reduced_motion_never_starts_one() {
     assert!(driven.context.animating());
     touch(&mut driven.context, 2, TouchPhase::Started, start);
     assert!(!driven.context.animating(), "a finger catches the content");
+
+    // So does the wheel, and so does a press of the mouse.
+    for stop in [
+        Event::Scroll {
+            delta_x: 0.0,
+            delta_y: 1.0,
+        },
+        Event::PointerDown,
+    ] {
+        let mut driven = Driven::new(ROOT, Page::default(), page);
+        let start = fling(&mut driven);
+        assert!(driven.context.animating());
+        driven.context.event(Event::PointerMoved(start));
+        driven.context.event(stop);
+        assert!(!driven.context.animating());
+    }
 
     let mut driven = Driven::new(ROOT, Page::default(), page);
     driven.context.set_reduced_motion(true);
@@ -538,4 +555,73 @@ fn a_resting_press_opens_the_context_menu_and_does_not_click() {
     touch(&mut driven.context, 2, TouchPhase::Ended, item);
     driven.frame();
     assert_eq!(driven.state().menu, Some(1));
+}
+
+const NOTE: &str = "Order 4711 shipped";
+
+fn shown_note() -> Context {
+    let mut context = Context::new();
+    context.run(ROOT, &mut MonospaceMeasurer, |ui| {
+        ui.keyed("note", |ui| ui.label(Label::new(NOTE).selectable()));
+    });
+    context
+}
+
+/// Just inside the cell of the ninth character of the label, in "4711".
+fn on_the_word(context: &Context) -> Point {
+    let (rect, size) = context
+        .scene()
+        .primitives
+        .iter()
+        .find_map(|primitive| match primitive {
+            Primitive::Text {
+                rect,
+                text,
+                font_size,
+                ..
+            } if text == NOTE => Some((*rect, *font_size)),
+            Primitive::StyledText {
+                rect, text, style, ..
+            } if text == NOTE => Some((*rect, style.font_size)),
+            _ => None,
+        })
+        .expect("the label is drawn");
+    at(rect.x + 8.0 * size * 0.6 + 1.0, rect.y + size * 0.7)
+}
+
+fn tap(context: &mut Context, id: u64, position: Point, milliseconds: u64) {
+    context.set_now(Duration::from_millis(milliseconds));
+    touch(context, id, TouchPhase::Started, position);
+    context.set_now(Duration::from_millis(milliseconds + 10));
+    touch(context, id, TouchPhase::Ended, position);
+}
+
+#[test]
+fn a_touch_after_a_mouse_double_click_is_a_single_press() {
+    let mut context = shown_note();
+    let word = on_the_word(&context);
+    for when in [0, 100] {
+        context.set_now(Duration::from_millis(when));
+        context.event(Event::PointerMoved(word));
+        context.event(Event::PointerDown);
+        context.event(Event::PointerUp);
+    }
+    assert_eq!(context.selected_text(), Some("4711"));
+    // The same spot a moment later, with a finger: it places a caret, as a
+    // touch always has.
+    tap(&mut context, 1, word, 200);
+    assert_eq!(context.selected_text(), Some(""));
+}
+
+#[test]
+fn three_taps_in_a_label_select_a_word_and_never_the_paragraph() {
+    let mut context = shown_note();
+    let word = on_the_word(&context);
+    tap(&mut context, 1, word, 0);
+    assert_eq!(context.selected_text(), Some(""));
+    tap(&mut context, 2, word, 100);
+    assert_eq!(context.selected_text(), Some("4711"));
+    // A third tap starts a new pair.
+    tap(&mut context, 3, word, 200);
+    assert_eq!(context.selected_text(), Some(""));
 }

@@ -83,7 +83,7 @@ Drag state is retained in the context. A pointer press on a `DragSource` records
 
 `Style` is per widget; `Theme` is per context. Text properties on a style are optional and resolve during reconciliation from the parent's `ResolvedText`, whose root values come from the theme, so the resolved values are what measurement and paint use and what the inspector reports. Resolution is compared like any other property: a color difference marks paint, a font difference marks text and layout. Backgrounds default per widget kind to a theme token, and interaction states pick theme tokens first and then the style's `StateStyles` overrides, so state changes stay repaint-only.
 
-Named classes live in a `StyleSheet` on the context. The text format is line-based with no dependencies; tokens overlay whichever theme is active so an OS light/dark switch keeps an application's accent. The host installs a configured sheet at start and polls its modification time, keeping the last good sheet when an edit fails to parse.
+Named classes live in a `StyleSheet` on the context. The text format is line-based with no dependencies; tokens overlay whichever theme is active so an OS light/dark switch keeps an application's accent. The host installs a configured sheet at start and polls its modification time and size, keeping the last good sheet when an edit fails to parse.
 
 ## Tooling boundary
 

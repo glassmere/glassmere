@@ -68,7 +68,7 @@ cargo run -p glassmere-dev -- [--watch PATH]... [--poll MS] [cargo args] -- [app
 
 `glassmere-dev` builds the app, runs it, and when a watched `.rs` or `.toml` file changes rebuilds it. After a successful build the running app is asked to stop, saves its state through `App::save_state`, and the new build starts where the old one was, with the window at the same position and size. A failed build leaves the running app alone. The watch defaults to the current directory and the poll to 500 ms. Only one window's state is saved, and focus and scroll positions are not part of it unless the application includes them.
 
-Files the view reads are reloaded in place: `Ui::watched_text(path)` and `watched_bytes(path)` return the current contents and re-declare when the file's modification time changes. Stylesheets and image files reload the same way.
+Files the view reads are reloaded in place: `Ui::watched_text(path)` and `watched_bytes(path)` return the current contents and re-declare when the file's modification time or size changes. A file is read once it has stopped changing for 40 ms, so a save that truncates the file and writes it within that time is not read in between; [limitations](limitations.md) lists what that does not cover. The stylesheet and the watched files are looked at every 100 ms for two minutes after the window opens or one of them changes, and every 500 ms after that; image files are looked at every 500 ms and are loaded as soon as a change shows.
 
 ## Testing
 
