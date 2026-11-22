@@ -2,8 +2,9 @@
 //! own, so the tests of this binary do not count each other.
 #![allow(unsafe_code)]
 use glassmere_core::{
-    Action, App, AppDriver, Button, Context, Effects, Event, FrameStats, Label, Length,
-    MonospaceMeasurer, NodeId, Shadow, Style, TextEdit, Transition, Ui,
+    Action, App, AppDriver, Block, BlockKind, Button, Context, Effects, Event, FrameStats, Label,
+    Length, MonospaceMeasurer, NodeId, RichDocument, RichEditorOptions, RichOp, RichPosition, Role,
+    Shadow, Style, TextEdit, Transition, Ui,
 };
 use glassmere_scene::{Color, Point, Size};
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -496,5 +497,87 @@ fn a_frame_that_paints_every_cell_again_allocates_the_same_at_20_and_200_cells()
     assert!(
         large <= small + 8,
         "painting 20 cells again allocated {small} times and 200 cells {large}"
+    );
+}
+
+/// A rich editor with nothing else around it.
+struct Notes {
+    document: RichDocument,
+}
+
+impl App for Notes {
+    type Message = RichOp;
+
+    fn update(&mut self, op: RichOp, _: &mut Effects<'_, RichOp>) {
+        self.document.apply(op);
+    }
+
+    fn view(&self, ui: &mut Ui<'_, RichOp>) {
+        ui.keyed("editor", |ui| {
+            ui.rich_editor(
+                &self.document,
+                RichEditorOptions {
+                    label: "Notes".into(),
+                    toolbar: false,
+                    ..RichEditorOptions::default()
+                },
+                |op| op,
+            );
+        });
+    }
+}
+
+/// The editor itself, which a rich editor declares inside a group.
+fn editor_named(context: &Context, label: &str) -> NodeId {
+    let mut stack = vec![context.root()];
+    while let Some(id) = stack.pop() {
+        let node = context.node(id).unwrap();
+        if node.semantics.role == Role::MultilineTextInput && node.semantics.label == label {
+            return id;
+        }
+        stack.extend(node.children.iter().rev());
+    }
+    panic!("no editor labelled {label}");
+}
+
+// What assistive technology reads of a block is made once and copied after
+// that: reading 200 blocks again that have not changed allocates a few times
+// for each, where making it allocates a dozen. A letter typed in one block
+// makes the reading of that block again, and no more.
+#[test]
+fn rereading_an_unchanged_rich_editor_allocates_a_fraction_of_the_first_read() {
+    let blocks = (0..200)
+        .map(|n| Block::new(BlockKind::Paragraph, &format!("paragraph {n}")))
+        .collect();
+    let mut running = Running::new(Notes {
+        document: RichDocument::from_blocks(blocks),
+    });
+    let editor = editor_named(&running.context, "Notes");
+    let read = |running: &Running<Notes>| {
+        let before = allocations();
+        running.context.editor_text(editor);
+        allocations() - before
+    };
+    let first = read(&running);
+    let second = read(&running);
+    assert!(
+        second * 2 <= first,
+        "the first read allocated {first} times and the second {second}"
+    );
+
+    running.app.document.set_cursor(
+        RichPosition {
+            block: 100,
+            offset: 3,
+        },
+        false,
+    );
+    running.app.document.apply(RichOp::Insert("x".into()));
+    running.driver.invalidate();
+    running.frame();
+    let third = read(&running);
+    assert!(
+        third * 2 < first,
+        "the first read allocated {first} times and the one after a letter {third}"
     );
 }
