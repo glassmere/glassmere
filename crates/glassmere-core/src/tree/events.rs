@@ -282,6 +282,12 @@ impl Context {
         let mut handled = self.handle_event(event.clone());
         // Only a press from here is counted: touch calls `handle_event` itself.
         self.press_count = 1;
+        // The range goes with the press that took it, however that ends.
+        if let Some((id, _)) = &self.taken_range
+            && self.captured != Some(*id)
+        {
+            self.taken_range = None;
+        }
         // A press outside a menu closes it and still goes on to what is under
         // it, which may change nothing else, and the menu has to be redrawn.
         handled |= self.popup_levels().count() < menus;

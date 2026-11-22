@@ -1920,24 +1920,138 @@ fn a_word_that_ends_a_wrapped_line_keeps_the_end_of_the_selection_on_that_line()
     assert_eq!(selected(&context).as_deref(), Some("aaaaaaaaaaaa"));
 }
 
+/// A double click on `at` whose second press is still held, at the clock 100.
+fn hold_second_press(context: &mut Context, at: Point) {
+    hold_second_press_at(context, at, 0);
+}
+
+/// The same, with the first press at the clock `milliseconds`.
+fn hold_second_press_at(context: &mut Context, at: Point, milliseconds: u64) {
+    click_at(context, at, milliseconds);
+    context.set_now(Duration::from_millis(milliseconds + 100));
+    context.event(Event::PointerMoved(at));
+    context.event(Event::PointerDown);
+}
+
 #[test]
-fn a_drag_after_a_double_click_extends_from_the_start_of_the_word() {
+fn a_drag_after_a_double_click_keeps_the_word_and_extends_by_character_either_way() {
     let mut context = shown_notes();
     let word = glyph(&context, ORDER, 0, 8);
-    click_at(&mut context, word, 0);
-    context.set_now(Duration::from_millis(100));
-    context.event(Event::PointerMoved(word));
-    context.event(Event::PointerDown);
+    hold_second_press(&mut context, word);
     assert_eq!(selected(&context).as_deref(), Some("4711"));
+    // After the word: from its start to the character under the pointer.
     context.event(Event::PointerMoved(glyph(&context, ORDER, 0, 15)));
     assert_eq!(selected(&context).as_deref(), Some("4711 ship"));
+    // Before the word: from that character to the end of the word.
     context.event(Event::PointerMoved(glyph(&context, ORDER, 0, 2)));
-    assert_eq!(selected(&context).as_deref(), Some("der "));
+    assert_eq!(selected(&context).as_deref(), Some("der 4711"));
+    // Back inside it: the word again.
+    context.event(Event::PointerMoved(glyph(&context, ORDER, 0, 7)));
+    assert_eq!(selected(&context).as_deref(), Some("4711"));
+    context.event(Event::PointerUp);
+    assert_eq!(selected(&context).as_deref(), Some("4711"));
+}
+
+#[test]
+fn a_small_move_while_the_second_press_is_held_keeps_the_whole_word() {
+    for (turn, (dx, dy)) in [(0.0, 0.0), (1.0, 0.0), (3.0, 0.0), (-1.0, 1.0)]
+        .into_iter()
+        .enumerate()
+    {
+        let mut context = shown_notes();
+        let word = glyph(&context, ORDER, 0, 8);
+        hold_second_press(&mut context, word);
+        context.event(Event::PointerMoved(Point {
+            x: word.x + dx,
+            y: word.y + dy,
+        }));
+        assert_eq!(selected(&context).as_deref(), Some("4711"), "case {turn}");
+        context.event(Event::PointerUp);
+        assert_eq!(selected(&context).as_deref(), Some("4711"), "case {turn}");
+    }
+}
+
+#[test]
+fn a_small_move_while_the_third_press_is_held_keeps_the_whole_paragraph() {
+    const TEXT: &str = "first line\nsecond line is long\nthird";
+    for (turn, dx) in [0.0, 1.0, 3.0].into_iter().enumerate() {
+        let mut context = shown_text(TEXT);
+        let at = glyph(&context, TEXT, 2, 1);
+        click_at(&mut context, at, 0);
+        click_at(&mut context, at, 100);
+        context.set_now(Duration::from_millis(200));
+        context.event(Event::PointerMoved(at));
+        context.event(Event::PointerDown);
+        context.event(Event::PointerMoved(Point { x: at.x + dx, ..at }));
+        assert_eq!(
+            selected(&context).as_deref(),
+            Some("second line is long"),
+            "case {turn}"
+        );
+        context.event(Event::PointerUp);
+        assert_eq!(
+            selected(&context).as_deref(),
+            Some("second line is long"),
+            "case {turn}"
+        );
+    }
+}
+
+#[test]
+fn a_drag_held_past_the_end_of_a_label_keeps_the_word_it_started_in() {
+    let mut context = shown_notes();
+    let rect = label_rect(&context, ORDER);
+    let first = glyph(&context, ORDER, 0, 2);
+    hold_second_press(&mut context, first);
+    context.event(Event::PointerMoved(Point {
+        x: rect.x - 60.0,
+        y: first.y,
+    }));
+    assert_eq!(selected(&context).as_deref(), Some("Order"));
+    context.event(Event::PointerUp);
+    let last = glyph(&context, ORDER, 0, 14);
+    hold_second_press_at(&mut context, last, 1000);
+    context.event(Event::PointerMoved(Point {
+        x: rect.x + rect.width + 60.0,
+        y: last.y,
+    }));
+    assert_eq!(selected(&context).as_deref(), Some("shipped"));
     context.event(Event::PointerUp);
 }
 
 #[test]
-fn a_drag_after_a_triple_click_extends_from_the_start_of_the_paragraph() {
+fn a_new_press_and_drag_after_a_double_click_extends_by_character_from_the_press() {
+    let mut context = shown_notes();
+    let word = glyph(&context, ORDER, 0, 8);
+    hold_second_press(&mut context, word);
+    context.event(Event::PointerUp);
+    // Too late to be part of the row.
+    context.set_now(Duration::from_millis(2000));
+    context.event(Event::PointerMoved(glyph(&context, ORDER, 0, 12)));
+    context.event(Event::PointerDown);
+    context.event(Event::PointerMoved(glyph(&context, ORDER, 0, 14)));
+    assert_eq!(selected(&context).as_deref(), Some("hi"));
+    context.event(Event::PointerMoved(glyph(&context, ORDER, 0, 11)));
+    assert_eq!(selected(&context).as_deref(), Some("s"));
+    context.event(Event::PointerUp);
+}
+
+#[test]
+fn a_press_on_another_label_does_not_inherit_the_word_of_a_double_click() {
+    let mut context = shown_notes();
+    let word = glyph(&context, ORDER, 0, 8);
+    hold_second_press(&mut context, word);
+    context.event(Event::PointerUp);
+    context.set_now(Duration::from_millis(2000));
+    context.event(Event::PointerMoved(glyph(&context, LONG, 0, 1)));
+    context.event(Event::PointerDown);
+    context.event(Event::PointerMoved(glyph(&context, LONG, 0, 3)));
+    assert_eq!(selected(&context).as_deref(), Some("lp"));
+    context.event(Event::PointerUp);
+}
+
+#[test]
+fn a_drag_after_a_triple_click_keeps_the_paragraph_and_extends_by_character_either_way() {
     const TEXT: &str = "first line\nsecond line is long\nthird";
     let mut context = shown_text(TEXT);
     let paragraph = glyph(&context, TEXT, 2, 1);
@@ -1947,9 +2061,12 @@ fn a_drag_after_a_triple_click_extends_from_the_start_of_the_paragraph() {
     context.event(Event::PointerMoved(paragraph));
     context.event(Event::PointerDown);
     assert_eq!(selected(&context).as_deref(), Some("second line is long"));
-    // Back into the paragraph above, the start of the second is the anchor.
+    // Back into the paragraph above, the end of the second is the anchor.
     context.event(Event::PointerMoved(glyph(&context, TEXT, 0, 3)));
-    assert_eq!(selected(&context).as_deref(), Some("st line\n"));
+    assert_eq!(
+        selected(&context).as_deref(),
+        Some("st line\nsecond line is long")
+    );
     // And on into the one below.
     context.event(Event::PointerMoved(glyph(&context, TEXT, 3, 2)));
     assert_eq!(
@@ -1960,15 +2077,47 @@ fn a_drag_after_a_triple_click_extends_from_the_start_of_the_paragraph() {
 }
 
 #[test]
-fn a_shifted_press_in_a_quick_row_takes_the_word_instead_of_extending() {
+fn a_shifted_press_in_a_quick_row_extends_the_selection_like_any_other() {
     let mut context = shown_notes();
     let word = glyph(&context, ORDER, 0, 8);
-    click_at(&mut context, word, 0);
-    context.set_now(Duration::from_millis(100));
+    click_glyph_at(&mut context, ORDER, 0, 2, 0);
+    for (turn, milliseconds) in [1000, 1100, 1200].into_iter().enumerate() {
+        context.set_now(Duration::from_millis(milliseconds));
+        context.event(Event::PointerMoved(word));
+        context.event(Event::PointerDownWithShift);
+        assert_eq!(
+            selected(&context).as_deref(),
+            Some("der 47"),
+            "press {turn}"
+        );
+        context.event(Event::PointerUp);
+    }
+    // A move while a shifted press of the row is held goes on from the
+    // anchor by character.
+    context.set_now(Duration::from_millis(1300));
     context.event(Event::PointerMoved(word));
     context.event(Event::PointerDownWithShift);
+    context.event(Event::PointerMoved(glyph(&context, ORDER, 0, 12)));
+    assert_eq!(selected(&context).as_deref(), Some("der 4711 s"));
     context.event(Event::PointerUp);
+}
+
+#[test]
+fn a_shifted_press_after_a_double_click_extends_from_the_anchor_of_the_word() {
+    let mut context = shown_notes();
+    let word = glyph(&context, ORDER, 0, 8);
+    double_click(&mut context, word, 0);
     assert_eq!(selected(&context).as_deref(), Some("4711"));
+    let later = glyph(&context, ORDER, 0, 14);
+    context.set_now(Duration::from_millis(200));
+    context.event(Event::PointerMoved(later));
+    context.event(Event::PointerDownWithShift);
+    assert_eq!(selected(&context).as_deref(), Some("4711 shi"));
+    // A drag from it extends by character from the same anchor, and nothing
+    // of the word that was taken is held.
+    context.event(Event::PointerMoved(glyph(&context, ORDER, 0, 8)));
+    assert_eq!(selected(&context).as_deref(), Some("47"));
+    context.event(Event::PointerUp);
 }
 
 #[test]

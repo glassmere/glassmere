@@ -202,10 +202,19 @@ impl Context {
         };
         let (cursor, affinity) = editor.geometry.hit_affinity(local);
         let cursor = editor.display_offset(cursor);
-        let anchor = if extend {
-            editor.selection.anchor
-        } else {
-            cursor
+        // A word or paragraph taken by a double or triple press stays selected
+        // while the pointer moves; the selection grows from it by character.
+        let taken = self
+            .taken_range
+            .as_ref()
+            .filter(|(taken, _)| extend && *taken == id)
+            .map(|(_, range)| range.clone());
+        let (anchor, cursor, affinity) = match taken {
+            Some(range) if cursor < range.start => (range.end, cursor, affinity),
+            Some(range) if cursor > range.end => (range.start, cursor, affinity),
+            Some(range) => (range.start, range.end, Affinity::Upstream),
+            None if extend => (editor.selection.anchor, cursor, affinity),
+            None => (cursor, cursor, affinity),
         };
         let changed = self.edit(id, TextEdit::Select { anchor, cursor });
         // The caret shows on the side of the character that was clicked.
@@ -244,6 +253,8 @@ impl Context {
                 cursor: range.end,
             },
         );
+        // Kept while the press is held, for the drag that may follow.
+        self.taken_range = Some((id, range));
         // The end of a word that ends a wrapped line stays on that line, so
         // Home, End and Shift + Up and Down start from where the word is. The
         // range is empty only in text of nothing but line breaks, which has no
@@ -843,6 +854,7 @@ impl Context {
                 }
             }
             Event::PointerDown | Event::PointerDownWithShift => {
+                self.taken_range = None;
                 let position = self.pointer?;
                 let target = self
                     .hit_test(position)
@@ -873,10 +885,13 @@ impl Context {
                         self.captured = Some(id);
                         if kind == Kind::Slider {
                             self.slider_pointer(id, position);
-                        } else if self.nodes[&id].read_only() && self.press_count >= 2 {
+                        } else if self.nodes[&id].read_only()
+                            && self.press_count >= 2
+                            && matches!(event, Event::PointerDown)
+                        {
                             // Two presses in a row take the word under the
-                            // pointer, three its paragraph; Shift does not
-                            // extend them, as in a text area.
+                            // pointer, three its paragraph. A press with
+                            // Shift extends the selection whatever its count.
                             self.select_around(id, position, self.press_count >= 3);
                         } else {
                             self.editor_pointer(

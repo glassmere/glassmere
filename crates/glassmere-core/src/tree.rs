@@ -724,6 +724,9 @@ pub struct Context {
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
     captured: Option<NodeId>,
+    /// The word or paragraph a double or triple press took in a selectable
+    /// label, as a byte range of its text, while that press is held.
+    taken_range: Option<(NodeId, core::ops::Range<usize>)>,
     keyboard_pressed: Option<(NodeId, Key)>,
     /// A node in a title bar that took focus from a press, which shows no
     /// focus ring: a desktop's title bar never does.
@@ -1023,6 +1026,7 @@ impl Default for Context {
             hovered: None,
             focused: None,
             captured: None,
+            taken_range: None,
             keyboard_pressed: None,
             quiet_focus: None,
             pointer: None,
