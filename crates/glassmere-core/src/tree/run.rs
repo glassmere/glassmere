@@ -461,7 +461,7 @@ impl Context {
         // not yet matched built, with a copy of each of their keys. Until it
         // is built, the elements before this one all matched in place.
         let mut matched_in_place = 0;
-        let mut available: Option<crate::collections::FastMap<WidgetKey, NodeId>> = None;
+        let mut available: Option<crate::collections::KeyMap<NodeId>> = None;
         // The new children, made only once they differ from the old ones.
         let mut children: Option<Vec<NodeId>> = None;
         let (mut created_here, mut removed_here) = (0usize, 0usize);
@@ -476,11 +476,7 @@ impl Context {
             } else {
                 available
                     .get_or_insert_with(|| {
-                        // Inserted one at a time, so the table grows as
-                        // it always has: the children left over are removed
-                        // in the order it holds them, and a table sized up
-                        // front can hold the same keys in another order.
-                        let mut map = crate::collections::FastMap::default();
+                        let mut map = crate::collections::KeyMap::default();
                         for id in &old_children[matched_in_place.min(old_children.len())..] {
                             map.insert(self.nodes[id].key.clone(), *id);
                         }
@@ -541,9 +537,19 @@ impl Context {
         }
         self.give_spare(elements);
         // Without the map every element matched in place, and the children
-        // left over are those that follow them.
+        // left over are those that follow them. With it they are the ones it
+        // still holds, in the order they had among the old children: the
+        // order of a table is not the same from one run to the next.
         let unmatched: Vec<NodeId> = match available {
-            Some(available) => available.into_values().collect(),
+            Some(available) => old_children[matched_in_place.min(old_children.len())..]
+                .iter()
+                .filter(|id| {
+                    self.nodes
+                        .get(*id)
+                        .is_some_and(|node| available.get(&node.key) == Some(*id))
+                })
+                .copied()
+                .collect(),
             None => old_children[total.min(old_children.len())..].to_vec(),
         };
         for id in unmatched {
@@ -1114,7 +1120,7 @@ impl Context {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::collections::{FastMap, FastSet};
+    use crate::collections::FastSet;
     use crate::{CustomWidget, Effect, Label, MonospaceMeasurer};
     use alloc::vec;
     use glassmere_scene::Primitive;
@@ -1276,38 +1282,13 @@ mod tests {
             .collect()
     }
 
-    /// The table of the children from `from` on, collected from a filter over
-    /// all of them, whose length is not known beforehand, so that the table
-    /// grows as it is filled.
-    fn table_grown(keys: &[WidgetKey], from: usize) -> FastMap<WidgetKey, usize> {
-        let matched: Vec<bool> = (0..keys.len()).map(|at| at < from).collect();
-        keys.iter()
-            .enumerate()
-            .zip(&matched)
-            .filter(|(_, matched)| !**matched)
-            .map(|((at, key), _)| (key.clone(), at))
-            .collect()
-    }
-
-    /// The same table collected from a slice, whose length is known, so that
-    /// the table has its room before it is filled.
-    fn table_sized(keys: &[WidgetKey], from: usize) -> FastMap<WidgetKey, usize> {
-        keys[from..]
-            .iter()
-            .enumerate()
-            .map(|(at, key)| (key.clone(), from + at))
-            .collect()
-    }
-
-    // The children a frame no longer declares are removed in the order the
-    // table of the unmatched ones holds them, and each leaves a ghost, so
-    // that order is in the scene. It is the order of a table grown by single
-    // inserts, which is not that of one sized up front.
+    // The children a frame no longer declares are removed in the order they
+    // had among the old children, and each leaves a ghost, so that order is
+    // in the scene.
     #[test]
-    fn removed_children_leave_ghosts_in_the_order_of_the_table_they_were_found_in() {
+    fn removed_children_leave_ghosts_in_the_order_they_had() {
         let mut state = 0x2545_f491_4f6c_dd1d;
         let style = Style::default().exit(Effect::fade(100));
-        let mut sized_differently = 0;
         for case in 0..600 {
             let count = 4 + below(&mut state, 37);
             let names: Vec<String> = (0..count)
@@ -1316,7 +1297,6 @@ mod tests {
             let declared: Declared = names.iter().map(|name| (name.clone(), false)).collect();
             let mut context = Context::new();
             declare(&mut context, &declared, &style);
-            let keys: Vec<WidgetKey> = names.iter().cloned().map(WidgetKey::Named).collect();
             let bounds: Vec<Rect> = root_children(&context)
                 .iter()
                 .map(|id| context.nodes[id].bounds)
@@ -1330,31 +1310,13 @@ mod tests {
             let mut remaining = declared.clone();
             remaining.drain(from..after);
             declare(&mut context, &remaining, &style);
-            let mut expected_table = table_grown(&keys, from);
-            for key in &keys[after..] {
-                expected_table.remove(key);
-            }
-            let expected: Vec<usize> = if after == count {
-                (from..count).collect()
-            } else {
-                expected_table.into_values().collect()
-            };
-            assert_eq!(expected.len(), dropped);
+            let expected: Vec<usize> = (from..after).collect();
             assert_eq!(
                 ghosts_painted(&context, &bounds),
                 expected,
                 "case {case}: {count} children, from {from}, {dropped} dropped"
             );
-            let mut sized = table_sized(&keys, from);
-            for key in &keys[after..] {
-                sized.remove(key);
-            }
-            sized_differently +=
-                usize::from(after < count && sized.into_values().collect::<Vec<_>>() != expected);
         }
-        // A table sized up front does hold some of these in another order,
-        // so a different way of building it would be found out here.
-        assert!(sized_differently > 10, "{sized_differently}");
     }
 
     // No builder gives a column a custom widget or a control, so these

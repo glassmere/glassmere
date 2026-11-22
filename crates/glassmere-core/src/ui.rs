@@ -1,5 +1,6 @@
 use crate::collections::HashMap;
 use crate::collections::HashSet;
+use crate::collections::KeyState;
 use crate::controls::{Control, ControlUpdate};
 use crate::window::caption;
 use crate::{Component, Context, CustomWidget, NodeId, Style};
@@ -43,7 +44,7 @@ pub(crate) use toasts::ToastOutbox;
 
 pub use dock::{DockOptions, DockPanel};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum WidgetKey {
     Named(String),
     /// Where in the source the widget was declared, and how many siblings
@@ -53,6 +54,43 @@ pub(crate) enum WidgetKey {
     /// by the dock that shows it, not by the group it is in, so it follows
     /// the panel when the dock moves it.
     Panel(String),
+}
+
+/// Equal keys hash alike under one state. A call site is hashed by its
+/// content, never its address, because two `Location`s of one place are equal
+/// keys. It is made of integers only, which is cheap and needs no allocation:
+/// a call site is the key of every widget that has no name. A name is chosen
+/// by the application, so its bytes are given to the hasher whole, for the
+/// keyed hash of a `KeyState`.
+impl core::hash::Hash for WidgetKey {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Named(name) => {
+                state.write_u8(0);
+                state.write(name.as_bytes());
+            }
+            Self::Site(site, nth) => {
+                state.write_u8(1);
+                state.write_u32(site.line());
+                state.write_u32(site.column());
+                state.write_u32(*nth);
+                let (words, rest) = site.file().as_bytes().as_chunks::<8>();
+                state.write_usize(site.file().len());
+                for word in words {
+                    state.write_u64(u64::from_le_bytes(*word));
+                }
+                if !rest.is_empty() {
+                    let mut word = [0u8; 8];
+                    word[..rest.len()].copy_from_slice(rest);
+                    state.write_u64(u64::from_le_bytes(word));
+                }
+            }
+            Self::Panel(name) => {
+                state.write_u8(2);
+                state.write(name.as_bytes());
+            }
+        }
+    }
 }
 
 impl WidgetKey {
@@ -77,12 +115,20 @@ impl WidgetKey {
     /// Whether two keys are equal, which is what `==` says too, with the
     /// cheap fields compared before the file path of a call site.
     fn same(&self, other: &Self) -> bool {
+        #[cfg(all(test, feature = "std"))]
+        KEY_COMPARISONS.with(|count| count.set(count.get() + 1));
         match (self, other) {
             (Self::Named(a), Self::Named(b)) | (Self::Panel(a), Self::Panel(b)) => a == b,
             (Self::Site(a, n), Self::Site(b, m)) => n == m && same_site(a, b),
             _ => false,
         }
     }
+}
+
+#[cfg(all(test, feature = "std"))]
+std::thread_local! {
+    /// How many times `WidgetKey::same` ran on this thread.
+    static KEY_COMPARISONS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
 }
 
 /// How many source locations a scope counts in an array before it builds a
@@ -155,9 +201,10 @@ const KEYS_SCANNED: usize = 8;
 #[derive(Default)]
 pub(crate) struct Keys {
     /// The hash of every key that is taken, once the scope is big enough to
-    /// want it. Equal keys have equal hashes, so a hash that is not here
-    /// belongs to a key that is free; one that is here is only a candidate.
-    index: Option<crate::collections::FastSet<u64>>,
+    /// want it, and the state that made them. Equal keys have equal hashes,
+    /// so a hash that is not here belongs to a key that is free; one that is
+    /// here is only a candidate.
+    index: Option<(KeyState, crate::collections::FastSet<u64>)>,
     /// How many of the first `elements` have their hash in `index`.
     indexed: usize,
     /// The keys of elements `take_declared` took back out, which stay taken.
@@ -165,9 +212,9 @@ pub(crate) struct Keys {
 }
 
 /// The hash a scope's table holds a key by.
-fn digest_of(key: &WidgetKey) -> u64 {
+fn digest_of(state: &KeyState, key: &WidgetKey) -> u64 {
     use core::hash::BuildHasher;
-    crate::collections::FastState::default().hash_one(key)
+    state.hash_one(key)
 }
 
 impl Keys {
@@ -183,25 +230,29 @@ impl Keys {
         &mut self,
         elements: &[Element],
         key: &WidgetKey,
-        digest: fn(&WidgetKey) -> u64,
+        digest: fn(&KeyState, &WidgetKey) -> u64,
     ) -> bool {
         if self.index.is_none() && elements.len() + self.retired.len() <= KEYS_SCANNED {
             return !elements.iter().any(|element| element.key.same(key))
                 && !self.retired.iter().any(|retired| retired.same(key));
         }
-        let index = match &mut self.index {
+        let (state, index) = match &mut self.index {
             Some(index) => index,
-            None => self.index.insert(self.retired.iter().map(digest).collect()),
+            None => {
+                let state = KeyState::default();
+                let index = self.retired.iter().map(|key| digest(&state, key)).collect();
+                self.index.insert((state, index))
+            }
         };
         // The siblings from before the table was built, and any added
         // without a claim, such as a popup's, are not in it yet.
         for element in &elements[self.indexed.min(elements.len())..] {
-            index.insert(digest(&element.key));
+            index.insert(digest(state, &element.key));
         }
         self.indexed = elements.len();
         // Another key can have the same hash, so a hash that is there is
         // looked for among the keys themselves.
-        if !index.insert(digest(key))
+        if !index.insert(digest(state, key))
             && (elements.iter().any(|element| element.key.same(key))
                 || self.retired.iter().any(|retired| retired.same(key)))
         {
@@ -218,9 +269,14 @@ impl Keys {
     }
 
     /// `retire` with the hash chosen, to go with `claim_with`.
-    fn retire_with(&mut self, key: WidgetKey, elements_len: usize, digest: fn(&WidgetKey) -> u64) {
-        if let Some(index) = &mut self.index {
-            index.insert(digest(&key));
+    fn retire_with(
+        &mut self,
+        key: WidgetKey,
+        elements_len: usize,
+        digest: fn(&KeyState, &WidgetKey) -> u64,
+    ) {
+        if let Some((state, index)) = &mut self.index {
+            index.insert(digest(state, &key));
         }
         self.indexed = self.indexed.min(elements_len);
         self.retired.push(key);
@@ -1191,7 +1247,8 @@ mod tests {
 
     /// The hashes a scope is tried with: its own, one that is the same for
     /// every key, and one that tells only four keys apart.
-    const DIGESTS: [fn(&WidgetKey) -> u64; 3] = [digest_of, |_| 0, |key| digest_of(key) & 3];
+    const DIGESTS: [fn(&KeyState, &WidgetKey) -> u64; 3] =
+        [digest_of, |_, _| 0, |state, key| digest_of(state, key) & 3];
 
     /// What `Ui::push` does with a key: take it, and put its element in the
     /// scope if it was free.
@@ -1199,7 +1256,7 @@ mod tests {
         keys: &mut Keys,
         elements: &mut Vec<Element>,
         key: &WidgetKey,
-        digest: fn(&WidgetKey) -> u64,
+        digest: fn(&KeyState, &WidgetKey) -> u64,
     ) -> bool {
         let free = keys.claim_with(elements, key, digest);
         if free {
@@ -1215,6 +1272,88 @@ mod tests {
             for b in &keys {
                 assert_eq!(a.same(b), a == b, "{a:?} and {b:?}");
             }
+        }
+    }
+
+    #[test]
+    fn a_call_site_hashes_by_its_content() {
+        use core::hash::BuildHasher;
+        // The same place at another address.
+        let one = here();
+        let other: &'static Location<'static> = Box::leak(Box::new(*one));
+        assert_eq!(one, other);
+        assert!(!core::ptr::eq(one, other), "the places are one location");
+        let state = KeyState::default();
+        let hash = |key: WidgetKey| state.hash_one(key);
+        assert_eq!(
+            hash(WidgetKey::Site(one, 3)),
+            hash(WidgetKey::Site(other, 3))
+        );
+        let places = places();
+        let base = WidgetKey::Site(places[0], 0);
+        let mut seen = vec![hash(base.clone())];
+        for key in [
+            WidgetKey::Site(places[0], 1),
+            WidgetKey::Site(places[1], 0),
+            WidgetKey::Site(places[SITES_INLINE + 6], 0),
+            WidgetKey::Site(places[SITES_INLINE + 7], 0),
+        ] {
+            assert_ne!(key, base);
+            seen.push(hash(key));
+        }
+        seen.sort_unstable();
+        seen.dedup();
+        assert_eq!(seen.len(), 5);
+    }
+
+    #[test]
+    fn names_hash_by_their_kind_and_all_their_bytes() {
+        use core::hash::BuildHasher;
+        let state = KeyState::default();
+        let hash = |key: WidgetKey| state.hash_one(key);
+        assert_ne!(
+            hash(WidgetKey::Named("a".into())),
+            hash(WidgetKey::Panel("a".into()))
+        );
+        assert_ne!(
+            hash(WidgetKey::Named("a".into())),
+            hash(WidgetKey::Named("a\0".into()))
+        );
+        assert_ne!(
+            hash(WidgetKey::Panel("abcdefgh".into())),
+            hash(WidgetKey::Panel("abcdefgh\0\0".into()))
+        );
+    }
+
+    #[test]
+    fn a_scope_of_names_chosen_to_collide_costs_a_few_comparisons_each() {
+        use crate::collections::tests::{one_bucket, one_hash, padded, pairs};
+        use alloc::string::ToString;
+        let rows = (0..10_000).map(|n| format!("row-{n}")).collect();
+        let ids = (100_000_000..100_010_000u32)
+            .map(|n| n.to_string())
+            .collect();
+        for (label, names) in [
+            ("one hash", one_hash(10_000)),
+            ("pairs", pairs(10_000)),
+            ("one bucket", one_bucket(10_000)),
+            ("padded", padded(10_000)),
+            ("rows", rows),
+            ("ids", ids),
+        ] {
+            let mut keys = Keys::default();
+            let mut elements = Vec::new();
+            KEY_COMPARISONS.with(|count| count.set(0));
+            for name in names {
+                assert!(claim(
+                    &mut keys,
+                    &mut elements,
+                    &WidgetKey::Named(name),
+                    digest_of
+                ));
+            }
+            let compared = KEY_COMPARISONS.with(|count| count.get());
+            assert!(compared < 20_000, "{label}: {compared} comparisons");
         }
     }
 
@@ -1278,10 +1417,10 @@ mod tests {
         let mut keys = Keys::default();
         let mut elements = Vec::new();
         for key in &all {
-            assert!(claim(&mut keys, &mut elements, key, |_| 0), "{key:?}");
+            assert!(claim(&mut keys, &mut elements, key, |_, _| 0), "{key:?}");
         }
         for key in &all {
-            assert!(!claim(&mut keys, &mut elements, key, |_| 0), "{key:?}");
+            assert!(!claim(&mut keys, &mut elements, key, |_, _| 0), "{key:?}");
         }
         assert_eq!(elements.len(), all.len());
     }
