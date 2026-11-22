@@ -28,10 +28,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - The synthetic measurer used by tests and benchmarks counts the lines of a text in place of building its whole geometry. Shaped text is measured as before.
   - The code editor reads the lines it declares in one pass over the text, and the undo history of a document drops its oldest step without moving the rest.
   - Nodes that start the same transition in the same frame share one eased progress, and declared elements are reconciled in place instead of being moved on their way into the tree.
+- Stylesheets and files read through `Ui::watched_text`, `Ui::watched_bytes`, `LiveMarkup` and the designer show a change in about a tenth of a second, where it could take half a second and, in a window that kept receiving events, up to a second. The host looks at them every 100 ms for two minutes after the window opens or one of them changes, which wakes an idle window up to ten times a second in that time, and every 500 ms after that. The first change after two quiet minutes takes up to 540 ms, 40 ms more than before, because a file is read once it has stopped changing. While a file keeps changing the host looks at it every 40 ms, up to about twenty-five times a second. Image files and the development runner's stop request are still looked at every 500 ms. A look asks the file system once per file, where it asked twice, and a window that follows no file does not look at all.
 
 ### Fixed
 
 - Typing in the code editor or a text area no longer reads the whole document on every keystroke. The widest line, which sizes the horizontal scroll range, was found again after each edit; it is now kept up to date from the lines the edit changed, and the text is read again only when the widest line itself gets narrower. In a 40,000-line file a keystroke went from 8.5 ms to 37 µs.
+- A stylesheet or watched file is not read while its size or modification time is still changing: a changed file is read once it has been unchanged for 40 ms, or 500 ms after the change was first seen at the latest. A save that truncates the file and then writes it, or that removes it and creates it again, with less than 40 ms between the two steps is not read in between, so it no longer empties the sheet, shows a half-written one or reports a missing file. A writer that keeps the file empty or missing for longer is still read as it is.
+- A change to a stylesheet, watched file or image file that kept the file's modification time but changed its size was not seen, as happens when two writes land within one tick of the file system's clock. It is now.
+- The look at the files was timed from the last window event and not from the last look, so a window that kept receiving events could wait up to a second for a change. It is now timed from the last look.
 
 ## [0.1.7] - 2026-11-18
 
