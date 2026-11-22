@@ -8,6 +8,7 @@ mod images;
 mod input;
 mod os_drag;
 mod platform;
+mod system_motion;
 mod wakeup;
 use glassmere_core::{
     App, Context, DragPayload, Effects, Event, FrameStats, TextEdit, Theme, Ui, app::Action,
@@ -166,25 +167,41 @@ fn resolve_reduced_motion(app: bool, system: Option<bool>) -> bool {
     app || system.unwrap_or(false)
 }
 
-/// The OS preference for reduced motion, where this platform is read.
-#[cfg(windows)]
-fn system_reduced_motion() -> Option<bool> {
-    glassmere_win32::animations_disabled()
+/// Takes the system's current preference into `context`, with the
+/// application's own option on top, and notes in `seen` which answer that was,
+/// so that a later change of the answer is noticed. It takes the fields and
+/// not `self` because its callers hold a borrow of the window state, as
+/// `check_families` does.
+fn apply_system_motion(context: &mut Context, seen: &mut usize, app: bool) {
+    take_system_motion(context, seen, app, system_motion::snapshot());
 }
 
-/// No platform query exists here yet: no preference.
-#[cfg(not(windows))]
-fn system_reduced_motion() -> Option<bool> {
-    None
+/// `apply_system_motion` for the answer `snapshot` pairs with its generation.
+fn take_system_motion(
+    context: &mut Context,
+    seen: &mut usize,
+    app: bool,
+    (generation, system): (usize, Option<bool>),
+) {
+    *seen = generation;
+    context.set_reduced_motion(resolve_reduced_motion(app, system));
 }
 
-fn reduced_motion(app: bool) -> bool {
-    resolve_reduced_motion(app, system_reduced_motion())
+/// Takes the system's answer again when it is not the one `seen` stands for.
+fn follow_system_motion(context: &mut Context, seen: &mut usize, app: bool) {
+    if system_motion::generation() != *seen {
+        apply_system_motion(context, seen, app);
+    }
 }
 
 #[cfg(test)]
 mod reduced_motion_tests {
-    use super::resolve_reduced_motion;
+    use super::{
+        apply_system_motion, follow_system_motion, resolve_reduced_motion, system_motion,
+        take_system_motion,
+    };
+    use glassmere_core::{Context, MonospaceMeasurer, Spinner};
+    use glassmere_scene::Size;
 
     #[test]
     fn the_application_forces_it_and_the_system_adds_to_it() {
@@ -194,6 +211,70 @@ mod reduced_motion_tests {
         assert!(resolve_reduced_motion(true, None));
         assert!(resolve_reduced_motion(true, Some(false)));
         assert!(resolve_reduced_motion(true, Some(true)));
+    }
+
+    /// Whether `context` skips animations, as a spinner shows: it asks for
+    /// another frame only while animations are on.
+    fn skips_animations(context: &mut Context) -> bool {
+        context.run(Size::new(100.0, 100.0), &mut MonospaceMeasurer, |ui| {
+            ui.spinner(Spinner::new("Busy"));
+        });
+        !context.animating()
+    }
+
+    #[test]
+    fn a_context_takes_the_answer_and_the_option_and_notes_which_answer() {
+        let answers = [None, Some(false), Some(true)];
+        for app in [false, true] {
+            for system in answers {
+                let mut context = Context::new();
+                let mut seen = 99;
+                take_system_motion(&mut context, &mut seen, app, (7, system));
+                assert_eq!(seen, 7);
+                let expected = app || system == Some(true);
+                assert_eq!(skips_animations(&mut context), expected, "{app} {system:?}");
+            }
+        }
+        // A later answer replaces an earlier one, in both directions.
+        let mut context = Context::new();
+        let mut seen = 0;
+        take_system_motion(&mut context, &mut seen, false, (1, Some(true)));
+        assert!(skips_animations(&mut context));
+        take_system_motion(&mut context, &mut seen, false, (2, Some(false)));
+        assert_eq!(seen, 2);
+        assert!(!skips_animations(&mut context));
+    }
+
+    #[test]
+    fn a_window_takes_the_answer_the_system_has_now() {
+        let (generation, system) = system_motion::snapshot();
+        for app in [false, true] {
+            let mut context = Context::new();
+            let mut seen = generation + 5;
+            apply_system_motion(&mut context, &mut seen, app);
+            assert_eq!(seen, generation);
+            let expected = resolve_reduced_motion(app, system);
+            assert_eq!(skips_animations(&mut context), expected, "{app}");
+        }
+    }
+
+    #[test]
+    fn a_frame_takes_the_answer_only_when_it_is_a_newer_one() {
+        let (generation, system) = system_motion::snapshot();
+        let taken = resolve_reduced_motion(false, system);
+        // Set apart from what the answer would make it, to see whether it ran.
+        let mut context = Context::new();
+        context.set_reduced_motion(!taken);
+
+        let mut seen = generation;
+        follow_system_motion(&mut context, &mut seen, false);
+        assert_eq!(seen, generation);
+        assert_eq!(skips_animations(&mut context), !taken);
+
+        let mut seen = generation + 5;
+        follow_system_motion(&mut context, &mut seen, false);
+        assert_eq!(seen, generation);
+        assert_eq!(skips_animations(&mut context), taken);
     }
 }
 
@@ -217,8 +298,9 @@ pub struct AppOptions {
     /// A stylesheet file installed at start and reloaded when it changes on disk.
     pub stylesheet: Option<PathBuf>,
     /// Skips animations. Animations are also skipped while the OS asks for
-    /// reduced motion (read on Windows only), so `false` means "follow the
-    /// system", not "always animate"; `true` forces them off.
+    /// reduced motion (read on Windows and, where `gsettings` reports it, on
+    /// Linux), so `false` means "follow the system", not "always animate";
+    /// `true` forces them off.
     pub reduced_motion: bool,
     /// Whether Left and Right move on screen or in reading order in
     /// bidirectional text.
@@ -848,6 +930,8 @@ struct Application {
     pub(crate) drag_escaped: bool,
     /// Font families already reported as missing, so each is said once.
     families_seen: std::collections::HashSet<String>,
+    /// The system's answer this window last took, see `system_motion`.
+    motion_seen: usize,
     /// The platform's menu and tray icon, kept alive while they are shown.
     menu: Option<platform::NativeMenu>,
     tray: Option<platform::NativeTray>,
@@ -872,7 +956,8 @@ impl Application {
     ) -> Self {
         let mut context = Context::new();
         context.set_opened_files(opened_files());
-        context.set_reduced_motion(reduced_motion(options.reduced_motion));
+        let mut motion_seen = 0;
+        apply_system_motion(&mut context, &mut motion_seen, options.reduced_motion);
         context.set_caret_movement(options.caret_movement);
         context.set_direction(options.direction.resolve());
         // `ToastSender::send` from any thread wakes the loop; the next frame shows the toast.
@@ -908,6 +993,7 @@ impl Application {
             os_drag: None,
             drag_escaped: false,
             families_seen: std::collections::HashSet::new(),
+            motion_seen,
             menu: None,
             tray: None,
             #[cfg(windows)]
@@ -1222,6 +1308,13 @@ impl Application {
             maximized: state.window.is_maximized(),
             focused: state.window.has_focus(),
         });
+        // `gsettings` answers off the event loop and wakes it: take a newer
+        // answer.
+        follow_system_motion(
+            &mut self.context,
+            &mut self.motion_seen,
+            self.options.reduced_motion,
+        );
         // Images decoded in the background since the last frame.
         self.images.deliver(&mut self.context);
         let stats = self.view.frame(
@@ -1684,9 +1777,15 @@ impl Application {
                     self.modifiers = ModifiersState::empty();
                 }
                 if focused {
-                    // The setting may have changed while another window had focus.
-                    self.context
-                        .set_reduced_motion(reduced_motion(self.options.reduced_motion));
+                    // The setting may have changed while another window had
+                    // focus. The host asked for it in the background when the
+                    // focus event came in (`desktop.rs`); this takes what is
+                    // known now.
+                    apply_system_motion(
+                        &mut self.context,
+                        &mut self.motion_seen,
+                        self.options.reduced_motion,
+                    );
                 }
                 if input::window_focus(&mut self.context, &mut self.restore_focus, focused) {
                     state.window.request_redraw();
