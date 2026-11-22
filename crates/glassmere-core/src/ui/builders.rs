@@ -38,9 +38,11 @@ impl Label {
     }
 
     /// Lets the text be selected and copied, but never edited: by dragging
-    /// across it, or with the keyboard once Tab has brought focus to it
-    /// (Shift and the arrow keys, Home and End, Ctrl/Cmd + A, then Ctrl/Cmd +
-    /// C). It draws no border and no background.
+    /// across it, by a double click (a word) or a triple click (a paragraph),
+    /// or with the keyboard once Tab has brought focus to it (Shift and the
+    /// arrow keys, Shift and Up or Down to move by line, Home and End,
+    /// Ctrl/Cmd + A, then Ctrl/Cmd + C). It draws no border and no
+    /// background.
     pub fn selectable(mut self) -> Self {
         self.selectable = true;
         self

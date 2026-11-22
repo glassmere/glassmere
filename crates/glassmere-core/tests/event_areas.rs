@@ -2,10 +2,11 @@ mod support;
 
 use glassmere_core::app::Action;
 use glassmere_core::{
-    AreaBuilder, Button, Context, CustomWidget, Event, EventArea, Key, Length, Role, Semantics,
-    Style, TextEdit, Ui, UiEvent, WidgetBuilder, WidgetInput,
+    AreaBuilder, Button, Context, CustomWidget, Event, EventArea, Key, Label, Length, Role,
+    Semantics, Style, TextEdit, Ui, UiEvent, WidgetBuilder, WidgetInput,
 };
-use glassmere_scene::{Point, Size};
+use glassmere_scene::{Point, Primitive, Size};
+use std::time::Duration;
 use support::{Driven, act, click, on};
 
 const ROOT: Size = Size::new(300.0, 300.0);
@@ -363,4 +364,105 @@ fn an_event_that_reaches_an_area_asks_for_a_frame() {
     assert!(driven.context.event(Event::PointerDown));
     driven.frame();
     assert!(driven.context.event(Event::PointerUp));
+}
+
+#[derive(Default)]
+struct Note {
+    area: EventArea,
+    heard: Vec<UiEvent>,
+    clicks: usize,
+}
+
+const ORDER: &str = "Order 4711 shipped";
+
+fn heard(event: UiEvent) -> Option<Action<Note>> {
+    Some(act(move |s: &mut Note| s.heard.push(event.clone())))
+}
+
+/// A selectable label and a button inside an area that watches the pointer.
+fn note(state: &Note, ui: &mut Ui<'_, Action<Note>>) {
+    ui.keyed("area", |ui| {
+        ui.event_area(
+            Style::default().padding(4.0),
+            AreaBuilder::new(state.area).on_event(heard),
+            |ui| {
+                ui.keyed("note", |ui| ui.label(Label::new(ORDER).selectable()));
+                ui.keyed("press", |ui| {
+                    ui.button(
+                        Button::new("Press")
+                            .enabled(true)
+                            .on_click(act(|s: &mut Note| s.clicks += 1)),
+                    );
+                });
+            },
+        );
+    });
+}
+
+/// Just inside the cell of the ninth character of the label, in "4711".
+fn on_the_word(context: &Context) -> Point {
+    let (rect, size) = context
+        .scene()
+        .primitives
+        .iter()
+        .find_map(|primitive| match primitive {
+            Primitive::Text {
+                rect,
+                text,
+                font_size,
+                ..
+            } if text == ORDER => Some((*rect, *font_size)),
+            Primitive::StyledText {
+                rect, text, style, ..
+            } if text == ORDER => Some((*rect, style.font_size)),
+            _ => None,
+        })
+        .expect("the label is drawn");
+    Point {
+        x: rect.x + 8.0 * size * 0.6 + 1.0,
+        y: rect.y + size * 0.7,
+    }
+}
+
+#[test]
+fn a_double_click_on_a_label_in_an_area_selects_the_word_and_the_area_hears_both_presses() {
+    // Two clicks `gap` milliseconds apart: where they were, what the area
+    // heard, what the label has selected and how often the button was clicked.
+    let two_clicks = |gap: u64| {
+        let mut driven = Driven::new(
+            ROOT,
+            Note {
+                area: EventArea::pointer(),
+                ..Note::default()
+            },
+            note,
+        );
+        let at = on_the_word(&driven.context);
+        for when in [0, gap] {
+            driven.context.set_now(Duration::from_millis(when));
+            click(&mut driven.context, at);
+        }
+        driven.frame();
+        let selected = driven.context.selected_text().map(str::to_owned);
+        (
+            at,
+            driven.state().heard.clone(),
+            selected,
+            driven.state().clicks,
+        )
+    };
+    let (at, quick, word, clicks) = two_clicks(100);
+    let (_, slow, caret, slow_clicks) = two_clicks(1000);
+
+    // The press ends at the label and the area still hears both presses.
+    let click = [
+        UiEvent::PointerMoved(at),
+        UiEvent::PointerDown(at),
+        UiEvent::PointerUp(at),
+    ];
+    assert_eq!(quick, [click.clone(), click].concat());
+    assert_eq!(quick, slow);
+    assert_eq!(word.as_deref(), Some("4711"));
+    assert_eq!(caret.as_deref(), Some(""));
+    assert_eq!((clicks, slow_clicks), (0, 0));
 }
