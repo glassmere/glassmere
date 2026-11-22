@@ -10,8 +10,7 @@ mod os_drag;
 mod platform;
 mod wakeup;
 use glassmere_core::{
-    App, Context, DragPayload, Effects, Event, FrameStats, StyleSheet, TextEdit, Theme, Ui,
-    app::Action,
+    App, Context, DragPayload, Effects, Event, FrameStats, TextEdit, Theme, Ui, app::Action,
 };
 pub use glassmere_core::{Mailbox, MessageSender};
 use glassmere_devtools::Recorder;
@@ -24,7 +23,7 @@ use std::{
     cell::RefCell,
     error::Error,
     num::NonZeroU32,
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
     time::{Duration, Instant},
@@ -283,11 +282,6 @@ impl Default for AppOptions {
         }
     }
 }
-
-/// How often a configured stylesheet is checked for changes.
-// Polling mtimes keeps the host dependency-free; a file watcher
-// (notify) is the upgrade path if half-second latency or idle wakeups matter.
-pub(crate) const STYLESHEET_POLL: Duration = Duration::from_millis(500);
 
 /// When the host was asked to run, for the startup measurement. Whatever
 /// happened before that, including loading the executable, is not in it.
@@ -838,7 +832,9 @@ struct Application {
     overlay_dirty: bool,
     poller: hot::Poller,
     images: images::ImageFiles,
-    last_poll: Instant,
+    schedule: hot::Schedule,
+    /// The development runner may ask this process to stop.
+    runner: bool,
     /// The development runner asked this process to stop.
     hot_stopping: bool,
     retry_pending: bool,
@@ -904,7 +900,8 @@ impl Application {
             overlay_dirty: false,
             poller: hot::Poller::default(),
             images: images::ImageFiles::new(wake),
-            last_poll: Instant::now(),
+            schedule: hot::Schedule::new(Instant::now()),
+            runner: hot::watching(),
             hot_stopping: false,
             retry_pending: false,
             diagnostics_seen: 0,
@@ -927,16 +924,36 @@ impl Application {
 
     /// The earliest moment this window needs the loop to wake without input.
     fn deadline(&self) -> Option<Instant> {
+        let now = Instant::now();
         let wake = self.context.next_wake().map(|at| self.started + at);
-        let polls = self.options.stylesheet.is_some()
-            || !self.context.watched_paths().is_empty()
-            || !self.context.image_paths().is_empty()
-            || hot::active();
-        let poll = polls.then(|| Instant::now() + STYLESHEET_POLL);
-        let retry = self
-            .retry_pending
-            .then(|| Instant::now() + Duration::from_millis(100));
-        [wake, poll, retry].into_iter().flatten().min()
+        let (files, rest) = self.follows();
+        let files = files.then(|| {
+            let settle = self.poller.settle_deadline(self.followed_paths());
+            self.schedule.files_next(now, settle)
+        });
+        let rest = rest.then(|| self.schedule.rest_next());
+        let retry = self.retry_pending.then(|| now + Duration::from_millis(100));
+        [wake, files, rest, retry].into_iter().flatten().min()
+    }
+
+    /// What this window has to look at: the stylesheet and watched files, and
+    /// image files and the runner's stop request.
+    fn follows(&self) -> (bool, bool) {
+        hot::tiers(
+            self.options.stylesheet.is_some(),
+            self.context.watched_paths().len(),
+            self.context.image_paths().len(),
+            self.runner,
+        )
+    }
+
+    /// The stylesheet and the files the view asked to watch.
+    fn followed_paths(&self) -> impl Iterator<Item = &Path> {
+        self.options
+            .stylesheet
+            .as_deref()
+            .into_iter()
+            .chain(self.context.watched_paths().iter().map(PathBuf::as_path))
     }
 
     /// Applies the OS preference when the window follows the system theme.
@@ -952,52 +969,31 @@ impl Application {
     /// Installs the configured stylesheet when it is new or changed on disk.
     /// Returns whether a sheet was installed; parse errors keep the previous sheet.
     fn load_stylesheet(&mut self) -> std::result::Result<bool, String> {
-        let Some(path) = &self.options.stylesheet else {
-            return Ok(false);
-        };
-        let Some(content) = self.poller.changed(path) else {
-            return Ok(false);
-        };
-        let text =
-            String::from_utf8(content?).map_err(|error| format!("{}: {error}", path.display()))?;
-        let mut sheet = StyleSheet::parse(&text)
-            .map_err(|error| format!("{}:{}: {}", path.display(), error.line, error.message))?;
-        // `url(...)` in a sheet is relative to the sheet, not to where the app started.
-        if let Some(directory) = path.parent() {
-            sheet.rebase(directory);
-        }
-        self.context.set_stylesheet(sheet);
-        Ok(true)
+        hot::install_stylesheet(
+            self.options.stylesheet.as_deref(),
+            &mut self.poller,
+            &mut self.context,
+            Instant::now(),
+        )
     }
 
-    /// Loads files the view asked for and reloads the ones that changed.
-    fn load_watched(&mut self) -> bool {
-        let mut changed = false;
-        for path in self.context.watched_paths().to_vec() {
-            if let Some(content) = self.poller.changed(&path) {
-                if let Err(error) = &content {
-                    eprintln!("watched file not loaded: {error}");
-                }
-                changed |= self.context.set_watched_file(&path, content);
-            }
-        }
-        changed
-    }
-
-    /// The periodic tick: stylesheet, watched files and the development
-    /// runner's stop request.
-    fn poll_files(&mut self) {
-        let sheet = match self.load_stylesheet() {
-            Ok(changed) => changed,
-            Err(error) => {
-                eprintln!("stylesheet not reloaded: {error}");
-                false
-            }
-        };
-        self.images.request(&mut self.context, true);
-        if self.load_watched() || sheet {
+    /// The tick for the stylesheet and watched files.
+    fn poll_followed(&mut self, now: Instant) {
+        let redraw = hot::follow(
+            self.options.stylesheet.as_deref(),
+            &mut self.poller,
+            &mut self.schedule,
+            &mut self.context,
+            now,
+        );
+        if redraw {
             self.request_redraw();
         }
+    }
+
+    /// The slow tick: image files and the development runner's stop request.
+    fn poll_rest(&mut self) {
+        self.images.request(&mut self.context, true);
         if !self.hot_stopping && hot::stop_requested() {
             self.hot_stopping = true;
             self.hot_save();
@@ -1257,21 +1253,9 @@ impl Application {
         self.diagnostics_seen = diagnostics.len();
         self.images.request(&mut self.context, false);
         // Files asked for the first time load right away; the next frame shows them.
-        let fresh: Vec<_> = self
-            .context
-            .watched_paths()
-            .iter()
-            .filter(|path| !self.context.watched_known(path))
-            .cloned()
-            .collect();
-        for path in fresh {
-            if let Some(content) = self.poller.changed(&path) {
-                if let Err(error) = &content {
-                    eprintln!("watched file not loaded: {error}");
-                }
-                self.context.set_watched_file(&path, content);
-                state.window.request_redraw();
-            }
+        let now = Instant::now();
+        if hot::load_fresh(&mut self.poller, &mut self.schedule, &mut self.context, now) {
+            state.window.request_redraw();
         }
         let scene_changed = stats.scene_rebuilt;
         let ime_target = self
@@ -1647,9 +1631,19 @@ impl Application {
         }
         // By the clock, not by timer wakeups: a window that redraws every frame
         // (an animation) never sleeps, and its files must still be polled.
-        if self.last_poll.elapsed() >= STYLESHEET_POLL {
-            self.last_poll = Instant::now();
-            self.poll_files();
+        let now = Instant::now();
+        let (files, rest) = self.follows();
+        if files
+            && self
+                .schedule
+                .files_due(now, self.poller.settle_deadline(self.followed_paths()))
+        {
+            self.schedule.looked_files(now);
+            self.poll_followed(now);
+        }
+        if rest && self.schedule.rest_due(now) {
+            self.schedule.looked_rest(now);
+            self.poll_rest();
         }
     }
 

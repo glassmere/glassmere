@@ -232,10 +232,12 @@ impl App for Controls {
                         )
                         .style(hint),
                     );
-                    // The pointer or Shift + arrows select it and Ctrl/Cmd + C copies it; nothing edits it.
+                    // A drag, a double click (a word), a triple click (a paragraph) or Shift + arrows select it,
+                    // and Ctrl/Cmd + C copies it; nothing edits it.
                     ui.label(
                         Label::new(
-                            "Order 4711 shipped on Monday. Select any of this text to copy it.",
+                            "Order 4711 shipped on Monday. Drag across this text, double click a word \
+                             or triple click the paragraph, then copy it.",
                         )
                         .selectable()
                         .style(wrapped.clone()),

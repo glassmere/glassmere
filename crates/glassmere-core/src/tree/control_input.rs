@@ -1,10 +1,12 @@
 use super::control_paint::slider_track;
 use super::*;
+use crate::editor::{paragraph_around, word_around};
 use crate::{TextMove, controls::slider_value};
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
+use glassmere_scene::Affinity;
 
 /// What a text field holds between declarations.
 pub(crate) struct FieldState {
@@ -218,6 +220,60 @@ impl Context {
             return true;
         }
         changed
+    }
+
+    /// A double click (a word) or a triple click (a paragraph) in a selectable
+    /// label.
+    fn select_around(&mut self, id: NodeId, position: Point, paragraph: bool) {
+        // The press places the caret where the pointer is, on the side of the
+        // character it hit.
+        self.editor_pointer(id, position, false);
+        let Some(editor) = self.nodes.get(&id).and_then(|node| node.editor.as_ref()) else {
+            return;
+        };
+        let (at, hit) = (editor.selection.cursor, editor.affinity);
+        let range = if paragraph {
+            paragraph_around(&editor.text, at)
+        } else {
+            word_around(&editor.text, at, hit == Affinity::Upstream)
+        };
+        self.edit(
+            id,
+            TextEdit::Select {
+                anchor: range.start,
+                cursor: range.end,
+            },
+        );
+        // The end of a word that ends a wrapped line stays on that line, so
+        // Home, End and Shift + Up and Down start from where the word is. The
+        // range is empty only in text of nothing but line breaks, which has no
+        // character for the caret to be on a side of.
+        if let Some(editor) = self
+            .nodes
+            .get_mut(&id)
+            .and_then(|node| node.editor.as_mut())
+        {
+            editor.affinity = Affinity::Upstream;
+        }
+    }
+
+    /// Shift + Up or Down in a selectable label: the end of the selection one
+    /// line on. False when there is no line there, so that the key goes on to
+    /// scroll the view as before.
+    fn select_by_line(&mut self, id: NodeId, down: bool) -> bool {
+        let Some(editor) = self
+            .nodes
+            .get_mut(&id)
+            .and_then(|node| node.editor.as_mut())
+        else {
+            return false;
+        };
+        if !editor.move_vertically(down, true) {
+            return false;
+        }
+        self.pending |= Dirty::ACCESSIBILITY;
+        self.invalidate_paint(id);
+        true
     }
 
     pub(super) fn focus_control(&mut self, id: NodeId) {
@@ -817,6 +873,11 @@ impl Context {
                         self.captured = Some(id);
                         if kind == Kind::Slider {
                             self.slider_pointer(id, position);
+                        } else if self.nodes[&id].read_only() && self.press_count >= 2 {
+                            // Two presses in a row take the word under the
+                            // pointer, three its paragraph; Shift does not
+                            // extend them, as in a text area.
+                            self.select_around(id, position, self.press_count >= 3);
                         } else {
                             self.editor_pointer(
                                 id,
@@ -884,6 +945,15 @@ impl Context {
                     // Down reopens the suggestions of an autocomplete field.
                     if *key == Key::ArrowDown && self.open_popup(id) {
                         return Some(true);
+                    }
+                    // A label draws no caret, so Up and Down alone have nothing
+                    // to move and keep scrolling. With Shift they extend the
+                    // selection by a line, and where they cannot (the first or
+                    // last line, a label of one line) they scroll as they did.
+                    if read_only && *shift && matches!(key, Key::ArrowUp | Key::ArrowDown) {
+                        return self
+                            .select_by_line(id, *key == Key::ArrowDown)
+                            .then_some(true);
                     }
                     let edit = match key {
                         Key::ArrowLeft => TextEdit::Move {

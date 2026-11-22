@@ -39,6 +39,7 @@ mod image;
 mod measure;
 mod overlay_input;
 mod paint;
+mod press_count;
 mod rich_editor;
 mod rich_text;
 mod run;
@@ -870,6 +871,14 @@ pub struct Context {
     touches: HashMap<u64, touch_input::Touch>,
     /// When and where the last tap ended, for telling a double tap.
     last_tap: Option<(Duration, Point)>,
+    /// The last press of the pointer, for counting a double and a triple
+    /// click.
+    last_press: Option<press_count::Press>,
+    /// Which press of a quick row the press being handled is (1, 2 or 3).
+    /// Set only while `Context::event` hands a press on, and 1 at every other
+    /// time, so that a press reaching `handle_event` another way (touch) is
+    /// always a single one.
+    press_count: u8,
     fling: Option<touch_input::Fling>,
     /// When a selection drag held outside an editor last scrolled it.
     edge_scroll_at: Option<Duration>,
@@ -1097,6 +1106,8 @@ impl Default for Context {
             toast: toasts::ToastState::default(),
             touches: HashMap::new(),
             last_tap: None,
+            last_press: None,
+            press_count: 1,
             fling: None,
             edge_scroll_at: None,
             messages: None,

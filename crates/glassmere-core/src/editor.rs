@@ -4,7 +4,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::ops::Range;
-use glassmere_scene::{Affinity, Rect, TextGeometry, TextMeasurer, TextStyle, TextWrap};
+use glassmere_scene::{Affinity, Point, Rect, TextGeometry, TextMeasurer, TextStyle, TextWrap};
 use unicode_segmentation::UnicodeSegmentation;
 
 /// What the Left and Right arrow keys mean in bidirectional text.
@@ -114,6 +114,9 @@ pub(crate) struct Editor {
     pub wrapped: bool,
     /// Which neighbour the caret belongs to at a direction boundary.
     pub affinity: Affinity,
+    /// The x a run of Shift + Up and Shift + Down keeps, in geometry
+    /// coordinates: where the first of them started.
+    goal_x: Option<f32>,
     /// Left and Right move on screen instead of in reading order.
     pub visual: bool,
     /// Shift that right-aligns text shorter than a right-to-left field.
@@ -163,6 +166,41 @@ fn boundary(text: &str, byte: usize) -> usize {
         .unwrap_or(0)
 }
 
+/// The word, run of spaces or symbol of `text` that a pointer which hit
+/// `byte` is on. `upstream` is the side `TextGeometry::hit_affinity` reported:
+/// the pointer is on the character before `byte`. A line break gives the empty
+/// range at `byte`. Words are UAX 29 segments, as in Ctrl + arrows and the
+/// rich editor, so a CJK ideograph is a word of its own.
+pub(crate) fn word_around(text: &str, byte: usize, upstream: bool) -> Range<usize> {
+    let byte = boundary(text, byte);
+    let before = text[..byte].char_indices().next_back().map(|(at, _)| at);
+    let probe = match before {
+        Some(before) if upstream || byte == text.len() => before,
+        _ => byte,
+    };
+    for (start, segment) in text.split_word_bound_indices() {
+        let end = start + segment.len();
+        if probe < end {
+            let breaks = segment.chars().all(|ch| ch == '\n' || ch == '\r');
+            return if breaks { byte..byte } else { start..end };
+        }
+    }
+    byte..byte
+}
+
+/// The text between hard line breaks that `byte` is in, without the break. A
+/// byte at the end of a line belongs to that line, one right after a break to
+/// the next. A wrapped paragraph is one piece. A line feed and a carriage
+/// return each break, alone or in a pair, as they do in shaped text; U+2028
+/// does not.
+pub(crate) fn paragraph_around(text: &str, byte: usize) -> Range<usize> {
+    let byte = boundary(text, byte);
+    let breaks = |ch: char| ch == '\n' || ch == '\r';
+    let start = text[..byte].rfind(breaks).map_or(0, |at| at + 1);
+    let end = text[byte..].find(breaks).map_or(text.len(), |at| byte + at);
+    start..end
+}
+
 impl Editor {
     pub fn new(text: &str) -> Self {
         let text = single_line(text);
@@ -183,6 +221,7 @@ impl Editor {
             settled: None,
             wrapped: false,
             affinity: Affinity::Downstream,
+            goal_x: None,
             visual: true,
             align_x: 0.0,
             masked: false,
@@ -210,6 +249,7 @@ impl Editor {
         };
         if text != self.text {
             self.text = text.to_owned();
+            self.goal_x = None;
             self.selection = TextSelection {
                 anchor: boundary(&self.text, self.selection.anchor),
                 cursor: boundary(&self.text, self.selection.cursor),
@@ -391,13 +431,16 @@ impl Editor {
         }
     }
 
+    /// Whether the geometry was shaped for the text as it is now.
+    fn shaped(&self) -> bool {
+        self.geometry_key
+            .as_ref()
+            .is_some_and(|(text, _)| *text == self.text)
+    }
+
     /// One visual step, when the shaped geometry still matches the text.
     fn visual_step(&self, right: bool) -> Option<Option<(usize, Affinity)>> {
-        let current = self
-            .geometry_key
-            .as_ref()
-            .is_some_and(|(text, _)| *text == self.text);
-        (self.visual && current).then(|| {
+        (self.visual && self.shaped()).then(|| {
             self.geometry
                 .visual_step(self.selection.cursor, self.affinity, right)
         })
@@ -406,17 +449,91 @@ impl Editor {
     /// What `apply(TextEdit::CancelComposition)` does, without the copies of
     /// the text and the composition `apply` makes to tell whether anything
     /// changed. True when the composition or the caret's affinity changed.
+    /// Like every edit, it forgets the column a run of vertical moves keeps.
     pub fn cancel_composition(&mut self) -> bool {
+        self.goal_x = None;
         let composing = self.composition.take().is_some();
         let moved = self.affinity != Affinity::Downstream;
         self.affinity = Affinity::Downstream;
         composing || moved
     }
 
+    /// Moves the active end of the selection one visual line up or down,
+    /// keeping the column of the run of moves (`goal_x`). `select` keeps the
+    /// anchor; otherwise the selection collapses there. False, with nothing
+    /// changed, when the geometry is not that of the text, a composition is
+    /// on, the active end has no place in the geometry, there is no line on
+    /// that side, the move would end inside a grapheme, or the geometry has
+    /// no place on that line to land on.
+    pub(crate) fn move_vertically(&mut self, down: bool, select: bool) -> bool {
+        if self.composition.is_some() || !self.shaped() {
+            return false;
+        }
+        // The shaper leaves out the spaces that end a line too narrow to show
+        // them. A byte among them has no place, `caret_at` answers with the
+        // last caret of the text, and the move would start from that line.
+        let cursor = self.selection.cursor;
+        if !self.geometry.carets.iter().any(|stop| stop.byte == cursor)
+            && !self
+                .geometry
+                .clusters
+                .iter()
+                .any(|cluster| cluster.bytes.start == cursor || cluster.bytes.end == cursor)
+        {
+            return false;
+        }
+        let lines = &self.geometry.lines;
+        let caret = self.geometry.caret_at(cursor, self.affinity);
+        let Some(from) = lines.iter().position(|line| (line.y - caret.y).abs() < 0.5) else {
+            return false;
+        };
+        let to = if down {
+            from.checked_add(1)
+        } else {
+            from.checked_sub(1)
+        };
+        let Some(target) = to.and_then(|to| lines.get(to)) else {
+            return false;
+        };
+        let x = self.goal_x.unwrap_or(caret.x);
+        // A blank line has no cluster for a hit to land on: `hit` would pick
+        // the nearest line.
+        let (byte, affinity) = if target.bytes.is_empty() {
+            (target.bytes.start, Affinity::Downstream)
+        } else {
+            self.geometry.hit_affinity(Point {
+                x,
+                y: target.y + target.height / 2.0,
+            })
+        };
+        // A blank line after a line feed and before a CR LF can start between
+        // the CR and the LF, as glassmere-text reports it. No caret is there
+        // and a selection must not end there: the key scrolls, as it does with
+        // no line to move to.
+        if boundary(&self.text, byte) != byte {
+            return false;
+        }
+        // A line can have no clusters and still not be blank, when the shaper
+        // leaves out an overlong word in a right-to-left layout. The hit then
+        // lands on a neighbouring line and the selection would jump there: the
+        // key scrolls instead.
+        if (self.geometry.caret_at(byte, affinity).y - target.y).abs() >= 0.5 {
+            return false;
+        }
+        self.selection.cursor = byte;
+        if !select {
+            self.selection.anchor = byte;
+        }
+        self.affinity = affinity;
+        self.goal_x = Some(x);
+        true
+    }
+
     pub fn apply(&mut self, edit: TextEdit) -> bool {
         if matches!(edit, TextEdit::CancelComposition) {
             return self.cancel_composition();
         }
+        self.goal_x = None;
         let before = (
             self.text.clone(),
             self.selection,
@@ -868,6 +985,339 @@ mod tests {
             editor.prepare(&mut MonospaceMeasurer, wrapped.clone(), 60.0, false);
             assert!(editor.settled.is_none());
         }
+    }
+
+    /// The text of a label shaped at twelve columns a line, as the label
+    /// tests of the kernel are.
+    fn shaped_block(text: &str) -> Editor {
+        let mut editor = Editor::block(text);
+        let wrapped = TextStyle {
+            wrap: TextWrap::Word,
+            ..style(16.0)
+        };
+        editor.prepare(&mut MonospaceMeasurer, wrapped, 120.0, false);
+        editor
+    }
+
+    fn put(editor: &mut Editor, anchor: usize, cursor: usize) {
+        editor.apply(TextEdit::Select { anchor, cursor });
+    }
+
+    fn selection(editor: &Editor) -> (usize, usize) {
+        (editor.selection.anchor, editor.selection.cursor)
+    }
+
+    #[test]
+    fn a_word_is_what_the_pointer_is_on() {
+        let order = "Order 4711 shipped";
+        let table: &[(&str, usize, bool, Range<usize>)] = &[
+            (order, 8, false, 6..10),
+            (order, 2, false, 0..5),
+            // A space is a segment of its own, from either side of it.
+            (order, 5, false, 5..6),
+            (order, 5, true, 0..5),
+            (order, 6, false, 6..10),
+            (order, 6, true, 5..6),
+            (order, 10, true, 6..10),
+            (order, 18, false, 11..18),
+            (order, 18, true, 11..18),
+            (order, 0, true, 0..5),
+            (order, 0, false, 0..5),
+            ("can't stop", 3, false, 0..5),
+            ("can't stop", 5, true, 0..5),
+            ("can't stop", 5, false, 5..6),
+            ("3.14 x", 1, false, 0..4),
+            ("foo_bar baz", 4, false, 0..7),
+            ("a, b", 1, false, 1..2),
+            ("na\u{ef}ve caf\u{e9}", 2, false, 0..6),
+            ("na\u{ef}ve caf\u{e9}", 3, false, 0..6),
+            ("na\u{ef}ve caf\u{e9}", 8, false, 7..12),
+            ("a \u{1F469}\u{200D}\u{1F4BB} b", 2, false, 2..13),
+            ("\u{65E5}\u{672C}", 0, false, 0..3),
+            // A line break is no word.
+            ("a\r\nb", 1, false, 1..1),
+            ("a\r\nb", 3, false, 3..4),
+            ("a\n\nb", 2, false, 2..2),
+            ("", 0, false, 0..0),
+            ("", 0, true, 0..0),
+            // A byte from stale geometry or inside a character must not panic.
+            ("abc", 99, true, 0..3),
+            ("abc", 99, false, 0..3),
+            ("h\u{e9}llo", 2, false, 0..6),
+        ];
+        for (text, byte, upstream, word) in table {
+            assert_eq!(
+                word_around(text, *byte, *upstream),
+                *word,
+                "{text:?} at {byte}, upstream {upstream}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_paragraph_is_the_text_between_line_breaks() {
+        let table: &[(&str, usize, Range<usize>)] = &[
+            ("abc", 0, 0..3),
+            ("abc", 1, 0..3),
+            ("abc", 3, 0..3),
+            ("abc", 99, 0..3),
+            ("a\nbb\n\nccc", 0, 0..1),
+            ("a\nbb\n\nccc", 1, 0..1),
+            ("a\nbb\n\nccc", 2, 2..4),
+            ("a\nbb\n\nccc", 3, 2..4),
+            ("a\nbb\n\nccc", 4, 2..4),
+            ("a\nbb\n\nccc", 5, 5..5),
+            ("a\nbb\n\nccc", 6, 6..9),
+            ("a\nbb\n\nccc", 8, 6..9),
+            ("a\nbb\n\nccc", 9, 6..9),
+            ("a\r\nb", 0, 0..1),
+            ("a\r\nb", 1, 0..1),
+            ("a\r\nb", 3, 3..4),
+            ("ab\n", 2, 0..2),
+            ("ab\n", 3, 3..3),
+            // A carriage return breaks alone, and a pair of the two breaks
+            // whichever comes first, as in shaped text.
+            ("one\rtwo", 0, 0..3),
+            ("one\rtwo", 3, 0..3),
+            ("one\rtwo", 4, 4..7),
+            ("one\rtwo", 7, 4..7),
+            ("abc\r", 1, 0..3),
+            ("abc\r", 4, 4..4),
+            ("a\n\rb", 0, 0..1),
+            ("a\n\rb", 3, 3..4),
+            ("a\n\rb", 4, 3..4),
+            // U+2028 is no break.
+            ("a\u{2028}b", 1, 0..5),
+            // A byte inside a character or between the CR and the LF of a
+            // pair is taken to be where that character or pair starts.
+            ("h\u{e9}llo", 2, 0..6),
+            ("a\r\nb", 2, 0..1),
+            ("\u{1F469}x\ny", 2, 0..5),
+        ];
+        for (text, byte, paragraph) in table {
+            assert_eq!(
+                paragraph_around(text, *byte),
+                *paragraph,
+                "{text:?} at {byte}"
+            );
+        }
+    }
+
+    const PHRASE: &str = "alpha beta gamma delta epsilon";
+
+    #[test]
+    fn moving_by_line_keeps_the_column_and_the_anchor() {
+        let mut editor = shaped_block(PHRASE);
+        put(&mut editor, 8, 8);
+        assert!(editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (8, 20));
+        // The last line has six columns: the end of the text.
+        assert!(editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (8, 30));
+        // Back on a longer line the column comes back.
+        assert!(editor.move_vertically(false, true));
+        assert_eq!(selection(&editor), (8, 20));
+        assert!(editor.move_vertically(false, true));
+        assert_eq!(selection(&editor), (8, 8));
+        // Nothing above the first line.
+        assert!(!editor.move_vertically(false, true));
+        assert_eq!(selection(&editor), (8, 8));
+        // Without Shift the selection collapses where it lands.
+        assert!(editor.move_vertically(true, false));
+        assert_eq!(selection(&editor), (20, 20));
+    }
+
+    #[test]
+    fn moving_down_from_the_last_line_changes_nothing() {
+        let mut editor = shaped_block(PHRASE);
+        put(&mut editor, 25, 25);
+        assert!(!editor.move_vertically(true, true));
+        assert!(!editor.move_vertically(true, false));
+        assert_eq!(selection(&editor), (25, 25));
+        assert_eq!(editor.goal_x, None);
+    }
+
+    #[test]
+    fn the_column_is_forgotten_by_any_other_edit_and_by_new_text() {
+        let mut editor = shaped_block(PHRASE);
+        put(&mut editor, 8, 8);
+        assert!(editor.move_vertically(true, true));
+        assert!(editor.goal_x.is_some());
+        editor.synchronize(PHRASE);
+        assert!(editor.goal_x.is_some());
+        editor.apply(TextEdit::Move {
+            direction: TextMove::Left,
+            select: false,
+            word: false,
+        });
+        assert_eq!(editor.goal_x, None);
+        assert!(editor.move_vertically(true, true));
+        put(&mut editor, 8, 8);
+        assert_eq!(editor.goal_x, None);
+        assert!(editor.move_vertically(true, true));
+        editor.apply(TextEdit::SelectAll);
+        assert_eq!(editor.goal_x, None);
+        put(&mut editor, 8, 8);
+        assert!(editor.move_vertically(true, true));
+        editor.synchronize("something else");
+        assert_eq!(editor.goal_x, None);
+    }
+
+    #[test]
+    fn geometry_of_other_text_moves_nothing() {
+        // One text shorter than the shaped one, whose landing would be past
+        // its end, and one of the same length, which only the text can tell
+        // from the shaped one.
+        for other in ["something else", "ALPHA BETA GAMMA DELTA EPSILON"] {
+            let mut editor = shaped_block(PHRASE);
+            put(&mut editor, 8, 8);
+            editor.synchronize(other);
+            assert!(!editor.move_vertically(true, true), "{other}");
+            assert_eq!(selection(&editor), (8, 8));
+            assert_eq!(editor.goal_x, None);
+        }
+    }
+
+    #[test]
+    fn nothing_moves_by_line_during_a_composition() {
+        let mut editor = shaped_block(PHRASE);
+        put(&mut editor, 8, 8);
+        editor.apply(TextEdit::Preedit {
+            text: "x".into(),
+            selection: None,
+        });
+        assert!(!editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (8, 8));
+    }
+
+    #[test]
+    fn a_blank_line_is_visited() {
+        let mut editor = shaped_block("one\n\nthree");
+        put(&mut editor, 2, 2);
+        assert!(editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (2, 4));
+        assert!(editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (2, 7));
+        assert!(editor.move_vertically(false, true));
+        assert_eq!(selection(&editor), (2, 4));
+        assert!(editor.move_vertically(false, true));
+        assert_eq!(selection(&editor), (2, 2));
+    }
+
+    #[test]
+    fn a_blank_line_that_starts_inside_a_crlf_is_not_moved_to() {
+        // glassmere-text starts the blank line of "a\n\r\nb" between the CR
+        // and the LF.
+        let mut editor = shaped_block("a\n\r\nb");
+        assert_eq!(editor.geometry.lines.len(), 3);
+        editor.geometry.lines[1].bytes = 3..3;
+        for stop in &mut editor.geometry.carets {
+            if stop.byte == 2 {
+                stop.byte = 3;
+            }
+        }
+        put(&mut editor, 0, 0);
+        assert!(!editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (0, 0));
+        assert_eq!(editor.goal_x, None);
+        put(&mut editor, 4, 4);
+        assert!(!editor.move_vertically(false, true));
+        assert_eq!(selection(&editor), (4, 4));
+        assert_eq!(editor.goal_x, None);
+
+        // A blank line between two CR LF starts on a boundary.
+        let mut editor = shaped_block("a\r\n\r\nb");
+        put(&mut editor, 0, 0);
+        assert!(editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (0, 3));
+        assert!(editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (0, 5));
+    }
+
+    #[test]
+    fn a_line_without_clusters_that_is_not_blank_is_not_moved_to() {
+        // glassmere-text reports a line with no bytes and no clusters for an
+        // overlong word in right-to-left text; the hit would land on another
+        // line and the selection would jump to the start.
+        let mut editor = shaped_block(PHRASE);
+        let (y, height) = (editor.geometry.lines[1].y, editor.geometry.lines[1].height);
+        let off_line = |rect: &Rect| rect.y + height <= y || rect.y >= y + height;
+        editor
+            .geometry
+            .clusters
+            .retain(|cluster| off_line(&cluster.rect));
+        editor.geometry.carets.retain(|stop| off_line(&stop.rect));
+        editor.geometry.lines[1].bytes = 0..0;
+        put(&mut editor, 8, 8);
+        assert!(!editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (8, 8));
+        assert_eq!(editor.goal_x, None);
+        put(&mut editor, 25, 25);
+        assert!(!editor.move_vertically(false, true));
+        assert_eq!(selection(&editor), (25, 25));
+        assert_eq!(editor.goal_x, None);
+    }
+
+    #[test]
+    fn a_selection_end_that_has_no_place_in_the_geometry_moves_nothing() {
+        // The shaper leaves out the spaces that end a line too narrow to show
+        // them, so a byte among them has no caret stop and no cluster edge.
+        // The place `caret_at` gives such a byte is the last caret stop: the
+        // stops are in both orders, to put it on the last line and on the
+        // first.
+        for reversed in [false, true] {
+            let mut editor = shaped_block(PHRASE);
+            if reversed {
+                editor.geometry.carets.reverse();
+            }
+            editor.geometry.carets.retain(|stop| stop.byte != 8);
+            editor
+                .geometry
+                .clusters
+                .retain(|cluster| cluster.bytes.start != 8 && cluster.bytes.end != 8);
+            put(&mut editor, 8, 8);
+            for (down, select) in [(false, false), (false, true), (true, false), (true, true)] {
+                assert!(!editor.move_vertically(down, select), "{reversed} {down}");
+                assert_eq!(selection(&editor), (8, 8));
+                assert_eq!(editor.goal_x, None);
+            }
+        }
+
+        // A caret stop alone is a place, and so is a cluster edge alone.
+        let mut editor = shaped_block(PHRASE);
+        editor.geometry.carets.retain(|stop| stop.byte != 8);
+        put(&mut editor, 8, 8);
+        assert!(editor.move_vertically(true, true));
+        let mut editor = shaped_block(PHRASE);
+        editor
+            .geometry
+            .clusters
+            .retain(|cluster| cluster.bytes.start != 8 && cluster.bytes.end != 8);
+        put(&mut editor, 8, 8);
+        assert!(editor.move_vertically(true, true));
+    }
+
+    #[test]
+    fn a_line_of_one_has_nowhere_to_move() {
+        let mut editor = shaped_block("short");
+        put(&mut editor, 2, 2);
+        assert!(!editor.move_vertically(true, true));
+        assert!(!editor.move_vertically(false, true));
+        assert_eq!(selection(&editor), (2, 2));
+    }
+
+    #[test]
+    fn moving_by_line_keeps_the_place_on_screen_in_right_to_left_text() {
+        // Two full lines; the first letter is at the right end of the first.
+        let mut editor = shaped_block(&"\u{5d0}".repeat(24));
+        put(&mut editor, 0, 0);
+        let x = editor.geometry.caret_at(0, editor.affinity).x;
+        assert!(editor.move_vertically(true, false));
+        assert_eq!(editor.selection.cursor, 24);
+        let below = editor.geometry.caret_at(24, editor.affinity);
+        assert_eq!(below.x, x);
+        assert!(editor.move_vertically(false, false));
+        assert_eq!(editor.selection.cursor, 0);
     }
 
     /// Whatever is done to an editor, preparing it with a memory of the
