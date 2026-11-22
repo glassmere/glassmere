@@ -1124,11 +1124,21 @@ mod tests {
         assert_eq!(system.buffers.len(), 1);
     }
 
-    fn fira() -> TextSystem {
-        TextSystem::with_fonts([include_bytes!(
-            "../../glassmere-render-wgpu/fonts/FiraMono-Regular.ttf"
-        )
-        .to_vec()])
+    /// A text system with the font of the wgpu renderer, read when the test
+    /// runs: the font is not part of this crate's package, so a test that
+    /// needs it ends without failing when the repository is not there.
+    fn fira() -> Option<TextSystem> {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../glassmere-render-wgpu/fonts/FiraMono-Regular.ttf"
+        );
+        match std::fs::read(path) {
+            Ok(bytes) => Some(TextSystem::with_fonts([bytes])),
+            Err(_) => {
+                eprintln!("skipped: {path} is missing; this test needs the repository");
+                None
+            }
+        }
     }
 
     /// A block shaped from a buffer that starts with an empty shaped line,
@@ -1189,10 +1199,10 @@ mod tests {
                             rtl,
                             ..TextStyle::default()
                         };
-                        let mut system = fira();
+                        let Some(mut system) = fira() else { return };
                         let key = system.ensure_styled(text, &style, width);
                         let (_, font_size, width) = TextSystem::key(text, &[], &style, width);
-                        let mut fonts = fira().fonts;
+                        let mut fonts = fira().unwrap().fonts;
                         let expected = reference(&mut fonts, text, &style, font_size, width);
                         same(&system.buffers[&key], &expected);
                     }
@@ -1240,9 +1250,9 @@ mod tests {
             ),
         ];
         for (spans, style, runs) in cases {
-            let mut system = fira();
+            let Some(mut system) = fira() else { return };
             let key = system.ensure_rich(&spans, &style, Some(80.0));
-            let mut fonts = fira().fonts;
+            let mut fonts = fira().unwrap().fonts;
             let mut expected = Buffer::new(&mut fonts, Metrics::new(16.0, 16.0 * 1.4));
             expected.set_wrap(&mut fonts, Wrap::WordOrGlyph);
             expected.set_size(&mut fonts, Some(80.0), None);
@@ -1263,9 +1273,9 @@ mod tests {
             family: FontFamily::Monospace,
             ..TextStyle::default()
         };
-        let mut first = fira();
+        let Some(mut first) = fira() else { return };
         let key = first.ensure_styled("Hello", &style, None);
-        let mut later = fira();
+        let mut later = fira().unwrap();
         for text in ["other", "\u{5d0}\u{5d1}", "x y z"] {
             later.ensure_styled(text, &bold, None);
             later.ensure_styled(text, &style, Some(40.0));
@@ -1276,7 +1286,7 @@ mod tests {
 
     #[test]
     fn empty_and_newline_terminated_text_keep_their_lines() {
-        let mut system = fira();
+        let Some(mut system) = fira() else { return };
         let style = TextStyle::default();
         assert_eq!(system.measure_styled("", &style, None).height, 16.0 * 1.4);
         assert_eq!(system.geometry("a\n", &style, None).lines.len(), 2);
@@ -1291,7 +1301,7 @@ mod tests {
 
     #[test]
     fn forced_and_rtl_blocks_are_laid_out() {
-        let mut system = fira();
+        let Some(mut system) = fira() else { return };
         let rtl = TextStyle {
             wrap: TextWrap::Word,
             rtl: true,
@@ -1613,7 +1623,7 @@ mod tests {
 
     #[test]
     fn a_rich_block_without_spans_is_the_plain_block_of_no_text() {
-        let mut system = fira();
+        let Some(mut system) = fira() else { return };
         let style = TextStyle {
             wrap: TextWrap::Word,
             ..TextStyle::default()

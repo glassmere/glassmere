@@ -87,9 +87,11 @@ impl App for Form {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let smoke = std::env::args().any(|arg| arg == "--smoke");
     run(
         AppOptions {
             title: "Bindings".into(),
+            frame_limit: smoke.then_some(2),
             ..AppOptions::default()
         },
         Form {
