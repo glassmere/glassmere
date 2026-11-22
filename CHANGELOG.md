@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - Typing in the code editor or a text area no longer reads the whole document on every keystroke. The widest line, which sizes the horizontal scroll range, was found again after each edit; it is now kept up to date from the lines the edit changed, and the text is read again only when the widest line itself gets narrower. In a 40,000-line file a keystroke went from 8.5 ms to 37 µs.
+- A rich editor no longer works out what a screen reader reads of every block again on every accessibility update. What it read of a block (the length, position and width of each character, and where its words start) is kept with the block's shaped text and copied into place, so a keystroke, a scroll or a repaint elsewhere in the window works out only the block that was edited. The tree it publishes is the same, and its size, and the cost of building it, still grow with the document. In a document of 2,000 paragraphs of 80 characters, reading the editor for an update went from about 11 ms to about 1 ms, both when nothing had changed and after a keystroke.
 
 ## [0.1.7] - 2026-11-18
 
