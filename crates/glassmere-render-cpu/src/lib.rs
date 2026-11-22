@@ -31,7 +31,7 @@ use glassmere_text::{TextKey, TextSystem};
 use photo::{PHOTO_BYTES, Premultiply, Raster};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use text_memo::{TextMemo, ensure_text};
+use text_memo::{TextMemo, ensure_text, text_bytes};
 use tiny_skia::{
     FillRule, FilterQuality, Mask, PathBuilder, Pixmap, PixmapPaint, PixmapRef, Transform,
 };
@@ -43,6 +43,9 @@ const DAMAGE_REGIONS: usize = 8;
 /// Damaged rectangles this close, in logical pixels, are painted as one: a
 /// second pass over a thin gap costs more than painting the gap.
 const DAMAGE_GAP: f32 = 8.0;
+/// Bytes of text that frames painted in part may shape, beyond the text the
+/// last whole frame held, before the next frame is painted whole.
+const STALE_TEXT_BYTES: usize = 64 * 1024;
 /// Stops of a gradient past this are dropped, as on the GPU, where the shader
 /// holds a fixed number of them.
 pub const MAX_GRADIENT_STOPS: usize = 8;
@@ -71,6 +74,14 @@ pub struct CpuRenderer {
     painted: Option<([u32; 2], u32)>,
     /// How many shaped texts the last whole frame kept.
     text_kept: usize,
+    /// Bytes of text the last whole frame held.
+    text_kept_bytes: usize,
+    /// How many shaped texts the cache held, and how many bytes of text
+    /// they came to, when the last frame ended or, for a frame painted in
+    /// part, when it last grew. The count of blocks alone does not bound the
+    /// memory, for a block of text can be large.
+    text_seen: usize,
+    text_seen_bytes: usize,
     /// What the last whole frame asked of the text cache, to be checked
     /// against rather than asked again.
     text_memo: TextMemo,
@@ -394,6 +405,9 @@ impl CpuRenderer {
             target: None,
             painted: None,
             text_kept: 0,
+            text_kept_bytes: 0,
+            text_seen: 0,
+            text_seen_bytes: 0,
             text_memo: TextMemo::default(),
             rasters: HashMap::new(),
             photo_budget: PHOTO_BYTES,
@@ -498,8 +512,24 @@ impl CpuRenderer {
         // A frame painted in part leaves the text cache alone, so text
         // that has gone is still in it. When that has let it grow well past
         // what the last whole frame needed, the next frame is painted whole,
-        // which clears it out.
-        if partial && self.text.buffers.len() > self.text_kept * 2 + 256 {
+        // which clears it out. So is the frame after one that has left the
+        // cache with more bytes of text than the last whole frame held, by a
+        // margin. Text is shaped for the layout before the frame is painted,
+        // so the cache is looked at rather than the text the frame painted.
+        if partial && self.text.buffers.len() > self.text_seen {
+            self.text_seen = self.text.buffers.len();
+            self.text_seen_bytes = self
+                .text
+                .buffers
+                .values()
+                .flat_map(|buffer| buffer.lines.iter())
+                .map(|line| line.text().len())
+                .sum();
+        }
+        if partial
+            && (self.text.buffers.len() > self.text_kept * 2 + 256
+                || self.text_seen_bytes > self.text_kept_bytes + STALE_TEXT_BYTES)
+        {
             self.painted = None;
         }
         let frame = self.stats.frames;
@@ -528,6 +558,7 @@ impl CpuRenderer {
             memo.begin();
             memo
         });
+        let mut held = 0;
         let close = Primitive::PopLayer;
         let mut primitives = scene.primitives.iter();
         loop {
@@ -808,7 +839,10 @@ impl CpuRenderer {
                     }
                     let owned;
                     let key: &TextKey = match memo.as_mut() {
-                        Some(memo) => memo.key(&mut self.text, primitive),
+                        Some(memo) => {
+                            held += text_bytes(primitive);
+                            memo.key(&mut self.text, primitive)
+                        }
                         None => {
                             owned = ensure_text(&mut self.text, primitive);
                             &owned
@@ -823,6 +857,9 @@ impl CpuRenderer {
         if let Some(mut memo) = memo {
             memo.finish(&mut self.text);
             self.text_kept = self.text.buffers.len();
+            self.text_kept_bytes = held;
+            self.text_seen = self.text_kept;
+            self.text_seen_bytes = held;
             self.text_memo = memo;
         }
         surfaces.swap_remove(0)

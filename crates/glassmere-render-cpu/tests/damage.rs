@@ -963,3 +963,150 @@ fn selecting_label_text_repaints_the_label_and_not_the_window() {
     let redrawn = frame(&mut context);
     assert!(redrawn < area / 4, "repainted {redrawn} of {area}");
 }
+
+/// What a log view shows at `tick`: about `bytes` bytes of lines, the last of
+/// which no other tick has.
+fn log_tail(tick: usize, bytes: usize) -> String {
+    let mut text = String::new();
+    let mut line = tick;
+    while text.len() < bytes {
+        text.insert_str(
+            0,
+            &format!("[{line:06}] request served in {} ms\n", line % 97),
+        );
+        line = line.wrapping_sub(1);
+    }
+    text
+}
+
+const LOG_AREA: Rect = Rect {
+    x: 8.0,
+    y: 8.0,
+    width: 300.0,
+    height: 200.0,
+};
+
+fn log_scene(text: String) -> Scene {
+    Scene {
+        size: Size::new(320.0, 240.0),
+        primitives: vec![Primitive::Text {
+            rect: LOG_AREA,
+            text,
+            font_size: 11.0,
+            color: Color(20, 20, 20, 255),
+        }],
+    }
+}
+
+/// Paints `text` of each frame over the last one with the text's own
+/// rectangle as damage, as a whole frame beside it, and returns the most
+/// shaped blocks the renderer held and how many frames were painted whole
+/// after the first.
+fn paint_changing_text(texts: impl Iterator<Item = String>) -> (usize, usize) {
+    let physical = [320, 240];
+    let area = u64::from(physical[0]) * u64::from(physical[1]);
+    let mut incremental = CpuRenderer::with_text_system(fonts());
+    let mut whole = CpuRenderer::with_text_system(fonts());
+    let (mut most, mut whole_frames) = (0, 0);
+    for (frame, text) in texts.enumerate() {
+        let scene = log_scene(text);
+        let damage: &[Rect] = if frame == 0 { &[] } else { &[LOG_AREA] };
+        let partial = incremental
+            .render_damaged(physical, 1.0, &scene, CLEAR, damage)
+            .to_vec();
+        whole_frames += usize::from(frame > 0 && incremental.stats().redrawn == area);
+        let full = whole.render(physical, 1.0, &scene, CLEAR).to_vec();
+        assert_frames_match(
+            &partial,
+            &full,
+            physical[0] as usize,
+            &format!("frame {frame}"),
+        );
+        most = most.max(incremental.text_system().buffers.len());
+    }
+    (most, whole_frames)
+}
+
+/// Frames painted in part keep the text they shaped until a whole frame lets
+/// it go, so a big text that differs on every frame is held once per frame
+/// until the bytes of stale text pass the last whole frame's text plus 64 KiB:
+/// the one block of the scene, and at most one more per frame that fits in
+/// 64 KiB plus the frame that passes it.
+#[test]
+fn a_big_text_that_changes_every_frame_is_not_kept_shaped_forever() {
+    let bytes = 10_000;
+    let (most, whole_frames) = paint_changing_text((0..300).map(|frame| log_tail(frame, bytes)));
+    let bound = 2 + (64 * 1024usize).div_ceil(bytes);
+    assert!(
+        most <= bound,
+        "{most} shaped blocks held, at most {bound} wanted"
+    );
+    assert!(whole_frames > 0, "no whole frame cleaned the cache");
+}
+
+#[test]
+fn a_text_that_grows_by_a_line_each_frame_is_not_kept_shaped_forever() {
+    let mut text = log_tail(0, 8_000);
+    let grown = (0..200).map(|frame| {
+        text.push_str(&format!("[{:06}] streamed line\n", 1000 + frame));
+        text.clone()
+    });
+    let (most, _) = paint_changing_text(grown);
+    // The text is 8 KB at least; the last whole frame held up to 16 KB.
+    let bound = 2 + (64 * 1024usize + 16_000).div_ceil(8_000);
+    assert!(
+        most <= bound,
+        "{most} shaped blocks held, at most {bound} wanted"
+    );
+}
+
+#[test]
+fn a_label_that_changes_every_frame_is_not_kept_shaped_forever() {
+    let bytes = 10_000;
+    let mut renderer = CpuRenderer::with_text_system(fonts());
+    let mut whole = CpuRenderer::with_text_system(fonts());
+    let mut context = Context::new();
+    let physical = [320, 240];
+    let mut most = 0;
+    for frame in 0..300 {
+        let text = log_tail(frame, bytes);
+        context.run(Size::new(320.0, 240.0), renderer.text_system(), |ui| {
+            ui.label(text.as_str());
+        });
+        let damage: Vec<Rect> = if frame == 0 {
+            Vec::new()
+        } else {
+            context.damage_regions().to_vec()
+        };
+        let scene = context.scene();
+        let partial = renderer
+            .render_damaged(physical, 1.0, scene, CLEAR, &damage)
+            .to_vec();
+        let full = whole.render(physical, 1.0, scene, CLEAR).to_vec();
+        assert_frames_match(&partial, &full, 320, &format!("frame {frame}"));
+        most = most.max(renderer.text_system().buffers.len());
+    }
+    let bound = 2 + (64 * 1024usize).div_ceil(bytes);
+    assert!(
+        most <= bound,
+        "{most} shaped blocks held, at most {bound} wanted"
+    );
+}
+
+/// The saving of frames painted in part is kept for small texts: a clock
+/// holds a block of 40 bytes per frame, far from the budget.
+#[test]
+fn a_small_text_that_changes_every_frame_is_still_painted_in_part() {
+    let physical = [320, 240];
+    let area = u64::from(physical[0]) * u64::from(physical[1]);
+    let mut renderer = CpuRenderer::with_text_system(fonts());
+    for frame in 0..=200 {
+        let scene = log_scene(format!("{frame:>40}"));
+        let damage: &[Rect] = if frame == 0 { &[] } else { &[LOG_AREA] };
+        renderer.render_damaged(physical, 1.0, &scene, CLEAR, damage);
+        if frame > 0 {
+            let redrawn = renderer.stats().redrawn;
+            assert!(redrawn < area, "frame {frame} was painted whole");
+        }
+    }
+}
