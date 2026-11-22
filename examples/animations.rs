@@ -240,6 +240,8 @@ impl App for Animations {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     let open = std::env::args().any(|arg| arg == "--open");
+    // Without the flag the application follows the system, where the host reads
+    // it (Windows, and GNOME through gsettings).
     let reduced_motion = std::env::args().any(|arg| arg == "--reduced-motion");
     run(
         AppOptions {
