@@ -60,7 +60,7 @@ fn view(&self, ui: &mut Ui<'_, Msg>) {
 
 `bind` takes what the widget reports and writes it; `change` is a message that changes the state and needs no name. `view` still only reads, and every change still goes through `update`, where the one arm applies it. A `Component` binds its own fields the same way, through its own message. Keep a named message for what has consequences beyond the field: a request, a job, another window, anything `update` needs `Effects` for, or anything a test or a log should be able to name.
 
-A bound field allocates its change when the widget reports, not when it is declared. `change` is made at declaration, one allocation each time, which is nothing for a few buttons and worth a named message in a list of thousands of rows. `examples/bindings.rs` is a form written this way.
+A bound field whose setter captures nothing, like the ones above, allocates nothing when it is declared; the change is allocated when the widget reports. A setter that captures something, such as the index of a row, is stored with the widget's handler, which is one allocation per declaration, and it must be `Clone`. A check box builds the change for its next state while it is declared, so a bound check box costs one allocation per declaration. `change` is made at declaration too, one allocation each time. That is nothing for a few buttons and check boxes, and worth a named message in a list of thousands of rows, as is a bound field whose setter captures. `examples/bindings.rs` is a form written this way.
 
 ## What the framework keeps
 

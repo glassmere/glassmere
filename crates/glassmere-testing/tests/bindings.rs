@@ -150,3 +150,51 @@ fn a_bound_field_works_where_the_message_is_the_change_itself() {
     reset(&mut form);
     assert_eq!(form.name, "");
 }
+
+#[derive(Clone)]
+enum RowMsg {
+    Set(Action<Rows>),
+}
+
+impl From<Action<Rows>> for RowMsg {
+    fn from(change: Action<Rows>) -> Self {
+        Self::Set(change)
+    }
+}
+
+struct Rows {
+    names: Vec<String>,
+}
+
+impl App for Rows {
+    type Message = RowMsg;
+
+    fn update(&mut self, message: RowMsg, _: &mut Effects<'_, RowMsg>) {
+        let RowMsg::Set(change) = message;
+        change(self);
+    }
+
+    fn view(&self, ui: &mut Ui<'_, RowMsg>) {
+        for (index, name) in self.names.iter().enumerate() {
+            ui.keyed(index.to_string(), |ui| {
+                ui.text_input(
+                    format!("Row {index}"),
+                    name,
+                    bind(move |rows: &mut Self, name| rows.names[index] = name),
+                );
+            });
+        }
+    }
+}
+
+#[test]
+fn a_setter_that_captures_an_index_writes_its_own_row() {
+    let names = vec![String::new(); 3];
+    let mut harness = Harness::app(Size::new(600.0, 600.0), Rows { names });
+    for (label, text) in [("Row 2", "c"), ("Row 0", "a")] {
+        let field = harness.by_label(label);
+        harness.focus(field);
+        harness.type_text(text);
+    }
+    assert_eq!(harness.state().names, ["a", "", "c"]);
+}
