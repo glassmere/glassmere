@@ -674,6 +674,73 @@ fn an_image_drawn_far_below_its_size_is_filtered_and_one_to_one_is_not() {
     assert_eq!(pixel(&pixels, 11, 11), [255, 255, 255, 255]);
 }
 
+/// A translucent left half over an opaque right half, 512 texels on a side.
+fn halves() -> Image {
+    let mut rgba = Vec::new();
+    for _ in 0..512 {
+        for x in 0..512 {
+            rgba.extend(if x < 256 {
+                [200, 80, 40, 128]
+            } else {
+                [30, 120, 220, 255]
+            });
+        }
+    }
+    Image::from_rgba8(512, 512, rgba).unwrap()
+}
+
+#[test]
+fn a_translucent_photo_filtered_far_below_its_size_keeps_its_pixels() {
+    let mut renderer = renderer();
+    let image = halves();
+    let picture = |rect: Rect| Primitive::Image {
+        rect,
+        image: image.clone(),
+        source: Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 512.0,
+            height: 512.0,
+        },
+        tint: None,
+        radius: 0.0,
+    };
+    // 512 texels in 41 pixels: three halvings, to 64. The seam falls inside
+    // the pixel at x = 28.
+    let pixels = render(
+        &mut renderer,
+        1.0,
+        vec![picture(rect(8.0, 8.0, 41.0, 41.0))],
+    );
+    for (x, expected) in [
+        (7, WHITE),
+        (10, [229, 194, 189, 255]),
+        (27, [229, 194, 189, 255]),
+        (28, [170, 163, 206, 255]),
+        (29, [30, 120, 220, 255]),
+        (46, [30, 120, 220, 255]),
+    ] {
+        assert_near(pixel(&pixels, x, 28), expected);
+    }
+    // 512 texels in 26 pixels: four halvings, to 32, the seam in the pixel at
+    // x = 21.
+    let pixels = render(
+        &mut renderer,
+        2.0,
+        vec![picture(rect(4.25, 4.0, 13.0, 13.0))],
+    );
+    for (x, expected) in [
+        (7, WHITE),
+        (12, [229, 194, 189, 255]),
+        (20, [229, 194, 189, 255]),
+        (21, [169, 162, 205, 255]),
+        (22, [30, 120, 220, 255]),
+        (30, [30, 120, 220, 255]),
+    ] {
+        assert_near(pixel(&pixels, x, 20), expected);
+    }
+}
+
 #[test]
 fn text_is_drawn_where_it_was_measured_in_its_colour_and_clipped() {
     let mut renderer = renderer();

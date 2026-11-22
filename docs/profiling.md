@@ -33,6 +33,8 @@ cargo run -p glassmere-bench --profile profiling --bin profile -- --list
 | `text/wrap-resize` | 40 wrapped paragraphs in a window dragged narrower and wider, with real shaping. |
 | `render-cpu/full` | The CPU renderer painting the whole form at 1200 by 800. |
 | `render-cpu/damage` | The same scene with one row damaged. |
+| `render-cpu/photo-cold` | A 3 MP photo drawn at thumbnail size by a renderer that has not seen it: the filtering on the render thread. |
+| `render-cpu/photo-revisit` | The same photo repainted by a hover after frames that did not draw it. |
 | `pipeline/one-row` | One row's text changes and the CPU renderer paints the damage: a message to pixels. |
 | `text/shape-cold` | 100 lines of text shaped for the first time. |
 | `text/shape-warm` | The same 100 lines asked for again. |

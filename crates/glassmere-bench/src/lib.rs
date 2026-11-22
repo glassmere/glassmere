@@ -24,7 +24,8 @@ use glassmere_core::{
 };
 use glassmere_render_cpu::CpuRenderer;
 use glassmere_scene::{
-    Color, MonospaceMeasurer, Point, Rect, Size, TextMeasurer, TextStyle, TextWrap,
+    Color, Image, MonospaceMeasurer, Point, Primitive, Rect, Scene, Size, TextMeasurer, TextStyle,
+    TextWrap,
 };
 use glassmere_text::TextSystem;
 use std::collections::{HashMap, HashSet};
@@ -778,19 +779,162 @@ impl Step for Paints {
         let pixels = self
             .renderer
             .render_damaged(size, 1.0, &scene, CLEAR, &nothing);
-        let mut hash = Fingerprint::default();
-        for row in pixels.chunks(size[0] as usize * 4) {
-            let mut line = String::with_capacity(row.len() * 2);
-            for byte in row {
-                let _ = write!(line, "{byte:02x}");
-            }
-            hash.add(&line);
-        }
         format!(
             "pixels {:016x}\n{}",
-            hash.value(),
+            hash_pixels(pixels, size[0] as usize),
             describe(&self.run.context)
         )
+    }
+}
+
+/// A hash of RGBA8 pixels that is `width` wide, a row at a time.
+fn hash_pixels(pixels: &[u8], width: usize) -> u64 {
+    let mut hash = Fingerprint::default();
+    for row in pixels.chunks(width * 4) {
+        let mut line = String::with_capacity(row.len() * 2);
+        for byte in row {
+            let _ = write!(line, "{byte:02x}");
+        }
+        hash.add(&line);
+    }
+    hash.value()
+}
+
+/// A photo of 2000 by 1500 texels, a gradient with a few translucent ones
+/// scattered over it. Drawn at 150 by 100 it is halved three times, and the
+/// last of them from an odd number of rows.
+fn photo() -> Image {
+    const WIDTH: u32 = 2000;
+    const HEIGHT: u32 = 1500;
+    let mut rgba = Vec::with_capacity(WIDTH as usize * HEIGHT as usize * 4);
+    for y in 0..HEIGHT {
+        for x in 0..WIDTH {
+            let alpha = if (x / 97 + y / 61) % 29 == 0 {
+                140
+            } else {
+                255
+            };
+            rgba.extend([
+                (x * 255 / WIDTH) as u8,
+                (y * 255 / HEIGHT) as u8,
+                ((x ^ y) & 255) as u8,
+                alpha,
+            ]);
+        }
+    }
+    Image::from_rgba8(WIDTH, HEIGHT, rgba).expect("the buffer holds every texel")
+}
+
+/// Where the photo is drawn, and the quad that sits beside it.
+const THUMBNAIL: Rect = Rect {
+    x: 0.0,
+    y: 0.0,
+    width: 150.0,
+    height: 100.0,
+};
+const ELSEWHERE: Rect = Rect {
+    x: 200.0,
+    y: 20.0,
+    width: 60.0,
+    height: 60.0,
+};
+
+/// How a scenario of the photo is drawn.
+#[derive(Clone, Copy)]
+enum Visit {
+    /// By a renderer that has not seen it, on every step.
+    Cold,
+    /// Again after frames that did not draw it, as a hover does.
+    Revisit,
+}
+
+/// A scenario that is the CPU renderer drawing a large photo small.
+struct Photo {
+    scene: Scene,
+    renderer: CpuRenderer,
+    visit: Visit,
+    size: [u32; 2],
+}
+
+impl Photo {
+    fn new(visit: Visit) -> Self {
+        let mut primitives = vec![Primitive::Image {
+            rect: THUMBNAIL,
+            image: photo(),
+            source: Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 2000.0,
+                height: 1500.0,
+            },
+            tint: None,
+            radius: 0.0,
+        }];
+        // Something to damage that is not the photo, which needs room beside it.
+        let size = match visit {
+            Visit::Cold => [150, 100],
+            Visit::Revisit => {
+                primitives.push(Primitive::Quad {
+                    rect: ELSEWHERE,
+                    color: Color::rgb(200, 80, 40),
+                    radius: 0.0,
+                });
+                [320, 100]
+            }
+        };
+        let scene = Scene {
+            size: Size::new(size[0] as f32, size[1] as f32),
+            primitives,
+        };
+        let mut paints = Self {
+            scene,
+            renderer: CpuRenderer::with_text_system(text_system()),
+            visit,
+            size,
+        };
+        // Drawn once, so that a revisit finds the photo as an application would.
+        paints.paint(&[]);
+        paints
+    }
+
+    fn paint(&mut self, damage: &[Rect]) {
+        let pixels = self
+            .renderer
+            .render_damaged(self.size, 1.0, &self.scene, CLEAR, damage);
+        std::hint::black_box(pixels.len());
+    }
+}
+
+impl Step for Photo {
+    fn step(&mut self) {
+        match self.visit {
+            Visit::Cold => {
+                self.renderer = CpuRenderer::with_text_system(text_system());
+                self.paint(&[]);
+            }
+            Visit::Revisit => {
+                // Two frames that leave the photo alone, then the one that
+                // draws it.
+                self.paint(&[ELSEWHERE]);
+                self.paint(&[ELSEWHERE]);
+                self.paint(&[THUMBNAIL]);
+            }
+        }
+    }
+
+    fn describe(&mut self) -> String {
+        // Painted again with nothing damaged, as `Paints` does, to read the
+        // pixels the last step left.
+        let nothing = [Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+        }];
+        let pixels = self
+            .renderer
+            .render_damaged(self.size, 1.0, &self.scene, CLEAR, &nothing);
+        format!("pixels {:016x}", hash_pixels(pixels, self.size[0] as usize))
     }
 }
 
@@ -1103,6 +1247,17 @@ pub fn scenarios() -> Vec<Scenario> {
                     }),
                 ))
             },
+        },
+        Scenario {
+            name: "render-cpu/photo-cold",
+            about: "a 3 MP photo drawn at thumbnail size by a renderer that has not seen it: \
+                    the filtering on the render thread",
+            build: || Box::new(Photo::new(Visit::Cold)),
+        },
+        Scenario {
+            name: "render-cpu/photo-revisit",
+            about: "the same photo repainted by a hover after frames that did not draw it",
+            build: || Box::new(Photo::new(Visit::Revisit)),
         },
         Scenario {
             name: "pipeline/one-row",
