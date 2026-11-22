@@ -1,16 +1,18 @@
 //! The reduced-motion preference of GNOME and the desktops that follow it,
 //! asked of `gsettings`. The tool takes tens of milliseconds and may hang, so
 //! it runs on a thread of its own and the window only ever reads the answer
-//! that was kept.
+//! that was kept. A tool that is still running when the application exits is
+//! left to end by itself.
 use crate::wakeup::WakeHandle;
 use std::{
     ffi::{OsStr, OsString},
-    io::Read,
+    io::{self, Read},
     path::Path,
     process::{Child, Command, Stdio},
     sync::{
         Mutex, MutexGuard, PoisonError,
         atomic::{AtomicUsize, Ordering},
+        mpsc,
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -22,6 +24,8 @@ const MIN_INTERVAL: Duration = Duration::from_secs(1);
 /// A tool that has not answered by then is killed and has no answer.
 const TOOL_TIMEOUT: Duration = Duration::from_secs(3);
 const TOOL_POLL: Duration = Duration::from_millis(5);
+/// No more than this much of what the tool prints is read.
+const MAX_OUTPUT: usize = 1024;
 
 static PROBE: Probe = Probe::new();
 
@@ -60,9 +64,20 @@ fn read_stdout(program: &str, args: &[&str], limit: Duration) -> Option<String> 
     collect(child, limit)
 }
 
-/// What `child` printed, when it exited with success within `limit`.
+/// What `child` printed, when it exited with success within `limit`. The
+/// output is read on a thread of its own: a process the tool started may
+/// still hold the pipe after the tool exited, and then the read does not end
+/// by itself. Output that ends in a newline is complete, since the tool has
+/// exited; otherwise what was read when `limit` passes is used. A reader that
+/// is still blocked then is left to end when the pipe closes.
 fn collect(mut child: Child, limit: Duration) -> Option<String> {
     let started = Instant::now();
+    let (sender, receiver) = mpsc::channel();
+    if let Some(stdout) = child.stdout.take() {
+        let _ = thread::Builder::new()
+            .name("glassmere-motion-read".into())
+            .spawn(move || forward(stdout, sender));
+    }
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
@@ -78,14 +93,39 @@ fn collect(mut child: Child, limit: Duration) -> Option<String> {
     if !status.success() {
         return None;
     }
-    let mut text = String::new();
-    child
-        .stdout
-        .take()?
-        .take(1024)
-        .read_to_string(&mut text)
-        .ok()?;
-    Some(text)
+    let mut output = Vec::new();
+    while let Ok(chunk) = receiver.recv_timeout(limit.saturating_sub(started.elapsed())) {
+        output.extend(chunk);
+        if output.ends_with(b"\n") {
+            break;
+        }
+    }
+    String::from_utf8(output)
+        .ok()
+        .filter(|text| !text.is_empty())
+}
+
+/// Sends what `stdout` yields, up to `MAX_OUTPUT` bytes, as it arrives. The
+/// rest is read and dropped: a tool whose pipe closed early would be killed
+/// by SIGPIPE while it still prints.
+fn forward(mut stdout: impl Read, sender: mpsc::Sender<Vec<u8>>) {
+    let mut buffer = [0; MAX_OUTPUT];
+    let mut left = MAX_OUTPUT;
+    while left > 0 {
+        match stdout.read(&mut buffer[..left]) {
+            Ok(0) => return,
+            Ok(read) => {
+                left -= read;
+                if sender.send(buffer[..read].to_vec()).is_err() {
+                    break;
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(_) => return,
+        }
+    }
+    drop(sender);
+    let _ = io::copy(&mut stdout, &mut io::sink());
 }
 
 struct State {
@@ -218,8 +258,8 @@ fn session_bus_in(var: impl Fn(&str) -> Option<OsString>) -> bool {
     session_bus_present(address.as_deref(), runtime_bus)
 }
 
-/// Starts a probe of `command` unless the environment has no session bus, and
-/// calls `changed` when its answer is a new one.
+/// Starts a probe of `command` unless the environment switches it off or has
+/// no session bus, and calls `changed` when its answer is a new one.
 fn refresh_from(
     probe: &'static Probe,
     var: impl Fn(&str) -> Option<OsString>,
@@ -227,7 +267,9 @@ fn refresh_from(
     command: &'static [&'static str],
     changed: impl FnOnce() + Send + 'static,
 ) -> Option<JoinHandle<()>> {
-    if !session_bus_in(var) {
+    if crate::system_motion_switched_off(var(crate::SYSTEM_MOTION_VARIABLE).as_deref())
+        || !session_bus_in(var)
+    {
         return None;
     }
     probe.refresh(now, move || ask(command), changed)
@@ -615,6 +657,108 @@ mod tests {
         assert_eq!(collect(child, Duration::from_millis(100)), None);
         // A killed process nobody waited for stays in the process table.
         assert!(!Path::new(&format!("/proc/{pid}")).exists());
+    }
+
+    /// A probe of `script` run by `sh`, with `limit` and not the real one,
+    /// waited for. What it stored, how long it took, and whether a probe
+    /// started a second later (so none was left running).
+    fn probe_of_script(script: &str, limit: Duration) -> (Option<bool>, Duration, bool) {
+        let probe: &'static Probe = Box::leak(Box::new(Probe::new()));
+        let base = Instant::now();
+        let script = script.to_owned();
+        probe
+            .refresh(
+                base,
+                move || {
+                    read_stdout("sh", &["-c", &script], limit)
+                        .and_then(|text| reduced_from_enable_animations(&text))
+                },
+                || {},
+            )
+            .expect("the probe was due")
+            .join()
+            .unwrap();
+        let took = base.elapsed();
+        let next = probe.refresh(base + 2 * SECOND, || None, || {});
+        let started = next.is_some();
+        if let Some(next) = next {
+            next.join().unwrap();
+        }
+        (probe.snapshot().1, took, started)
+    }
+
+    #[test]
+    fn an_answer_is_used_while_a_child_of_the_tool_holds_its_output() {
+        // The sleeper keeps the standard output open for 3 s after `sh` is gone.
+        let (answer, took, started) =
+            probe_of_script("sleep 3 & echo false", Duration::from_millis(300));
+        assert_eq!(answer, Some(true));
+        assert!(took < 2 * SECOND, "{took:?}");
+        assert!(started);
+    }
+
+    #[test]
+    fn no_answer_is_returned_by_the_limit_while_a_child_holds_the_output() {
+        let (answer, took, started) = probe_of_script("sleep 3 &", Duration::from_millis(300));
+        assert_eq!(answer, None);
+        assert!(took < 2 * SECOND, "{took:?}");
+        assert!(started);
+    }
+
+    #[test]
+    fn the_environment_can_switch_the_tool_off() {
+        let marker = std::env::temp_dir().join(format!("glassmere-ran-{}", std::process::id()));
+        let _ = std::fs::remove_file(&marker);
+        let script = format!("touch '{}'; echo false", marker.display());
+        let command: &'static [&'static str] = Box::leak(
+            vec!["sh", "-c", Box::leak(script.into_boxed_str()), "sh"].into_boxed_slice(),
+        );
+        let bus = |value: Option<&str>| {
+            let mut variables = vec![("DBUS_SESSION_BUS_ADDRESS", OsString::from("unix:path=/x"))];
+            if let Some(value) = value {
+                variables.push(("GLASSMERE_SYSTEM_MOTION", value.into()));
+            }
+            variables
+        };
+        let probe = |value: Option<&str>| {
+            let probe: &'static Probe = Box::leak(Box::new(Probe::new()));
+            let variables = bus(value);
+            refresh_from(
+                probe,
+                environment(&variables),
+                Instant::now(),
+                command,
+                || {},
+            )
+        };
+        assert!(probe(Some("off")).is_none());
+        assert!(!marker.exists());
+        for value in [None, Some(""), Some("on"), Some("OFF"), Some("off ")] {
+            probe(value)
+                .unwrap_or_else(|| panic!("{value:?} left the probe on"))
+                .join()
+                .unwrap();
+            assert!(marker.exists(), "{value:?}");
+            std::fs::remove_file(&marker).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_probe_needs_the_application_the_switches_and_a_bus() {
+        let off = OsStr::new("off");
+        for app in [false, true] {
+            for following in [false, true] {
+                for variable in [None, Some(off), Some(OsStr::new("on"))] {
+                    for bus in [false, true] {
+                        let expected = !app && following && variable != Some(off) && bus;
+                        let wanted = crate::probe_wanted(app, following)
+                            && !crate::system_motion_switched_off(variable)
+                            && session_bus_present(None, bus);
+                        assert_eq!(wanted, expected, "{app} {following} {variable:?} {bus}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]

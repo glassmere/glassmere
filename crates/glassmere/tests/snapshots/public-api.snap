@@ -28,6 +28,7 @@ glassmere use VectorImage = glassmere_scene::VectorImage
 glassmere use devtools = glassmere_devtools
 glassmere use embedded = glassmere_embedded #[cfg(feature = "embedded")]
 glassmere use fluent = glassmere_fluent #[cfg(feature = "fluent")]
+glassmere use follow_system_reduced_motion = glassmere_winit::follow_system_reduced_motion #[cfg(feature = "desktop")]
 glassmere use hot = glassmere_winit::hot #[cfg(feature = "desktop")]
 glassmere use icu = glassmere_icu #[cfg(feature = "icu")]
 glassmere use image = glassmere_image #[cfg(feature = "images")]
@@ -2551,6 +2552,7 @@ glassmere-winit enum GpuMemoryPolicy #[derive(Clone, Copy, Debug, Default, Eq, P
 glassmere-winit enum GraphicsBackend #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-winit enum Placement #[derive(Clone, Debug, Default, Eq, PartialEq)]
 glassmere-winit enum ThemeChoice #[derive(Clone, Debug, PartialEq)]
+glassmere-winit fn follow_system_reduced_motion(follow: bool)
 glassmere-winit fn hot::active() -> bool
 glassmere-winit fn hot::saved_state() -> Option<String>
 glassmere-winit fn locale_direction(locale: &str) -> glassmere_core::Direction

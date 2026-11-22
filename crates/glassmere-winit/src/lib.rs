@@ -23,10 +23,14 @@ pub use graphics::{GpuMemoryPolicy, GraphicsBackend, GraphicsOptions};
 use std::{
     cell::RefCell,
     error::Error,
+    ffi::OsStr,
     num::NonZeroU32,
     path::{Path, PathBuf},
     rc::Rc,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 use wakeup::UserEvent;
@@ -161,6 +165,62 @@ mod direction_tests {
     }
 }
 
+/// Whether windows follow the system's reduced-motion preference, see
+/// [`follow_system_reduced_motion`].
+static FOLLOW_SYSTEM_MOTION: AtomicBool = AtomicBool::new(true);
+
+/// The environment variable that, set to exactly this, keeps the system's
+/// reduced-motion preference from being asked or applied.
+const SYSTEM_MOTION_VARIABLE: &str = "GLASSMERE_SYSTEM_MOTION";
+
+/// Sets whether a window follows the system's reduced-motion preference.
+///
+/// By default it does, where the framework can read it: on Windows, and on
+/// Linux and the BSDs where `gsettings` reports it. On Linux and the BSDs
+/// reading it starts the `gsettings` tool, on a background thread. An
+/// application that must not start processes calls this with `false` before
+/// [`run`], and then `AppOptions::reduced_motion` alone decides. Setting
+/// `GLASSMERE_SYSTEM_MOTION=off` in the environment has the same effect.
+pub fn follow_system_reduced_motion(follow: bool) {
+    FOLLOW_SYSTEM_MOTION.store(follow, Ordering::Relaxed);
+}
+
+/// Whether `value`, the content of `GLASSMERE_SYSTEM_MOTION`, switches the
+/// system's preference off. Only `off` does.
+fn system_motion_switched_off(value: Option<&OsStr>) -> bool {
+    value == Some(OsStr::new("off"))
+}
+
+/// Whether the system's preference is followed: `following` is the setting of
+/// [`follow_system_reduced_motion`] and `variable` the environment variable.
+fn system_motion_followed(following: bool, variable: Option<&OsStr>) -> bool {
+    following && !system_motion_switched_off(variable)
+}
+
+/// Whether asking the system can change what a window does: not when the
+/// application already asks for reduced motion, and not when the system is
+/// not followed.
+fn probe_wanted(app: bool, following: bool) -> bool {
+    !app && following
+}
+
+/// Asks the system in the background for a window whose option is `app`,
+/// unless that cannot matter.
+fn probe_system_motion(wake: &WakeHandle, app: bool) {
+    if probe_wanted(app, FOLLOW_SYSTEM_MOTION.load(Ordering::Relaxed)) {
+        system_motion::refresh(wake);
+    }
+}
+
+/// The system's answer when it is followed, and no answer when it is not.
+/// `read` is not called then, so that nothing is asked of the system.
+fn system_answer(
+    followed: bool,
+    read: impl FnOnce() -> (usize, Option<bool>),
+) -> (usize, Option<bool>) {
+    if followed { read() } else { (0, None) }
+}
+
 /// Whether animations are skipped: the application asked for it, or the
 /// system did. An application cannot turn motion on against the system.
 fn resolve_reduced_motion(app: bool, system: Option<bool>) -> bool {
@@ -173,7 +233,12 @@ fn resolve_reduced_motion(app: bool, system: Option<bool>) -> bool {
 /// not `self` because its callers hold a borrow of the window state, as
 /// `check_families` does.
 fn apply_system_motion(context: &mut Context, seen: &mut usize, app: bool) {
-    take_system_motion(context, seen, app, system_motion::snapshot());
+    let followed = system_motion_followed(
+        FOLLOW_SYSTEM_MOTION.load(Ordering::Relaxed),
+        std::env::var_os(SYSTEM_MOTION_VARIABLE).as_deref(),
+    );
+    let answer = system_answer(followed, system_motion::snapshot);
+    take_system_motion(context, seen, app, answer);
 }
 
 /// `apply_system_motion` for the answer `snapshot` pairs with its generation.
@@ -197,11 +262,13 @@ fn follow_system_motion(context: &mut Context, seen: &mut usize, app: bool) {
 #[cfg(test)]
 mod reduced_motion_tests {
     use super::{
-        apply_system_motion, follow_system_motion, resolve_reduced_motion, system_motion,
-        take_system_motion,
+        FOLLOW_SYSTEM_MOTION, apply_system_motion, follow_system_motion,
+        follow_system_reduced_motion, probe_wanted, resolve_reduced_motion, system_answer,
+        system_motion, system_motion_followed, system_motion_switched_off, take_system_motion,
     };
     use glassmere_core::{Context, MonospaceMeasurer, Spinner};
     use glassmere_scene::Size;
+    use std::{ffi::OsStr, sync::atomic::Ordering};
 
     #[test]
     fn the_application_forces_it_and_the_system_adds_to_it() {
@@ -211,6 +278,71 @@ mod reduced_motion_tests {
         assert!(resolve_reduced_motion(true, None));
         assert!(resolve_reduced_motion(true, Some(false)));
         assert!(resolve_reduced_motion(true, Some(true)));
+    }
+
+    #[test]
+    fn the_system_is_asked_only_where_it_can_matter() {
+        for app in [false, true] {
+            for following in [false, true] {
+                assert_eq!(probe_wanted(app, following), !app && following);
+            }
+        }
+    }
+
+    #[test]
+    fn only_off_switches_the_system_off() {
+        assert!(system_motion_switched_off(Some(OsStr::new("off"))));
+        for value in [
+            None,
+            Some(""),
+            Some("on"),
+            Some("OFF"),
+            Some("off "),
+            Some("1"),
+        ] {
+            assert!(
+                !system_motion_switched_off(value.map(OsStr::new)),
+                "{value:?}"
+            );
+        }
+        for following in [false, true] {
+            for variable in [None, Some("off"), Some("on")] {
+                let followed = system_motion_followed(following, variable.map(OsStr::new));
+                assert_eq!(followed, following && variable != Some("off"));
+            }
+        }
+    }
+
+    #[test]
+    fn without_following_a_system_answer_changes_nothing() {
+        for app in [false, true] {
+            for following in [false, true] {
+                for answer in [None, Some(false), Some(true)] {
+                    let mut asked = false;
+                    let (generation, system) = system_answer(following, || {
+                        asked = true;
+                        (4, answer)
+                    });
+                    assert_eq!(asked, following);
+                    assert_eq!(generation, if following { 4 } else { 0 });
+                    assert_eq!(
+                        resolve_reduced_motion(app, system),
+                        app || (following && answer == Some(true)),
+                        "{app} {following} {answer:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_setting_starts_on_and_can_be_switched() {
+        // The only test that touches the setting: tests share the process.
+        assert!(FOLLOW_SYSTEM_MOTION.load(Ordering::Relaxed));
+        follow_system_reduced_motion(false);
+        assert!(!FOLLOW_SYSTEM_MOTION.load(Ordering::Relaxed));
+        follow_system_reduced_motion(true);
+        assert!(FOLLOW_SYSTEM_MOTION.load(Ordering::Relaxed));
     }
 
     /// Whether `context` skips animations, as a spinner shows: it asks for
@@ -300,7 +432,9 @@ pub struct AppOptions {
     /// Skips animations. Animations are also skipped while the OS asks for
     /// reduced motion (read on Windows and, where `gsettings` reports it, on
     /// Linux), so `false` means "follow the system", not "always animate";
-    /// `true` forces them off.
+    /// `true` forces them off, and then the system is not asked. The system
+    /// is not asked either after `follow_system_reduced_motion(false)` or with
+    /// `GLASSMERE_SYSTEM_MOTION=off` in the environment.
     pub reduced_motion: bool,
     /// Whether Left and Right move on screen or in reading order in
     /// bidirectional text.
@@ -958,6 +1092,10 @@ impl Application {
         context.set_opened_files(opened_files());
         let mut motion_seen = 0;
         apply_system_motion(&mut context, &mut motion_seen, options.reduced_motion);
+        // A window that follows the system does not wait for its first focus
+        // when the probe at startup was skipped; the limit on probes keeps
+        // this from repeating.
+        probe_system_motion(&wake, options.reduced_motion);
         context.set_caret_movement(options.caret_movement);
         context.set_direction(options.direction.resolve());
         // `ToastSender::send` from any thread wakes the loop; the next frame shows the toast.

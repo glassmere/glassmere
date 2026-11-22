@@ -34,5 +34,5 @@ pub use glassmere_winit::hot;
 #[cfg(feature = "desktop")]
 pub use glassmere_winit::{
     AppOptions, DirectionChoice, GpuMemoryPolicy, GpuSetup, GraphicsBackend, GraphicsOptions,
-    Placement, ThemeChoice, run, run_with,
+    Placement, ThemeChoice, follow_system_reduced_motion, run, run_with,
 };
