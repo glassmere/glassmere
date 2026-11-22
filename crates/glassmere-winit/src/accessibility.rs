@@ -622,9 +622,10 @@ pub(crate) fn action(context: &mut Context, request: ActionRequest, scale: f64) 
 mod tests {
     use super::*;
     use glassmere_core::{
-        Button, CodeEditorOptions, Date, EditorPoint, ItemId, Label, Length, Link, ListModel,
-        ListState, MonospaceMeasurer, Style, TextDocument, TextEdit, TextInput, TreeItem,
-        TreeModel, VirtualListOptions,
+        Block, BlockKind, Button, CodeEditorOptions, Date, EditorPoint, ItemId, Label, Length,
+        Link, ListModel, ListState, Mark, MonospaceMeasurer, RichDocument, RichEditorOptions,
+        RichOp, RichPosition, Style, TextDocument, TextEdit, TextInput, TreeItem, TreeModel,
+        VirtualListOptions,
     };
     use glassmere_scene::Size;
     use std::{cell::RefCell, rc::Rc};
@@ -960,6 +961,133 @@ mod tests {
         assert_eq!(id_of(&context, "line 20\n"), Some(before));
         // Lines with other numbers have other ids.
         assert_ne!(id_of(&context, "line 21\n"), Some(before));
+    }
+
+    /// A rich editor as wide as the window, whose operations go to
+    /// `document`, declared twice so that what the first declaration made is
+    /// shaped.
+    fn run_notes(context: &mut Context, document: &Rc<RefCell<RichDocument>>, size: Size) {
+        for _ in 0..2 {
+            let target = Rc::clone(document);
+            let document = document.borrow();
+            context.run(
+                size,
+                &mut MonospaceMeasurer,
+                |ui: &mut glassmere_core::Ui<'_>| {
+                    ui.keyed("notes", |ui| {
+                        ui.rich_editor(
+                            &document,
+                            RichEditorOptions {
+                                label: "Doc".into(),
+                                style: Style::default()
+                                    .width(Length::Percent(1.0))
+                                    .height(Length::Px(300.0))
+                                    .padding(12.0),
+                                toolbar: false,
+                                ..RichEditorOptions::default()
+                            },
+                            move |op| target.borrow_mut().apply(op),
+                        );
+                    });
+                },
+            );
+        }
+    }
+
+    /// The change of the notes numbered `step`, which is the same in every
+    /// window. The window is narrow from step 3 on.
+    fn change_notes(context: &mut Context, document: &Rc<RefCell<RichDocument>>, step: usize) {
+        let at = |block, offset| RichPosition { block, offset };
+        match step {
+            0 => {
+                let mut document = document.borrow_mut();
+                document.set_cursor(at(100, 3), false);
+                document.apply(RichOp::Insert("x".into()));
+            }
+            1 => {
+                let mut document = document.borrow_mut();
+                document.set_cursor(at(50, 2), false);
+                document.apply(RichOp::Newline);
+            }
+            2 => {
+                context.event(glassmere_core::Event::PointerMoved(
+                    glassmere_scene::Point { x: 100.0, y: 100.0 },
+                ));
+                context.event(glassmere_core::Event::Scroll {
+                    delta_x: 0.0,
+                    delta_y: 140.0,
+                });
+            }
+            3 => {}
+            4 => {
+                let mut document = document.borrow_mut();
+                document.set_cursor(at(200, 0), false);
+                document.set_cursor(at(200, 5), true);
+                document.apply(RichOp::Toggle(Mark::Bold));
+            }
+            _ => unreachable!(),
+        }
+        let size = if step >= 3 { 100.0 } else { 600.0 };
+        run_notes(context, document, Size::new(size, 400.0));
+    }
+
+    fn notes_document() -> Rc<RefCell<RichDocument>> {
+        let blocks = (0..300)
+            .map(|n| Block::new(BlockKind::Paragraph, &format!("block {n}")))
+            .collect();
+        Rc::new(RefCell::new(RichDocument::from_blocks(blocks)))
+    }
+
+    #[test]
+    fn a_rich_editor_publishes_a_run_per_line_of_every_block_and_the_same_tree_after_changes() {
+        let document = notes_document();
+        let mut context = Context::new();
+        run_notes(&mut context, &document, Size::new(600.0, 400.0));
+        let editor = context
+            .snapshots()
+            .iter()
+            .find(|node| {
+                node.semantics.role == CoreRole::MultilineTextInput && node.semantics.label == "Doc"
+            })
+            .map(|node| node.id)
+            .unwrap();
+        let update = tree(&context, "Doc", 1.0);
+        let node = node_in(&update, NodeId(editor.0));
+        assert_eq!(node.role(), Role::MultilineTextInput);
+        // A run for every block, in order, whatever is in view.
+        let runs = runs_in(&update, node);
+        assert_eq!(runs.len(), 300);
+        for (block, (id, run)) in runs.iter().enumerate() {
+            assert_eq!(*id, run_id(editor, block, 0, 0));
+            let end = if block == 299 { "" } else { "\n" };
+            assert_eq!(run.value(), Some(format!("block {block}{end}").as_str()));
+        }
+
+        // What is published after a change is what a window that was not
+        // read in between publishes.
+        let mut before = tree(&context, "Doc", 2.0);
+        for step in 0..5 {
+            change_notes(&mut context, &document, step);
+            let published = tree(&context, "Doc", 2.0);
+            assert!(published != before, "change {step} changed nothing");
+            let replayed_document = notes_document();
+            let mut replayed = Context::new();
+            run_notes(&mut replayed, &replayed_document, Size::new(600.0, 400.0));
+            for earlier in 0..=step {
+                change_notes(&mut replayed, &replayed_document, earlier);
+            }
+            assert!(
+                published == tree(&replayed, "Doc", 2.0),
+                "the tree differs after change {step}"
+            );
+            before = published;
+        }
+
+        // The scale is applied when the tree is made, not kept with the text.
+        let doubled = tree(&context, "Doc", 2.0);
+        let single = tree(&context, "Doc", 1.0);
+        assert!(doubled != single);
+        assert!(doubled == tree(&context, "Doc", 2.0));
     }
 
     #[test]

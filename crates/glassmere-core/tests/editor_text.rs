@@ -3,8 +3,8 @@ mod support;
 use glassmere_core::app::Action as Message;
 use glassmere_core::{
     Action, Block, BlockKind, CodeEditorOptions, Context, EditorPoint, EditorText, Event, Length,
-    MonospaceMeasurer, NodeId, RichDocument, RichEditorOptions, RichOp, RichPosition, Role, Style,
-    TextDocument, TextInput, TextOp, Ui,
+    Mark, MonospaceMeasurer, NodeId, RichDocument, RichEditorOptions, RichOp, RichPosition, Role,
+    Style, TextDocument, TextInput, TextOp, Ui,
 };
 use glassmere_scene::Size;
 use support::{Driven, on};
@@ -460,4 +460,127 @@ fn a_grapheme_longer_than_a_length_can_say_is_split_into_characters() {
     assert_eq!(lengths.iter().sum::<usize>(), long.len());
     assert!(lengths.len() >= 3);
     assert_eq!(*lengths.last().unwrap(), 1);
+}
+
+/// An editor as wide as the window, which a new size reshapes.
+fn fluid(state: &Pages, ui: &mut Ui<'_, Message<Pages>>) {
+    ui.keyed("editor", |ui| {
+        ui.rich_editor(
+            &state.document,
+            RichEditorOptions {
+                label: "Pages".into(),
+                style: Style::default()
+                    .width(Length::Percent(1.0))
+                    .height(Length::Px(300.0))
+                    .padding(12.0),
+                toolbar: false,
+                ..RichEditorOptions::default()
+            },
+            on(|s: &mut Pages, op: RichOp| s.document.apply(op)),
+        );
+    });
+}
+
+fn at(block: usize, offset: usize) -> RichPosition {
+    RichPosition { block, offset }
+}
+
+/// One change to a window with a rich editor in it, and the frame after it.
+/// The change numbered `step` is the same in every window it is made in.
+fn change(app: &mut Driven<Pages>, step: usize) {
+    let editor = editor_named(&app.context, "Pages");
+    match step {
+        0 => {
+            let document = &mut app.state_mut().document;
+            document.set_cursor(at(30, 3), false);
+            document.apply(RichOp::Insert("x".into()));
+        }
+        1 => {
+            let document = &mut app.state_mut().document;
+            document.set_cursor(at(10, 5), false);
+            document.apply(RichOp::Newline);
+        }
+        2 => {
+            let document = &mut app.state_mut().document;
+            document.set_cursor(at(11, 0), false);
+            document.apply(RichOp::Backspace { word: false });
+        }
+        3 => {
+            let document = &mut app.state_mut().document;
+            document.set_cursor(at(20, 2), false);
+            document.set_cursor(at(20, 8), true);
+            document.apply(RichOp::Toggle(Mark::Bold));
+        }
+        4 => {
+            app.context
+                .event(Event::PointerMoved(glassmere_scene::Point {
+                    x: 100.0,
+                    y: 100.0,
+                }));
+            app.context.event(Event::Scroll {
+                delta_x: 0.0,
+                delta_y: 140.0,
+            });
+        }
+        5 => {
+            app.size = Size::new(300.0, 480.0);
+            app.state_mut();
+        }
+        6 => {
+            assert!(app.context.action(
+                editor,
+                Action::SetSelection {
+                    anchor: point(5, 2),
+                    focus: point(8, 4),
+                },
+            ));
+        }
+        _ => unreachable!(),
+    }
+    app.frame();
+    app.frame();
+}
+
+#[test]
+fn a_rich_editor_read_after_every_change_equals_a_fresh_read() {
+    let blocks = (0..60)
+        .map(|n| {
+            Block::new(
+                BlockKind::Paragraph,
+                &format!("paragraph {n} {}", "word ".repeat(10)),
+            )
+        })
+        .collect::<Vec<_>>();
+    let started = || {
+        Driven::new(
+            ROOT,
+            Pages {
+                document: RichDocument::from_blocks(blocks.clone()),
+            },
+            fluid,
+        )
+    };
+    // This window is read after every change, so that what is kept of the
+    // blocks that did not change is used by the next read.
+    let mut kept = started();
+    let editor = editor_named(&kept.context, "Pages");
+    let mut last = kept.context.editor_text(editor).unwrap();
+    for step in 0..7 {
+        change(&mut kept, step);
+        let read = kept.context.editor_text(editor).unwrap();
+        // A window that made the same changes and was read once, at the end,
+        // has nothing kept.
+        let mut fresh = started();
+        for earlier in 0..=step {
+            change(&mut fresh, earlier);
+        }
+        let editor = editor_named(&fresh.context, "Pages");
+        assert_eq!(
+            read,
+            fresh.context.editor_text(editor).unwrap(),
+            "after change {step}"
+        );
+        assert_ne!(read, last, "change {step} changed nothing that is read");
+        last = read;
+    }
 }
