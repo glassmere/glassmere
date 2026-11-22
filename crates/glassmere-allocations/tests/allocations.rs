@@ -189,6 +189,102 @@ impl App for Wall {
     }
 }
 
+/// `count` keyed text inputs, none of them focused, all showing `text`.
+struct Fields {
+    count: usize,
+    text: &'static str,
+}
+
+impl App for Fields {
+    type Message = Msg;
+
+    fn update(&mut self, _: Msg, _: &mut Effects<'_, Msg>) {}
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        for index in 0..self.count {
+            ui.keyed(format!("field{index}"), |ui| {
+                ui.text_input("Name", self.text, Msg::Name);
+            });
+        }
+    }
+}
+
+/// `count` keyed rows of one label, or of four labels, each declared from a
+/// line of its own, when `wide`.
+struct Rows {
+    count: usize,
+    wide: bool,
+}
+
+impl App for Rows {
+    type Message = Msg;
+
+    fn update(&mut self, _: Msg, _: &mut Effects<'_, Msg>) {}
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        for index in 0..self.count {
+            ui.keyed(format!("row{index}"), |ui| {
+                ui.row(Style::default(), |ui| {
+                    ui.label("name");
+                    if self.wide {
+                        ui.label("kind");
+                        ui.label("size");
+                        ui.label("date");
+                    }
+                });
+            });
+        }
+    }
+}
+
+/// `count` keyed labels in one scope.
+struct Leaves {
+    count: usize,
+}
+
+impl App for Leaves {
+    type Message = Msg;
+
+    fn update(&mut self, _: Msg, _: &mut Effects<'_, Msg>) {}
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        for index in 0..self.count {
+            ui.keyed(format!("leaf{index}"), |ui| ui.label("leaf"));
+        }
+    }
+}
+
+/// A scroll container, keyed "list", of `count` keyed rows, each a label and a
+/// button, so that every row has children.
+struct Scrolling {
+    count: usize,
+}
+
+impl App for Scrolling {
+    type Message = Msg;
+
+    fn update(&mut self, _: Msg, _: &mut Effects<'_, Msg>) {}
+
+    fn view(&self, ui: &mut Ui<'_, Msg>) {
+        ui.keyed("list", |ui| {
+            ui.scroll(Style::default().height(Length::Px(300.0)), |ui| {
+                for index in 0..self.count {
+                    ui.keyed(format!("row{index}"), |ui| {
+                        ui.row(Style::default(), |ui| {
+                            ui.label("name");
+                            ui.button("Open");
+                        });
+                    });
+                }
+            });
+        });
+    }
+}
+
+/// Longer than eight bytes, so that a text built a character at a time
+/// grows more than once.
+const SHOWN: &str = "hello world, 12";
+
 struct Running<A: App> {
     app: A,
     driver: AppDriver<A::Message>,
@@ -497,6 +593,144 @@ fn a_frame_that_paints_every_cell_again_allocates_the_same_at_20_and_200_cells()
     assert!(
         large <= small + 8,
         "painting 20 cells again allocated {small} times and 200 cells {large}"
+    );
+}
+
+/// What a declaration of `count` fields showing `text` allocates.
+fn declaration_cost(count: usize, text: &'static str) -> usize {
+    Running::new(Fields { count, text }).allocated_by(|running| running.driver.invalidate())
+}
+
+/// What the sweep that cancels compositions allocates over `count` fields
+/// showing `text`.
+fn sweep_cost(count: usize, text: &'static str) -> usize {
+    let mut running = Running::new(Fields { count, text });
+    let before = allocations();
+    running.context.event(Event::FocusLost);
+    allocations() - before
+}
+
+// A field's text is copied once in a declaration: into the element, which
+// owns it. Comparing it with the editor's takes no copy of it, however long
+// it is, and neither does cancelling a composition.
+#[test]
+fn a_declared_field_text_costs_one_allocation_per_field() {
+    for count in [20, 50, 200] {
+        let (with_text, without) = (declaration_cost(count, SHOWN), declaration_cost(count, ""));
+        assert!(
+            with_text <= without + count,
+            "{count} fields with text allocated {with_text} times in a declaration, \
+             {without} without"
+        );
+    }
+}
+
+// The sweep visits every field and copies nothing.
+#[test]
+fn a_sweep_that_cancels_compositions_does_not_copy_field_texts() {
+    for count in [20, 200] {
+        let (with_text, without) = (sweep_cost(count, SHOWN), sweep_cost(count, ""));
+        assert_eq!(
+            with_text, without,
+            "a sweep over {count} fields with text allocated {with_text} times, {without} without"
+        );
+    }
+}
+
+/// What a declaration of `count` rows allocates.
+fn rows_cost(count: usize, wide: bool) -> usize {
+    Running::new(Rows { count, wide }).allocated_by(|running| running.driver.invalidate())
+}
+
+/// What a declaration of `count` labels in one scope allocates.
+fn leaves_cost(count: usize) -> usize {
+    Running::new(Leaves { count }).allocated_by(|running| running.driver.invalidate())
+}
+
+// A container compares the key of a new widget with its siblings' and counts
+// the lines that declare them in an array, so a row of four labels builds no
+// table for either. Whatever else a row allocates, the three labels it has
+// beyond the first cost their texts and nothing more.
+#[test]
+fn the_siblings_of_a_small_scope_are_told_apart_without_a_table() {
+    const ROWS: usize = 100;
+    const TEXTS: usize = 3;
+    let (one, four) = (rows_cost(ROWS, false), rows_cost(ROWS, true));
+    assert!(
+        four - one <= ROWS * TEXTS,
+        "{ROWS} rows of one label allocated {one} times in a declaration and of four labels {four}"
+    );
+}
+
+// A scope with many widgets keeps a table of hashes, and no key is copied
+// into it, so a label costs its name and its text however many come before.
+#[test]
+fn the_siblings_of_a_big_scope_are_told_apart_without_copying_their_keys() {
+    const SMALL: usize = 100;
+    const LARGE: usize = 400;
+    const PER_LABEL: usize = 2;
+    // The table of hashes grows by a few steps for the extra labels.
+    const GROWTH: usize = 8;
+    let (small, large) = (leaves_cost(SMALL), leaves_cost(LARGE));
+    assert!(
+        large - small <= (LARGE - SMALL) * PER_LABEL + GROWTH,
+        "{SMALL} labels allocated {small} times in a declaration and {LARGE} labels {large}"
+    );
+}
+
+// Reconciling a container copies the ids of its children once, and builds no
+// list of its new children while they are the ones it had. A row of four
+// labels, declared again unchanged, costs its name, the texts of its labels
+// and that copy.
+#[test]
+fn a_row_declared_again_allocates_its_texts_and_one_list_of_its_children() {
+    const FEW: usize = 20;
+    const MANY: usize = 100;
+    // The name of a row, the text of each of its four labels, and the copy.
+    const PER_ROW: usize = 6;
+    // What the lists of the outer container grow by.
+    const GROWTH: usize = 8;
+    let (few, many) = (rows_cost(FEW, true), rows_cost(MANY, true));
+    assert!(
+        many - few <= (MANY - FEW) * PER_ROW + GROWTH,
+        "{FEW} rows allocated {few} times in a declaration and {MANY} rows {many}"
+    );
+}
+
+/// What one notch of the wheel over a container of `count` rows allocates. The
+/// notch before it, and the frame after that, make the room that this one goes
+/// on using. The bounds of every node are worked out inside the event.
+fn notch_cost(count: usize) -> usize {
+    let mut running = Running::new(Scrolling { count });
+    let bounds = running
+        .context
+        .node(running.context.find(&["list"]).unwrap())
+        .unwrap()
+        .bounds;
+    running.context.event(Event::PointerMoved(Point {
+        x: bounds.x + bounds.width / 2.0,
+        y: bounds.y + bounds.height / 2.0,
+    }));
+    let notch = Event::Scroll {
+        delta_x: 0.0,
+        delta_y: 120.0,
+    };
+    running.context.event(notch.clone());
+    running.frame();
+    let before = allocations();
+    running.context.event(notch);
+    allocations() - before
+}
+
+// Working out the bounds again after a notch moves every row, and none of them
+// is copied or listed for it: a notch allocates no more for 200 rows than for
+// 20, however many of them have children.
+#[test]
+fn a_wheel_notch_allocates_the_same_at_20_and_200_rows() {
+    let (small, large) = (notch_cost(20), notch_cost(200));
+    assert!(
+        large <= small + 8,
+        "a notch over 20 rows allocated {small} times and over 200 rows {large}"
     );
 }
 

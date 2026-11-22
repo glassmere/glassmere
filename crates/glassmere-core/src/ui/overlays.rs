@@ -533,10 +533,8 @@ impl<'a, M: 'static> Ui<'a, M> {
     ) {
         self.group(key, Kind::ContextArea, style, |ui| {
             // The popup panel must be the first child, like combo and menu owners.
+            // Its keys are taken like any sibling's: `Keys` reads them here.
             ui.elements.extend(popup);
-            for element in &ui.elements {
-                ui.keys.insert(element.key.clone());
-            }
             content(ui);
         });
         self.set_control(Control::ContextMenu { items });

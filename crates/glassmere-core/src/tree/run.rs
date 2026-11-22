@@ -455,12 +455,15 @@ impl Context {
         let outer = (self.nodes[&parent].kind == Kind::Dock).then(|| self.enter_dock(Some(parent)));
         let old_children = self.nodes[&parent].children.clone();
         let inherited = self.nodes[&parent].resolved.clone();
+        let total = elements.len();
         // A child is nearly always where it was last time, so it is looked
         // for there first. Only when one is not is a map of the children
-        // not yet matched built, with a copy of each of their keys.
-        let mut matched = alloc::vec![false; old_children.len()];
+        // not yet matched built, with a copy of each of their keys. Until it
+        // is built, the elements before this one all matched in place.
+        let mut matched_in_place = 0;
         let mut available: Option<crate::collections::FastMap<WidgetKey, NodeId>> = None;
-        let mut children = Vec::with_capacity(elements.len());
+        // The new children, made only once they differ from the old ones.
+        let mut children: Option<Vec<NodeId>> = None;
         let (mut created_here, mut removed_here) = (0usize, 0usize);
         for (place, element) in elements.iter_mut().enumerate() {
             let in_place = available.is_none()
@@ -468,17 +471,20 @@ impl Context {
                     .get(place)
                     .is_some_and(|id| self.nodes[id].key == element.key);
             let found = if in_place {
-                matched[place] = true;
+                matched_in_place = place + 1;
                 Some(old_children[place])
             } else {
                 available
                     .get_or_insert_with(|| {
-                        old_children
-                            .iter()
-                            .zip(&matched)
-                            .filter(|(_, matched)| !**matched)
-                            .map(|(id, _)| (self.nodes[id].key.clone(), *id))
-                            .collect()
+                        // Inserted one at a time, so the table grows as
+                        // it always has: the children left over are removed
+                        // in the order it holds them, and a table sized up
+                        // front can hold the same keys in another order.
+                        let mut map = crate::collections::FastMap::default();
+                        for id in &old_children[matched_in_place.min(old_children.len())..] {
+                            map.insert(self.nodes[id].key.clone(), *id);
+                        }
+                        map
                     })
                     .remove(&element.key)
             };
@@ -522,17 +528,23 @@ impl Context {
             if !kept {
                 self.reconcile(id, grandchildren, measurer);
             }
-            children.push(id);
+            match &mut children {
+                Some(children) => children.push(id),
+                None if old_children.get(place) == Some(&id) => {}
+                None => {
+                    let mut list = Vec::with_capacity(total);
+                    list.extend_from_slice(&old_children[..place.min(old_children.len())]);
+                    list.push(id);
+                    children = Some(list);
+                }
+            }
         }
         self.give_spare(elements);
+        // Without the map every element matched in place, and the children
+        // left over are those that follow them.
         let unmatched: Vec<NodeId> = match available {
             Some(available) => available.into_values().collect(),
-            None => old_children
-                .iter()
-                .zip(&matched)
-                .filter(|(_, matched)| !**matched)
-                .map(|(id, _)| *id)
-                .collect(),
+            None => old_children[total.min(old_children.len())..].to_vec(),
         };
         for id in unmatched {
             // A dock panel another parent claimed is no longer a child here.
@@ -545,7 +557,10 @@ impl Context {
                 self.remove_with_exit(id);
             }
         }
-        if old_children != children {
+        // With no new list made, the children are those there were, less
+        // any that followed.
+        if children.is_some() || total != old_children.len() {
+            let children = children.unwrap_or_else(|| old_children[..total].to_vec());
             self.adopt_children(parent, children);
         }
         if let Some(outer) = outer {
@@ -774,13 +789,17 @@ impl Context {
         // next paint anyway, are taken the same way to leave nothing
         // behind. The control and the children are taken last because they
         // are read until then (the children by the anchor's layout style);
-        // nothing reads the others again.
+        // nothing reads the others again. A None over a None is not written:
+        // the move would copy a whole widget or control to leave everything
+        // as it was.
         node.text = core::mem::take(&mut element.text);
         node.style = core::mem::take(&mut element.style);
         node.resolved = resolved;
         node.tooltip = element.tooltip.take();
         node.enabled = element.enabled;
-        node.custom = element.custom.take();
+        if node.custom.is_some() || element.custom.is_some() {
+            node.custom = element.custom.take();
+        }
         if let Control::Collection { offset, .. }
         | Control::TextArea {
             scroll_y: offset, ..
@@ -807,7 +826,9 @@ impl Context {
         } else if node.kind == Kind::Label {
             node.editor = None;
         }
-        node.control = core::mem::take(&mut element.control);
+        if !(matches!(node.control, Control::None) && matches!(element.control, Control::None)) {
+            node.control = core::mem::take(&mut element.control);
+        }
         if paint_changed {
             self.invalidate_paint(id);
         }
@@ -1086,6 +1107,296 @@ impl Context {
                     .is_some_and(|node| node.enabled)
         }) {
             self.cancel_drag();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::collections::{FastMap, FastSet};
+    use crate::{CustomWidget, Effect, Label, MonospaceMeasurer};
+    use alloc::vec;
+    use glassmere_scene::Primitive;
+
+    const SIZE: Size = Size::new(400.0, 4000.0);
+
+    fn next_random(state: &mut u64) -> u64 {
+        *state ^= *state << 13;
+        *state ^= *state >> 7;
+        *state ^= *state << 17;
+        *state
+    }
+
+    /// A random number below `below`.
+    fn below(state: &mut u64, below: usize) -> usize {
+        (next_random(state) >> 16) as usize % below
+    }
+
+    /// What a view declares: the key of each child, and whether it is a
+    /// button and not a label.
+    type Declared = Vec<(String, bool)>;
+
+    fn declare(context: &mut Context, declared: &Declared, style: &Style) -> FrameStats {
+        context.run(SIZE, &mut MonospaceMeasurer, |ui| {
+            for (key, button) in declared {
+                ui.keyed(key.clone(), |ui| {
+                    if *button {
+                        ui.button(key.as_str());
+                    } else {
+                        ui.label(Label::new(key.clone()).style(style.clone()));
+                    }
+                });
+            }
+        })
+    }
+
+    fn root_children(context: &Context) -> Vec<NodeId> {
+        context.nodes[&context.root].children.clone()
+    }
+
+    /// `declared` after a few random edits: children added, dropped, moved
+    /// and turned from labels into buttons or back.
+    fn edited(declared: &Declared, state: &mut u64) -> Declared {
+        let mut next = declared.clone();
+        if below(state, 4) == 0 {
+            return next;
+        }
+        for _ in 0..1 + below(state, 4) {
+            match below(state, 7) {
+                0 | 1 if next.len() < 40 => {
+                    let key = format!("k{}", below(state, 60));
+                    if next.iter().all(|(other, _)| *other != key) {
+                        let at = below(state, next.len() + 1);
+                        next.insert(at, (key, below(state, 2) == 0));
+                    }
+                }
+                2 if !next.is_empty() => {
+                    let at = below(state, next.len());
+                    next.remove(at);
+                }
+                3 if next.len() > 1 => {
+                    let (one, other) = (below(state, next.len()), below(state, next.len()));
+                    next.swap(one, other);
+                }
+                4 if !next.is_empty() => {
+                    let from = below(state, next.len());
+                    let child = next.remove(from);
+                    let to = below(state, next.len() + 1);
+                    next.insert(to, child);
+                }
+                5 if !next.is_empty() => {
+                    let at = below(state, next.len());
+                    next[at].1 = !next[at].1;
+                }
+                6 if !next.is_empty() => next.truncate(below(state, next.len())),
+                _ => {}
+            }
+        }
+        next
+    }
+
+    // A child is the node it was when its key and kind are still declared,
+    // and a new one otherwise; whatever is not declared again is gone. This
+    // is worked out here from the lists, a child at a time.
+    #[test]
+    fn children_are_kept_removed_and_created_as_a_list_of_keys_says() {
+        let mut state = 0x9e37_79b9_7f4a_7c15;
+        let mut context = Context::new();
+        let style = Style::default();
+        let mut declared = Declared::new();
+        let mut ids: Vec<NodeId> = Vec::new();
+        let mut seen: FastSet<NodeId> = FastSet::default();
+        let mut moved = 0;
+        for round in 0..600 {
+            let next = edited(&declared, &mut state);
+            let stats = declare(&mut context, &next, &style);
+            let now = root_children(&context);
+            assert_eq!(now.len(), next.len(), "round {round}");
+            let (mut created, mut reused) = (0, 0);
+            for (at, (key, button)) in next.iter().enumerate() {
+                let node = &context.nodes[&now[at]];
+                assert_eq!(node.key, WidgetKey::Named(key.clone()), "round {round}");
+                assert_eq!(
+                    node.kind,
+                    if *button { Kind::Button } else { Kind::Label },
+                    "round {round}"
+                );
+                assert_eq!(
+                    context.nodes[&context.root].children_by_key[&node.key],
+                    now[at]
+                );
+                match declared.iter().position(|old| old == &next[at]) {
+                    Some(old) => {
+                        assert_eq!(now[at], ids[old], "{key} was made again in round {round}");
+                        reused += 1;
+                    }
+                    None => {
+                        assert!(seen.insert(now[at]), "{key} was not made in round {round}");
+                        created += 1;
+                    }
+                }
+            }
+            let gone: Vec<NodeId> = ids.iter().filter(|id| !now.contains(id)).copied().collect();
+            assert!(gone.iter().all(|id| !context.nodes.contains_key(id)));
+            assert_eq!(
+                (stats.created, stats.reused, stats.removed),
+                (created, reused, gone.len()),
+                "round {round}"
+            );
+            // The list of children is written again exactly when it differs.
+            // A new context starts with everything to be done.
+            if round > 0 {
+                assert_eq!(
+                    stats.dirty.contains(Dirty::TREE),
+                    now != ids,
+                    "round {round}: {declared:?} then {next:?}"
+                );
+                moved += usize::from(now != ids);
+            }
+            seen.extend(now.iter().copied());
+            (declared, ids) = (next, now);
+        }
+        assert!(moved > 200 && moved < 599, "{moved}");
+    }
+
+    /// Which of the children with these `bounds` the ghosts the last frame
+    /// painted are of, in the order they are painted.
+    fn ghosts_painted(context: &Context, bounds: &[Rect]) -> Vec<usize> {
+        context
+            .scene()
+            .primitives
+            .iter()
+            .filter_map(|primitive| match primitive {
+                Primitive::PushLayer { bounds: layer, .. } => {
+                    bounds.iter().position(|rect| rect == layer)
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The table of the children from `from` on, collected from a filter over
+    /// all of them, whose length is not known beforehand, so that the table
+    /// grows as it is filled.
+    fn table_grown(keys: &[WidgetKey], from: usize) -> FastMap<WidgetKey, usize> {
+        let matched: Vec<bool> = (0..keys.len()).map(|at| at < from).collect();
+        keys.iter()
+            .enumerate()
+            .zip(&matched)
+            .filter(|(_, matched)| !**matched)
+            .map(|((at, key), _)| (key.clone(), at))
+            .collect()
+    }
+
+    /// The same table collected from a slice, whose length is known, so that
+    /// the table has its room before it is filled.
+    fn table_sized(keys: &[WidgetKey], from: usize) -> FastMap<WidgetKey, usize> {
+        keys[from..]
+            .iter()
+            .enumerate()
+            .map(|(at, key)| (key.clone(), from + at))
+            .collect()
+    }
+
+    // The children a frame no longer declares are removed in the order the
+    // table of the unmatched ones holds them, and each leaves a ghost, so
+    // that order is in the scene. It is the order of a table grown by single
+    // inserts, which is not that of one sized up front.
+    #[test]
+    fn removed_children_leave_ghosts_in_the_order_of_the_table_they_were_found_in() {
+        let mut state = 0x2545_f491_4f6c_dd1d;
+        let style = Style::default().exit(Effect::fade(100));
+        let mut sized_differently = 0;
+        for case in 0..600 {
+            let count = 4 + below(&mut state, 37);
+            let names: Vec<String> = (0..count)
+                .map(|at| format!("{}-{at}", next_random(&mut state) % 10_000))
+                .collect();
+            let declared: Declared = names.iter().map(|name| (name.clone(), false)).collect();
+            let mut context = Context::new();
+            declare(&mut context, &declared, &style);
+            let keys: Vec<WidgetKey> = names.iter().cloned().map(WidgetKey::Named).collect();
+            let bounds: Vec<Rect> = root_children(&context)
+                .iter()
+                .map(|id| context.nodes[id].bounds)
+                .collect();
+            assert!(bounds.windows(2).all(|pair| pair[0].y < pair[1].y));
+            // A prefix stays, and from there some are dropped from among
+            // those that stay after them.
+            let from = below(&mut state, count - 3);
+            let dropped = 3 + below(&mut state, count - from - 2);
+            let after = from + dropped;
+            let mut remaining = declared.clone();
+            remaining.drain(from..after);
+            declare(&mut context, &remaining, &style);
+            let mut expected_table = table_grown(&keys, from);
+            for key in &keys[after..] {
+                expected_table.remove(key);
+            }
+            let expected: Vec<usize> = if after == count {
+                (from..count).collect()
+            } else {
+                expected_table.into_values().collect()
+            };
+            assert_eq!(expected.len(), dropped);
+            assert_eq!(
+                ghosts_painted(&context, &bounds),
+                expected,
+                "case {case}: {count} children, from {from}, {dropped} dropped"
+            );
+            let mut sized = table_sized(&keys, from);
+            for key in &keys[after..] {
+                sized.remove(key);
+            }
+            sized_differently +=
+                usize::from(after < count && sized.into_values().collect::<Vec<_>>() != expected);
+        }
+        // A table sized up front does hold some of these in another order,
+        // so a different way of building it would be found out here.
+        assert!(sized_differently > 10, "{sized_differently}");
+    }
+
+    // No builder gives a column a custom widget or a control, so these
+    // elements are made here. Declared again with any other pair, or with
+    // the same, the node holds the pair it was last declared with.
+    #[test]
+    fn a_node_declared_again_holds_the_custom_widget_and_the_control_it_was_given() {
+        let widget = |width: f32| CustomWidget {
+            size: Size::new(width, 10.0),
+            ..CustomWidget::default()
+        };
+        let checkbox = |checked: bool| Control::Checkbox {
+            label: "box".into(),
+            checked,
+        };
+        let pairs = [
+            (None, Control::None),
+            (Some(widget(10.0)), Control::None),
+            (None, checkbox(true)),
+            (Some(widget(10.0)), checkbox(true)),
+            (Some(widget(20.0)), checkbox(false)),
+            (None, Control::SelectableText),
+        ];
+        let declare = |context: &mut Context,
+                       (custom, control): &(Option<CustomWidget>, Control)| {
+            let mut element = Element::new(WidgetKey::named("node"), Kind::Column);
+            element.custom = custom.clone();
+            element.control = control.clone();
+            context.reconcile(context.root, vec![element], &mut MonospaceMeasurer);
+            let id = context.nodes[&context.root].children[0];
+            let node = &context.nodes[&id];
+            assert_eq!(node.custom, *custom);
+            assert_eq!(node.control, *control);
+        };
+        for first in &pairs {
+            for second in &pairs {
+                let mut context = Context::new();
+                declare(&mut context, first);
+                declare(&mut context, second);
+                declare(&mut context, second);
+                declare(&mut context, first);
+            }
         }
     }
 }

@@ -2204,6 +2204,84 @@ fn a_label_changing_its_text_or_its_selectability_keeps_up() {
     assert_eq!(selected(&context), None);
     frame_at(&mut context, 3, view("Order", true));
     assert!(context.node(note).unwrap().semantics.focusable);
+    // Plain again, and plain once more with another text: nothing is left
+    // of the selection, and the text is the one declared last.
+    frame_at(&mut context, 4, view("Order", false));
+    assert!(!context.node(note).unwrap().semantics.focusable);
+    frame_at(&mut context, 5, view("Order again", false));
+    let node = context.node(note).unwrap();
+    assert!(!node.semantics.focusable);
+    assert_eq!(node.semantics.label, "Order again");
+    assert_eq!(selected(&context), None);
+    frame_at(&mut context, 6, view("Order again", true));
+    assert!(context.node(note).unwrap().semantics.focusable);
+    drag_over(&mut context, "Order again", (0, 0), (0, 18));
+    assert_eq!(selected(&context).as_deref(), Some("Order again"));
+}
+
+#[test]
+fn a_disabled_scope_and_a_disabled_widget_disable_every_kind_of_widget() {
+    let names = [
+        "label", "button", "off", "link", "checkbox", "radio", "slider", "input", "row", "box",
+        "scroll",
+    ];
+    for scope in [true, false] {
+        let mut context = Context::new();
+        frame_at(&mut context, 0, |ui| {
+            ui.enabled(scope, |ui| {
+                ui.keyed("page", |ui| {
+                    ui.column(Style::default(), |ui| {
+                        ui.keyed("label", |ui| ui.label("note"));
+                        ui.keyed("button", |ui| {
+                            ui.button("Save");
+                        });
+                        ui.keyed("off", |ui| {
+                            ui.button(Button::new("Off").enabled(false));
+                        });
+                        ui.keyed("link", |ui| {
+                            ui.link("Docs");
+                        });
+                        ui.keyed("checkbox", |ui| {
+                            ui.checkbox("Agree", false, |_| ());
+                        });
+                        ui.keyed("radio", |ui| {
+                            ui.radio("One", 0, 0, |_| ());
+                        });
+                        ui.keyed("slider", |ui| {
+                            ui.slider("Volume", 5.0, 0.0..=10.0, 1.0, |_| ());
+                        });
+                        ui.keyed("input", |ui| {
+                            ui.text_input("Name", "ada", |_| ());
+                        });
+                        ui.keyed("row", |ui| {
+                            ui.row(Style::default(), |ui| ui.label("in a row"))
+                        });
+                        ui.keyed("box", |ui| ui.container(Style::default(), |_| {}));
+                        ui.keyed("scroll", |ui| {
+                            ui.scroll(Style::default().height(Length::Px(40.0)), |_| {})
+                        });
+                    });
+                });
+            });
+        });
+        let disabled = |path: &[&str]| {
+            context
+                .node(context.find(path).unwrap())
+                .unwrap()
+                .semantics
+                .disabled
+        };
+        assert_eq!(disabled(&["page"]), !scope);
+        for name in names {
+            // Only the button that was declared disabled is so in an enabled
+            // scope.
+            assert_eq!(
+                disabled(&["page", name]),
+                !scope || name == "off",
+                "{name} with the scope enabled: {scope}"
+            );
+        }
+    }
 }
 
 #[test]

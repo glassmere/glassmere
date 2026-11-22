@@ -794,6 +794,260 @@ fn a_field_left_idle_still_follows_its_caret_when_the_window_narrows() {
     }
 }
 
+#[derive(Default)]
+struct Pair {
+    first: String,
+    second: String,
+}
+
+fn pair() -> Driven<Pair> {
+    Driven::new(
+        ROOT,
+        Pair::default(),
+        |state: &Pair, ui: &mut Ui<'_, Msg<Pair>>| {
+            ui.keyed("first", |ui| {
+                ui.text_input(
+                    "First",
+                    &state.first,
+                    on(|s: &mut Pair, text: String| s.first = text),
+                );
+            });
+            ui.keyed("second", |ui| {
+                ui.text_input(
+                    "Second",
+                    &state.second,
+                    on(|s: &mut Pair, text: String| s.second = text),
+                );
+            });
+        },
+    )
+}
+
+/// What the fields draw, without the ones that have no text.
+fn drawn_text(context: &Context) -> Vec<String> {
+    let mut texts = drawn(context);
+    texts.retain(|text| !text.is_empty());
+    texts
+}
+
+#[test]
+fn a_composing_field_loses_its_composition_when_the_window_loses_focus_and_is_repainted() {
+    let mut app = pair();
+    let first = app.context.find(&["first"]).unwrap();
+    app.context.action(first, Action::Focus);
+    app.context.event(Event::Text(TextEdit::Preedit {
+        text: "にほん".into(),
+        selection: None,
+    }));
+    app.frame();
+    assert!(app.context.composing_text());
+    assert_eq!(drawn_text(&app.context), ["にほん"]);
+
+    app.context.event(Event::FocusLost);
+    let stats = app.frame();
+    assert!(!app.context.composing_text());
+    assert!(drawn_text(&app.context).is_empty());
+    assert!(stats.scene_rebuilt);
+
+    // Nothing is left to cancel, in a frame with or without a declaration.
+    assert!(!app.frame().scene_rebuilt);
+    app.state_mut();
+    let stats = app.frame();
+    assert!(stats.declared);
+    assert!(!stats.scene_rebuilt);
+}
+
+#[test]
+fn a_composition_ends_when_focus_moves_and_a_declaration_spares_the_focused_field() {
+    let mut app = pair();
+    let first = app.context.find(&["first"]).unwrap();
+    let second = app.context.find(&["second"]).unwrap();
+    app.context.action(first, Action::Focus);
+    app.context.event(Event::Text(TextEdit::Preedit {
+        text: "にほん".into(),
+        selection: None,
+    }));
+    app.frame();
+    assert_eq!(drawn_text(&app.context), ["にほん"]);
+
+    app.context.action(second, Action::Focus);
+    app.context.event(Event::Text(TextEdit::Preedit {
+        text: "ab".into(),
+        selection: None,
+    }));
+    app.frame();
+    assert!(app.context.composing_text());
+    assert_eq!(drawn_text(&app.context), ["ab"]);
+
+    // A declaration leaves the focused field's composition alone.
+    app.state_mut();
+    app.frame();
+    assert!(app.context.composing_text());
+    assert_eq!(drawn_text(&app.context), ["ab"]);
+}
+
+#[test]
+fn a_composition_ends_when_the_focus_moves_in_a_frame_that_declares_nothing() {
+    let mut app = pair();
+    let first = app.context.find(&["first"]).unwrap();
+    let second = app.context.find(&["second"]).unwrap();
+    app.context.action(first, Action::Focus);
+    app.context.event(Event::Text(TextEdit::Preedit {
+        text: "にほん".into(),
+        selection: None,
+    }));
+    app.frame();
+    assert_eq!(drawn_text(&app.context), ["にほん"]);
+
+    app.context.action(second, Action::Focus);
+    let stats = app.frame();
+    assert!(!stats.declared);
+    assert!(drawn_text(&app.context).is_empty());
+    assert!(stats.scene_rebuilt);
+
+    // There is nothing left to go on with when the first field is back.
+    app.context.action(first, Action::Focus);
+    assert!(!app.context.composing_text());
+    app.frame();
+    assert!(drawn_text(&app.context).is_empty());
+}
+
+struct Switched {
+    first_on: bool,
+}
+
+fn switched() -> Driven<Switched> {
+    Driven::new(
+        ROOT,
+        Switched { first_on: true },
+        |state: &Switched, ui: &mut Ui<'_, Msg<Switched>>| {
+            ui.enabled(state.first_on, |ui| {
+                ui.keyed("first", |ui| {
+                    ui.text_input("First", "", on(|_: &mut Switched, _: String| ()));
+                });
+            });
+            ui.keyed("second", |ui| {
+                ui.text_input("Second", "", on(|_: &mut Switched, _: String| ()));
+            });
+        },
+    )
+}
+
+#[test]
+fn a_composition_ends_when_a_declaration_takes_the_focus_from_its_field() {
+    let mut app = switched();
+    let first = app.context.find(&["first"]).unwrap();
+    app.context.action(first, Action::Focus);
+    app.context.event(Event::Text(TextEdit::Preedit {
+        text: "にほん".into(),
+        selection: None,
+    }));
+    app.frame();
+    assert_eq!(drawn_text(&app.context), ["にほん"]);
+
+    // The field stays, and is no longer one that can have the focus.
+    app.state_mut().first_on = false;
+    let stats = app.frame();
+    assert!(stats.declared);
+    assert!(drawn_text(&app.context).is_empty());
+    assert!(stats.scene_rebuilt);
+    assert!(!app.frame().scene_rebuilt);
+
+    // Nothing comes back with the focus.
+    app.state_mut().first_on = true;
+    app.frame();
+    app.context.action(first, Action::Focus);
+    assert!(!app.context.composing_text());
+    app.frame();
+    assert!(drawn_text(&app.context).is_empty());
+}
+
+/// `single_line`, as a plain loop: what a field shows of what it is given.
+fn one_line(text: &str) -> String {
+    let mut out = String::new();
+    for ch in text.chars() {
+        if matches!(ch, '\n' | '\r' | '\t') {
+            out.push(' ');
+        } else if !ch.is_control() {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+struct Declared {
+    value: String,
+    changes: usize,
+}
+
+fn declared(value: &str) -> Driven<Declared> {
+    Driven::new(
+        ROOT,
+        Declared {
+            value: value.into(),
+            changes: 0,
+        },
+        |state: &Declared, ui: &mut Ui<'_, Msg<Declared>>| {
+            ui.keyed("field", |ui| {
+                // The application does not take what is typed.
+                ui.text_input(
+                    "Field",
+                    &state.value,
+                    on(|s: &mut Declared, _: String| s.changes += 1),
+                );
+            });
+        },
+    )
+}
+
+#[test]
+fn a_declared_value_is_shown_without_its_control_characters_and_a_draft_is_reverted() {
+    let long = format!("{}\n{}", "a".repeat(512), "b".repeat(511));
+    let values = [
+        "",
+        "name 7",
+        "a\tb\r\nc\u{7}d",
+        "x\u{85}y",
+        "é£©¡ end",
+        "emoji 👩‍💻 text longer than eight bytes",
+        "\u{7f}\u{9f}",
+        long.as_str(),
+    ];
+    for value in values {
+        let shown = one_line(value);
+        let mut app = declared(value);
+        let field = app.context.find(&["field"]).unwrap();
+        app.context.action(field, Action::Focus);
+        app.frame();
+        let select_all = |app: &mut Driven<Declared>| {
+            app.context.event(Event::Text(TextEdit::SelectAll));
+            app.frame();
+            app.context.selected_text().map(str::to_owned)
+        };
+        assert_eq!(select_all(&mut app), Some(shown.clone()), "{value:?}");
+
+        // The same value declared again changes nothing.
+        app.state_mut();
+        let stats = app.frame();
+        assert!(stats.declared);
+        assert_eq!(stats.messages, 0);
+        assert!(!stats.scene_rebuilt, "{value:?}");
+        assert_eq!(select_all(&mut app), Some(shown.clone()), "{value:?}");
+
+        // A character the application ignores is taken back.
+        app.context
+            .event(Event::Text(TextEdit::Insert("\u{e9}".into())));
+        app.frame();
+        assert_eq!(app.state().changes, 1);
+        assert_eq!(select_all(&mut app), Some(shown.clone()), "{value:?}");
+        assert!(
+            !app.context.event(Event::Text(TextEdit::Undo)),
+            "{value:?} kept its history"
+        );
+        assert_eq!(select_all(&mut app), Some(shown), "{value:?}");
+    }
+}
+
 #[test]
 fn a_double_click_in_a_text_field_places_a_caret_and_selects_no_word() {
     struct Name {

@@ -1,9 +1,11 @@
 use glassmere_render_cpu::CpuRenderer;
 use glassmere_scene::{
-    Affine, Color, Image, Path, Point, Primitive, Rect, Scene, Size, Stroke, TextMeasurer,
-    TextStyle, VectorImage,
+    Affine, Color, FontFamily, Image, Path, Point, Primitive, Rect, Scene, Size, Stroke,
+    TextMeasurer, TextSpan, TextStyle, TextWrap, VectorImage,
 };
-use glassmere_text::TextSystem;
+use glassmere_text::{TextKey, TextSystem};
+use std::collections::HashSet;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 const SIDE: usize = 64;
 const WHITE: [u8; 4] = [255; 4];
@@ -1120,4 +1122,796 @@ fn frames_painted_in_part_draw_what_a_whole_frame_would_and_do_not_hoard_text() 
     // then cleared by a frame painted whole, more than once.
     assert!(most < 700, "the text cache reached {most}");
     assert!(partial.text_system().buffers.len() < 700);
+}
+
+fn text_at(y: f32, text: &str, font_size: f32) -> Primitive {
+    Primitive::Text {
+        rect: rect(1.0, y, 60.0, 12.0),
+        text: text.into(),
+        font_size,
+        color: RED,
+    }
+}
+
+fn styled_at(y: f32, text: &str, style: &TextStyle, width: f32) -> Primitive {
+    Primitive::StyledText {
+        rect: rect(1.0, y, width, 12.0),
+        text: text.into(),
+        style: style.clone(),
+        color: BLUE,
+    }
+}
+
+fn rich_at(y: f32, spans: &[TextSpan], style: &TextStyle, width: f32) -> Primitive {
+    Primitive::RichText {
+        rect: rect(1.0, y, width, 12.0),
+        spans: spans.to_vec(),
+        style: style.clone(),
+        color: BLUE,
+    }
+}
+
+/// A small style, so that a few lines fit the target.
+fn small(edit: impl FnOnce(&mut TextStyle)) -> TextStyle {
+    let mut style = TextStyle {
+        font_size: 8.0,
+        ..TextStyle::default()
+    };
+    edit(&mut style);
+    style
+}
+
+fn wrapped(edit: impl FnOnce(&mut TextStyle)) -> TextStyle {
+    small(|style| {
+        style.wrap = TextWrap::Word;
+        edit(style);
+    })
+}
+
+fn keys_of(renderer: &mut CpuRenderer) -> HashSet<TextKey> {
+    renderer.text_system().buffers.keys().cloned().collect()
+}
+
+/// Shapes the text of every primitive the way painting does.
+fn shape_all(system: &mut TextSystem, primitives: &[Primitive]) {
+    for primitive in primitives {
+        match primitive {
+            Primitive::Text {
+                text, font_size, ..
+            } => {
+                system.ensure(text, *font_size);
+            }
+            Primitive::StyledText {
+                rect, text, style, ..
+            } => {
+                system.ensure_styled(text, style, Some(rect.width));
+            }
+            Primitive::RichText {
+                rect, spans, style, ..
+            } => {
+                system.ensure_rich(spans, style, Some(rect.width));
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Paints a whole frame with `kept`, which has painted before, and with a
+/// renderer that has not: what is drawn, counted and shaped must be the same.
+/// Pixels cannot tell the fonts apart, for there is only one, so it is the
+/// set of shaped texts that shows a text asked for wrongly.
+#[track_caller]
+fn assert_like_fresh(kept: &mut CpuRenderer, scale: f32, primitives: &[Primitive]) {
+    let pixels = render(kept, scale, primitives.to_vec());
+    let mut fresh = renderer();
+    let expected = render(&mut fresh, scale, primitives.to_vec());
+    assert!(pixels == expected, "the pixels differ from a fresh frame's");
+    let (stats, fresh_stats) = (kept.stats(), fresh.stats());
+    assert_eq!(stats.glyphs, fresh_stats.glyphs);
+    assert_eq!(stats.redrawn, fresh_stats.redrawn);
+    assert_eq!(stats.layers, fresh_stats.layers);
+    assert_eq!(keys_of(kept), keys_of(&mut fresh));
+    assert_eq!(
+        kept.text_system().buffers.len(),
+        fresh.text_system().buffers.len()
+    );
+}
+
+#[test]
+fn identical_whole_frames_repeat_exactly() {
+    let spans = [
+        TextSpan::new("two ").weight(700),
+        TextSpan::new("spans").italic(true),
+    ];
+    let bold = small(|style| style.weight = 700);
+    let scene = [
+        text_at(0.0, "plain", 8.0),
+        styled_at(8.0, "bold", &bold, 60.0),
+        styled_at(16.0, "wrapped words that wrap", &wrapped(|_| {}), 30.0),
+        styled_at(
+            24.0,
+            "right to left",
+            &wrapped(|style| style.rtl = true),
+            50.0,
+        ),
+        rich_at(32.0, &spans, &wrapped(|_| {}), 50.0),
+        // The same texts again, which share their shaped blocks.
+        text_at(40.0, "plain", 8.0),
+        styled_at(48.0, "bold", &bold, 60.0),
+        rich_at(56.0, &spans, &wrapped(|_| {}), 50.0),
+    ];
+    let mut kept = renderer();
+    for _ in 0..4 {
+        assert_like_fresh(&mut kept, 1.0, &scene);
+    }
+    assert_eq!(kept.text_system().buffers.len(), 5);
+    assert!(kept.stats().glyphs > 0);
+}
+
+#[test]
+fn a_changed_input_gets_its_own_buffer() {
+    let spans = |edit: fn(&mut [TextSpan])| {
+        let mut spans = vec![TextSpan::new("ab"), TextSpan::new("c")];
+        edit(&mut spans);
+        spans
+    };
+    let rich = |spans: &[TextSpan]| rich_at(2.0, spans, &wrapped(|_| {}), 40.0);
+    let styled = |style: &TextStyle, width: f32| styled_at(2.0, "ab ab ab", style, width);
+    let base_style = wrapped(|_| {});
+    // Each case is a text, then the same with one input changed.
+    let cases: Vec<(&str, Primitive, Primitive)> = vec![
+        (
+            "plain text",
+            text_at(2.0, "ab", 14.0),
+            text_at(2.0, "ac", 14.0),
+        ),
+        (
+            "plain size",
+            text_at(2.0, "ab", 14.0),
+            text_at(2.0, "ab", 15.0),
+        ),
+        (
+            "plain size to the least",
+            text_at(2.0, "ab", 1.0),
+            text_at(2.0, "ab", 0.5),
+        ),
+        (
+            "styled text",
+            styled(&base_style, 40.0),
+            styled_at(2.0, "ab ab ac", &base_style, 40.0),
+        ),
+        (
+            "styled size",
+            styled(&base_style, 40.0),
+            styled(&wrapped(|s| s.font_size = 9.0), 40.0),
+        ),
+        (
+            "family, generic",
+            styled(&base_style, 40.0),
+            styled(&wrapped(|s| s.family = FontFamily::Serif), 40.0),
+        ),
+        (
+            "family, monospace",
+            styled(&base_style, 40.0),
+            styled(&wrapped(|s| s.family = FontFamily::Monospace), 40.0),
+        ),
+        (
+            "family, named",
+            styled(&wrapped(|s| s.family = FontFamily::Named("a".into())), 40.0),
+            styled(&wrapped(|s| s.family = FontFamily::Named("b".into())), 40.0),
+        ),
+        (
+            "weight",
+            styled(&base_style, 40.0),
+            styled(&wrapped(|s| s.weight = 700), 40.0),
+        ),
+        (
+            "weight past the limit",
+            styled(&wrapped(|s| s.weight = 900), 40.0),
+            styled(&wrapped(|s| s.weight = 950), 40.0),
+        ),
+        (
+            "italic",
+            styled(&base_style, 40.0),
+            styled(&wrapped(|s| s.italic = true), 40.0),
+        ),
+        (
+            "wrap",
+            styled(&base_style, 40.0),
+            styled(&small(|_| {}), 40.0),
+        ),
+        (
+            "right to left",
+            styled(&base_style, 60.0),
+            styled(&wrapped(|s| s.rtl = true), 60.0),
+        ),
+        (
+            "base direction, none to left",
+            styled(&base_style, 40.0),
+            styled(&wrapped(|s| s.base = Some(false)), 40.0),
+        ),
+        (
+            "base direction, left to right",
+            styled(&wrapped(|s| s.base = Some(false)), 40.0),
+            styled(&wrapped(|s| s.base = Some(true)), 40.0),
+        ),
+        (
+            "width of a wrapped text",
+            styled(&base_style, 40.0),
+            styled(&base_style, 50.0),
+        ),
+        (
+            "width of a text that does not wrap",
+            styled(&small(|_| {}), 40.0),
+            styled(&small(|_| {}), 50.0),
+        ),
+        (
+            "width of a wrapped text to the least",
+            styled(&base_style, 1.0),
+            styled(&base_style, 0.25),
+        ),
+        (
+            "rich text, text of a span",
+            rich(&spans(|_| {})),
+            rich(&spans(|spans| spans[1].text = "d".into())),
+        ),
+        (
+            "rich text, colour",
+            rich(&spans(|_| {})),
+            rich(&spans(|spans| spans[0].color = Some(RED))),
+        ),
+        (
+            "rich text, weight",
+            rich(&spans(|_| {})),
+            rich(&spans(|spans| spans[0].weight = Some(700))),
+        ),
+        (
+            "rich text, italic",
+            rich(&spans(|_| {})),
+            rich(&spans(|spans| spans[1].italic = Some(true))),
+        ),
+        (
+            "rich text, family",
+            rich(&spans(|_| {})),
+            rich(&spans(|spans| spans[0].family = Some(FontFamily::Serif))),
+        ),
+        (
+            "rich text, a boundary moved",
+            rich(&spans(|_| {})),
+            rich(&[TextSpan::new("a"), TextSpan::new("bc")]),
+        ),
+        (
+            "rich text, spans joined",
+            rich(&spans(|_| {})),
+            rich(&[TextSpan::new("abc")]),
+        ),
+        (
+            "rich text, block weight",
+            rich(&spans(|_| {})),
+            rich_at(2.0, &spans(|_| {}), &wrapped(|s| s.weight = 700), 40.0),
+        ),
+        (
+            "rich text, width",
+            rich(&spans(|_| {})),
+            rich_at(2.0, &spans(|_| {}), &base_style, 50.0),
+        ),
+        (
+            "plain text to styled text",
+            text_at(2.0, "ab", 14.0),
+            styled_at(2.0, "ab", &small(|s| s.font_size = 15.0), 60.0),
+        ),
+        (
+            "styled text to rich text",
+            styled_at(2.0, "abc", &base_style, 40.0),
+            rich(&spans(|_| {})),
+        ),
+    ];
+    for (name, base, changed) in cases {
+        let mut kept = renderer();
+        for primitive in [&base, &changed, &base, &base, &changed, &changed] {
+            assert_like_fresh(&mut kept, 1.0, std::slice::from_ref(primitive));
+            assert_eq!(kept.text_system().buffers.len(), 1, "{name}");
+        }
+    }
+}
+
+/// A small generator, so that the walks below are the same on every run.
+struct Walk(u64);
+
+impl Walk {
+    fn below(&mut self, count: usize) -> usize {
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (self.0 >> 33) as usize % count
+    }
+
+    fn pick<T: Clone>(&mut self, items: &[T]) -> T {
+        items[self.below(items.len())].clone()
+    }
+
+    fn style_field(&mut self, style: &mut TextStyle) {
+        match self.below(7) {
+            0 => style.font_size = self.pick(&[8.0, 9.0, 1.0, 0.5]),
+            1 => {
+                style.family = self.pick(&[
+                    FontFamily::SansSerif,
+                    FontFamily::Serif,
+                    FontFamily::Monospace,
+                    FontFamily::Named("x".into()),
+                ]);
+            }
+            2 => style.weight = self.pick(&[400, 700]),
+            3 => style.italic = self.pick(&[false, true]),
+            4 => style.wrap = self.pick(&[TextWrap::None, TextWrap::Word]),
+            5 => style.rtl = self.pick(&[false, true]),
+            _ => style.base = self.pick(&[None, Some(false), Some(true)]),
+        }
+    }
+
+    fn width(&mut self) -> f32 {
+        self.pick(&[24.0, 40.0, 0.25])
+    }
+
+    fn spans(&mut self) -> Vec<TextSpan> {
+        self.pick(&[
+            vec![TextSpan::new("ab"), TextSpan::new("c")],
+            vec![TextSpan::new("a"), TextSpan::new("bc")],
+            vec![TextSpan::new("abc")],
+            vec![TextSpan::new("ab").weight(700), TextSpan::new("c")],
+            vec![TextSpan::new("ab").italic(true), TextSpan::new("c")],
+            vec![TextSpan::new("ab").color(BLUE), TextSpan::new("c")],
+            vec![
+                TextSpan::new("ab").family(FontFamily::Serif),
+                TextSpan::new("c"),
+            ],
+            vec![TextSpan::new("ab"), TextSpan::new("c").color(RED)],
+        ])
+    }
+
+    fn text(&mut self) -> &'static str {
+        self.pick(&["ab", "ac", "a b c d"])
+    }
+
+    /// A text of any kind and any inputs.
+    fn text_at(&mut self, y: f32) -> Primitive {
+        let mut style = small(|_| {});
+        for _ in 0..3 {
+            self.style_field(&mut style);
+        }
+        match self.below(3) {
+            0 => text_at(y, self.text(), self.pick(&[8.0, 9.0, 1.0, 0.5])),
+            1 => styled_at(y, self.text(), &style, self.width()),
+            _ => rich_at(y, &self.spans(), &style, self.width()),
+        }
+    }
+
+    /// `primitive` with one of its inputs changed.
+    fn edit(&mut self, primitive: &mut Primitive) {
+        match primitive {
+            Primitive::Text {
+                text, font_size, ..
+            } => match self.below(2) {
+                0 => *text = self.text().into(),
+                _ => *font_size = self.pick(&[8.0, 9.0, 1.0, 0.5]),
+            },
+            Primitive::StyledText {
+                rect, text, style, ..
+            } => match self.below(3) {
+                0 => *text = self.text().into(),
+                1 => rect.width = self.width(),
+                _ => self.style_field(style),
+            },
+            Primitive::RichText {
+                rect, spans, style, ..
+            } => match self.below(3) {
+                0 => *spans = self.spans(),
+                1 => rect.width = self.width(),
+                _ => self.style_field(style),
+            },
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn a_walk_over_field_combinations_matches_a_fresh_renderer() {
+    let mut walk = Walk(29939);
+    let mut kept = renderer();
+    let mut history: Vec<Vec<Primitive>> = Vec::new();
+    for frame in 0..300 {
+        let scene: Vec<Primitive> = (0..6)
+            .map(|slot| {
+                let y = slot as f32 * 10.0;
+                let before = history.last().map(|scene| scene[slot].clone());
+                let earlier = history
+                    .len()
+                    .checked_sub(2)
+                    .map(|back| history[back][slot].clone());
+                match (walk.below(8), before, earlier) {
+                    // As it was, or as it was two frames ago.
+                    (0..=2, Some(before), _) => before,
+                    (3, _, Some(earlier)) => earlier,
+                    // One input changed.
+                    (4..=6, Some(mut before), _) => {
+                        walk.edit(&mut before);
+                        before
+                    }
+                    _ => walk.text_at(y),
+                }
+            })
+            .collect();
+        assert_like_fresh(&mut kept, 1.0, &scene);
+        assert!(kept.stats().frames == frame + 1);
+        history.push(scene);
+    }
+}
+
+#[test]
+fn texts_that_come_go_and_move() {
+    let [a, b, c, d] =
+        ["alpha", "beta", "gamma", "delta"].map(|name| (name, text_at(0.0, name, 8.0)));
+    let at = |y: f32, text: &(&str, Primitive)| text_at(y, text.0, 8.0);
+    let frame = |texts: &[&(&str, Primitive)]| -> Vec<Primitive> {
+        texts
+            .iter()
+            .enumerate()
+            .map(|(index, text)| at(index as f32 * 10.0, text))
+            .collect()
+    };
+    let frames = [
+        frame(&[&a, &b, &c]),
+        frame(&[&a, &b]),
+        frame(&[]),
+        frame(&[&a, &b, &c, &d]),
+        frame(&[&a, &b, &c]),
+        // One in front, and every other one a place on.
+        frame(&[&d, &a, &b, &c]),
+        // Two swapped.
+        frame(&[&d, &b, &a, &c]),
+        // The last one gone.
+        frame(&[&d, &b, &a]),
+        frame(&[&d, &b, &a]),
+        // The first one gone.
+        frame(&[&b, &a]),
+        frame(&[&b, &a, &b, &a]),
+        frame(&[&c]),
+    ];
+    let mut kept = renderer();
+    for frame in &frames {
+        assert_like_fresh(&mut kept, 1.0, frame);
+    }
+    assert_eq!(kept.text_system().buffers.len(), 1);
+}
+
+#[test]
+fn a_text_changed_into_a_copy_of_another_text_leaves_no_old_buffer() {
+    let [a, b, c] = ["alpha", "beta", "gamma"].map(|name| text_at(0.0, name, 8.0));
+    let place = |texts: &[&Primitive]| -> Vec<Primitive> {
+        texts
+            .iter()
+            .enumerate()
+            .map(|(index, text)| {
+                let mut text = (*text).clone();
+                if let Primitive::Text { rect, .. } = &mut text {
+                    rect.y = index as f32 * 10.0;
+                }
+                text
+            })
+            .collect()
+    };
+    let mut kept = renderer();
+    assert_like_fresh(&mut kept, 1.0, &place(&[&a, &b]));
+    // Nothing is shaped that was not, and the count is the one it was.
+    assert_like_fresh(&mut kept, 1.0, &place(&[&a, &a]));
+    assert_eq!(kept.text_system().buffers.len(), 1);
+    assert_like_fresh(&mut kept, 1.0, &place(&[&a, &b, &c]));
+    assert_like_fresh(&mut kept, 1.0, &place(&[&a, &c, &c]));
+    assert_eq!(kept.text_system().buffers.len(), 2);
+    assert_like_fresh(&mut kept, 1.0, &place(&[&c, &c, &c]));
+    assert_eq!(kept.text_system().buffers.len(), 1);
+}
+
+#[test]
+fn a_text_and_a_styled_text_with_one_key_share_it() {
+    let plain = text_at(2.0, "x", 14.0);
+    let styled = styled_at(2.0, "x", &small(|style| style.font_size = 14.0), 60.0);
+    let mut kept = renderer();
+    for text in [&plain, &styled, &plain, &plain, &styled, &styled, &plain] {
+        assert_like_fresh(&mut kept, 1.0, std::slice::from_ref(text));
+        assert_eq!(kept.text_system().buffers.len(), 1);
+    }
+    // Sizes under the least one are the least one.
+    for size in [0.5, 1.0, 0.0, 1.0, 0.5, 0.25] {
+        let scene = [
+            text_at(2.0, "x", size),
+            styled_at(14.0, "x", &small(|style| style.font_size = size), 60.0),
+        ];
+        assert_like_fresh(&mut kept, 1.0, &scene);
+        assert_eq!(kept.text_system().buffers.len(), 1);
+    }
+}
+
+#[test]
+fn a_partial_frame_that_adds_text_is_cleaned_by_the_next_whole_frame() {
+    let scene = |first: &str| vec![text_at(2.0, first, 8.0), text_at(40.0, "still", 8.0)];
+    let size = [SIDE as u32; 2];
+    let damage = [rect(0.0, 0.0, SIDE as f32, 20.0)];
+    let mut kept = renderer();
+    assert_like_fresh(&mut kept, 1.0, &scene("one"));
+    assert_like_fresh(&mut kept, 1.0, &scene("one"));
+    for first in ["two", "three"] {
+        let changed = Scene {
+            size: Size::new(SIDE as f32, SIDE as f32),
+            primitives: scene(first),
+        };
+        kept.render_damaged(size, 1.0, &changed, Color::WHITE, &damage);
+    }
+    // The texts the frames painted in part shaped are still in the cache.
+    assert_eq!(kept.text_system().buffers.len(), 4);
+    assert_like_fresh(&mut kept, 1.0, &scene("one"));
+    assert_eq!(kept.text_system().buffers.len(), 2);
+    assert_like_fresh(&mut kept, 1.0, &scene("one"));
+    // A partial frame that shapes nothing new leaves the cache as it was, and
+    // the whole frame after it has nothing to clean.
+    let same = Scene {
+        size: Size::new(SIDE as f32, SIDE as f32),
+        primitives: scene("one"),
+    };
+    kept.render_damaged(size, 1.0, &same, Color::WHITE, &damage);
+    assert_eq!(kept.text_system().buffers.len(), 2);
+    assert_like_fresh(&mut kept, 1.0, &scene("one"));
+}
+
+#[test]
+fn the_text_cache_may_be_edited_between_whole_frames() {
+    let scene = vec![
+        text_at(0.0, "first", 8.0),
+        styled_at(10.0, "second words", &wrapped(|_| {}), 40.0),
+        rich_at(
+            20.0,
+            &[TextSpan::new("th").weight(700), TextSpan::new("ird")],
+            &wrapped(|_| {}),
+            40.0,
+        ),
+        text_at(30.0, "first", 8.0),
+    ];
+    type Edit = fn(&mut CpuRenderer, &[Primitive]);
+    let edits: [(&str, Edit); 9] = [
+        ("cleared", |renderer, _| {
+            renderer.text_system().buffers.clear()
+        }),
+        ("one active text removed", |renderer, _| {
+            let key = first_key(renderer);
+            renderer.text_system().buffers.remove(&key);
+        }),
+        ("one active text removed, a stray put in", |renderer, _| {
+            let key = first_key(renderer);
+            renderer.text_system().buffers.remove(&key);
+            stray(renderer.text_system());
+        }),
+        ("a stray put in", |renderer, _| {
+            stray(renderer.text_system())
+        }),
+        ("replaced by an empty system", |renderer, _| {
+            *renderer.text_system() = fira_system();
+        }),
+        (
+            "replaced by one with the active texts",
+            |renderer, scene| {
+                let mut system = fira_system();
+                shape_all(&mut system, scene);
+                *renderer.text_system() = system;
+            },
+        ),
+        (
+            "replaced by one with the active texts and a stray",
+            |renderer, scene| {
+                let mut system = fira_system();
+                shape_all(&mut system, scene);
+                stray(&mut system);
+                *renderer.text_system() = system;
+            },
+        ),
+        (
+            "replaced by one with some of the active texts and strays",
+            |renderer, scene| {
+                let mut system = fira_system();
+                shape_all(&mut system, &scene[..1]);
+                system.ensure("stray", 9.0);
+                system.ensure("another stray", 9.0);
+                *renderer.text_system() = system;
+            },
+        ),
+        (
+            "a text shaped by hand that the frame paints",
+            |renderer, _| {
+                renderer.text_system().buffers.clear();
+                renderer.text_system().ensure("second words", 8.0);
+            },
+        ),
+    ];
+    for (name, edit) in edits {
+        let mut kept = renderer();
+        assert_like_fresh(&mut kept, 1.0, &scene);
+        assert_like_fresh(&mut kept, 1.0, &scene);
+        edit(&mut kept, &scene);
+        assert_like_fresh(&mut kept, 1.0, &scene);
+        assert!(kept.stats().glyphs > 0, "{name}");
+        assert_like_fresh(&mut kept, 1.0, &scene);
+    }
+}
+
+fn stray(system: &mut TextSystem) {
+    system.ensure("stray", 9.0);
+}
+
+/// One of the texts in the cache, the same one each time.
+fn first_key(renderer: &mut CpuRenderer) -> TextKey {
+    let mut keys: Vec<TextKey> = keys_of(renderer).into_iter().collect();
+    keys.sort_by_key(|key| format!("{key:?}"));
+    keys.remove(0)
+}
+
+fn fira_system() -> TextSystem {
+    TextSystem::with_fonts([include_bytes!(
+        "../../glassmere-render-wgpu/fonts/FiraMono-Regular.ttf"
+    )
+    .to_vec()])
+}
+
+#[test]
+fn the_first_whole_frame_cleans_a_text_system_that_has_strays() {
+    let scene = vec![
+        text_at(0.0, "one", 8.0),
+        styled_at(10.0, "two", &small(|_| {}), 40.0),
+    ];
+    let with_strays = || {
+        let mut system = fira_system();
+        shape_all(&mut system, &scene[..1]);
+        system.ensure("stray", 9.0);
+        system.ensure("another stray", 9.0);
+        CpuRenderer::with_text_system(system)
+    };
+    let mut kept = with_strays();
+    assert_like_fresh(&mut kept, 1.0, &scene);
+    assert_like_fresh(&mut kept, 1.0, &scene);
+    let mut bare = with_strays();
+    assert_like_fresh(&mut bare, 1.0, &[]);
+    assert!(bare.text_system().buffers.is_empty());
+    // A text that is shaped already stays, and the strays go.
+    let mut shaped = with_strays();
+    assert_like_fresh(&mut shaped, 1.0, &scene[..1]);
+    assert_eq!(shaped.text_system().buffers.len(), 1);
+}
+
+/// Cannot be drawn: painting it unwinds.
+struct Unpaintable;
+impl VectorImage for Unpaintable {
+    fn size(&self) -> Size {
+        Size::new(10.0, 10.0)
+    }
+    fn rasterize(&self, _: u32, _: u32) -> Vec<u8> {
+        panic!("this image cannot be drawn");
+    }
+}
+
+#[test]
+fn a_whole_frame_that_unwinds_leaves_the_next_one_to_clean_the_cache() {
+    let broken = Primitive::Image {
+        rect: rect(40.0, 40.0, 10.0, 10.0),
+        image: Image::from_vector(Unpaintable),
+        source: rect(0.0, 0.0, 10.0, 10.0),
+        tint: None,
+        radius: 0.0,
+    };
+    let before = [text_at(0.0, "alpha", 8.0), text_at(10.0, "beta", 8.0)];
+    let after = [text_at(0.0, "alpha", 8.0), text_at(10.0, "alpha", 8.0)];
+    // The frame unwinds before its first text, between them and after both.
+    // After both, the second text has been asked for as it will be again and
+    // the cache still holds `beta`, at the size the frame before left it.
+    for place in 0..=2 {
+        let mut kept = renderer();
+        assert_like_fresh(&mut kept, 1.0, &before);
+        assert_eq!(kept.text_system().buffers.len(), 2);
+        let mut scene = after.to_vec();
+        scene.insert(place, broken.clone());
+        let result = catch_unwind(AssertUnwindSafe(|| render(&mut kept, 1.0, scene)));
+        assert!(result.is_err(), "the frame did not unwind");
+        assert_like_fresh(&mut kept, 1.0, &after);
+        assert_eq!(kept.text_system().buffers.len(), 1, "{place}");
+        assert_like_fresh(&mut kept, 1.0, &after);
+    }
+}
+
+#[test]
+fn odd_floats_behave_like_a_fresh_renderer() {
+    let sizes = [
+        f32::NAN,
+        f32::INFINITY,
+        -0.0,
+        0.0,
+        0.5,
+        16.0,
+        f32::NEG_INFINITY,
+    ];
+    let widths = [f32::NAN, 0.0, -1.0, f32::INFINITY, 30.0];
+    let mut kept = renderer();
+    for round in 0..3 {
+        for (at, size) in sizes.iter().enumerate() {
+            let y = 4.0 + at as f32 * 8.0;
+            let style = wrapped(|style| style.font_size = *size);
+            let scene = [
+                text_at(0.0, "plain", *size),
+                styled_at(
+                    y,
+                    "styled words",
+                    &style,
+                    widths[(at + round) % widths.len()],
+                ),
+                styled_at(
+                    y,
+                    "styled words",
+                    &small(|style| style.font_size = *size),
+                    widths[at % widths.len()],
+                ),
+                rich_at(
+                    y,
+                    &[TextSpan::new("rich "), TextSpan::new("words")],
+                    &style,
+                    widths[(at + 2 * round) % widths.len()],
+                ),
+            ];
+            // Twice, which is the case that a text is asked for as it was.
+            assert_like_fresh(&mut kept, 1.0, &scene);
+            assert_like_fresh(&mut kept, 1.0, &scene);
+        }
+    }
+}
+
+#[test]
+fn whole_frames_at_other_sizes_and_scales_match_a_fresh_renderer() {
+    let scene = |width: f32| {
+        vec![
+            styled_at(
+                0.0,
+                "words that wrap in a narrow block",
+                &wrapped(|_| {}),
+                width,
+            ),
+            text_at(36.0, "plain", 8.0),
+        ]
+    };
+    let mut kept = renderer();
+    assert_like_fresh(&mut kept, 1.0, &scene(30.0));
+    assert_like_fresh(&mut kept, 2.0, &scene(30.0));
+    assert_like_fresh(&mut kept, 2.0, &scene(30.0));
+    assert_like_fresh(&mut kept, 1.0, &scene(30.0));
+    assert_like_fresh(&mut kept, 1.0, &scene(45.0));
+    assert_like_fresh(&mut kept, 0.5, &scene(45.0));
+    assert_like_fresh(&mut kept, 1.0, &scene(30.0));
+}
+
+#[test]
+fn frames_in_part_may_grow_the_cache_by_what_the_last_whole_frame_kept() {
+    // Three hundred texts below the damage, and one inside it that changes.
+    let scene = |round: usize| Scene {
+        size: Size::new(SIDE as f32, SIDE as f32),
+        primitives: std::iter::once(text_at(2.0, &format!("r{round}"), 8.0))
+            .chain((0..300).map(|n| text_at(40.0, &n.to_string(), 8.0)))
+            .collect(),
+    };
+    let size = [SIDE as u32; 2];
+    let damage = [rect(0.0, 0.0, SIDE as f32, 20.0)];
+    let mut kept = renderer();
+    kept.render(size, 1.0, &scene(0), Color::WHITE);
+    assert_eq!(kept.text_system().buffers.len(), 301);
+    // A few texts more are well within twice what the whole frame kept, so
+    // the frames after it are painted in part as well.
+    for round in 1..=3 {
+        kept.render_damaged(size, 1.0, &scene(round), Color::WHITE, &damage);
+        assert_eq!(kept.stats().redrawn, SIDE as u64 * 20, "round {round}");
+        assert_eq!(kept.text_system().buffers.len(), 301 + round);
+    }
 }
