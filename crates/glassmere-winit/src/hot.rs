@@ -129,10 +129,12 @@ const ACTIVE_FOR: Duration = Duration::from_secs(120);
 /// window can show any number of them.
 const SLOW_POLL: Duration = Duration::from_millis(500);
 /// A changed file is read once its stamp has stayed the same this long, so a
-/// writer that truncates and then writes is not read in between.
+/// writer that truncates and then writes is not read in between. A file that
+/// is empty or missing waits for `SETTLE_LIMIT` instead: a writer is likelier
+/// to be midway through a save than to want an empty file shown.
 const SETTLE: Duration = Duration::from_millis(40);
-/// A file that never stops changing is read this long after its change was
-/// first seen, so it is not starved.
+/// A file that never stops changing, or stays empty or missing, is read this
+/// long after its change was first seen, so it is not starved.
 const SETTLE_LIMIT: Duration = Duration::from_millis(500);
 
 /// What a look at a file found: its modification time and size, or nothing
@@ -169,9 +171,18 @@ struct Unsettled {
     changed: Instant,
 }
 
+/// Whether a look found the file missing or of size 0.
+fn is_empty(stamp: Stamp) -> bool {
+    stamp.is_none_or(|(_, len)| len == 0)
+}
+
 /// When a file waiting to settle is read at the latest.
 fn settles_at(pending: &Unsettled) -> Instant {
-    (pending.changed + SETTLE).min(pending.first + SETTLE_LIMIT)
+    let limit = pending.first + SETTLE_LIMIT;
+    if is_empty(pending.stamp) {
+        return limit;
+    }
+    (pending.changed + SETTLE).min(limit)
 }
 
 #[derive(Debug, PartialEq)]
@@ -188,7 +199,8 @@ enum Verdict {
 /// `handed`. A look made at or after the file's `settles_at` leaves it either
 /// read or settling later than `now`, so a timer set for that moment cannot
 /// fire again at once. The order of the checks keeps that so: the limit is
-/// tested before a changed stamp restarts the quiet period.
+/// tested before a changed stamp restarts the quiet period. An empty or missing
+/// file is not read when it has been quiet for `SETTLE`, only at the limit.
 fn settle(
     handed: Stamp,
     current: Stamp,
@@ -218,7 +230,7 @@ fn settle(
         };
         return (Verdict::Wait, Some(again));
     }
-    if now.saturating_duration_since(pending.changed) >= SETTLE {
+    if !is_empty(current) && now.saturating_duration_since(pending.changed) >= SETTLE {
         return (Verdict::Read, None);
     }
     (Verdict::Wait, Some(pending))
@@ -280,8 +292,9 @@ impl Poller {
 
     /// Like `changed`, but a file seen before is read only once it has stopped
     /// changing: its stamp has stayed the same for `SETTLE`, or it was first
-    /// seen changed `SETTLE_LIMIT` ago. A file that is gone is not reported
-    /// until it has stayed gone that long. A file seen for the first time is
+    /// seen changed `SETTLE_LIMIT` ago. A file that is empty or gone is not
+    /// handed out until `SETTLE_LIMIT` has passed since the change was first
+    /// seen, and only if it is still so. A file seen for the first time is
     /// handed out at once.
     pub fn settled(&mut self, path: &Path, now: Instant) -> Option<Result<Vec<u8>, String>> {
         let (current, error) = look(path);
@@ -631,15 +644,156 @@ mod tests {
         assert_eq!(poller.settled(&path, at(0)), content("old"));
         std::fs::remove_file(&path).unwrap();
         assert_eq!(poller.settled(&path, at(100)), None);
-        assert_eq!(poller.settled(&path, at(100) + SETTLE - ms(1)), None);
-        let Some(Err(message)) = poller.settled(&path, at(100) + SETTLE) else {
+        assert_eq!(poller.settled(&path, at(100) + SETTLE), None);
+        assert_eq!(poller.settled(&path, at(100) + SETTLE_LIMIT - ms(1)), None);
+        let Some(Err(message)) = poller.settled(&path, at(100) + SETTLE_LIMIT) else {
             panic!("a file that stayed away was not reported");
         };
         assert!(message.starts_with(&format!("{}: ", path.display())));
-        assert_eq!(poller.settled(&path, at(100) + SETTLE + ms(1000)), None);
+        assert_eq!(
+            poller.settled(&path, at(100) + SETTLE_LIMIT + ms(1000)),
+            None
+        );
         put(&path, "back", 3);
         assert_eq!(poller.settled(&path, at(2000)), None);
         assert_eq!(poller.settled(&path, at(2000) + SETTLE), content("back"));
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    /// Looks every 10 ms from 0 to `until`, after `act` has changed the file
+    /// at the time it is given. Returns the times at which something was handed
+    /// out, with what.
+    fn look_every_10_ms(
+        poller: &mut Poller,
+        path: &Path,
+        t0: Instant,
+        until: u64,
+        mut act: impl FnMut(u64),
+    ) -> Vec<(u64, Result<Vec<u8>, String>)> {
+        let mut handed = Vec::new();
+        for milliseconds in (10..=until).step_by(10) {
+            act(milliseconds);
+            if let Some(read) = poller.settled(path, t0 + ms(milliseconds)) {
+                handed.push((milliseconds, read));
+            }
+        }
+        handed
+    }
+
+    #[test]
+    fn a_file_left_empty_while_it_is_written_is_never_handed_out_empty() {
+        for gap in [60, 150, 300] {
+            let directory = scratch(&format!("slow-truncate-{gap}"));
+            let path = directory.join("sheet.style");
+            let t0 = Instant::now();
+            let mut poller = Poller::default();
+            put(&path, "long text", 5);
+            assert_eq!(poller.settled(&path, t0), content("long text"));
+            let handed = look_every_10_ms(&mut poller, &path, t0, 1000, |milliseconds| {
+                if milliseconds == 10 {
+                    put(&path, "", 5);
+                } else if milliseconds == 10 + gap {
+                    put(&path, "final", 5);
+                }
+            });
+            // The content was first seen at 10 + gap and held for SETTLE.
+            let at = 10 + gap + SETTLE.as_millis() as u64;
+            assert_eq!(handed, [(at, Ok(b"final".to_vec()))], "gap {gap}");
+            std::fs::remove_dir_all(&directory).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_file_removed_while_it_is_written_is_never_reported_missing() {
+        let directory = scratch("slow-remove");
+        let path = directory.join("sheet.style");
+        let t0 = Instant::now();
+        let mut poller = Poller::default();
+        put(&path, "old", 1);
+        assert_eq!(poller.settled(&path, t0), content("old"));
+        let handed = look_every_10_ms(&mut poller, &path, t0, 1000, |milliseconds| {
+            if milliseconds == 10 {
+                std::fs::remove_file(&path).unwrap();
+            } else if milliseconds == 160 {
+                put(&path, "new!", 2);
+            }
+        });
+        assert_eq!(handed, [(200, Ok(b"new!".to_vec()))]);
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn a_file_that_stays_empty_is_handed_out_at_the_limit() {
+        let directory = scratch("stays-empty");
+        let path = directory.join("sheet.style");
+        let t0 = Instant::now();
+        let mut poller = Poller::default();
+        put(&path, "long text", 5);
+        assert_eq!(poller.settled(&path, t0), content("long text"));
+        let handed = look_every_10_ms(&mut poller, &path, t0, 2000, |milliseconds| {
+            if milliseconds == 10 {
+                put(&path, "", 5);
+            }
+        });
+        let limit = 10 + SETTLE_LIMIT.as_millis() as u64;
+        assert_eq!(handed, [(limit, Ok(Vec::new()))]);
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn a_file_that_stays_missing_is_reported_once_at_the_limit() {
+        let directory = scratch("stays-missing");
+        let path = directory.join("sheet.style");
+        let t0 = Instant::now();
+        let mut poller = Poller::default();
+        put(&path, "old", 1);
+        assert_eq!(poller.settled(&path, t0), content("old"));
+        let handed = look_every_10_ms(&mut poller, &path, t0, 2000, |milliseconds| {
+            if milliseconds == 10 {
+                std::fs::remove_file(&path).unwrap();
+            }
+        });
+        let limit = 10 + SETTLE_LIMIT.as_millis() as u64;
+        assert_eq!(handed.len(), 1);
+        assert_eq!(handed[0].0, limit);
+        assert!(handed[0].1.is_err());
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn a_file_that_is_empty_or_missing_when_first_followed_is_handed_out_at_once() {
+        let directory = scratch("first-empty");
+        let path = directory.join("sheet.style");
+        let t0 = Instant::now();
+        let mut poller = Poller::default();
+        assert!(matches!(poller.settled(&path, t0), Some(Err(_))));
+        let mut poller = Poller::default();
+        put(&path, "", 1);
+        assert_eq!(poller.settled(&path, t0), content(""));
+        assert_eq!(poller.settle_deadline([path.as_path()]), None);
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn a_pending_empty_file_is_due_at_the_limit_and_the_loop_does_not_spin() {
+        let directory = scratch("empty-replay");
+        let path = directory.join("sheet.style");
+        let opened = Instant::now();
+        put(&path, "old", 1);
+        let mut replay = Replay::new(&path, opened, opened);
+        put(&path, "", 1);
+        let mut read = None;
+        for _ in 0..20 {
+            read = replay.look();
+            if read.is_some() {
+                break;
+            }
+        }
+        // First seen at the first look, 100 ms in; read at the look that
+        // falls on the limit.
+        assert_eq!(read, content(""));
+        assert_eq!(replay.now - opened, FILE_POLL + SETTLE_LIMIT);
+        assert_eq!(replay.looks, 6);
         std::fs::remove_dir_all(&directory).unwrap();
     }
 
@@ -730,6 +884,22 @@ mod tests {
             first: at(100),
             changed: at(100),
         };
+        let empty = stamp(4, 0);
+        let gone = Unsettled {
+            stamp: None,
+            first: at(0),
+            changed: at(0),
+        };
+        let emptied = Unsettled {
+            stamp: empty,
+            first: at(0),
+            changed: at(0),
+        };
+        let waiting_at = |milliseconds| Unsettled {
+            stamp: s2,
+            first: at(milliseconds),
+            changed: at(milliseconds),
+        };
         let table = [
             // Nothing differs from what was handed out, waiting or not.
             (s1, s1, None, at(0), Verdict::Same, None),
@@ -798,15 +968,105 @@ mod tests {
             (
                 s1,
                 None,
-                Some(Unsettled {
-                    stamp: None,
-                    first: at(0),
-                    changed: at(0),
-                }),
+                Some(gone),
                 at(0) + SETTLE,
+                Verdict::Wait,
+                Some(gone),
+            ),
+            (
+                s1,
+                None,
+                Some(gone),
+                at(0) + SETTLE_LIMIT - ms(1),
+                Verdict::Wait,
+                Some(gone),
+            ),
+            (
+                s1,
+                None,
+                Some(gone),
+                at(0) + SETTLE_LIMIT,
                 Verdict::Read,
                 None,
             ),
+            // A file left empty waits the same way, and a change from missing
+            // to empty restarts only the quiet period.
+            (s1, empty, None, at(0), Verdict::Wait, Some(emptied)),
+            (
+                s1,
+                empty,
+                Some(emptied),
+                at(0) + SETTLE,
+                Verdict::Wait,
+                Some(emptied),
+            ),
+            (
+                s1,
+                empty,
+                Some(emptied),
+                at(0) + SETTLE_LIMIT - ms(1),
+                Verdict::Wait,
+                Some(emptied),
+            ),
+            (
+                s1,
+                empty,
+                Some(emptied),
+                at(0) + SETTLE_LIMIT,
+                Verdict::Read,
+                None,
+            ),
+            (
+                s1,
+                empty,
+                Some(gone),
+                at(200),
+                Verdict::Wait,
+                Some(Unsettled {
+                    stamp: empty,
+                    first: at(0),
+                    changed: at(200),
+                }),
+            ),
+            // Content arriving after the file was empty settles after SETTLE
+            // from when it was first seen, but not later than the limit.
+            (
+                s1,
+                s2,
+                Some(emptied),
+                at(120),
+                Verdict::Wait,
+                Some(Unsettled {
+                    stamp: s2,
+                    first: at(0),
+                    changed: at(120),
+                }),
+            ),
+            (
+                s1,
+                s2,
+                Some(Unsettled {
+                    stamp: s2,
+                    first: at(0),
+                    changed: at(120),
+                }),
+                at(120) + SETTLE,
+                Verdict::Read,
+                None,
+            ),
+            (
+                s1,
+                s2,
+                Some(emptied),
+                at(SETTLE_LIMIT.as_millis() as u64),
+                Verdict::Read,
+                None,
+            ),
+            // What was handed out was itself empty: a change to content settles
+            // as usual, a change to another empty stamp waits.
+            (empty, s2, None, at(0), Verdict::Wait, Some(waiting_at(0))),
+            (empty, empty, None, at(0), Verdict::Same, None),
+            (empty, None, None, at(0), Verdict::Wait, Some(gone)),
         ];
         for (index, (handed, current, pending, now, verdict, next)) in table.into_iter().enumerate()
         {
@@ -1224,11 +1484,41 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_or_missing_file_is_due_at_the_limit_not_after_the_quiet_period() {
+        let t0 = Instant::now();
+        let pending = |stamp, first, changed| Unsettled {
+            stamp,
+            first: t0 + ms(first),
+            changed: t0 + ms(changed),
+        };
+        for stamp in [None, Some((SystemTime::UNIX_EPOCH, 0))] {
+            assert_eq!(
+                settles_at(&pending(stamp, 30, 30)),
+                t0 + ms(30) + SETTLE_LIMIT
+            );
+            assert_eq!(
+                settles_at(&pending(stamp, 30, 400)),
+                t0 + ms(30) + SETTLE_LIMIT
+            );
+        }
+        let content = Some((SystemTime::UNIX_EPOCH, 1));
+        assert_eq!(
+            settles_at(&pending(content, 30, 100)),
+            t0 + ms(100) + SETTLE
+        );
+        assert_eq!(
+            settles_at(&pending(content, 30, 499)),
+            t0 + ms(30) + SETTLE_LIMIT
+        );
+    }
+
+    #[test]
     fn a_look_at_the_deadline_moves_the_deadline_into_the_future() {
         let t0 = Instant::now();
         let (s1, s2, s3) = (stamp(1, 10), stamp(2, 10), stamp(3, 10));
+        let empty = stamp(4, 0);
         let mut pendings = vec![None];
-        for stamp in [s2, None] {
+        for stamp in [s2, None, empty] {
             for first in [0, 30] {
                 for changed in [0, 20, 39, 40, 100, 499, 500] {
                     pendings.push(Some(Unsettled {
@@ -1239,8 +1529,8 @@ mod tests {
                 }
             }
         }
-        for handed in [s1, None] {
-            for current in [s1, s2, s3, None] {
+        for handed in [s1, None, empty] {
+            for current in [s1, s2, s3, None, empty] {
                 for pending in &pendings {
                     let times = match pending {
                         None => vec![t0],
