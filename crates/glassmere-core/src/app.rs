@@ -113,15 +113,21 @@ pub type Action<S> = Rc<dyn Fn(&mut S)>;
 ///
 /// A field then needs no variant of its own and no arm in `update`. What
 /// has consequences beyond the field (a request, a job, another window)
-/// stays a message with a name. The change is allocated when the widget
-/// reports, not when it is declared.
-pub fn bind<S, V, M>(set: impl Fn(&mut S, V) + 'static) -> impl Fn(V) -> M + 'static
+/// stays a message with a name.
+///
+/// The setter is cloned into the change when the widget reports. One that
+/// captures nothing, such as a closure over the state alone, is zero-sized,
+/// and then declaring the field allocates nothing: the change is allocated
+/// when the widget reports. One that captures something is stored with the
+/// widget's handler, which is one allocation per declaration. A check box
+/// builds the change for its next state while it is declared, as [`change`]
+/// does, so a bound check box costs one allocation per declaration.
+pub fn bind<S, V, M>(set: impl Fn(&mut S, V) + Clone + 'static) -> impl Fn(V) -> M + 'static
 where
     S: 'static,
     V: Clone + 'static,
     M: From<Action<S>>,
 {
-    let set = Rc::new(set);
     move |value: V| {
         let set = set.clone();
         M::from(Rc::new(move |state: &mut S| set(state, value.clone())))
@@ -130,8 +136,8 @@ where
 
 /// A message that changes the state and needs no name, for a button or a
 /// menu item of an application whose message has a place for a change; see
-/// [`bind`]. Unlike `bind` it is made when the widget is declared, which is
-/// one allocation per declaration.
+/// [`bind`]. Unlike a field bound with a setter that captures nothing, it is
+/// made when the widget is declared, which is one allocation per declaration.
 pub fn change<S: 'static, M: From<Action<S>>>(change: impl Fn(&mut S) + 'static) -> M {
     M::from(Rc::new(change))
 }

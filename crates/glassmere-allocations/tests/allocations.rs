@@ -1,6 +1,7 @@
 //! What a batch allocates, counted per thread by a global allocator of its
 //! own, so the tests of this binary do not count each other.
 #![allow(unsafe_code)]
+use glassmere_core::app::{Action as Change, bind};
 use glassmere_core::{
     Action, App, AppDriver, Block, BlockKind, Button, Context, Effects, Event, FrameStats, Label,
     Length, MonospaceMeasurer, NodeId, RichDocument, RichEditorOptions, RichOp, RichPosition, Role,
@@ -204,6 +205,108 @@ impl App for Fields {
         for index in 0..self.count {
             ui.keyed(format!("field{index}"), |ui| {
                 ui.text_input("Name", self.text, Msg::Name);
+            });
+        }
+    }
+}
+
+/// What a bound field's message is.
+#[derive(Clone)]
+enum Bound {
+    Name(String),
+    Tick(bool),
+    Set(Change<Binding>),
+}
+
+impl From<Change<Binding>> for Bound {
+    fn from(change: Change<Binding>) -> Self {
+        Self::Set(change)
+    }
+}
+
+/// How the fields of `Binding` send what they report.
+#[derive(Clone, Copy)]
+enum Sends {
+    /// A message with a name: a variant or a function.
+    Named,
+    /// `bind` with a setter that captures nothing.
+    Bound,
+    /// `bind` with a setter that captures the index of its field.
+    Captured,
+}
+
+/// `count` keyed text inputs, or check boxes when `boxes`, each sending as
+/// `sends` says.
+struct Binding {
+    count: usize,
+    boxes: bool,
+    sends: Sends,
+    names: Vec<String>,
+    ticks: Vec<bool>,
+}
+
+impl Binding {
+    fn new(count: usize, boxes: bool, sends: Sends) -> Self {
+        Self {
+            count,
+            boxes,
+            sends,
+            names: vec![String::new(); count],
+            ticks: vec![false; count],
+        }
+    }
+}
+
+impl App for Binding {
+    type Message = Bound;
+
+    fn update(&mut self, message: Bound, _: &mut Effects<'_, Bound>) {
+        match message {
+            Bound::Name(name) => self.names[0] = name,
+            Bound::Tick(on) => self.ticks[0] = on,
+            Bound::Set(change) => change(self),
+        }
+    }
+
+    fn view(&self, ui: &mut Ui<'_, Bound>) {
+        for index in 0..self.count {
+            ui.keyed(format!("field{index}"), |ui| {
+                match (self.boxes, self.sends) {
+                    (false, Sends::Named) => {
+                        ui.text_input("Name", &self.names[index], Bound::Name);
+                    }
+                    (false, Sends::Bound) => {
+                        ui.text_input(
+                            "Name",
+                            &self.names[index],
+                            bind(|binding: &mut Self, name| binding.names[0] = name),
+                        );
+                    }
+                    (false, Sends::Captured) => {
+                        ui.text_input(
+                            "Name",
+                            &self.names[index],
+                            bind(move |binding: &mut Self, name| binding.names[index] = name),
+                        );
+                    }
+                    (true, Sends::Named) => {
+                        ui.checkbox("Tick", self.ticks[index], Bound::Tick);
+                    }
+                    (true, Sends::Bound) => {
+                        ui.checkbox(
+                            "Tick",
+                            self.ticks[index],
+                            bind(|binding: &mut Self, on| binding.ticks[0] = on),
+                        );
+                    }
+                    (true, Sends::Captured) => {
+                        ui.checkbox(
+                            "Tick",
+                            self.ticks[index],
+                            bind(move |binding: &mut Self, on| binding.ticks[index] = on),
+                        );
+                    }
+                }
             });
         }
     }
@@ -601,6 +704,13 @@ fn declaration_cost(count: usize, text: &'static str) -> usize {
     Running::new(Fields { count, text }).allocated_by(|running| running.driver.invalidate())
 }
 
+/// What a declaration of `count` text fields, or check boxes when `boxes`,
+/// allocates when they send as `sends` says.
+fn binding_cost(count: usize, boxes: bool, sends: Sends) -> usize {
+    Running::new(Binding::new(count, boxes, sends))
+        .allocated_by(|running| running.driver.invalidate())
+}
+
 /// What the sweep that cancels compositions allocates over `count` fields
 /// showing `text`.
 fn sweep_cost(count: usize, text: &'static str) -> usize {
@@ -621,6 +731,52 @@ fn a_declared_field_text_costs_one_allocation_per_field() {
             with_text <= without + count,
             "{count} fields with text allocated {with_text} times in a declaration, \
              {without} without"
+        );
+    }
+}
+
+// A setter that captures nothing makes a zero-sized handler, so a bound field
+// is declared with the allocations of a named message.
+#[test]
+fn a_bound_text_field_is_declared_with_the_allocations_of_a_named_message() {
+    for count in [20, 200] {
+        let named = binding_cost(count, false, Sends::Named);
+        let bound = binding_cost(count, false, Sends::Bound);
+        assert_eq!(
+            bound, named,
+            "{count} bound fields allocated {bound} times in a declaration, \
+             {count} named ones {named}"
+        );
+    }
+}
+
+// A check box makes the message for its next state while it is declared, which
+// for a bound one is the change: one allocation.
+#[test]
+fn a_bound_check_box_costs_one_allocation_a_declaration_more_than_a_named_one() {
+    for count in [20, 200] {
+        let named = binding_cost(count, true, Sends::Named);
+        let bound = binding_cost(count, true, Sends::Bound);
+        assert_eq!(
+            bound,
+            named + count,
+            "{count} bound check boxes allocated {bound} times in a declaration, \
+             {count} named ones {named}"
+        );
+    }
+}
+
+// A setter that captures is stored with the handler: one allocation.
+#[test]
+fn a_bound_field_that_captures_an_index_costs_one_allocation_a_declaration() {
+    for count in [20, 200] {
+        let named = binding_cost(count, false, Sends::Named);
+        let captured = binding_cost(count, false, Sends::Captured);
+        assert_eq!(
+            captured,
+            named + count,
+            "{count} capturing fields allocated {captured} times in a declaration, \
+             {count} named ones {named}"
         );
     }
 }
