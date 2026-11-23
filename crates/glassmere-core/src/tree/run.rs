@@ -993,6 +993,13 @@ impl Context {
             return;
         }
         let node = self.nodes.remove(&id).unwrap();
+        if self
+            .taken_range
+            .as_ref()
+            .is_some_and(|(taken, _)| *taken == id)
+        {
+            self.taken_range = None;
+        }
         if node.kind == Kind::Popover {
             self.popover_count -= 1;
         }
@@ -1086,6 +1093,7 @@ impl Context {
             !self.attached(id) || !self.nodes.get(&id).is_some_and(Node::takes_pointer)
         }) {
             self.captured = None;
+            self.taken_range = None;
             self.pending |= Dirty::PAINT;
         }
         if self

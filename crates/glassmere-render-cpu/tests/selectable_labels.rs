@@ -225,3 +225,27 @@ fn a_triple_click_takes_the_line_the_shaper_shows_for_each_line_ending() {
         assert_eq!(shown.selected(), Some(line), "{text:?} at {at}");
     }
 }
+
+#[test]
+fn a_double_click_with_a_pixel_of_movement_keeps_the_word() {
+    let mut shown = Shown::new("order 4711 ships");
+    let cluster = shown.cluster_at(8);
+    let rect = shown.geometry.clusters[cluster].rect;
+    let at = Point {
+        x: shown.bounds.x + rect.x + 1.0,
+        y: shown.bounds.y + rect.y + rect.height / 2.0,
+    };
+    shown.context.set_now(Duration::from_millis(1000));
+    shown.context.event(Event::PointerMoved(at));
+    shown.context.event(Event::PointerDown);
+    shown.context.event(Event::PointerUp);
+    shown.context.set_now(Duration::from_millis(1100));
+    shown.context.event(Event::PointerDown);
+    shown.context.event(Event::PointerMoved(Point {
+        x: at.x + 1.0,
+        ..at
+    }));
+    assert_eq!(shown.selected(), Some("4711"));
+    shown.context.event(Event::PointerUp);
+    assert_eq!(shown.selected(), Some("4711"));
+}
