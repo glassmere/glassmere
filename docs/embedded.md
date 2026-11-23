@@ -11,8 +11,8 @@ Glassmere runs on a microcontroller with a display and no operating system. The 
 
 ```toml
 [dependencies]
-glassmere-core = { version = "0.1.7", default-features = false }
-glassmere-embedded = "0.1.7"
+glassmere-core = { version = "0.1.8", default-features = false }
+glassmere-embedded = "0.1.8"
 ```
 
 Both are `#![no_std]` with `alloc`, so the firmware needs a global allocator. They are checked in CI for `thumbv7em-none-eabihf`. The target must have atomics with compare-and-swap (`Arc`), which leaves out `thumbv6m`.
