@@ -856,7 +856,7 @@ impl Context {
             // descenders: a cell of a dense grid is such a box.
             let height = size.height.min(node.bounds.height);
             let top = rect.y - (height - rect.height) / 2.0;
-            rect.y = top.clamp(node.bounds.y, node.bounds.y + node.bounds.height - height);
+            rect.y = within_box(top, node.bounds.y, node.bounds.height, height);
             rect.height = height;
         }
         if let Some(size) = measured.filter(|size| size.height > 0.0) {
@@ -1074,6 +1074,17 @@ impl Context {
         }
         (clip.contains(at) && wanted(id, node)).then_some(id)
     }
+}
+
+/// The top of a line `height` tall, moved to `top` as far as a box from `y`,
+/// `extent` tall, allows. A line as tall as the box is placed at its top.
+///
+/// This is not `f32::clamp`: that panics when its lower bound is above its
+/// upper one, and `y + extent - height` can round to one step below `y` when
+/// `height` equals `extent`. Here the lower bound wins.
+fn within_box(top: f32, y: f32, extent: f32, height: f32) -> f32 {
+    let highest = y + extent - height;
+    top.min(highest).max(y)
 }
 
 /// A drop shadow behind the node, or an inset one inside it.
@@ -1810,5 +1821,54 @@ mod tests {
     #[test]
     fn the_walk_gives_what_the_plain_one_does_in_a_right_to_left_tree() {
         gallery(Direction::Rtl);
+    }
+
+    /// Values for which `y + h - h` is below `y`.
+    fn rounds_below(heights: &[f32]) -> Vec<(f32, f32)> {
+        let mut found = Vec::new();
+        for &h in heights {
+            for step in 0..4000 {
+                let y = step as f32 * 0.1;
+                if y + h - h < y {
+                    found.push((y, h));
+                    break;
+                }
+            }
+        }
+        found
+    }
+
+    #[test]
+    fn a_line_as_tall_as_its_box_sits_at_its_top_where_rounding_leaves_no_room() {
+        let mut cases = vec![(98.4_f32, 40.0_f32)];
+        cases.extend(rounds_below(&[17.0, 24.0, 33.5, 48.0]));
+        assert!(cases.len() >= 3, "{cases:?}");
+        for (y, h) in cases {
+            // The box has no more room than the line, and the bound
+            // computed from it is below the box's own top.
+            assert!(y + h - h < y, "{y} {h}");
+            for top in [y - 3.0, y, y + 3.0] {
+                assert_eq!(within_box(top, y, h, h), y, "{y} {h} {top}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_line_is_kept_in_its_box_as_clamp_would() {
+        // (top asked for, box top, box height, line height, result)
+        let table = [
+            (12.0, 10.0, 40.0, 20.0, 12.0),
+            (5.0, 10.0, 40.0, 20.0, 10.0),
+            (10.0, 10.0, 40.0, 20.0, 10.0),
+            (35.0, 10.0, 40.0, 20.0, 30.0),
+            (30.0, 10.0, 40.0, 20.0, 30.0),
+            (-4.0, 0.0, 16.0, 10.0, 0.0),
+            (4.0, 0.0, 16.0, 10.0, 4.0),
+            (80.0, 0.0, 16.0, 10.0, 6.0),
+        ];
+        for (top, y, extent, height, expected) in table {
+            assert_eq!(within_box(top, y, extent, height), expected);
+            assert_eq!(top.clamp(y, y + extent - height), expected);
+        }
     }
 }

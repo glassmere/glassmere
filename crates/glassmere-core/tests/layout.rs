@@ -878,3 +878,45 @@ fn a_line_taller_than_its_padding_leaves_room_for_keeps_its_height() {
     assert_eq!(rect.height, natural, "the whole line is drawn");
     assert_eq!(rect.y, 2.0, "centred in its box");
 }
+
+#[test]
+fn a_line_as_tall_as_its_box_is_painted_at_its_top_where_rounding_leaves_no_room() {
+    let mut context = Context::new();
+    // A line taller than the 40 of its box, in a box whose top is at a
+    // height where the bottom edge minus the line is below the top.
+    let top = 98.4_f32;
+    assert!(top + 40.0 - 40.0 < top);
+    frame(&mut context, |ui| {
+        ui.keyed("page", |ui| {
+            ui.column(
+                Style {
+                    gap: 0.0,
+                    ..Style::default()
+                },
+                |ui| {
+                    ui.label(Label::new("").style(fixed(10.0, top)));
+                    ui.keyed("box", |ui| {
+                        ui.label(Label::new("gyp").style(Style {
+                            font_size: Some(36.0),
+                            height: Length::Px(40.0),
+                            padding: 1.0,
+                            ..Style::default()
+                        }))
+                    });
+                },
+            )
+        });
+    });
+    let cell = bounds(&context, &["page", "box"]);
+    assert_eq!((cell.y, cell.height), (top, 40.0));
+    let rect = context
+        .scene()
+        .primitives
+        .iter()
+        .find_map(|primitive| match primitive {
+            Primitive::Text { rect, .. } => Some(*rect),
+            _ => None,
+        })
+        .expect("the label's text");
+    assert_eq!((rect.y, rect.height), (top, 40.0));
+}

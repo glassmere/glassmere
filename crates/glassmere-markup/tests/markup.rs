@@ -308,3 +308,15 @@ fn a_file_may_start_with_a_byte_order_mark() {
     let view = Markup::parse(&format!("\u{feff}{COUNTER}")).unwrap();
     assert!(matches!(view.nodes(), [Node::Element(root)] if root.kind == "column"));
 }
+
+#[test]
+fn a_number_whose_maximum_is_below_its_minimum_declares() {
+    // A range as it stands halfway through typing `max: 50`.
+    let harness = harness(
+        r#"
+        data { size: 7 }
+        column { number "Size" { bind: size; min: 10; max: 5 } }
+    "#,
+    );
+    harness.by_label("Size");
+}
