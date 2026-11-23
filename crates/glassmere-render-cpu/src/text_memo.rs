@@ -39,6 +39,15 @@ pub(crate) fn ensure_text(text: &mut TextSystem, primitive: &Primitive) -> TextK
     }
 }
 
+/// The bytes of text of a text primitive.
+pub(crate) fn text_bytes(primitive: &Primitive) -> usize {
+    match primitive {
+        Primitive::Text { text, .. } | Primitive::StyledText { text, .. } => text.len(),
+        Primitive::RichText { spans, .. } => spans.iter().map(|span| span.text.len()).sum(),
+        _ => 0,
+    }
+}
+
 /// The width a block is shaped at, as bits. The key leaves it out for a block
 /// that does not wrap.
 fn wrapped_width(style: &TextStyle, rect: &Rect) -> Option<u32> {
