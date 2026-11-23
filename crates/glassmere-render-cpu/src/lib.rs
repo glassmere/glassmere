@@ -20,13 +20,18 @@
 //! its exact area here and feathered by the shader there, and what is resampled
 //! is filtered on sRGB-encoded values here and in linear light there. Both show
 //! at edges, never across a flat area.
+mod photo;
+mod text_memo;
+
 use glassmere_scene::{
     Affine, Color, GradientStop, Image, Path, Point, Primitive, Rect, Scene, Segment,
 };
 use glassmere_text::cosmic_text::{SwashCache, SwashContent};
 use glassmere_text::{TextKey, TextSystem};
-use std::collections::{HashMap, HashSet};
+use photo::{PHOTO_BYTES, Premultiply, Raster};
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
+use text_memo::{TextMemo, ensure_text, text_bytes};
 use tiny_skia::{
     FillRule, FilterQuality, Mask, PathBuilder, Pixmap, PixmapPaint, PixmapRef, Transform,
 };
@@ -38,6 +43,9 @@ const DAMAGE_REGIONS: usize = 8;
 /// Damaged rectangles this close, in logical pixels, are painted as one: a
 /// second pass over a thin gap costs more than painting the gap.
 const DAMAGE_GAP: f32 = 8.0;
+/// Bytes of text that frames painted in part may shape, beyond the text the
+/// last whole frame held, before the next frame is painted whole.
+const STALE_TEXT_BYTES: usize = 64 * 1024;
 /// Stops of a gradient past this are dropped, as on the GPU, where the shader
 /// holds a fixed number of them.
 pub const MAX_GRADIENT_STOPS: usize = 8;
@@ -64,10 +72,31 @@ pub struct CpuRenderer {
     /// The size and scale the kept frame was painted at. Anything else, and
     /// what is in the target is not the previous picture.
     painted: Option<([u32; 2], u32)>,
+    /// How many shaped texts the last whole frame kept.
+    text_kept: usize,
+    /// Bytes of text the last whole frame held.
+    text_kept_bytes: usize,
+    /// How many shaped texts the cache held, and how many bytes of text
+    /// they came to, when the last frame ended or, for a frame painted in
+    /// part, when it last grew. The count of blocks alone does not bound the
+    /// memory, for a block of text can be large.
+    text_seen: usize,
+    text_seen_bytes: usize,
+    /// What the last whole frame asked of the text cache, to be checked
+    /// against rather than asked again.
+    text_memo: TextMemo,
     /// Texels ready to sample, by image and pixel size, with the frame that
-    /// used them last: vector images rasterized, translucent ones converted.
-    rasters: HashMap<(u64, [u32; 2]), (Pixmap, u64)>,
+    /// used them last: vector images rasterized, translucent ones converted,
+    /// photos filtered down. A filtered photo is kept for `PHOTO_IDLE_FRAMES`
+    /// frames and up to `photo_budget` bytes, anything else for two frames.
+    rasters: HashMap<(u64, [u32; 2]), Raster>,
+    photo_budget: usize,
     gamma: Gamma,
+    premultiply: Premultiply,
+    /// How much of each visible column the square quad being filled covers,
+    /// 0..=255. Every quad writes it afresh; it is kept only so that filling
+    /// one allocates nothing.
+    columns: Vec<u8>,
     stats: CpuStats,
 }
 
@@ -140,6 +169,15 @@ impl Gamma {
     #[inline]
     fn light(&self, rgb: [u8; 3], alpha: u32) -> [u32; 3] {
         rgb.map(|channel| (u32::from(self.linear[usize::from(channel)]) * alpha + 127) / 255)
+    }
+
+    /// A colour channel of a texel with `alpha`, neither 0 nor 255, as it is
+    /// stored once premultiplied: straight, in linear light under the alpha,
+    /// sRGB-encoded again.
+    fn premultiplied(&self, channel: u8, alpha: u8) -> u8 {
+        let straight = (u32::from(channel) * 255 / u32::from(alpha)).min(255) as usize;
+        let light = f32::from(self.linear[straight]) * f32::from(alpha) / 255.0;
+        self.back[light.round().clamp(0.0, 4095.0) as usize]
     }
 
     /// Source over destination, in linear light.
@@ -366,8 +404,16 @@ impl CpuRenderer {
             swash: SwashCache::new(),
             target: None,
             painted: None,
+            text_kept: 0,
+            text_kept_bytes: 0,
+            text_seen: 0,
+            text_seen_bytes: 0,
+            text_memo: TextMemo::default(),
             rasters: HashMap::new(),
+            photo_budget: PHOTO_BYTES,
             gamma: Gamma::new(),
+            premultiply: Premultiply::new(),
+            columns: Vec::new(),
             stats: CpuStats::default(),
         }
     }
@@ -426,6 +472,8 @@ impl CpuRenderer {
         // Only a frame this renderer painted at the same size and scale can
         // be painted over rather than replaced.
         let kept = self.painted == Some((physical_size, scale.to_bits()));
+        // Painting over the last frame: only what the damage shows is drawn.
+        let partial = kept && !damage.is_empty();
         let regions = match (kept, damage.is_empty()) {
             (true, false) => coalesce(damage),
             _ => vec![Rect {
@@ -459,23 +507,58 @@ impl CpuRenderer {
                     *pixel = clear;
                 }
             }
-            root = self.paint(scene, region, root);
+            root = self.paint(scene, region, root, partial);
+        }
+        // A frame painted in part leaves the text cache alone, so text
+        // that has gone is still in it. When that has let it grow well past
+        // what the last whole frame needed, the next frame is painted whole,
+        // which clears it out. So is the frame after one that has left the
+        // cache with more bytes of text than the last whole frame held, by a
+        // margin. Text is shaped for the layout before the frame is painted,
+        // so the cache is looked at rather than the text the frame painted.
+        if partial && self.text.buffers.len() > self.text_seen {
+            self.text_seen = self.text.buffers.len();
+            self.text_seen_bytes = self
+                .text
+                .buffers
+                .values()
+                .flat_map(|buffer| buffer.lines.iter())
+                .map(|line| line.text().len())
+                .sum();
+        }
+        if partial
+            && (self.text.buffers.len() > self.text_kept * 2 + 256
+                || self.text_seen_bytes > self.text_kept_bytes + STALE_TEXT_BYTES)
+        {
+            self.painted = None;
         }
         let frame = self.stats.frames;
-        self.rasters.retain(|_, (_, used)| frame - *used < 2);
+        photo::retire(&mut self.rasters, frame, self.photo_budget);
         self.stats.render = started.elapsed();
         self.target.insert(root.pixmap).data()
     }
 
     /// `region` is what may be painted: the whole viewport, or the damage.
-    fn paint(&mut self, scene: &Scene, region: Rect, root: Surface) -> Surface {
+    ///
+    /// A `partial` frame is painted over the last one. Text and paths
+    /// outside the region are then not looked at, where a whole frame looks
+    /// at every text to know which shaped text it can let go of.
+    fn paint(&mut self, scene: &Scene, region: Rect, root: Surface, partial: bool) -> Surface {
         // Oversized layers render at a lower resolution, as on the GPU.
         let cap = root.size().map(|side| side.saturating_mul(2).min(MAX_SIDE));
         // Every draw is clipped, so bounding the stack bounds the frame.
         let mut clips = vec![region];
         let mut surfaces = vec![root];
         let mut frames: Vec<LayerFrame> = Vec::new();
-        let mut active_text: HashSet<TextKey> = HashSet::new();
+        // Out of the renderer for the length of a whole frame and back at its
+        // end, so that a frame that unwinds leaves a memo that knows nothing
+        // about what it left in the cache.
+        let mut memo = (!partial).then(|| {
+            let mut memo = std::mem::take(&mut self.text_memo);
+            memo.begin();
+            memo
+        });
+        let mut held = 0;
         let close = Primitive::PopLayer;
         let mut primitives = scene.primitives.iter();
         loop {
@@ -704,6 +787,22 @@ impl CpuRenderer {
                 // not, and leaves the rectangle as it is.
                 Primitive::Custom { .. } => {}
                 Primitive::Path { path, fill, stroke } => {
+                    // Outside the clip nothing of it shows, and stroking it
+                    // to find that out is most of what drawing it costs. A
+                    // mitred corner reaches up to twice the width out.
+                    let bounds = path.bounds();
+                    let reach = stroke
+                        .as_ref()
+                        .map_or(0.0, |stroke| stroke.width * 2.0 + 1.0);
+                    let touched = surface.pixels(clip.intersect(Rect {
+                        x: bounds.x - reach,
+                        y: bounds.y - reach,
+                        width: bounds.width + 2.0 * reach,
+                        height: bounds.height + 2.0 * reach,
+                    }));
+                    if touched[2] == 0 || touched[3] == 0 {
+                        continue;
+                    }
                     let Some(shape) = skia_path(path) else {
                         continue;
                     };
@@ -734,33 +833,41 @@ impl CpuRenderer {
                 Primitive::Text { rect, color, .. }
                 | Primitive::StyledText { rect, color, .. }
                 | Primitive::RichText { rect, color, .. } => {
-                    let key = match primitive {
-                        Primitive::Text {
-                            text, font_size, ..
-                        } => self.text.ensure(text, *font_size),
-                        Primitive::StyledText { text, style, .. } => {
-                            self.text.ensure_styled(text, style, Some(rect.width))
-                        }
-                        Primitive::RichText { spans, style, .. } => {
-                            self.text.ensure_rich(spans, style, Some(rect.width))
-                        }
-                        _ => unreachable!(),
-                    };
-                    active_text.insert(key.clone());
                     let visible = surface.pixels(clip.intersect(*rect));
+                    if partial && (visible[2] == 0 || visible[3] == 0) {
+                        continue;
+                    }
+                    let owned;
+                    let key: &TextKey = match memo.as_mut() {
+                        Some(memo) => {
+                            held += text_bytes(primitive);
+                            memo.key(&mut self.text, primitive)
+                        }
+                        None => {
+                            owned = ensure_text(&mut self.text, primitive);
+                            &owned
+                        }
+                    };
                     if visible[2] > 0 && visible[3] > 0 {
-                        self.glyphs(surface, &key, *rect, visible, *color);
+                        self.glyphs(surface, key, *rect, visible, *color);
                     }
                 }
             }
         }
-        self.text.retain(&active_text);
+        if let Some(mut memo) = memo {
+            memo.finish(&mut self.text);
+            self.text_kept = self.text.buffers.len();
+            self.text_kept_bytes = held;
+            self.text_seen = self.text_kept;
+            self.text_seen_bytes = held;
+            self.text_memo = memo;
+        }
         surfaces.swap_remove(0)
     }
 
     /// Fills `rect` over the surface's `visible` pixels, which are already clipped.
     fn quad(
-        &self,
+        &mut self,
         surface: &mut Surface,
         visible: [u32; 4],
         rect: Rect,
@@ -783,23 +890,53 @@ impl CpuRenderer {
                 ((to.min(at as f32 + 1.0) - from.max(at as f32)).clamp(0.0, 1.0) * 255.0).round()
                     as u32
             };
+            // A column is covered alike on every row, so each is worked out
+            // once for the quad and not again for each of its pixels.
+            self.columns.clear();
+            self.columns.extend(
+                (0..visible[2]).map(|column| cover(visible[0] + column, left, right) as u8),
+            );
+            let columns = &self.columns[..];
+            // The first run of columns covered whole: along it a row has one
+            // alpha. The columns beside it are mixed one by one.
+            let whole = columns
+                .iter()
+                .position(|&coverage| coverage == 255)
+                .unwrap_or(columns.len());
+            let end = whole
+                + columns[whole..]
+                    .iter()
+                    .take_while(|&&coverage| coverage == 255)
+                    .count();
             let data = surface.pixmap.data_mut();
             for row in 0..visible[3] {
                 let rows = cover(visible[1] + row, top, bottom);
-                for (column, pixel) in data[start(row)..]
-                    .as_chunks_mut::<4>()
-                    .0
-                    .iter_mut()
-                    .take(visible[2] as usize)
-                    .enumerate()
-                {
-                    let alpha =
-                        cover(visible[0] + column as u32, left, right) * rows * u32::from(color.3)
-                            / (255 * 255);
+                let line = data[start(row)..].as_chunks_mut::<4>().0;
+                // No row is taken past the end of the surface, whatever `visible` says.
+                let shown = line.len().min(columns.len());
+                let line = &mut line[..shown];
+                let (from, to) = (whole.min(shown), end.min(shown));
+                let mix = |pixel: &mut [u8; 4], coverage: u8| {
+                    let alpha = u32::from(coverage) * rows * u32::from(color.3) / (255 * 255);
                     if alpha == 255 {
                         *pixel = opaque;
                     } else if alpha > 0 {
                         self.gamma.over(pixel, self.gamma.light(rgb, alpha), alpha);
+                    }
+                };
+                for (pixel, coverage) in line[..from].iter_mut().zip(&columns[..from]) {
+                    mix(pixel, *coverage);
+                }
+                for (pixel, coverage) in line[to..].iter_mut().zip(&columns[to..]) {
+                    mix(pixel, *coverage);
+                }
+                let alpha = 255 * rows * u32::from(color.3) / (255 * 255);
+                if alpha == 255 {
+                    line[from..to].fill(opaque);
+                } else if alpha > 0 {
+                    let source = self.gamma.light(rgb, alpha);
+                    for pixel in &mut line[from..to] {
+                        self.gamma.over(pixel, source, alpha);
                     }
                 }
             }
@@ -1121,7 +1258,7 @@ impl CpuRenderer {
         let pixels = match image.pixels() {
             Some((width, height, pixels)) if !prepared && [width, height] == size => pixels,
             _ => match self.rasters.get(&(image.id(), size)) {
-                Some((texels, _)) => texels.data(),
+                Some(raster) => raster.texels.data(),
                 None => return,
             },
         };
@@ -1254,16 +1391,52 @@ impl CpuRenderer {
     fn prepare(&mut self, image: &Image, size: [u32; 2]) -> bool {
         let frame = self.stats.frames;
         if let Some(entry) = self.rasters.get_mut(&(image.id(), size)) {
-            entry.1 = frame;
+            entry.used = frame;
             return true;
         }
         let settled = |pixel: &[u8; 4]| matches!(pixel[3], 0 | 255);
         let mut texels = match image.pixels() {
+            // Filtered from the image's own texels, with translucent ones
+            // converted as they are read, so that the photo is not copied: the
+            // copy would be the largest allocation here and only the first
+            // step reads it.
+            Some((width, height, pixels)) if [width, height] != size => {
+                let axes = [width > size[0], height > size[1]];
+                let Some(mut texels) = photo::halve(
+                    pixels,
+                    width,
+                    height,
+                    axes,
+                    Some(&mut self.premultiply),
+                    &self.gamma,
+                ) else {
+                    return false;
+                };
+                while texels.width() > size[0] || texels.height() > size[1] {
+                    let axes = [texels.width() > size[0], texels.height() > size[1]];
+                    let Some(smaller) = photo::halve(
+                        texels.data(),
+                        texels.width(),
+                        texels.height(),
+                        axes,
+                        None,
+                        &self.gamma,
+                    ) else {
+                        return false;
+                    };
+                    texels = smaller;
+                }
+                let raster = Raster {
+                    texels,
+                    used: frame,
+                    photo: true,
+                };
+                self.rasters.insert((image.id(), size), raster);
+                return true;
+            }
             // Texels that are opaque or clear need no conversion, which is
             // most images: only their alpha would have been divided out.
-            Some((width, height, pixels))
-                if [width, height] == size && pixels.as_chunks::<4>().0.iter().all(settled) =>
-            {
+            Some((_, _, pixels)) if pixels.as_chunks::<4>().0.iter().all(settled) => {
                 return false;
             }
             Some((width, height, pixels)) => {
@@ -1292,61 +1465,21 @@ impl CpuRenderer {
         // so a translucent texel is stored as the sRGB encoding of its
         // premultiplied linear colour, exactly as the GPU's textures hold it.
         for pixel in texels.data_mut().as_chunks_mut::<4>().0 {
-            let alpha = u32::from(pixel[3]);
+            let alpha = pixel[3];
             if settled(pixel) {
                 continue;
             }
             for channel in &mut pixel[..3] {
-                let straight = (u32::from(*channel) * 255 / alpha).min(255) as usize;
-                let light = f32::from(self.gamma.linear[straight]) * alpha as f32 / 255.0;
-                *channel = self.gamma.back[light.round().clamp(0.0, 4095.0) as usize];
+                *channel = self.premultiply.convert(*channel, alpha, &self.gamma);
             }
         }
-        while texels.width() > size[0] || texels.height() > size[1] {
-            let axes = [texels.width() > size[0], texels.height() > size[1]];
-            let Some(smaller) = self.halved(&texels, axes) else {
-                return false;
-            };
-            texels = smaller;
-        }
-        self.rasters.insert((image.id(), size), (texels, frame));
+        let raster = Raster {
+            texels,
+            used: frame,
+            photo: false,
+        };
+        self.rasters.insert((image.id(), size), raster);
         true
-    }
-
-    /// A box filter over `texels` that halves the flagged axes, in linear
-    /// light. Odd trailing rows and columns repeat their last texel.
-    fn halved(&self, texels: &Pixmap, axes: [bool; 2]) -> Option<Pixmap> {
-        let (width, height) = (texels.width(), texels.height());
-        let (across, down) = (1 + u32::from(axes[0]), 1 + u32::from(axes[1]));
-        let mut halved = Pixmap::new(width.div_ceil(across), height.div_ceil(down))?;
-        let taps = across * down;
-        let mean = |total: u32| ((total + taps / 2) / taps) as usize;
-        let row = halved.width() as usize * 4;
-        for (y, line) in halved.data_mut().chunks_exact_mut(row).enumerate() {
-            for (x, pixel) in line.as_chunks_mut::<4>().0.iter_mut().enumerate() {
-                let mut sum = [0u32; 4];
-                for (dx, dy) in (0..across).flat_map(|dx| (0..down).map(move |dy| (dx, dy))) {
-                    let x = (across * x as u32 + dx).min(width - 1);
-                    let y = (down * y as u32 + dy).min(height - 1);
-                    let texel =
-                        &texels.data()[(y as usize * width as usize + x as usize) * 4..][..4];
-                    let light = [
-                        self.gamma.linear[usize::from(texel[0])],
-                        self.gamma.linear[usize::from(texel[1])],
-                        self.gamma.linear[usize::from(texel[2])],
-                        u16::from(texel[3]),
-                    ];
-                    for (total, value) in sum.iter_mut().zip(light) {
-                        *total += u32::from(value);
-                    }
-                }
-                for (channel, total) in pixel[..3].iter_mut().zip(sum) {
-                    *channel = self.gamma.back[mean(total)];
-                }
-                pixel[3] = mean(sum[3]) as u8;
-            }
-        }
-        Some(halved)
     }
 
     /// Lays a shaped block's glyph images over the surface, within `visible`.
@@ -1414,6 +1547,221 @@ impl CpuRenderer {
                     }
                 }
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use glassmere_scene::{Size, VectorImage};
+
+    fn renderer() -> CpuRenderer {
+        CpuRenderer::with_text_system(TextSystem::with_fonts([include_bytes!(
+            "../../glassmere-render-wgpu/fonts/FiraMono-Regular.ttf"
+        )
+        .to_vec()]))
+    }
+
+    /// White where `x + y` is even, black elsewhere.
+    fn checker(side: u32) -> Image {
+        let mut rgba = Vec::new();
+        for y in 0..side {
+            for x in 0..side {
+                let shade = if (x + y) % 2 == 0 { 255 } else { 0 };
+                rgba.extend([shade, shade, shade, 255]);
+            }
+        }
+        Image::from_rgba8(side, side, rgba).unwrap()
+    }
+
+    /// Opaque white at whatever size it is asked for.
+    struct Flat;
+
+    impl VectorImage for Flat {
+        fn size(&self) -> Size {
+            Size::new(8.0, 8.0)
+        }
+        fn rasterize(&self, width: u32, height: u32) -> Vec<u8> {
+            [255; 4].repeat((width * height) as usize)
+        }
+    }
+
+    fn rect(x: f32, y: f32, width: f32, height: f32) -> Rect {
+        Rect {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    fn draw(image: &Image, rect: Rect) -> Primitive {
+        let size = image.size();
+        Primitive::Image {
+            rect,
+            image: image.clone(),
+            source: Rect {
+                x: 0.0,
+                y: 0.0,
+                width: size.width,
+                height: size.height,
+            },
+            tint: None,
+            radius: 0.0,
+        }
+    }
+
+    fn scene(primitives: Vec<Primitive>) -> Scene {
+        Scene {
+            size: Size::new(64.0, 64.0),
+            primitives,
+        }
+    }
+
+    const SQUARE: Rect = Rect {
+        x: 40.0,
+        y: 40.0,
+        width: 16.0,
+        height: 16.0,
+    };
+
+    fn quad() -> Primitive {
+        Primitive::Quad {
+            rect: SQUARE,
+            color: Color(200, 0, 0, 255),
+            radius: 0.0,
+        }
+    }
+
+    #[test]
+    fn a_filtered_photo_survives_frames_that_do_not_draw_it() {
+        let photo = checker(256);
+        let thumbnail = rect(0.0, 0.0, 32.0, 32.0);
+        let key = (photo.id(), [32, 32]);
+        let page = scene(vec![draw(&photo, thumbnail), quad()]);
+        let elsewhere = scene(vec![quad()]);
+
+        let mut renderer = renderer();
+        let first = renderer.render([64, 64], 1.0, &page, Color::WHITE).to_vec();
+        assert!(renderer.rasters.contains_key(&key));
+        for _ in 0..10 {
+            renderer.render([64, 64], 1.0, &elsewhere, Color::WHITE);
+        }
+        assert!(renderer.rasters.contains_key(&key));
+        let again = renderer.render([64, 64], 1.0, &page, Color::WHITE).to_vec();
+        assert_eq!(again, first);
+        assert_eq!(renderer.rasters.len(), 1);
+
+        // What an application does: whole frame, then frames of damage on
+        // something else, then damage over the photo.
+        let mut renderer = self::renderer();
+        renderer.render([64, 64], 1.0, &page, Color::WHITE);
+        for _ in 0..5 {
+            renderer.render_damaged([64, 64], 1.0, &page, Color::WHITE, &[SQUARE]);
+        }
+        assert!(renderer.rasters.contains_key(&key));
+        let hovered = renderer
+            .render_damaged([64, 64], 1.0, &page, Color::WHITE, &[thumbnail])
+            .to_vec();
+        assert_eq!(hovered, first);
+        assert_eq!(renderer.rasters.len(), 1);
+
+        // A vector image is rasterized again after two frames without it.
+        let flat = Image::from_vector(Flat);
+        let flat_key = (flat.id(), [8, 8]);
+        let mut renderer = self::renderer();
+        renderer.render(
+            [64, 64],
+            1.0,
+            &scene(vec![draw(&flat, rect(0.0, 0.0, 8.0, 8.0))]),
+            Color::WHITE,
+        );
+        assert!(renderer.rasters.contains_key(&flat_key));
+        renderer.render([64, 64], 1.0, &elsewhere, Color::WHITE);
+        assert!(renderer.rasters.contains_key(&flat_key));
+        renderer.render([64, 64], 1.0, &elsewhere, Color::WHITE);
+        assert!(!renderer.rasters.contains_key(&flat_key));
+    }
+
+    #[test]
+    fn a_photo_drawn_on_every_frame_is_kept() {
+        let photo = checker(256);
+        let key = (photo.id(), [32, 32]);
+        let page = scene(vec![draw(&photo, rect(0.0, 0.0, 32.0, 32.0))]);
+        let mut renderer = renderer();
+        // Past the 120 frames a photo may go without being drawn.
+        for _ in 0..130 {
+            renderer.render([64, 64], 1.0, &page, Color::WHITE);
+            let frame = renderer.stats().frames;
+            assert!(renderer.rasters.contains_key(&key), "frame {frame}");
+            assert_eq!(renderer.rasters[&key].used, frame);
+        }
+    }
+
+    #[test]
+    fn idle_limit_and_budget_drop_the_least_recently_drawn_photos() {
+        assert_eq!(renderer().photo_budget, 64 << 20);
+        let nothing = scene(Vec::new());
+        // 64 texels in 16 pixels: 16 by 16 texels of four bytes, 1,024 bytes.
+        let thumbnail = rect(0.0, 0.0, 16.0, 16.0);
+        let photo = checker(64);
+        let flat = Image::from_vector(Flat);
+        let photo_key = (photo.id(), [16, 16]);
+        let flat_key = (flat.id(), [8, 8]);
+
+        // Whole frames, and frames painted over the last one in the damage
+        // alone, which is what an application mostly renders.
+        for partial in [false, true] {
+            let render = |renderer: &mut CpuRenderer, page: &Scene, damage: Rect| {
+                let damage = if partial { vec![damage] } else { Vec::new() };
+                renderer.render_damaged([64, 64], 1.0, page, Color::WHITE, &damage);
+            };
+
+            // A photo goes on the 120th frame without it, a vector image on
+            // the second.
+            let mut renderer = renderer();
+            let both = scene(vec![
+                draw(&photo, thumbnail),
+                draw(&flat, rect(32.0, 0.0, 8.0, 8.0)),
+            ]);
+            render(&mut renderer, &both, thumbnail);
+            for idle in 1..=119 {
+                render(&mut renderer, &nothing, SQUARE);
+                let flat_kept = renderer.rasters.contains_key(&flat_key);
+                assert_eq!(flat_kept, idle < 2, "{partial} {idle}");
+                let photo_kept = renderer.rasters.contains_key(&photo_key);
+                assert!(photo_kept, "{partial} {idle}");
+            }
+            render(&mut renderer, &nothing, SQUARE);
+            assert!(!renderer.rasters.contains_key(&photo_key), "{partial}");
+
+            // Four photos drawn in turn do not fit three entries: the first
+            // goes.
+            let photos: Vec<Image> = (0..4).map(|_| checker(64)).collect();
+            let mut renderer = self::renderer();
+            renderer.photo_budget = 3 * 1024;
+            for photo in &photos {
+                let page = scene(vec![draw(photo, thumbnail)]);
+                render(&mut renderer, &page, thumbnail);
+            }
+            let alive: Vec<bool> = photos
+                .iter()
+                .map(|photo| renderer.rasters.contains_key(&(photo.id(), [16, 16])))
+                .collect();
+            assert_eq!(alive, [false, true, true, true], "{partial}");
+
+            // What a frame drew is kept whatever the budget, whether it
+            // filtered the photo or found it, and goes after.
+            let mut renderer = self::renderer();
+            renderer.photo_budget = 1;
+            let page = scene(vec![draw(&photo, thumbnail)]);
+            for _ in 0..2 {
+                render(&mut renderer, &page, thumbnail);
+                assert!(renderer.rasters.contains_key(&photo_key), "{partial}");
+            }
+            render(&mut renderer, &nothing, SQUARE);
+            assert!(!renderer.rasters.contains_key(&photo_key), "{partial}");
         }
     }
 }

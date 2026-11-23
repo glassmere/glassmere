@@ -1,6 +1,6 @@
 # The performance model
 
-What makes a frame expensive here, what it costs, and how to see it. The numbers were measured on Windows 11 with a 24-thread Ryzen and an RTX 3070 and are orders of magnitude, not guarantees.
+What makes a frame expensive here, what it costs, and how to see it. [Measuring and profiling](profiling.md) is how to check a number here on your own machine and find where a frame's time goes. The numbers were measured on Windows 11 with a 24-thread Ryzen and an RTX 3070 and are orders of magnitude, not guarantees.
 
 ## The five phases of a frame
 
@@ -31,6 +31,17 @@ From `cargo run -p glassmere-core --example bench --release`, which runs the fou
 | A 3.2 MB text file, opening it | 47 µs | 2 elements |
 | The same file, typing in it | 40 µs | 2 elements |
 | 400 elements, all animating | 0.9 ms | 401 elements, 3.1 kB |
+
+That table was measured before 0.1.8. The same benchmark on one other machine (four cores at 2.1 GHz, with other builds running beside it), as the mean frame over three runs of each version:
+
+| Case | 0.1.7 | 0.1.8 |
+| --- | --- | --- |
+| A table of 1,000,000 rows, scrolled | 1.12 to 1.33 ms | 0.55 to 0.68 ms |
+| The same table, jumping to a random row | 1.35 to 1.67 ms | 0.86 to 0.89 ms |
+| A tree of 100,000 nodes, scrolled | 0.35 to 0.63 ms | 0.17 to 0.21 ms |
+| 400 elements, all animating | 0.41 to 0.47 ms | 0.13 to 0.14 ms |
+| A 3.2 MB text file, typing in it | 8.0 to 9.2 ms | 25 to 28 µs |
+| The tree, collapsing and expanding a branch | 3.7 to 6.0 ms | 3.7 to 4.2 ms (the application's model, unchanged) |
 
 Two things to read out of that table. First, size costs nothing that is not on screen: a million rows and a hundred thousand nodes declare a few hundred elements, because only the viewport is realized. Second, the one slow case is the tree's collapse, and that is the application's model rebuilding its visible order over 100,000 nodes, not the framework.
 

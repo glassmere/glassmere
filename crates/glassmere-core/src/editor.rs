@@ -4,7 +4,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::ops::Range;
-use glassmere_scene::{Affinity, Rect, TextGeometry, TextMeasurer, TextStyle, TextWrap};
+use glassmere_scene::{Affinity, Point, Rect, TextGeometry, TextMeasurer, TextStyle, TextWrap};
 use unicode_segmentation::UnicodeSegmentation;
 
 /// What the Left and Right arrow keys mean in bidirectional text.
@@ -82,6 +82,18 @@ struct Composition {
     selection: Option<(usize, usize)>,
 }
 
+/// What `prepare` read when it last found everything in place: floats by
+/// their bits, so that equal means the same.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Settled {
+    selection: TextSelection,
+    affinity: Affinity,
+    width: u32,
+    rtl: bool,
+    scroll_x: u32,
+    align_x: u32,
+}
+
 pub(crate) struct Editor {
     pub text: String,
     pub selection: TextSelection,
@@ -93,11 +105,18 @@ pub(crate) struct Editor {
     geometry_key: Option<(String, TextStyle)>,
     /// The width the geometry wraps at, for text that wraps.
     geometry_limit: Option<f32>,
+    /// The inputs of the last `prepare` that found the geometry current and
+    /// moved nothing. The same inputs move nothing again. Whatever writes
+    /// `geometry` outside `prepare` must clear it.
+    settled: Option<Settled>,
     /// The text of a label: it keeps its line breaks and wraps at its box
     /// as drawn, instead of being one line that scrolls.
     pub wrapped: bool,
     /// Which neighbour the caret belongs to at a direction boundary.
     pub affinity: Affinity,
+    /// The x a run of Shift + Up and Shift + Down keeps, in geometry
+    /// coordinates: where the first of them started.
+    goal_x: Option<f32>,
     /// Left and Right move on screen instead of in reading order.
     pub visual: bool,
     /// Shift that right-aligns text shorter than a right-to-left field.
@@ -123,6 +142,21 @@ pub(crate) fn single_line(text: &str) -> String {
         .collect()
 }
 
+/// Whether `single_line(text)` is `text`: it holds no control character,
+/// which `single_line` turns into a space or drops.
+fn is_single_line(text: &str) -> bool {
+    !text.chars().any(char::is_control)
+}
+
+/// `single_line(text)`, copied whole when there is nothing to strip.
+pub(crate) fn single_line_owned(text: &str) -> String {
+    if is_single_line(text) {
+        text.to_owned()
+    } else {
+        single_line(text)
+    }
+}
+
 fn boundary(text: &str, byte: usize) -> usize {
     text.grapheme_indices(true)
         .map(|(index, _)| index)
@@ -130,6 +164,41 @@ fn boundary(text: &str, byte: usize) -> usize {
         .take_while(|index| *index <= byte)
         .last()
         .unwrap_or(0)
+}
+
+/// The word, run of spaces or symbol of `text` that a pointer which hit
+/// `byte` is on. `upstream` is the side `TextGeometry::hit_affinity` reported:
+/// the pointer is on the character before `byte`. A line break gives the empty
+/// range at `byte`. Words are UAX 29 segments, as in Ctrl + arrows and the
+/// rich editor, so a CJK ideograph is a word of its own.
+pub(crate) fn word_around(text: &str, byte: usize, upstream: bool) -> Range<usize> {
+    let byte = boundary(text, byte);
+    let before = text[..byte].char_indices().next_back().map(|(at, _)| at);
+    let probe = match before {
+        Some(before) if upstream || byte == text.len() => before,
+        _ => byte,
+    };
+    for (start, segment) in text.split_word_bound_indices() {
+        let end = start + segment.len();
+        if probe < end {
+            let breaks = segment.chars().all(|ch| ch == '\n' || ch == '\r');
+            return if breaks { byte..byte } else { start..end };
+        }
+    }
+    byte..byte
+}
+
+/// The text between hard line breaks that `byte` is in, without the break. A
+/// byte at the end of a line belongs to that line, one right after a break to
+/// the next. A wrapped paragraph is one piece. A line feed and a carriage
+/// return each break, alone or in a pair, as they do in shaped text; U+2028
+/// does not.
+pub(crate) fn paragraph_around(text: &str, byte: usize) -> Range<usize> {
+    let byte = boundary(text, byte);
+    let breaks = |ch: char| ch == '\n' || ch == '\r';
+    let start = text[..byte].rfind(breaks).map_or(0, |at| at + 1);
+    let end = text[byte..].find(breaks).map_or(text.len(), |at| byte + at);
+    start..end
 }
 
 impl Editor {
@@ -149,8 +218,10 @@ impl Editor {
             scroll_x: 0.0,
             geometry_key: None,
             geometry_limit: None,
+            settled: None,
             wrapped: false,
             affinity: Affinity::Downstream,
+            goal_x: None,
             visual: true,
             align_x: 0.0,
             masked: false,
@@ -169,13 +240,16 @@ impl Editor {
     }
 
     pub fn synchronize(&mut self, text: &str) {
-        let text = if self.wrapped {
-            text.to_owned()
+        let stripped;
+        let text: &str = if self.wrapped || is_single_line(text) {
+            text
         } else {
-            single_line(text)
+            stripped = single_line(text);
+            &stripped
         };
         if text != self.text {
-            self.text = text;
+            self.text = text.to_owned();
+            self.goal_x = None;
             self.selection = TextSelection {
                 anchor: boundary(&self.text, self.selection.anchor),
                 cursor: boundary(&self.text, self.selection.cursor),
@@ -357,19 +431,109 @@ impl Editor {
         }
     }
 
+    /// Whether the geometry was shaped for the text as it is now.
+    fn shaped(&self) -> bool {
+        self.geometry_key
+            .as_ref()
+            .is_some_and(|(text, _)| *text == self.text)
+    }
+
     /// One visual step, when the shaped geometry still matches the text.
     fn visual_step(&self, right: bool) -> Option<Option<(usize, Affinity)>> {
-        let current = self
-            .geometry_key
-            .as_ref()
-            .is_some_and(|(text, _)| *text == self.text);
-        (self.visual && current).then(|| {
+        (self.visual && self.shaped()).then(|| {
             self.geometry
                 .visual_step(self.selection.cursor, self.affinity, right)
         })
     }
 
+    /// What `apply(TextEdit::CancelComposition)` does, without the copies of
+    /// the text and the composition `apply` makes to tell whether anything
+    /// changed. True when the composition or the caret's affinity changed.
+    /// Like every edit, it forgets the column a run of vertical moves keeps.
+    pub fn cancel_composition(&mut self) -> bool {
+        self.goal_x = None;
+        let composing = self.composition.take().is_some();
+        let moved = self.affinity != Affinity::Downstream;
+        self.affinity = Affinity::Downstream;
+        composing || moved
+    }
+
+    /// Moves the active end of the selection one visual line up or down,
+    /// keeping the column of the run of moves (`goal_x`). `select` keeps the
+    /// anchor; otherwise the selection collapses there. False, with nothing
+    /// changed, when the geometry is not that of the text, a composition is
+    /// on, the active end has no place in the geometry, there is no line on
+    /// that side, the move would end inside a grapheme, or the geometry has
+    /// no place on that line to land on.
+    pub(crate) fn move_vertically(&mut self, down: bool, select: bool) -> bool {
+        if self.composition.is_some() || !self.shaped() {
+            return false;
+        }
+        // The shaper leaves out the spaces that end a line too narrow to show
+        // them. A byte among them has no place, `caret_at` answers with the
+        // last caret of the text, and the move would start from that line.
+        let cursor = self.selection.cursor;
+        if !self.geometry.carets.iter().any(|stop| stop.byte == cursor)
+            && !self
+                .geometry
+                .clusters
+                .iter()
+                .any(|cluster| cluster.bytes.start == cursor || cluster.bytes.end == cursor)
+        {
+            return false;
+        }
+        let lines = &self.geometry.lines;
+        let caret = self.geometry.caret_at(cursor, self.affinity);
+        let Some(from) = lines.iter().position(|line| (line.y - caret.y).abs() < 0.5) else {
+            return false;
+        };
+        let to = if down {
+            from.checked_add(1)
+        } else {
+            from.checked_sub(1)
+        };
+        let Some(target) = to.and_then(|to| lines.get(to)) else {
+            return false;
+        };
+        let x = self.goal_x.unwrap_or(caret.x);
+        // A blank line has no cluster for a hit to land on: `hit` would pick
+        // the nearest line.
+        let (byte, affinity) = if target.bytes.is_empty() {
+            (target.bytes.start, Affinity::Downstream)
+        } else {
+            self.geometry.hit_affinity(Point {
+                x,
+                y: target.y + target.height / 2.0,
+            })
+        };
+        // A blank line after a line feed and before a CR LF can start between
+        // the CR and the LF, as glassmere-text reports it. No caret is there
+        // and a selection must not end there: the key scrolls, as it does with
+        // no line to move to.
+        if boundary(&self.text, byte) != byte {
+            return false;
+        }
+        // A line can have no clusters and still not be blank, when the shaper
+        // leaves out an overlong word in a right-to-left layout. The hit then
+        // lands on a neighbouring line and the selection would jump there: the
+        // key scrolls instead.
+        if (self.geometry.caret_at(byte, affinity).y - target.y).abs() >= 0.5 {
+            return false;
+        }
+        self.selection.cursor = byte;
+        if !select {
+            self.selection.anchor = byte;
+        }
+        self.affinity = affinity;
+        self.goal_x = Some(x);
+        true
+    }
+
     pub fn apply(&mut self, edit: TextEdit) -> bool {
+        if matches!(edit, TextEdit::CancelComposition) {
+            return self.cancel_composition();
+        }
+        self.goal_x = None;
         let before = (
             self.text.clone(),
             self.selection,
@@ -385,6 +549,7 @@ impl Editor {
                     selection,
                 });
             }
+            // `cancel_composition` handles this edit before the match.
             TextEdit::CancelComposition => self.composition = None,
             TextEdit::Insert(text) | TextEdit::Commit(text) => {
                 self.composition = None;
@@ -523,16 +688,42 @@ impl Editor {
             style.wrap = TextWrap::None;
             None
         };
-        let text = self.shown();
-        let key = (text, style);
-        let changed = self.geometry_key.as_ref() != Some(&key) || self.geometry_limit != limit;
+        // Most frames find the text as it was shaped, so the comparison
+        // must not cost an allocation: what is shown is built only when it
+        // is not simply the text.
+        let same = self.geometry_limit == limit
+            && self.geometry_key.as_ref().is_some_and(|(text, known)| {
+                *known == style
+                    && if self.masked || self.composition.is_some() {
+                        *text == self.shown()
+                    } else {
+                        *text == self.text
+                    }
+            });
+        let changed = !same;
         if changed {
+            let key = (self.shown(), style);
             self.geometry = measurer.geometry(&key.0, &key.1, limit);
             self.geometry_key = Some(key);
             self.geometry_limit = limit;
+            self.settled = None;
         }
         if self.wrapped {
             return changed;
+        }
+        // The caret of a field that is masked or composing depends on more
+        // than these inputs.
+        let plain = !self.masked && self.composition.is_none();
+        let inputs = Settled {
+            selection: self.selection,
+            affinity: self.affinity,
+            width: width.to_bits(),
+            rtl,
+            scroll_x: self.scroll_x.to_bits(),
+            align_x: self.align_x.to_bits(),
+        };
+        if !changed && plain && self.settled == Some(inputs) {
+            return false;
         }
         let old_scroll = self.scroll_x;
         if let Some(caret) = self.caret() {
@@ -551,7 +742,13 @@ impl Editor {
         } else {
             0.0
         };
-        changed || self.scroll_x != old_scroll || self.align_x != old_align
+        let moved = changed || self.scroll_x != old_scroll || self.align_x != old_align;
+        self.settled = (!moved
+            && plain
+            && self.scroll_x.to_bits() == inputs.scroll_x
+            && self.align_x.to_bits() == inputs.align_x)
+            .then_some(inputs);
+        moved
     }
 
     pub fn caret(&self) -> Option<Rect> {
@@ -574,6 +771,9 @@ impl Editor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
+    use alloc::vec;
+    use glassmere_scene::MonospaceMeasurer;
 
     #[test]
     fn grapheme_delete_undo_redo_and_selection_preserve_utf8() {
@@ -610,5 +810,895 @@ mod tests {
         editor.apply(TextEdit::Undo);
         assert_eq!(editor.text, "hello");
         assert_eq!(editor.selected_text(), Some("hello"));
+    }
+
+    fn style(font_size: f32) -> TextStyle {
+        TextStyle {
+            font_size,
+            ..TextStyle::default()
+        }
+    }
+
+    /// `prepare` as if nothing were known about the last call.
+    fn prepare_cold(editor: &mut Editor, size: f32, width: f32, rtl: bool) -> bool {
+        editor.settled = None;
+        editor.prepare(&mut MonospaceMeasurer, style(size), width, rtl)
+    }
+
+    fn prepare_warm(editor: &mut Editor, size: f32, width: f32, rtl: bool) -> bool {
+        editor.prepare(&mut MonospaceMeasurer, style(size), width, rtl)
+    }
+
+    const LONG: &str = "the quick brown fox jumps over the lazy dog again and again";
+
+    /// A long text with the caret at its end, scrolled there and settled.
+    fn settled_editor() -> Editor {
+        let mut editor = Editor::new(LONG);
+        assert!(prepare_warm(&mut editor, 16.0, 100.0, false));
+        assert!(!prepare_warm(&mut editor, 16.0, 100.0, false));
+        assert!(editor.settled.is_some());
+        assert!(editor.scroll_x > 0.0);
+        editor
+    }
+
+    fn assert_idle(editor: &mut Editor, width: f32, rtl: bool) {
+        let (scroll, align) = (editor.scroll_x.to_bits(), editor.align_x.to_bits());
+        for _ in 0..2 {
+            assert!(!prepare_warm(editor, 16.0, width, rtl));
+            assert_eq!(editor.scroll_x.to_bits(), scroll);
+            assert_eq!(editor.align_x.to_bits(), align);
+        }
+    }
+
+    #[test]
+    fn a_settled_editor_moves_nothing_on_idle_calls() {
+        let mut editor = settled_editor();
+        assert_idle(&mut editor, 100.0, false);
+    }
+
+    #[test]
+    fn a_selection_change_is_noticed_after_settling() {
+        let mut editor = settled_editor();
+        editor.apply(TextEdit::Move {
+            direction: TextMove::Start,
+            select: false,
+            word: false,
+        });
+        assert!(prepare_warm(&mut editor, 16.0, 100.0, false));
+        assert_eq!(editor.scroll_x, 0.0);
+        assert_idle(&mut editor, 100.0, false);
+    }
+
+    #[test]
+    fn a_scroll_written_from_outside_is_noticed_after_settling() {
+        let mut editor = settled_editor();
+        let at = editor.scroll_x;
+        editor.scroll_x = 0.0;
+        assert!(prepare_warm(&mut editor, 16.0, 100.0, false));
+        assert_eq!(editor.scroll_x, at);
+        assert_idle(&mut editor, 100.0, false);
+    }
+
+    #[test]
+    fn a_narrower_field_is_noticed_after_settling() {
+        let mut editor = settled_editor();
+        let at = editor.scroll_x;
+        assert!(prepare_warm(&mut editor, 16.0, 60.0, false));
+        assert!(editor.scroll_x > at);
+        assert_idle(&mut editor, 60.0, false);
+    }
+
+    #[test]
+    fn an_affinity_change_is_noticed_after_settling() {
+        let mut editor = Editor::new("abc \u{5d0}\u{5d1}\u{5d2} def");
+        editor.apply(TextEdit::Move {
+            direction: TextMove::Start,
+            select: false,
+            word: false,
+        });
+        editor.apply(TextEdit::Select {
+            anchor: 4,
+            cursor: 4,
+        });
+        prepare_warm(&mut editor, 16.0, 40.0, false);
+        prepare_warm(&mut editor, 16.0, 40.0, false);
+        assert!(editor.settled.is_some());
+        let mut cold = Editor::new(&editor.text);
+        cold.selection = editor.selection;
+        cold.scroll_x = editor.scroll_x;
+        cold.affinity = Affinity::Upstream;
+        editor.affinity = Affinity::Upstream;
+        let moved = prepare_warm(&mut editor, 16.0, 40.0, false);
+        assert_eq!(moved, prepare_cold(&mut cold, 16.0, 40.0, false));
+        assert_eq!(editor.scroll_x.to_bits(), cold.scroll_x.to_bits());
+        assert_idle(&mut editor, 40.0, false);
+    }
+
+    #[test]
+    fn the_direction_is_noticed_after_settling() {
+        let mut editor = Editor::new("short");
+        assert!(prepare_warm(&mut editor, 16.0, 300.0, false));
+        assert!(!prepare_warm(&mut editor, 16.0, 300.0, false));
+        assert!(editor.settled.is_some());
+        assert_eq!(editor.align_x, 0.0);
+        assert!(prepare_warm(&mut editor, 16.0, 300.0, true));
+        assert!(editor.align_x > 0.0);
+        assert_idle(&mut editor, 300.0, true);
+        assert!(prepare_warm(&mut editor, 16.0, 300.0, false));
+        assert_eq!(editor.align_x, 0.0);
+    }
+
+    #[test]
+    fn a_preedit_equal_to_the_selection_still_moves_the_caret() {
+        let tail = LONG.len() - 30..LONG.len();
+        let mut warm = settled_editor();
+        let mut cold = settled_editor();
+        for editor in [&mut warm, &mut cold] {
+            editor.apply(TextEdit::Select {
+                anchor: tail.start,
+                cursor: tail.end,
+            });
+            prepare_cold(editor, 16.0, 100.0, false);
+        }
+        prepare_warm(&mut warm, 16.0, 100.0, false);
+        assert!(warm.settled.is_some());
+        let at = warm.scroll_x;
+        for editor in [&mut warm, &mut cold] {
+            editor.apply(TextEdit::Preedit {
+                text: LONG[tail.clone()].into(),
+                selection: Some((0, 0)),
+            });
+        }
+        let moved = prepare_warm(&mut warm, 16.0, 100.0, false);
+        assert_eq!(moved, prepare_cold(&mut cold, 16.0, 100.0, false));
+        assert!(warm.scroll_x < at);
+        assert_eq!(warm.scroll_x.to_bits(), cold.scroll_x.to_bits());
+        assert!(warm.settled.is_none());
+    }
+
+    #[test]
+    fn a_masked_editor_never_settles() {
+        let mut editor = Editor::new("");
+        editor.masked = true;
+        for _ in 0..3 {
+            prepare_warm(&mut editor, 16.0, 100.0, false);
+            assert!(editor.settled.is_none());
+        }
+        editor.masked = false;
+        prepare_warm(&mut editor, 16.0, 100.0, false);
+        prepare_warm(&mut editor, 16.0, 100.0, false);
+        assert!(editor.settled.is_some());
+        editor.masked = true;
+        editor.apply(TextEdit::Insert("secret words".into()));
+        prepare_warm(&mut editor, 16.0, 40.0, false);
+        assert!(editor.settled.is_none());
+    }
+
+    #[test]
+    fn a_wrapped_editor_does_not_settle() {
+        let mut editor = Editor::block("some words to wrap");
+        let wrapped = TextStyle {
+            wrap: TextWrap::Word,
+            ..TextStyle::default()
+        };
+        for _ in 0..3 {
+            editor.prepare(&mut MonospaceMeasurer, wrapped.clone(), 60.0, false);
+            assert!(editor.settled.is_none());
+        }
+    }
+
+    /// The text of a label shaped at twelve columns a line, as the label
+    /// tests of the kernel are.
+    fn shaped_block(text: &str) -> Editor {
+        let mut editor = Editor::block(text);
+        let wrapped = TextStyle {
+            wrap: TextWrap::Word,
+            ..style(16.0)
+        };
+        editor.prepare(&mut MonospaceMeasurer, wrapped, 120.0, false);
+        editor
+    }
+
+    fn put(editor: &mut Editor, anchor: usize, cursor: usize) {
+        editor.apply(TextEdit::Select { anchor, cursor });
+    }
+
+    fn selection(editor: &Editor) -> (usize, usize) {
+        (editor.selection.anchor, editor.selection.cursor)
+    }
+
+    #[test]
+    fn a_word_is_what_the_pointer_is_on() {
+        let order = "Order 4711 shipped";
+        let table: &[(&str, usize, bool, Range<usize>)] = &[
+            (order, 8, false, 6..10),
+            (order, 2, false, 0..5),
+            // A space is a segment of its own, from either side of it.
+            (order, 5, false, 5..6),
+            (order, 5, true, 0..5),
+            (order, 6, false, 6..10),
+            (order, 6, true, 5..6),
+            (order, 10, true, 6..10),
+            (order, 18, false, 11..18),
+            (order, 18, true, 11..18),
+            (order, 0, true, 0..5),
+            (order, 0, false, 0..5),
+            ("can't stop", 3, false, 0..5),
+            ("can't stop", 5, true, 0..5),
+            ("can't stop", 5, false, 5..6),
+            ("3.14 x", 1, false, 0..4),
+            ("foo_bar baz", 4, false, 0..7),
+            ("a, b", 1, false, 1..2),
+            ("na\u{ef}ve caf\u{e9}", 2, false, 0..6),
+            ("na\u{ef}ve caf\u{e9}", 3, false, 0..6),
+            ("na\u{ef}ve caf\u{e9}", 8, false, 7..12),
+            ("a \u{1F469}\u{200D}\u{1F4BB} b", 2, false, 2..13),
+            ("\u{65E5}\u{672C}", 0, false, 0..3),
+            // A line break is no word.
+            ("a\r\nb", 1, false, 1..1),
+            ("a\r\nb", 3, false, 3..4),
+            ("a\n\nb", 2, false, 2..2),
+            ("", 0, false, 0..0),
+            ("", 0, true, 0..0),
+            // A byte from stale geometry or inside a character must not panic.
+            ("abc", 99, true, 0..3),
+            ("abc", 99, false, 0..3),
+            ("h\u{e9}llo", 2, false, 0..6),
+        ];
+        for (text, byte, upstream, word) in table {
+            assert_eq!(
+                word_around(text, *byte, *upstream),
+                *word,
+                "{text:?} at {byte}, upstream {upstream}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_paragraph_is_the_text_between_line_breaks() {
+        let table: &[(&str, usize, Range<usize>)] = &[
+            ("abc", 0, 0..3),
+            ("abc", 1, 0..3),
+            ("abc", 3, 0..3),
+            ("abc", 99, 0..3),
+            ("a\nbb\n\nccc", 0, 0..1),
+            ("a\nbb\n\nccc", 1, 0..1),
+            ("a\nbb\n\nccc", 2, 2..4),
+            ("a\nbb\n\nccc", 3, 2..4),
+            ("a\nbb\n\nccc", 4, 2..4),
+            ("a\nbb\n\nccc", 5, 5..5),
+            ("a\nbb\n\nccc", 6, 6..9),
+            ("a\nbb\n\nccc", 8, 6..9),
+            ("a\nbb\n\nccc", 9, 6..9),
+            ("a\r\nb", 0, 0..1),
+            ("a\r\nb", 1, 0..1),
+            ("a\r\nb", 3, 3..4),
+            ("ab\n", 2, 0..2),
+            ("ab\n", 3, 3..3),
+            // A carriage return breaks alone, and a pair of the two breaks
+            // whichever comes first, as in shaped text.
+            ("one\rtwo", 0, 0..3),
+            ("one\rtwo", 3, 0..3),
+            ("one\rtwo", 4, 4..7),
+            ("one\rtwo", 7, 4..7),
+            ("abc\r", 1, 0..3),
+            ("abc\r", 4, 4..4),
+            ("a\n\rb", 0, 0..1),
+            ("a\n\rb", 3, 3..4),
+            ("a\n\rb", 4, 3..4),
+            // U+2028 is no break.
+            ("a\u{2028}b", 1, 0..5),
+            // A byte inside a character or between the CR and the LF of a
+            // pair is taken to be where that character or pair starts.
+            ("h\u{e9}llo", 2, 0..6),
+            ("a\r\nb", 2, 0..1),
+            ("\u{1F469}x\ny", 2, 0..5),
+        ];
+        for (text, byte, paragraph) in table {
+            assert_eq!(
+                paragraph_around(text, *byte),
+                *paragraph,
+                "{text:?} at {byte}"
+            );
+        }
+    }
+
+    const PHRASE: &str = "alpha beta gamma delta epsilon";
+
+    #[test]
+    fn moving_by_line_keeps_the_column_and_the_anchor() {
+        let mut editor = shaped_block(PHRASE);
+        put(&mut editor, 8, 8);
+        assert!(editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (8, 20));
+        // The last line has six columns: the end of the text.
+        assert!(editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (8, 30));
+        // Back on a longer line the column comes back.
+        assert!(editor.move_vertically(false, true));
+        assert_eq!(selection(&editor), (8, 20));
+        assert!(editor.move_vertically(false, true));
+        assert_eq!(selection(&editor), (8, 8));
+        // Nothing above the first line.
+        assert!(!editor.move_vertically(false, true));
+        assert_eq!(selection(&editor), (8, 8));
+        // Without Shift the selection collapses where it lands.
+        assert!(editor.move_vertically(true, false));
+        assert_eq!(selection(&editor), (20, 20));
+    }
+
+    #[test]
+    fn moving_down_from_the_last_line_changes_nothing() {
+        let mut editor = shaped_block(PHRASE);
+        put(&mut editor, 25, 25);
+        assert!(!editor.move_vertically(true, true));
+        assert!(!editor.move_vertically(true, false));
+        assert_eq!(selection(&editor), (25, 25));
+        assert_eq!(editor.goal_x, None);
+    }
+
+    #[test]
+    fn the_column_is_forgotten_by_any_other_edit_and_by_new_text() {
+        let mut editor = shaped_block(PHRASE);
+        put(&mut editor, 8, 8);
+        assert!(editor.move_vertically(true, true));
+        assert!(editor.goal_x.is_some());
+        editor.synchronize(PHRASE);
+        assert!(editor.goal_x.is_some());
+        editor.apply(TextEdit::Move {
+            direction: TextMove::Left,
+            select: false,
+            word: false,
+        });
+        assert_eq!(editor.goal_x, None);
+        assert!(editor.move_vertically(true, true));
+        put(&mut editor, 8, 8);
+        assert_eq!(editor.goal_x, None);
+        assert!(editor.move_vertically(true, true));
+        editor.apply(TextEdit::SelectAll);
+        assert_eq!(editor.goal_x, None);
+        put(&mut editor, 8, 8);
+        assert!(editor.move_vertically(true, true));
+        editor.synchronize("something else");
+        assert_eq!(editor.goal_x, None);
+    }
+
+    #[test]
+    fn geometry_of_other_text_moves_nothing() {
+        // One text shorter than the shaped one, whose landing would be past
+        // its end, and one of the same length, which only the text can tell
+        // from the shaped one.
+        for other in ["something else", "ALPHA BETA GAMMA DELTA EPSILON"] {
+            let mut editor = shaped_block(PHRASE);
+            put(&mut editor, 8, 8);
+            editor.synchronize(other);
+            assert!(!editor.move_vertically(true, true), "{other}");
+            assert_eq!(selection(&editor), (8, 8));
+            assert_eq!(editor.goal_x, None);
+        }
+    }
+
+    #[test]
+    fn nothing_moves_by_line_during_a_composition() {
+        let mut editor = shaped_block(PHRASE);
+        put(&mut editor, 8, 8);
+        editor.apply(TextEdit::Preedit {
+            text: "x".into(),
+            selection: None,
+        });
+        assert!(!editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (8, 8));
+    }
+
+    #[test]
+    fn a_blank_line_is_visited() {
+        let mut editor = shaped_block("one\n\nthree");
+        put(&mut editor, 2, 2);
+        assert!(editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (2, 4));
+        assert!(editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (2, 7));
+        assert!(editor.move_vertically(false, true));
+        assert_eq!(selection(&editor), (2, 4));
+        assert!(editor.move_vertically(false, true));
+        assert_eq!(selection(&editor), (2, 2));
+    }
+
+    #[test]
+    fn a_blank_line_that_starts_inside_a_crlf_is_not_moved_to() {
+        // glassmere-text starts the blank line of "a\n\r\nb" between the CR
+        // and the LF.
+        let mut editor = shaped_block("a\n\r\nb");
+        assert_eq!(editor.geometry.lines.len(), 3);
+        editor.geometry.lines[1].bytes = 3..3;
+        for stop in &mut editor.geometry.carets {
+            if stop.byte == 2 {
+                stop.byte = 3;
+            }
+        }
+        put(&mut editor, 0, 0);
+        assert!(!editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (0, 0));
+        assert_eq!(editor.goal_x, None);
+        put(&mut editor, 4, 4);
+        assert!(!editor.move_vertically(false, true));
+        assert_eq!(selection(&editor), (4, 4));
+        assert_eq!(editor.goal_x, None);
+
+        // A blank line between two CR LF starts on a boundary.
+        let mut editor = shaped_block("a\r\n\r\nb");
+        put(&mut editor, 0, 0);
+        assert!(editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (0, 3));
+        assert!(editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (0, 5));
+    }
+
+    #[test]
+    fn a_line_without_clusters_that_is_not_blank_is_not_moved_to() {
+        // glassmere-text reports a line with no bytes and no clusters for an
+        // overlong word in right-to-left text; the hit would land on another
+        // line and the selection would jump to the start.
+        let mut editor = shaped_block(PHRASE);
+        let (y, height) = (editor.geometry.lines[1].y, editor.geometry.lines[1].height);
+        let off_line = |rect: &Rect| rect.y + height <= y || rect.y >= y + height;
+        editor
+            .geometry
+            .clusters
+            .retain(|cluster| off_line(&cluster.rect));
+        editor.geometry.carets.retain(|stop| off_line(&stop.rect));
+        editor.geometry.lines[1].bytes = 0..0;
+        put(&mut editor, 8, 8);
+        assert!(!editor.move_vertically(true, true));
+        assert_eq!(selection(&editor), (8, 8));
+        assert_eq!(editor.goal_x, None);
+        put(&mut editor, 25, 25);
+        assert!(!editor.move_vertically(false, true));
+        assert_eq!(selection(&editor), (25, 25));
+        assert_eq!(editor.goal_x, None);
+    }
+
+    #[test]
+    fn a_selection_end_that_has_no_place_in_the_geometry_moves_nothing() {
+        // The shaper leaves out the spaces that end a line too narrow to show
+        // them, so a byte among them has no caret stop and no cluster edge.
+        // The place `caret_at` gives such a byte is the last caret stop: the
+        // stops are in both orders, to put it on the last line and on the
+        // first.
+        for reversed in [false, true] {
+            let mut editor = shaped_block(PHRASE);
+            if reversed {
+                editor.geometry.carets.reverse();
+            }
+            editor.geometry.carets.retain(|stop| stop.byte != 8);
+            editor
+                .geometry
+                .clusters
+                .retain(|cluster| cluster.bytes.start != 8 && cluster.bytes.end != 8);
+            put(&mut editor, 8, 8);
+            for (down, select) in [(false, false), (false, true), (true, false), (true, true)] {
+                assert!(!editor.move_vertically(down, select), "{reversed} {down}");
+                assert_eq!(selection(&editor), (8, 8));
+                assert_eq!(editor.goal_x, None);
+            }
+        }
+
+        // A caret stop alone is a place, and so is a cluster edge alone.
+        let mut editor = shaped_block(PHRASE);
+        editor.geometry.carets.retain(|stop| stop.byte != 8);
+        put(&mut editor, 8, 8);
+        assert!(editor.move_vertically(true, true));
+        let mut editor = shaped_block(PHRASE);
+        editor
+            .geometry
+            .clusters
+            .retain(|cluster| cluster.bytes.start != 8 && cluster.bytes.end != 8);
+        put(&mut editor, 8, 8);
+        assert!(editor.move_vertically(true, true));
+    }
+
+    #[test]
+    fn a_line_of_one_has_nowhere_to_move() {
+        let mut editor = shaped_block("short");
+        put(&mut editor, 2, 2);
+        assert!(!editor.move_vertically(true, true));
+        assert!(!editor.move_vertically(false, true));
+        assert_eq!(selection(&editor), (2, 2));
+    }
+
+    #[test]
+    fn moving_by_line_keeps_the_place_on_screen_in_right_to_left_text() {
+        // Two full lines; the first letter is at the right end of the first.
+        let mut editor = shaped_block(&"\u{5d0}".repeat(24));
+        put(&mut editor, 0, 0);
+        let x = editor.geometry.caret_at(0, editor.affinity).x;
+        assert!(editor.move_vertically(true, false));
+        assert_eq!(editor.selection.cursor, 24);
+        let below = editor.geometry.caret_at(24, editor.affinity);
+        assert_eq!(below.x, x);
+        assert!(editor.move_vertically(false, false));
+        assert_eq!(editor.selection.cursor, 0);
+    }
+
+    /// Whatever is done to an editor, preparing it with a memory of the
+    /// last call gives what preparing it afresh each time gives.
+    #[test]
+    fn remembering_the_last_call_never_changes_what_prepare_does() {
+        let mut state = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = move |bound: u64| {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (state >> 33) % bound
+        };
+        let words = [
+            "a",
+            "abc",
+            "\u{5d0}\u{5d1}",
+            "long words here",
+            "e\u{301}",
+            "",
+        ];
+        for _ in 0..40 {
+            let mut warm = Editor::new("start of the text");
+            let mut cold = Editor::new("start of the text");
+            let (mut size, mut width, mut rtl) = (16.0_f32, 90.0_f32, false);
+            for _ in 0..120 {
+                let word = words[next(words.len() as u64) as usize];
+                let edit = match next(14) {
+                    0 => Some(TextEdit::Insert(word.into())),
+                    1 => Some(TextEdit::Backspace { word: false }),
+                    2..=5 => Some(TextEdit::Move {
+                        direction: [
+                            TextMove::Left,
+                            TextMove::Right,
+                            TextMove::Start,
+                            TextMove::End,
+                        ][next(4) as usize],
+                        select: next(2) == 0,
+                        word: false,
+                    }),
+                    6 => Some(TextEdit::SelectAll),
+                    7 => Some(TextEdit::Undo),
+                    8 => Some(TextEdit::Redo),
+                    9 => {
+                        let text = if next(2) == 0 {
+                            warm.text[warm.selection.range()].to_owned()
+                        } else {
+                            word.to_owned()
+                        };
+                        let selection =
+                            [None, Some((0, 0)), Some((text.len(), text.len()))][next(3) as usize];
+                        Some(TextEdit::Preedit { text, selection })
+                    }
+                    10 => Some(TextEdit::CancelComposition),
+                    _ => None,
+                };
+                if let Some(edit) = edit {
+                    warm.apply(edit.clone());
+                    cold.apply(edit);
+                }
+                match next(10) {
+                    0 => {
+                        let to = next(60) as f32 * 2.0;
+                        warm.scroll_x = to;
+                        cold.scroll_x = to;
+                    }
+                    1 => {
+                        warm.affinity = Affinity::Upstream;
+                        cold.affinity = Affinity::Upstream;
+                    }
+                    2 => width = [30.0, 90.0, 400.0][next(3) as usize],
+                    3 => rtl = !rtl,
+                    4 => {
+                        warm.masked = !warm.masked;
+                        cold.masked = !cold.masked;
+                    }
+                    5 => size = [12.0, 16.0][next(2) as usize],
+                    _ => {}
+                }
+                for _ in 0..1 + next(3) {
+                    let remembered = prepare_warm(&mut warm, size, width, rtl);
+                    let fresh = prepare_cold(&mut cold, size, width, rtl);
+                    assert_eq!(remembered, fresh);
+                    assert_eq!(warm.scroll_x.to_bits(), cold.scroll_x.to_bits());
+                    assert_eq!(warm.align_x.to_bits(), cold.align_x.to_bits());
+                }
+            }
+        }
+    }
+
+    /// What `single_line` does, as a plain loop.
+    fn stripped(text: &str) -> String {
+        let mut out = String::new();
+        for ch in text.chars() {
+            if matches!(ch, '\n' | '\r' | '\t') {
+                out.push(' ');
+            } else if !ch.is_control() {
+                out.push(ch);
+            }
+        }
+        out
+    }
+
+    /// What `cancel_composition` must do, found the way `apply` tells that
+    /// anything changed: by comparing copies of what an edit can touch.
+    fn cancelled_by_comparing(editor: &mut Editor) -> bool {
+        let before = (
+            editor.text.clone(),
+            editor.selection,
+            editor.composition.clone(),
+            editor.affinity,
+        );
+        editor.composition = None;
+        editor.affinity = Affinity::Downstream;
+        before
+            != (
+                editor.text.clone(),
+                editor.selection,
+                editor.composition.clone(),
+                editor.affinity,
+            )
+    }
+
+    /// Everything an editor holds that a cancelled composition leaves alone,
+    /// and what it changes.
+    #[allow(clippy::type_complexity)]
+    fn held(
+        editor: &Editor,
+    ) -> (
+        String,
+        TextSelection,
+        Option<Composition>,
+        Affinity,
+        Vec<(String, TextSelection)>,
+        Vec<(String, TextSelection)>,
+        [u32; 2],
+        (bool, bool),
+    ) {
+        let history = |history: &VecDeque<Snapshot>| {
+            history
+                .iter()
+                .map(|entry| (entry.text.clone(), entry.selection))
+                .collect()
+        };
+        (
+            editor.text.clone(),
+            editor.selection,
+            editor.composition.clone(),
+            editor.affinity,
+            history(&editor.undo),
+            history(&editor.redo),
+            [editor.scroll_x.to_bits(), editor.align_x.to_bits()],
+            (editor.masked, editor.revealed),
+        )
+    }
+
+    /// A settled editor over "hello world" with `undo` and `redo` steps of
+    /// history, the selection in `bytes`, and the composition and affinity
+    /// given.
+    fn editor_in_state(
+        composition: Option<Option<(usize, usize)>>,
+        affinity: Affinity,
+        bytes: (usize, usize),
+        (undo, redo): (usize, usize),
+        masked: bool,
+    ) -> Editor {
+        let mut editor = Editor::new("hello world");
+        for index in 0..undo + redo {
+            editor.apply(TextEdit::Insert(index.to_string()));
+        }
+        for _ in 0..redo {
+            editor.apply(TextEdit::Undo);
+        }
+        editor.selection = TextSelection {
+            anchor: bytes.0,
+            cursor: bytes.1,
+        };
+        editor.masked = masked;
+        assert!(prepare_warm(&mut editor, 16.0, 60.0, false));
+        assert!(!prepare_warm(&mut editor, 16.0, 60.0, false));
+        if let Some(selection) = composition {
+            editor.apply(TextEdit::Preedit {
+                text: "\u{306b}\u{307b}\u{3093}".into(),
+                selection,
+            });
+        }
+        editor.affinity = affinity;
+        editor
+    }
+
+    #[test]
+    fn cancelling_a_composition_changes_what_apply_would_and_reports_it_the_same() {
+        let compositions = [None, Some(None), Some(Some((3, 3))), Some(Some((0, 9)))];
+        let affinities = [Affinity::Downstream, Affinity::Upstream];
+        let selections = [(0, 0), (2, 4), (11, 11)];
+        let histories = [(0, 0), (2, 0), (0, 1), (2, 1)];
+        for composition in compositions {
+            for affinity in affinities {
+                for bytes in selections {
+                    for history in histories {
+                        for masked in [false, true] {
+                            let build =
+                                || editor_in_state(composition, affinity, bytes, history, masked);
+                            let (mut cancelled, mut applied, mut compared) =
+                                (build(), build(), build());
+                            let settled = cancelled.settled;
+                            assert_eq!(settled.is_some(), !masked);
+                            let expected = cancelled_by_comparing(&mut compared);
+                            assert_eq!(
+                                expected,
+                                composition.is_some() || affinity == Affinity::Upstream
+                            );
+                            let case = (composition, affinity, bytes, history, masked);
+                            assert_eq!(cancelled.cancel_composition(), expected, "{case:?}");
+                            assert_eq!(applied.apply(TextEdit::CancelComposition), expected);
+                            assert_eq!(held(&cancelled), held(&compared), "{case:?}");
+                            assert_eq!(held(&applied), held(&compared), "{case:?}");
+                            assert!(cancelled.settled == settled && applied.settled == settled);
+                            assert!(!cancelled.composing());
+                            assert_eq!(cancelled.affinity, Affinity::Downstream);
+                            assert!(!cancelled.cancel_composition(), "{case:?}");
+                            assert!(!applied.apply(TextEdit::CancelComposition), "{case:?}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// An editor over `text` with a selection, a composition and one step of
+    /// undo and of redo to lose.
+    fn lived_in(text: &str) -> Editor {
+        let mut editor = Editor::new("x");
+        editor.apply(TextEdit::SelectAll);
+        editor.apply(TextEdit::Insert(text.into()));
+        editor.apply(TextEdit::Insert("a".into()));
+        editor.apply(TextEdit::Undo);
+        editor.apply(TextEdit::Select {
+            anchor: 1,
+            cursor: 2,
+        });
+        editor.apply(TextEdit::Preedit {
+            text: "\u{306b}".into(),
+            selection: None,
+        });
+        assert_eq!(editor.text, text);
+        editor
+    }
+
+    fn assert_lived_in(editor: &Editor, text: &str) {
+        assert_eq!(editor.text, text);
+        assert!(editor.composing());
+        assert_eq!(
+            editor.selection,
+            TextSelection {
+                anchor: 1,
+                cursor: 2
+            }
+        );
+        assert_eq!((editor.undo.len(), editor.redo.len()), (1, 1));
+    }
+
+    #[test]
+    fn synchronizing_with_the_text_it_holds_changes_nothing() {
+        let mut editor = lived_in("hello there");
+        editor.synchronize("hello there");
+        assert_lived_in(&editor, "hello there");
+
+        // Text that strips to the held text is the held text.
+        for input in [
+            "hello\nthere",
+            "hello\rthere",
+            "hello\tthere",
+            "hel\u{7}lo there",
+            "hello\u{7f} there",
+            "hello \u{85}there",
+            "\0hello there\0",
+            "hello there\u{9f}",
+        ] {
+            assert_eq!(stripped(input), "hello there");
+            editor.synchronize(input);
+            assert_lived_in(&editor, "hello there");
+        }
+        let mut editor = lived_in("a  b");
+        editor.synchronize("a\r\nb");
+        assert_lived_in(&editor, "a  b");
+    }
+
+    #[test]
+    fn synchronizing_with_other_text_resets_the_editor_to_the_stripped_text() {
+        for (input, expected) in [
+            ("hello", "hello"),
+            ("hello there!", "hello there!"),
+            ("wor\u{7}ld\n", "world "),
+            ("\u{85}", ""),
+            ("", ""),
+            ("e\u{301}\t\u{301}x", "e\u{301} \u{301}x"),
+        ] {
+            assert_eq!(stripped(input), expected);
+            let mut editor = lived_in("hello there");
+            editor.selection = TextSelection {
+                anchor: 1,
+                cursor: 8,
+            };
+            editor.synchronize(input);
+            assert_eq!(editor.text, expected);
+            assert_eq!(
+                editor.selection,
+                TextSelection {
+                    anchor: boundary(expected, 1),
+                    cursor: boundary(expected, 8),
+                }
+            );
+            assert!(!editor.composing());
+            assert!(editor.undo.is_empty() && editor.redo.is_empty());
+        }
+    }
+
+    #[test]
+    fn a_wrapped_editor_keeps_its_line_breaks_and_compares_them() {
+        let mut editor = Editor::block("a\nb");
+        editor.apply(TextEdit::Preedit {
+            text: "\u{306b}".into(),
+            selection: None,
+        });
+        editor.synchronize("a\nb");
+        assert_eq!(editor.text, "a\nb");
+        assert!(editor.composing());
+        editor.synchronize("a\r\nb");
+        assert_eq!(editor.text, "a\r\nb");
+        assert!(!editor.composing());
+        let mut editor = Editor::block("ab");
+        editor.synchronize("a\nb");
+        assert_eq!(editor.text, "a\nb");
+    }
+
+    #[test]
+    fn a_draft_the_application_does_not_accept_is_reverted() {
+        let mut editor = Editor::new("abc");
+        editor.apply(TextEdit::Insert("d".into()));
+        assert_eq!(editor.text, "abcd");
+        assert_eq!(editor.undo.len(), 1);
+        editor.synchronize("abc");
+        assert_eq!(editor.text, "abc");
+        assert!(editor.undo.is_empty() && editor.redo.is_empty());
+        editor.apply(TextEdit::Undo);
+        assert_eq!(editor.text, "abc");
+    }
+
+    #[test]
+    fn a_text_without_control_characters_is_single_line_and_copied_whole() {
+        let lone = |ch: char| ch.to_string();
+        let mut chars: Vec<char> = (0..=0x1ff).filter_map(char::from_u32).collect();
+        chars.extend(
+            [
+                0x2028, 0x2029, 0x200b, 0x200c, 0x200d, 0xad, 0xfeff, 0x301, 0x1f469, 0xe000,
+            ]
+            .into_iter()
+            .filter_map(char::from_u32),
+        );
+        let mut texts = vec![
+            String::new(),
+            "plain".into(),
+            "\u{1f469}\u{200d}\u{1f4bb} e\u{301}".into(),
+            "\u{1f1fa}\u{1f1f8}".into(),
+        ];
+        for ch in chars {
+            for text in [
+                lone(ch),
+                format!("ab{ch}cd"),
+                format!("{ch}{ch}"),
+                format!("\u{e9}\u{a3}\u{a9}\u{a1}{ch}"),
+            ] {
+                texts.push(text);
+            }
+        }
+        for text in texts {
+            assert_eq!(single_line(&text), stripped(&text), "{text:?}");
+            assert_eq!(is_single_line(&text), stripped(&text) == text, "{text:?}");
+            assert_eq!(single_line_owned(&text), stripped(&text), "{text:?}");
+        }
+        assert_eq!(single_line_owned("").capacity(), 0);
     }
 }

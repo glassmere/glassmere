@@ -1,10 +1,12 @@
 use super::control_paint::slider_track;
 use super::*;
+use crate::editor::{paragraph_around, word_around};
 use crate::{TextMove, controls::slider_value};
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
+use glassmere_scene::Affinity;
 
 /// What a text field holds between declarations.
 pub(crate) struct FieldState {
@@ -23,7 +25,7 @@ impl Context {
         for (id, node) in &mut self.nodes {
             if Some(*id) != keep
                 && let Some(editor) = &mut node.editor
-                && editor.apply(TextEdit::CancelComposition)
+                && editor.cancel_composition()
             {
                 changed.push(*id);
             }
@@ -200,10 +202,19 @@ impl Context {
         };
         let (cursor, affinity) = editor.geometry.hit_affinity(local);
         let cursor = editor.display_offset(cursor);
-        let anchor = if extend {
-            editor.selection.anchor
-        } else {
-            cursor
+        // A word or paragraph taken by a double or triple press stays selected
+        // while the pointer moves; the selection grows from it by character.
+        let taken = self
+            .taken_range
+            .as_ref()
+            .filter(|(taken, _)| extend && *taken == id)
+            .map(|(_, range)| range.clone());
+        let (anchor, cursor, affinity) = match taken {
+            Some(range) if cursor < range.start => (range.end, cursor, affinity),
+            Some(range) if cursor > range.end => (range.start, cursor, affinity),
+            Some(range) => (range.start, range.end, Affinity::Upstream),
+            None if extend => (editor.selection.anchor, cursor, affinity),
+            None => (cursor, cursor, affinity),
         };
         let changed = self.edit(id, TextEdit::Select { anchor, cursor });
         // The caret shows on the side of the character that was clicked.
@@ -218,6 +229,62 @@ impl Context {
             return true;
         }
         changed
+    }
+
+    /// A double click (a word) or a triple click (a paragraph) in a selectable
+    /// label.
+    fn select_around(&mut self, id: NodeId, position: Point, paragraph: bool) {
+        // The press places the caret where the pointer is, on the side of the
+        // character it hit.
+        self.editor_pointer(id, position, false);
+        let Some(editor) = self.nodes.get(&id).and_then(|node| node.editor.as_ref()) else {
+            return;
+        };
+        let (at, hit) = (editor.selection.cursor, editor.affinity);
+        let range = if paragraph {
+            paragraph_around(&editor.text, at)
+        } else {
+            word_around(&editor.text, at, hit == Affinity::Upstream)
+        };
+        self.edit(
+            id,
+            TextEdit::Select {
+                anchor: range.start,
+                cursor: range.end,
+            },
+        );
+        // Kept while the press is held, for the drag that may follow.
+        self.taken_range = Some((id, range));
+        // The end of a word that ends a wrapped line stays on that line, so
+        // Home, End and Shift + Up and Down start from where the word is. The
+        // range is empty only in text of nothing but line breaks, which has no
+        // character for the caret to be on a side of.
+        if let Some(editor) = self
+            .nodes
+            .get_mut(&id)
+            .and_then(|node| node.editor.as_mut())
+        {
+            editor.affinity = Affinity::Upstream;
+        }
+    }
+
+    /// Shift + Up or Down in a selectable label: the end of the selection one
+    /// line on. False when there is no line there, so that the key goes on to
+    /// scroll the view as before.
+    fn select_by_line(&mut self, id: NodeId, down: bool) -> bool {
+        let Some(editor) = self
+            .nodes
+            .get_mut(&id)
+            .and_then(|node| node.editor.as_mut())
+        else {
+            return false;
+        };
+        if !editor.move_vertically(down, true) {
+            return false;
+        }
+        self.pending |= Dirty::ACCESSIBILITY;
+        self.invalidate_paint(id);
+        true
     }
 
     pub(super) fn focus_control(&mut self, id: NodeId) {
@@ -771,17 +838,23 @@ impl Context {
                 // before it opens a submenu or closes the one that is open.
                 // The row whose submenu is open keeps it, and a pointer off
                 // the rows waits for nothing.
-                match self
-                    .hit_test(*position)
-                    .and_then(|id| Some((id, self.row_place(id)?)))
-                    .filter(|(id, (owner, _))| {
-                        self.popup_of(*owner).is_some() && self.popup_of(*id).is_none()
-                    }) {
-                    Some((id, (owner, index))) => self.hover_menu_row(id, owner, index),
-                    None => self.menu_dwell = None,
+                if self.popup_levels().next().is_none() {
+                    // No menu is open, so the pointer is on no row of one.
+                    self.menu_dwell = None;
+                } else {
+                    match self
+                        .hit_test(*position)
+                        .and_then(|id| Some((id, self.row_place(id)?)))
+                        .filter(|(id, (owner, _))| {
+                            self.popup_of(*owner).is_some() && self.popup_of(*id).is_none()
+                        }) {
+                        Some((id, (owner, index))) => self.hover_menu_row(id, owner, index),
+                        None => self.menu_dwell = None,
+                    }
                 }
             }
             Event::PointerDown | Event::PointerDownWithShift => {
+                self.taken_range = None;
                 let position = self.pointer?;
                 let target = self
                     .hit_test(position)
@@ -812,6 +885,14 @@ impl Context {
                         self.captured = Some(id);
                         if kind == Kind::Slider {
                             self.slider_pointer(id, position);
+                        } else if self.nodes[&id].read_only()
+                            && self.press_count >= 2
+                            && matches!(event, Event::PointerDown)
+                        {
+                            // Two presses in a row take the word under the
+                            // pointer, three its paragraph. A press with
+                            // Shift extends the selection whatever its count.
+                            self.select_around(id, position, self.press_count >= 3);
                         } else {
                             self.editor_pointer(
                                 id,
@@ -879,6 +960,15 @@ impl Context {
                     // Down reopens the suggestions of an autocomplete field.
                     if *key == Key::ArrowDown && self.open_popup(id) {
                         return Some(true);
+                    }
+                    // A label draws no caret, so Up and Down alone have nothing
+                    // to move and keep scrolling. With Shift they extend the
+                    // selection by a line, and where they cannot (the first or
+                    // last line, a label of one line) they scroll as they did.
+                    if read_only && *shift && matches!(key, Key::ArrowUp | Key::ArrowDown) {
+                        return self
+                            .select_by_line(id, *key == Key::ArrowDown)
+                            .then_some(true);
                     }
                     let edit = match key {
                         Key::ArrowLeft => TextEdit::Move {
@@ -1049,6 +1139,141 @@ impl Context {
                 }
             }
             _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::MonospaceMeasurer;
+    use glassmere_scene::{Affinity, Size};
+
+    fn declare(context: &mut Context) {
+        context.run(Size::new(320.0, 240.0), &mut MonospaceMeasurer, |ui| {
+            for key in ["a", "b", "c", "d"] {
+                ui.keyed(key, |ui| {
+                    ui.text_input("Name", "text", |_| ());
+                });
+            }
+        });
+    }
+
+    fn painted(context: &Context, id: NodeId) -> bool {
+        context.nodes[&id].paint_cache.is_some()
+    }
+
+    fn editor(context: &mut Context, id: NodeId) -> &mut Editor {
+        context.nodes.get_mut(&id).unwrap().editor.as_mut().unwrap()
+    }
+
+    fn preedit(editor: &mut Editor) {
+        editor.apply(TextEdit::Preedit {
+            text: "\u{306b}".into(),
+            selection: None,
+        });
+    }
+
+    #[test]
+    fn the_sweep_cancels_the_other_fields_and_repaints_those_that_changed() {
+        let mut context = Context::new();
+        declare(&mut context);
+        let [a, b, c, d] = ["a", "b", "c", "d"].map(|key| context.find(&[key]).unwrap());
+        context.focused = Some(b);
+        declare(&mut context);
+        for id in [a, b, c, d] {
+            assert!(painted(&context, id));
+        }
+
+        // A composes; B, the focused field, composes and sits at a boundary;
+        // C only sits at one; D has nothing to lose.
+        preedit(editor(&mut context, a));
+        preedit(editor(&mut context, b));
+        editor(&mut context, b).affinity = Affinity::Upstream;
+        editor(&mut context, c).affinity = Affinity::Upstream;
+        context.cancel_compositions_except(Some(b));
+
+        assert!(!editor(&mut context, a).composing());
+        assert_eq!(editor(&mut context, a).affinity, Affinity::Downstream);
+        assert_eq!(editor(&mut context, c).affinity, Affinity::Downstream);
+        assert!(!painted(&context, a) && !painted(&context, c));
+        assert!(editor(&mut context, b).composing());
+        assert_eq!(editor(&mut context, b).affinity, Affinity::Upstream);
+        assert!(painted(&context, b) && painted(&context, d));
+
+        // Nothing is left to cancel, so nothing is painted again.
+        declare(&mut context);
+        for id in [a, b, c, d] {
+            assert!(painted(&context, id));
+        }
+        context.cancel_compositions_except(Some(b));
+        for id in [a, b, c, d] {
+            assert!(painted(&context, id));
+        }
+        assert!(editor(&mut context, b).composing());
+
+        // With no field kept, the focused one goes too.
+        context.cancel_compositions_except(None);
+        assert!(!editor(&mut context, b).composing());
+        assert_eq!(editor(&mut context, b).affinity, Affinity::Downstream);
+        assert!(!painted(&context, b));
+        assert!(painted(&context, a) && painted(&context, c) && painted(&context, d));
+    }
+
+    #[test]
+    fn a_press_on_nothing_takes_the_focus_and_the_composition_with_it() {
+        let mut context = Context::new();
+        declare(&mut context);
+        let a = context.find(&["a"]).unwrap();
+        context.focus_control(a);
+        preedit(editor(&mut context, a));
+
+        assert!(context.event(Event::PointerDown));
+        assert_eq!(context.focused, None);
+        assert!(!editor(&mut context, a).composing());
+    }
+
+    #[test]
+    fn the_window_losing_the_focus_cancels_every_composition() {
+        let mut context = Context::new();
+        declare(&mut context);
+        let [a, b] = ["a", "b"].map(|key| context.find(&[key]).unwrap());
+        // No field has the focus, so nothing moves it away.
+        context.focused = None;
+        preedit(editor(&mut context, a));
+        preedit(editor(&mut context, b));
+
+        context.event(Event::FocusLost);
+        assert!(!editor(&mut context, a).composing());
+        assert!(!editor(&mut context, b).composing());
+    }
+
+    #[test]
+    fn a_field_holds_the_text_it_was_declared_with_less_its_control_characters() {
+        for (value, held) in [
+            ("", ""),
+            ("plain", "plain"),
+            ("a\tb\r\nc\u{7}d", "a b  cd"),
+            ("x\u{85}y\u{7f}", "xy"),
+            ("é£©¡ end", "é£©¡ end"),
+        ] {
+            let mut context = Context::new();
+            context.run(Size::new(320.0, 240.0), &mut MonospaceMeasurer, |ui| {
+                ui.keyed("field", |ui| {
+                    ui.text_input("Field", value, |_| ());
+                });
+            });
+            let id = context.find(&["field"]).unwrap();
+            let Control::TextInput {
+                value: declared, ..
+            } = &context.nodes[&id].control
+            else {
+                panic!("not a text field");
+            };
+            assert_eq!(declared, held);
+            let state = context.field_state(id).unwrap();
+            assert_eq!(state.text, held);
+            assert!(!state.draft, "{value:?} reads as typed");
         }
     }
 }

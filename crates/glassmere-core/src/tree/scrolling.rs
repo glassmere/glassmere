@@ -5,6 +5,8 @@ use alloc::format;
 use alloc::vec::Vec;
 
 impl Context {
+    /// A call that returns false changes nothing: wheel routing tries one
+    /// node after another and relies on it.
     pub(super) fn set_scroll(&mut self, id: NodeId, offset: f32) -> bool {
         if !offset.is_finite() {
             return false;
@@ -121,16 +123,21 @@ impl Context {
         {
             return self.set_scroll(panel, self.nodes[&panel].scroll.offset + delta);
         }
-        let mut order = Vec::new();
-        self.order(self.root, &mut order);
-        for id in order.into_iter().rev() {
-            let node = &self.nodes[&id];
+        // Innermost first. Trying one changes nothing unless it moves, so
+        // the candidates can be found before any is tried.
+        let mut candidates = Vec::new();
+        self.last_at(self.root, pointer, self.can_prune_at(), &mut |id, node| {
             if matches!(
                 node.kind,
                 Kind::Scroll | Kind::Popup | Kind::Collection | Kind::TextArea | Kind::RichEditor
-            ) && node.clip.contains(pointer)
-                && self.set_scroll(id, node.scroll.offset + delta)
-            {
+            ) {
+                candidates.push(id);
+            }
+            false
+        });
+        for id in candidates {
+            let offset = self.nodes[&id].scroll.offset;
+            if self.set_scroll(id, offset + delta) {
                 return true;
             }
         }
@@ -191,11 +198,8 @@ impl Context {
         let Some(pointer) = self.pointer else {
             return false;
         };
-        let mut order = Vec::new();
-        self.order(self.root, &mut order);
-        let strip = order.into_iter().rev().find(|id| {
-            let node = &self.nodes[id];
-            node.kind == Kind::TabList && node.scroll.maximum_x > 0.0 && node.clip.contains(pointer)
+        let strip = self.last_at(self.root, pointer, self.can_prune_at(), &mut |_, node| {
+            node.kind == Kind::TabList && node.scroll.maximum_x > 0.0
         });
         strip.is_some_and(|strip| {
             let node = &self.nodes[&strip];

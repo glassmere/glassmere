@@ -24,6 +24,44 @@ run(options, Counter { count: 0 })
 
 There is no store to register with and no context provider. `view` reads `&self`, so only `update` changes the state; a widget says what it sends, and the framework delivers it. Small programs that would rather not name messages can use `run_with`, whose message is an `Action<S>`: a closure applied to the state.
 
+## Fields without messages
+
+A form with twenty fields does not need twenty message variants and twenty arms in `update`. Give the message one place for a change, and bind each field to the state:
+
+```rust
+use glassmere::app::{Action, bind, change};
+
+#[derive(Clone)]
+enum Msg {
+    Set(Action<Form>),
+    Submit,
+}
+
+impl From<Action<Form>> for Msg {
+    fn from(change: Action<Form>) -> Self {
+        Self::Set(change)
+    }
+}
+
+fn update(&mut self, message: Msg, _: &mut Effects<'_, Msg>) {
+    match message {
+        Msg::Set(change) => change(self),
+        Msg::Submit => self.send(),
+    }
+}
+
+fn view(&self, ui: &mut Ui<'_, Msg>) {
+    ui.text_input("Name", &self.name, bind(|form: &mut Self, name| form.name = name));
+    ui.checkbox("Subscribe", self.subscribed, bind(|form: &mut Self, on| form.subscribed = on));
+    ui.button(Button::new("Clear").on_click(change(|form: &mut Self| form.name.clear())));
+    ui.button(Button::new("Submit").on_click(Msg::Submit));
+}
+```
+
+`bind` takes what the widget reports and writes it; `change` is a message that changes the state and needs no name. `view` still only reads, and every change still goes through `update`, where the one arm applies it. A `Component` binds its own fields the same way, through its own message. Keep a named message for what has consequences beyond the field: a request, a job, another window, anything `update` needs `Effects` for, or anything a test or a log should be able to name.
+
+A bound field whose setter captures nothing, like the ones above, allocates nothing when it is declared; the change is allocated when the widget reports. A setter that captures something, such as the index of a row, is stored with the widget's handler, which is one allocation per declaration, and it must be `Clone`. A check box builds the change for its next state while it is declared, so a bound check box costs one allocation per declaration. `change` is made at declaration too, one allocation each time. That is nothing for a few buttons and check boxes, and worth a named message in a list of thousands of rows, as is a bound field whose setter captures. `examples/bindings.rs` is a form written this way.
+
 ## What the framework keeps
 
 Each node keeps what an application should not have to: whether it has focus, how far it is scrolled, what is selected in it, the undo history of a text field, where an animation is. That state belongs to the node's identity, which is normally where the node is declared among its siblings, so it survives every declaration of the same shape.

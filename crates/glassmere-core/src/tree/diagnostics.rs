@@ -362,11 +362,15 @@ impl Context {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Context, DiagnosticKind, MonospaceMeasurer, PopoverOptions, Ui};
+    use crate::ui::{Element, Kind, WidgetKey};
+    use crate::{
+        Context, DiagnosticKind, Event, FontFamily, Length, MenuItem, MonospaceMeasurer,
+        PopoverOptions, Style, Ui,
+    };
     use alloc::format;
     use alloc::string::String;
     use alloc::vec::Vec;
-    use glassmere_scene::Size;
+    use glassmere_scene::{Point, Size};
 
     /// A context that treats misuse as a release build does, with the other
     /// checks off to show misuse is reported regardless.
@@ -445,6 +449,318 @@ mod tests {
         let reported = misuses(&context);
         assert_eq!(reported.len(), 1);
         assert!(reported[0].contains("duplicate widget key"), "{reported:?}");
+    }
+
+    #[test]
+    fn a_duplicate_key_is_reported_once_wherever_it_lands_among_the_siblings() {
+        for count in [2usize, 8, 9, 17, 40] {
+            for repeated in [0, (count / 2) & !1, (count - 1) & !1] {
+                let mut context = release();
+                // The even siblings are keyed and the odd ones are told
+                // apart by their line and their order.
+                frame(&mut context, |ui| {
+                    for index in 0..count {
+                        if index % 2 == 0 {
+                            ui.keyed(format!("key{index}"), |ui| {
+                                ui.label(format!("label{index}"))
+                            });
+                        } else {
+                            ui.label(format!("label{index}"));
+                        }
+                    }
+                    ui.keyed(format!("key{repeated}"), |ui| ui.label("again"));
+                    // Would land on the last sibling had the skip not been
+                    // tracked.
+                    ui.tooltip("help");
+                });
+                let kept: Vec<String> = (0..count).map(|index| format!("label{index}")).collect();
+                assert_eq!(labels(&context), kept, "{count} siblings, {repeated}");
+                assert!(context.nodes.values().all(|node| node.tooltip.is_none()));
+                assert_eq!(context.stats().elements, count);
+                let reported = misuses(&context);
+                assert_eq!(reported.len(), 1, "{reported:?}");
+                assert!(reported[0].contains("duplicate widget key"), "{reported:?}");
+                assert!(reported[0].contains(&format!("key{repeated}\"")));
+            }
+        }
+    }
+
+    #[test]
+    fn a_key_taken_back_out_stays_taken() {
+        // What a scope keeps, and what is reported, when `content` declares
+        // in it after `before` siblings.
+        let declare = |before: usize, content: fn(&mut Ui<'_>)| {
+            let mut context = release();
+            frame(&mut context, |ui| {
+                for index in 0..before {
+                    ui.keyed(format!("early{index}"), |ui| ui.label("early"));
+                }
+                content(ui);
+            });
+            (labels(&context), misuses(&context))
+        };
+        let with = |before: usize, later: &[&str]| -> Vec<String> {
+            let mut kept = alloc::vec![String::from("early"); before];
+            kept.extend(later.iter().map(|label| String::from(*label)));
+            kept
+        };
+        for before in [2, 20] {
+            // Gone from the scope, a key is still not free; another one is.
+            let (kept, reported) = declare(before, |ui| {
+                ui.keyed("g", |ui| ui.label("first"));
+                assert_eq!(ui.take_declared().unwrap().text, "first");
+                ui.keyed("h", |ui| ui.label("other"));
+                ui.keyed("g", |ui| ui.label("second"));
+            });
+            assert_eq!(kept, with(before, &["other"]), "{before} siblings");
+            assert_eq!(reported.len(), 1, "{reported:?}");
+            assert!(reported[0].contains("duplicate widget key"), "{reported:?}");
+            assert!(reported[0].contains("\"g\""), "{reported:?}");
+            // An element that is not the last one is not taken out, and its
+            // key stays.
+            let (kept, reported) = declare(before, |ui| {
+                ui.keyed("i", |ui| ui.label("first"));
+                ui.keyed("j", |ui| ui.label("second"));
+                ui.declared = Some(ui.elements.len() - 2);
+                assert!(ui.take_declared().is_none());
+                ui.keyed("i", |ui| ui.label("third"));
+            });
+            assert_eq!(
+                kept,
+                with(before, &["first", "second"]),
+                "{before} siblings"
+            );
+            assert_eq!(reported.len(), 1, "{reported:?}");
+            assert!(reported[0].contains("\"i\""), "{reported:?}");
+        }
+    }
+
+    #[test]
+    fn a_key_taken_back_out_stays_taken_through_a_map() {
+        // What a scope keeps, and what is reported, when `content` declares
+        // in it after `before` siblings.
+        let declare = |before: usize, content: fn(&mut Ui<'_>)| {
+            let mut context = release();
+            frame(&mut context, |ui| {
+                for index in 0..before {
+                    ui.keyed(format!("early{index}"), |ui| ui.label("early"));
+                }
+                content(ui);
+            });
+            (labels(&context), misuses(&context))
+        };
+        for before in [2, 20] {
+            // Taken back out before the map, and still taken in it.
+            let (kept, reported) = declare(before, |ui| {
+                ui.keyed("gone", |ui| ui.label("first"));
+                assert!(ui.take_declared().is_some());
+                ui.map(|()| (), |ui| ui.keyed("gone", |ui| ui.label("again")));
+            });
+            assert_eq!(kept, ["early"].repeat(before), "{before} siblings");
+            assert_eq!(reported.len(), 1, "{reported:?}");
+            assert!(reported[0].contains("\"gone\""), "{reported:?}");
+            // Taken back out in the map, and still taken after it.
+            let (kept, reported) = declare(before, |ui| {
+                ui.map(
+                    |()| (),
+                    |ui| {
+                        ui.keyed("gone", |ui| ui.label("first"));
+                        assert!(ui.take_declared().is_some());
+                    },
+                );
+                ui.keyed("gone", |ui| ui.label("again"));
+            });
+            assert_eq!(kept, ["early"].repeat(before), "{before} siblings");
+            assert_eq!(reported.len(), 1, "{reported:?}");
+            assert!(reported[0].contains("\"gone\""), "{reported:?}");
+        }
+    }
+
+    // A scope reads the keys of whatever is in it, so an element added
+    // without a claim, as a popup's is, is taken even when it comes after a
+    // key was taken back out.
+    #[test]
+    fn an_element_added_after_a_key_was_taken_back_out_is_taken_too() {
+        for before in [2, 20] {
+            let mut context = release();
+            frame(&mut context, |ui| {
+                for index in 0..before {
+                    ui.keyed(format!("early{index}"), |ui| ui.label("early"));
+                }
+                ui.keyed("gone", |ui| ui.label("first"));
+                assert!(ui.take_declared().is_some());
+                let element = Element::new(WidgetKey::named("added"), Kind::Label);
+                ui.elements.push(element);
+                ui.keyed("added", |ui| ui.label("again"));
+            });
+            assert_eq!(labels(&context), ["early"].repeat(before));
+            let reported = misuses(&context);
+            assert_eq!(reported.len(), 1, "{reported:?}");
+            assert!(reported[0].contains("\"added\""), "{reported:?}");
+        }
+    }
+
+    /// What the images of a declaration did, in order.
+    #[cfg(feature = "std")]
+    type Log = std::sync::Arc<std::sync::Mutex<Vec<String>>>;
+
+    /// An image that notes when it is dropped.
+    #[cfg(feature = "std")]
+    struct Probe {
+        name: &'static str,
+        log: Log,
+    }
+
+    #[cfg(feature = "std")]
+    impl glassmere_scene::VectorImage for Probe {
+        fn size(&self) -> Size {
+            Size::new(1.0, 1.0)
+        }
+
+        fn rasterize(&self, width: u32, height: u32) -> Vec<u8> {
+            alloc::vec![0; (width * height * 4) as usize]
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl Drop for Probe {
+        fn drop(&mut self) {
+            self.log.lock().unwrap().push(format!("drop {}", self.name));
+        }
+    }
+
+    /// A style whose background is a probe that nothing else refers to.
+    #[cfg(feature = "std")]
+    fn probed(log: &Log, name: &'static str) -> Style {
+        let image = glassmere_scene::Image::from_vector(Probe {
+            name,
+            log: log.clone(),
+        });
+        Style::default().background_image(crate::BackgroundImage::new(&image))
+    }
+
+    #[cfg(feature = "std")]
+    fn note(log: &Log, what: &str) {
+        log.lock().unwrap().push(what.into());
+    }
+
+    // A widget left out for its key is dropped as its declaration ends,
+    // before the next one begins, like a widget that was never added.
+    #[cfg(feature = "std")]
+    #[test]
+    fn a_duplicate_is_dropped_as_its_declaration_ends() {
+        let log = Log::default();
+        let mut context = release();
+        frame(&mut context, |ui| {
+            ui.keyed("a", |ui| ui.column(probed(&log, "first"), |_| {}));
+            ui.keyed("a", |ui| ui.column(probed(&log, "duplicate"), |_| {}));
+            note(&log, "declared the duplicate");
+            ui.keyed("b", |ui| ui.column(probed(&log, "second"), |_| {}));
+            note(&log, "declared the second");
+        });
+        // The nodes keep the images of the two that were added.
+        let noted = core::mem::take(&mut *log.lock().unwrap());
+        assert_eq!(
+            noted,
+            [
+                "drop duplicate",
+                "declared the duplicate",
+                "declared the second"
+            ]
+        );
+        assert_eq!(context.stats().elements, 2);
+        assert_eq!(misuses(&context).len(), 1);
+    }
+
+    // The widget is out of the list before the misuse stops a debug build,
+    // so unwinding drops it before the list that holds the siblings.
+    #[cfg(feature = "std")]
+    #[test]
+    fn a_duplicate_is_dropped_before_the_siblings_when_the_misuse_panics() {
+        let log = Log::default();
+        let mut context = Context::new();
+        context.set_misuse_panics(true);
+        context.set_diagnostics(false);
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            frame(&mut context, |ui| {
+                ui.keyed("a", |ui| ui.column(probed(&log, "first"), |_| {}));
+                ui.keyed("a", |ui| ui.column(probed(&log, "duplicate"), |_| {}));
+                note(&log, "declared the duplicate");
+            });
+        }));
+        assert!(unwound.is_err());
+        let noted = core::mem::take(&mut *log.lock().unwrap());
+        assert_eq!(noted.first().map(String::as_str), Some("drop duplicate"));
+        assert!(!noted.iter().any(|entry| entry.starts_with("declared")));
+    }
+
+    // The key is claimed before a font family is named, so a widget left
+    // out for its key names none.
+    #[test]
+    fn a_duplicate_names_no_font_family() {
+        let mut context = release();
+        frame(&mut context, |ui| {
+            let named = |name: &str| Style::default().font_family(FontFamily::Named(name.into()));
+            ui.keyed("a", |ui| ui.column(named("First"), |_| {}));
+            ui.keyed("a", |ui| ui.column(named("Duplicate"), |_| {}));
+            ui.keyed("b", |ui| ui.column(named("Second"), |_| {}));
+        });
+        assert_eq!(misuses(&context).len(), 1);
+        assert_eq!(context.requested_families(), ["First", "Second"]);
+    }
+
+    // The key is claimed after a background file is asked for, so a widget
+    // left out for its key has still asked for it.
+    #[cfg(feature = "std")]
+    #[test]
+    fn a_duplicate_still_asks_for_its_background_file() {
+        use crate::BackgroundImage;
+        let mut context = release();
+        frame(&mut context, |ui| {
+            let panel = |path: &str| Style::default().background_image(BackgroundImage::file(path));
+            ui.keyed("a", |ui| ui.column(panel("skin/first.png"), |_| {}));
+            ui.keyed("a", |ui| ui.column(panel("skin/duplicate.png"), |_| {}));
+        });
+        assert_eq!(misuses(&context).len(), 1);
+        let asked: Vec<_> = context.image_paths().iter().collect();
+        assert_eq!(asked, ["skin/first.png", "skin/duplicate.png"]);
+    }
+
+    #[test]
+    fn a_context_menu_popup_takes_its_key_before_the_content_does() {
+        for siblings in [0, 10] {
+            let mut context = release();
+            let view = |ui: &mut Ui<'_>| {
+                let items = [MenuItem::new("Copy"), MenuItem::new("Paste")];
+                let style = Style::default()
+                    .width(Length::Px(400.0))
+                    .height(Length::Px(200.0));
+                ui.keyed("area", |ui| {
+                    ui.context_menu(
+                        &items,
+                        style,
+                        |_| (),
+                        |ui| {
+                            for index in 0..siblings {
+                                ui.keyed(format!("sibling{index}"), |ui| ui.label("sibling"));
+                            }
+                            ui.keyed("$popup", |ui| ui.label("squatter"));
+                        },
+                    );
+                });
+            };
+            // Closed, the menu has no popup to collide with.
+            frame(&mut context, view);
+            assert!(misuses(&context).is_empty());
+            assert!(context.event(Event::ContextMenu(Point { x: 100.0, y: 120.0 })));
+            frame(&mut context, view);
+            assert!(context.find(&["area", "$popup"]).is_some());
+            let reported = misuses(&context);
+            assert_eq!(reported.len(), 1, "{reported:?}");
+            assert!(reported[0].contains("duplicate widget key"), "{reported:?}");
+            assert!(reported[0].contains("$popup"), "{reported:?}");
+            assert!(!labels(&context).contains(&"squatter".into()));
+        }
     }
 
     #[test]

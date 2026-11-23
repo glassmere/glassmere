@@ -42,14 +42,15 @@ pub struct TextDocument {
     primary: usize,
     /// Display columns vertical moves try to return to, parallel to `selections`.
     goals: Vec<Option<usize>>,
-    undo: Vec<Transaction>,
+    undo: VecDeque<Transaction>,
     redo: Vec<Transaction>,
     revision: u64,
     saved: u64,
     changes: VecDeque<(u64, usize)>,
     crlf: bool,
-    /// The line with the most display columns, found on first use after an edit.
-    widest: OnceLock<usize>,
+    /// The line with the most display columns, found by a pass over the text
+    /// on first use and kept up to date by each edit after that.
+    widest: OnceLock<Widest>,
     pub indentation: Indentation,
 }
 
@@ -57,6 +58,15 @@ impl Default for TextDocument {
     fn default() -> Self {
         Self::from_text("")
     }
+}
+
+/// The widest line of a document as it was last known.
+#[derive(Clone, Copy, Debug)]
+struct Widest {
+    line: usize,
+    columns: usize,
+    /// The tab width the columns were counted with.
+    tab: usize,
 }
 
 fn word_class(ch: char) -> u8 {
@@ -83,7 +93,7 @@ impl TextDocument {
             selections: vec![Selection::default()],
             primary: 0,
             goals: vec![None],
-            undo: Vec::new(),
+            undo: VecDeque::new(),
             redo: Vec::new(),
             revision: 0,
             saved: 0,
@@ -136,6 +146,27 @@ impl TextDocument {
         text
     }
 
+    /// The lines of `range`, each as `line` gives it, read in one pass over
+    /// the rope.
+    pub(crate) fn lines_in(&self, range: Range<usize>) -> impl Iterator<Item = String> + '_ {
+        let total = self.rope.len_lines();
+        let mut rest: Option<ropey::iter::Lines<'_>> = None;
+        range.map(move |line| {
+            if line >= total {
+                return String::new();
+            }
+            // Made at the first line that exists: `lines_at` panics past the end.
+            let Some(slice) = rest.get_or_insert_with(|| self.rope.lines_at(line)).next() else {
+                return self.line(line);
+            };
+            let mut text = String::from(slice);
+            if text.ends_with('\n') {
+                text.pop();
+            }
+            text
+        })
+    }
+
     fn line_len(&self, line: usize) -> usize {
         let slice = self.rope.line(line);
         let len = slice.len_chars();
@@ -147,31 +178,102 @@ impl TextDocument {
     }
 
     /// The line with the most display columns (the first of equals), for sizing
-    /// a view's horizontal range. Found by one pass over the text, then kept
-    /// until the next edit.
+    /// a view's horizontal range. Found by one pass over the text the first
+    /// time; after that an edit looks only at the lines it changed, and the
+    /// text is read again only when the widest line itself got narrower.
     pub(crate) fn widest_line(&self) -> usize {
-        *self.widest.get_or_init(|| {
-            let tab = self.indentation.tab_width.max(1);
-            let (mut widest, mut most) = (0, 0);
-            let (mut line, mut columns) = (0, 0);
-            for ch in self.rope.chars() {
-                match ch {
-                    '\n' => {
-                        if columns > most {
-                            (widest, most) = (line, columns);
-                        }
-                        line += 1;
-                        columns = 0;
+        let tab = self.indentation.tab_width.max(1);
+        if let Some(known) = self.widest.get().filter(|known| known.tab == tab) {
+            return known.line;
+        }
+        let (mut widest, mut most) = (0, 0);
+        let (mut line, mut columns) = (0, 0);
+        for ch in self.rope.chars() {
+            match ch {
+                '\n' => {
+                    if columns > most {
+                        (widest, most) = (line, columns);
                     }
-                    '\t' => columns += tab - columns % tab,
-                    _ => columns += 1,
+                    line += 1;
+                    columns = 0;
                 }
+                '\t' => columns += tab - columns % tab,
+                _ => columns += 1,
             }
-            if columns > most {
-                widest = line;
+        }
+        if columns > most {
+            (widest, most) = (line, columns);
+        }
+        // A width counted for another tab width stays until the next edit
+        // drops it; the answer is right either way.
+        let _ = self.widest.set(Widest {
+            line: widest,
+            columns: most,
+            tab,
+        });
+        widest
+    }
+
+    /// The display columns of one line, counted as `widest_line` counts them.
+    fn line_columns(&self, line: usize, tab: usize) -> usize {
+        self.rope
+            .line(line)
+            .chars()
+            .fold(0, |columns, ch| match ch {
+                '\n' => columns,
+                '\t' => columns + tab - columns % tab,
+                _ => columns + 1,
+            })
+    }
+
+    /// Every change to the text: `remove` characters at `at` go and `insert`
+    /// takes their place. What is known of the widest line is kept true by
+    /// looking at the lines the change left behind.
+    fn splice(&mut self, at: usize, remove: usize, insert: &str) {
+        let first = self.rope.char_to_line(at);
+        let last_old = self.rope.char_to_line(at + remove);
+        self.rope.remove(at..at + remove);
+        self.rope.insert(at, insert);
+        let Some(known) = self.widest.take() else {
+            return;
+        };
+        let tab = self.indentation.tab_width.max(1);
+        if known.tab != tab {
+            return;
+        }
+        let last_new = self.rope.char_to_line(at + insert.chars().count());
+        // The widest of the lines the change left, the first of equals.
+        let (mut line, mut columns) = (first, 0);
+        for changed in first..=last_new {
+            let width = self.line_columns(changed, tab);
+            if width > columns {
+                (line, columns) = (changed, width);
             }
-            widest
-        })
+        }
+        let updated = if (first..=last_old).contains(&known.line) {
+            // The widest line was in the change. No line before it was as
+            // wide, so what replaced it is the widest if it is no narrower;
+            // if it is narrower, some other line may be, and only a pass
+            // over the text can say which.
+            (columns >= known.columns).then_some(Widest { line, columns, tab })
+        } else {
+            let shifted = if known.line > last_old {
+                known.line + last_new - last_old
+            } else {
+                known.line
+            };
+            if columns > known.columns || (columns == known.columns && line < shifted) {
+                Some(Widest { line, columns, tab })
+            } else {
+                Some(Widest {
+                    line: shifted,
+                    ..known
+                })
+            }
+        };
+        if let Some(updated) = updated {
+            let _ = self.widest.set(updated);
+        }
     }
 
     /// Bumped by every content change, undo and redo included.
@@ -368,8 +470,7 @@ impl TextDocument {
         let first_line = self.rope.char_to_line(edits[0].0.start);
         for (range, text) in edits.iter().rev() {
             let removed = String::from(self.rope.slice(range.clone()));
-            self.rope.remove(range.clone());
-            self.rope.insert(range.start, text);
+            self.splice(range.start, range.len(), text);
             recorded.push(Edit {
                 at: range.start,
                 removed,
@@ -390,27 +491,27 @@ impl TextDocument {
         self.primary = self.primary.min(self.selections.len() - 1);
         self.merge_selections(None);
         let merge = typing
-            && self.undo.last().is_some_and(|last| {
+            && self.undo.back().is_some_and(|last| {
                 last.typing && last.after == before && last.edits.len() == recorded.len()
             })
             && recorded
                 .iter()
                 .all(|edit| edit.removed.is_empty() && !edit.inserted.contains('\n'));
         if merge {
-            let last = self.undo.last_mut().unwrap();
+            let last = self.undo.back_mut().unwrap();
             for (old, new) in last.edits.iter_mut().zip(&recorded) {
                 old.inserted.push_str(&new.inserted);
             }
             last.after = self.selections.clone();
         } else {
-            self.undo.push(Transaction {
+            self.undo.push_back(Transaction {
                 edits: recorded,
                 before,
                 after: self.selections.clone(),
                 typing,
             });
             if self.undo.len() > HISTORY {
-                self.undo.remove(0);
+                self.undo.pop_front();
             }
         }
         self.redo.clear();
@@ -420,7 +521,6 @@ impl TextDocument {
 
     fn touch(&mut self, line: usize) {
         self.revision += 1;
-        self.widest.take();
         self.changes.push_back((self.revision, line));
         if self.changes.len() > CHANGE_LOG {
             self.changes.pop_front();
@@ -488,7 +588,7 @@ impl TextDocument {
         for selection in &mut self.selections {
             *selection = Selection::caret(selection.cursor - 1);
         }
-        if let Some(last) = self.undo.last_mut() {
+        if let Some(last) = self.undo.back_mut() {
             last.after = self.selections.clone();
         }
         changed
@@ -614,7 +714,7 @@ impl TextDocument {
             for (selection, back) in self.selections.iter_mut().zip(&splits) {
                 *selection = Selection::caret(selection.cursor - back);
             }
-            if let Some(last) = self.undo.last_mut() {
+            if let Some(last) = self.undo.back_mut() {
                 last.after = self.selections.clone();
             }
         }
@@ -684,7 +784,7 @@ impl TextDocument {
             })
             .collect();
         self.merge_selections(None);
-        if let Some(last) = self.undo.last_mut() {
+        if let Some(last) = self.undo.back_mut() {
             last.after = self.selections.clone();
         }
         changed
@@ -1169,7 +1269,7 @@ impl TextDocument {
     }
 
     fn break_typing(&mut self) {
-        if let Some(last) = self.undo.last_mut() {
+        if let Some(last) = self.undo.back_mut() {
             last.typing = false;
         }
     }
@@ -1182,14 +1282,13 @@ impl TextDocument {
     }
 
     pub fn undo(&mut self) -> bool {
-        let Some(transaction) = self.undo.pop() else {
+        let Some(transaction) = self.undo.pop_back() else {
             return false;
         };
         // Earlier edits are restored first, so each `at` is valid again.
         for edit in &transaction.edits {
             let inserted = edit.inserted.chars().count();
-            self.rope.remove(edit.at..edit.at + inserted);
-            self.rope.insert(edit.at, &edit.removed);
+            self.splice(edit.at, inserted, &edit.removed);
         }
         self.restore(&transaction.before);
         let line = self
@@ -1206,15 +1305,14 @@ impl TextDocument {
         };
         for edit in transaction.edits.iter().rev() {
             let removed = edit.removed.chars().count();
-            self.rope.remove(edit.at..edit.at + removed);
-            self.rope.insert(edit.at, &edit.inserted);
+            self.splice(edit.at, removed, &edit.inserted);
         }
         self.restore(&transaction.after);
         transaction.typing = false;
         let line = self
             .rope
             .char_to_line(transaction.edits[0].at.min(self.len_chars()));
-        self.undo.push(transaction);
+        self.undo.push_back(transaction);
         self.touch(line);
         true
     }
@@ -1242,6 +1340,203 @@ mod tests {
         document.selections().iter().map(|s| s.cursor).collect()
     }
 
+    /// Every window of a few lengths over a document, and all of it, against
+    /// reading the lines one at a time.
+    fn assert_lines_in_match_line(document: &TextDocument) {
+        let total = document.len_lines();
+        let each = |range: Range<usize>| range.map(|line| document.line(line)).collect::<Vec<_>>();
+        for start in 0..=total + 2 {
+            for length in [0, 1, 2, 33] {
+                let range = start..start + length;
+                assert_eq!(
+                    document.lines_in(range.clone()).collect::<Vec<_>>(),
+                    each(range.clone()),
+                    "{range:?} of {total} lines"
+                );
+            }
+        }
+        assert_eq!(
+            document.lines_in(0..total + 2).collect::<Vec<_>>(),
+            each(0..total + 2)
+        );
+    }
+
+    /// Enough lines for a rope several levels deep, of every length from 0 to
+    /// 130 bytes so that line breaks fall at every offset of a leaf, with
+    /// lines that hold multi-byte characters and the less usual line breaks.
+    fn varied_text(final_newline: bool) -> String {
+        let odd = [
+            "\u{e9}",
+            "\u{4e2d}\u{6587}",
+            "\u{1f600}",
+            "\u{2028}",
+            "\u{85}",
+            "\u{b}",
+            "\u{c}",
+        ];
+        let mut text = String::new();
+        for n in 0..3_100_usize {
+            if n % 97 == 5 {
+                text.push_str(odd[(n / 97) % odd.len()]);
+            }
+            for k in 0..n % 131 {
+                text.push(char::from(b'a' + ((n + k) % 26) as u8));
+            }
+            if n == 1_500 {
+                text.push_str(&"long ".repeat(1_000));
+            }
+            text.push('\n');
+        }
+        if !final_newline {
+            text.pop();
+        }
+        text
+    }
+
+    #[test]
+    fn lines_in_gives_the_lines_that_line_gives() {
+        for final_newline in [true, false] {
+            assert_lines_in_match_line(&TextDocument::from_text(&varied_text(final_newline)));
+        }
+        for text in ["", "a", "a\n", "\n", "\n\n", "a\n\nb", "\u{2028}"] {
+            assert_lines_in_match_line(&TextDocument::from_text(text));
+        }
+    }
+
+    #[test]
+    fn lines_in_follows_a_document_through_edits() {
+        let mut document = TextDocument::from_text(&varied_text(true));
+        let end = document.len_chars();
+        let middle = document.len_chars() / 2;
+        // A window of the sizes an editor asks for, at places that edits move.
+        let check = |document: &TextDocument| {
+            let total = document.len_lines();
+            for start in [0, 1, total / 2, total.saturating_sub(34), total - 1, total] {
+                let range = start..start + 33;
+                assert_eq!(
+                    document.lines_in(range.clone()).collect::<Vec<_>>(),
+                    range.map(|line| document.line(line)).collect::<Vec<_>>()
+                );
+            }
+        };
+        let edits: [(usize, &str); 6] = [
+            (0, "\n"),
+            (middle, "a\r\nb\rc"),
+            (end, "\n"),
+            (middle, "x"),
+            (end, "tail"),
+            (0, "head"),
+        ];
+        for (at, text) in edits {
+            let at = at.min(document.len_chars());
+            document.set_selection(at, at);
+            assert!(document.insert(text));
+            check(&document);
+        }
+        document.set_selection(1, 1);
+        assert!(document.backspace(false));
+        check(&document);
+        let from = document.len_chars() / 3;
+        document.set_selection(from, from + 4_000);
+        assert!(document.delete(false));
+        check(&document);
+        while document.undo() {
+            check(&document);
+        }
+        while document.redo() {
+            check(&document);
+        }
+        document.set_text("one\ntwo\n");
+        check(&document);
+    }
+
+    #[test]
+    fn lines_in_does_not_panic_for_any_range() {
+        let document = TextDocument::from_text("a\nb\n");
+        assert_eq!(document.len_lines(), 3);
+        let (low, high) = (2, 5);
+        assert_eq!(document.lines_in(high..low).count(), 0);
+        assert_eq!(document.lines_in(3..6).collect::<Vec<_>>(), ["", "", ""]);
+        assert_eq!(
+            document
+                .lines_in(usize::MAX - 1..usize::MAX)
+                .collect::<Vec<_>>(),
+            [""]
+        );
+        assert_eq!(document.lines_in(2..9).collect::<Vec<_>>()[..2], ["", ""]);
+        let empty = TextDocument::new();
+        assert_eq!(empty.lines_in(0..1).collect::<Vec<_>>(), [""]);
+        assert_eq!(empty.lines_in(1..2).collect::<Vec<_>>(), [""]);
+        assert_eq!(empty.lines_in(0..3).collect::<Vec<_>>(), ["", "", ""]);
+    }
+
+    #[test]
+    fn the_widest_line_stays_right_through_edits_without_reading_the_text_again() {
+        // What a document that has just been opened would answer.
+        let fresh = |document: &TextDocument| {
+            let mut copy = TextDocument::from_text(&document.text());
+            copy.indentation.tab_width = document.indentation.tab_width;
+            copy.widest_line()
+        };
+        let mut document = TextDocument::from_text("short\na longer line here\n\tx\nmid line\n");
+        assert_eq!(document.widest_line(), 1);
+        // A small generator, so that the same edits run every time.
+        let mut seed = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = |limit: usize| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed % limit.max(1) as u64) as usize
+        };
+        let pieces = [
+            "x",
+            "wide wide wide wide",
+            "\n",
+            "\t",
+            "a\nbb\nccc",
+            "\n\n",
+            "the longest piece of them all, by some way\n",
+        ];
+        for step in 0..3000 {
+            let len = document.len_chars();
+            match next(10) {
+                0..=4 => {
+                    let at = next(len + 1);
+                    document.replace_range(at..at, pieces[next(pieces.len())]);
+                }
+                5..=7 => {
+                    let start = next(len + 1);
+                    let end = (start + next(40)).min(len);
+                    document.replace_range(start..end, "");
+                }
+                8 => {
+                    let start = next(len + 1);
+                    let end = (start + next(25)).min(len);
+                    document.replace_range(start..end, pieces[next(pieces.len())]);
+                }
+                _ => {
+                    if next(2) == 0 {
+                        document.undo();
+                    } else {
+                        document.redo();
+                    }
+                }
+            }
+            assert_eq!(
+                document.widest_line(),
+                fresh(&document),
+                "after step {step}: {:?}",
+                document.text()
+            );
+        }
+        // A tab width that changes is counted again.
+        document.replace_range(0..0, "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\n");
+        document.indentation.tab_width = 16;
+        assert_eq!(document.widest_line(), fresh(&document));
+        document.replace_range(0..0, "y");
+        assert_eq!(document.widest_line(), fresh(&document));
+    }
+
     #[test]
     fn typing_merges_into_one_undo_step_and_moves_break_it() {
         let mut document = TextDocument::from_text("");
@@ -1264,6 +1559,172 @@ mod tests {
         document.undo();
         document.insert("x");
         assert!(!document.can_redo());
+    }
+
+    /// A document whose history is full: `HISTORY + extra` edits that cannot
+    /// merge, each adding a distinct token. Returns the text after each edit.
+    fn document_with_full_history(extra: usize) -> (TextDocument, Vec<String>) {
+        let mut document = TextDocument::from_text("");
+        let mut texts = vec![document.text()];
+        for n in 0..HISTORY + extra {
+            let end = document.len_chars();
+            assert!(document.replace_range(end..end, &format!("<{n}>")));
+            texts.push(document.text());
+        }
+        (document, texts)
+    }
+
+    #[test]
+    fn the_history_is_capped_and_drops_the_oldest_step() {
+        let extra = 50;
+        let (mut document, texts) = document_with_full_history(extra);
+        let last = texts.len() - 1;
+        for steps in 1..=HISTORY {
+            assert!(document.undo(), "undo {steps}");
+            assert_eq!(document.text(), texts[last - steps], "undo {steps}");
+        }
+        assert!(!document.can_undo());
+        assert!(!document.undo());
+        assert_eq!(document.text(), texts[extra]);
+        for steps in 1..=HISTORY {
+            assert!(document.redo(), "redo {steps}");
+            assert_eq!(document.text(), texts[extra + steps], "redo {steps}");
+        }
+        assert!(!document.redo());
+        assert_eq!(document.text(), texts[last]);
+        assert!(document.can_undo());
+    }
+
+    #[test]
+    fn typing_still_merges_after_the_history_wrapped() {
+        let (mut document, texts) = document_with_full_history(300);
+        let before = document.text();
+        assert!(document.insert("a"));
+        assert!(document.insert("b"));
+        assert_eq!(document.text(), format!("{before}ab"));
+        assert!(document.undo());
+        assert_eq!(document.text(), before);
+        assert!(document.can_undo());
+        let mut undone = 1;
+        while document.undo() {
+            undone += 1;
+        }
+        assert_eq!(undone, HISTORY);
+        assert_eq!(document.text(), texts[texts.len() - HISTORY]);
+    }
+
+    #[test]
+    fn moving_the_caret_still_ends_a_typing_step_after_the_history_wrapped() {
+        let (mut document, _) = document_with_full_history(300);
+        let before = document.text();
+        assert!(document.insert("a"));
+        document.move_cursors(Motion::Left, false);
+        document.move_cursors(Motion::Right, false);
+        assert!(document.insert("b"));
+        assert_eq!(document.text(), format!("{before}ab"));
+        assert!(document.undo());
+        assert_eq!(document.text(), format!("{before}a"));
+        assert!(document.undo());
+        assert_eq!(document.text(), before);
+    }
+
+    #[test]
+    fn pairs_newlines_and_indents_adjust_the_newest_step_after_the_history_wrapped() {
+        let (mut document, _) = document_with_full_history(120);
+        let steps: [fn(&mut TextDocument) -> bool; 3] = [
+            |document| document.insert_paired("{"),
+            |document| document.newline(),
+            |document| document.indent(),
+        ];
+        for (n, step) in steps.into_iter().enumerate() {
+            if n == 2 {
+                // Several lines selected: the lines are shifted as one step.
+                let end = document.len_chars();
+                document.set_selection(0, end);
+            }
+            let text = document.text();
+            let selections = document.selections().to_vec();
+            assert!(step(&mut document));
+            let changed = document.text();
+            let after = document.selections().to_vec();
+            assert_ne!(changed, text);
+            assert!(document.undo());
+            assert_eq!(document.text(), text);
+            assert_eq!(document.selections(), selections);
+            assert!(document.redo());
+            assert_eq!(document.text(), changed);
+            assert_eq!(document.selections(), after);
+        }
+    }
+
+    #[test]
+    fn a_clone_of_a_wrapped_history_undoes_the_same_steps() {
+        let (mut document, _) = document_with_full_history(250);
+        let mut copy = document.clone();
+        assert_eq!(format!("{document:?}"), format!("{copy:?}"));
+        loop {
+            let undone = document.undo();
+            assert_eq!(copy.undo(), undone);
+            assert_eq!(document.text(), copy.text());
+            assert_eq!(document.selections(), copy.selections());
+            if !undone {
+                break;
+            }
+        }
+        assert_eq!(format!("{document:?}"), format!("{copy:?}"));
+    }
+
+    #[test]
+    fn undo_and_redo_across_the_history_cap_follow_a_plain_model() {
+        let mut document = TextDocument::from_text("");
+        // The texts to go back to, oldest first, and the texts to go forward to.
+        let mut past: Vec<String> = Vec::new();
+        let mut future: Vec<String> = Vec::new();
+        let mut current = String::new();
+        let mut seed = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = |limit: usize| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed % limit as u64) as usize
+        };
+        for step in 0..5_000 {
+            // Mostly edits, so that the history fills and stays full.
+            match next(8) {
+                0 => {
+                    let undone = document.undo();
+                    assert_eq!(undone, !past.is_empty(), "undo at step {step}");
+                    if let Some(text) = past.pop() {
+                        future.push(std::mem::replace(&mut current, text));
+                    }
+                }
+                1 => {
+                    let redone = document.redo();
+                    assert_eq!(redone, !future.is_empty(), "redo at step {step}");
+                    if let Some(text) = future.pop() {
+                        past.push(std::mem::replace(&mut current, text));
+                    }
+                }
+                _ => {
+                    let at = next(current.chars().count() + 1);
+                    let token = format!("[{step}]");
+                    assert!(document.replace_range(at..at, &token));
+                    past.push(current.clone());
+                    if past.len() > HISTORY {
+                        past.remove(0);
+                    }
+                    future.clear();
+                    let byte = current
+                        .char_indices()
+                        .nth(at)
+                        .map_or(current.len(), |c| c.0);
+                    current.insert_str(byte, &token);
+                }
+            }
+            assert_eq!(document.text(), current, "step {step}");
+            assert_eq!(document.can_undo(), !past.is_empty(), "step {step}");
+            assert_eq!(document.can_redo(), !future.is_empty(), "step {step}");
+        }
     }
 
     #[test]

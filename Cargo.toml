@@ -21,6 +21,7 @@ members = [
     "crates/glassmere-dev",
     "crates/glassmere-win32",
     "crates/glassmere-allocations",
+    "crates/glassmere-bench",
     "crates/glassmere-markup",
     "crates/glassmere-designer",
     "examples",
@@ -29,7 +30,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.7"
+version = "0.1.8"
 edition = "2024"
 rust-version = "1.90"
 license = "Apache-2.0"
@@ -38,22 +39,23 @@ repository = "https://github.com/glassmere/glassmere"
 
 [workspace.dependencies]
 # `default-features = false` lets the two kernel crates build without `std`; each member asks for it.
-glassmere-core = { path = "crates/glassmere-core", version = "0.1.7", default-features = false }
-glassmere-scene = { path = "crates/glassmere-scene", version = "0.1.7", default-features = false }
-glassmere-text = { path = "crates/glassmere-text", version = "0.1.7" }
-glassmere-render-cpu = { path = "crates/glassmere-render-cpu", version = "0.1.7" }
-glassmere-embedded = { path = "crates/glassmere-embedded", version = "0.1.7" }
-glassmere-render-wgpu = { path = "crates/glassmere-render-wgpu", version = "0.1.7" }
-glassmere-winit = { path = "crates/glassmere-winit", version = "0.1.7" }
-glassmere-testing = { path = "crates/glassmere-testing", version = "0.1.7" }
-glassmere-devtools = { path = "crates/glassmere-devtools", version = "0.1.7" }
-glassmere-syntax = { path = "crates/glassmere-syntax", version = "0.1.7" }
-glassmere-image = { path = "crates/glassmere-image", version = "0.1.7" }
-glassmere-derive = { path = "crates/glassmere-derive", version = "0.1.7" }
-glassmere-fluent = { path = "crates/glassmere-fluent", version = "0.1.7" }
-glassmere-icu = { path = "crates/glassmere-icu", version = "0.1.7" }
-glassmere-win32 = { path = "crates/glassmere-win32", version = "0.1.7" }
-glassmere-markup = { path = "crates/glassmere-markup", version = "0.1.7" }
+glassmere = { path = "crates/glassmere", version = "0.1.8", default-features = false }
+glassmere-core = { path = "crates/glassmere-core", version = "0.1.8", default-features = false }
+glassmere-scene = { path = "crates/glassmere-scene", version = "0.1.8", default-features = false }
+glassmere-text = { path = "crates/glassmere-text", version = "0.1.8" }
+glassmere-render-cpu = { path = "crates/glassmere-render-cpu", version = "0.1.8" }
+glassmere-embedded = { path = "crates/glassmere-embedded", version = "0.1.8" }
+glassmere-render-wgpu = { path = "crates/glassmere-render-wgpu", version = "0.1.8" }
+glassmere-winit = { path = "crates/glassmere-winit", version = "0.1.8" }
+glassmere-testing = { path = "crates/glassmere-testing", version = "0.1.8" }
+glassmere-devtools = { path = "crates/glassmere-devtools", version = "0.1.8" }
+glassmere-syntax = { path = "crates/glassmere-syntax", version = "0.1.8" }
+glassmere-image = { path = "crates/glassmere-image", version = "0.1.8" }
+glassmere-derive = { path = "crates/glassmere-derive", version = "0.1.8" }
+glassmere-fluent = { path = "crates/glassmere-fluent", version = "0.1.8" }
+glassmere-icu = { path = "crates/glassmere-icu", version = "0.1.8" }
+glassmere-win32 = { path = "crates/glassmere-win32", version = "0.1.8" }
+glassmere-markup = { path = "crates/glassmere-markup", version = "0.1.8" }
 bitflags = "2.13"
 hashbrown = { version = "0.17", default-features = false, features = ["default-hasher"] }
 libm = "0.2"
@@ -86,3 +88,5 @@ debug = 1
 # An optimized build that can be profiled without replacing a running release app.
 [profile.profiling]
 inherits = "release"
+# Names for a sampling profiler to put on the stacks it reads.
+debug = "line-tables-only"

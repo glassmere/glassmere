@@ -28,6 +28,7 @@ glassmere use VectorImage = glassmere_scene::VectorImage
 glassmere use devtools = glassmere_devtools
 glassmere use embedded = glassmere_embedded #[cfg(feature = "embedded")]
 glassmere use fluent = glassmere_fluent #[cfg(feature = "fluent")]
+glassmere use follow_system_reduced_motion = glassmere_winit::follow_system_reduced_motion #[cfg(feature = "desktop")]
 glassmere use hot = glassmere_winit::hot #[cfg(feature = "desktop")]
 glassmere use icu = glassmere_icu #[cfg(feature = "icu")]
 glassmere use image = glassmere_image #[cfg(feature = "images")]
@@ -1703,6 +1704,8 @@ glassmere-core enum TrackSize #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-core enum UiEvent #[derive(Clone, Debug, PartialEq)]
 glassmere-core enum Weekday #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 glassmere-core enum WindowCommand #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+glassmere-core fn app::bind<S, V, M>(set: impl Fn(&mut S, V) + Clone + 'static) -> impl Fn(V) -> M + 'static where S: 'static, V: Clone + 'static, M: From<Action<S>>
+glassmere-core fn app::change<S: 'static, M: From<Action<S>>>(change: impl Fn(&mut S) + 'static) -> M
 glassmere-core fn message_channel<T>(capacity: usize, wake: impl Fn() -> bool + Send + Sync + 'static) -> (MessageSender<T>, Mailbox<T>) #[cfg(feature = "std")]
 glassmere-core fn suggest<'a>(typed: &str, candidates: &[&'a str], limit: usize) -> Vec<&'a str>
 glassmere-core fn text_matches(cell: &str, filter: &str) -> bool
@@ -2549,6 +2552,7 @@ glassmere-winit enum GpuMemoryPolicy #[derive(Clone, Copy, Debug, Default, Eq, P
 glassmere-winit enum GraphicsBackend #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-winit enum Placement #[derive(Clone, Debug, Default, Eq, PartialEq)]
 glassmere-winit enum ThemeChoice #[derive(Clone, Debug, PartialEq)]
+glassmere-winit fn follow_system_reduced_motion(follow: bool)
 glassmere-winit fn hot::active() -> bool
 glassmere-winit fn hot::saved_state() -> Option<String>
 glassmere-winit fn locale_direction(locale: &str) -> glassmere_core::Direction

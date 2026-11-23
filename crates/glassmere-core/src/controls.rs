@@ -122,7 +122,12 @@ impl NumberOptions {
             value
         };
         let scale = 1e9;
-        ((snapped * scale).round() / scale).clamp(self.min, self.max)
+        // Not `clamp`, which panics when `min` is above `max` or either is
+        // NaN: the fields are public. The lower bound wins, as in `range`,
+        // and a NaN bound leaves that side open.
+        ((snapped * scale).round() / scale)
+            .min(self.max)
+            .max(self.min)
     }
 
     /// Plain notation: no grouping and a decimal point. Widgets show numbers

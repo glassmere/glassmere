@@ -8,10 +8,10 @@ mod images;
 mod input;
 mod os_drag;
 mod platform;
+mod system_motion;
 mod wakeup;
 use glassmere_core::{
-    App, Context, DragPayload, Effects, Event, FrameStats, StyleSheet, TextEdit, Theme, Ui,
-    app::Action,
+    App, Context, DragPayload, Effects, Event, FrameStats, TextEdit, Theme, Ui, app::Action,
 };
 pub use glassmere_core::{Mailbox, MessageSender};
 use glassmere_devtools::Recorder;
@@ -23,10 +23,14 @@ pub use graphics::{GpuMemoryPolicy, GraphicsBackend, GraphicsOptions};
 use std::{
     cell::RefCell,
     error::Error,
+    ffi::OsStr,
     num::NonZeroU32,
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 use wakeup::UserEvent;
@@ -161,31 +165,110 @@ mod direction_tests {
     }
 }
 
+/// Whether windows follow the system's reduced-motion preference, see
+/// [`follow_system_reduced_motion`].
+static FOLLOW_SYSTEM_MOTION: AtomicBool = AtomicBool::new(true);
+
+/// The environment variable that, set to exactly this, keeps the system's
+/// reduced-motion preference from being asked or applied.
+const SYSTEM_MOTION_VARIABLE: &str = "GLASSMERE_SYSTEM_MOTION";
+
+/// Sets whether a window follows the system's reduced-motion preference.
+///
+/// By default it does, where the framework can read it: on Windows, and on
+/// Linux and the BSDs where `gsettings` reports it. On Linux and the BSDs
+/// reading it starts the `gsettings` tool, on a background thread. An
+/// application that must not start processes calls this with `false` before
+/// [`run`], and then `AppOptions::reduced_motion` alone decides. Setting
+/// `GLASSMERE_SYSTEM_MOTION=off` in the environment has the same effect.
+pub fn follow_system_reduced_motion(follow: bool) {
+    FOLLOW_SYSTEM_MOTION.store(follow, Ordering::Relaxed);
+}
+
+/// Whether `value`, the content of `GLASSMERE_SYSTEM_MOTION`, switches the
+/// system's preference off. Only `off` does.
+fn system_motion_switched_off(value: Option<&OsStr>) -> bool {
+    value == Some(OsStr::new("off"))
+}
+
+/// Whether the system's preference is followed: `following` is the setting of
+/// [`follow_system_reduced_motion`] and `variable` the environment variable.
+fn system_motion_followed(following: bool, variable: Option<&OsStr>) -> bool {
+    following && !system_motion_switched_off(variable)
+}
+
+/// Whether asking the system can change what a window does: not when the
+/// application already asks for reduced motion, and not when the system is
+/// not followed.
+fn probe_wanted(app: bool, following: bool) -> bool {
+    !app && following
+}
+
+/// Asks the system in the background for a window whose option is `app`,
+/// unless that cannot matter.
+fn probe_system_motion(wake: &WakeHandle, app: bool) {
+    if probe_wanted(app, FOLLOW_SYSTEM_MOTION.load(Ordering::Relaxed)) {
+        system_motion::refresh(wake);
+    }
+}
+
+/// The system's answer when it is followed, and no answer when it is not.
+/// `read` is not called then, so that nothing is asked of the system.
+fn system_answer(
+    followed: bool,
+    read: impl FnOnce() -> (usize, Option<bool>),
+) -> (usize, Option<bool>) {
+    if followed { read() } else { (0, None) }
+}
+
 /// Whether animations are skipped: the application asked for it, or the
 /// system did. An application cannot turn motion on against the system.
 fn resolve_reduced_motion(app: bool, system: Option<bool>) -> bool {
     app || system.unwrap_or(false)
 }
 
-/// The OS preference for reduced motion, where this platform is read.
-#[cfg(windows)]
-fn system_reduced_motion() -> Option<bool> {
-    glassmere_win32::animations_disabled()
+/// Takes the system's current preference into `context`, with the
+/// application's own option on top, and notes in `seen` which answer that was,
+/// so that a later change of the answer is noticed. It takes the fields and
+/// not `self` because its callers hold a borrow of the window state, as
+/// `check_families` does.
+fn apply_system_motion(context: &mut Context, seen: &mut usize, app: bool) {
+    let followed = system_motion_followed(
+        FOLLOW_SYSTEM_MOTION.load(Ordering::Relaxed),
+        std::env::var_os(SYSTEM_MOTION_VARIABLE).as_deref(),
+    );
+    let answer = system_answer(followed, system_motion::snapshot);
+    take_system_motion(context, seen, app, answer);
 }
 
-/// No platform query exists here yet: no preference.
-#[cfg(not(windows))]
-fn system_reduced_motion() -> Option<bool> {
-    None
+/// `apply_system_motion` for the answer `snapshot` pairs with its generation.
+fn take_system_motion(
+    context: &mut Context,
+    seen: &mut usize,
+    app: bool,
+    (generation, system): (usize, Option<bool>),
+) {
+    *seen = generation;
+    context.set_reduced_motion(resolve_reduced_motion(app, system));
 }
 
-fn reduced_motion(app: bool) -> bool {
-    resolve_reduced_motion(app, system_reduced_motion())
+/// Takes the system's answer again when it is not the one `seen` stands for.
+fn follow_system_motion(context: &mut Context, seen: &mut usize, app: bool) {
+    if system_motion::generation() != *seen {
+        apply_system_motion(context, seen, app);
+    }
 }
 
 #[cfg(test)]
 mod reduced_motion_tests {
-    use super::resolve_reduced_motion;
+    use super::{
+        FOLLOW_SYSTEM_MOTION, apply_system_motion, follow_system_motion,
+        follow_system_reduced_motion, probe_wanted, resolve_reduced_motion, system_answer,
+        system_motion, system_motion_followed, system_motion_switched_off, take_system_motion,
+    };
+    use glassmere_core::{Context, MonospaceMeasurer, Spinner};
+    use glassmere_scene::Size;
+    use std::{ffi::OsStr, sync::atomic::Ordering};
 
     #[test]
     fn the_application_forces_it_and_the_system_adds_to_it() {
@@ -195,6 +278,135 @@ mod reduced_motion_tests {
         assert!(resolve_reduced_motion(true, None));
         assert!(resolve_reduced_motion(true, Some(false)));
         assert!(resolve_reduced_motion(true, Some(true)));
+    }
+
+    #[test]
+    fn the_system_is_asked_only_where_it_can_matter() {
+        for app in [false, true] {
+            for following in [false, true] {
+                assert_eq!(probe_wanted(app, following), !app && following);
+            }
+        }
+    }
+
+    #[test]
+    fn only_off_switches_the_system_off() {
+        assert!(system_motion_switched_off(Some(OsStr::new("off"))));
+        for value in [
+            None,
+            Some(""),
+            Some("on"),
+            Some("OFF"),
+            Some("off "),
+            Some("1"),
+        ] {
+            assert!(
+                !system_motion_switched_off(value.map(OsStr::new)),
+                "{value:?}"
+            );
+        }
+        for following in [false, true] {
+            for variable in [None, Some("off"), Some("on")] {
+                let followed = system_motion_followed(following, variable.map(OsStr::new));
+                assert_eq!(followed, following && variable != Some("off"));
+            }
+        }
+    }
+
+    #[test]
+    fn without_following_a_system_answer_changes_nothing() {
+        for app in [false, true] {
+            for following in [false, true] {
+                for answer in [None, Some(false), Some(true)] {
+                    let mut asked = false;
+                    let (generation, system) = system_answer(following, || {
+                        asked = true;
+                        (4, answer)
+                    });
+                    assert_eq!(asked, following);
+                    assert_eq!(generation, if following { 4 } else { 0 });
+                    assert_eq!(
+                        resolve_reduced_motion(app, system),
+                        app || (following && answer == Some(true)),
+                        "{app} {following} {answer:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_setting_starts_on_and_can_be_switched() {
+        // The only test that touches the setting: tests share the process.
+        assert!(FOLLOW_SYSTEM_MOTION.load(Ordering::Relaxed));
+        follow_system_reduced_motion(false);
+        assert!(!FOLLOW_SYSTEM_MOTION.load(Ordering::Relaxed));
+        follow_system_reduced_motion(true);
+        assert!(FOLLOW_SYSTEM_MOTION.load(Ordering::Relaxed));
+    }
+
+    /// Whether `context` skips animations, as a spinner shows: it asks for
+    /// another frame only while animations are on.
+    fn skips_animations(context: &mut Context) -> bool {
+        context.run(Size::new(100.0, 100.0), &mut MonospaceMeasurer, |ui| {
+            ui.spinner(Spinner::new("Busy"));
+        });
+        !context.animating()
+    }
+
+    #[test]
+    fn a_context_takes_the_answer_and_the_option_and_notes_which_answer() {
+        let answers = [None, Some(false), Some(true)];
+        for app in [false, true] {
+            for system in answers {
+                let mut context = Context::new();
+                let mut seen = 99;
+                take_system_motion(&mut context, &mut seen, app, (7, system));
+                assert_eq!(seen, 7);
+                let expected = app || system == Some(true);
+                assert_eq!(skips_animations(&mut context), expected, "{app} {system:?}");
+            }
+        }
+        // A later answer replaces an earlier one, in both directions.
+        let mut context = Context::new();
+        let mut seen = 0;
+        take_system_motion(&mut context, &mut seen, false, (1, Some(true)));
+        assert!(skips_animations(&mut context));
+        take_system_motion(&mut context, &mut seen, false, (2, Some(false)));
+        assert_eq!(seen, 2);
+        assert!(!skips_animations(&mut context));
+    }
+
+    #[test]
+    fn a_window_takes_the_answer_the_system_has_now() {
+        let (generation, system) = system_motion::snapshot();
+        for app in [false, true] {
+            let mut context = Context::new();
+            let mut seen = generation + 5;
+            apply_system_motion(&mut context, &mut seen, app);
+            assert_eq!(seen, generation);
+            let expected = resolve_reduced_motion(app, system);
+            assert_eq!(skips_animations(&mut context), expected, "{app}");
+        }
+    }
+
+    #[test]
+    fn a_frame_takes_the_answer_only_when_it_is_a_newer_one() {
+        let (generation, system) = system_motion::snapshot();
+        let taken = resolve_reduced_motion(false, system);
+        // Set apart from what the answer would make it, to see whether it ran.
+        let mut context = Context::new();
+        context.set_reduced_motion(!taken);
+
+        let mut seen = generation;
+        follow_system_motion(&mut context, &mut seen, false);
+        assert_eq!(seen, generation);
+        assert_eq!(skips_animations(&mut context), !taken);
+
+        let mut seen = generation + 5;
+        follow_system_motion(&mut context, &mut seen, false);
+        assert_eq!(seen, generation);
+        assert_eq!(skips_animations(&mut context), taken);
     }
 }
 
@@ -218,8 +430,11 @@ pub struct AppOptions {
     /// A stylesheet file installed at start and reloaded when it changes on disk.
     pub stylesheet: Option<PathBuf>,
     /// Skips animations. Animations are also skipped while the OS asks for
-    /// reduced motion (read on Windows only), so `false` means "follow the
-    /// system", not "always animate"; `true` forces them off.
+    /// reduced motion (read on Windows and, where `gsettings` reports it, on
+    /// Linux), so `false` means "follow the system", not "always animate";
+    /// `true` forces them off, and then the system is not asked. The system
+    /// is not asked either after `follow_system_reduced_motion(false)` or with
+    /// `GLASSMERE_SYSTEM_MOTION=off` in the environment.
     pub reduced_motion: bool,
     /// Whether Left and Right move on screen or in reading order in
     /// bidirectional text.
@@ -283,11 +498,6 @@ impl Default for AppOptions {
         }
     }
 }
-
-/// How often a configured stylesheet is checked for changes.
-// Polling mtimes keeps the host dependency-free; a file watcher
-// (notify) is the upgrade path if half-second latency or idle wakeups matter.
-pub(crate) const STYLESHEET_POLL: Duration = Duration::from_millis(500);
 
 /// When the host was asked to run, for the startup measurement. Whatever
 /// happened before that, including loading the executable, is not in it.
@@ -838,7 +1048,9 @@ struct Application {
     overlay_dirty: bool,
     poller: hot::Poller,
     images: images::ImageFiles,
-    last_poll: Instant,
+    schedule: hot::Schedule,
+    /// The development runner may ask this process to stop.
+    runner: bool,
     /// The development runner asked this process to stop.
     hot_stopping: bool,
     retry_pending: bool,
@@ -852,6 +1064,8 @@ struct Application {
     pub(crate) drag_escaped: bool,
     /// Font families already reported as missing, so each is said once.
     families_seen: std::collections::HashSet<String>,
+    /// The system's answer this window last took, see `system_motion`.
+    motion_seen: usize,
     /// The platform's menu and tray icon, kept alive while they are shown.
     menu: Option<platform::NativeMenu>,
     tray: Option<platform::NativeTray>,
@@ -876,7 +1090,12 @@ impl Application {
     ) -> Self {
         let mut context = Context::new();
         context.set_opened_files(opened_files());
-        context.set_reduced_motion(reduced_motion(options.reduced_motion));
+        let mut motion_seen = 0;
+        apply_system_motion(&mut context, &mut motion_seen, options.reduced_motion);
+        // A window that follows the system does not wait for its first focus
+        // when the probe at startup was skipped; the limit on probes keeps
+        // this from repeating.
+        probe_system_motion(&wake, options.reduced_motion);
         context.set_caret_movement(options.caret_movement);
         context.set_direction(options.direction.resolve());
         // `ToastSender::send` from any thread wakes the loop; the next frame shows the toast.
@@ -904,13 +1123,15 @@ impl Application {
             overlay_dirty: false,
             poller: hot::Poller::default(),
             images: images::ImageFiles::new(wake),
-            last_poll: Instant::now(),
+            schedule: hot::Schedule::new(Instant::now()),
+            runner: hot::watching(),
             hot_stopping: false,
             retry_pending: false,
             diagnostics_seen: 0,
             os_drag: None,
             drag_escaped: false,
             families_seen: std::collections::HashSet::new(),
+            motion_seen,
             menu: None,
             tray: None,
             #[cfg(windows)]
@@ -927,16 +1148,36 @@ impl Application {
 
     /// The earliest moment this window needs the loop to wake without input.
     fn deadline(&self) -> Option<Instant> {
+        let now = Instant::now();
         let wake = self.context.next_wake().map(|at| self.started + at);
-        let polls = self.options.stylesheet.is_some()
-            || !self.context.watched_paths().is_empty()
-            || !self.context.image_paths().is_empty()
-            || hot::active();
-        let poll = polls.then(|| Instant::now() + STYLESHEET_POLL);
-        let retry = self
-            .retry_pending
-            .then(|| Instant::now() + Duration::from_millis(100));
-        [wake, poll, retry].into_iter().flatten().min()
+        let (files, rest) = self.follows();
+        let files = files.then(|| {
+            let settle = self.poller.settle_deadline(self.followed_paths());
+            self.schedule.files_next(now, settle)
+        });
+        let rest = rest.then(|| self.schedule.rest_next());
+        let retry = self.retry_pending.then(|| now + Duration::from_millis(100));
+        [wake, files, rest, retry].into_iter().flatten().min()
+    }
+
+    /// What this window has to look at: the stylesheet and watched files, and
+    /// image files and the runner's stop request.
+    fn follows(&self) -> (bool, bool) {
+        hot::tiers(
+            self.options.stylesheet.is_some(),
+            self.context.watched_paths().len(),
+            self.context.image_paths().len(),
+            self.runner,
+        )
+    }
+
+    /// The stylesheet and the files the view asked to watch.
+    fn followed_paths(&self) -> impl Iterator<Item = &Path> {
+        self.options
+            .stylesheet
+            .as_deref()
+            .into_iter()
+            .chain(self.context.watched_paths().iter().map(PathBuf::as_path))
     }
 
     /// Applies the OS preference when the window follows the system theme.
@@ -952,52 +1193,31 @@ impl Application {
     /// Installs the configured stylesheet when it is new or changed on disk.
     /// Returns whether a sheet was installed; parse errors keep the previous sheet.
     fn load_stylesheet(&mut self) -> std::result::Result<bool, String> {
-        let Some(path) = &self.options.stylesheet else {
-            return Ok(false);
-        };
-        let Some(content) = self.poller.changed(path) else {
-            return Ok(false);
-        };
-        let text =
-            String::from_utf8(content?).map_err(|error| format!("{}: {error}", path.display()))?;
-        let mut sheet = StyleSheet::parse(&text)
-            .map_err(|error| format!("{}:{}: {}", path.display(), error.line, error.message))?;
-        // `url(...)` in a sheet is relative to the sheet, not to where the app started.
-        if let Some(directory) = path.parent() {
-            sheet.rebase(directory);
-        }
-        self.context.set_stylesheet(sheet);
-        Ok(true)
+        hot::install_stylesheet(
+            self.options.stylesheet.as_deref(),
+            &mut self.poller,
+            &mut self.context,
+            Instant::now(),
+        )
     }
 
-    /// Loads files the view asked for and reloads the ones that changed.
-    fn load_watched(&mut self) -> bool {
-        let mut changed = false;
-        for path in self.context.watched_paths().to_vec() {
-            if let Some(content) = self.poller.changed(&path) {
-                if let Err(error) = &content {
-                    eprintln!("watched file not loaded: {error}");
-                }
-                changed |= self.context.set_watched_file(&path, content);
-            }
-        }
-        changed
-    }
-
-    /// The periodic tick: stylesheet, watched files and the development
-    /// runner's stop request.
-    fn poll_files(&mut self) {
-        let sheet = match self.load_stylesheet() {
-            Ok(changed) => changed,
-            Err(error) => {
-                eprintln!("stylesheet not reloaded: {error}");
-                false
-            }
-        };
-        self.images.request(&mut self.context, true);
-        if self.load_watched() || sheet {
+    /// The tick for the stylesheet and watched files.
+    fn poll_followed(&mut self, now: Instant) {
+        let redraw = hot::follow(
+            self.options.stylesheet.as_deref(),
+            &mut self.poller,
+            &mut self.schedule,
+            &mut self.context,
+            now,
+        );
+        if redraw {
             self.request_redraw();
         }
+    }
+
+    /// The slow tick: image files and the development runner's stop request.
+    fn poll_rest(&mut self) {
+        self.images.request(&mut self.context, true);
         if !self.hot_stopping && hot::stop_requested() {
             self.hot_stopping = true;
             self.hot_save();
@@ -1226,6 +1446,13 @@ impl Application {
             maximized: state.window.is_maximized(),
             focused: state.window.has_focus(),
         });
+        // `gsettings` answers off the event loop and wakes it: take a newer
+        // answer.
+        follow_system_motion(
+            &mut self.context,
+            &mut self.motion_seen,
+            self.options.reduced_motion,
+        );
         // Images decoded in the background since the last frame.
         self.images.deliver(&mut self.context);
         let stats = self.view.frame(
@@ -1257,21 +1484,9 @@ impl Application {
         self.diagnostics_seen = diagnostics.len();
         self.images.request(&mut self.context, false);
         // Files asked for the first time load right away; the next frame shows them.
-        let fresh: Vec<_> = self
-            .context
-            .watched_paths()
-            .iter()
-            .filter(|path| !self.context.watched_known(path))
-            .cloned()
-            .collect();
-        for path in fresh {
-            if let Some(content) = self.poller.changed(&path) {
-                if let Err(error) = &content {
-                    eprintln!("watched file not loaded: {error}");
-                }
-                self.context.set_watched_file(&path, content);
-                state.window.request_redraw();
-            }
+        let now = Instant::now();
+        if hot::load_fresh(&mut self.poller, &mut self.schedule, &mut self.context, now) {
+            state.window.request_redraw();
         }
         let scene_changed = stats.scene_rebuilt;
         let ime_target = self
@@ -1647,9 +1862,19 @@ impl Application {
         }
         // By the clock, not by timer wakeups: a window that redraws every frame
         // (an animation) never sleeps, and its files must still be polled.
-        if self.last_poll.elapsed() >= STYLESHEET_POLL {
-            self.last_poll = Instant::now();
-            self.poll_files();
+        let now = Instant::now();
+        let (files, rest) = self.follows();
+        if files
+            && self
+                .schedule
+                .files_due(now, self.poller.settle_deadline(self.followed_paths()))
+        {
+            self.schedule.looked_files(now);
+            self.poll_followed(now);
+        }
+        if rest && self.schedule.rest_due(now) {
+            self.schedule.looked_rest(now);
+            self.poll_rest();
         }
     }
 
@@ -1690,9 +1915,15 @@ impl Application {
                     self.modifiers = ModifiersState::empty();
                 }
                 if focused {
-                    // The setting may have changed while another window had focus.
-                    self.context
-                        .set_reduced_motion(reduced_motion(self.options.reduced_motion));
+                    // The setting may have changed while another window had
+                    // focus. The host asked for it in the background when the
+                    // focus event came in (`desktop.rs`); this takes what is
+                    // known now.
+                    apply_system_motion(
+                        &mut self.context,
+                        &mut self.motion_seen,
+                        self.options.reduced_motion,
+                    );
                 }
                 if input::window_focus(&mut self.context, &mut self.restore_focus, focused) {
                     state.window.request_redraw();

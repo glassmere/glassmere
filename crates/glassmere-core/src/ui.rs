@@ -1,5 +1,6 @@
 use crate::collections::HashMap;
 use crate::collections::HashSet;
+use crate::collections::KeyState;
 use crate::controls::{Control, ControlUpdate};
 use crate::window::caption;
 use crate::{Component, Context, CustomWidget, NodeId, Style};
@@ -43,7 +44,7 @@ pub(crate) use toasts::ToastOutbox;
 
 pub use dock::{DockOptions, DockPanel};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum WidgetKey {
     Named(String),
     /// Where in the source the widget was declared, and how many siblings
@@ -53,6 +54,43 @@ pub(crate) enum WidgetKey {
     /// by the dock that shows it, not by the group it is in, so it follows
     /// the panel when the dock moves it.
     Panel(String),
+}
+
+/// Equal keys hash alike under one state. A call site is hashed by its
+/// content, never its address, because two `Location`s of one place are equal
+/// keys. It is made of integers only, which is cheap and needs no allocation:
+/// a call site is the key of every widget that has no name. A name is chosen
+/// by the application, so its bytes are given to the hasher whole, for the
+/// keyed hash of a `KeyState`.
+impl core::hash::Hash for WidgetKey {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Named(name) => {
+                state.write_u8(0);
+                state.write(name.as_bytes());
+            }
+            Self::Site(site, nth) => {
+                state.write_u8(1);
+                state.write_u32(site.line());
+                state.write_u32(site.column());
+                state.write_u32(*nth);
+                let (words, rest) = site.file().as_bytes().as_chunks::<8>();
+                state.write_usize(site.file().len());
+                for word in words {
+                    state.write_u64(u64::from_le_bytes(*word));
+                }
+                if !rest.is_empty() {
+                    let mut word = [0u8; 8];
+                    word[..rest.len()].copy_from_slice(rest);
+                    state.write_u64(u64::from_le_bytes(word));
+                }
+            }
+            Self::Panel(name) => {
+                state.write_u8(2);
+                state.write(name.as_bytes());
+            }
+        }
+    }
 }
 
 impl WidgetKey {
@@ -72,6 +110,176 @@ impl WidgetKey {
             }
             Self::Panel(id) => format!("$panel:{id}"),
         }
+    }
+
+    /// Whether two keys are equal, which is what `==` says too, with the
+    /// cheap fields compared before the file path of a call site.
+    fn same(&self, other: &Self) -> bool {
+        #[cfg(all(test, feature = "std"))]
+        KEY_COMPARISONS.with(|count| count.set(count.get() + 1));
+        match (self, other) {
+            (Self::Named(a), Self::Named(b)) | (Self::Panel(a), Self::Panel(b)) => a == b,
+            (Self::Site(a, n), Self::Site(b, m)) => n == m && same_site(a, b),
+            _ => false,
+        }
+    }
+}
+
+#[cfg(all(test, feature = "std"))]
+std::thread_local! {
+    /// How many times `WidgetKey::same` ran on this thread.
+    static KEY_COMPARISONS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+}
+
+/// How many source locations a scope counts in an array before it builds a
+/// table for them.
+const SITES_INLINE: usize = 8;
+
+/// How many widgets each source location has declared in one scope.
+///
+/// A scope declares its widgets from a handful of lines, so the counts sit
+/// in a short array, and only a scope that declares from more lines than
+/// that pays for a table.
+#[derive(Default)]
+pub(crate) struct Sites {
+    inline: [Option<(&'static Location<'static>, u32)>; SITES_INLINE],
+    /// Every count so far, once the array was full; then the array is not
+    /// read again.
+    spilled: Option<crate::collections::FastMap<&'static Location<'static>, u32>>,
+}
+
+/// Whether two locations are the same place in the source, which is what
+/// `==` says too. It looks at the line and column first, because the file
+/// path is long and most locations of one file differ before it.
+fn same_site(a: &'static Location<'static>, b: &'static Location<'static>) -> bool {
+    core::ptr::eq(a, b)
+        || (a.line() == b.line() && a.column() == b.column() && a.file() == b.file())
+}
+
+impl Sites {
+    /// How many widgets `site` has declared before this one, counting this
+    /// one from now on.
+    fn next(&mut self, site: &'static Location<'static>) -> u32 {
+        let counts = match &mut self.spilled {
+            Some(counts) => counts,
+            None => {
+                for slot in &mut self.inline {
+                    match slot {
+                        Some((seen, count)) if same_site(seen, site) => {
+                            let before = *count;
+                            *count += 1;
+                            return before;
+                        }
+                        Some(_) => {}
+                        None => {
+                            *slot = Some((site, 1));
+                            return 0;
+                        }
+                    }
+                }
+                self.spilled
+                    .insert(self.inline.iter().flatten().copied().collect())
+            }
+        };
+        let count = counts.entry(site).or_default();
+        let before = *count;
+        *count += 1;
+        before
+    }
+}
+
+/// How many keys a scope compares a new one against, one by one, before it
+/// keeps a table of their hashes.
+const KEYS_SCANNED: usize = 8;
+
+/// Which keys of one scope are taken.
+///
+/// The keys of the siblings declared so far are in the scope's `elements`
+/// already, so a scope with few of them compares against those and keeps
+/// nothing of its own; only a bigger one keeps a table of hashes, and no key
+/// is copied into it.
+#[derive(Default)]
+pub(crate) struct Keys {
+    /// The hash of every key that is taken, once the scope is big enough to
+    /// want it, and the state that made them. Equal keys have equal hashes,
+    /// so a hash that is not here belongs to a key that is free; one that is
+    /// here is only a candidate.
+    index: Option<(KeyState, crate::collections::FastSet<u64>)>,
+    /// How many of the first `elements` have their hash in `index`.
+    indexed: usize,
+    /// The keys of elements `take_declared` took back out, which stay taken.
+    retired: Vec<WidgetKey>,
+}
+
+/// The hash a scope's table holds a key by.
+fn digest_of(state: &KeyState, key: &WidgetKey) -> u64 {
+    use core::hash::BuildHasher;
+    state.hash_one(key)
+}
+
+impl Keys {
+    /// Whether `key` is free among the siblings in `elements`, and takes it
+    /// if so. `elements` are the siblings before the element, which stays
+    /// right behind them after a `true`.
+    fn claim(&mut self, elements: &[Element], key: &WidgetKey) -> bool {
+        self.claim_with(elements, key, digest_of)
+    }
+
+    /// `claim` with the hash chosen, so that a test can make keys collide.
+    fn claim_with(
+        &mut self,
+        elements: &[Element],
+        key: &WidgetKey,
+        digest: fn(&KeyState, &WidgetKey) -> u64,
+    ) -> bool {
+        if self.index.is_none() && elements.len() + self.retired.len() <= KEYS_SCANNED {
+            return !elements.iter().any(|element| element.key.same(key))
+                && !self.retired.iter().any(|retired| retired.same(key));
+        }
+        let (state, index) = match &mut self.index {
+            Some(index) => index,
+            None => {
+                let state = KeyState::default();
+                let index = self.retired.iter().map(|key| digest(&state, key)).collect();
+                self.index.insert((state, index))
+            }
+        };
+        // The siblings from before the table was built, and any added
+        // without a claim, such as a popup's, are not in it yet.
+        for element in &elements[self.indexed.min(elements.len())..] {
+            index.insert(digest(state, &element.key));
+        }
+        self.indexed = elements.len();
+        // Another key can have the same hash, so a hash that is there is
+        // looked for among the keys themselves.
+        if !index.insert(digest(state, key))
+            && (elements.iter().any(|element| element.key.same(key))
+                || self.retired.iter().any(|retired| retired.same(key)))
+        {
+            return false;
+        }
+        self.indexed = elements.len() + 1;
+        true
+    }
+
+    /// Keeps `key` taken after its element, the last of the scope, was taken
+    /// back out and `elements_len` are left.
+    fn retire(&mut self, key: WidgetKey, elements_len: usize) {
+        self.retire_with(key, elements_len, digest_of);
+    }
+
+    /// `retire` with the hash chosen, to go with `claim_with`.
+    fn retire_with(
+        &mut self,
+        key: WidgetKey,
+        elements_len: usize,
+        digest: fn(&KeyState, &WidgetKey) -> u64,
+    ) {
+        if let Some((state, index)) = &mut self.index {
+            index.insert(digest(state, &key));
+        }
+        self.indexed = self.indexed.min(elements_len);
+        self.retired.push(key);
     }
 }
 
@@ -209,7 +417,11 @@ pub(crate) struct Element {
 }
 
 impl Element {
-    /// An enabled element with no text, children, handler or control.
+    /// An enabled element with no text, children, handler or control. The
+    /// builders that run once per widget (`leaf`, `label`, `group`,
+    /// `control` and `text_field`) write every field themselves, so that no
+    /// element is built only to have most of it replaced; they spell out
+    /// these defaults and must be kept in step with them.
     pub(crate) fn new(key: WidgetKey, kind: Kind) -> Self {
         Element {
             handler: None,
@@ -315,13 +527,22 @@ pub struct Ui<'a, M: 'static = ()> {
     /// Clicks and changes that reached widgets without a handler: the
     /// framework's own composites, which read them while declaring.
     pub(crate) clicks: &'a mut HashSet<NodeId>,
+    /// The widgets declared in this scope, in order. Only `push` adds to it,
+    /// apart from the popup a context menu puts first. `take_declared` takes
+    /// one out and leaves its key taken; `push` takes out the one it just
+    /// added when its key was taken already, which leaves nothing to retire.
+    /// No key is changed in place, because `keys` reads the siblings' keys
+    /// from here.
     pub(crate) elements: Vec<Element>,
-    pub(crate) keys: HashSet<WidgetKey>,
+    /// Which keys of `elements` and of the ones taken back out are taken. It
+    /// reads the siblings from `elements`, so a widget enters it by being
+    /// pushed there.
+    pub(crate) keys: Keys,
     /// Where in `elements` the last declaration went, or `None` when it was
     /// skipped as a misuse.
     pub(crate) declared: Option<usize>,
     /// How many widgets each source location has declared here so far.
-    pub(crate) sites: HashMap<&'static Location<'static>, u32>,
+    pub(crate) sites: Sites,
     pub(crate) updates: &'a mut HashMap<NodeId, ControlUpdate>,
     pub(crate) warnings: &'a mut Vec<String>,
     /// The store `Ui::observe` asked for, read after the declaration so the
@@ -421,7 +642,16 @@ impl<'a, M: 'static> Ui<'a, M> {
     }
 
     #[track_caller]
-    fn push(&mut self, mut element: Element) -> Response<'a> {
+    fn push(&mut self, element: Element) -> Response<'a> {
+        // The element goes into its place before anything borrows, reads or
+        // changes it, and is finished there: an argument that is touched
+        // first is copied once more on its way. It is in the list from here
+        // on, so a way out before `declared` is set must pop it first, as a
+        // duplicate does.
+        let index = self.elements.len();
+        self.elements.push(element);
+        let (siblings, slot) = self.elements.split_at_mut(index);
+        let element = &mut slot[0];
         element.enabled &= self.enabled;
         // A background file becomes its image once the host has delivered it,
         // and that style change is what repaints the node.
@@ -436,11 +666,13 @@ impl<'a, M: 'static> Ui<'a, M> {
                 background.source = crate::ImageSource::Image(image);
             }
         }
-        if !self.keys.insert(element.key.clone()) {
-            self.misuse(format!(
-                "duplicate widget key among siblings: {:?}",
-                element.key
-            ));
+        if !self.keys.claim(siblings, &element.key) {
+            let message = format!("duplicate widget key among siblings: {:?}", element.key);
+            // It leaves the list before `misuse`, which can panic, so that
+            // it is dropped where a widget that was never added is.
+            let duplicate = self.elements.pop();
+            self.misuse(message);
+            drop(duplicate);
             return Response::default();
         }
         if let Some(crate::FontFamily::Named(name)) = &element.style.font_family {
@@ -467,8 +699,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                 ..Response::default()
             },
         };
-        self.declared = Some(self.elements.len());
-        self.elements.push(element);
+        self.declared = Some(index);
         response
     }
 
@@ -488,11 +719,17 @@ impl<'a, M: 'static> Ui<'a, M> {
         self.declared.and_then(|index| self.elements.get_mut(index))
     }
 
-    /// Takes the element the last declaration added back out.
+    /// Takes the element the last declaration added back out. Its key stays
+    /// taken.
     #[track_caller]
     pub(crate) fn take_declared(&mut self) -> Option<Element> {
         let index = self.declared.take()?;
-        (index + 1 == self.elements.len()).then(|| self.elements.pop())?
+        if index + 1 != self.elements.len() {
+            return None;
+        }
+        let element = self.elements.pop()?;
+        self.keys.retire(element.key.clone(), self.elements.len());
+        Some(element)
     }
 
     /// Gives the element just declared what it sends.
@@ -522,10 +759,17 @@ impl<'a, M: 'static> Ui<'a, M> {
         enabled: bool,
     ) -> Response<'a> {
         self.push(Element {
+            handler: None,
+            seq: 0,
+            key,
+            kind,
             text,
             style,
             enabled,
-            ..Element::new(key, kind)
+            children: Vec::new(),
+            custom: None,
+            tooltip: None,
+            control: Control::None,
         })
     }
 
@@ -537,9 +781,8 @@ impl<'a, M: 'static> Ui<'a, M> {
             return WidgetKey::Named(key);
         }
         let site = Location::caller();
-        let nth = self.sites.entry(site).or_default();
-        *nth += 1;
-        WidgetKey::Site(site, *nth - 1)
+        let nth = self.sites.next(site);
+        WidgetKey::Site(site, nth)
     }
 
     /// Names the next widget declared inside, so the framework can follow it
@@ -582,14 +825,21 @@ impl<'a, M: 'static> Ui<'a, M> {
         let label = label.into();
         let key = self.next_key();
         self.push(Element {
+            handler: None,
+            seq: 0,
+            key,
+            kind: Kind::Label,
             text: label.text,
             style: label.style.unwrap_or_default(),
+            enabled: true,
+            children: Vec::new(),
+            custom: None,
+            tooltip: None,
             control: if label.selectable {
                 Control::SelectableText
             } else {
                 Control::None
             },
-            ..Element::new(key, Kind::Label)
         });
     }
 
@@ -665,9 +915,9 @@ impl<'a, M: 'static> Ui<'a, M> {
             pending_key: None,
             clicks: self.clicks,
             elements: self.context.take_spare(),
-            keys: HashSet::new(),
+            keys: Default::default(),
             declared: None,
-            sites: HashMap::new(),
+            sites: Default::default(),
             updates: self.updates,
             warnings: self.warnings,
             observed: self.observed,
@@ -694,9 +944,17 @@ impl<'a, M: 'static> Ui<'a, M> {
         content(&mut child);
         let children = child.elements;
         self.push(Element {
+            handler: None,
+            seq: 0,
+            key,
+            kind,
+            text: String::new(),
             style,
+            enabled: true,
             children,
-            ..Element::new(key, kind)
+            custom: None,
+            tooltip: None,
+            control: Control::None,
         });
     }
 
@@ -844,5 +1102,683 @@ impl<M: 'static> Ui<'_, M> {
         self.group(key, Kind::Container, style, |ui| {
             ui.map(f, |ui| component.view(ui));
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::Handler;
+    use crate::collections::{FastMap, FastSet};
+    use crate::{Button, Label, Length, Link, MonospaceMeasurer};
+    use alloc::vec;
+    use glassmere_scene::{Size, TextWrap};
+
+    #[track_caller]
+    fn here() -> &'static Location<'static> {
+        Location::caller()
+    }
+
+    /// Places that differ by line only, by column only, by both and by file
+    /// only, more of them than a scope counts in its array.
+    fn places() -> Vec<&'static Location<'static>> {
+        let mut places = vec![
+            here(),
+            here(),
+            here(),
+            here(),
+            here(),
+            here(),
+            here(),
+            here(),
+            here(),
+            here(),
+        ];
+        places.extend([here(), here(), here(), here()]);
+        // Line 1, column 1 of two files.
+        places.extend([
+            include!("ui/places/first.rs"),
+            include!("ui/places/second.rs"),
+        ]);
+        places
+    }
+
+    fn next_random(state: &mut u64) -> u64 {
+        *state ^= *state << 13;
+        *state ^= *state >> 7;
+        *state ^= *state << 17;
+        *state
+    }
+
+    #[test]
+    fn places_are_the_same_exactly_when_they_are_equal() {
+        let places = places();
+        assert!(places.len() > SITES_INLINE);
+        let differ = |by: fn(&Location<'_>, &Location<'_>) -> bool| {
+            places.iter().any(|a| places.iter().any(|b| by(a, b)))
+        };
+        assert!(differ(
+            |a, b| a.line() != b.line() && a.column() == b.column()
+        ));
+        assert!(differ(
+            |a, b| a.line() == b.line() && a.column() != b.column()
+        ));
+        assert!(differ(
+            |a, b| a.line() != b.line() && a.column() != b.column()
+        ));
+        assert!(differ(|a, b| {
+            a.line() == b.line() && a.column() == b.column() && a.file() != b.file()
+        }));
+        for a in &places {
+            for b in &places {
+                assert_eq!(same_site(a, b), a == b, "{a} and {b}");
+            }
+        }
+    }
+
+    #[test]
+    fn calls_from_one_line_are_counted_in_order() {
+        let mut sites = Sites::default();
+        for expected in 0..20 {
+            assert_eq!(sites.next(here()), expected);
+        }
+    }
+
+    #[test]
+    fn the_counts_of_the_first_places_carry_over_to_the_table() {
+        let places = places();
+        let mut sites = Sites::default();
+        // The array holds the first few places, one more call each than the
+        // one before.
+        for (index, place) in places.iter().take(SITES_INLINE).enumerate() {
+            for expected in 0..=index as u32 {
+                assert_eq!(sites.next(place), expected);
+            }
+        }
+        assert!(sites.spilled.is_none());
+        // The next place does not fit and moves the counts into a table.
+        for place in &places[SITES_INLINE..] {
+            assert_eq!(sites.next(place), 0);
+            assert_eq!(sites.next(place), 1);
+        }
+        assert!(sites.spilled.is_some());
+        for (index, place) in places.iter().take(SITES_INLINE).enumerate() {
+            assert_eq!(sites.next(place), index as u32 + 1);
+        }
+    }
+
+    #[test]
+    fn sites_number_calls_like_a_table_of_counts() {
+        let places = places();
+        let mut state = 0x9e37_79b9_7f4a_7c15;
+        for round in 0..400 {
+            let distinct = 1 + round % places.len();
+            let mut sites = Sites::default();
+            let mut table: FastMap<&Location<'_>, u32> = FastMap::default();
+            for call in 0..next_random(&mut state) % 200 {
+                let place = places[(next_random(&mut state) % distinct as u64) as usize];
+                let count = table.entry(place).or_default();
+                *count += 1;
+                assert_eq!(
+                    sites.next(place),
+                    *count - 1,
+                    "call {call} of round {round}"
+                );
+            }
+        }
+    }
+
+    /// The first `size` keys of a family of names, panels and call sites.
+    /// A name and a panel share their text, and a call site comes back with
+    /// a higher count once the places are used up.
+    fn alphabet(size: usize) -> Vec<WidgetKey> {
+        let places = places();
+        (0..size)
+            .map(|index| {
+                let at = index / 3;
+                match index % 3 {
+                    0 => WidgetKey::Named(format!("k{at}")),
+                    1 => WidgetKey::Panel(format!("k{at}")),
+                    _ => WidgetKey::Site(places[at % places.len()], (at / places.len()) as u32),
+                }
+            })
+            .collect()
+    }
+
+    /// The hashes a scope is tried with: its own, one that is the same for
+    /// every key, and one that tells only four keys apart.
+    const DIGESTS: [fn(&KeyState, &WidgetKey) -> u64; 3] =
+        [digest_of, |_, _| 0, |state, key| digest_of(state, key) & 3];
+
+    /// What `Ui::push` does with a key: take it, and put its element in the
+    /// scope if it was free.
+    fn claim(
+        keys: &mut Keys,
+        elements: &mut Vec<Element>,
+        key: &WidgetKey,
+        digest: fn(&KeyState, &WidgetKey) -> u64,
+    ) -> bool {
+        let free = keys.claim_with(elements, key, digest);
+        if free {
+            elements.push(Element::new(key.clone(), Kind::Label));
+        }
+        free
+    }
+
+    #[test]
+    fn keys_are_the_same_exactly_when_they_are_equal() {
+        let keys = alphabet(90);
+        for a in &keys {
+            for b in &keys {
+                assert_eq!(a.same(b), a == b, "{a:?} and {b:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_call_site_hashes_by_its_content() {
+        use core::hash::BuildHasher;
+        // The same place at another address.
+        let one = here();
+        let other: &'static Location<'static> = Box::leak(Box::new(*one));
+        assert_eq!(one, other);
+        assert!(!core::ptr::eq(one, other), "the places are one location");
+        let state = KeyState::default();
+        let hash = |key: WidgetKey| state.hash_one(key);
+        assert_eq!(
+            hash(WidgetKey::Site(one, 3)),
+            hash(WidgetKey::Site(other, 3))
+        );
+        let places = places();
+        let base = WidgetKey::Site(places[0], 0);
+        let mut seen = vec![hash(base.clone())];
+        for key in [
+            WidgetKey::Site(places[0], 1),
+            WidgetKey::Site(places[1], 0),
+            WidgetKey::Site(places[SITES_INLINE + 6], 0),
+            WidgetKey::Site(places[SITES_INLINE + 7], 0),
+        ] {
+            assert_ne!(key, base);
+            seen.push(hash(key));
+        }
+        seen.sort_unstable();
+        seen.dedup();
+        assert_eq!(seen.len(), 5);
+    }
+
+    #[test]
+    fn names_hash_by_their_kind_and_all_their_bytes() {
+        use core::hash::BuildHasher;
+        let state = KeyState::default();
+        let hash = |key: WidgetKey| state.hash_one(key);
+        assert_ne!(
+            hash(WidgetKey::Named("a".into())),
+            hash(WidgetKey::Panel("a".into()))
+        );
+        assert_ne!(
+            hash(WidgetKey::Named("a".into())),
+            hash(WidgetKey::Named("a\0".into()))
+        );
+        assert_ne!(
+            hash(WidgetKey::Panel("abcdefgh".into())),
+            hash(WidgetKey::Panel("abcdefgh\0\0".into()))
+        );
+    }
+
+    #[test]
+    fn a_scope_of_names_chosen_to_collide_costs_a_few_comparisons_each() {
+        use crate::collections::tests::{one_bucket, one_hash, padded, pairs};
+        use alloc::string::ToString;
+        let rows = (0..10_000).map(|n| format!("row-{n}")).collect();
+        let ids = (100_000_000..100_010_000u32)
+            .map(|n| n.to_string())
+            .collect();
+        for (label, names) in [
+            ("one hash", one_hash(10_000)),
+            ("pairs", pairs(10_000)),
+            ("one bucket", one_bucket(10_000)),
+            ("padded", padded(10_000)),
+            ("rows", rows),
+            ("ids", ids),
+        ] {
+            let mut keys = Keys::default();
+            let mut elements = Vec::new();
+            KEY_COMPARISONS.with(|count| count.set(0));
+            for name in names {
+                assert!(claim(
+                    &mut keys,
+                    &mut elements,
+                    &WidgetKey::Named(name),
+                    digest_of
+                ));
+            }
+            let compared = KEY_COMPARISONS.with(|count| count.get());
+            assert!(compared < 20_000, "{label}: {compared} comparisons");
+        }
+    }
+
+    #[test]
+    fn keys_are_taken_exactly_like_the_members_of_a_set() {
+        let mut state = 0x2545_f491_4f6c_dd1d;
+        let (mut indexed, mut retired) = (0, 0);
+        for digest in DIGESTS {
+            for round in 0..300 {
+                let alphabet = alphabet(1 + round % 120);
+                let pick = |state: &mut u64| {
+                    alphabet[(next_random(state) % alphabet.len() as u64) as usize].clone()
+                };
+                let mut keys = Keys::default();
+                let mut elements: Vec<Element> = Vec::new();
+                let mut set: FastSet<WidgetKey> = FastSet::default();
+                let mut declared = None;
+                for step in 0..next_random(&mut state) % 160 {
+                    match next_random(&mut state) % 10 {
+                        0 | 1 => {
+                            // `Ui::take_declared`.
+                            if let Some(index) = declared.take()
+                                && index + 1 == elements.len()
+                                && let Some(element) = elements.pop()
+                            {
+                                keys.retire_with(element.key, elements.len(), digest);
+                            }
+                        }
+                        2 if step == 0 || next_random(&mut state).is_multiple_of(4) => {
+                            // An element that no claim saw, like a popup's.
+                            let key = pick(&mut state);
+                            set.insert(key.clone());
+                            elements.push(Element::new(key, Kind::Label));
+                            declared = Some(elements.len() - 1);
+                        }
+                        _ => {
+                            let key = pick(&mut state);
+                            let free = set.insert(key.clone());
+                            let taken = claim(&mut keys, &mut elements, &key, digest);
+                            assert_eq!(taken, free, "{key:?} at step {step} of round {round}");
+                            declared = free.then(|| elements.len() - 1);
+                        }
+                    }
+                }
+                // Everything the set holds is still taken, and nothing else.
+                for key in &alphabet {
+                    let free = set.insert(key.clone());
+                    assert_eq!(claim(&mut keys, &mut elements, key, digest), free);
+                }
+                indexed += usize::from(keys.index.is_some());
+                retired += usize::from(keys.retired.len() > KEYS_SCANNED);
+            }
+        }
+        // The scopes were big enough to build a table, and to take many back.
+        assert!(indexed > 300 && retired > 100, "{indexed} {retired}");
+    }
+
+    #[test]
+    fn keys_whose_hashes_are_equal_are_told_apart_by_comparing_them() {
+        let all = alphabet(40);
+        let mut keys = Keys::default();
+        let mut elements = Vec::new();
+        for key in &all {
+            assert!(claim(&mut keys, &mut elements, key, |_, _| 0), "{key:?}");
+        }
+        for key in &all {
+            assert!(!claim(&mut keys, &mut elements, key, |_, _| 0), "{key:?}");
+        }
+        assert_eq!(elements.len(), all.len());
+    }
+
+    /// Whether the next claim in a scope of `elements` that no claim saw and
+    /// `retired` taken back builds a table.
+    fn builds_a_table(elements: usize, retired: usize) -> bool {
+        let all = alphabet(elements + retired + 1);
+        let mut keys = Keys::default();
+        let scope: Vec<Element> = all[..elements]
+            .iter()
+            .map(|key| Element::new(key.clone(), Kind::Label))
+            .collect();
+        for key in &all[elements..elements + retired] {
+            keys.retire(key.clone(), elements);
+        }
+        assert!(keys.index.is_none());
+        assert!(keys.claim(&scope, &all[elements + retired]));
+        keys.index.is_some()
+    }
+
+    #[test]
+    fn a_table_is_built_when_the_elements_and_the_retired_keys_pass_the_limit() {
+        assert!(!builds_a_table(KEYS_SCANNED, 0));
+        assert!(builds_a_table(KEYS_SCANNED + 1, 0));
+        assert!(!builds_a_table(0, KEYS_SCANNED));
+        assert!(builds_a_table(0, KEYS_SCANNED + 1));
+        assert!(!builds_a_table(3, KEYS_SCANNED - 3));
+        assert!(builds_a_table(3, KEYS_SCANNED - 2));
+        assert!(builds_a_table(2, 100));
+    }
+
+    /// Declares one widget with `declare` and compares the element it added
+    /// with the one `Element::new` gives for the same key and kind once
+    /// `sets` has written what the widget sets: every other field is its
+    /// default. `children` is how many elements the widget holds, `handled`
+    /// whether it was given a handler, and `seen` how many elements the
+    /// declaration had before.
+    fn declared_as(
+        ui: &mut Ui<'_>,
+        seen: &mut u32,
+        (kind, children, handled): (Kind, usize, bool),
+        sets: impl FnOnce(&mut Element),
+        declare: impl FnOnce(&mut Ui<'_>),
+    ) {
+        let handler = ui.handlers.len() as u32;
+        declare(ui);
+        // A widget is counted after what it holds.
+        *seen += children as u32 + 1;
+        let element = ui.elements.last().unwrap();
+        let mut want = Element::new(element.key.clone(), kind);
+        want.handler = handled.then_some(handler);
+        want.seq = *seen;
+        sets(&mut want);
+        want.enabled &= ui.enabled;
+        let which = format!("{kind:?} with the scope enabled: {}", ui.enabled);
+        assert_eq!(element.handler, want.handler, "{which}");
+        assert_eq!(element.seq, want.seq, "{which}");
+        assert_eq!(element.key, want.key, "{which}");
+        assert_eq!(element.kind, want.kind, "{which}");
+        assert_eq!(element.text, want.text, "{which}");
+        assert_eq!(element.style, want.style, "{which}");
+        assert_eq!(element.enabled, want.enabled, "{which}");
+        assert_eq!(element.children.len(), children, "{which}");
+        assert_eq!(element.custom, want.custom, "{which}");
+        assert_eq!(element.tooltip, want.tooltip, "{which}");
+        assert_eq!(element.control, want.control, "{which}");
+    }
+
+    /// One of each widget that is built in one of the five builders.
+    fn declare_every_builder(ui: &mut Ui<'_>) {
+        let own = Style::default().width(Length::Px(300.0)).gap(3.0);
+        let mut seen = 0;
+        let seen = &mut seen;
+        declared_as(
+            ui,
+            seen,
+            (Kind::Label, 0, false),
+            |want| want.text = "plain".into(),
+            |ui| ui.label("plain"),
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Label, 0, false),
+            |want| {
+                want.text = "styled".into();
+                want.style = own.clone();
+            },
+            |ui| ui.label(Label::new("styled").style(own.clone())),
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Label, 0, false),
+            |want| {
+                want.text = "selectable".into();
+                want.control = Control::SelectableText;
+            },
+            |ui| ui.label(Label::new("selectable").selectable()),
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Button, 0, false),
+            |want| {
+                want.text = "Save".into();
+                want.style = Style::button();
+            },
+            |ui| {
+                ui.button("Save");
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Button, 0, true),
+            |want| {
+                want.text = "Send".into();
+                want.style = own.clone();
+            },
+            |ui| {
+                ui.button(Button::new("Send").style(own.clone()).on_click(()));
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Button, 0, false),
+            |want| {
+                want.text = "Off".into();
+                want.style = Style::button();
+                want.enabled = false;
+            },
+            |ui| {
+                ui.button(Button::new("Off").enabled(false));
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Link, 0, false),
+            |want| {
+                want.text = "Docs".into();
+                want.style = Style {
+                    padding: 3.0,
+                    radius: 3.0,
+                    wrap: TextWrap::None,
+                    ..Style::default()
+                };
+            },
+            |ui| {
+                ui.link("Docs");
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Link, 0, false),
+            |want| {
+                want.text = "Gone".into();
+                want.style = Style {
+                    wrap: TextWrap::None,
+                    ..own.clone()
+                };
+                want.enabled = false;
+            },
+            |ui| {
+                ui.link(Link::new("Gone").style(own.clone()).enabled(false));
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Checkbox, 0, true),
+            |want| {
+                want.text = "Agree".into();
+                want.style = Style::button();
+                want.control = Control::Checkbox {
+                    label: "Agree".into(),
+                    checked: true,
+                };
+            },
+            |ui| {
+                ui.checkbox("Agree", true, |_| ());
+            },
+        );
+        // The checkbox of a property grid shows no text and has no handler.
+        declared_as(
+            ui,
+            seen,
+            (Kind::Checkbox, 0, false),
+            |want| {
+                want.text = "shown".into();
+                want.style = Style::button();
+                want.control = Control::Checkbox {
+                    label: "Named".into(),
+                    checked: false,
+                };
+            },
+            |ui| {
+                ui.checkbox_shown("Named", "shown", false);
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Radio, 0, true),
+            |want| {
+                want.text = "One".into();
+                want.style = Style::button();
+                want.control = Control::Radio {
+                    label: "One".into(),
+                    selected: false,
+                };
+            },
+            |ui| {
+                ui.radio("One", 1, 0, |_| ());
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Slider, 0, true),
+            |want| {
+                want.text = "Volume: 5.00".into();
+                want.style = Style {
+                    width: Length::Px(280.0),
+                    height: Length::Px(64.0),
+                    padding: 10.0,
+                    ..Style::button()
+                };
+                want.control = Control::Slider {
+                    label: "Volume".into(),
+                    value: 5.0,
+                    min: 0.0,
+                    max: 10.0,
+                    step: 1.0,
+                    span: None,
+                };
+            },
+            |ui| {
+                ui.slider("Volume", 5.0, 0.0..=10.0, 1.0, |_| ());
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::TextInput, 0, true),
+            |want| {
+                want.style = Style {
+                    wrap: TextWrap::None,
+                    ..Ui::<()>::field_style()
+                };
+                want.control = Control::TextInput {
+                    label: "Name".into(),
+                    value: "ada".into(),
+                    placeholder: String::new(),
+                    number: None,
+                    suggestions: None,
+                    draft: false,
+                    password: false,
+                };
+            },
+            |ui| {
+                ui.text_input("Name", "ada", |_| ());
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Row, 2, false),
+            |want| want.style = own.clone(),
+            |ui| {
+                ui.row(own.clone(), |ui| {
+                    ui.label("a");
+                    ui.label("b");
+                })
+            },
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Column, 1, false),
+            |want| want.style = own.clone(),
+            |ui| ui.column(own.clone(), |ui| ui.label("c")),
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Container, 0, false),
+            |_| {},
+            |ui| ui.container(Style::default(), |_| {}),
+        );
+        declared_as(
+            ui,
+            seen,
+            (Kind::Scroll, 1, false),
+            |want| want.style = own.clone(),
+            |ui| ui.scroll(own.clone(), |ui| ui.label("d")),
+        );
+    }
+
+    // A widget left out for its key is not in the list and is not counted,
+    // and what is declared after it is the one the calls that follow reach.
+    #[test]
+    fn a_duplicate_is_left_out_and_the_calls_after_it_reach_the_next_widget() {
+        let mut context = Context::new();
+        context.set_misuse_panics(false);
+        let stats = context.run(Size::new(400.0, 400.0), &mut MonospaceMeasurer, |ui| {
+            ui.keyed("a", |ui| ui.label("first"));
+            assert_eq!(ui.declared, Some(0));
+            ui.keyed("a", |ui| ui.label("again"));
+            assert_eq!(ui.declared, None);
+            assert!(ui.declared().is_none());
+            assert_eq!(ui.elements.len(), 1);
+            // There is nothing to give a handler or a control to.
+            ui.set_handler(Handler::Message(()));
+            ui.set_control(Control::SelectableText);
+            assert!(ui.handlers.is_empty());
+            assert_eq!(ui.elements[0].handler, None);
+            assert_eq!(ui.elements[0].control, Control::None);
+            assert!(ui.take_declared().is_none());
+
+            ui.keyed("b", |ui| ui.label("second"));
+            assert_eq!(ui.declared, Some(1));
+            assert_eq!(ui.elements.len(), 2);
+            assert_eq!(ui.elements[1].text, "second");
+            // The duplicate was not counted.
+            assert_eq!((ui.elements[0].seq, ui.elements[1].seq), (1, 2));
+            ui.set_handler(Handler::Message(()));
+            ui.set_control(Control::SelectableText);
+            assert_eq!(ui.elements[0].handler, None);
+            assert_eq!(ui.elements[0].control, Control::None);
+            assert_eq!(ui.elements[1].handler, Some(0));
+            assert_eq!(ui.elements[1].control, Control::SelectableText);
+
+            let taken = ui.take_declared().unwrap();
+            assert_eq!(taken.text, "second");
+            assert_eq!(ui.elements.len(), 1);
+            assert_eq!(ui.elements[0].text, "first");
+            assert!(ui.declared.is_none());
+        });
+        assert_eq!(stats.elements, 2);
+    }
+
+    #[test]
+    fn the_builders_that_write_every_field_give_the_base_element_with_what_they_set() {
+        for scope in [None, Some(true), Some(false)] {
+            let mut context = Context::new();
+            context.run(
+                Size::new(400.0, 4000.0),
+                &mut MonospaceMeasurer,
+                |ui| match scope {
+                    None => declare_every_builder(ui),
+                    Some(enabled) => ui.enabled(enabled, declare_every_builder),
+                },
+            );
+        }
     }
 }

@@ -1096,8 +1096,8 @@ mod retained {
     //! carry over.
     use super::*;
     use glassmere_core::{
-        Action, CodeEditorOptions, Command, DockAction, Length, NodeId, Shortcut, Style,
-        TextDocument,
+        Action, CodeEditorOptions, Command, DockAction, EditorCommand, Length, NodeId, Shortcut,
+        Style, TextDocument,
     };
     use glassmere_core::{TextEdit, TextInput, TextOp};
     use std::cell::Cell;
@@ -1439,6 +1439,38 @@ mod retained {
         assert_eq!(app.state().notes, "one");
         edit(&mut app, TextEdit::Redo);
         assert_eq!(app.state().notes, "onetwo");
+    }
+
+    #[test]
+    fn a_text_area_whose_tab_was_hidden_takes_presses_and_added_cursors_when_shown_again() {
+        let mut app = Driven::new(ROOT, retained(workspace()), view);
+        app.frame();
+        let area = content(&app.context).area;
+        select(&mut app, "preview");
+        select(&mut app, "editor");
+        assert_eq!(content(&app.context).area, area);
+        let bounds = app.context.node(area).unwrap().bounds;
+        // Two characters in on the first line, with the area's 8 px of padding
+        // and 14 px type.
+        let at = Point {
+            x: bounds.x + 8.0 + 2.0 * 8.4 + 1.0,
+            y: bounds.y + 8.0 + 4.0,
+        };
+        support::click(&mut app.context, at);
+        app.frame();
+        let source = &app.state().source;
+        assert_eq!(source.position(source.primary().cursor), (0, 2));
+
+        let below = Point {
+            x: at.x,
+            y: at.y + 14.0 * 1.4,
+        };
+        assert!(
+            app.context
+                .event(Event::Editor(EditorCommand::AddCursorAt(below)))
+        );
+        app.frame();
+        assert_eq!(app.state().source.selections().len(), 2);
     }
 
     #[test]

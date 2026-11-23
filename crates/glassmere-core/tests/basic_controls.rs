@@ -2,7 +2,7 @@ mod support;
 
 use glassmere_core::app::Action as Msg;
 use glassmere_core::{
-    Action, Button, Collapsible, Context, Direction, Event, Key, Label, Length, Link,
+    Action, Button, Collapsible, Context, Direction, Dirty, Event, Key, Label, Length, Link,
     MonospaceMeasurer, Progress, Role, Spinner, Style, Switch, TextEdit, TextWrap, Transition, Ui,
 };
 use glassmere_scene::{Color, Point, Primitive, Rect, Segment, Size};
@@ -1530,6 +1530,42 @@ fn click_glyph(context: &mut Context, label: &str, line: usize, column: usize) {
     click(context, at);
 }
 
+/// A click at the clock `milliseconds`. Two presses on one spot less than
+/// 400 ms apart are a double click, and the clock of a test stands still
+/// unless it is set.
+fn click_at(context: &mut Context, at: Point, milliseconds: u64) {
+    context.set_now(Duration::from_millis(milliseconds));
+    click(context, at);
+}
+
+fn click_glyph_at(
+    context: &mut Context,
+    label: &str,
+    line: usize,
+    column: usize,
+    milliseconds: u64,
+) {
+    let at = glyph(context, label, line, column);
+    click_at(context, at, milliseconds);
+}
+
+/// Two clicks on one spot, a tenth of a second apart.
+fn double_click(context: &mut Context, at: Point, milliseconds: u64) {
+    click_at(context, at, milliseconds);
+    click_at(context, at, milliseconds + 100);
+}
+
+fn double_click_glyph(
+    context: &mut Context,
+    label: &str,
+    line: usize,
+    column: usize,
+    milliseconds: u64,
+) {
+    let at = glyph(context, label, line, column);
+    double_click(context, at, milliseconds);
+}
+
 fn press_with_shift(context: &mut Context, key: Key) {
     context.event(Event::KeyDown {
         key,
@@ -1711,9 +1747,583 @@ fn a_wrapped_label_selects_across_its_lines_and_home_and_end_follow_them() {
     click_glyph(&mut context, LONG, 1, 3);
     press_with_shift(&mut context, Key::End);
     assert_eq!(selected(&context).as_deref(), Some(&LONG[15..24]));
+    // Two presses on one spot at one clock are a double click.
+    context.set_now(Duration::from_millis(1000));
     click_glyph(&mut context, LONG, 1, 3);
     press_with_shift(&mut context, Key::Home);
     assert_eq!(selected(&context).as_deref(), Some(&LONG[12..15]));
+}
+
+/// A selectable label of `text`, 120 px wide, that breaks lines every twelve
+/// characters in the test font.
+fn paragraphs(text: &'static str) -> impl Fn(&mut Ui<'_>) {
+    move |ui| {
+        ui.keyed("page", |ui| {
+            ui.keyed("text", |ui| {
+                ui.label(
+                    Label::new(text).selectable().style(
+                        Style::default()
+                            .width(Length::Px(120.0))
+                            .wrap(TextWrap::Word),
+                    ),
+                )
+            })
+        });
+    }
+}
+
+fn shown_text(text: &'static str) -> Context {
+    let mut context = Context::new();
+    frame_at(&mut context, 0, paragraphs(text));
+    context
+}
+
+/// The distinct rows of the cells the selection is drawn with.
+fn highlighted_rows(context: &Context) -> usize {
+    let mut rows: Vec<f32> = quads(context, context.theme().highlight)
+        .iter()
+        .map(|rect| rect.y)
+        .collect();
+    rows.dedup();
+    rows.len()
+}
+
+#[test]
+fn a_double_click_selects_the_word_under_the_pointer_in_a_selectable_label() {
+    let mut context = shown_notes();
+    let right_of_the_last_letter = Point {
+        x: glyph(&context, ORDER, 0, 4).x + 7.6,
+        ..glyph(&context, ORDER, 0, 4)
+    };
+    let cases = [
+        (glyph(&context, ORDER, 0, 8), "4711"),
+        (glyph(&context, ORDER, 0, 2), "Order"),
+        // A space is a segment of its own.
+        (glyph(&context, ORDER, 0, 5), " "),
+        // The right half of a word's last letter is on the word, not on the
+        // space after it.
+        (right_of_the_last_letter, "Order"),
+        // The left half of a word's first letter is on the word, not on the
+        // space before it.
+        (glyph(&context, ORDER, 0, 6), "4711"),
+        (glyph(&context, ORDER, 0, 14), "shipped"),
+    ];
+    for (turn, (at, word)) in cases.into_iter().enumerate() {
+        double_click(&mut context, at, turn as u64 * 1000);
+        assert_eq!(selected(&context).as_deref(), Some(word), "case {turn}");
+    }
+    // Select All still takes the whole text after a double click.
+    context.event(Event::Text(TextEdit::SelectAll));
+    assert_eq!(selected(&context).as_deref(), Some(ORDER));
+}
+
+#[test]
+fn presses_that_are_not_a_quick_row_on_one_spot_select_nothing() {
+    let mut context = shown_notes();
+    let word = glyph(&context, ORDER, 0, 8);
+    // Too late.
+    click_at(&mut context, word, 0);
+    click_at(&mut context, word, 500);
+    assert_eq!(selected(&context).as_deref(), Some(""));
+    // Too far.
+    click_at(&mut context, word, 1000);
+    click_at(
+        &mut context,
+        Point {
+            x: word.x + 5.0,
+            ..word
+        },
+        1100,
+    );
+    assert_eq!(selected(&context).as_deref(), Some(""));
+    // Something else pressed in between.
+    click_at(&mut context, word, 2000);
+    let plain = glyph(&context, "Not selectable", 0, 3);
+    click_at(&mut context, plain, 2050);
+    click_at(&mut context, word, 2100);
+    assert_eq!(selected(&context).as_deref(), Some(""));
+}
+
+#[test]
+fn a_press_on_the_label_next_to_the_one_just_pressed_does_not_follow_it_in_a_row() {
+    let mut context = Context::new();
+    // The labels meet, so the edges of the two are less than 4 px apart.
+    frame_at(&mut context, 0, |ui| {
+        ui.keyed("page", |ui| {
+            ui.column(Style::default().gap(0.0), |ui| {
+                ui.keyed("above", |ui| ui.label(Label::new("alpha").selectable()));
+                ui.keyed("below", |ui| ui.label(Label::new("beta").selectable()));
+            });
+        });
+    });
+    let above = bounds(&context, &["page", "above"]);
+    let below = bounds(&context, &["page", "below"]);
+    let bottom_edge = Point {
+        x: above.x + 3.0,
+        y: above.y + above.height - 1.0,
+    };
+    let top_edge = Point {
+        x: below.x + 3.0,
+        y: below.y + 1.0,
+    };
+    click_at(&mut context, bottom_edge, 0);
+    click_at(&mut context, top_edge, 100);
+    assert_eq!(selected(&context).as_deref(), Some(""));
+    // The next press on that label is the second of its own row.
+    click_at(&mut context, top_edge, 200);
+    assert_eq!(selected(&context).as_deref(), Some("beta"));
+}
+
+#[test]
+fn a_triple_click_selects_the_paragraph_without_its_line_break_and_a_fourth_starts_again() {
+    let mut context = shown_notes();
+    let line = glyph(&context, LONG, 1, 3);
+    for milliseconds in [0, 100, 200] {
+        click_at(&mut context, line, milliseconds);
+    }
+    assert_eq!(selected(&context).as_deref(), Some(LONG));
+    click_at(&mut context, line, 300);
+    assert_eq!(selected(&context).as_deref(), Some(""));
+
+    // A paragraph is the text between line breaks, whatever it wraps to.
+    const TEXT: &str = "first line\nsecond line is long\nthird";
+    let mut context = shown_text(TEXT);
+    let triple = |context: &mut Context, at: Point, start: u64| {
+        for step in 0..3 {
+            click_at(context, at, start + step * 100);
+        }
+    };
+    // Its visual lines: "first line", "second line ", "is long", "third".
+    let second = glyph(&context, TEXT, 2, 1);
+    triple(&mut context, second, 0);
+    assert_eq!(selected(&context).as_deref(), Some("second line is long"));
+    frame_at(&mut context, 1000, paragraphs(TEXT));
+    assert_eq!(highlighted_rows(&context), 2);
+    let third = glyph(&context, TEXT, 3, 1);
+    triple(&mut context, third, 2000);
+    assert_eq!(selected(&context).as_deref(), Some("third"));
+    // A press right of the end of a line is at the end of that line.
+    let past = glyph(&context, TEXT, 0, 11);
+    triple(&mut context, past, 3000);
+    assert_eq!(selected(&context).as_deref(), Some("first line"));
+}
+
+#[test]
+fn a_word_that_ends_a_wrapped_line_keeps_the_end_of_the_selection_on_that_line() {
+    const TEXT: &str = "aaaaaaaaaaaa bbb";
+    let mut context = shown_text(TEXT);
+    double_click_glyph(&mut context, TEXT, 0, 3, 0);
+    assert_eq!(selected(&context).as_deref(), Some("aaaaaaaaaaaa"));
+    // End goes to the end of the line the word is on, which is where the
+    // word ends, not to the end of the next one.
+    press_with_shift(&mut context, Key::End);
+    assert_eq!(selected(&context).as_deref(), Some("aaaaaaaaaaaa"));
+}
+
+/// A double click on `at` whose second press is still held, at the clock 100.
+fn hold_second_press(context: &mut Context, at: Point) {
+    hold_second_press_at(context, at, 0);
+}
+
+/// The same, with the first press at the clock `milliseconds`.
+fn hold_second_press_at(context: &mut Context, at: Point, milliseconds: u64) {
+    click_at(context, at, milliseconds);
+    context.set_now(Duration::from_millis(milliseconds + 100));
+    context.event(Event::PointerMoved(at));
+    context.event(Event::PointerDown);
+}
+
+#[test]
+fn a_drag_after_a_double_click_keeps_the_word_and_extends_by_character_either_way() {
+    let mut context = shown_notes();
+    let word = glyph(&context, ORDER, 0, 8);
+    hold_second_press(&mut context, word);
+    assert_eq!(selected(&context).as_deref(), Some("4711"));
+    // After the word: from its start to the character under the pointer.
+    context.event(Event::PointerMoved(glyph(&context, ORDER, 0, 15)));
+    assert_eq!(selected(&context).as_deref(), Some("4711 ship"));
+    // Before the word: from that character to the end of the word.
+    context.event(Event::PointerMoved(glyph(&context, ORDER, 0, 2)));
+    assert_eq!(selected(&context).as_deref(), Some("der 4711"));
+    // Back inside it: the word again.
+    context.event(Event::PointerMoved(glyph(&context, ORDER, 0, 7)));
+    assert_eq!(selected(&context).as_deref(), Some("4711"));
+    context.event(Event::PointerUp);
+    assert_eq!(selected(&context).as_deref(), Some("4711"));
+}
+
+#[test]
+fn a_small_move_while_the_second_press_is_held_keeps_the_whole_word() {
+    for (turn, (dx, dy)) in [(0.0, 0.0), (1.0, 0.0), (3.0, 0.0), (-1.0, 1.0)]
+        .into_iter()
+        .enumerate()
+    {
+        let mut context = shown_notes();
+        let word = glyph(&context, ORDER, 0, 8);
+        hold_second_press(&mut context, word);
+        context.event(Event::PointerMoved(Point {
+            x: word.x + dx,
+            y: word.y + dy,
+        }));
+        assert_eq!(selected(&context).as_deref(), Some("4711"), "case {turn}");
+        context.event(Event::PointerUp);
+        assert_eq!(selected(&context).as_deref(), Some("4711"), "case {turn}");
+    }
+}
+
+#[test]
+fn a_small_move_while_the_third_press_is_held_keeps_the_whole_paragraph() {
+    const TEXT: &str = "first line\nsecond line is long\nthird";
+    for (turn, dx) in [0.0, 1.0, 3.0].into_iter().enumerate() {
+        let mut context = shown_text(TEXT);
+        let at = glyph(&context, TEXT, 2, 1);
+        click_at(&mut context, at, 0);
+        click_at(&mut context, at, 100);
+        context.set_now(Duration::from_millis(200));
+        context.event(Event::PointerMoved(at));
+        context.event(Event::PointerDown);
+        context.event(Event::PointerMoved(Point { x: at.x + dx, ..at }));
+        assert_eq!(
+            selected(&context).as_deref(),
+            Some("second line is long"),
+            "case {turn}"
+        );
+        context.event(Event::PointerUp);
+        assert_eq!(
+            selected(&context).as_deref(),
+            Some("second line is long"),
+            "case {turn}"
+        );
+    }
+}
+
+#[test]
+fn a_drag_held_past_the_end_of_a_label_keeps_the_word_it_started_in() {
+    let mut context = shown_notes();
+    let rect = label_rect(&context, ORDER);
+    let first = glyph(&context, ORDER, 0, 2);
+    hold_second_press(&mut context, first);
+    context.event(Event::PointerMoved(Point {
+        x: rect.x - 60.0,
+        y: first.y,
+    }));
+    assert_eq!(selected(&context).as_deref(), Some("Order"));
+    context.event(Event::PointerUp);
+    let last = glyph(&context, ORDER, 0, 14);
+    hold_second_press_at(&mut context, last, 1000);
+    context.event(Event::PointerMoved(Point {
+        x: rect.x + rect.width + 60.0,
+        y: last.y,
+    }));
+    assert_eq!(selected(&context).as_deref(), Some("shipped"));
+    context.event(Event::PointerUp);
+}
+
+#[test]
+fn a_new_press_and_drag_after_a_double_click_extends_by_character_from_the_press() {
+    let mut context = shown_notes();
+    let word = glyph(&context, ORDER, 0, 8);
+    hold_second_press(&mut context, word);
+    context.event(Event::PointerUp);
+    // Too late to be part of the row.
+    context.set_now(Duration::from_millis(2000));
+    context.event(Event::PointerMoved(glyph(&context, ORDER, 0, 12)));
+    context.event(Event::PointerDown);
+    context.event(Event::PointerMoved(glyph(&context, ORDER, 0, 14)));
+    assert_eq!(selected(&context).as_deref(), Some("hi"));
+    context.event(Event::PointerMoved(glyph(&context, ORDER, 0, 11)));
+    assert_eq!(selected(&context).as_deref(), Some("s"));
+    context.event(Event::PointerUp);
+}
+
+#[test]
+fn a_press_on_another_label_does_not_inherit_the_word_of_a_double_click() {
+    let mut context = shown_notes();
+    let word = glyph(&context, ORDER, 0, 8);
+    hold_second_press(&mut context, word);
+    context.event(Event::PointerUp);
+    context.set_now(Duration::from_millis(2000));
+    context.event(Event::PointerMoved(glyph(&context, LONG, 0, 1)));
+    context.event(Event::PointerDown);
+    context.event(Event::PointerMoved(glyph(&context, LONG, 0, 3)));
+    assert_eq!(selected(&context).as_deref(), Some("lp"));
+    context.event(Event::PointerUp);
+}
+
+#[test]
+fn a_drag_after_a_triple_click_keeps_the_paragraph_and_extends_by_character_either_way() {
+    const TEXT: &str = "first line\nsecond line is long\nthird";
+    let mut context = shown_text(TEXT);
+    let paragraph = glyph(&context, TEXT, 2, 1);
+    click_at(&mut context, paragraph, 0);
+    click_at(&mut context, paragraph, 100);
+    context.set_now(Duration::from_millis(200));
+    context.event(Event::PointerMoved(paragraph));
+    context.event(Event::PointerDown);
+    assert_eq!(selected(&context).as_deref(), Some("second line is long"));
+    // Back into the paragraph above, the end of the second is the anchor.
+    context.event(Event::PointerMoved(glyph(&context, TEXT, 0, 3)));
+    assert_eq!(
+        selected(&context).as_deref(),
+        Some("st line\nsecond line is long")
+    );
+    // And on into the one below.
+    context.event(Event::PointerMoved(glyph(&context, TEXT, 3, 2)));
+    assert_eq!(
+        selected(&context).as_deref(),
+        Some("second line is long\nth")
+    );
+    context.event(Event::PointerUp);
+}
+
+#[test]
+fn a_shifted_press_in_a_quick_row_extends_the_selection_like_any_other() {
+    let mut context = shown_notes();
+    let word = glyph(&context, ORDER, 0, 8);
+    click_glyph_at(&mut context, ORDER, 0, 2, 0);
+    for (turn, milliseconds) in [1000, 1100, 1200].into_iter().enumerate() {
+        context.set_now(Duration::from_millis(milliseconds));
+        context.event(Event::PointerMoved(word));
+        context.event(Event::PointerDownWithShift);
+        assert_eq!(
+            selected(&context).as_deref(),
+            Some("der 47"),
+            "press {turn}"
+        );
+        context.event(Event::PointerUp);
+    }
+    // A move while a shifted press of the row is held goes on from the
+    // anchor by character.
+    context.set_now(Duration::from_millis(1300));
+    context.event(Event::PointerMoved(word));
+    context.event(Event::PointerDownWithShift);
+    context.event(Event::PointerMoved(glyph(&context, ORDER, 0, 12)));
+    assert_eq!(selected(&context).as_deref(), Some("der 4711 s"));
+    context.event(Event::PointerUp);
+}
+
+#[test]
+fn a_shifted_press_after_a_double_click_extends_from_the_anchor_of_the_word() {
+    let mut context = shown_notes();
+    let word = glyph(&context, ORDER, 0, 8);
+    double_click(&mut context, word, 0);
+    assert_eq!(selected(&context).as_deref(), Some("4711"));
+    let later = glyph(&context, ORDER, 0, 14);
+    context.set_now(Duration::from_millis(200));
+    context.event(Event::PointerMoved(later));
+    context.event(Event::PointerDownWithShift);
+    assert_eq!(selected(&context).as_deref(), Some("4711 shi"));
+    // A drag from it extends by character from the same anchor, and nothing
+    // of the word that was taken is held.
+    context.event(Event::PointerMoved(glyph(&context, ORDER, 0, 8)));
+    assert_eq!(selected(&context).as_deref(), Some("47"));
+    context.event(Event::PointerUp);
+}
+
+#[test]
+fn shift_with_up_and_down_moves_between_the_lines_of_a_wrapped_label_keeping_the_column() {
+    let mut context = shown_notes();
+    click_glyph_at(&mut context, LONG, 0, 8, 0);
+    press_with_shift(&mut context, Key::ArrowDown);
+    assert_eq!(selected(&context).as_deref(), Some(&LONG[8..20]));
+    // The last line has six columns: it ends at the end of the text.
+    press_with_shift(&mut context, Key::ArrowDown);
+    assert_eq!(selected(&context).as_deref(), Some(&LONG[8..30]));
+    // And back on a longer line the column is the first one again.
+    press_with_shift(&mut context, Key::ArrowUp);
+    assert_eq!(selected(&context).as_deref(), Some(&LONG[8..20]));
+    press_with_shift(&mut context, Key::ArrowUp);
+    assert_eq!(selected(&context).as_deref(), Some(""));
+    // There is no line above the first.
+    press_with_shift(&mut context, Key::ArrowUp);
+    assert_eq!(selected(&context).as_deref(), Some(""));
+
+    // Home and End still go by line from where it ended up.
+    click_glyph_at(&mut context, LONG, 0, 8, 1000);
+    press_with_shift(&mut context, Key::ArrowDown);
+    press_with_shift(&mut context, Key::End);
+    assert_eq!(selected(&context).as_deref(), Some(&LONG[8..24]));
+    press_with_shift(&mut context, Key::Home);
+    assert_eq!(selected(&context).as_deref(), Some(&LONG[8..12]));
+
+    // Up and Down alone move nothing: a label draws no caret.
+    click_glyph_at(&mut context, LONG, 0, 8, 2000);
+    press_with_shift(&mut context, Key::ArrowDown);
+    press(&mut context, Key::ArrowDown);
+    assert_eq!(selected(&context).as_deref(), Some(&LONG[8..20]));
+    press(&mut context, Key::ArrowUp);
+    assert_eq!(selected(&context).as_deref(), Some(&LONG[8..20]));
+
+    // A label of one line has no other line.
+    click_glyph_at(&mut context, ORDER, 0, 3, 3000);
+    press_with_shift(&mut context, Key::ArrowDown);
+    press_with_shift(&mut context, Key::ArrowUp);
+    assert_eq!(selected(&context).as_deref(), Some(""));
+}
+
+#[test]
+fn shift_with_down_from_the_end_of_a_wrapped_line_goes_to_the_end_of_the_next_one() {
+    let mut context = shown_notes();
+    // The right half of the last cell of the first line is the end of that
+    // line, not the start of the next.
+    let last = glyph(&context, LONG, 0, 11);
+    click_at(
+        &mut context,
+        Point {
+            x: last.x + 7.6,
+            ..last
+        },
+        0,
+    );
+    press_with_shift(&mut context, Key::ArrowDown);
+    assert_eq!(selected(&context).as_deref(), Some(&LONG[12..24]));
+    // The end of the second line is on the second line: one more press goes
+    // to the third and not past it.
+    press_with_shift(&mut context, Key::ArrowDown);
+    assert_eq!(selected(&context).as_deref(), Some(&LONG[12..30]));
+}
+
+#[test]
+fn shift_with_up_and_down_repaints_the_selection_and_the_semantics() {
+    let mut context = shown_notes();
+    click_glyph_at(&mut context, LONG, 0, 8, 0);
+    frame_at(&mut context, 100, notes);
+    assert!(quads(&context, context.theme().highlight).is_empty());
+    press_with_shift(&mut context, Key::ArrowDown);
+    frame_at(&mut context, 200, notes);
+    // Four cells of the first line and eight of the second.
+    assert_eq!(quads(&context, context.theme().highlight).len(), 12);
+    assert!(context.stats().dirty.contains(Dirty::ACCESSIBILITY));
+    press_with_shift(&mut context, Key::ArrowUp);
+    frame_at(&mut context, 300, notes);
+    assert!(quads(&context, context.theme().highlight).is_empty());
+    assert!(context.stats().dirty.contains(Dirty::ACCESSIBILITY));
+}
+
+#[test]
+fn shift_with_up_and_down_visits_the_blank_line_between_two_paragraphs() {
+    const TEXT: &str = "one\n\nthree";
+    let mut context = shown_text(TEXT);
+    click_glyph_at(&mut context, TEXT, 0, 2, 0);
+    press_with_shift(&mut context, Key::ArrowDown);
+    assert_eq!(selected(&context).as_deref(), Some("e\n"));
+    press_with_shift(&mut context, Key::ArrowDown);
+    assert_eq!(selected(&context).as_deref(), Some("e\n\nth"));
+    press_with_shift(&mut context, Key::ArrowUp);
+    assert_eq!(selected(&context).as_deref(), Some("e\n"));
+    press_with_shift(&mut context, Key::ArrowUp);
+    assert_eq!(selected(&context).as_deref(), Some(""));
+}
+
+/// A 300 by 140 view of two selectable labels, which fit in it, and a tall
+/// spacer.
+fn scrolled_notes(ui: &mut Ui<'_>) {
+    ui.keyed("view", |ui| {
+        ui.scroll(
+            Style::default()
+                .width(Length::Px(300.0))
+                .height(Length::Px(140.0))
+                .gap(0.0),
+            |ui| {
+                ui.keyed("one", |ui| ui.label(Label::new(ORDER).selectable()));
+                ui.keyed("long", |ui| {
+                    ui.label(
+                        Label::new(LONG).selectable().style(
+                            Style::default()
+                                .width(Length::Px(120.0))
+                                .wrap(TextWrap::Word),
+                        ),
+                    )
+                });
+                ui.keyed("tall", |ui| {
+                    ui.label(
+                        Label::new("").style(
+                            Style::default()
+                                .width(Length::Px(10.0))
+                                .height(Length::Px(600.0)),
+                        ),
+                    )
+                });
+            },
+        );
+    });
+}
+
+fn scrolled(context: &Context) -> f32 {
+    let view = context.find(&["view"]).unwrap();
+    context.node(view).unwrap().scroll.unwrap().offset
+}
+
+#[test]
+fn up_and_down_scroll_the_view_where_the_label_cannot_move_and_shift_selects_where_it_can() {
+    let mut context = Context::new();
+    frame_at(&mut context, 0, scrolled_notes);
+    click_glyph_at(&mut context, LONG, 0, 8, 0);
+    assert_eq!(scrolled(&context), 0.0);
+    // Without Shift a key scrolls, and the selection stays.
+    press(&mut context, Key::ArrowDown);
+    assert_eq!(
+        (scrolled(&context), selected(&context).as_deref()),
+        (40.0, Some(""))
+    );
+    press(&mut context, Key::ArrowUp);
+    assert_eq!(scrolled(&context), 0.0);
+    // With it, where there is a line to go to, the selection moves.
+    press_with_shift(&mut context, Key::ArrowDown);
+    assert_eq!(selected(&context).as_deref(), Some(&LONG[8..20]));
+    press_with_shift(&mut context, Key::ArrowDown);
+    assert_eq!(selected(&context).as_deref(), Some(&LONG[8..30]));
+    assert_eq!(scrolled(&context), 0.0);
+    // Below the last line there is nothing to select: the view scrolls.
+    press_with_shift(&mut context, Key::ArrowDown);
+    assert_eq!(selected(&context).as_deref(), Some(&LONG[8..30]));
+    assert_eq!(scrolled(&context), 40.0);
+    press(&mut context, Key::ArrowUp);
+    assert_eq!(scrolled(&context), 0.0);
+
+    // A label of one line has no line to go to either way.
+    frame_at(&mut context, 1000, scrolled_notes);
+    click_glyph_at(&mut context, ORDER, 0, 3, 2000);
+    press_with_shift(&mut context, Key::ArrowDown);
+    assert_eq!(
+        (scrolled(&context), selected(&context).as_deref()),
+        (40.0, Some(""))
+    );
+    press_with_shift(&mut context, Key::ArrowUp);
+    assert_eq!(scrolled(&context), 0.0);
+
+    // The page keys scroll as they did, with Shift or without, from a line
+    // that has others on both sides.
+    frame_at(&mut context, 3000, scrolled_notes);
+    click_glyph_at(&mut context, LONG, 1, 3, 4000);
+    let before = selected(&context);
+    press(&mut context, Key::PageDown);
+    assert_eq!(
+        (scrolled(&context), selected(&context)),
+        (126.0, before.clone())
+    );
+    press(&mut context, Key::PageUp);
+    assert_eq!(scrolled(&context), 0.0);
+    press_with_shift(&mut context, Key::PageDown);
+    assert_eq!(
+        (scrolled(&context), selected(&context)),
+        (126.0, before.clone())
+    );
+    press_with_shift(&mut context, Key::PageUp);
+    assert_eq!((scrolled(&context), selected(&context)), (0.0, before));
+}
+
+#[test]
+fn multi_clicks_leave_other_labels_alone() {
+    let mut context = shown_notes();
+    for (turn, label) in ["Not selectable", "Unavailable"].into_iter().enumerate() {
+        let at = glyph(&context, label, 0, 3);
+        for step in 0..3 {
+            click_at(&mut context, at, turn as u64 * 1000 + step * 100);
+            assert_eq!(context.focused(), None, "{label}");
+            assert_eq!(selected(&context), None, "{label}");
+        }
+    }
 }
 
 #[test]
@@ -1743,6 +2353,84 @@ fn a_label_changing_its_text_or_its_selectability_keeps_up() {
     assert_eq!(selected(&context), None);
     frame_at(&mut context, 3, view("Order", true));
     assert!(context.node(note).unwrap().semantics.focusable);
+    // Plain again, and plain once more with another text: nothing is left
+    // of the selection, and the text is the one declared last.
+    frame_at(&mut context, 4, view("Order", false));
+    assert!(!context.node(note).unwrap().semantics.focusable);
+    frame_at(&mut context, 5, view("Order again", false));
+    let node = context.node(note).unwrap();
+    assert!(!node.semantics.focusable);
+    assert_eq!(node.semantics.label, "Order again");
+    assert_eq!(selected(&context), None);
+    frame_at(&mut context, 6, view("Order again", true));
+    assert!(context.node(note).unwrap().semantics.focusable);
+    drag_over(&mut context, "Order again", (0, 0), (0, 18));
+    assert_eq!(selected(&context).as_deref(), Some("Order again"));
+}
+
+#[test]
+fn a_disabled_scope_and_a_disabled_widget_disable_every_kind_of_widget() {
+    let names = [
+        "label", "button", "off", "link", "checkbox", "radio", "slider", "input", "row", "box",
+        "scroll",
+    ];
+    for scope in [true, false] {
+        let mut context = Context::new();
+        frame_at(&mut context, 0, |ui| {
+            ui.enabled(scope, |ui| {
+                ui.keyed("page", |ui| {
+                    ui.column(Style::default(), |ui| {
+                        ui.keyed("label", |ui| ui.label("note"));
+                        ui.keyed("button", |ui| {
+                            ui.button("Save");
+                        });
+                        ui.keyed("off", |ui| {
+                            ui.button(Button::new("Off").enabled(false));
+                        });
+                        ui.keyed("link", |ui| {
+                            ui.link("Docs");
+                        });
+                        ui.keyed("checkbox", |ui| {
+                            ui.checkbox("Agree", false, |_| ());
+                        });
+                        ui.keyed("radio", |ui| {
+                            ui.radio("One", 0, 0, |_| ());
+                        });
+                        ui.keyed("slider", |ui| {
+                            ui.slider("Volume", 5.0, 0.0..=10.0, 1.0, |_| ());
+                        });
+                        ui.keyed("input", |ui| {
+                            ui.text_input("Name", "ada", |_| ());
+                        });
+                        ui.keyed("row", |ui| {
+                            ui.row(Style::default(), |ui| ui.label("in a row"))
+                        });
+                        ui.keyed("box", |ui| ui.container(Style::default(), |_| {}));
+                        ui.keyed("scroll", |ui| {
+                            ui.scroll(Style::default().height(Length::Px(40.0)), |_| {})
+                        });
+                    });
+                });
+            });
+        });
+        let disabled = |path: &[&str]| {
+            context
+                .node(context.find(path).unwrap())
+                .unwrap()
+                .semantics
+                .disabled
+        };
+        assert_eq!(disabled(&["page"]), !scope);
+        for name in names {
+            // Only the button that was declared disabled is so in an enabled
+            // scope.
+            assert_eq!(
+                disabled(&["page", name]),
+                !scope || name == "off",
+                "{name} with the scope enabled: {scope}"
+            );
+        }
+    }
 }
 
 #[test]
