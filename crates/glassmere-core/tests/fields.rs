@@ -1076,3 +1076,29 @@ fn a_double_click_in_a_text_field_places_a_caret_and_selects_no_word() {
     let selection = app.context.node(name).unwrap().text_selection.unwrap();
     assert_eq!(selection.anchor, selection.cursor);
 }
+
+#[test]
+fn a_number_range_the_fields_make_empty_or_not_a_number_does_not_stop_a_frame() {
+    let ranges = [
+        (10.0, 5.0, 7.0, 10.0),
+        (f64::NAN, 5.0, 7.0, 5.0),
+        (2.0, f64::NAN, 7.0, 7.0),
+        (f64::NAN, f64::NAN, 7.0, 7.0),
+    ];
+    for (min, max, value, shown) in ranges {
+        let options = NumberOptions {
+            min,
+            max,
+            ..NumberOptions::default()
+        };
+        assert_eq!(options.constrain(value), shown, "{min} {max}");
+        let mut context = Context::new();
+        context.run(ROOT, &mut MonospaceMeasurer, |ui: &mut Ui<'_, ()>| {
+            ui.number_input("Count", value, options.clone(), |_| ());
+        });
+    }
+    let options = NumberOptions::default().range(0.0, 10.0);
+    assert_eq!(options.constrain(-3.0), 0.0);
+    assert_eq!(options.constrain(4.0), 4.0);
+    assert_eq!(options.constrain(30.0), 10.0);
+}

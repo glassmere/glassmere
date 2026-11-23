@@ -28,6 +28,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A change to a stylesheet, watched file or image file that kept the modification time but changed the size is now seen, as when two writes land within one tick of the file system's clock.
 - With a screen reader running, a rich editor no longer works out what is read of every block on every accessibility update, only of the blocks that changed. In a document of 2,000 paragraphs an update went from about 11 ms to about 1 ms. The tree it publishes is the same, and still grows with the document.
 - A large photo drawn at under half its size is filtered faster, in both renderers, and the result is byte for byte the same. On one machine (four cores at 2.1 GHz) the CPU renderer first draws a 3 MP photo at 150 by 100 in 9 to 10 ms where it took 17 ms. The first draw of a very large photo is still one slow frame.
+- Painting a line of text at least as tall as the box it is in could panic, at positions where rounding left no room to place it, as in a dense grid cell or a tightly packed column. It no longer does, and the line is drawn from the top of the box.
+- A number input whose `min` is above its `max`, or whose bound is not a number, no longer panics; the lower bound wins, as it does with `NumberOptions::range`. Markup reached it with `number "Size" { min: 10; max: 5 }`, which is how a range stands halfway through typing it.
 
 ## [0.1.7] - 2026-11-18
 
