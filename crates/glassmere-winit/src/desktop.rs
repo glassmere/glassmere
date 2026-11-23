@@ -32,7 +32,7 @@ pub(crate) fn run_single(
     let wake = WakeHandle::new(proxy.clone());
     // Linux: ask the desktop in the background while the adapter is
     // enumerated, so the first frame is normally right.
-    crate::system_motion::refresh(&wake);
+    crate::probe_system_motion(&wake, options.reduced_motion);
     let (view, hosting) = setup(wake.clone());
     crate::platform::wake_on_menu_events(wake.clone());
     diagnostics::checkpoint("event_loop", None);
@@ -1112,7 +1112,8 @@ impl ApplicationHandler<UserEvent> for Desktop {
         (app.profile_gpu, app.inspected) = (profile_gpu, inspected);
         if matches!(event, WindowEvent::Focused(true)) {
             self.focused = Some(key);
-            crate::system_motion::refresh(&self.wake);
+            let reduced_motion = app.options.reduced_motion;
+            crate::probe_system_motion(&self.wake, reduced_motion);
         }
         let news = match &event {
             WindowEvent::CursorMoved { .. } => PointerNews::Moved,

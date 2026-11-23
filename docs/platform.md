@@ -35,6 +35,7 @@ The wgpu renderer tries one compiled backend at a time (Metal, Direct3D 12, Vulk
 | `GLASSMERE_RENDERER=cpu` | Paint with the CPU renderer. |
 | `WGPU_BACKEND` | Restrict the wgpu backends tried, as a comma list. |
 | `GLASSMERE_INSPECT` | Open the inspector window at start. |
+| `GLASSMERE_SYSTEM_MOTION=off` | Do not ask the system for its reduced-motion preference. |
 | `GLASSMERE_STARTUP` | Print how far startup had got at each step. |
 | `GLASSMERE_HOT_STATE`, `GLASSMERE_HOT_STOP` | Set by `glassmere-dev`; not for hand use. |
 
