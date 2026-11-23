@@ -389,7 +389,7 @@ struct Node {
     kind: Kind,
     parent: Option<NodeId>,
     children: Vec<NodeId>,
-    children_by_key: crate::collections::FastMap<WidgetKey, NodeId>,
+    children_by_key: crate::collections::KeyMap<NodeId>,
     text: String,
     style: Style,
     enabled: bool,
