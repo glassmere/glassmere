@@ -53,7 +53,7 @@ cargo bench -p glassmere-bench -- form/                # the ones that match
 Criterion runs each step until the timing is stable and reports the mean with its confidence interval. To compare a change with what was there before it:
 
 ```sh
-git switch release/v0.1.8
+git switch main
 cargo bench -p glassmere-bench -- --save-baseline before
 git switch my-change
 cargo bench -p glassmere-bench -- --baseline before
@@ -61,7 +61,7 @@ cargo bench -p glassmere-bench -- --baseline before
 
 It then says for each scenario whether the difference is real or within the noise. A laptop on battery, a busy machine and a CI runner all add noise: compare two runs on the same machine in the same state, and distrust a difference of a few percent.
 
-`cargo test` builds the benchmarks and runs each scenario once, so a change that breaks one fails CI. CI does not time them: shared runners are too noisy for the numbers to mean anything.
+`cargo test --all-targets`, which CI runs, builds the benchmarks and runs each scenario once, so a change that breaks one fails CI; plain `cargo test` does not test bench targets. CI does not time them: shared runners are too noisy for the numbers to mean anything.
 
 ## Flamegraphs: where the time goes
 
@@ -85,7 +85,13 @@ samply record target/profiling/profile.exe editor/type --seconds 10
 
 `samply` opens the Firefox Profiler with a flame graph, a call tree and an inverted view (which functions the time is in, rather than under). It works the same on Linux and macOS, and Visual Studio's profiler, the Windows Performance Recorder, `perf` and Instruments work on the binary as well.
 
-To profile an application instead of a scenario, build it with `--profile profiling` and record it the same way.
+To profile an application instead of a scenario, add this profile to the application's own `Cargo.toml` (the one in this workspace is not inherited by an application), build with `--profile profiling` and record it the same way:
+
+```toml
+[profile.profiling]
+inherits = "release"
+debug = "line-tables-only"
+```
 
 ## Counting instead of timing
 
