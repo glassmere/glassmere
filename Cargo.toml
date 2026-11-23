@@ -39,6 +39,7 @@ repository = "https://github.com/glassmere/glassmere"
 
 [workspace.dependencies]
 # `default-features = false` lets the two kernel crates build without `std`; each member asks for it.
+glassmere = { path = "crates/glassmere", version = "0.1.7", default-features = false }
 glassmere-core = { path = "crates/glassmere-core", version = "0.1.7", default-features = false }
 glassmere-scene = { path = "crates/glassmere-scene", version = "0.1.7", default-features = false }
 glassmere-text = { path = "crates/glassmere-text", version = "0.1.7" }
