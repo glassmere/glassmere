@@ -4,7 +4,7 @@ updates:
   # Retarget both when a release branch is cut or merged (see CONTRIBUTING.md).
   - package-ecosystem: cargo
     directory: /
-    target-branch: release/v0.1.7
+    target-branch: release/v0.1.8
     schedule:
       interval: weekly
     ignore:
