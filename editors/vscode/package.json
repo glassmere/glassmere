@@ -2,7 +2,7 @@
   "name": "glassmere-markup",
   "displayName": "Glassmere Markup",
   "description": "Syntax highlighting and a live preview for Glassmere .glass views.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "glassmere",
   "license": "Apache-2.0",
   "engines": { "vscode": "^1.85.0" },
