@@ -1195,6 +1195,62 @@ mod tests {
     }
 
     #[test]
+    fn a_custom_widget_exposes_its_toggled_selected_and_expanded_state() {
+        use glassmere_core::{CustomWidget, Role as CoreRole, Semantics, Style};
+        let mut context = Context::new();
+        let widget = |role, checked, selected, expanded| CustomWidget {
+            size: Size::new(40.0, 20.0),
+            semantics: Semantics {
+                role,
+                label: "pill".into(),
+                focusable: true,
+                checked,
+                selected,
+                expanded,
+                ..Semantics::default()
+            },
+            ..CustomWidget::default()
+        };
+        let view = |ui: &mut glassmere_core::Ui<'_>| {
+            ui.keyed("box", |ui| {
+                ui.custom(
+                    Style::default(),
+                    widget(CoreRole::Checkbox, Some(true), None, None),
+                    (),
+                )
+            });
+            ui.keyed("tab", |ui| {
+                ui.custom(
+                    Style::default(),
+                    widget(CoreRole::Tab, None, Some(true), None),
+                    (),
+                )
+            });
+            ui.keyed("menu", |ui| {
+                ui.custom(
+                    Style::default(),
+                    widget(CoreRole::MenuButton, None, None, Some(true)),
+                    (),
+                )
+            });
+        };
+        context.run(Size::new(300.0, 200.0), &mut MonospaceMeasurer, view);
+        let update = tree(&context, "Custom", 1.0);
+        let node = |key: &str| {
+            let id = context.find(&[key]).unwrap();
+            &update
+                .nodes
+                .iter()
+                .find(|(node, _)| node.0 == id.0)
+                .unwrap()
+                .1
+        };
+        assert_eq!(node("box").toggled(), Some(accesskit::Toggled::True));
+        assert_eq!(node("tab").is_selected(), Some(true));
+        assert_eq!(node("menu").is_expanded(), Some(true));
+    }
+
+    #[test]
     fn controls_expose_values_actions_and_unclipped_popup_focus() {
         let mut context = Context::new();
         // The values are what the view shows; nothing in this test sends a message.

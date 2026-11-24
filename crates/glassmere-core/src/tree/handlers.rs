@@ -142,6 +142,11 @@ impl Context {
                         out.push(message.clone());
                     }
                 }
+                (Queued::Click, Handler::Widget { click, .. }) => {
+                    if enabled && self.clicks.contains(&id) {
+                        out.push(click.clone());
+                    }
+                }
                 (Queued::Click, Handler::Refocus(message)) => {
                     if enabled && self.clicks.contains(&id) {
                         out.push(message.clone());
@@ -251,6 +256,14 @@ impl Context {
                     for event in self.take_area_events(id) {
                         if enabled {
                             out.extend(map(crate::WidgetInput::local(event, bounds)));
+                        }
+                    }
+                }
+                (Queued::Area, Handler::Widget { event, .. }) => {
+                    let bounds = node.bounds;
+                    for event_in in self.take_area_events(id) {
+                        if let (true, Some(map)) = (enabled, event) {
+                            out.extend(map(crate::WidgetInput::local(event_in, bounds)));
                         }
                     }
                 }

@@ -7,8 +7,11 @@ use glassmere_scene::{Point, Primitive, Rect, Size};
 
 /// A leaf with explicit intrinsic size, local paint commands and semantics.
 /// Focusable semantics put it in the tab order and give it the keyboard,
-/// whatever its role; button semantics also opt into the pointer and
-/// accessibility activation path of built-in buttons. `input` is what it
+/// whatever its role; the roles a user presses (`Button`, `Checkbox`,
+/// `Radio`, `Tab`, `MenuButton`, `MenuItem` and `Option`) also opt into the
+/// pointer and accessibility activation path of built-in buttons, and
+/// `Semantics::checked`, `selected` and `expanded` are what a screen reader
+/// is told of its state. `input` is what it
 /// hears of the events that reach it, which `Ui::widget` hands to its
 /// `on_event` in the widget's own coordinates.
 /// Commands are clipped to the leaf; nested clip commands must be balanced.
@@ -41,6 +44,7 @@ pub struct WidgetInput {
 pub struct WidgetBuilder<F, M = ()> {
     pub(crate) build: F,
     pub(crate) on_event: Option<Box<dyn Fn(crate::UiEvent) -> Option<M>>>,
+    pub(crate) on_click: Option<M>,
 }
 
 impl<F, M> core::fmt::Debug for WidgetBuilder<F, M> {
@@ -59,7 +63,22 @@ impl<F, M> WidgetBuilder<F, M> {
         Self {
             build,
             on_event: None,
+            on_click: None,
         }
+    }
+
+    /// The message sent when the widget is clicked, or activated with Enter
+    /// or Space or an assistive technology's Activate. A click is a press
+    /// that began on the widget and is released on it: drag away and let go
+    /// and nothing is sent, as with a web page's `click` and a stock button.
+    /// The widget needs a role that is pressed, `Button`, `Checkbox`,
+    /// `Radio`, `Tab`, `MenuButton`, `MenuItem` or `Option`, and
+    /// `Semantics::focusable` to be reached by the keyboard. The click is
+    /// not repeated to `on_event` as `Activate`; the pointer events still
+    /// are.
+    pub fn on_click(mut self, message: M) -> Self {
+        self.on_click = Some(message);
+        self
     }
 
     /// The message an event that reaches the widget sends, or none for an

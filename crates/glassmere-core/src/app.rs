@@ -177,6 +177,13 @@ pub(crate) enum Handler<M> {
     },
     /// A stepper button: steps the number field of its row by this many steps.
     Step(f64),
+    /// A widget of the application's own that sends one message when it is
+    /// pressed and released on, or activated from the keyboard, and builds
+    /// others from the events that reach it.
+    Widget {
+        click: M,
+        event: Option<Box<dyn Fn(UiEvent) -> Option<M>>>,
+    },
     /// Sent as it is, and the focus goes back to the text of the editor the
     /// button belongs to: a toolbar button.
     Refocus(M),
@@ -232,6 +239,16 @@ impl<M: 'static> Handler<M> {
                 }
             }
             Self::Step(steps) => Handler::Step(steps),
+            Self::Widget { click, event } => {
+                let f = f.clone();
+                Handler::Widget {
+                    click: f(click),
+                    event: event.map(|inner| {
+                        Box::new(move |event| inner(event).map(|message| f(message)))
+                            as Box<dyn Fn(UiEvent) -> Option<N>>
+                    }),
+                }
+            }
             Self::Refocus(message) => Handler::Refocus(f(message)),
         }
     }

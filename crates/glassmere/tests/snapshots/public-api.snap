@@ -372,11 +372,14 @@ glassmere-core   field ScrollState::offset: f32
 glassmere-core   field ScrollState::offset_x: f32
 glassmere-core   field Selection::anchor: usize
 glassmere-core   field Selection::cursor: usize
+glassmere-core   field Semantics::checked: Option<bool>
 glassmere-core   field Semantics::disabled: bool
+glassmere-core   field Semantics::expanded: Option<bool>
 glassmere-core   field Semantics::focusable: bool
 glassmere-core   field Semantics::label: String
 glassmere-core   field Semantics::numeric: Option<NumericValue>
 glassmere-core   field Semantics::role: Role
+glassmere-core   field Semantics::selected: Option<bool>
 glassmere-core   field Semantics::value: Option<String>
 glassmere-core   field Shadow::blur: f32
 glassmere-core   field Shadow::color: Color
@@ -1267,6 +1270,7 @@ glassmere-core   fn Ui::window(&self) -> crate::WindowInfo #[track_caller] [impl
 glassmere-core   fn Ui::window_buttons(&mut self, on_command: impl Fn(crate::WindowCommand) -> M) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::window_size(&self) -> glassmere_scene::Size #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn WidgetBuilder::new(build: F) -> Self where F: FnOnce(&WidgetInput) -> CustomWidget [impl<F, M> WidgetBuilder<F, M>]
+glassmere-core   fn WidgetBuilder::on_click(mut self, message: M) -> Self [impl<F, M> WidgetBuilder<F, M>]
 glassmere-core   fn WidgetBuilder::on_event(mut self, on_event: impl Fn(crate::UiEvent) -> Option<M> + 'static) -> Self [impl<F, M> WidgetBuilder<F, M>]
 glassmere-core   type App::Message: Clone + 'static
 glassmere-core   type Component::Message: Clone + 'static

@@ -60,6 +60,24 @@ pub enum Role {
     Alert,
 }
 
+impl Role {
+    /// Whether a widget of the application's own with this role is pressed:
+    /// clicked, and activated with Enter or Space. A slider or a dial is
+    /// moved rather than pressed, and takes its own events.
+    pub(crate) fn is_pressed(self) -> bool {
+        matches!(
+            self,
+            Self::Button
+                | Self::Checkbox
+                | Self::Radio
+                | Self::Tab
+                | Self::MenuButton
+                | Self::MenuItem
+                | Self::Option
+        )
+    }
+}
+
 /// What a node is, for the keyboard, the accessibility tree and the tests.
 /// A widget of the application's own fills this in itself; `value` and
 /// `numeric` are what assistive technology reads out, so a dial that reports
@@ -75,6 +93,13 @@ pub struct Semantics {
     pub value: Option<String>,
     /// What it holds on a scale, for a slider or a dial.
     pub numeric: Option<NumericValue>,
+    /// Whether it is on, for a checkbox or a switch of the application's own.
+    /// `None` is a widget that has no such state.
+    pub checked: Option<bool>,
+    /// Whether it is the chosen one, for a radio button, a tab or an option.
+    pub selected: Option<bool>,
+    /// Whether what it opens is open, for a disclosure or a menu button.
+    pub expanded: Option<bool>,
 }
 
 #[derive(Clone, Debug)]

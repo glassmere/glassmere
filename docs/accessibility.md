@@ -66,7 +66,7 @@ harness.action(harness.by_label("Save"), Action::Activate);
 
 ## A widget of your own
 
-Fill in `Semantics` and it is announced like anything else: `focusable` puts it in the tab order whatever its role, `value` and `numeric` are what is read out, and `Role::Button` opts into the same activation path as a built-in button. A dial that reports neither value nor numeric is a dial that says nothing; `examples/dial-widget` shows one that does.
+Fill in `Semantics` and it is announced like anything else: `focusable` puts it in the tab order whatever its role, `value` and `numeric` are what is read out, and a role that is pressed (`Button`, `Checkbox`, `Radio`, `Tab`, `MenuButton`, `MenuItem`, `Option`) opts into the same activation path as a built-in button. `checked`, `selected` and `expanded` carry the state a screen reader reads out, so a painted checkbox is announced as a checked checkbox and not as a button. A dial that reports neither value nor numeric is a dial that says nothing; `examples/dial-widget` shows one that does.
 
 ## What has not been checked
 

@@ -1,6 +1,7 @@
 use glassmere::{
-    Align, App, AppOptions, Button, Color, DirectionChoice, Effects, FontFamily, Label, Length,
-    Link, MenuItem, NumberOptions, Size, Style, TextInput, TextWrap, Toast, Ui, run, suggest,
+    Align, App, AppOptions, Button, Color, Cursor, CustomWidget, DirectionChoice, Effects,
+    FontFamily, Label, Length, Link, MenuItem, NumberOptions, Primitive, Rect, Role, Semantics,
+    Size, Style, TextInput, TextWrap, Toast, Ui, WidgetBuilder, WidgetInput, run, suggest,
 };
 use std::time::Duration;
 
@@ -16,6 +17,63 @@ const CITIES: [&str; 10] = [
     "Prague",
     "Paris",
 ];
+
+/// A toggle the application paints. It is a checkbox for the keyboard and a
+/// screen reader (Enter and Space click it, and `checked` is read out), a click
+/// is a press and release on it, and the pointer over it is a hand.
+fn pill(ui: &mut Ui<'_, Msg>, label: &str, on: bool, send: fn(bool) -> Msg) {
+    let (track, knob) = (ui.theme().control, ui.theme().accent);
+    let label = label.to_owned();
+    let widget = WidgetBuilder::new(move |input: &WidgetInput| {
+        let fill = if on { knob } else { track };
+        let fill = if input.hovered && input.enabled {
+            Color(
+                fill.0.saturating_add(16),
+                fill.1.saturating_add(16),
+                fill.2.saturating_add(16),
+                fill.3,
+            )
+        } else {
+            fill
+        };
+        let edge = if on { 22.0 } else { 2.0 };
+        CustomWidget {
+            size: Size::new(44.0, 24.0),
+            semantics: Semantics {
+                role: Role::Checkbox,
+                label,
+                focusable: true,
+                checked: Some(on),
+                ..Semantics::default()
+            },
+            primitives: vec![
+                Primitive::Quad {
+                    rect: Rect {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 44.0,
+                        height: 24.0,
+                    },
+                    color: fill,
+                    radius: 12.0,
+                },
+                Primitive::Quad {
+                    rect: Rect {
+                        x: edge,
+                        y: 2.0,
+                        width: 20.0,
+                        height: 20.0,
+                    },
+                    color: Color::rgb(255, 255, 255),
+                    radius: 10.0,
+                },
+            ],
+            ..CustomWidget::default()
+        }
+    })
+    .on_click(send(!on));
+    ui.widget(Style::default().cursor(Cursor::Pointer), widget);
+}
 
 #[derive(Clone)]
 enum Msg {
@@ -273,6 +331,7 @@ impl App for Controls {
                     ui.label(Label::new("02 / Choices & actions").style(bold));
                     ui.checkbox("Notifications", self.notifications, Msg::Notify);
                     ui.switch("Airplane mode", self.airplane, Msg::Airplane);
+                    pill(ui, "Notify on mention", self.notifications, Msg::Notify);
                     ui.row(Style::default().gap(8.0), |ui| {
                         ui.radio("Quiet", self.mode, 0, Msg::Mode);
                         ui.radio("Balanced", self.mode, 1, Msg::Mode);

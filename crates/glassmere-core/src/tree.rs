@@ -575,7 +575,7 @@ impl Node {
             ) || self
                 .custom
                 .as_ref()
-                .is_some_and(|widget| widget.semantics.role == Role::Button))
+                .is_some_and(|widget| widget.semantics.role.is_pressed()))
     }
 
     fn semantics(&self) -> Semantics {
@@ -715,6 +715,9 @@ impl Node {
             focusable: self.focusable(),
             value: None,
             numeric: None,
+            checked: None,
+            selected: None,
+            expanded: None,
         }
     }
 }
