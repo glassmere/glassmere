@@ -338,6 +338,12 @@ pub struct Style {
     pub offset: Option<(f32, f32)>,
     /// How the node shows keyboard focus; `None` takes the theme's ring.
     pub focus_ring: Option<FocusRing>,
+    /// Whether the node can take focus, by a click or by Tab. `false` keeps a
+    /// widget that is focusable by kind, a divider or a scroll container,
+    /// out of the focus order, and a click on it leaves focus where it was.
+    /// It still reacts to the pointer. A container that scrolls nothing is
+    /// not focusable whatever this says.
+    pub focusable: bool,
     /// Inherited like text properties; `None` takes the parent's direction.
     pub direction: Option<Direction>,
     /// Forces the direction a paragraph starts in, whatever its first strong
@@ -396,6 +402,7 @@ impl Default for Style {
             animation: None,
             offset: None,
             focus_ring: None,
+            focusable: true,
             direction: None,
         }
     }
@@ -647,6 +654,12 @@ impl Style {
     /// focus, such as a text caret or a highlighted row, is still drawn.
     pub fn no_focus_ring(mut self) -> Self {
         self.focus_ring = Some(FocusRing::NONE);
+        self
+    }
+    /// Takes the node out of the focus order and stops a click from
+    /// focusing it, when `focusable` is false.
+    pub fn focusable(mut self, focusable: bool) -> Self {
+        self.focusable = focusable;
         self
     }
     setter!(background, background, Color, some);

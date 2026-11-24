@@ -415,6 +415,7 @@ glassmere-core   field Style::direction: Option<Direction>
 glassmere-core   field Style::enter: Option<Effect>
 glassmere-core   field Style::exit: Option<Effect>
 glassmere-core   field Style::focus_ring: Option<FocusRing>
+glassmere-core   field Style::focusable: bool
 glassmere-core   field Style::font_family: Option<FontFamily>
 glassmere-core   field Style::font_size: Option<f32>
 glassmere-core   field Style::font_weight: Option<u16>
@@ -1029,6 +1030,7 @@ glassmere-core   fn Style::direction(mut self, value: Direction) -> Self
 glassmere-core   fn Style::enter(mut self, value: Effect) -> Self
 glassmere-core   fn Style::exit(mut self, value: Effect) -> Self
 glassmere-core   fn Style::focus_ring(mut self, ring: FocusRing) -> Self
+glassmere-core   fn Style::focusable(mut self, focusable: bool) -> Self
 glassmere-core   fn Style::font_family(mut self, value: FontFamily) -> Self
 glassmere-core   fn Style::font_size(mut self, value: f32) -> Self
 glassmere-core   fn Style::font_weight(mut self, value: u16) -> Self

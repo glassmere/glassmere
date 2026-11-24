@@ -37,6 +37,14 @@ The ring follows how focus was given, as it does in a browser. A widget that tak
 
 `Style::focus_ring(FocusRing::new(3.0).color(color).inset(2.0))` sets the width, the colour and how far the ring sits inside the edge, for one widget; `Style::no_focus_ring()` draws none, for a widget that shows focus some other way. The ring stays inside the widget's box, which is what is repainted when focus moves; outside it, it would be left behind. The colour of the default ring is the theme's `focus` token.
 
+### What takes focus
+
+Buttons, fields, checkboxes, sliders, list rows, tabs, links and the like take focus from a click and from Tab. A container that only lays things out does not: a column, a row, a grid, a pane, a spacer. Clicking one of them, or empty space inside a scroll area, focuses nothing.
+
+Two kinds are in between. A scroll container takes focus only while it scrolls, because the arrow keys and Page Up and Page Down act on the one that has it; one that fits its content is layout, and is skipped. A pane divider takes focus so that the arrow keys, Home and End can move it, and shows its ring after the keyboard like anything else.
+
+`Style::focusable(false)` takes any widget that would take focus out of the focus order, and a click on it leaves focus where it was. It still reacts to the pointer: a button with `focusable(false)` can be clicked and cannot be tabbed to. Use it for what is only for the mouse, or what shows its state some other way.
+
 ## Theme
 
 `Theme::dark()` and `Theme::light()` are the two built in. Every colour is a named token:

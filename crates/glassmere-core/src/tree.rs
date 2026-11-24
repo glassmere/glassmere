@@ -462,7 +462,21 @@ impl Node {
         )
     }
 
+    /// Whether the node can hold focus: it is a widget a press lands on, its
+    /// style has not opted out, and a scroll container scrolls. A container
+    /// that only lays things out, or scrolls nothing, is not a place for
+    /// focus to be, or for the keyboard to land on.
     fn focusable(&self) -> bool {
+        self.focus_kind()
+            && self.style.focusable
+            && (self.kind != Kind::Scroll
+                || self.scroll.maximum > 0.0
+                || self.scroll.maximum_x > 0.0)
+    }
+
+    /// Whether the kind of widget is one that a press lands on and that can
+    /// hold focus, before its style or its scrolling is asked.
+    fn focus_kind(&self) -> bool {
         self.enabled
             && !matches!(
                 self.control,
@@ -530,7 +544,7 @@ impl Node {
     /// activatable, the pointer-only column sizer, and the window frame a
     /// view draws for itself.
     fn takes_pointer(&self) -> bool {
-        self.focusable()
+        self.focus_kind()
             || self.activatable()
             || (self.enabled
                 && matches!(
