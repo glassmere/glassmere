@@ -27,6 +27,7 @@ mod calendar_input;
 mod collection_input;
 mod control_input;
 mod control_paint;
+mod cursor;
 pub mod diagnostics;
 mod dock_input;
 mod drag_input;

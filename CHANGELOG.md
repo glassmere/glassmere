@@ -8,10 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `Style::cursor(Cursor)` sets the pointer over a node and what is inside it, and `Context::cursor(id)` is what a host shows. The winit host now takes its pointer from it. Without a style the pointer is as it was: a hand over a widget that takes a press, an I-beam over text, resize pointers over dividers. See "The pointer" in [styling](docs/styling.md).
 - `Style::focusable(false)` takes a node out of the focus order and stops a click from focusing it, for a widget that is focusable by kind, such as a divider or a scroll container, and not wanted as a stop. The node still reacts to the pointer. See "What takes focus" in [styling](docs/styling.md).
 - `FocusRing`, with `Style::focus_ring` and `Style::no_focus_ring`: one widget's focus ring in its own width, colour and inset, or none. `Path::rounded_rect` in `glassmere-scene` builds the stroked outline the ring uses. See "The focus ring" in [styling](docs/styling.md).
 
 ### Changed
+
+- Over a scroll area the winit host showed a hand, because a scroll container was focusable by kind; it shows the arrow. A button with `Style::focusable(false)` keeps its hand.
 
 - A widget that takes no typed text shows its focus ring after the keyboard and not after a click or a touch, as a browser does. A field you type into still always shows it, and so does a window before the first press. A press hides the ring and the next key that does something shows it again. Code that checked for the ring in a scene after a click, as a snapshot test might, sees none: focus the widget with `Tab` or `Action::Focus` first.
 

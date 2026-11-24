@@ -45,6 +45,10 @@ Two kinds are in between. A scroll container takes focus only while it scrolls, 
 
 `Style::focusable(false)` takes any widget that would take focus out of the focus order, and a click on it leaves focus where it was. It still reacts to the pointer: a button with `focusable(false)` can be clicked and cannot be tabbed to. Use it for what is only for the mouse, or what shows its state some other way.
 
+### The pointer
+
+Over a widget that takes a press the pointer is a hand, over text it is an I-beam, over a divider it is the resize pointer of its direction, and over a layout container, a scroll area or a disabled widget it is the arrow. `Style::cursor(Cursor::Grab)` sets another for one node and for everything inside it that sets none of its own, so a container can give its whole area a pointer. `Context::cursor(id)` is the answer a host shows; the winit host takes it from the hovered node. Whether a widget can take focus has no part in it: a button with `focusable(false)` still shows the hand.
+
 ## Theme
 
 `Theme::dark()` and `Theme::light()` are the two built in. Every colour is a named token:

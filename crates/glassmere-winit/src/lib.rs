@@ -520,6 +520,25 @@ fn direction(edge: glassmere_core::ResizeEdge) -> winit::window::ResizeDirection
     }
 }
 
+/// The system's pointer for what `Context::cursor` chose.
+fn cursor_icon(cursor: glassmere_core::Cursor) -> CursorIcon {
+    use glassmere_core::Cursor;
+    match cursor {
+        Cursor::Default => CursorIcon::Default,
+        Cursor::Pointer => CursorIcon::Pointer,
+        Cursor::Text => CursorIcon::Text,
+        Cursor::Crosshair => CursorIcon::Crosshair,
+        Cursor::Move => CursorIcon::Move,
+        Cursor::Grab => CursorIcon::Grab,
+        Cursor::Grabbing => CursorIcon::Grabbing,
+        Cursor::NotAllowed => CursorIcon::NotAllowed,
+        Cursor::Help => CursorIcon::Help,
+        Cursor::Wait => CursorIcon::Wait,
+        Cursor::ColResize => CursorIcon::ColResize,
+        Cursor::RowResize => CursorIcon::RowResize,
+    }
+}
+
 fn resize_cursor(edge: glassmere_core::ResizeEdge) -> CursorIcon {
     use glassmere_core::ResizeEdge as Edge;
     match edge {
@@ -1532,42 +1551,12 @@ impl Application {
             .and_then(|id| self.context.resize_grip(id));
         // The window buttons keep the arrow, as the system's do. Windows sets
         // it over them itself, and a hand from here would fight it.
-        let caption = [
-            self.context.minimize_button(),
-            self.context.maximize_button(),
-            self.context.close_button(),
-        ];
         state.window.set_cursor(if let Some(edge) = grip {
             resize_cursor(edge)
         } else {
-            match self.context.hovered().and_then(|id| self.context.node(id)) {
-                Some(node)
-                    if matches!(
-                        node.semantics.role,
-                        glassmere_core::Role::TextInput
-                            | glassmere_core::Role::MultilineTextInput
-                            | glassmere_core::Role::PasswordInput
-                    ) =>
-                {
-                    CursorIcon::Text
-                }
-                // A label whose text can be selected.
-                Some(node)
-                    if node.semantics.role == glassmere_core::Role::Label
-                        && node.text_selection.is_some() =>
-                {
-                    CursorIcon::Text
-                }
-                Some(node) if node.semantics.role == glassmere_core::Role::Splitter => {
-                    match node.orientation {
-                        Some(glassmere_core::Axis::Vertical) => CursorIcon::RowResize,
-                        _ => CursorIcon::ColResize,
-                    }
-                }
-                Some(node) if caption.contains(&Some(node.bounds)) => CursorIcon::Default,
-                Some(node) if node.semantics.focusable => CursorIcon::Pointer,
-                _ => CursorIcon::Default,
-            }
+            self.context.hovered().map_or(CursorIcon::Default, |id| {
+                cursor_icon(self.context.cursor(id))
+            })
         });
         // The overlay is appended to a copy only while an inspector decorates
         // this window; ordinary frames render the retained scene directly.

@@ -344,6 +344,10 @@ pub struct Style {
     /// It still reacts to the pointer. A container that scrolls nothing is
     /// not focusable whatever this says.
     pub focusable: bool,
+    /// The pointer over the node and, when a descendant sets none, over it.
+    /// `None` takes the parent's, and at the top what the widget is: a hand
+    /// over one that takes a press, an I-beam over text.
+    pub cursor: Option<Cursor>,
     /// Inherited like text properties; `None` takes the parent's direction.
     pub direction: Option<Direction>,
     /// Forces the direction a paragraph starts in, whatever its first strong
@@ -403,9 +407,33 @@ impl Default for Style {
             offset: None,
             focus_ring: None,
             focusable: true,
+            cursor: None,
             direction: None,
         }
     }
+}
+
+/// The shape of the pointer over a node, as `Style::cursor` sets it and
+/// `Context::cursor` reports it for a host to show.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Cursor {
+    #[default]
+    Default,
+    /// The hand over something that can be pressed.
+    Pointer,
+    /// The I-beam over text.
+    Text,
+    Crosshair,
+    Move,
+    Grab,
+    Grabbing,
+    NotAllowed,
+    Help,
+    Wait,
+    /// Left and right edges, as over a column divider.
+    ColResize,
+    /// Top and bottom edges, as over a row divider.
+    RowResize,
 }
 
 /// The outline a node draws while it has keyboard focus. It is a stroked
@@ -660,6 +688,12 @@ impl Style {
     /// focusing it, when `focusable` is false.
     pub fn focusable(mut self, focusable: bool) -> Self {
         self.focusable = focusable;
+        self
+    }
+    /// The pointer shown over this node, and over what is inside it that
+    /// sets no cursor of its own.
+    pub fn cursor(mut self, cursor: Cursor) -> Self {
+        self.cursor = Some(cursor);
         self
     }
     setter!(background, background, Color, some);

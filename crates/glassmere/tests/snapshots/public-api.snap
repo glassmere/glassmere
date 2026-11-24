@@ -411,6 +411,7 @@ glassmere-core   field Style::background_image: Option<crate::BackgroundImage>
 glassmere-core   field Style::base_direction: Option<Direction>
 glassmere-core   field Style::column_gap: Option<f32>
 glassmere-core   field Style::columns: Vec<Track>
+glassmere-core   field Style::cursor: Option<Cursor>
 glassmere-core   field Style::direction: Option<Direction>
 glassmere-core   field Style::enter: Option<Effect>
 glassmere-core   field Style::exit: Option<Effect>
@@ -600,6 +601,7 @@ glassmere-core   fn Context::clear_bindings(&mut self)
 glassmere-core   fn Context::clear_diagnostics(&mut self)
 glassmere-core   fn Context::close_button(&self) -> Option<Rect>
 glassmere-core   fn Context::composing_text(&self) -> bool
+glassmere-core   fn Context::cursor(&self, id: NodeId) -> Cursor
 glassmere-core   fn Context::damage_regions(&self) -> &[Rect]
 glassmere-core   fn Context::details(&self, id: NodeId) -> Option<NodeDetails>
 glassmere-core   fn Context::diagnostics(&self) -> &[FrameDiagnostic]
@@ -1026,6 +1028,7 @@ glassmere-core   fn Style::base_direction(mut self, direction: Direction) -> Sel
 glassmere-core   fn Style::button() -> Self
 glassmere-core   fn Style::column_gap(mut self, value: f32) -> Self
 glassmere-core   fn Style::columns(mut self, value: Vec<Track>) -> Self
+glassmere-core   fn Style::cursor(mut self, cursor: Cursor) -> Self
 glassmere-core   fn Style::direction(mut self, value: Direction) -> Self
 glassmere-core   fn Style::enter(mut self, value: Effect) -> Self
 glassmere-core   fn Style::exit(mut self, value: Effect) -> Self
@@ -1310,6 +1313,18 @@ glassmere-core   variant CellValue::Bool(bool)
 glassmere-core   variant CellValue::Choice(usize)
 glassmere-core   variant CellValue::Number(f64)
 glassmere-core   variant CellValue::Text(String)
+glassmere-core   variant Cursor::ColResize
+glassmere-core   variant Cursor::Crosshair
+glassmere-core   variant Cursor::Default
+glassmere-core   variant Cursor::Grab
+glassmere-core   variant Cursor::Grabbing
+glassmere-core   variant Cursor::Help
+glassmere-core   variant Cursor::Move
+glassmere-core   variant Cursor::NotAllowed
+glassmere-core   variant Cursor::Pointer
+glassmere-core   variant Cursor::RowResize
+glassmere-core   variant Cursor::Text
+glassmere-core   variant Cursor::Wait
 glassmere-core   variant DateStyle::Long
 glassmere-core   variant DateStyle::Medium
 glassmere-core   variant DateStyle::Short
@@ -1664,6 +1679,7 @@ glassmere-core enum BlockKind #[derive(Clone, Copy, Debug, Default, Eq, PartialE
 glassmere-core enum CaretMovement #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-core enum CellEditor #[derive(Clone, Debug, PartialEq)]
 glassmere-core enum CellValue #[derive(Clone, Debug, PartialEq)]
+glassmere-core enum Cursor #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 glassmere-core enum DateStyle #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-core enum DiagnosticKind #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 glassmere-core enum Direction #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -2029,6 +2045,7 @@ glassmere-core use Command = command::Command
 glassmere-core use CommandPalette = ui::CommandPalette
 glassmere-core use Component = app::Component
 glassmere-core use Context = tree::Context
+glassmere-core use Cursor = style::Cursor
 glassmere-core use CustomWidget = widget::CustomWidget
 glassmere-core use Date = locale_format::Date
 glassmere-core use DatePicker = ui::DatePicker
