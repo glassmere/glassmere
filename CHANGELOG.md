@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- `FocusRing`, with `Style::focus_ring` and `Style::no_focus_ring`: one widget's focus ring in its own width, colour and inset, or none. `Path::rounded_rect` in `glassmere-scene` builds the stroked outline the ring uses. See "The focus ring" in [styling](docs/styling.md).
+
+### Changed
+
+- A widget that takes no typed text shows its focus ring after the keyboard and not after a click or a touch, as a browser does. A field you type into still always shows it, and so does a window before the first press. A press hides the ring and the next key that does something shows it again. Code that checked for the ring in a scene after a click, as a snapshot test might, sees none: focus the widget with `Tab` or `Action::Focus` first.
+
+### Fixed
+
+- The focus ring of a node with rounded corners and no opaque background was four square bars. It is now a stroked rounded outline for every node with a radius, drawn inside its box over its fill. A node with a gradient or a translucent background no longer loses it while focused: the old ring replaced the fill of an opaque node with the focus colour and drew the background back inside it, and skipped the gradient.
+
 ## [0.1.8] - 2026-11-23
 
 ### Added
