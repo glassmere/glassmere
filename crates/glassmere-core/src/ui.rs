@@ -847,7 +847,7 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// A label that shows a [`Signal`](crate::Signal) or [`Memo`](crate::Memo)
     /// of text and follows it. When the source changes, the label's text is
     /// replaced in the tree, measured and repainted without the view running
-    /// again; see [`App::view_state`] for how a view is kept from running
+    /// again; see [`App::view_state`](crate::App::view_state) for how a view is kept from running
     /// after a message.
     ///
     /// The view reads the text when it declares, so a view that does run
