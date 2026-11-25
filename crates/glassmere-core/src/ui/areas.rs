@@ -67,7 +67,7 @@ impl<'a, M: 'static> Ui<'a, M> {
                     self.misuse(
                         "a widget with `on_click` needs a role that is pressed: Button, Checkbox, \
                          Radio, Tab, MenuButton, MenuItem or Option"
-                            .to_owned(),
+                            .into(),
                     );
                 }
                 self.set_handler(crate::app::Handler::Widget { click, event });
