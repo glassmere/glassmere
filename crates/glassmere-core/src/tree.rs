@@ -33,6 +33,7 @@ mod dock_input;
 mod drag_input;
 mod edge_scroll;
 mod editor_text;
+mod ellipsis;
 mod events;
 mod focus_input;
 mod handlers;
@@ -77,6 +78,8 @@ struct Preparing {
     /// Rows whose hint is measured.
     hinted: Vec<NodeId>,
     editors: Vec<NodeId>,
+    /// Text leaves that end an overlong line with an ellipsis.
+    ellipsized: Vec<NodeId>,
     /// Whether the lists hold what a walk over the nodes finds: set once
     /// `prepare_controls` has stored them, dropped by every declaration. It
     /// holds because nodes are created, removed, and given a kind, style,
@@ -94,6 +97,7 @@ impl Preparing {
         self.labelled.clear();
         self.hinted.clear();
         self.editors.clear();
+        self.ellipsized.clear();
     }
 }
 
@@ -357,12 +361,13 @@ fn overwrite(slot: &mut Primitive, source: &Primitive) {
 /// Makes `into` a copy of `from`. The room `into` has is kept when `from` fits
 /// in it and it is not more than twice the length of `from` plus 32 bytes: one
 /// long text must not leave its room to every text that comes after it.
-fn refill(into: &mut String, from: &String) {
+fn refill(into: &mut String, from: &str) {
     let room = into.capacity();
     if room >= from.len() && room <= from.len().saturating_mul(2).saturating_add(32) {
-        into.clone_from(from);
+        into.clear();
+        into.push_str(from);
     } else {
-        *into = from.clone();
+        *into = from.to_owned();
     }
 }
 
@@ -420,6 +425,8 @@ struct Node {
     label_width: f32,
     /// Width of a menu item's hint, which is written along the end edge.
     hint_width: f32,
+    /// What a line that does not fit shows, for `TextOverflow::Ellipsis`.
+    ellipsis: Option<Box<ellipsis::Ellipsis>>,
     /// Consecutive frames in which all of this node's new children replaced
     /// as many removed ones.
     churn: u8,
@@ -1067,6 +1074,7 @@ impl Default for Context {
             rich_editor: None,
             label_width: 0.0,
             hint_width: 0.0,
+            ellipsis: None,
             churn: 0,
             layout_rect: Rect::default(),
             handler: None,
@@ -2272,14 +2280,14 @@ mod tests {
         let mut into = String::with_capacity(64);
         into.push_str("old text");
         let (room, allocation) = (into.capacity(), into.as_ptr());
-        refill(&mut into, &"a text of some length".to_owned());
+        refill(&mut into, "a text of some length");
         assert_eq!(into, "a text of some length");
         assert_eq!((into.capacity(), into.as_ptr()), (room, allocation));
 
         // A long text left room for 4096 bytes and the next one needs 5.
         let mut into = String::with_capacity(4096);
         into.push_str(&"long ".repeat(500));
-        refill(&mut into, &"short".to_owned());
+        refill(&mut into, "short");
         assert_eq!(into, "short");
         assert!(
             into.capacity() <= 2 * 5 + 32,
@@ -2289,12 +2297,12 @@ mod tests {
 
         // Too little room for the text that comes.
         let mut into = String::from("ab");
-        refill(&mut into, &"a text that does not fit".to_owned());
+        refill(&mut into, "a text that does not fit");
         assert_eq!(into, "a text that does not fit");
 
         // Nothing to put, and nothing to put it in.
         let mut into = String::new();
-        refill(&mut into, &String::new());
+        refill(&mut into, "");
         assert_eq!(into, "");
     }
 

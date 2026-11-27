@@ -143,6 +143,10 @@ There is no mipmap chain, but a photo drawn at under half its natural size is bo
 
 A window runs left to right or right to left according to `AppOptions::direction` (`DirectionChoice::Auto` follows the OS locale). `Style::direction` overrides it for a subtree: layout mirrors, text aligns to the end side, and directional internals follow. Physical values stay physical: `offset`, transforms, slide effects, floating dock rectangles and `DockZone::Left` and `Right` mean the same pixels in both directions. `Style::base_direction` forces the base direction of a text paragraph, in labels and in text fields, text areas, code editors and rich editors (every line or block takes it; a text field and a rich editor align to it, a text area and a code editor only order by it).
 
+## Overlong text
+
+A line of text that is wider than its box is cut at the edge. `Style::text_overflow(TextOverflow::Ellipsis)` (stylesheet `text-overflow: ellipsis`) ends it with `…` where the next character would not fit, the way a table cell or a file name is usually shown. It is for a label, a button and the like that do not wrap, so give the node a width (a fixed one, a percentage, or a column that stretches it). The text is cut between characters that belong together and measured the way the layout measures it, it follows the box when the window is resized, and the name a screen reader reads, and what a selection copies, is still all of it. Text that wraps is not affected.
+
 ## Shielding what is underneath
 
 A container is transparent to the pointer: only widgets that take a press, a key or a drag are hit, so a card, a panel or a floating toolbar drawn over a button leaves the button clickable through it. In a browser a box under the pointer takes it. `Style::blocks_pointer(true)` (stylesheet `blocks-pointer: true`) makes a node do that: a click or a hover on it does not reach what is under it, and it is what `hovered` reports there. What is inside it still takes the pointer first. Popovers, dialogs and menus already shield what they cover.

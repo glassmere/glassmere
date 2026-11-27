@@ -453,6 +453,7 @@ glassmere-core   field Style::shadow: Option<Box<Shadow>>
 glassmere-core   field Style::shrink: f32
 glassmere-core   field Style::states: Option<Box<StateStyles>>
 glassmere-core   field Style::text_align: Option<TextAlign>
+glassmere-core   field Style::text_overflow: TextOverflow
 glassmere-core   field Style::transform: Transform
 glassmere-core   field Style::transition: Option<Transition>
 glassmere-core   field Style::unclipped: bool
@@ -1095,6 +1096,7 @@ glassmere-core   fn Style::set_property(&mut self, name: &str, value: &str) -> R
 glassmere-core   fn Style::shadow(mut self, shadow: Shadow) -> Self
 glassmere-core   fn Style::shrink(mut self, value: f32) -> Self
 glassmere-core   fn Style::text_align(mut self, value: TextAlign) -> Self
+glassmere-core   fn Style::text_overflow(mut self, value: TextOverflow) -> Self
 glassmere-core   fn Style::transform(mut self, value: Transform) -> Self
 glassmere-core   fn Style::transition(mut self, value: Transition) -> Self
 glassmere-core   fn Style::unclipped(mut self, value: bool) -> Self
@@ -1648,6 +1650,8 @@ glassmere-core   variant TextOp::Pointer { line: usize, byte: usize, select: boo
 glassmere-core   variant TextOp::Redo
 glassmere-core   variant TextOp::SelectAll
 glassmere-core   variant TextOp::Undo
+glassmere-core   variant TextOverflow::Clip
+glassmere-core   variant TextOverflow::Ellipsis
 glassmere-core   variant ToastKind::Error
 glassmere-core   variant ToastKind::Info
 glassmere-core   variant ToastKind::Success
@@ -1759,6 +1763,7 @@ glassmere-core enum SwipeDirection #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 glassmere-core enum TextEdit #[derive(Clone, Debug)]
 glassmere-core enum TextMove #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 glassmere-core enum TextOp #[derive(Clone, Debug, PartialEq)]
+glassmere-core enum TextOverflow #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 glassmere-core enum ToastKind #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-core enum TooltipPlacement #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-core enum TouchPhase #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2262,6 +2267,7 @@ glassmere-core use TextInput = ui::TextInput
 glassmere-core use TextMeasurer = glassmere_scene::TextMeasurer
 glassmere-core use TextMove = editor::TextMove
 glassmere-core use TextOp = text_area::TextOp
+glassmere-core use TextOverflow = style::TextOverflow
 glassmere-core use TextSelection = editor::TextSelection
 glassmere-core use TextSource = reactive::TextSource
 glassmere-core use TextSpan = glassmere_scene::TextSpan
