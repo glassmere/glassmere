@@ -532,6 +532,16 @@ impl Node {
                     .is_some_and(|widget| widget.semantics.focusable))
     }
 
+    /// Its box does not cut off what is inside it: `Style::unclipped` on a
+    /// kind that does not scroll or float.
+    fn unclipped(&self) -> bool {
+        self.style.unclipped
+            && !matches!(
+                self.kind,
+                Kind::Scroll | Kind::Collection | Kind::TabList | Kind::Popup | Kind::Popover
+            )
+    }
+
     /// Text that is selected and copied but never edited.
     fn read_only(&self) -> bool {
         matches!(self.control, Control::SelectableText)
@@ -772,6 +782,9 @@ pub struct Context {
     /// A node was hidden or shown by the last bounds walk, so what the user
     /// was focused on or holding may no longer be there to be.
     hidden_changed: bool,
+    /// Some node is `unclipped`, so a clip says nothing about what is under
+    /// it, as when there is a popup. Set by the bounds walk.
+    has_unclipped: bool,
     /// Whether the bounds walk is the plain one the tests compare it with.
     #[cfg(test)]
     reference_walk: bool,
@@ -1074,6 +1087,7 @@ impl Default for Context {
             stats: FrameStats::default(),
             geometry_dirty: false,
             hidden_changed: false,
+            has_unclipped: false,
             #[cfg(test)]
             reference_walk: false,
             clips_valid: false,

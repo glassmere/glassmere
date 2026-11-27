@@ -853,6 +853,15 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
                 }
             })
         }
+        "overflow" => {
+            style.unclipped = match value {
+                "visible" => true,
+                "hidden" => false,
+                _ => {
+                    return Err(format!("overflow is `visible` or `hidden`, got `{value}`"));
+                }
+            }
+        }
         "visibility" => {
             style.hidden = match value {
                 "visible" => false,
