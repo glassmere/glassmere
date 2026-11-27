@@ -118,7 +118,7 @@ pub use ui::{
     AreaBuilder, Autocomplete, Button, Calendar, Checkbox, Collapsible, ComboBox, CommandPalette,
     DatePicker, DockOptions, DockPanel, DragSourceBuilder, DropTargetBuilder, GestureBuilder,
     Label, Link, Progress, PropertyGrid, Radio, RangeSlider, Response, Spinner, Switch, TabStyle,
-    TextInput, Ui, suggest,
+    TextInput, Ui, WindowButtons, suggest,
 };
 pub use widget::{CustomWidget, WidgetBuilder, WidgetInput};
 pub use window::{ResizeEdge, WindowCommand, WindowId, WindowInfo, WindowRequest};

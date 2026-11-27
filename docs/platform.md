@@ -18,7 +18,7 @@ What the host (`glassmere-winit`, re-exported by `glassmere`) provides around th
 
 ### Title bar
 
-`AppOptions::decorations = false` removes the system frame. `Ui::title_bar` is a strip that moves the window and maximizes on a double press, `Ui::window_buttons` draws minimize, maximize and close, and `Ui::resize_frame(thickness)` places the resize grips. `Ui::window()` reports whether the window is maximized or focused, of the last frame. `decorations` is read when the window opens. Full screen is not a window command.
+`AppOptions::decorations = false` removes the system frame. `Ui::title_bar` is a strip that moves the window and maximizes on a double press, `Ui::window_buttons` draws minimize, maximize and close, and `Ui::resize_frame(thickness)` places the resize grips. `Ui::window()` reports whether the window is maximized or focused, of the last frame. `decorations` is read when the window opens. `Ui::window_buttons_with(WindowButtons::new().width(52.0).height(Length::Percent(1.0)), on_command)` draws the same buttons at a size of your own, for a title bar taller than the system's 30 px, with each button as tall as the bar (the title bar needs a height of its own). Full screen is not a window command.
 
 On Windows 11 the `glassmere-win32` crate answers the system's hit test for the maximize button so the snap layout flyout appears. It is the only crate with unsafe code and is a few lines of window procedure; on Windows 10 it does nothing. The system takes the press, so the maximize button shows hover but no pressed state.
 
