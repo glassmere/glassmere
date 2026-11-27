@@ -21,6 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The focus ring of a node with rounded corners and no opaque background was four square bars. It is now a stroked rounded outline for every node with a radius, drawn inside its box over its fill. A node with a gradient or a translucent background no longer loses it while focused: the old ring replaced the fill of an opaque node with the focus colour and drew the background back inside it, and skipped the gradient.
 
+### Fixed
+
+- Choosing the radio button that is already chosen, by a click, Space or an assistive Activate, no longer sends its message. Nothing changes, and a web page's `change` event and a Qt `toggled` do not fire either. A handler that counted on being told again gets nothing; the chosen option is already in the state.
+
 ## [0.1.8] - 2026-11-23
 
 ### Added
