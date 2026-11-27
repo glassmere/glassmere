@@ -312,9 +312,12 @@ glassmere-core   field Notification::body: String
 glassmere-core   field Notification::title: String
 glassmere-core   field Notification::urgent: bool
 glassmere-core   field NumberOptions::decimals: Option<usize>
+glassmere-core   field NumberOptions::field_style: Option<crate::Style>
 glassmere-core   field NumberOptions::max: f64
 glassmere-core   field NumberOptions::min: f64
 glassmere-core   field NumberOptions::step: f64
+glassmere-core   field NumberOptions::stepper_style: Option<crate::Style>
+glassmere-core   field NumberOptions::steppers: bool
 glassmere-core   field NumberOptions::style: crate::Style
 glassmere-core   field NumberOptions::suffix: String
 glassmere-core   field NumericValue::max: f64
@@ -432,6 +435,7 @@ glassmere-core   field Style::max_width: Length
 glassmere-core   field Style::min_height: Length
 glassmere-core   field Style::min_width: Length
 glassmere-core   field Style::offset: Option<(f32, f32)>
+glassmere-core   field Style::offset_end: Option<(f32, f32)>
 glassmere-core   field Style::opacity: f32
 glassmere-core   field Style::padding: f32
 glassmere-core   field Style::radius: f32
@@ -444,6 +448,7 @@ glassmere-core   field Style::transform: Transform
 glassmere-core   field Style::transition: Option<Transition>
 glassmere-core   field Style::width: Length
 glassmere-core   field Style::wrap: TextWrap
+glassmere-core   field Style::z_index: i32
 glassmere-core   field StyleSheet::theme: Option<Theme>
 glassmere-core   field StyleSheet::tokens: Vec<(String, Color)>
 glassmere-core   field StyleSheetError::line: usize
@@ -546,6 +551,7 @@ glassmere-core   fn AreaBuilder::on_event(mut self, on_event: impl Fn(crate::UiE
 glassmere-core   fn Autocomplete::new() -> Self [impl<M> Autocomplete<M>]
 glassmere-core   fn Autocomplete::on_pick(mut self, message: impl Fn(usize) -> M + 'static) -> Self [impl<M> Autocomplete<M>]
 glassmere-core   fn Autocomplete::on_submit(mut self, message: M) -> Self [impl<M> Autocomplete<M>]
+glassmere-core   fn Autocomplete::style(mut self, style: Style) -> Self [impl<M> Autocomplete<M>]
 glassmere-core   fn BackgroundImage::file(path: impl Into<PathBuf>) -> Self #[cfg(feature = "std")]
 glassmere-core   fn BackgroundImage::fit(mut self, fit: ImageFit) -> Self
 glassmere-core   fn BackgroundImage::new(image: &Image) -> Self
@@ -886,14 +892,17 @@ glassmere-core   fn Notification::new(title: impl Into<String>, body: impl Into<
 glassmere-core   fn Notification::urgent(mut self) -> Self
 glassmere-core   fn NumberOptions::constrain(&self, value: f64) -> f64
 glassmere-core   fn NumberOptions::decimals(mut self, decimals: usize) -> Self
+glassmere-core   fn NumberOptions::field_style(mut self, style: crate::Style) -> Self
 glassmere-core   fn NumberOptions::format(&self, value: f64) -> String
 glassmere-core   fn NumberOptions::format_in(&self, context: &crate::Context, value: f64) -> String
 glassmere-core   fn NumberOptions::parse(&self, text: &str) -> Option<f64>
 glassmere-core   fn NumberOptions::parse_in(&self, context: &crate::Context, text: &str) -> Option<f64>
 glassmere-core   fn NumberOptions::range(mut self, min: f64, max: f64) -> Self
 glassmere-core   fn NumberOptions::step(mut self, step: f64) -> Self
+glassmere-core   fn NumberOptions::stepper_style(mut self, style: crate::Style) -> Self
 glassmere-core   fn NumberOptions::style(mut self, style: crate::Style) -> Self
 glassmere-core   fn NumberOptions::suffix(mut self, suffix: impl Into<String>) -> Self
+glassmere-core   fn NumberOptions::without_steppers(mut self) -> Self
 glassmere-core   fn Pacing::invalidate(&mut self)
 glassmere-core   fn Pacing::invalidated(&self) -> bool
 glassmere-core   fn Paint::background(color: Color) -> Self
@@ -1048,6 +1057,7 @@ glassmere-core   fn Style::min_height(mut self, value: Length) -> Self
 glassmere-core   fn Style::min_width(mut self, value: Length) -> Self
 glassmere-core   fn Style::no_focus_ring(mut self) -> Self
 glassmere-core   fn Style::offset(mut self, x: f32, y: f32) -> Self
+glassmere-core   fn Style::offset_end(mut self, right: f32, bottom: f32) -> Self
 glassmere-core   fn Style::on_disabled(self, paint: Paint) -> Self
 glassmere-core   fn Style::on_focused(self, paint: Paint) -> Self
 glassmere-core   fn Style::on_hover(self, paint: Paint) -> Self
@@ -1065,6 +1075,7 @@ glassmere-core   fn Style::transform(mut self, value: Transform) -> Self
 glassmere-core   fn Style::transition(mut self, value: Transition) -> Self
 glassmere-core   fn Style::width(mut self, value: Length) -> Self
 glassmere-core   fn Style::wrap(mut self, value: TextWrap) -> Self
+glassmere-core   fn Style::z_index(mut self, value: i32) -> Self
 glassmere-core   fn StyleSheet::apply_to(&self, current: &Theme) -> Theme
 glassmere-core   fn StyleSheet::class(&self, name: &str) -> Option<&Style>
 glassmere-core   fn StyleSheet::classes(&self) -> impl Iterator<Item = (&str, &Style)>
@@ -1220,6 +1231,8 @@ glassmere-core   fn Ui::label(&mut self, label: impl Into<Label>) #[track_caller
 glassmere-core   fn Ui::link(&mut self, link: impl Into<Link<M>>) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::locale(&self) -> &str [impl<'a, M: 'static> crate::Ui<'a, M>]
 glassmere-core   fn Ui::map<N: Clone + 'static>(&mut self, f: impl Fn(N) -> M + 'static, content: impl FnOnce(&mut Ui<'_, N>)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
+glassmere-core   fn Ui::measure_text(&self, text: &str, style: &glassmere_scene::TextStyle) -> glassmere_scene::Size [impl<'a, M: 'static> Ui<'a, M>]
+glassmere-core   fn Ui::measure_text_wrapped(&self, text: &str, style: &glassmere_scene::TextStyle, width: f32) -> glassmere_scene::Size [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::memo<S: core::hash::Hash>(&mut self, state: &S, style: Style, content: impl FnOnce(&mut Ui<'_, M>)) -> bool #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::menu(&mut self, label: impl Into<String>, items: &[MenuItem], on_pick: impl Fn(usize) -> M + 'static) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::menu_bar(&mut self, menu: &crate::Menu) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
@@ -1248,6 +1261,7 @@ glassmere-core   fn Ui::tabs(&mut self, selected: usize, tabs: &[Tab], on_select
 glassmere-core   fn Ui::tabs_close(&mut self, selected: usize, tabs: &[Tab], on_select: impl Fn(usize) -> M + 'static, on_close: impl Fn(usize) -> M, content: impl FnOnce(&mut Ui<'_, M>, usize)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::text_area(&mut self, document: &TextDocument, options: CodeEditorOptions<'_>, on: impl Fn(TextOp) -> M + 'static) #[cfg(feature = "std")] #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::text_input(&mut self, input: impl Into<TextInput<M>>, value: &str, on_change: impl Fn(String) -> M + 'static) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
+glassmere-core   fn Ui::text_style(&self) -> glassmere_scene::TextStyle [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::theme(&self) -> &crate::Theme #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::title_bar(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_, M>)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::toast_sender(&self) -> ToastSender #[cfg(feature = "std")] #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
@@ -2540,6 +2554,8 @@ glassmere-winit   field AppOptions::frame_limit: Option<u64>
 glassmere-winit   field AppOptions::gpu: Option<GpuSetup>
 glassmere-winit   field AppOptions::graphics: GraphicsOptions
 glassmere-winit   field AppOptions::icon: Option<glassmere_scene::Image>
+glassmere-winit   field AppOptions::max_size: Option<Size>
+glassmere-winit   field AppOptions::min_size: Option<Size>
 glassmere-winit   field AppOptions::placement: Placement
 glassmere-winit   field AppOptions::reduced_motion: bool
 glassmere-winit   field AppOptions::resizable: bool

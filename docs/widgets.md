@@ -139,6 +139,18 @@ dot.move_to(Point { x: 0.0, y: 5.0 })
 
 A mistake in the data is an `SvgPathError` with the byte it starts at, so parse an icon once, when the application starts, and not each frame.
 
+### Sizing it to text
+
+A widget declares its size up front, so one that holds text needs to know how big that text is. `ui.measure_text(text, &style)` asks the measurer the layout uses, so the answer is the size the text will have, and `ui.text_style()` gives the theme's plain text to start from:
+
+```rust
+let style = ui.text_style();
+let label = ui.measure_text("Save changes", &style);
+let size = Size::new(label.width + 24.0, label.height + 12.0);
+```
+
+`ui.measure_text_wrapped(text, &style, width)` is the size when the text wraps at `width`. Shaping costs time, so measure once and keep the answer while the text stays the same, as with any work in a view. `examples/layout.rs` draws a badge this way.
+
 ### Testing it
 
 The same harness the built-in controls use, with no window:
@@ -159,3 +171,23 @@ assert!(harness.snapshot_accessibility().contains("value=\"55%\""));
 - Contain other widgets. A leaf is a leaf; something that holds children is a component that declares them.
 - Measure itself against the room it is given, except by reading last frame's `WidgetInput::size`.
 - Hear drag-and-drop, IME or touch directly. Those reach a widget through the built-in controls that own them.
+
+## Compact fields
+
+`number_input` and `autocomplete` are 44 tall by default. To fit a toolbar, give them a style of their own:
+
+```rust
+let compact = Style { height: Length::Px(28.0), padding: 4.0, ..Style::button() };
+ui.number_input(
+    "Count",
+    count,
+    NumberOptions::default()
+        .field_style(compact.clone())
+        .stepper_style(Style { width: Length::Px(20.0), ..compact.clone() }),
+    on_count,
+);
+// No buttons at all; the arrow keys and the wheel still step it.
+NumberOptions::default().without_steppers();
+// The autocomplete's field.
+Autocomplete::new().style(compact);
+```
