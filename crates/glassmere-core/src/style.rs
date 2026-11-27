@@ -275,6 +275,12 @@ pub struct Style {
     /// Overrides `gap` between columns when set.
     pub column_gap: Option<f32>,
     pub grow: f32,
+    /// Lays the children of a row or a column out from the end instead of the
+    /// start, as `flex-direction: row-reverse` and `column-reverse` do: the
+    /// first child is at the end of the main axis, and `justify_content`'s
+    /// start is that end. Only the layout is reversed; the focus order and the
+    /// order the children are declared in stay what they were.
+    pub reverse: bool,
     /// The size along the main axis that `grow` and `shrink` start from, as
     /// `flex-basis` is in CSS. `Auto` starts from the width (or height) and,
     /// without one, from the content, so two children with `grow` 1 share
@@ -424,6 +430,7 @@ impl Default for Style {
             row_gap: None,
             column_gap: None,
             grow: 0.0,
+            reverse: false,
             basis: Length::Auto,
             shrink: 0.0,
             radius: 0.0,
@@ -704,6 +711,7 @@ impl Style {
     setter!(row_gap, row_gap, f32, some);
     setter!(column_gap, column_gap, f32, some);
     setter!(grow, grow, f32);
+    setter!(reverse, reverse, bool);
     setter!(basis, basis, Length);
     /// `flex: factor` as CSS has it: grows by `factor`, shrinks, and starts
     /// from a basis of 0, so that children sharing a row each take a share of
@@ -845,10 +853,13 @@ impl Style {
             // layout instead. See `Context::align_baselines`.
             Align::Baseline => AlignItems::FlexStart,
         };
+        // Relative to the main axis, as `flex-start` and `flex-end` are: the
+        // same as the writing mode's start and end everywhere but in a
+        // reversed row or column, where the start of the main axis is the end.
         let justify = |value: Justify| match value {
-            Justify::Start => AlignContent::Start,
+            Justify::Start => AlignContent::FlexStart,
             Justify::Center => AlignContent::Center,
-            Justify::End => AlignContent::End,
+            Justify::End => AlignContent::FlexEnd,
             Justify::Stretch => AlignContent::Stretch,
             Justify::SpaceBetween => AlignContent::SpaceBetween,
             Justify::SpaceAround => AlignContent::SpaceAround,
@@ -945,10 +956,11 @@ impl Style {
                 width: gap(self.column_gap),
                 height: gap(self.row_gap),
             },
-            flex_direction: if flow == Flow::Row {
-                FlexDirection::Row
-            } else {
-                FlexDirection::Column
+            flex_direction: match (flow == Flow::Row, self.reverse) {
+                (true, false) => FlexDirection::Row,
+                (true, true) => FlexDirection::RowReverse,
+                (false, false) => FlexDirection::Column,
+                (false, true) => FlexDirection::ColumnReverse,
             },
             align_items: Some(align(self.align_items)),
             // `Start` keeps the engine's normal behavior, which lets grid tracks fill.

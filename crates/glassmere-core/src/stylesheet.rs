@@ -719,6 +719,13 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         "row-gap" => style.row_gap = Some(number(value)?),
         "column-gap" => style.column_gap = Some(number(value)?),
         "grow" => style.grow = number(value)?,
+        "reverse" => {
+            style.reverse = match value {
+                "true" => true,
+                "false" => false,
+                _ => return Err(format!("reverse is `true` or `false`, got `{value}`")),
+            };
+        }
         "blocks-pointer" => {
             style.blocks_pointer = match value {
                 "true" => true,
