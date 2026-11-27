@@ -1,6 +1,7 @@
 //! Bounds, damage and the paint chunks the scene is assembled from.
 
 use super::*;
+use crate::FocusRing;
 use alloc::borrow::ToOwned;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -618,9 +619,8 @@ impl Context {
         paint_shadow(node, radius, false, &mut scene);
         scene.primitives.push(Primitive::PushClip(node.bounds));
         // A range slider's thumb rings itself: its box is the whole slider.
-        let focused = self.focused == Some(id)
-            && self.quiet_focus != Some(id)
-            && !matches!(node.control, Control::Slider { span: Some(_), .. });
+        let focused =
+            self.ring_shown(id) && !matches!(node.control, Control::Slider { span: Some(_), .. });
         self.paint_fill(node, focused, background, radius, &mut scene);
         self.paint_background_image(node, &mut scene, foreground, radius);
         if node.kind == Kind::RichText {
@@ -714,110 +714,130 @@ impl Context {
         chunk
     }
 
-    /// The node's flat colour and gradient, with the focus ring when it has
-    /// focus.
+    /// The node's flat colour and gradient, with the focus ring over them
+    /// when `ring` is given.
     fn paint_fill(
         &self,
         node: &Node,
-        focused: bool,
+        ring: bool,
         background: Option<Color>,
         radius: f32,
         scene: &mut Scene,
     ) {
-        // There is no stroke primitive. Over an opaque background the ring is
-        // the focus colour with the background drawn back inside it, which
-        // keeps rounded corners. That cannot work for a node that is
-        // transparent or translucent (a scroll page, a bare container): the
-        // focus colour would flood it. Those get four edges instead.
-        let opaque = background.filter(|background| background.3 == 255);
-        if let (true, Some(background)) = (focused, opaque) {
+        if let Some(background) = background
+            && background.3 > 0
+        {
             scene.primitives.push(Primitive::Quad {
                 rect: node.bounds,
-                color: self.theme.focus,
+                color: background,
                 radius,
             });
-            let rect = Rect {
-                x: node.bounds.x + 2.0,
-                y: node.bounds.y + 2.0,
-                width: (node.bounds.width - 4.0).max(0.0),
-                height: (node.bounds.height - 4.0).max(0.0),
-            };
-            scene.primitives.push(Primitive::Quad {
-                rect,
-                color: background,
-                radius: (radius - 2.0).max(0.0),
+        }
+        // A ramp fills the node over whatever flat colour it has.
+        if let Some(gradient) = &node.style.gradient
+            && gradient.stops.len() >= 2
+        {
+            scene.primitives.push(Primitive::Gradient {
+                rect: node.bounds,
+                radius,
+                from: Point {
+                    x: gradient.from.0,
+                    y: gradient.from.1,
+                },
+                to: Point {
+                    x: gradient.to.0,
+                    y: gradient.to.1,
+                },
+                stops: gradient.stops.clone(),
+                radial: gradient.radial,
             });
-        } else {
-            if let Some(background) = background
-                && background.3 > 0
-            {
-                scene.primitives.push(Primitive::Quad {
-                    rect: node.bounds,
-                    color: background,
-                    radius,
-                });
-            }
-            // A ramp fills the node over whatever flat colour it has.
-            if let Some(gradient) = &node.style.gradient
-                && gradient.stops.len() >= 2
-            {
-                scene.primitives.push(Primitive::Gradient {
-                    rect: node.bounds,
-                    radius,
-                    from: Point {
-                        x: gradient.from.0,
-                        y: gradient.from.1,
-                    },
-                    to: Point {
-                        x: gradient.to.0,
-                        y: gradient.to.1,
-                    },
-                    stops: gradient.stops.clone(),
-                    radial: gradient.radial,
-                });
-            }
-            if focused {
-                let Rect {
+        }
+        if ring {
+            self.paint_focus_ring(node, radius, scene);
+        }
+    }
+
+    /// Whether the focus ring of `id` is drawn: it has focus, did not get
+    /// it from a press on the title bar, and the last input was the
+    /// keyboard or the widget takes typed text, which shows focus whatever
+    /// moved it there.
+    pub(super) fn ring_shown(&self, id: NodeId) -> bool {
+        self.focused == Some(id)
+            && self.quiet_focus != Some(id)
+            && (self.keyboard_modality || self.accepts_text())
+    }
+
+    /// The node's focus ring: a stroke along its rounded edge, inside its
+    /// box, over whatever fill the node has. Square corners are drawn as
+    /// four bars, which land exactly on pixels.
+    fn paint_focus_ring(&self, node: &Node, radius: f32, scene: &mut Scene) {
+        let ring = node.style.focus_ring.unwrap_or(FocusRing::new(2.0));
+        let color = ring.color.unwrap_or(self.theme.focus);
+        let inset = ring.inset.max(0.0);
+        let Rect {
+            x,
+            y,
+            width,
+            height,
+        } = node.bounds;
+        let (inner_width, inner_height) = (width - 2.0 * inset, height - 2.0 * inset);
+        if ring.width <= 0.0 || inner_width <= 0.0 || inner_height <= 0.0 {
+            return;
+        }
+        let stroke = ring.width.min(inner_width / 2.0).min(inner_height / 2.0);
+        let (x, y) = (x + inset, y + inset);
+        if radius <= inset {
+            for rect in [
+                Rect {
                     x,
                     y,
-                    width,
-                    height,
-                } = node.bounds;
-                let ring = 2.0_f32.min(width / 2.0).min(height / 2.0);
-                for rect in [
-                    Rect {
-                        x,
-                        y,
-                        width,
-                        height: ring,
-                    },
-                    Rect {
-                        x,
-                        y: y + height - ring,
-                        width,
-                        height: ring,
-                    },
-                    Rect {
-                        x,
-                        y,
-                        width: ring,
-                        height,
-                    },
-                    Rect {
-                        x: x + width - ring,
-                        y,
-                        width: ring,
-                        height,
-                    },
-                ] {
-                    scene.primitives.push(Primitive::Quad {
-                        rect,
-                        color: self.theme.focus,
-                        radius: 0.0,
-                    });
-                }
+                    width: inner_width,
+                    height: stroke,
+                },
+                Rect {
+                    x,
+                    y: y + inner_height - stroke,
+                    width: inner_width,
+                    height: stroke,
+                },
+                Rect {
+                    x,
+                    y,
+                    width: stroke,
+                    height: inner_height,
+                },
+                Rect {
+                    x: x + inner_width - stroke,
+                    y,
+                    width: stroke,
+                    height: inner_height,
+                },
+            ] {
+                scene.primitives.push(Primitive::Quad {
+                    rect,
+                    color,
+                    radius: 0.0,
+                });
             }
+            return;
         }
+        // The stroke is centred on the path, so the path runs half a stroke
+        // in from the edge the ring is to fill out to.
+        let half = stroke / 2.0;
+        let rect = Rect {
+            x: x + half,
+            y: y + half,
+            width: inner_width - stroke,
+            height: inner_height - stroke,
+        };
+        scene.primitives.push(Primitive::Path {
+            path: glassmere_scene::Path::rounded_rect(rect, radius - inset - half),
+            fill: None,
+            stroke: Some(glassmere_scene::Stroke {
+                width: stroke,
+                color,
+            }),
+        });
     }
 
     /// The node's own text, placed in its box.
