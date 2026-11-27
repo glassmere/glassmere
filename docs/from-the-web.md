@@ -36,7 +36,7 @@ These are the ones to set on purpose, or the first screen looks off.
 | `border` | `border(width)`, `border_color(color)` |
 | `border-radius` | `radius` |
 | `position: absolute; left; top` | `offset(x, y)`: the node leaves the flow and sits at that place in its parent |
-| `z-index` | none: later siblings are on top, so declare in stacking order |
+| `z-index` | `Style::z_index`, among siblings; later siblings are on top at the same value |
 | `overflow: hidden` | every container clips its children to its box |
 | `overflow: auto` | `ui.scroll(style, ..)` |
 | `display: grid` | `ui.grid(style, ..)` with `columns`, `rows`, `areas` |
@@ -53,7 +53,7 @@ The bench found glassmere and Chromium in agreement on where boxes land for: ali
 
 ### What cannot be said yet
 
-No per-side border (`border` is one width on all four sides). Padding is per side on `row`, `column`, `grid` and `container` through `Style::padding_sides`, and `margin` is per side everywhere; a label, button, field, scroll view or list has the one `padding`. No `z-index`: later siblings paint on top, and a popup or overlay is the way to put something above its siblings. The `switch` role is announced as a checkbox. Anything that would change a default (the 12 px `gap`, `shrink` 0) waits for 0.2.0.
+No per-side border (`border` is one width on all four sides). Padding is per side on `row`, `column`, `grid` and `container` through `Style::padding_sides`, and `margin` is per side everywhere; a label, button, field, scroll view or list has the one `padding`. `z_index` orders siblings only: each parent is a stack of its own, and a popover or dialog is how something goes above the whole window. The `switch` role is announced as a checkbox. Anything that would change a default (the 12 px `gap`, `shrink` 0) waits for 0.2.0.
 
 Three things that were on this list are no longer: `Style::align_content` shares the room left across the lines of a wrapped row, `Ui::measure_text` and `Ui::measure_text_wrapped` size a painted control from the text the layout will measure, and `NumberOptions::field_style`, `NumberOptions::stepper_style` and `Autocomplete::style` make those fields compact. A button with an icon is a custom widget with `Role::Button` and `WidgetBuilder::on_click`.
 
