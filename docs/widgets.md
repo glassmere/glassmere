@@ -23,7 +23,7 @@ All of them are methods of `Ui`, take a value and a message constructor, and are
 
 `Ui::tooltip(text)` gives the widget declared just before it a tooltip; `Ui::tooltip_with(Tooltip::new(text).placement(..).delay(..).style(..))` sets how it behaves. `TooltipPlacement` is `Auto` (below the widget, or above it with no room), `Above`, `Below`, or `Before` and `After`, the start and end sides, which mirror in a right-to-left window. A placed tooltip flips to the opposite side when it would leave the window and is always kept inside it. `delay` replaces `TOOLTIP_DELAY` for the widget, and `style` sets the bubble's `background`, `foreground`, `padding`, `radius`, `max_width` and font. A tooltip shows after the delay when the pointer rests on the widget, or when focus arrives by keyboard and stays; it hides on leaving, blurring, Escape, or a key that changes the widget's value, and only one is shown at a time. Moving to a neighbouring tooltip soon after one has shown skips most of the wait. The text is also the control's accessible description.
 
-Collections take a model rather than data: `ListModel` answers by index and by `ItemId`, only the visible range is declared, and `ListState` and `GridState` hold selection and scroll. Rows of a list or tree are `VirtualListOptions::row_height` high unless the model returns a `RowHeights` from `ListModel::row_heights`, which gives some rows another height (`TreeModel::set_row_height` does it for a tree); scrolling, revealing, paging and the scrollbar then follow the real heights. A grid's columns can be resized, reordered, hidden and frozen through `GridColumns`, filtered per column, pinned under the body with total rows from `GridModel::footer`, and edited in place through typed cell editors whose values the model may refuse with a message.
+Collections take a model rather than data: `ListModel` answers by index and by `ItemId`, only the visible range is declared, and `ListState` and `GridState` hold selection and scroll. Rows of a list or tree are `VirtualListOptions::row_height` high unless the model returns a `RowHeights` from `ListModel::row_heights`, which gives some rows another height (`TreeModel::set_row_height` does it for a tree); scrolling, revealing, paging and the scrollbar then follow the real heights. A list is `VirtualListOptions::height` tall unless it is told to fill: `VirtualListOptions::filling()` makes it as tall as the room its parent leaves (put it in a column with a height of its own, the window-filling one for a whole page), so the bars around it need no pixel heights. It declares rows for the whole window, so resizing never leaves a gap, and scrolls to a row by the height it was laid out at. A grid's columns can be resized, reordered, hidden and frozen through `GridColumns`, filtered per column, pinned under the body with total rows from `GridModel::footer`, and edited in place through typed cell editors whose values the model may refuse with a message.
 
 A property grid with a `height` declares only the rows in view, however many properties the view names; groups, the filter and Tab to the next editor work over all of them.
 
@@ -128,6 +128,33 @@ What `WidgetInput` carries is of the last frame, because that is what there is t
 
 The defaults are roomy: a check box or a radio button has a button's padding, 12 px on every side, so one with a short label is 46 px tall. `ui.checkbox_with(Checkbox::new("Notify").style(Style::default().padding(2.0)), on, msg)` and `ui.radio_with(Radio::new("Quiet").style(..), selected, 0, msg)` take a style of your own, `ui.tabs_styled(selected, &tabs, &TabStyle::new(tab, active), on_select, content)` styles a strip (the selected tab takes `active`, so an underline or a fill is yours to give it, and `tab` can carry a hover state), and `Switch`, `Collapsible`, `Link` and `Button` take one through their builders. The short forms are unchanged.
 
+### Icons from path data
+
+A widget draws with the primitives in `CustomWidget::primitives`. For a vector icon, `Path::from_svg_data` reads the `d` attribute of an SVG path (`M L H V C S Q T A Z`, absolute and relative) with no image feature and no parser of your own, and `Path::arc_to` draws an elliptical arc as the `A` command does:
+
+```rust
+let tick = Path::from_svg_data("M4 12l5 5L20 6")?;
+let mut dot = Path::new();
+dot.move_to(Point { x: 0.0, y: 5.0 })
+    .arc_to((5.0, 5.0), 0.0, true, true, Point { x: 10.0, y: 5.0 })
+    .arc_to((5.0, 5.0), 0.0, true, true, Point { x: 0.0, y: 5.0 })
+    .close();
+```
+
+A mistake in the data is an `SvgPathError` with the byte it starts at, so parse an icon once, when the application starts, and not each frame.
+
+### Sizing it to text
+
+A widget declares its size up front, so one that holds text needs to know how big that text is. `ui.measure_text(text, &style)` asks the measurer the layout uses, so the answer is the size the text will have, and `ui.text_style()` gives the theme's plain text to start from:
+
+```rust
+let style = ui.text_style();
+let label = ui.measure_text("Save changes", &style);
+let size = Size::new(label.width + 24.0, label.height + 12.0);
+```
+
+`ui.measure_text_wrapped(text, &style, width)` is the size when the text wraps at `width`. Shaping costs time, so measure once and keep the answer while the text stays the same, as with any work in a view. `examples/layout.rs` draws a badge this way.
+
 ### Testing it
 
 The same harness the built-in controls use, with no window:
@@ -148,3 +175,23 @@ assert!(harness.snapshot_accessibility().contains("value=\"55%\""));
 - Contain other widgets. A leaf is a leaf; something that holds children is a component that declares them.
 - Measure itself against the room it is given, except by reading last frame's `WidgetInput::size`.
 - Hear drag-and-drop, IME or touch directly. Those reach a widget through the built-in controls that own them.
+
+## Compact fields
+
+`number_input` and `autocomplete` are 44 tall by default. To fit a toolbar, give them a style of their own:
+
+```rust
+let compact = Style { height: Length::Px(28.0), padding: 4.0, ..Style::button() };
+ui.number_input(
+    "Count",
+    count,
+    NumberOptions::default()
+        .field_style(compact.clone())
+        .stepper_style(Style { width: Length::Px(20.0), ..compact.clone() }),
+    on_count,
+);
+// No buttons at all; the arrow keys and the wheel still step it.
+NumberOptions::default().without_steppers();
+// The autocomplete's field.
+Autocomplete::new().style(compact);
+```

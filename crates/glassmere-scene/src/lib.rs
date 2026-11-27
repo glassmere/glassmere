@@ -15,7 +15,7 @@ use float::FloatExt as _;
 use alloc::string::String;
 use alloc::vec::Vec;
 pub use image::{Image, ImageFrame, VectorImage};
-pub use path::{Path, Segment, Stroke};
+pub use path::{Path, Segment, Stroke, SvgPathError};
 pub use text::{
     Affinity, CaretStop, FontFamily, MonospaceMeasurer, TextCluster, TextGeometry, TextLine,
     TextMeasurer, TextSpan, TextStyle, TextWrap,
