@@ -29,6 +29,14 @@ Text properties (`foreground`, `font_size`, `font_family`, `font_weight`, `itali
 
 Pointer and focus states are overrides on top of the base style: `on_hover`, `on_pressed`, `on_focused` and `on_disabled`, each taking a `Paint` (background, foreground, radius, opacity, transform). They repaint; they never lay out again.
 
+### The focus ring
+
+A focused widget outlines itself with a ring: a stroke 2 px wide in the theme's `focus` colour, drawn inside the widget's box along its rounded edge, over its background and gradient. A widget with square corners gets four bars, which land exactly on pixels.
+
+The ring follows how focus was given, as it does in a browser. A widget that takes no typed text shows it after the keyboard, Tab and the arrow keys, and not after a click or a touch; the next key that does something brings it back, and the next press hides it again. A field you type into always shows it, because it is where the text goes. A window shows it from the start, until the first press.
+
+`Style::focus_ring(FocusRing::new(3.0).color(color).inset(2.0))` sets the width, the colour and how far the ring sits inside the edge, for one widget; `Style::no_focus_ring()` draws none, for a widget that shows focus some other way. The ring stays inside the widget's box, which is what is repainted when focus moves; outside it, it would be left behind. The colour of the default ring is the theme's `focus` token.
+
 ## Theme
 
 `Theme::dark()` and `Theme::light()` are the two built in. Every colour is a named token:
