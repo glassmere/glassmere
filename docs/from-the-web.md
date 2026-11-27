@@ -10,8 +10,8 @@ These are the ones to set on purpose, or the first screen looks off.
 
 | | The web | glassmere |
 | --- | --- | --- |
-| `gap` | 0 | **12** on every container made with `Style::default()`. Set `.gap(0.0)` where you do not want it. |
-| `flex-shrink` | 1, so children shrink to fit | **0**: children keep their size and overflow. Set `.shrink(1.0)` to squeeze them, as three 100 px panels in a 200 px row do on the web. |
+| `gap` | 0 | **12** on every container made with `Style::default()`. Set `.gap(0.0)` where you do not want it, or start from `Style::web()`. |
+| `flex-shrink` | 1, so children shrink to fit | **0**: children keep their size and overflow. Set `.shrink(1.0)` to squeeze them, as three 100 px panels in a 200 px row do on the web, or start from `Style::web()`, which has CSS's `gap` 0, `shrink` 1 and stretching `align-items`. |
 | `align-items` | `stretch` | **`Start`**: children keep their own size across the axis. Set `.align_items(Align::Stretch)` to fill it. |
 | `box-sizing` | `content-box` | **border box**, as `* { box-sizing: border-box }` gives you, which most pages set. `width` includes padding and border. |
 | padding | per side | one number for all four sides |
@@ -53,7 +53,7 @@ The bench found glassmere and Chromium in agreement on where boxes land for: ali
 
 ### What cannot be said yet
 
-Padding and border are per side on `row`, `column`, `grid` and `container` through `Style::padding_sides` and `Style::border_sides`, and `margin` is per side everywhere; a label, button, field, scroll view or list has the one `padding` and the one `border`, and a per-side border is straight, whatever the `radius`. `z_index` orders siblings only: each parent is a stack of its own, and a popover or dialog is how something goes above the whole window. Anything that would change a default (the 12 px `gap`, `shrink` 0) waits for 0.2.0.
+Padding and border are per side on `row`, `column`, `grid` and `container` through `Style::padding_sides` and `Style::border_sides`, and `margin` is per side everywhere; a label, button, field, scroll view or list has the one `padding` and the one `border`, and a per-side border is straight, whatever the `radius`. `z_index` orders siblings only: each parent is a stack of its own, and a popover or dialog is how something goes above the whole window. `Style::default()` keeps the 12 px `gap` and `shrink` 0, since changing them breaks every layout and waits for 0.2.0; `Style::web()` is CSS's flex defaults for anyone who wants them now.
 
 Three things that were on this list are no longer: `Style::align_content` shares the room left across the lines of a wrapped row, `Ui::measure_text` and `Ui::measure_text_wrapped` size a painted control from the text the layout will measure, and `NumberOptions::field_style`, `NumberOptions::stepper_style` and `Autocomplete::style` make those fields compact. A button with an icon is a custom widget with `Role::Button` and `WidgetBuilder::on_click`.
 
