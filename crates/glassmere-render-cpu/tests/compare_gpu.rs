@@ -443,6 +443,90 @@ fn paths_look_the_same_on_both_renderers() {
     }
 }
 
+/// Thick lines with each cap, and a zigzag with each join, open and closed.
+fn stroke_styles() -> Scene {
+    use glassmere_scene::{LineCap, LineJoin};
+    let at = |x: f32, y: f32| Point { x, y };
+    let line = |y: f32, cap| {
+        let mut path = Path::new();
+        path.move_to(at(24.0, y)).line_to(at(104.0, y));
+        Primitive::Path {
+            path: path.with_cap(cap),
+            fill: None,
+            stroke: Some(Stroke {
+                width: 14.0,
+                color: Color::rgb(250, 204, 21),
+            }),
+        }
+    };
+    let zigzag = |x: f32, join| {
+        let mut path = Path::new();
+        path.move_to(at(x, 130.0))
+            .line_to(at(x + 24.0, 200.0))
+            .line_to(at(x + 48.0, 130.0))
+            .line_to(at(x + 72.0, 200.0));
+        Primitive::Path {
+            path: path.with_join(join),
+            fill: None,
+            stroke: Some(Stroke {
+                width: 12.0,
+                color: Color::rgb(56, 189, 248),
+            }),
+        }
+    };
+    let mut triangle = Path::new();
+    triangle
+        .move_to(at(150.0, 40.0))
+        .line_to(at(236.0, 40.0))
+        .line_to(at(193.0, 100.0))
+        .close();
+    Scene {
+        size: Size::new(SIDE as f32, SIDE as f32),
+        primitives: vec![
+            line(30.0, LineCap::Butt),
+            line(60.0, LineCap::Round),
+            line(90.0, LineCap::Square),
+            {
+                // A dotted line: dashes of no length with round ends.
+                let mut dots = Path::new();
+                dots.move_to(at(130.0, 30.0)).line_to(at(236.0, 30.0));
+                Primitive::Path {
+                    path: dots.with_cap(LineCap::Round).dashed(&[0.0, 14.0], 0.0),
+                    fill: None,
+                    stroke: Some(Stroke {
+                        width: 8.0,
+                        color: Color::rgb(250, 204, 21),
+                    }),
+                }
+            },
+            zigzag(10.0, LineJoin::Miter),
+            zigzag(90.0, LineJoin::Round),
+            zigzag(170.0, LineJoin::Bevel),
+            Primitive::Path {
+                path: triangle.with_join(LineJoin::Round),
+                fill: None,
+                stroke: Some(Stroke {
+                    width: 10.0,
+                    color: Color::rgb(244, 114, 182),
+                }),
+            },
+        ],
+    }
+}
+
+#[test]
+#[ignore = "requires a graphics adapter"]
+fn caps_and_joins_look_the_same_on_both_renderers() {
+    let clear = Color::rgb(16, 23, 34);
+    for scale in [1.0, 2.0] {
+        let scene = stroke_styles();
+        let reference = gpu(&scene, scale, clear);
+        let mut renderer = CpuRenderer::new();
+        let pixels = renderer.render([SIDE; 2], scale, &scene, clear).to_vec();
+        agree(&pixels, &reference, scale);
+    }
+}
+
 /// A large image with detail one pixel wide and a translucent half, drawn
 /// well below its size, squashed and cropped.
 fn shrunken() -> Scene {

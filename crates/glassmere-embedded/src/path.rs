@@ -7,7 +7,7 @@
 use crate::math::FloatMath;
 use crate::raster::IRect;
 use alloc::vec::Vec;
-use glassmere_scene::{Path, Point, Segment};
+use glassmere_scene::{LineCap, LineJoin, Path, Point, Segment};
 
 type Pt = [f32; 2];
 
@@ -265,8 +265,9 @@ impl PathScratch {
             return;
         }
         let mut points = core::mem::take(&mut self.points);
+        let (cap, join) = (path.cap(), path.join());
         let valid = flatten(path, offset, &mut points, &mut |points, closed| {
-            self.outline(points, closed, width / 2.0);
+            self.outline(points, closed, width / 2.0, cap, join);
         });
         self.points = points;
         if !valid {
@@ -276,7 +277,7 @@ impl PathScratch {
 
     /// A rectangle along each segment and a join at each corner. `half` is
     /// half the line's width.
-    fn outline(&mut self, points: &[Pt], closed: bool, half: f32) {
+    fn outline(&mut self, points: &[Pt], closed: bool, half: f32, cap: LineCap, join: LineJoin) {
         // A closed line that comes back to its first point has no segment there.
         let line = match points {
             [first, .., last] if closed && first == last => &points[..points.len() - 1],
@@ -320,15 +321,54 @@ impl PathScratch {
             let (p0, p1) = ([v[0] + o0[0], v[1] + o0[1]], [v[0] + o1[0], v[1] + o1[1]]);
             // The tip of the mitre is `half / cos(turn / 2)` from the corner,
             // and a mitre is cut when that is over the limit.
-            if 1.0 + cosine >= 2.0 / (MITER_LIMIT * MITER_LIMIT) {
+            if join == LineJoin::Miter && 1.0 + cosine >= 2.0 / (MITER_LIMIT * MITER_LIMIT) {
                 let reach = 1.0 / (1.0 + cosine);
                 let tip = [
                     v[0] + (o0[0] + o1[0]) * reach,
                     v[1] + (o0[1] + o1[1]) * reach,
                 ];
                 self.solid_polygon(&[v, p0, tip, p1]);
+            } else if join == LineJoin::Round {
+                // A fan from the corner along the arc between the two edges.
+                let turned =
+                    libm::atan2f(o0[0] * o1[1] - o0[1] * o1[0], o0[0] * o1[0] + o0[1] * o1[1]);
+                let mut fan = alloc::vec![v];
+                arc(&mut fan, v, o0, turned);
+                self.solid_polygon(&fan);
             } else {
                 self.solid_polygon(&[v, p0, p1]);
+            }
+        }
+        // The ends of a line that is not closed. The first segment's end is
+        // its start, seen the other way round.
+        if !closed && cap != LineCap::Butt {
+            let (first, last) = (direction(0), direction(segments - 1));
+            let reversed = [-first[0], -first[1]];
+            self.cap(line[0], reversed, half, cap);
+            self.cap(line[count - 1], last, half, cap);
+        }
+    }
+
+    /// The cap at `end`, a point a line with unit direction `d` runs out at.
+    fn cap(&mut self, end: Pt, d: Pt, half: f32, cap: LineCap) {
+        let n = [-d[1] * half, d[0] * half];
+        match cap {
+            LineCap::Butt => {}
+            LineCap::Square => {
+                let past = [d[0] * half, d[1] * half];
+                self.solid_polygon(&[
+                    [end[0] + n[0], end[1] + n[1]],
+                    [end[0] + n[0] + past[0], end[1] + n[1] + past[1]],
+                    [end[0] - n[0] + past[0], end[1] - n[1] + past[1]],
+                    [end[0] - n[0], end[1] - n[1]],
+                ]);
+            }
+            LineCap::Round => {
+                // The half disc from one side of the line, round the way it
+                // runs, to the other.
+                let mut fan = Vec::new();
+                arc(&mut fan, end, n, -core::f32::consts::PI);
+                self.solid_polygon(&fan);
             }
         }
     }
@@ -368,6 +408,24 @@ impl PathScratch {
             }
             row(y, &self.cover);
         }
+    }
+}
+
+/// Pushes the points of the arc about `centre` that starts at `centre + from`
+/// and turns by `sweep` radians, both ends included.
+fn arc(points: &mut Vec<Pt>, centre: Pt, from: Pt, sweep: f32) {
+    // Eight steps to a half turn is within a pixel of a circle for anything a
+    // small display draws, and costs nothing on a big one.
+    let pieces = (libm::fabsf(sweep) / (core::f32::consts::PI / 8.0))
+        .ceilf()
+        .max(1.0) as usize;
+    for piece in 0..=pieces {
+        let angle = sweep * piece as f32 / pieces as f32;
+        let (sin, cos) = (libm::sinf(angle), libm::cosf(angle));
+        points.push([
+            centre[0] + from[0] * cos - from[1] * sin,
+            centre[1] + from[0] * sin + from[1] * cos,
+        ]);
     }
 }
 
@@ -518,6 +576,77 @@ mod tests {
         assert_eq!(rows[11][11], 255);
         // And the inner one is not.
         assert_eq!(rows[0][0], 0);
+    }
+
+    /// The area a stroke of `path` covers, in pixels, from its coverage.
+    fn stroked_area(path: &Path, width: f32) -> f32 {
+        let mut scratch = PathScratch::default();
+        scratch.stroke(path, [0.0, 0.0], width);
+        let (_, rows) = coverage(&mut scratch);
+        rows.iter().flatten().map(|&c| f32::from(c) / 255.0).sum()
+    }
+
+    #[test]
+    fn caps_finish_an_open_line_by_their_shape() {
+        let line = || {
+            let mut line = Path::new();
+            line.move_to(point(10.0, 10.0)).line_to(point(30.0, 10.0));
+            line
+        };
+        let butt = stroked_area(&line(), 4.0);
+        let square = stroked_area(&line().with_cap(LineCap::Square), 4.0);
+        let round = stroked_area(&line().with_cap(LineCap::Round), 4.0);
+        // 20 by 4; half the width longer at both ends; a half circle at each.
+        assert!((butt - 80.0).abs() < 1.0, "{butt}");
+        assert!((square - 96.0).abs() < 1.0, "{square}");
+        assert!(
+            (round - (80.0 + core::f32::consts::PI * 4.0)).abs() < 1.5,
+            "{round}"
+        );
+        // And the same at the start: a line drawn the other way is the same shape.
+        let mut back = Path::new();
+        back.move_to(point(30.0, 10.0)).line_to(point(10.0, 10.0));
+        let back = stroked_area(&back.with_cap(LineCap::Round), 4.0);
+        assert!((back - round).abs() < 0.5, "{back} against {round}");
+    }
+
+    #[test]
+    fn joins_finish_a_corner_by_their_shape() {
+        let square = || {
+            let mut path = Path::new();
+            path.move_to(point(2.0, 2.0))
+                .line_to(point(12.0, 2.0))
+                .line_to(point(12.0, 12.0))
+                .line_to(point(2.0, 12.0))
+                .close();
+            path
+        };
+        let miter = stroked_area(&square(), 2.0);
+        let bevel = stroked_area(&square().with_join(LineJoin::Bevel), 2.0);
+        let round = stroked_area(&square().with_join(LineJoin::Round), 2.0);
+        // The band between 12 by 12 and 8 by 8; a bevel takes half a square off
+        // each corner and a round join what is outside a quarter circle.
+        assert!((miter - 80.0).abs() < 1.0, "{miter}");
+        assert!((bevel - 78.0).abs() < 1.0, "{bevel}");
+        let expected = 80.0 - 4.0 * (1.0 - core::f32::consts::FRAC_PI_4);
+        assert!((round - expected).abs() < 1.0, "{round}");
+        assert!(bevel < round && round < miter);
+    }
+
+    #[test]
+    fn a_round_cap_makes_a_dot_of_a_short_line() {
+        // A line as long as it is wide, with round caps, is a stadium: wider
+        // than a butt-capped square of the same length, and inside a box of
+        // its width plus the caps.
+        let mut dash = Path::new();
+        dash.move_to(point(10.0, 10.0)).line_to(point(14.0, 10.0));
+        let square = stroked_area(&dash, 4.0);
+        let stadium = stroked_area(&dash.with_cap(LineCap::Round), 4.0);
+        assert!((square - 16.0).abs() < 0.5, "{square}");
+        assert!(
+            (stadium - (16.0 + core::f32::consts::PI * 4.0)).abs() < 1.5,
+            "{stadium}"
+        );
     }
 
     #[test]

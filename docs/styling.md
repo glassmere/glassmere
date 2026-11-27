@@ -159,3 +159,12 @@ A window runs left to right or right to left according to `AppOptions::direction
 
 A box cuts what is inside it at its edge, so a child larger than its parent shows only where the parent is, and the cut part cannot be clicked. `Style::unclipped(true)` (stylesheet `overflow: visible`) lifts that for a row, column, container or grid: its children are drawn and hit past its edge, still under the clip of whatever clips above it. A scroll view, a list, a tab strip, a popup and a popover always clip. While a window has an unclipped node, finding what is under the pointer searches the whole tree instead of skipping what a clip rules out, so use it for a few boxes, not for every one. A group opacity set on the unclipped node composites what hangs over it too, in an offscreen layer as big as the window, which costs more than a layer of the box; a transform moves it with the box (tested for a translation).
 
+## Pinning to a corner
+
+`Style::offset(x, y)` takes a node out of flow and puts its top-left corner at that place in its parent. `Style::offset_end(right, bottom)` does the same from the bottom-right corner, so a badge or a floating button stays in the corner whatever size its parent has. With both, the node is pinned on both sides, and one with no `width` or `height` stretches between them, as `left`, `right`, `top` and `bottom` together do in CSS. The edges are physical: the right edge is on the right in a right-to-left window too. The parent needs a size of its own, as the node no longer gives it one.
+
+## Stacking
+
+Overlapping siblings (nodes placed with `Style::offset`, or pushed over each other by a negative `margin`) are painted in the order they are declared, the last on top, and a click reaches the one on top. `Style::z_index(n)` (stylesheet `z-index: n`) changes that: a higher value is painted later and hit first, a lower one, negative or not, goes under. Siblings with the same value keep their declaration order. Layout and the Tab order still follow the declaration order.
+
+It orders the children of one parent. Each parent is a stack of its own, so a child never goes over or under a node outside its parent. To put something above the whole window, use a `popover` or a `dialog`.

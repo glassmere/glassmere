@@ -562,7 +562,30 @@ impl Context {
             .filter(|parent| self.nodes[parent].kind == Kind::TabList)
             .map(|_| node.clip)
             .filter(|clip| *clip != node.bounds);
-        if node.hidden || strip_clip.is_some_and(|clip| clip.width <= 0.0 || clip.height <= 0.0) {
+        // Nothing of a node shows where its clip is empty, and every node
+        // clips its children to its own box, so nothing of what is inside it
+        // does either: a row scrolled out of a long list is not painted. What
+        // can draw outside its clip is kept: a popup, which is clipped to the
+        // window, a node that is animating or has a transform, which can move
+        // into view, and a shadow, which reaches past its box.
+        let culled = {
+            let node = &self.nodes[&id];
+            (node.clip.width <= 0.0 || node.clip.height <= 0.0)
+                // Clipped away by an ancestor, not empty of its own accord.
+                && node.bounds.width > 0.0
+                && node.bounds.height > 0.0
+                && !matches!(node.kind, Kind::Popup | Kind::Popover)
+                && node.anim.is_none()
+                && node.style.transform == crate::animation::Transform::IDENTITY
+                && node.style.shadow.is_none()
+                && node.style.opacity >= 1.0
+                // What is inside an unclipped node can hang over its box into view.
+                && !node.unclipped()
+        };
+        if culled
+            || node.hidden
+            || strip_clip.is_some_and(|clip| clip.width <= 0.0 || clip.height <= 0.0)
+        {
             let chunk = PaintChunk::new(Vec::new(), 0, Vec::new()).put_in(spare);
             self.nodes.get_mut(&id).unwrap().paint_cache = Some(chunk.clone());
             return chunk;
@@ -698,6 +721,11 @@ impl Context {
         }
         if strip_clip.is_some() {
             scene.primitives.push(Primitive::PopClip);
+        }
+        let mut children = children;
+        if self.z_count > 0 {
+            // Stable: siblings that tie keep the order they were declared in.
+            children.sort_by_key(|child| self.nodes[child].style.z_index);
         }
         let children = children
             .into_iter()
@@ -1128,9 +1156,19 @@ impl Context {
         if prune && (clip.width == 0.0 || clip.height == 0.0 || at.x < clip.x || at.y < clip.y) {
             return None;
         }
-        for child in node.children.iter().rev() {
-            if let Some(found) = self.last_at(*child, at, prune, wanted) {
-                return Some(found);
+        if self.z_count > 0 {
+            let mut stacked = node.children.clone();
+            stacked.sort_by_key(|child| self.nodes[child].style.z_index);
+            for child in stacked.iter().rev() {
+                if let Some(found) = self.last_at(*child, at, prune, wanted) {
+                    return Some(found);
+                }
+            }
+        } else {
+            for child in node.children.iter().rev() {
+                if let Some(found) = self.last_at(*child, at, prune, wanted) {
+                    return Some(found);
+                }
             }
         }
         (clip.contains(at) && wanted(id, node)).then_some(id)

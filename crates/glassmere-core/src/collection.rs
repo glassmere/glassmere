@@ -238,6 +238,15 @@ pub struct VirtualListOptions {
     pub overscan: usize,
     /// Width, colors and text styling. Height, padding and gap are managed by the list.
     pub style: Style,
+    /// Fill the room the parent leaves instead of being `height` tall: the
+    /// list grows and shrinks with its parent, as a flex child with `grow` 1
+    /// and a minimum height of 0 does, and `height` is only what it assumes
+    /// until it has been laid out once. The parent needs a height of its own
+    /// (a fixed one, or a window-filling column), as the list no longer gives
+    /// it one. The list declares as many rows as the window can show, so
+    /// resizing it never leaves a gap, and uses the height it was laid out
+    /// at for scrolling to a row and for Page Up and Page Down.
+    pub fill: bool,
 }
 impl Default for VirtualListOptions {
     fn default() -> Self {
@@ -250,6 +259,7 @@ impl Default for VirtualListOptions {
                 width: Length::Percent(1.0),
                 ..Style::default()
             },
+            fill: false,
         }
     }
 }
@@ -365,6 +375,12 @@ impl CollectionInput {
 }
 
 impl VirtualListOptions {
+    /// Fills the room its parent leaves; see [`VirtualListOptions::fill`].
+    pub fn filling(mut self) -> Self {
+        self.fill = true;
+        self
+    }
+
     /// Why rows `extent` high in all cannot be shown with these options, if
     /// they cannot.
     pub(crate) fn check(&self, extent: f64) -> Result<(), &'static str> {

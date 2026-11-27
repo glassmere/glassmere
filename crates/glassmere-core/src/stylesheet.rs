@@ -702,6 +702,12 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         "exit-opacity" | "exit-translate" | "exit-scale" | "exit-rotate" | "exit-transition" => {
             effect(&mut style.exit, &key[5..], value)?;
         }
+        "z-index" => {
+            style.z_index = value
+                .trim()
+                .parse::<i32>()
+                .map_err(|_| format!("z-index is a whole number, got `{value}`"))?;
+        }
         "padding" => style.padding = number(value)?,
         "gap" => {
             style.gap = number(value)?;
