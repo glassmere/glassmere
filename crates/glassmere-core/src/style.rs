@@ -6,7 +6,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
-use glassmere_scene::{Color, FontFamily, TextStyle, TextWrap};
+use glassmere_scene::{Color, FontFamily, TextAlign, TextStyle, TextWrap};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Length {
@@ -316,6 +316,27 @@ pub struct Style {
     pub font_family: Option<FontFamily>,
     pub font_weight: Option<u16>,
     pub italic: Option<bool>,
+    /// Where the lines of wrapped text sit between the edges of the box, and
+    /// where a single line sits in a box wider than it: `Start`, `Center`,
+    /// `End` or `Justify`. Inherited by what is inside, like the font. `None`
+    /// takes the parent's, and at the top `Start`, where text is unless
+    /// `justify_content` places it.
+    pub text_align: Option<TextAlign>,
+    /// The height of a line of text as a multiple of the font size, `1.4`
+    /// unless set. Inherited by what is inside, like the font.
+    pub line_height: Option<f32>,
+    /// Extra advance after every character in pixels, `0` unless set; negative
+    /// tightens. Inherited by what is inside, like the font.
+    pub letter_spacing: Option<f32>,
+    /// The node and everything inside it keeps its place in the layout but is
+    /// not drawn, hit, focused or reported to accessibility, like CSS
+    /// `visibility: hidden`. Unlike CSS a hidden subtree cannot show a child.
+    pub hidden: bool,
+    /// What is inside is not cut off at the edge of this box: a badge or a
+    /// shadow-like decoration can hang over the corner, as with CSS
+    /// `overflow: visible`. It still lies under the clip of the nearest
+    /// ancestor that clips, and a scroll view, a list or a popup always clips.
+    pub unclipped: bool,
     pub wrap: TextWrap,
     pub states: Option<Box<StateStyles>>,
     /// Group opacity of the node and its subtree, 0..=1.
@@ -336,6 +357,25 @@ pub struct Style {
     /// Takes the node out of flow and places its top-left corner at this
     /// offset from the parent's top-left corner.
     pub offset: Option<(f32, f32)>,
+    /// Takes the node out of flow and places its bottom-right corner at this
+    /// distance (right, bottom) from the parent's bottom-right corner, as
+    /// `position: absolute; right; bottom` does, so a badge or a floating
+    /// button stays in the corner whatever size the parent is. With `offset`
+    /// as well the node is pinned on both sides, and a node with no width or
+    /// height stretches between them. The edges are physical: the right edge
+    /// stays on the right in a right-to-left window.
+    pub offset_end: Option<(f32, f32)>,
+    /// Where the node stands among its siblings when they overlap, as
+    /// `z-index` does on a flex item: a higher value is painted later, so over
+    /// the lower ones, and is hit first. Siblings with the same value keep the
+    /// order they were declared in, and 0 is where a node is unless it says
+    /// otherwise. It orders siblings only, so a child never leaves its parent's
+    /// place in the stack; use an overlay (`popover`, `dialog`) to put
+    /// something above the whole window. Layout and the focus order still
+    /// follow the declaration order.
+    pub z_index: i32,
+    /// How the node shows keyboard focus; `None` takes the theme's ring.
+    pub focus_ring: Option<FocusRing>,
     /// Inherited like text properties; `None` takes the parent's direction.
     pub direction: Option<Direction>,
     /// Forces the direction a paragraph starts in, whatever its first strong
@@ -383,6 +423,11 @@ impl Default for Style {
             font_family: None,
             font_weight: None,
             italic: None,
+            text_align: None,
+            line_height: None,
+            letter_spacing: None,
+            hidden: false,
+            unclipped: false,
             wrap: TextWrap::None,
             states: None,
             opacity: 1.0,
@@ -393,8 +438,56 @@ impl Default for Style {
             exit: None,
             animation: None,
             offset: None,
+            offset_end: None,
+            z_index: 0,
+            focus_ring: None,
             direction: None,
         }
+    }
+}
+
+/// The outline a node draws while it has keyboard focus. It is a stroked
+/// rounded rectangle that follows the node's radius and lies inside the
+/// node's box, so it is painted and repainted with the node.
+///
+/// By default a node shows it after keyboard navigation and not after a
+/// click, as a browser does, except in widgets that take typed text, which
+/// always show it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FocusRing {
+    /// Stroke width in logical pixels. Zero or less draws no ring.
+    pub width: f32,
+    /// The ring's colour; `None` takes the theme's `focus` colour.
+    pub color: Option<Color>,
+    /// The gap between the node's edge and the ring, inside the node.
+    pub inset: f32,
+}
+
+impl FocusRing {
+    /// No ring at all.
+    pub const NONE: Self = Self {
+        width: 0.0,
+        color: None,
+        inset: 0.0,
+    };
+
+    /// The theme's colour, flush with the node's edge, `width` thick.
+    pub const fn new(width: f32) -> Self {
+        Self {
+            width,
+            color: None,
+            inset: 0.0,
+        }
+    }
+
+    pub const fn color(mut self, color: Color) -> Self {
+        self.color = Some(color);
+        self
+    }
+
+    pub const fn inset(mut self, inset: f32) -> Self {
+        self.inset = inset;
+        self
     }
 }
 
@@ -522,6 +615,27 @@ impl Style {
         self
     }
 
+    /// A container that lays its children out as `display: flex` does in CSS,
+    /// for someone who knows how that behaves: no gap between children
+    /// (`gap` 0, where the default is 12), children that shrink when they do
+    /// not fit (`shrink` 1, where the default lets them overflow), and
+    /// children that stretch across the other axis (`align_items` stretch,
+    /// where the default keeps their own size). Everything else is the default,
+    /// and is set with the same methods:
+    /// `Style::web().width(Length::Px(200.0)).padding(8.0)`.
+    ///
+    /// The `shrink` is the container's own, as a child of a flex container
+    /// has `flex-shrink: 1` in CSS: give it to each child that should give way
+    /// (`child.shrink(1.0)`), or build the children from `Style::web()` too.
+    pub fn web() -> Self {
+        Self {
+            gap: 0.0,
+            shrink: 1.0,
+            align_items: Align::Stretch,
+            ..Self::default()
+        }
+    }
+
     /// Themed control surface with the default control padding and radius.
     pub fn button() -> Self {
         Self {
@@ -586,8 +700,26 @@ impl Style {
     setter!(exit, exit, Effect, some);
     setter!(animation, animation, Animation, some);
     setter!(direction, direction, Direction, some);
+    /// See [`Style::offset_end`].
+    pub fn offset_end(mut self, right: f32, bottom: f32) -> Self {
+        self.offset_end = Some((right, bottom));
+        self
+    }
+    setter!(z_index, z_index, i32);
+
     pub fn offset(mut self, x: f32, y: f32) -> Self {
         self.offset = Some((x, y));
+        self
+    }
+    /// Draws this node's focus ring as `ring` says instead of the theme's.
+    pub fn focus_ring(mut self, ring: FocusRing) -> Self {
+        self.focus_ring = Some(ring);
+        self
+    }
+    /// Draws no focus ring on this node. Whatever the node does when it has
+    /// focus, such as a text caret or a highlighted row, is still drawn.
+    pub fn no_focus_ring(mut self) -> Self {
+        self.focus_ring = Some(FocusRing::NONE);
         self
     }
     setter!(background, background, Color, some);
@@ -596,6 +728,11 @@ impl Style {
     setter!(font_family, font_family, FontFamily, some);
     setter!(font_weight, font_weight, u16, some);
     setter!(italic, italic, bool, some);
+    setter!(text_align, text_align, TextAlign, some);
+    setter!(hidden, hidden, bool);
+    setter!(unclipped, unclipped, bool);
+    setter!(line_height, line_height, f32, some);
+    setter!(letter_spacing, letter_spacing, f32, some);
 
     fn state(mut self, apply: impl FnOnce(&mut StateStyles)) -> Self {
         apply(self.states.get_or_insert_with(Default::default));
@@ -625,6 +762,9 @@ impl Style {
                 .unwrap_or_else(|| inherited.font_family.clone()),
             font_weight: self.font_weight.unwrap_or(inherited.font_weight),
             italic: self.italic.unwrap_or(inherited.italic),
+            align: self.text_align.unwrap_or(inherited.align),
+            line_height: self.line_height.unwrap_or(inherited.line_height),
+            letter_spacing: self.letter_spacing.unwrap_or(inherited.letter_spacing),
             direction: self.direction.unwrap_or(inherited.direction),
             base_direction: self.base_direction.or(inherited.base_direction),
         }
@@ -792,17 +932,28 @@ impl Style {
                 (None, Some(area)) => placement(area.row, area.row_span),
                 (None, None) => Default::default(),
             },
-            position: if self.offset.is_some() {
+            position: if self.offset.is_some() || self.offset_end.is_some() {
                 Position::Absolute
             } else {
                 Position::Relative
             },
-            inset: self.offset.map_or_else(Rect::auto, |(x, y)| Rect {
-                left: LengthPercentageAuto::length(x),
-                top: LengthPercentageAuto::length(y),
-                right: LengthPercentageAuto::auto(),
-                bottom: LengthPercentageAuto::auto(),
-            }),
+            inset: {
+                let (left, top) = self
+                    .offset
+                    .map_or((None, None), |(x, y)| (Some(x), Some(y)));
+                let (right, bottom) = self
+                    .offset_end
+                    .map_or((None, None), |(x, y)| (Some(x), Some(y)));
+                let side = |value: Option<f32>| {
+                    value.map_or_else(LengthPercentageAuto::auto, LengthPercentageAuto::length)
+                };
+                Rect {
+                    left: side(left),
+                    top: side(top),
+                    right: side(right),
+                    bottom: side(bottom),
+                }
+            },
             ..taffy::Style::default()
         }
     }
@@ -836,6 +987,9 @@ pub struct ResolvedText {
     pub font_family: FontFamily,
     pub font_weight: u16,
     pub italic: bool,
+    pub align: TextAlign,
+    pub line_height: f32,
+    pub letter_spacing: f32,
     pub direction: Direction,
     /// A paragraph direction the application forced.
     pub base_direction: Option<Direction>,
@@ -849,6 +1003,9 @@ impl ResolvedText {
             font_family: theme.font_family.clone(),
             font_weight: 400,
             italic: false,
+            align: TextAlign::Start,
+            line_height: 1.4,
+            letter_spacing: 0.0,
             direction: Direction::Ltr,
             base_direction: None,
         }
@@ -864,6 +1021,9 @@ impl ResolvedText {
             family: self.font_family.clone(),
             weight: self.font_weight,
             italic: self.italic,
+            align: self.align,
+            line_height: self.line_height,
+            letter_spacing: self.letter_spacing,
             wrap,
             rtl: self.rtl(),
             base: self.base_direction.map(|base| base == Direction::Rtl),

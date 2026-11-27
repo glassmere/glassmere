@@ -444,11 +444,16 @@ fn a_popup_opened_again_where_it_was_is_painted_as_it_was() {
 #[test]
 fn a_scene_that_shrank_does_not_keep_the_room_of_the_big_one() {
     let mut context = Context::new();
-    frame(&mut context, |ui| page(ui, Page { rows: 400, ..PLAIN }));
+    // A window as tall as the page: what the window clips away is not drawn,
+    // and the scene has to be big for this to test anything.
+    let frame = |context: &mut Context, view: &dyn Fn(&mut Ui<'_>)| {
+        context.run(Size::new(480.0, 40_000.0), &mut MonospaceMeasurer, view)
+    };
+    frame(&mut context, &|ui| page(ui, Page { rows: 400, ..PLAIN }));
     let big = context.scene().primitives.len();
     assert!(big > 4096, "{big} primitives");
     // A scene as big as the one before may keep all the room it has.
-    frame(&mut context, |ui| {
+    frame(&mut context, &|ui| {
         page(
             ui,
             Page {
@@ -461,7 +466,7 @@ fn a_scene_that_shrank_does_not_keep_the_room_of_the_big_one() {
     assert_eq!(context.scene().primitives.len(), big);
 
     for rows in [60, 3, 0] {
-        frame(&mut context, |ui| page(ui, Page { rows, ..PLAIN }));
+        frame(&mut context, &|ui| page(ui, Page { rows, ..PLAIN }));
         let primitives = &context.scene().primitives;
         assert!(
             primitives.capacity() <= 4 * primitives.len().max(256),

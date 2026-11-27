@@ -6,6 +6,42 @@ use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
 
+/// The size of the caption buttons [`Ui::window_buttons_with`] draws. The
+/// default is the system's: 46 wide and 30 tall.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WindowButtons {
+    pub(crate) width: f32,
+    pub(crate) height: crate::Length,
+}
+
+impl WindowButtons {
+    pub fn new() -> Self {
+        Self {
+            width: caption::WIDTH,
+            height: crate::Length::Px(caption::HEIGHT),
+        }
+    }
+
+    /// How wide each of the three buttons is, in logical pixels.
+    pub fn width(mut self, width: f32) -> Self {
+        self.width = width;
+        self
+    }
+
+    /// How tall each button is. `Length::Percent(1.0)` is as tall as the
+    /// title bar they are in, which needs a height of its own.
+    pub fn height(mut self, height: crate::Length) -> Self {
+        self.height = height;
+        self
+    }
+}
+
+impl Default for WindowButtons {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a, M: 'static> Ui<'a, M> {
     /// The window's native menu bar. Declaring the same menu again changes
     /// nothing, so a view may set it every frame. Choosing an item sends
@@ -71,6 +107,20 @@ impl<'a, M: 'static> Ui<'a, M> {
     /// it out.
     #[track_caller]
     pub fn window_buttons(&mut self, on_command: impl Fn(crate::WindowCommand) -> M) {
+        self.window_buttons_with(WindowButtons::new(), on_command);
+    }
+
+    /// [`window_buttons`](Self::window_buttons) with a size of its own, for a
+    /// title bar taller or wider than the system's 46 by 30: the buttons are
+    /// `WindowButtons::width` wide and as tall as `WindowButtons::height`, so
+    /// `.height(Length::Percent(1.0))` makes each fill the title bar and its
+    /// hover reaches the top and the bottom.
+    #[track_caller]
+    pub fn window_buttons_with(
+        &mut self,
+        buttons: WindowButtons,
+        on_command: impl Fn(crate::WindowCommand) -> M,
+    ) {
         let maximized = self.window().maximized;
         let foreground = self.theme().text;
         // A wash of the text colour, which is how a desktop marks a caption
@@ -78,7 +128,10 @@ impl<'a, M: 'static> Ui<'a, M> {
         let wash = |alpha: u8| Color(foreground.0, foreground.1, foreground.2, alpha);
         let (hover, pressed) = (wash(caption::WASH_HOVER), wash(caption::WASH_PRESSED));
         // Side by side with nothing between them, as the system's are.
-        self.row(Style::default().gap(0.0), |ui| {
+        // The row is as tall as the buttons, so that a height of the title
+        // bar's own (a percentage) reaches them through it.
+        let row = Style::default().gap(0.0).height(buttons.height);
+        self.row(row, |ui| {
             for (key, glyph, name, command) in [
                 (
                     "minimize",
@@ -116,8 +169,8 @@ impl<'a, M: 'static> Ui<'a, M> {
                     ..crate::Paint::default()
                 };
                 let style = Style {
-                    width: crate::Length::Px(caption::WIDTH),
-                    height: crate::Length::Px(caption::HEIGHT),
+                    width: crate::Length::Px(buttons.width),
+                    height: buttons.height,
                     // The glyph sits in the middle of the box, which is the
                     // size the shell's own buttons are.
                     justify_content: crate::Justify::Center,
