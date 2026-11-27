@@ -1052,6 +1052,7 @@ glassmere-core   fn Style::shadow(mut self, shadow: Shadow) -> Self
 glassmere-core   fn Style::shrink(mut self, value: f32) -> Self
 glassmere-core   fn Style::transform(mut self, value: Transform) -> Self
 glassmere-core   fn Style::transition(mut self, value: Transition) -> Self
+glassmere-core   fn Style::web() -> Self
 glassmere-core   fn Style::width(mut self, value: Length) -> Self
 glassmere-core   fn Style::wrap(mut self, value: TextWrap) -> Self
 glassmere-core   fn StyleSheet::apply_to(&self, current: &Theme) -> Theme

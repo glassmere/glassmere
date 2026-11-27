@@ -134,3 +134,7 @@ There is no mipmap chain, but a photo drawn at under half its natural size is bo
 ## Direction
 
 A window runs left to right or right to left according to `AppOptions::direction` (`DirectionChoice::Auto` follows the OS locale). `Style::direction` overrides it for a subtree: layout mirrors, text aligns to the end side, and directional internals follow. Physical values stay physical: `offset`, transforms, slide effects, floating dock rectangles and `DockZone::Left` and `Right` mean the same pixels in both directions. `Style::base_direction` forces the base direction of a text paragraph, in labels and in text fields, text areas, code editors and rich editors (every line or block takes it; a text field and a rich editor align to it, a text area and a code editor only order by it).
+
+## Coming from CSS
+
+glassmere's defaults are not CSS's: `Style::default()` has a `gap` of 12, children that do not shrink (`shrink` 0) and that keep their own size across the container (`align_items` start). `Style::web()` is a style with CSS's flex defaults instead: no gap, `shrink` 1 and `align_items` stretch. `ui.row(Style::web().width(Length::Px(200.0)), |ui| ..)` lays three 100 px children out 66.67 px each, touching, as a browser does. Give a child `Style::web()` or `.shrink(1.0)` for it to give way, since shrinking is a property of the child. Changing what `Style::default()` is waits for 0.2.0.

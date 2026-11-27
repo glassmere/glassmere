@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- `Style::web()`: a style with the flex defaults of CSS, for someone who knows how those behave: `gap` 0 (the default is 12), `shrink` 1 (the default lets children overflow) and `align_items` stretch (the default keeps a child's own size across). Everything else is the default and is set with the usual methods. `Style::default()` is unchanged; changing its gap and shrink waits for 0.2.0.
 ## [0.1.8] - 2026-11-23
 
 ### Added
