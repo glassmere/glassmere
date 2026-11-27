@@ -59,6 +59,7 @@ impl Context {
         self.bound_new.borrow_mut().clear();
         self.view_stale = false;
         self.view_stale_handled = false;
+        self.reading_scroll.set(false);
         self.mark_awaiting(clicks.iter().chain(updates.keys()).copied().collect());
         self.skipped.set(0);
         self.declared.set(0);
@@ -66,8 +67,15 @@ impl Context {
         self.families.borrow_mut().clear();
         self.nodes.get_mut(&self.root).unwrap().resolved = self.root_text();
         let panics = self.misuse_panics();
+        // The view measures through the same measurer the layout will use. It
+        // is lent for the view alone: reconcile takes it back afterwards.
+        let probe = core::cell::RefCell::new(&mut *measurer);
+        let measure = |text: &str, style: &glassmere_scene::TextStyle, width: Option<f32>| {
+            probe.borrow_mut().measure_styled(text, style, width)
+        };
         let mut ui = Ui {
             context: self,
+            measure: &measure,
             parent: Some(self.root),
             pending_key: None,
             clicks: &mut clicks,
@@ -110,6 +118,7 @@ impl Context {
             .map(crate::Store::graph)
             .unwrap_or_default();
         self.redraw_requested = redraw;
+        self.view_reads_scroll = self.reading_scroll.get();
         self.apply_outbox(host);
         let size = Size::new(size.width.max(0.0), size.height.max(0.0));
         self.resize_root(size);

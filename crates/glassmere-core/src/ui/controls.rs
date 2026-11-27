@@ -262,7 +262,11 @@ impl<'a, M: 'static> Ui<'a, M> {
     ) -> Response<'a> {
         let key = self.next_key();
         let response = self.radio_shown(key, label.into(), selected == option);
-        self.set_handler(Handler::Message(on_select(option)));
+        // Choosing what is already chosen changes nothing, so it sends
+        // nothing, as a web page's `change` and a Qt `toggled` do not either.
+        if selected != option {
+            self.set_handler(Handler::Message(on_select(option)));
+        }
         response
     }
 
