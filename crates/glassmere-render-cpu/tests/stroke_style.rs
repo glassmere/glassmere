@@ -20,7 +20,9 @@ fn ink(path: Path, width: f32) -> f32 {
         .render([SIDE as u32; 2], 1.0, &scene, Color::WHITE)
         .to_vec();
     pixels
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|pixel| (255.0 - f32::from(pixel[0])) / 255.0)
         .sum()
 }
