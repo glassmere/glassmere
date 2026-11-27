@@ -73,3 +73,24 @@ fn joins_finish_a_corner_by_their_shape() {
         "{bevel} < {round} < {miter}"
     );
 }
+
+#[test]
+fn a_dotted_line_is_a_row_of_dots() {
+    // A zero-length dash with round caps: dots 10 apart along 41 px, five of
+    // them, each a disc 8 across.
+    let mut long = Path::new();
+    long.move_to(Point { x: 10.0, y: 32.0 })
+        .line_to(Point { x: 51.0, y: 32.0 });
+    let dots = ink(long.with_cap(LineCap::Round).dashed(&[0.0, 10.0], 0.0), 8.0);
+    let disc = std::f32::consts::PI * 16.0;
+    assert!(
+        dots > 5.0 * disc * 0.85 && dots < 5.0 * disc * 1.02,
+        "{dots} against five discs of {disc}"
+    );
+    // The same dashes with a butt cap draw nothing.
+    let mut again = Path::new();
+    again
+        .move_to(Point { x: 10.0, y: 32.0 })
+        .line_to(Point { x: 51.0, y: 32.0 });
+    assert!(ink(again.dashed(&[0.0, 10.0], 0.0), 8.0) < 1.0);
+}

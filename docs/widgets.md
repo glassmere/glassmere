@@ -124,9 +124,11 @@ What `WidgetInput` carries is of the last frame, because that is what there is t
 - **Style** is `ui.theme()` for the tokens, `ui.class(..)` for a stylesheet class, and the `style` argument for the node itself, which lays out like any container.
 - **Paint** is a list of primitives in the widget's own coordinates: rounded rectangles, gradients, shadows, text, images, clips and layers. Clips and layers must balance.
 
-### Dashed lines
+### Dashed and dotted lines, caps and joins
 
-`Stroke` is a width and a colour, with the stroke's own mitred corners and square ends. For a dashed line or outline, cut the path first: `path.dashed(&[6.0, 4.0], phase)` returns the path as dashes (a dash of 6, a gap of 4; one entry is read twice over, as `stroke-dasharray` does) to stroke without a fill. Changing `phase` frame by frame makes the dashes march. Round caps and joins are not available.
+`Stroke` is a width and a colour. How the ends and corners of the line are finished belongs to the path: `path.with_cap(LineCap::Round)` (`Butt` is the default, `Square` goes half the width past the end) and `path.with_join(LineJoin::Round)` (`Miter` is the default, up to four widths long and bevelled beyond that; `Bevel` always cuts across). The CPU, GPU and embedded renderers all draw them.
+
+For a dashed line, cut the path first: `path.dashed(&[6.0, 4.0], phase)` returns the path as dashes (a dash of 6, a gap of 4; one entry is read twice over, as `stroke-dasharray` does) to stroke without a fill, and it keeps the path's cap and join. Changing `phase` frame by frame makes the dashes march. A dash of no length with a round cap is a dot, so `path.with_cap(LineCap::Round).dashed(&[0.0, 8.0], 0.0)` is a dotted line.
 
 ### Testing it
 

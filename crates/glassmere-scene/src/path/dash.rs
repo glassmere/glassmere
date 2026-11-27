@@ -1,8 +1,12 @@
 //! A path cut into dashes.
 
-use super::{Path, Segment};
+use super::{LineCap, Path, Segment};
 use crate::Point;
 use alloc::vec::Vec;
+
+/// How long a dash of no length is made, in logical pixels: too short to see
+/// as anything but the cap.
+const DOT: f32 = 0.001;
 
 /// A subpath as the straight lines its curves are flattened to.
 struct Line {
@@ -115,13 +119,29 @@ impl Path {
         if !valid {
             return self.clone();
         }
-        let pattern: Vec<f32> = if dashes.len() % 2 == 1 {
+        let mut pattern: Vec<f32> = if dashes.len() % 2 == 1 {
             dashes.iter().chain(dashes).copied().collect()
         } else {
             dashes.to_vec()
         };
         let period: f32 = pattern.iter().sum();
-        let mut out = Path::new();
+        // A dash of no length is a dot when its ends are round (or a square),
+        // which is how a dotted line is made. A subpath of one point has no
+        // direction to give its cap, so the dot is a very short dash.
+        if self.cap != LineCap::Butt {
+            for index in (0..pattern.len()).step_by(2) {
+                if pattern[index] < DOT {
+                    // What the dash gains the gap after it loses, so the
+                    // dots keep the spacing that was asked for.
+                    let extra = DOT - pattern[index];
+                    pattern[index] = DOT;
+                    let gap = (index + 1) % pattern.len();
+                    pattern[gap] = (pattern[gap] - extra).max(0.0);
+                }
+            }
+        }
+        // The cap and the join are the path's, and so are the dashes'.
+        let mut out = Path::new().with_cap(self.cap).with_join(self.join);
         for line in flatten(self) {
             if line.points.len() < 2 {
                 continue;
@@ -172,6 +192,7 @@ impl Path {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::LineJoin;
 
     fn p(x: f32, y: f32) -> Point {
         Point { x, y }
@@ -302,6 +323,39 @@ mod tests {
         }
         let half = core::f32::consts::PI * 20.0;
         assert!((on - half).abs() < half * 0.03, "{on} against {half}");
+    }
+
+    #[test]
+    fn dashes_of_no_length_with_round_caps_are_dots_and_keep_the_style() {
+        let dotted = line(21.0).with_cap(LineCap::Round).dashed(&[0.0, 5.0], 0.0);
+        assert_eq!(dotted.cap(), LineCap::Round);
+        // Dots at 0, 5, 10, 15 and 20, each a very short dash. (One that
+        // would sit exactly on the end point has no length to draw.)
+        let at: Vec<f32> = dashes(&dotted).iter().map(|(from, _)| *from).collect();
+        assert_eq!(at.len(), 5, "{at:?}");
+        for (dot, expected) in at.iter().zip([0.0, 5.0, 10.0, 15.0, 20.0]) {
+            assert!((dot - expected).abs() < 0.01, "{at:?}");
+        }
+        for (from, to) in dashes(&dotted) {
+            assert!(to - from <= 0.0011, "{from} to {to}");
+        }
+        // With a butt cap a dash of no length strokes to nothing.
+        for (from, to) in dashes(&line(20.0).dashed(&[0.0, 5.0], 0.0)) {
+            assert_eq!(from, to, "nothing to stroke");
+        }
+        // The join comes along too.
+        let mut corner = Path::new();
+        corner
+            .move_to(p(0.0, 0.0))
+            .line_to(p(10.0, 0.0))
+            .line_to(p(10.0, 10.0));
+        assert_eq!(
+            corner
+                .with_join(LineJoin::Round)
+                .dashed(&[4.0, 1.0], 0.0)
+                .join(),
+            LineJoin::Round
+        );
     }
 
     #[test]

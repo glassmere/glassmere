@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Caps and joins for a stroked path: `Path::with_cap` (`LineCap::Butt`, `Round`, `Square`) and `Path::with_join` (`LineJoin::Miter`, `Round`, `Bevel`), read back with `Path::cap` and `Path::join`. They are properties of the path, so `Stroke`, which is still a width and a colour, and every place that builds one are untouched, and a path that sets neither is drawn as before (butt ends, mitred corners). The CPU, the GPU and the embedded renderer all draw them. `Path::dashed` keeps them on the dashes, and with a round or square cap a dash of no length is a dot, so `path.with_cap(LineCap::Round).dashed(&[0.0, 8.0], 0.0)` is a dotted line.
 - `Path::dashed(dashes, phase)`: the path cut into dashes, as a stroke with SVG's `stroke-dasharray` would draw it, for a dashed line, a dashed outline or a marching border. It returns a path of open subpaths to stroke, so it works with any renderer and changes nothing in `Stroke`. Caps and joins other than the stroke's own mitre and square ends are not part of it.
 ## [0.1.8] - 2026-11-23
 

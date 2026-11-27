@@ -486,6 +486,19 @@ fn stroke_styles() -> Scene {
             line(30.0, LineCap::Butt),
             line(60.0, LineCap::Round),
             line(90.0, LineCap::Square),
+            {
+                // A dotted line: dashes of no length with round ends.
+                let mut dots = Path::new();
+                dots.move_to(at(130.0, 30.0)).line_to(at(236.0, 30.0));
+                Primitive::Path {
+                    path: dots.with_cap(LineCap::Round).dashed(&[0.0, 14.0], 0.0),
+                    fill: None,
+                    stroke: Some(Stroke {
+                        width: 8.0,
+                        color: Color::rgb(250, 204, 21),
+                    }),
+                }
+            },
             zigzag(10.0, LineJoin::Miter),
             zigzag(90.0, LineJoin::Round),
             zigzag(170.0, LineJoin::Bevel),
