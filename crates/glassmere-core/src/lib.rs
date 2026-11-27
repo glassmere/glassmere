@@ -83,7 +83,7 @@ pub use panes::{
 pub use platform::{FileKind, FileRequest};
 pub use platform::{Menu, MenuEntry, Notification, Tray};
 pub use property_grid::{PropertyChoice, PropertyGridOptions, PropertyGridState, PropertyMsg};
-pub use reactive::{GraphNode, Memo, Signal, StateKind, Store};
+pub use reactive::{GraphNode, Memo, Signal, StateKind, Store, TextSource};
 pub use rich_document::{
     Block, BlockKind, InlineRun, Mark, Marks, RichDocument, RichMotion, RichPosition,
 };
