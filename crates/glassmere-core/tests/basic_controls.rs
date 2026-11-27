@@ -420,11 +420,12 @@ fn a_disabled_switch_cannot_be_focused_or_toggled_and_says_so() {
 }
 
 #[test]
-fn a_switch_is_a_checkbox_with_a_name_and_a_checked_state() {
+fn a_switch_is_a_checkbox_flagged_as_a_switch_with_a_name_and_a_checked_state() {
     let mut app = toggles();
     let wifi = app.context.find(&["page", "wifi"]).unwrap();
     let node = app.context.node(wifi).unwrap();
     assert_eq!(node.semantics.role, Role::Checkbox);
+    assert!(node.semantics.switch, "announced as a switch");
     assert_eq!(node.semantics.label, "Wi-Fi");
     assert!(node.semantics.focusable);
     assert_eq!(node.checked, Some(false));

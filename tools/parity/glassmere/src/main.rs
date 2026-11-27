@@ -147,7 +147,12 @@ fn sized(node: &Value, mut style: Style) -> Style {
     if let Some(sides) = node.get("border").and_then(Value::as_array) {
         let side = |i: usize| sides.get(i).and_then(Value::as_f64).unwrap_or(0.0) as f32;
         style = style
-            .border_sides(glassmere_core::Edges::new(side(0), side(1), side(2), side(3)))
+            .border_sides(glassmere_core::Edges::new(
+                side(0),
+                side(1),
+                side(2),
+                side(3),
+            ))
             .border_color(colour("#8aa4c8"));
     }
     if let Some(g) = px(node, "grow") {
@@ -230,9 +235,14 @@ impl Bench {
                 }
                 // `[top, right, bottom, left]`, as CSS orders them.
                 if let Some(sides) = node.get("padding").and_then(Value::as_array) {
-                    let side = |i: usize| sides.get(i).and_then(Value::as_f64).unwrap_or(0.0) as f32;
-                    style.padding_sides =
-                        Some(glassmere_core::Edges::new(side(0), side(1), side(2), side(3)));
+                    let side =
+                        |i: usize| sides.get(i).and_then(Value::as_f64).unwrap_or(0.0) as f32;
+                    style.padding_sides = Some(glassmere_core::Edges::new(
+                        side(0),
+                        side(1),
+                        side(2),
+                        side(3),
+                    ));
                 }
                 if let Some(name) = node.get("alignContent").and_then(Value::as_str) {
                     style.align_content = Some(justify(name));
@@ -651,7 +661,14 @@ impl Rig {
             let node = self.node(id);
             let snap = &snapshots[&node];
             let mut entry = Map::new();
-            entry.insert("role".into(), json!(role(snap.semantics.role)));
+            entry.insert(
+                "role".into(),
+                json!(if snap.semantics.switch {
+                    "switch"
+                } else {
+                    role(snap.semantics.role)
+                }),
+            );
             entry.insert("name".into(), json!(snap.semantics.label));
             if snap.semantics.disabled {
                 entry.insert("disabled".into(), json!(true));
