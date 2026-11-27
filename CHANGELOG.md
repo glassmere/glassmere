@@ -8,7 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- A view that is not run. `App::view_state` is an opt-in promise that the view reads nothing from the application but the value it returns and the sources of its bound labels. A message after which it is equal to what it was when the view last ran no longer runs the view; the default, `None`, runs it after every message as before. `Ui::bound_label` shows a `Signal<String>` or a `Memo<String>` (anything that implements the new `TextSource`) and follows it: when the source changes, the label's text is replaced in the retained tree, measured again if its size changed, repainted and published to the screen reader without the view running. See `examples/bound.rs` and "Declaring nothing" in [state](docs/state.md).
 - `Style::text_overflow` (stylesheet `text-overflow: ellipsis`) with `TextOverflow`: a single line of text in a label, a button or the like that is wider than its box ends with `…` where the next character would not fit, as in CSS, instead of being cut at the edge. It is cut between grapheme clusters, measured by the same text measurer the layout uses, redone only when the room, the text or the style changes, and what a screen reader and a selection see is still the whole text. `Clip` is the default, so nothing changes for a style that does not set it. Text that wraps is not affected.
+
+### Changed
+
+- Input that handlers answered in full (a click on a button with `on_click`, an activation from the keyboard or a screen reader) no longer marks the view stale on its own. It runs the view through the messages it sends, as before, unless the application's `view_state` is unchanged. An application that does not implement `view_state` sees no difference. Input that nothing answers still waits for the declaration that reads it.
 
 ## [0.1.8] - 2026-11-23
 
