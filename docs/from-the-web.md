@@ -53,7 +53,7 @@ The bench found glassmere and Chromium in agreement on where boxes land for: ali
 
 ### What cannot be said yet
 
-No per-side border (`border` is one width on all four sides). Padding is per side on `row`, `column`, `grid` and `container` through `Style::padding_sides`, and `margin` is per side everywhere; a label, button, field, scroll view or list has the one `padding`. `z_index` orders siblings only: each parent is a stack of its own, and a popover or dialog is how something goes above the whole window. The `switch` role is announced as a checkbox. Anything that would change a default (the 12 px `gap`, `shrink` 0) waits for 0.2.0.
+Padding and border are per side on `row`, `column`, `grid` and `container` through `Style::padding_sides` and `Style::border_sides`, and `margin` is per side everywhere; a label, button, field, scroll view or list has the one `padding` and the one `border`, and a per-side border is straight, whatever the `radius`. `z_index` orders siblings only: each parent is a stack of its own, and a popover or dialog is how something goes above the whole window. The `switch` role is announced as a checkbox. Anything that would change a default (the 12 px `gap`, `shrink` 0) waits for 0.2.0.
 
 Three things that were on this list are no longer: `Style::align_content` shares the room left across the lines of a wrapped row, `Ui::measure_text` and `Ui::measure_text_wrapped` size a painted control from the text the layout will measure, and `NumberOptions::field_style`, `NumberOptions::stepper_style` and `Autocomplete::style` make those fields compact. A button with an icon is a custom widget with `Role::Button` and `WidgetBuilder::on_click`.
 
