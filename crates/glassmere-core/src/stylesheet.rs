@@ -766,12 +766,6 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         }
         "border-width" => style.border = number(value)?,
         "border-color" => style.border_color = Some(color(value)?),
-        "z-index" => {
-            style.z_index = value
-                .trim()
-                .parse::<i32>()
-                .map_err(|_| format!("z-index is a whole number, got `{value}`"))?;
-        }
         "border-top-width" => border_side(style, value, |sides| &mut sides.top)?,
         "border-right-width" => border_side(style, value, |sides| &mut sides.right)?,
         "border-bottom-width" => border_side(style, value, |sides| &mut sides.bottom)?,
