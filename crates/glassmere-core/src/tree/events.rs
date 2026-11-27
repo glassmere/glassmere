@@ -344,7 +344,15 @@ impl Context {
         // change the view reads: the draft waits for Enter or for leaving.
         let draft = matches!(event, Event::Text(_))
             && self.focused.is_some_and(|id| self.sends_numbers(id));
-        if handled && !moved && !draft {
+        // A wheel step that moved only plain scroll areas changed nothing the
+        // view reads, unless the last declaration read a scroll offset.
+        let wheel_alone = matches!(event, Event::Scroll { .. })
+            && self.wheel_moved_plain
+            && !self.wheel_moved_other
+            && !self.view_reads_scroll;
+        self.wheel_moved_plain = false;
+        self.wheel_moved_other = false;
+        if handled && !moved && !draft && !wheel_alone {
             self.note_handled(queued);
         }
         handled || arrived
