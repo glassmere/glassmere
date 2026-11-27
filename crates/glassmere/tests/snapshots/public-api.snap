@@ -340,6 +340,8 @@ glassmere-core   field ResolvedText::font_size: f32
 glassmere-core   field ResolvedText::font_weight: u16
 glassmere-core   field ResolvedText::foreground: Color
 glassmere-core   field ResolvedText::italic: bool
+glassmere-core   field ResolvedText::letter_spacing: f32
+glassmere-core   field ResolvedText::line_height: f32
 glassmere-core   field RichEditorOptions::font_size: f32
 glassmere-core   field RichEditorOptions::label: String
 glassmere-core   field RichEditorOptions::read_only: bool
@@ -420,6 +422,8 @@ glassmere-core   field Style::italic: Option<bool>
 glassmere-core   field Style::justify_content: Justify
 glassmere-core   field Style::justify_self: Option<Align>
 glassmere-core   field Style::layout_transition: Option<Transition>
+glassmere-core   field Style::letter_spacing: Option<f32>
+glassmere-core   field Style::line_height: Option<f32>
 glassmere-core   field Style::max_height: Length
 glassmere-core   field Style::max_width: Length
 glassmere-core   field Style::min_height: Length
@@ -1034,6 +1038,8 @@ glassmere-core   fn Style::italic(mut self, value: bool) -> Self
 glassmere-core   fn Style::justify_content(mut self, value: Justify) -> Self
 glassmere-core   fn Style::justify_self(mut self, value: Align) -> Self
 glassmere-core   fn Style::layout_transition(mut self, value: Transition) -> Self
+glassmere-core   fn Style::letter_spacing(mut self, value: f32) -> Self
+glassmere-core   fn Style::line_height(mut self, value: f32) -> Self
 glassmere-core   fn Style::max_height(mut self, value: Length) -> Self
 glassmere-core   fn Style::max_width(mut self, value: Length) -> Self
 glassmere-core   fn Style::min_height(mut self, value: Length) -> Self
@@ -2270,6 +2276,8 @@ glassmere-scene   field TextStyle::base: Option<bool>
 glassmere-scene   field TextStyle::family: FontFamily
 glassmere-scene   field TextStyle::font_size: f32
 glassmere-scene   field TextStyle::italic: bool
+glassmere-scene   field TextStyle::letter_spacing: f32
+glassmere-scene   field TextStyle::line_height: f32
 glassmere-scene   field TextStyle::rtl: bool
 glassmere-scene   field TextStyle::weight: u16
 glassmere-scene   field TextStyle::wrap: TextWrap

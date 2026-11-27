@@ -29,6 +29,8 @@ pub struct TextKey {
     wrap: Skip<TextWrap>,
     rtl: Skip<bool>,
     align: Skip<TextAlign>,
+    line_height: Skip<u32>,
+    letter_spacing: Skip<u32>,
     base: Skip<Option<bool>>,
     width: Skip<Option<u32>>,
     /// Byte length and overrides of each run of a rich block; empty for plain text.
@@ -178,15 +180,26 @@ fn family(family: &FontFamily) -> Family<'_> {
     }
 }
 
+#[cfg(test)]
 fn attrs(font: &FontFamily, weight: u16, italic: bool) -> Attrs<'_> {
-    Attrs::new()
+    spaced(font, weight, italic, 0.0)
+}
+
+/// `attrs` with `spacing` ems added after every glyph.
+fn spaced(font: &FontFamily, weight: u16, italic: bool, spacing: f32) -> Attrs<'_> {
+    let attrs = Attrs::new()
         .family(family(font))
         .weight(cosmic_text::Weight(weight.clamp(100, 900)))
         .style(if italic {
             cosmic_text::Style::Italic
         } else {
             cosmic_text::Style::Normal
-        })
+        });
+    if spacing == 0.0 {
+        attrs
+    } else {
+        attrs.letter_spacing(spacing)
+    }
 }
 
 /// Bytes of the mark that starts each line of a text whose direction is
@@ -367,6 +380,19 @@ impl TextSystem {
             TextAlign::Start
         };
         let width_bits = width.map(f32::to_bits);
+        // Bits, so the key stays hashable; -0.0 and NaN are folded away first.
+        let line_height = if style.line_height.is_finite() && style.line_height > 0.0 {
+            style.line_height
+        } else {
+            1.4
+        }
+        .to_bits();
+        let letter_spacing = if style.letter_spacing.is_finite() && style.letter_spacing != 0.0 {
+            style.letter_spacing
+        } else {
+            0.0
+        }
+        .to_bits();
         // Most blocks are plain, and there is nothing to collect for them.
         let spans: Vec<SpanKey> = if spans.is_empty() {
             Vec::new()
@@ -393,6 +419,8 @@ impl TextSystem {
             style.wrap,
             rtl,
             align,
+            line_height,
+            letter_spacing,
             style.base,
             width_bits,
             &spans,
@@ -411,6 +439,8 @@ impl TextSystem {
             wrap: Skip(style.wrap),
             rtl: Skip(rtl),
             align: Skip(align),
+            line_height: Skip(line_height),
+            letter_spacing: Skip(letter_spacing),
             base: Skip(style.base),
             width: Skip(width_bits),
             spans: Skip(spans),
@@ -426,7 +456,17 @@ impl TextSystem {
         font_size: f32,
         width: Option<f32>,
     ) -> Buffer {
-        let metrics = Metrics::new(font_size, font_size * 1.4);
+        let line_height = if style.line_height.is_finite() && style.line_height > 0.0 {
+            style.line_height
+        } else {
+            1.4
+        };
+        let spacing = if style.letter_spacing.is_finite() {
+            style.letter_spacing / font_size
+        } else {
+            0.0
+        };
+        let metrics = Metrics::new(font_size, font_size * line_height);
         // Buffer::new shapes and lays out an empty line that set_text then
         // drops. set_rich_text reuses that line instead, so a rich block
         // starts from it.
@@ -444,7 +484,7 @@ impl TextSystem {
             },
         );
         buffer.set_size(fonts, width, None);
-        let base = attrs(&style.family, style.weight, style.italic);
+        let base = spaced(&style.family, style.weight, style.italic, spacing);
         // A forced paragraph direction is a mark that starts each line.
         let forced = style.base.map(|rtl| (mark(rtl), line_starts(text)));
         if spans.is_empty() {
@@ -474,10 +514,11 @@ impl TextSystem {
             let mut runs = Vec::new();
             let mut at = 0;
             for span in spans {
-                let run = attrs(
+                let run = spaced(
                     span.family.as_ref().unwrap_or(&style.family),
                     span.weight.unwrap_or(style.weight),
                     span.italic.unwrap_or(style.italic),
+                    spacing,
                 );
                 let run = match span.color {
                     Some(color) => {
@@ -1740,12 +1781,12 @@ mod tests {
         assert_eq!(
             format!("{plain:?}"),
             "TextKey { text: \"hi\", size: 1098907648, family: SansSerif, weight: 400, \
-             italic: false, wrap: None, rtl: false, align: Start, base: None, width: None, spans: [] }"
+             italic: false, wrap: None, rtl: false, align: Start, line_height: 1068708659, letter_spacing: 0, base: None, width: None, spans: [] }"
         );
         assert_eq!(
             format!("{plain:#?}"),
             "TextKey {\n    text: \"hi\",\n    size: 1098907648,\n    family: SansSerif,\n    \
-             weight: 400,\n    italic: false,\n    wrap: None,\n    rtl: false,\n    align: Start,\n    \
+             weight: 400,\n    italic: false,\n    wrap: None,\n    rtl: false,\n    align: Start,\n    line_height: 1068708659,\n    letter_spacing: 0,\n    \
              base: None,\n    width: None,\n    spans: [],\n}"
         );
         let spans = [
@@ -1766,7 +1807,7 @@ mod tests {
         assert_eq!(
             format!("{rich:?}"),
             "TextKey { text: \"ab\", size: 1098907648, family: Named(\"q\"), weight: 400, \
-             italic: false, wrap: Word, rtl: false, align: Start, base: Some(true), width: Some(1112014848), \
+             italic: false, wrap: Word, rtl: false, align: Start, line_height: 1068708659, letter_spacing: 0, base: Some(true), width: Some(1112014848), \
              spans: [(1, None, None, None, None), \
              (1, Some([1, 2, 3, 4]), Some(700), Some(true), Some(Named(\"z\")))] }"
         );
@@ -1774,7 +1815,7 @@ mod tests {
             format!("{rich:#?}"),
             "TextKey {\n    text: \"ab\",\n    size: 1098907648,\n    family: Named(\n        \
              \"q\",\n    ),\n    weight: 400,\n    italic: false,\n    wrap: Word,\n    \
-             rtl: false,\n    align: Start,\n    base: Some(\n        true,\n    ),\n    width: Some(\n        \
+             rtl: false,\n    align: Start,\n    line_height: 1068708659,\n    letter_spacing: 0,\n    base: Some(\n        true,\n    ),\n    width: Some(\n        \
              1112014848,\n    ),\n    spans: [\n        (\n            1,\n            None,\n            \
              None,\n            None,\n            None,\n        ),\n        (\n            1,\n            \
              Some(\n                [\n                    1,\n                    2,\n                    \
@@ -1883,6 +1924,54 @@ mod tests {
         assert!(
             rtl_end.iter().all(|(left, _)| left.abs() < 1.0),
             "{rtl_end:?}"
+        );
+    }
+
+    #[test]
+    fn line_height_and_letter_spacing_change_the_shaped_size() {
+        let mut system = bundled();
+        let plain = TextStyle::default();
+        let size = |system: &mut TextSystem, style: &TextStyle| {
+            system.measure_styled("abcd\nabcd", style, None)
+        };
+        let base = size(&mut system, &plain);
+        let tall = size(
+            &mut system,
+            &TextStyle {
+                line_height: 2.0,
+                ..plain.clone()
+            },
+        );
+        assert_eq!(base.height, 2.0 * 16.0 * 1.4);
+        assert_eq!(tall.height, 2.0 * 16.0 * 2.0);
+        assert_eq!(tall.width, base.width);
+        let spaced = size(
+            &mut system,
+            &TextStyle {
+                letter_spacing: 3.0,
+                ..plain.clone()
+            },
+        );
+        assert_eq!(spaced.height, base.height);
+        assert!(
+            (spaced.width - base.width - 12.0).abs() < 0.01,
+            "{spaced:?} {base:?}"
+        );
+        // A different spacing is a different shaped buffer.
+        let key = |style: &TextStyle| TextSystem::key("abcd", &[], style, None).0;
+        assert_ne!(
+            key(&plain),
+            key(&TextStyle {
+                letter_spacing: 1.0,
+                ..plain.clone()
+            })
+        );
+        assert_ne!(
+            key(&plain),
+            key(&TextStyle {
+                line_height: 1.0,
+                ..plain.clone()
+            })
         );
     }
 

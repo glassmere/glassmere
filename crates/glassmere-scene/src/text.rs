@@ -56,6 +56,32 @@ pub struct TextStyle {
     pub base: Option<bool>,
     /// Where wrapped lines sit between the edges of the block.
     pub align: TextAlign,
+    /// The height of a line as a multiple of the font size; `1.4` is what the
+    /// shaper has always used. Values that are not finite and positive fall
+    /// back to it.
+    pub line_height: f32,
+    /// Extra advance after every character, in pixels; negative values
+    /// tighten the text.
+    pub letter_spacing: f32,
+}
+
+impl TextStyle {
+    /// The advance of a glyph and the height of a line of the fixed-size
+    /// font that `MonospaceMeasurer` and the embedded renderer lay out.
+    fn monospace_cell(&self) -> (f32, f32) {
+        let size = self.font_size.max(1.0);
+        let spacing = if self.letter_spacing.is_finite() {
+            self.letter_spacing
+        } else {
+            0.0
+        };
+        let height = if self.line_height.is_finite() && self.line_height > 0.0 {
+            self.line_height
+        } else {
+            1.4
+        };
+        ((size * 0.6 + spacing).max(0.1), size * height)
+    }
 }
 
 impl Default for TextStyle {
@@ -69,6 +95,8 @@ impl Default for TextStyle {
             rtl: false,
             base: None,
             align: TextAlign::Start,
+            line_height: 1.4,
+            letter_spacing: 0.0,
         }
     }
 }
@@ -388,8 +416,7 @@ impl TextMeasurer for MonospaceMeasurer {
     // Counts what `geometry` lays out without building it: the size must stay
     // bit for bit equal to `geometry(..).size`.
     fn measure_styled(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> Size {
-        let advance = style.font_size.max(1.0) * 0.6;
-        let line_height = style.font_size.max(1.0) * 1.4;
+        let (advance, line_height) = style.monospace_cell();
         let limit = width
             .filter(|width| width.is_finite())
             .unwrap_or(f32::MAX)
@@ -427,8 +454,7 @@ impl TextMeasurer for MonospaceMeasurer {
     }
 
     fn geometry(&mut self, text: &str, style: &TextStyle, width: Option<f32>) -> TextGeometry {
-        let advance = style.font_size.max(1.0) * 0.6;
-        let line_height = style.font_size.max(1.0) * 1.4;
+        let (advance, line_height) = style.monospace_cell();
         let limit = width
             .filter(|width| width.is_finite())
             .unwrap_or(f32::MAX)

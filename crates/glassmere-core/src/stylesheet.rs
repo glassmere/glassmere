@@ -853,6 +853,14 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
                 }
             })
         }
+        "line-height" => {
+            let multiple = number(value)?;
+            if !(multiple.is_finite() && multiple > 0.0) {
+                return Err(format!("line-height must be above zero, got `{value}`"));
+            }
+            style.line_height = Some(multiple);
+        }
+        "letter-spacing" => style.letter_spacing = Some(number(value)?),
         "wrap" => {
             style.wrap = match value {
                 "word" => TextWrap::Word,
