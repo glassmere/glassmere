@@ -29,6 +29,18 @@ Text properties (`foreground`, `font_size`, `font_family`, `font_weight`, `itali
 
 Pointer and focus states are overrides on top of the base style: `on_hover`, `on_pressed`, `on_focused` and `on_disabled`, each taking a `Paint` (background, foreground, radius, opacity, transform). They repaint; they never lay out again.
 
+### Margin and border
+
+`Style::margin(8.0)` keeps 8 px clear outside the box on every side; `Style::margin_edges(Edges::new(top, right, bottom, left))` sets each side, and `Edges::xy(horizontal, vertical)` and `Edges::all` are shorter. A margin is not part of the box: the box keeps its size, the pointer over the margin is not over the box, and neighbours stay that far away. Margins do not collapse into each other as they do in a web page's block layout; they add, as they do in its flex layout.
+
+`Style::border(2.0)` draws a border `2` px wide along the edge of the box, inside it, in `border_color`, or in the theme's `track` colour when none is set. It follows `radius`. A border takes room like padding does: the content starts inside both, `Style::inset()` is the sum of the two, and a box that sizes itself grows by it. A focus ring sits inside the border.
+
+In a stylesheet: `margin: 8` (all sides), `margin: 4 8` (vertical, horizontal), `margin: 1 2 3 4` (top, right, bottom, left), `margin-top` and the other sides, `border: 2 #475a7a` (width and an optional colour), `border-width` and `border-color`. Padding is one value for all sides.
+
+### Wrapping rows
+
+`Style::wrap_items(true)` on a row or a column starts a new line when the next child does not fit along the main axis, as `flex-wrap: wrap` does, instead of overflowing it or, with `shrink`, squeezing it. The `gap` is the room between lines as well as between children. A stylesheet takes `wrap-items: true`. `Style::align_content(Justify::SpaceBetween)` (stylesheet `align-content`) shares the room left across the container among its lines, as `align-content` does; left unset, the lines are stretched as the layout engine does. A row that wraps needs a width to wrap at, from `width`, a parent that gives it one, or `Length::Percent`.
+
 ### The focus ring
 
 A focused widget outlines itself with a ring: a stroke 2 px wide in the theme's `focus` colour, drawn inside the widget's box along its rounded edge, over its background and gradient. A widget with square corners gets four bars, which land exactly on pixels.
@@ -142,6 +154,18 @@ There is no mipmap chain, but a photo drawn at under half its natural size is bo
 ## Direction
 
 A window runs left to right or right to left according to `AppOptions::direction` (`DirectionChoice::Auto` follows the OS locale). `Style::direction` overrides it for a subtree: layout mirrors, text aligns to the end side, and directional internals follow. Physical values stay physical: `offset`, transforms, slide effects, floating dock rectangles and `DockZone::Left` and `Right` mean the same pixels in both directions. `Style::base_direction` forces the base direction of a text paragraph, in labels and in text fields, text areas, code editors and rich editors (every line or block takes it; a text field and a rich editor align to it, a text area and a code editor only order by it).
+
+## Automatic margins
+
+`Style::margin_left_auto()` (stylesheet `margin-left: auto`) gives a child the room left over on its left, which pushes it to the end of a row: the usual way to put a button at the far end of a toolbar. `margin_x_auto()` (`margin: 0 auto`) centres a child across a column, and in a row it takes the room left over on both sides; `margin_y_auto()` centres across a row. A side that is auto ignores its number, and the other sides keep theirs.
+
+## Padding per side
+
+`Style::padding(8.0)` pads all four sides. On a node that holds other nodes (`row`, `column`, `grid`, `container`) `Style::padding_sides(Edges::new(top, right, bottom, left))` pads each side by its own amount instead, and the border still adds to it. A stylesheet takes `padding: 4 8` (vertical, horizontal), three or four numbers in CSS order, and `padding-left` and the like. A label, a button, a field, a scroll view and a list lay out their own content at the one `padding` and ignore `padding_sides`.
+
+## Border per side
+
+`Style::border_sides(Edges::new(top, right, bottom, left))` gives a node that holds other nodes a border of its own width on each side, drawn in `border_color`. A side of 0 draws nothing, so `Edges::new(0.0, 0.0, 2.0, 0.0)` is an underline. Each side takes room like padding does. In a stylesheet, `border-bottom-width: 2` and the like set one side, the others staying what `border-width` made them. The sides are straight lines along the inside of the box: a `radius` rounds the fill but not them, so a rounded outline is the one `border`. A label, a button, a field, a scroll view and a list keep the one `border`.
 
 ## Underline and strikethrough
 

@@ -161,8 +161,8 @@ impl Context {
             let node = &self.nodes[&id];
             if matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection) {
                 let bounds = self.nodes[&target].bounds;
-                let top = node.bounds.y + node.style.padding.max(0.0);
-                let bottom = node.bounds.y + node.bounds.height - node.style.padding.max(0.0);
+                let top = node.bounds.y + node.style.inset();
+                let bottom = node.bounds.y + node.bounds.height - node.style.inset();
                 let delta = if bounds.y < top {
                     bounds.y - top
                 } else if bounds.y + bounds.height > bottom {
@@ -175,7 +175,7 @@ impl Context {
                 // target is wider than the view.
                 let node = &self.nodes[&id];
                 let bounds = self.nodes[&target].bounds;
-                let padding = node.style.padding.max(0.0);
+                let padding = node.style.inset();
                 let (left, right) = (
                     node.bounds.x + padding,
                     node.bounds.x + node.bounds.width - padding,

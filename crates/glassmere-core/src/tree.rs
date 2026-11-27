@@ -465,7 +465,7 @@ impl Node {
 
     /// The box inside the padding.
     fn content_box(&self) -> Rect {
-        let padding = self.style.padding.max(0.0);
+        let padding = self.style.inset();
         Rect {
             x: self.bounds.x + padding,
             y: self.bounds.y + padding,

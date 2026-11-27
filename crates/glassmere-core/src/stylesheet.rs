@@ -36,7 +36,7 @@
 //! Properties: width, height, min-width, max-width, min-height, max-height
 //! (`auto`, `50%`, `120`), aspect-ratio, padding, gap, grow, shrink, radius,
 //! align-items, align-self, justify-self (`start`, `center`, `end`, `stretch`,
-//! `baseline`), justify-content (also `space-between`, `space-around`,
+//! `baseline`), align-content and justify-content (also `space-between`, `space-around`,
 //! `space-evenly`), columns, rows, auto-columns, auto-rows (`120 50% 1fr auto
 //! minmax(100, 1fr) repeat(3, 1fr) repeat(auto-fill, minmax(120, 1fr))`),
 //! row-gap, column-gap (`gap` sets both), auto-flow (`row`, `column`, `row
@@ -630,6 +630,18 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
                 _ => return Err(format!("unknown justify-content `{value}`")),
             }
         }
+        "align-content" => {
+            style.align_content = Some(match value {
+                "start" => Justify::Start,
+                "center" => Justify::Center,
+                "end" => Justify::End,
+                "stretch" => Justify::Stretch,
+                "space-between" => Justify::SpaceBetween,
+                "space-around" => Justify::SpaceAround,
+                "space-evenly" => Justify::SpaceEvenly,
+                _ => return Err(format!("unknown align-content `{value}`")),
+            })
+        }
         "columns" => style.columns = tracks(value)?,
         "rows" => style.rows = tracks(value)?,
         "auto-columns" => style.auto_columns = tracks(value)?,
@@ -711,7 +723,53 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
                 .parse::<i32>()
                 .map_err(|_| format!("z-index is a whole number, got `{value}`"))?;
         }
-        "padding" => style.padding = number(value)?,
+        "padding" => {
+            let sides = edges(value)?;
+            if value.split_whitespace().count() == 1 {
+                style.padding = sides.top;
+                style.padding_sides = None;
+            } else {
+                style.padding_sides = Some(sides);
+            }
+        }
+        "padding-top" => padding_side(style, value, |sides| &mut sides.top)?,
+        "padding-right" => padding_side(style, value, |sides| &mut sides.right)?,
+        "padding-bottom" => padding_side(style, value, |sides| &mut sides.bottom)?,
+        "padding-left" => padding_side(style, value, |sides| &mut sides.left)?,
+        // One to four numbers, in the order CSS gives them: all sides;
+        // vertical and horizontal; top, horizontal and bottom; top, right,
+        // bottom and left.
+        // Numbers, or `auto` for the room left over: `margin: 0 auto`.
+        "margin" => margin_sides(style, value)?,
+        "margin-top" => margin_side(style, value, |s| {
+            (&mut s.margin.top, &mut s.margin_auto.top)
+        })?,
+        "margin-right" => margin_side(style, value, |s| {
+            (&mut s.margin.right, &mut s.margin_auto.right)
+        })?,
+        "margin-bottom" => margin_side(style, value, |s| {
+            (&mut s.margin.bottom, &mut s.margin_auto.bottom)
+        })?,
+        "margin-left" => margin_side(style, value, |s| {
+            (&mut s.margin.left, &mut s.margin_auto.left)
+        })?,
+        // `border: 2 #475a7a` is a width and, optionally, a colour.
+        "border" => {
+            let mut parts = value.split_whitespace();
+            style.border = number(parts.next().unwrap_or(""))?;
+            if let Some(colour) = parts.next() {
+                style.border_color = Some(color(colour)?);
+            }
+            if parts.next().is_some() {
+                return Err(format!("border is a width and a colour, got `{value}`"));
+            }
+        }
+        "border-width" => style.border = number(value)?,
+        "border-color" => style.border_color = Some(color(value)?),
+        "border-top-width" => border_side(style, value, |sides| &mut sides.top)?,
+        "border-right-width" => border_side(style, value, |sides| &mut sides.right)?,
+        "border-bottom-width" => border_side(style, value, |sides| &mut sides.bottom)?,
+        "border-left-width" => border_side(style, value, |sides| &mut sides.left)?,
         "gap" => {
             style.gap = number(value)?;
             style.row_gap = None;
@@ -720,6 +778,13 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         "row-gap" => style.row_gap = Some(number(value)?),
         "column-gap" => style.column_gap = Some(number(value)?),
         "grow" => style.grow = number(value)?,
+        "wrap-items" => {
+            style.wrap_items = match value {
+                "true" | "wrap" => true,
+                "false" | "nowrap" => false,
+                _ => return Err(format!("wrap-items is `true` or `false`, got `{value}`")),
+            };
+        }
         "reverse" => {
             style.reverse = match value {
                 "true" => true,
@@ -1230,6 +1295,99 @@ fn gradient(value: &str) -> Result<crate::Gradient, String> {
             .collect::<Result<_, String>>()?,
         radial,
     })
+}
+
+/// One side of the padding, the others being what they were.
+fn padding_side(
+    style: &mut Style,
+    value: &str,
+    side: impl Fn(&mut crate::Edges) -> &mut f32,
+) -> Result<(), String> {
+    let mut sides = style
+        .padding_sides
+        .unwrap_or_else(|| crate::Edges::all(style.padding));
+    *side(&mut sides) = number(value)?;
+    style.padding_sides = Some(sides);
+    Ok(())
+}
+
+/// One side of the border, the others being what they were.
+fn border_side(
+    style: &mut Style,
+    value: &str,
+    side: impl Fn(&mut crate::Edges) -> &mut f32,
+) -> Result<(), String> {
+    let mut sides = style
+        .border_sides
+        .unwrap_or_else(|| crate::Edges::all(style.border));
+    *side(&mut sides) = number(value)?;
+    style.border_sides = Some(sides);
+    Ok(())
+}
+
+fn edges(value: &str) -> Result<crate::Edges, String> {
+    let numbers = value
+        .split_whitespace()
+        .map(number)
+        .collect::<Result<Vec<f32>, String>>()?;
+    match numbers.as_slice() {
+        [all] => Ok(crate::Edges::all(*all)),
+        [vertical, horizontal] => Ok(crate::Edges::xy(*horizontal, *vertical)),
+        [top, horizontal, bottom] => Ok(crate::Edges::new(*top, *horizontal, *bottom, *horizontal)),
+        [top, right, bottom, left] => Ok(crate::Edges::new(*top, *right, *bottom, *left)),
+        _ => Err(format!(
+            "margin and padding are one to four numbers, got `{value}`"
+        )),
+    }
+}
+
+/// One side of the margin: a number, or `auto`.
+fn margin_side(
+    style: &mut Style,
+    value: &str,
+    side: impl Fn(&mut Style) -> (&mut f32, &mut bool),
+) -> Result<(), String> {
+    let (length, auto) = side(style);
+    if value.trim() == "auto" {
+        *auto = true;
+    } else {
+        *length = number(value)?;
+        *auto = false;
+    }
+    Ok(())
+}
+
+/// The `margin` shorthand: one to four values, each a number or `auto`, in
+/// the order CSS gives them.
+fn margin_sides(style: &mut Style, value: &str) -> Result<(), String> {
+    let words: Vec<&str> = value.split_whitespace().collect();
+    let [top, right, bottom, left] = match words.as_slice() {
+        [all] => [*all; 4],
+        [vertical, horizontal] => [*vertical, *horizontal, *vertical, *horizontal],
+        [top, horizontal, bottom] => [*top, *horizontal, *bottom, *horizontal],
+        [top, right, bottom, left] => [*top, *right, *bottom, *left],
+        _ => {
+            return Err(format!(
+                "margin is one to four numbers or `auto`, got `{value}`"
+            ));
+        }
+    };
+    let side = |word: &str| -> Result<(f32, bool), String> {
+        if word == "auto" {
+            Ok((0.0, true))
+        } else {
+            Ok((number(word)?, false))
+        }
+    };
+    let (t, r, b, l) = (side(top)?, side(right)?, side(bottom)?, side(left)?);
+    style.margin = crate::Edges::new(t.0, r.0, b.0, l.0);
+    style.margin_auto = crate::AutoEdges {
+        top: t.1,
+        right: r.1,
+        bottom: b.1,
+        left: l.1,
+    };
+    Ok(())
 }
 
 fn color(value: &str) -> Result<Color, String> {

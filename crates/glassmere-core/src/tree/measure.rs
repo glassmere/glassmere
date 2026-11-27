@@ -91,6 +91,11 @@ pub(super) fn layout_style(style: &Style, kind: Kind, direction: crate::Directio
         Kind::Grid => Flow::Grid,
         _ => Flow::Column,
     });
+    // Only a node that holds others is laid out by its padding alone; the rest
+    // draw their content at the one `padding` and so keep it.
+    if (style.padding_sides.is_some() || style.border_sides.is_some()) && !kind.holds_nodes() {
+        result.padding = taffy::Rect::length(style.inset());
+    }
     let rtl = direction == crate::Direction::Rtl;
     if rtl {
         result.direction = taffy::Direction::Rtl;
@@ -127,7 +132,7 @@ pub(super) fn layout_style(style: &Style, kind: Kind, direction: crate::Directio
 /// Taffy then ignores its measure context; keep its intrinsic size as a minimum.
 pub(super) fn anchor_minimum(style: &mut taffy::Style, element: &Element, measured: Size) {
     if element.kind.text_leaf() && !element.children.is_empty() {
-        let padding = element.style.padding.max(0.0) * 2.0;
+        let padding = element.style.inset() * 2.0;
         style.min_size = taffy::Size {
             width: taffy::Dimension::length(measured.width + padding),
             height: taffy::Dimension::length(measured.height + padding),

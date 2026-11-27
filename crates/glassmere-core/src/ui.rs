@@ -371,6 +371,25 @@ pub(crate) const SWITCH_TRACK: (f32, f32) = (40.0, 22.0);
 pub(crate) const MARK: f32 = 18.0;
 
 impl Kind {
+    /// Whether the node only holds others, so its box is laid out by its
+    /// padding and border alone: what `Style::padding_sides` and
+    /// `Style::border_sides` apply to. The rest draw their own content at the
+    /// one `padding` and `border`.
+    pub(crate) fn holds_nodes(self) -> bool {
+        matches!(
+            self,
+            Self::Column
+                | Self::Row
+                | Self::Grid
+                | Self::Container
+                | Self::FocusScope
+                | Self::EventArea
+                | Self::Memo
+                | Self::ContextArea
+                | Self::GestureArea
+        )
+    }
+
     pub(crate) fn text_leaf(self) -> bool {
         matches!(
             self,
@@ -1083,7 +1102,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             .child(self.parent, &key, Kind::Container)
             .and_then(|id| self.context.node(id))
             .map_or(0.0, |node| {
-                (node.bounds.width - 2.0 * style.padding.max(0.0)).max(0.0)
+                (node.bounds.width - 2.0 * style.inset()).max(0.0)
             });
         self.group(key, Kind::Container, style, |ui| content(ui, inside));
         inside

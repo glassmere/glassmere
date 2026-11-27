@@ -155,7 +155,7 @@ impl Context {
             .and_then(|row| {
                 Some(Opener {
                     row: row.bounds,
-                    padding: row.style.padding.max(0.0),
+                    padding: row.style.inset(),
                     menu: self.nodes[&row.parent?].bounds,
                     rtl: row.resolved.rtl(),
                 })
@@ -198,7 +198,7 @@ impl Context {
             node.bounds.width = node.bounds.width.min(viewport.width);
             node.bounds.height = node.bounds.height.min(viewport.height);
             if let Some(opener) = beside {
-                let level = (opener.row.y - node.style.padding.max(0.0))
+                let level = (opener.row.y - node.style.inset())
                     .min(viewport.height - node.bounds.height)
                     .max(0.0);
                 let size = Size {
@@ -235,14 +235,14 @@ impl Context {
         }
         if scrolls_down {
             node.scroll.maximum =
-                (content_bottom + node.style.padding.max(0.0) - node.bounds.height).max(0.0);
+                (content_bottom + node.style.inset() - node.bounds.height).max(0.0);
             node.scroll.offset = node.scroll.offset.clamp(0.0, node.scroll.maximum);
         }
         let rtl = node.resolved.rtl();
         if scrolls_across {
             // Content overflows at the end side: past the right edge, or past
             // the left edge in a right-to-left container.
-            let padding = node.style.padding.max(0.0);
+            let padding = node.style.inset();
             let overflow = if rtl {
                 padding - content_left
             } else {
@@ -780,6 +780,11 @@ impl Context {
                 radial: gradient.radial,
             });
         }
+        if node.style.border_sides.is_some() && node.kind.holds_nodes() {
+            self.paint_border_sides(node, scene);
+        } else if node.style.border > 0.0 {
+            self.paint_border(node, radius, scene);
+        }
         if ring {
             self.paint_focus_ring(node, radius, scene);
         }
@@ -796,76 +801,70 @@ impl Context {
     }
 
     /// The node's focus ring: a stroke along its rounded edge, inside its
-    /// box, over whatever fill the node has. Square corners are drawn as
-    /// four bars, which land exactly on pixels.
+    /// box and inside its border, over whatever fill the node has.
     fn paint_focus_ring(&self, node: &Node, radius: f32, scene: &mut Scene) {
         let ring = node.style.focus_ring.unwrap_or(FocusRing::new(2.0));
         let color = ring.color.unwrap_or(self.theme.focus);
-        let inset = ring.inset.max(0.0);
+        let inset = ring.inset.max(0.0) + node.style.border.max(0.0);
+        stroke_inside(node.bounds, radius, ring.width, color, inset, scene);
+    }
+
+    /// The node's border: a stroke along its rounded edge, inside its box.
+    fn paint_border(&self, node: &Node, radius: f32, scene: &mut Scene) {
+        let color = node.style.border_color.unwrap_or(self.theme.track);
+        stroke_inside(node.bounds, radius, node.style.border, color, 0.0, scene);
+    }
+
+    /// The border of a node that holds nodes, each side as wide as it says,
+    /// drawn straight along the inside of the box.
+    fn paint_border_sides(&self, node: &Node, scene: &mut Scene) {
+        let Some(sides) = node.style.border_sides else {
+            return;
+        };
+        let color = node.style.border_color.unwrap_or(self.theme.track);
         let Rect {
             x,
             y,
             width,
             height,
         } = node.bounds;
-        let (inner_width, inner_height) = (width - 2.0 * inset, height - 2.0 * inset);
-        if ring.width <= 0.0 || inner_width <= 0.0 || inner_height <= 0.0 {
-            return;
-        }
-        let stroke = ring.width.min(inner_width / 2.0).min(inner_height / 2.0);
-        let (x, y) = (x + inset, y + inset);
-        if radius <= inset {
-            for rect in [
-                Rect {
-                    x,
-                    y,
-                    width: inner_width,
-                    height: stroke,
-                },
-                Rect {
-                    x,
-                    y: y + inner_height - stroke,
-                    width: inner_width,
-                    height: stroke,
-                },
-                Rect {
-                    x,
-                    y,
-                    width: stroke,
-                    height: inner_height,
-                },
-                Rect {
-                    x: x + inner_width - stroke,
-                    y,
-                    width: stroke,
-                    height: inner_height,
-                },
-            ] {
+        let (top, bottom) = (sides.top.max(0.0), sides.bottom.max(0.0));
+        let (left, right) = (sides.left.max(0.0), sides.right.max(0.0));
+        let middle = (height - top - bottom).max(0.0);
+        for rect in [
+            Rect {
+                x,
+                y,
+                width,
+                height: top.min(height),
+            },
+            Rect {
+                x,
+                y: y + height - bottom.min(height),
+                width,
+                height: bottom.min(height),
+            },
+            Rect {
+                x,
+                y: y + top,
+                width: left.min(width),
+                height: middle,
+            },
+            Rect {
+                x: x + width - right.min(width),
+                y: y + top,
+                width: right.min(width),
+                height: middle,
+            },
+        ] {
+            if rect.width > 0.0 && rect.height > 0.0 {
                 scene.primitives.push(Primitive::Quad {
                     rect,
                     color,
                     radius: 0.0,
                 });
             }
-            return;
         }
-        // The stroke is centred on the path, so the path runs half a stroke
-        // in from the edge the ring is to fill out to.
-        let half = stroke / 2.0;
-        let rect = Rect {
-            x: x + half,
-            y: y + half,
-            width: inner_width - stroke,
-            height: inner_height - stroke,
-        };
-        scene.primitives.push(Primitive::Path {
-            path: glassmere_scene::Path::rounded_rect(rect, radius - inset - half),
-            fill: None,
-            stroke: Some(glassmere_scene::Stroke {
-                width: stroke,
-                color,
-            }),
-        });
     }
 
     /// The node's own text, placed in its box.
@@ -1041,7 +1040,7 @@ impl Context {
             && !hint.is_empty()
             && node.hint_width > 0.0
         {
-            let padding = node.style.padding.max(0.0);
+            let padding = node.style.inset();
             let inner = (node.bounds.width - 2.0 * padding).max(0.0);
             let offset = if node.resolved.rtl() {
                 0.0
@@ -1198,6 +1197,83 @@ fn within_box(top: f32, y: f32, extent: f32, height: f32) -> f32 {
 }
 
 /// A drop shadow behind the node, or an inset one inside it.
+/// A stroke `width` thick along the rounded edge of `bounds`, `inset` in from
+/// it and inside it. Square corners are drawn as four bars, which land exactly
+/// on pixels; round ones as a stroked path.
+fn stroke_inside(
+    bounds: Rect,
+    radius: f32,
+    width: f32,
+    color: Color,
+    inset: f32,
+    scene: &mut Scene,
+) {
+    let Rect {
+        x,
+        y,
+        width: box_width,
+        height: box_height,
+    } = bounds;
+    let (inner_width, inner_height) = (box_width - 2.0 * inset, box_height - 2.0 * inset);
+    if width <= 0.0 || inner_width <= 0.0 || inner_height <= 0.0 {
+        return;
+    }
+    let stroke = width.min(inner_width / 2.0).min(inner_height / 2.0);
+    let (x, y) = (x + inset, y + inset);
+    if radius <= inset {
+        for rect in [
+            Rect {
+                x,
+                y,
+                width: inner_width,
+                height: stroke,
+            },
+            Rect {
+                x,
+                y: y + inner_height - stroke,
+                width: inner_width,
+                height: stroke,
+            },
+            Rect {
+                x,
+                y,
+                width: stroke,
+                height: inner_height,
+            },
+            Rect {
+                x: x + inner_width - stroke,
+                y,
+                width: stroke,
+                height: inner_height,
+            },
+        ] {
+            scene.primitives.push(Primitive::Quad {
+                rect,
+                color,
+                radius: 0.0,
+            });
+        }
+        return;
+    }
+    // The stroke is centred on the path, so the path runs half a stroke in
+    // from the edge it is to fill out to.
+    let half = stroke / 2.0;
+    let rect = Rect {
+        x: x + half,
+        y: y + half,
+        width: inner_width - stroke,
+        height: inner_height - stroke,
+    };
+    scene.primitives.push(Primitive::Path {
+        path: glassmere_scene::Path::rounded_rect(rect, radius - inset - half),
+        fill: None,
+        stroke: Some(glassmere_scene::Stroke {
+            width: stroke,
+            color,
+        }),
+    });
+}
+
 fn paint_shadow(node: &Node, radius: f32, inset: bool, scene: &mut Scene) {
     if let Some(shadow) = &node.style.shadow
         && shadow.inset == inset
@@ -1272,7 +1348,7 @@ mod tests {
                 .and_then(|row| {
                     Some(Opener {
                         row: row.bounds,
-                        padding: row.style.padding.max(0.0),
+                        padding: row.style.inset(),
                         menu: self.nodes[&row.parent?].bounds,
                         rtl: row.resolved.rtl(),
                     })
@@ -1315,7 +1391,7 @@ mod tests {
                 node.bounds.width = node.bounds.width.min(viewport.width);
                 node.bounds.height = node.bounds.height.min(viewport.height);
                 if let Some(opener) = beside {
-                    let level = (opener.row.y - node.style.padding.max(0.0))
+                    let level = (opener.row.y - node.style.inset())
                         .min(viewport.height - node.bounds.height)
                         .max(0.0);
                     let size = Size {
@@ -1352,14 +1428,14 @@ mod tests {
             }
             if matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection) {
                 node.scroll.maximum =
-                    (content_bottom + node.style.padding.max(0.0) - node.bounds.height).max(0.0);
+                    (content_bottom + node.style.inset() - node.bounds.height).max(0.0);
                 node.scroll.offset = node.scroll.offset.clamp(0.0, node.scroll.maximum);
             }
             let rtl = node.resolved.rtl();
             if matches!(node.kind, Kind::Scroll | Kind::Collection | Kind::TabList) {
                 // Content overflows at the end side: past the right edge, or past
                 // the left edge in a right-to-left container.
-                let padding = node.style.padding.max(0.0);
+                let padding = node.style.inset();
                 let overflow = if rtl {
                     padding - content_left
                 } else {

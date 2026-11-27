@@ -29,7 +29,7 @@ impl Context {
     fn baseline_of(&self, id: NodeId, measurer: &mut impl TextMeasurer) -> Option<f32> {
         let node = self.nodes.get(&id)?;
         if node.kind.text_leaf() && !node.text.is_empty() {
-            let padding = node.style.padding.max(0.0);
+            let padding = node.style.inset();
             return Some(padding + measurer.ascent(&node.text_style()));
         }
         node.children.iter().find_map(|child| {
@@ -214,7 +214,7 @@ impl Context {
             let Some(node) = self.nodes.get_mut(id) else {
                 continue;
             };
-            let width = (node.bounds.width - node.style.padding.max(0.0) * 2.0).max(1.0);
+            let width = (node.bounds.width - node.style.inset() * 2.0).max(1.0);
             let text_style = node.text_style();
             // A forced paragraph direction aligns the text as it reads.
             let rtl = text_style.base.unwrap_or(node.resolved.rtl());
@@ -732,7 +732,7 @@ impl Context {
         let node = self.nodes.get(&self.focused?)?;
         let editor = node.editor.as_ref().filter(|_| !node.read_only())?;
         let caret = editor.caret()?;
-        let padding = node.style.padding.max(0.0);
+        let padding = node.style.inset();
         Some(
             caret
                 .translated(Point {
