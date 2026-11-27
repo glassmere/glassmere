@@ -1,0 +1,284 @@
+{
+  "scenario": "disabled-parent",
+  "framework": "qt",
+  "title": "A disabled parent disables what is inside it",
+  "size": [
+    420,
+    300
+  ],
+  "records": [
+    {
+      "type": "observe",
+      "label": "initial",
+      "focus": "outside",
+      "focusVisible": null,
+      "values": {
+        "tick": false,
+        "field": ""
+      },
+      "scroll": {},
+      "log": [],
+      "a11y": {
+        "inside": {
+          "role": "button",
+          "name": "Inside",
+          "disabled": true
+        },
+        "tick": {
+          "role": "checkbox",
+          "name": "Tick",
+          "disabled": true,
+          "checked": false
+        },
+        "field": {
+          "role": "textbox",
+          "name": "Field",
+          "disabled": true,
+          "value": ""
+        },
+        "form": {
+          "role": "generic",
+          "name": "",
+          "disabled": true
+        },
+        "outside": {
+          "role": "button",
+          "name": "Outside"
+        },
+        "page": {
+          "role": "generic",
+          "name": ""
+        }
+      },
+      "rects": {
+        "inside": [
+          21,
+          21,
+          80,
+          23
+        ],
+        "tick": [
+          21,
+          52,
+          49,
+          20
+        ],
+        "field": [
+          21,
+          80,
+          200,
+          23
+        ],
+        "form": [
+          12,
+          12,
+          218,
+          100
+        ],
+        "outside": [
+          12,
+          120,
+          80,
+          23
+        ],
+        "page": [
+          0,
+          0,
+          420,
+          300
+        ]
+      }
+    },
+    {
+      "type": "cursor",
+      "label": "pointer over each",
+      "cursor": {
+        "inside": "default",
+        "tick": "default",
+        "field": "text",
+        "outside": "default"
+      }
+    },
+    {
+      "type": "observe",
+      "label": "after clicking inside the disabled parent",
+      "focus": "outside",
+      "focusVisible": null,
+      "values": {
+        "tick": false,
+        "field": ""
+      },
+      "scroll": {},
+      "log": [],
+      "a11y": {
+        "inside": {
+          "role": "button",
+          "name": "Inside",
+          "disabled": true
+        },
+        "tick": {
+          "role": "checkbox",
+          "name": "Tick",
+          "disabled": true,
+          "checked": false
+        },
+        "field": {
+          "role": "textbox",
+          "name": "Field",
+          "disabled": true,
+          "value": ""
+        },
+        "form": {
+          "role": "generic",
+          "name": "",
+          "disabled": true
+        },
+        "outside": {
+          "role": "button",
+          "name": "Outside"
+        },
+        "page": {
+          "role": "generic",
+          "name": ""
+        }
+      },
+      "rects": {
+        "inside": [
+          21,
+          21,
+          80,
+          23
+        ],
+        "tick": [
+          21,
+          52,
+          49,
+          20
+        ],
+        "field": [
+          21,
+          80,
+          200,
+          23
+        ],
+        "form": [
+          12,
+          12,
+          218,
+          100
+        ],
+        "outside": [
+          12,
+          120,
+          80,
+          23
+        ],
+        "page": [
+          0,
+          0,
+          420,
+          300
+        ]
+      }
+    },
+    {
+      "type": "tabs",
+      "label": "Tab forward",
+      "focus": [
+        "outside",
+        "outside",
+        "outside"
+      ]
+    },
+    {
+      "type": "observe",
+      "label": "after clicking outside it",
+      "focus": "outside",
+      "focusVisible": null,
+      "values": {
+        "tick": false,
+        "field": ""
+      },
+      "scroll": {},
+      "log": [
+        "click:outside"
+      ],
+      "a11y": {
+        "inside": {
+          "role": "button",
+          "name": "Inside",
+          "disabled": true
+        },
+        "tick": {
+          "role": "checkbox",
+          "name": "Tick",
+          "disabled": true,
+          "checked": false
+        },
+        "field": {
+          "role": "textbox",
+          "name": "Field",
+          "disabled": true,
+          "value": ""
+        },
+        "form": {
+          "role": "generic",
+          "name": "",
+          "disabled": true
+        },
+        "outside": {
+          "role": "button",
+          "name": "Outside"
+        },
+        "page": {
+          "role": "generic",
+          "name": ""
+        }
+      },
+      "rects": {
+        "inside": [
+          21,
+          21,
+          80,
+          23
+        ],
+        "tick": [
+          21,
+          52,
+          49,
+          20
+        ],
+        "field": [
+          21,
+          80,
+          200,
+          23
+        ],
+        "form": [
+          12,
+          12,
+          218,
+          100
+        ],
+        "outside": [
+          12,
+          120,
+          80,
+          23
+        ],
+        "page": [
+          0,
+          0,
+          420,
+          300
+        ]
+      }
+    }
+  ],
+  "screenshots": [
+    "disabled-parent--1.png",
+    "disabled-parent--3.png",
+    "disabled-parent--5.png"
+  ],
+  "unsupported": []
+}

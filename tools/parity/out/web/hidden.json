@@ -1,0 +1,77 @@
+{
+  "scenario": "hidden",
+  "framework": "web",
+  "title": "A widget that is not shown: layout, focus order and accessibility",
+  "size": [
+    420,
+    260
+  ],
+  "records": [
+    {
+      "type": "observe",
+      "label": "initial",
+      "focus": null,
+      "focusVisible": null,
+      "values": {},
+      "scroll": {},
+      "log": [],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "first": {
+          "role": "button",
+          "name": "First"
+        },
+        "ghost": {
+          "role": "none",
+          "name": ""
+        },
+        "last": {
+          "role": "button",
+          "name": "Last"
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          420,
+          260
+        ],
+        "first": [
+          12,
+          12,
+          41.9,
+          21
+        ],
+        "ghost": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "last": [
+          12,
+          41,
+          41.2,
+          21
+        ]
+      }
+    },
+    {
+      "type": "tabs",
+      "label": "Tab forward",
+      "focus": [
+        "first",
+        "last",
+        null
+      ]
+    }
+  ],
+  "screenshots": [
+    "hidden--1.png"
+  ],
+  "unsupported": []
+}

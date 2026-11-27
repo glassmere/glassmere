@@ -1,0 +1,178 @@
+{
+  "scenario": "align-justify",
+  "framework": "web",
+  "title": "Alignment and distribution of children inside a row and a column",
+  "size": [
+    420,
+    400
+  ],
+  "records": [
+    {
+      "type": "observe",
+      "label": "where each child sits",
+      "focus": null,
+      "focusVisible": null,
+      "values": {},
+      "scroll": {},
+      "log": [],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "r1": {
+          "role": "none",
+          "name": ""
+        },
+        "a1": {
+          "role": "none",
+          "name": ""
+        },
+        "a2": {
+          "role": "none",
+          "name": ""
+        },
+        "a3": {
+          "role": "none",
+          "name": ""
+        },
+        "r2": {
+          "role": "none",
+          "name": ""
+        },
+        "b1": {
+          "role": "none",
+          "name": ""
+        },
+        "b2": {
+          "role": "none",
+          "name": ""
+        },
+        "r3": {
+          "role": "none",
+          "name": ""
+        },
+        "c1": {
+          "role": "none",
+          "name": ""
+        },
+        "c2": {
+          "role": "none",
+          "name": ""
+        },
+        "k1": {
+          "role": "none",
+          "name": ""
+        },
+        "d1": {
+          "role": "none",
+          "name": ""
+        },
+        "d2": {
+          "role": "none",
+          "name": ""
+        },
+        "d3": {
+          "role": "none",
+          "name": ""
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          420,
+          400
+        ],
+        "r1": [
+          10,
+          10,
+          300,
+          60
+        ],
+        "a1": [
+          10,
+          30,
+          40,
+          20
+        ],
+        "a2": [
+          140,
+          25,
+          40,
+          30
+        ],
+        "a3": [
+          270,
+          20,
+          40,
+          40
+        ],
+        "r2": [
+          10,
+          78,
+          300,
+          60
+        ],
+        "b1": [
+          120,
+          118,
+          40,
+          20
+        ],
+        "b2": [
+          160,
+          108,
+          40,
+          30
+        ],
+        "r3": [
+          10,
+          146,
+          300,
+          60
+        ],
+        "c1": [
+          83.3,
+          146,
+          40,
+          60
+        ],
+        "c2": [
+          196.7,
+          146,
+          40,
+          60
+        ],
+        "k1": [
+          10,
+          214,
+          160,
+          130
+        ],
+        "d1": [
+          60,
+          225.7,
+          60,
+          20
+        ],
+        "d2": [
+          40,
+          269,
+          100,
+          20
+        ],
+        "d3": [
+          70,
+          312.3,
+          40,
+          20
+        ]
+      }
+    }
+  ],
+  "screenshots": [
+    "align-justify--1.png"
+  ],
+  "unsupported": []
+}

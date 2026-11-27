@@ -1,0 +1,142 @@
+{
+  "framework": "glassmere",
+  "notes": [
+    "A slider's width is fixed by the widget; `width` in the spec is not honoured.",
+    "Fonts differ between frameworks, so widths of text are not comparable."
+  ],
+  "records": [
+    {
+      "a11y": {
+        "a": {
+          "name": "",
+          "role": "generic"
+        },
+        "b": {
+          "name": "",
+          "role": "generic"
+        },
+        "boxed": {
+          "name": "",
+          "role": "generic"
+        },
+        "btn": {
+          "name": "Button",
+          "role": "button"
+        },
+        "c": {
+          "name": "",
+          "role": "generic"
+        },
+        "d": {
+          "name": "",
+          "role": "generic"
+        },
+        "e": {
+          "name": "",
+          "role": "generic"
+        },
+        "f": {
+          "name": "",
+          "role": "generic"
+        },
+        "line": {
+          "name": "",
+          "role": "generic"
+        },
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "txt": {
+          "name": "A line of text",
+          "role": "text"
+        }
+      },
+      "focus": null,
+      "focusVisible": null,
+      "label": "positions with no gap or padding given where it is omitted",
+      "log": [],
+      "rects": {
+        "a": [
+          16.0,
+          16.0,
+          100.0,
+          30.0
+        ],
+        "b": [
+          16.0,
+          58.0,
+          100.0,
+          30.0
+        ],
+        "boxed": [
+          16.0,
+          100.0,
+          120.0,
+          88.0
+        ],
+        "btn": [
+          16.0,
+          242.0,
+          77.5999984741211,
+          46.400001525878906
+        ],
+        "c": [
+          26.0,
+          110.0,
+          100.0,
+          30.0
+        ],
+        "d": [
+          26.0,
+          148.0,
+          100.0,
+          30.0
+        ],
+        "e": [
+          16.0,
+          200.0,
+          60.0,
+          30.0
+        ],
+        "f": [
+          88.0,
+          200.0,
+          60.0,
+          30.0
+        ],
+        "line": [
+          16.0,
+          200.0,
+          132.0,
+          30.0
+        ],
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          360.0
+        ],
+        "txt": [
+          16.0,
+          300.3999938964844,
+          102.0999984741211,
+          22.399999618530273
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {}
+    }
+  ],
+  "scenario": "layout",
+  "screenshots": [
+    "layout--0.png"
+  ],
+  "size": [
+    420,
+    360
+  ],
+  "title": "Layout defaults: gap, padding, spacing between children",
+  "unsupported": []
+}

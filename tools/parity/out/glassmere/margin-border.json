@@ -1,0 +1,95 @@
+{
+  "framework": "glassmere",
+  "notes": [
+    "A slider's width is fixed by the widget; `width` in the spec is not honoured.",
+    "Fonts differ between frameworks, so widths of text are not comparable."
+  ],
+  "records": [
+    {
+      "a11y": {
+        "bordered": {
+          "name": "",
+          "role": "generic"
+        },
+        "both": {
+          "name": "",
+          "role": "generic"
+        },
+        "last": {
+          "name": "",
+          "role": "generic"
+        },
+        "margined": {
+          "name": "",
+          "role": "generic"
+        },
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "plain": {
+          "name": "",
+          "role": "generic"
+        }
+      },
+      "focus": null,
+      "focusVisible": null,
+      "label": "where the boxes sit",
+      "log": [],
+      "rects": {
+        "bordered": [
+          10.0,
+          70.0,
+          100.0,
+          30.0
+        ],
+        "both": [
+          10.0,
+          100.0,
+          100.0,
+          30.0
+        ],
+        "last": [
+          10.0,
+          130.0,
+          100.0,
+          30.0
+        ],
+        "margined": [
+          10.0,
+          40.0,
+          100.0,
+          30.0
+        ],
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          320.0
+        ],
+        "plain": [
+          10.0,
+          10.0,
+          100.0,
+          30.0
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {}
+    }
+  ],
+  "scenario": "margin-border",
+  "screenshots": [
+    "margin-border--0.png"
+  ],
+  "size": [
+    420,
+    320
+  ],
+  "title": "Margin and border",
+  "unsupported": [
+    "margin",
+    "border"
+  ]
+}

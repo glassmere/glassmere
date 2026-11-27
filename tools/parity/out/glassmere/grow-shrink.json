@@ -1,0 +1,192 @@
+{
+  "framework": "glassmere",
+  "notes": [
+    "A slider's width is fixed by the widget; `width` in the spec is not honoured.",
+    "Fonts differ between frameworks, so widths of text are not comparable."
+  ],
+  "records": [
+    {
+      "a11y": {
+        "d1": {
+          "name": "",
+          "role": "generic"
+        },
+        "d2": {
+          "name": "",
+          "role": "generic"
+        },
+        "d3": {
+          "name": "",
+          "role": "generic"
+        },
+        "default": {
+          "name": "",
+          "role": "generic"
+        },
+        "g1": {
+          "name": "",
+          "role": "generic"
+        },
+        "g2": {
+          "name": "",
+          "role": "generic"
+        },
+        "g3": {
+          "name": "",
+          "role": "generic"
+        },
+        "grow": {
+          "name": "",
+          "role": "generic"
+        },
+        "limits": {
+          "name": "",
+          "role": "generic"
+        },
+        "m1": {
+          "name": "",
+          "role": "generic"
+        },
+        "m2": {
+          "name": "",
+          "role": "generic"
+        },
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "s1": {
+          "name": "",
+          "role": "generic"
+        },
+        "s2": {
+          "name": "",
+          "role": "generic"
+        },
+        "s3": {
+          "name": "",
+          "role": "generic"
+        },
+        "squeeze": {
+          "name": "",
+          "role": "generic"
+        }
+      },
+      "focus": null,
+      "focusVisible": null,
+      "label": "sizes after distributing the room",
+      "log": [],
+      "rects": {
+        "d1": [
+          10.0,
+          86.0,
+          100.0,
+          30.0
+        ],
+        "d2": [
+          110.0,
+          86.0,
+          100.0,
+          30.0
+        ],
+        "d3": [
+          210.0,
+          86.0,
+          100.0,
+          30.0
+        ],
+        "default": [
+          10.0,
+          86.0,
+          200.0,
+          30.0
+        ],
+        "g1": [
+          10.0,
+          10.0,
+          100.0,
+          30.0
+        ],
+        "g2": [
+          110.0,
+          10.0,
+          160.0,
+          30.0
+        ],
+        "g3": [
+          270.0,
+          10.0,
+          40.0,
+          30.0
+        ],
+        "grow": [
+          10.0,
+          10.0,
+          300.0,
+          30.0
+        ],
+        "limits": [
+          10.0,
+          124.0,
+          300.0,
+          30.0
+        ],
+        "m1": [
+          10.0,
+          124.0,
+          80.0,
+          30.0
+        ],
+        "m2": [
+          90.0,
+          124.0,
+          220.0,
+          30.0
+        ],
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          420.0
+        ],
+        "s1": [
+          10.0,
+          48.0,
+          66.69999694824219,
+          30.0
+        ],
+        "s2": [
+          76.69999694824219,
+          48.0,
+          66.69999694824219,
+          30.0
+        ],
+        "s3": [
+          143.3000030517578,
+          48.0,
+          66.69999694824219,
+          30.0
+        ],
+        "squeeze": [
+          10.0,
+          48.0,
+          200.0,
+          30.0
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {}
+    }
+  ],
+  "scenario": "grow-shrink",
+  "screenshots": [
+    "grow-shrink--0.png"
+  ],
+  "size": [
+    420,
+    420
+  ],
+  "title": "Flex grow, shrink, minimum and maximum sizes, and what happens by default",
+  "unsupported": []
+}

@@ -1,0 +1,212 @@
+{
+  "framework": "glassmere",
+  "notes": [
+    "A slider's width is fixed by the widget; `width` in the spec is not honoured.",
+    "Fonts differ between frameworks, so widths of text are not comparable."
+  ],
+  "records": [
+    {
+      "a11y": {
+        "b1": {
+          "name": "One",
+          "role": "button"
+        },
+        "b2": {
+          "name": "Two",
+          "role": "button"
+        },
+        "bar": {
+          "name": "",
+          "role": "generic"
+        },
+        "box": {
+          "checked": false,
+          "name": "Box",
+          "role": "checkbox"
+        },
+        "field": {
+          "name": "Field",
+          "role": "textbox",
+          "value": ""
+        },
+        "gap": {
+          "name": "",
+          "role": "generic"
+        },
+        "last": {
+          "name": "Last",
+          "role": "button"
+        },
+        "off": {
+          "disabled": true,
+          "name": "Disabled",
+          "role": "button"
+        },
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "pane": {
+          "name": "",
+          "role": "generic"
+        },
+        "s1": {
+          "name": "fits",
+          "role": "text"
+        },
+        "short": {
+          "name": "",
+          "role": "scrollview"
+        },
+        "title": {
+          "name": "A heading",
+          "role": "text"
+        },
+        "vol": {
+          "name": "Volume",
+          "role": "slider",
+          "value": "5"
+        }
+      },
+      "focus": null,
+      "focusVisible": null,
+      "label": "initial",
+      "log": [],
+      "rects": {
+        "b1": [
+          12.0,
+          40.400001525878906,
+          56.599998474121094,
+          46.400001525878906
+        ],
+        "b2": [
+          100.5999984741211,
+          40.400001525878906,
+          54.0,
+          46.400001525878906
+        ],
+        "bar": [
+          12.0,
+          40.400001525878906,
+          142.60000610351562,
+          46.400001525878906
+        ],
+        "box": [
+          12.0,
+          178.8000030517578,
+          81.69999694824219,
+          46.400001525878906
+        ],
+        "field": [
+          12.0,
+          128.8000030517578,
+          200.0,
+          44.0
+        ],
+        "gap": [
+          74.5999984741211,
+          40.400001525878906,
+          20.0,
+          10.0
+        ],
+        "last": [
+          12.0,
+          419.6000061035156,
+          57.29999923706055,
+          46.400001525878906
+        ],
+        "off": [
+          12.0,
+          367.20001220703125,
+          93.5,
+          46.400001525878906
+        ],
+        "page": [
+          0.0,
+          0.0,
+          460.0,
+          360.0
+        ],
+        "pane": [
+          12.0,
+          92.80000305175781,
+          200.0,
+          30.0
+        ],
+        "s1": [
+          12.0,
+          231.1999969482422,
+          24.700000762939453,
+          22.399999618530273
+        ],
+        "short": [
+          12.0,
+          231.1999969482422,
+          24.700000762939453,
+          60.0
+        ],
+        "title": [
+          12.0,
+          12.0,
+          80.69999694824219,
+          22.399999618530273
+        ],
+        "vol": [
+          12.0,
+          297.20001220703125,
+          280.0,
+          64.0
+        ]
+      },
+      "scroll": {
+        "short": 0
+      },
+      "type": "observe",
+      "values": {
+        "box": false,
+        "field": "",
+        "vol": 5.0
+      }
+    },
+    {
+      "focus": [
+        "b1",
+        "b2",
+        "field",
+        "box",
+        "vol",
+        "last",
+        "b1",
+        "b2",
+        "field"
+      ],
+      "label": "Tab forward",
+      "type": "tabs"
+    },
+    {
+      "focus": [
+        "b2",
+        "b1",
+        "last",
+        "vol",
+        "box",
+        "field",
+        "b2",
+        "b1",
+        "last"
+      ],
+      "label": "Shift+Tab back",
+      "type": "tabs"
+    }
+  ],
+  "scenario": "focus-order",
+  "screenshots": [
+    "focus-order--0.png"
+  ],
+  "size": [
+    460,
+    360
+  ],
+  "title": "Tab order over a mix of controls and layout",
+  "unsupported": []
+}
