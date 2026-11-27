@@ -8,7 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- A view that is not run. `App::view_state` is an opt-in promise that the view reads nothing from the application but the value it returns and the sources of its bound labels. A message after which it is equal to what it was when the view last ran no longer runs the view; the default, `None`, runs it after every message as before. `Ui::bound_label` shows a `Signal<String>` or a `Memo<String>` (anything that implements the new `TextSource`) and follows it: when the source changes, the label's text is replaced in the retained tree, measured again if its size changed, repainted and published to the screen reader without the view running. See `examples/bound.rs` and "Declaring nothing" in [state](docs/state.md).
 - `Style::web()`: a style with the flex defaults of CSS, for someone who knows how those behave: `gap` 0 (the default is 12), `shrink` 1 (the default lets children overflow) and `align_items` stretch (the default keeps a child's own size across). Everything else is the default and is set with the usual methods. `Style::default()` is unchanged; changing its gap and shrink waits for 0.2.0.
+
+### Changed
+
+- Input that handlers answered in full (a click on a button with `on_click`, an activation from the keyboard or a screen reader) no longer marks the view stale on its own. It runs the view through the messages it sends, as before, unless the application's `view_state` is unchanged. An application that does not implement `view_state` sees no difference. Input that nothing answers still waits for the declaration that reads it.
+
 ## [0.1.8] - 2026-11-23
 
 ### Added
