@@ -103,6 +103,62 @@ impl Path {
         Self::default()
     }
 
+    /// A rectangle with rounded corners, wound clockwise from the top edge.
+    /// The radius is kept to half the shorter side, so a radius larger than
+    /// the rectangle gives a stadium or a circle; a radius of zero or less
+    /// gives square corners.
+    pub fn rounded_rect(rect: Rect, radius: f32) -> Self {
+        // The control-point distance that makes a cubic follow a quarter
+        // circle to within a fraction of a percent.
+        const ARC: f32 = 0.552_284_7;
+        let radius = radius.max(0.0).min(rect.width / 2.0).min(rect.height / 2.0);
+        let (left, top) = (rect.x, rect.y);
+        let (right, bottom) = (rect.x + rect.width, rect.y + rect.height);
+        let at = |x, y| Point { x, y };
+        // Ten segments with round corners, five without: one allocation.
+        let mut path = Self {
+            segments: Vec::with_capacity(if radius > 0.0 { 10 } else { 5 }),
+            cap: LineCap::default(),
+            join: LineJoin::default(),
+        };
+        if radius <= 0.0 {
+            path.move_to(at(left, top))
+                .line_to(at(right, top))
+                .line_to(at(right, bottom))
+                .line_to(at(left, bottom))
+                .close();
+            return path;
+        }
+        let k = radius * ARC;
+        path.move_to(at(left + radius, top))
+            .line_to(at(right - radius, top))
+            .cubic_to(
+                at(right - radius + k, top),
+                at(right, top + radius - k),
+                at(right, top + radius),
+            )
+            .line_to(at(right, bottom - radius))
+            .cubic_to(
+                at(right, bottom - radius + k),
+                at(right - radius + k, bottom),
+                at(right - radius, bottom),
+            )
+            .line_to(at(left + radius, bottom))
+            .cubic_to(
+                at(left + radius - k, bottom),
+                at(left, bottom - radius + k),
+                at(left, bottom - radius),
+            )
+            .line_to(at(left, top + radius))
+            .cubic_to(
+                at(left, top + radius - k),
+                at(left + radius - k, top),
+                at(left + radius, top),
+            )
+            .close();
+        path
+    }
+
     pub fn move_to(&mut self, to: Point) -> &mut Self {
         self.segments.push(Segment::Move(to));
         self
@@ -187,6 +243,24 @@ impl Path {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_rounded_rect_stays_inside_its_rectangle_and_clamps_the_radius() {
+        let rect = Rect {
+            x: 10.0,
+            y: 20.0,
+            width: 40.0,
+            height: 12.0,
+        };
+        let path = Path::rounded_rect(rect, 100.0);
+        assert_eq!(path.bounds(), rect);
+        // Clamped to a stadium: the straight runs along the top and bottom
+        // are as long as the difference of the sides.
+        assert_eq!(path.segments().len(), 10);
+        let square = Path::rounded_rect(rect, 0.0);
+        assert_eq!(square.segments().len(), 5);
+        assert_eq!(square.bounds(), rect);
+    }
+
     use super::*;
 
     #[test]

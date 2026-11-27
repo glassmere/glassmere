@@ -24,6 +24,23 @@ fn quads(context: &Context) -> Vec<Color> {
         .collect()
 }
 
+/// The colours of quads and of stroked paths: a focus ring is either.
+fn rings(context: &Context) -> Vec<Color> {
+    context
+        .scene()
+        .primitives
+        .iter()
+        .filter_map(|primitive| match primitive {
+            Primitive::Quad { color, .. } => Some(*color),
+            Primitive::Path {
+                stroke: Some(stroke),
+                ..
+            } => Some(stroke.color),
+            _ => None,
+        })
+        .collect()
+}
+
 fn text_colors(context: &Context) -> Vec<Color> {
     context
         .scene()
@@ -152,7 +169,7 @@ fn theme_switch_repaints_without_layout_and_controls_follow_tokens() {
     assert!(quads(&context).contains(&light.control_hover));
     context.action(save, Action::Focus);
     frame(&mut context, view);
-    assert!(quads(&context).contains(&light.focus));
+    assert!(rings(&context).contains(&light.focus));
     // A theme with a different font size relayouts once.
     context.set_theme(Theme {
         font_size: 20.0,
@@ -219,7 +236,17 @@ fn state_overrides_apply_per_interaction_state_and_stay_repaint_only() {
     frame(&mut context, view);
     // The click focused the button: focused text color and radius override.
     assert!(text_colors(&context).contains(&focused));
-    assert!(quads(&context).contains(&Theme::dark().focus));
+    assert!(
+        !rings(&context).contains(&Theme::dark().focus),
+        "a click does not draw the ring"
+    );
+    context.event(Event::KeyDown {
+        key: glassmere_core::Key::Tab,
+        shift: true,
+        repeat: false,
+    });
+    frame(&mut context, view);
+    assert!(rings(&context).contains(&Theme::dark().focus));
     context.event(Event::PointerLeft);
     frame(&mut context, view);
     assert!(!quads(&context).contains(&hover));
