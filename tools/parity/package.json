@@ -1,0 +1,13 @@
+{
+  "name": "glassmere-parity-bench",
+  "private": true,
+  "type": "module",
+  "description": "Compares glassmere's behaviour with the web (Chromium, as in Tauri) and Qt.",
+  "scripts": {
+    "bench": "node run.mjs",
+    "report": "node report.mjs out"
+  },
+  "devDependencies": {
+    "playwright": "^1.50.0"
+  }
+}
