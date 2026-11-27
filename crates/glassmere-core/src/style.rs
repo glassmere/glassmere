@@ -328,6 +328,15 @@ pub struct Style {
     /// Extra advance after every character in pixels, `0` unless set; negative
     /// tightens. Inherited by what is inside, like the font.
     pub letter_spacing: Option<f32>,
+    /// The node and everything inside it keeps its place in the layout but is
+    /// not drawn, hit, focused or reported to accessibility, like CSS
+    /// `visibility: hidden`. Unlike CSS a hidden subtree cannot show a child.
+    pub hidden: bool,
+    /// What is inside is not cut off at the edge of this box: a badge or a
+    /// shadow-like decoration can hang over the corner, as with CSS
+    /// `overflow: visible`. It still lies under the clip of the nearest
+    /// ancestor that clips, and a scroll view, a list or a popup always clips.
+    pub unclipped: bool,
     pub wrap: TextWrap,
     pub states: Option<Box<StateStyles>>,
     /// Group opacity of the node and its subtree, 0..=1.
@@ -398,6 +407,8 @@ impl Default for Style {
             text_align: None,
             line_height: None,
             letter_spacing: None,
+            hidden: false,
+            unclipped: false,
             wrap: TextWrap::None,
             states: None,
             opacity: 1.0,
@@ -612,6 +623,8 @@ impl Style {
     setter!(font_weight, font_weight, u16, some);
     setter!(italic, italic, bool, some);
     setter!(text_align, text_align, TextAlign, some);
+    setter!(hidden, hidden, bool);
+    setter!(unclipped, unclipped, bool);
     setter!(line_height, line_height, f32, some);
     setter!(letter_spacing, letter_spacing, f32, some);
 
