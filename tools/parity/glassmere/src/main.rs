@@ -27,6 +27,8 @@ enum Msg {
     Select(String, usize),
     Text(String, String),
     Slide(String, f64),
+    /// A dialog was closed by the user's own dismissal (Escape or the scrim).
+    Dialog(String, bool),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -42,6 +44,9 @@ struct Bench {
     size: [f32; 2],
     values: HashMap<String, Val>,
     log: Vec<String>,
+    /// A button that opens a dialog, and one that closes it, by id.
+    opens: HashMap<String, String>,
+    closes: HashMap<String, String>,
 }
 
 fn number(n: f64) -> String {
@@ -57,7 +62,21 @@ impl App for Bench {
 
     fn update(&mut self, message: Msg, _: &mut Effects<'_, Msg>) {
         match message {
-            Msg::Click(id) => self.log.push(format!("click:{id}")),
+            Msg::Click(id) => {
+                self.log.push(format!("click:{id}"));
+                if let Some(dialog) = self.opens.get(&id).cloned() {
+                    self.log.push(format!("dialog:{dialog}:true"));
+                    self.values.insert(dialog, Val::Bool(true));
+                }
+                if let Some(dialog) = self.closes.get(&id).cloned() {
+                    self.log.push(format!("dialog:{dialog}:false"));
+                    self.values.insert(dialog, Val::Bool(false));
+                }
+            }
+            Msg::Dialog(id, open) => {
+                self.log.push(format!("dialog:{id}:{open}"));
+                self.values.insert(id, Val::Bool(open));
+            }
             Msg::Toggle(id, on) => {
                 self.log.push(format!("toggle:{id}:{on}"));
                 self.values.insert(id, Val::Bool(on));
@@ -416,6 +435,27 @@ impl Bench {
             "label" => {
                 ui.keyed(id, |ui| ui.label(text));
             }
+            "dialog" => {
+                let open = matches!(self.values.get(&id), Some(Val::Bool(true)));
+                let title = node.get("title").and_then(Value::as_str).unwrap_or("");
+                let key = id.clone();
+                ui.dialog(
+                    id,
+                    open,
+                    glassmere_core::DialogOptions::new(title),
+                    move |open| Msg::Dialog(key.clone(), open),
+                    |ui| {
+                        for child in node
+                            .get("children")
+                            .and_then(Value::as_array)
+                            .into_iter()
+                            .flatten()
+                        {
+                            self.build(ui, child);
+                        }
+                    },
+                );
+            }
             "button" => {
                 let style = sized(node, Style::button());
                 let message = Msg::Click(id.clone());
@@ -524,8 +564,19 @@ fn paths(
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    prefix.push(id.clone());
-    out.insert(id.clone(), prefix.clone());
+    // A dialog is a layer of its own: what is inside it is found under the
+    // layer's panel, not under the node that declared it.
+    let dialog = node["type"].as_str() == Some("dialog");
+    let outer = if dialog { Some(prefix.clone()) } else { None };
+    if dialog {
+        *prefix = Vec::new();
+        prefix.push(format!("$dialog:{id}"));
+        out.insert(id.clone(), prefix.clone());
+        prefix.push("$panel".to_string());
+    } else {
+        prefix.push(id.clone());
+        out.insert(id.clone(), prefix.clone());
+    }
     kinds.insert(id.clone(), node["type"].as_str().unwrap_or("").to_string());
     for child in node
         .get("children")
@@ -547,7 +598,34 @@ fn paths(
         out.insert(oid.clone(), path);
         kinds.insert(oid, "radio".to_string());
     }
-    prefix.pop();
+    if let Some(outer) = outer {
+        *prefix = outer;
+    } else {
+        prefix.pop();
+    }
+}
+
+/// Which dialog each button names under `key` (`opens` or `closes`).
+fn links(node: &Value, key: &str) -> HashMap<String, String> {
+    fn walk(node: &Value, key: &str, out: &mut HashMap<String, String>) {
+        if let (Some(id), Some(dialog)) = (
+            node.get("id").and_then(Value::as_str),
+            node.get(key).and_then(Value::as_str),
+        ) {
+            out.insert(id.to_string(), dialog.to_string());
+        }
+        for child in node
+            .get("children")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            walk(child, key, out);
+        }
+    }
+    let mut out = HashMap::new();
+    walk(node, key, &mut out);
+    out
 }
 
 /// Ids of widgets the spec does not show, and of what is inside them.
@@ -701,6 +779,11 @@ impl Rig {
         }
     }
 
+    fn find(&self, id: &str) -> Option<glassmere_core::NodeId> {
+        let path: Vec<&str> = self.paths[id].iter().map(String::as_str).collect();
+        self.context.find(&path)
+    }
+
     fn node(&self, id: &str) -> glassmere_core::NodeId {
         let path: Vec<&str> = self.paths[id].iter().map(String::as_str).collect();
         self.context
@@ -766,6 +849,9 @@ impl Rig {
             .into_iter()
             .map(|s| (s.id, s))
             .collect();
+        let modal_open = self.app.values.iter().any(|(key, value)| {
+            self.kinds.get(key).is_some_and(|kind| kind == "dialog") && *value == Val::Bool(true)
+        });
         let mut a11y = Map::new();
         let mut rects = Map::new();
         let mut scroll = Map::new();
@@ -775,7 +861,21 @@ impl Rig {
                 rects.insert(id.clone(), json!([0, 0, 0, 0]));
                 continue;
             }
-            let node = self.node(id);
+            let Some(node) = self.find(id) else {
+                // A dialog that is not open has no nodes at all.
+                a11y.insert(id.clone(), json!({ "role": "none", "name": "" }));
+                rects.insert(id.clone(), json!([0, 0, 0, 0]));
+                continue;
+            };
+            // While a modal dialog is open the platform tree marks it modal, and
+            // assistive technology ignores everything outside it, as a browser
+            // does with what is inert; the snapshots still list it.
+            if modal_open && !self.paths[id][0].starts_with("$dialog:") {
+                a11y.insert(id.clone(), json!({ "role": "none", "name": "" }));
+                let r = self.rect(id);
+                rects.insert(id.clone(), json!(r.map(|v| (v * 10.0).round() / 10.0)));
+                continue;
+            }
             // A node hidden with `visibility` keeps its box but is not in the
             // accessibility tree, as in a browser.
             let Some(snap) = snapshots.get(&node) else {
@@ -822,6 +922,7 @@ impl Rig {
             .app
             .values
             .iter()
+            .filter(|(k, _)| self.kinds.get(*k).is_none_or(|kind| kind != "dialog"))
             .map(|(k, v)| (k.clone(), Self::value_json(v)))
             .collect();
         json!({
@@ -877,6 +978,8 @@ fn run(spec: &Value, out: &Path) -> Value {
             size,
             values,
             log: Vec::new(),
+            opens: links(&spec["ui"], "opens"),
+            closes: links(&spec["ui"], "closes"),
         },
         driver: AppDriver::new(|| true),
         context: Context::new(),

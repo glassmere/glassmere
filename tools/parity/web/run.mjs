@@ -98,8 +98,10 @@ function render(node) {
       return `<div data-id="${id}" style="${css(node)}"></div>`;
     case 'label':
       return `<span data-id="${id}" style="${css(node)}">${esc(node.text)}</span>`;
+    case 'dialog':
+      return `<dialog data-id="${id}" style="${css(node)}"><h2 style="margin:0 0 8px;font-size:20px">${esc(node.title ?? '')}</h2>${(node.children || []).map(render).join('')}</dialog>`;
     case 'button':
-      return `<button data-id="${id}"${dis} style="${css(node)}">${esc(node.text)}</button>`;
+      return `<button data-id="${id}"${dis}${node.opens ? ` data-opens="${esc(node.opens)}"` : ''}${node.closes ? ` data-closes="${esc(node.closes)}"` : ''} style="${css(node)}">${esc(node.text)}</button>`;
     case 'checkbox':
     case 'switch': {
       const role = node.type === 'switch' ? ' role="switch"' : '';
@@ -129,8 +131,19 @@ const shell = (spec) => `<!doctype html><html><head><meta charset="utf-8"><style
   const root = document.getElementById('root');
   root.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-id]');
-    if (b && !b.disabled) __log.push('click:' + b.dataset.id);
+    if (b && !b.disabled) {
+      __log.push('click:' + b.dataset.id);
+      if (b.dataset.opens) {
+        __log.push('dialog:' + b.dataset.opens + ':true');
+        root.querySelector('dialog[data-id="' + b.dataset.opens + '"]').showModal();
+      }
+      if (b.dataset.closes) root.querySelector('dialog[data-id="' + b.dataset.closes + '"]').close();
+    }
   });
+  // A close event does not bubble, so it is heard on the way down.
+  root.addEventListener('close', (e) => {
+    if (e.target.matches('dialog[data-id]')) __log.push('dialog:' + e.target.dataset.id + ':false');
+  }, true);
   root.addEventListener('change', (e) => {
     const t = e.target;
     if (t.type === 'checkbox') __log.push('toggle:' + t.dataset.id + ':' + t.checked);
