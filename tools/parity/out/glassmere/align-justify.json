@@ -1,0 +1,182 @@
+{
+  "framework": "glassmere",
+  "notes": [
+    "A slider's width is fixed by the widget; `width` in the spec is not honoured.",
+    "Fonts differ between frameworks, so widths of text are not comparable."
+  ],
+  "records": [
+    {
+      "a11y": {
+        "a1": {
+          "name": "",
+          "role": "generic"
+        },
+        "a2": {
+          "name": "",
+          "role": "generic"
+        },
+        "a3": {
+          "name": "",
+          "role": "generic"
+        },
+        "b1": {
+          "name": "",
+          "role": "generic"
+        },
+        "b2": {
+          "name": "",
+          "role": "generic"
+        },
+        "c1": {
+          "name": "",
+          "role": "generic"
+        },
+        "c2": {
+          "name": "",
+          "role": "generic"
+        },
+        "d1": {
+          "name": "",
+          "role": "generic"
+        },
+        "d2": {
+          "name": "",
+          "role": "generic"
+        },
+        "d3": {
+          "name": "",
+          "role": "generic"
+        },
+        "k1": {
+          "name": "",
+          "role": "generic"
+        },
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "r1": {
+          "name": "",
+          "role": "generic"
+        },
+        "r2": {
+          "name": "",
+          "role": "generic"
+        },
+        "r3": {
+          "name": "",
+          "role": "generic"
+        }
+      },
+      "focus": null,
+      "focusVisible": null,
+      "label": "where each child sits",
+      "log": [],
+      "rects": {
+        "a1": [
+          10.0,
+          30.0,
+          40.0,
+          20.0
+        ],
+        "a2": [
+          140.0,
+          25.0,
+          40.0,
+          30.0
+        ],
+        "a3": [
+          270.0,
+          20.0,
+          40.0,
+          40.0
+        ],
+        "b1": [
+          120.0,
+          118.0,
+          40.0,
+          20.0
+        ],
+        "b2": [
+          160.0,
+          108.0,
+          40.0,
+          30.0
+        ],
+        "c1": [
+          83.30000305175781,
+          146.0,
+          40.0,
+          60.0
+        ],
+        "c2": [
+          196.6999969482422,
+          146.0,
+          40.0,
+          60.0
+        ],
+        "d1": [
+          60.0,
+          225.6999969482422,
+          60.0,
+          20.0
+        ],
+        "d2": [
+          40.0,
+          269.0,
+          100.0,
+          20.0
+        ],
+        "d3": [
+          70.0,
+          312.29998779296875,
+          40.0,
+          20.0
+        ],
+        "k1": [
+          10.0,
+          214.0,
+          160.0,
+          130.0
+        ],
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          400.0
+        ],
+        "r1": [
+          10.0,
+          10.0,
+          300.0,
+          60.0
+        ],
+        "r2": [
+          10.0,
+          78.0,
+          300.0,
+          60.0
+        ],
+        "r3": [
+          10.0,
+          146.0,
+          300.0,
+          60.0
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {}
+    }
+  ],
+  "scenario": "align-justify",
+  "screenshots": [
+    "align-justify--0.png"
+  ],
+  "size": [
+    420,
+    400
+  ],
+  "title": "Alignment and distribution of children inside a row and a column",
+  "unsupported": []
+}

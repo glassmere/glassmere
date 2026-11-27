@@ -1,0 +1,82 @@
+{
+  "framework": "glassmere",
+  "notes": [
+    "A slider's width is fixed by the widget; `width` in the spec is not honoured.",
+    "Fonts differ between frameworks, so widths of text are not comparable."
+  ],
+  "records": [
+    {
+      "a11y": {
+        "full": {
+          "name": "",
+          "role": "generic"
+        },
+        "half": {
+          "name": "",
+          "role": "generic"
+        },
+        "outer": {
+          "name": "",
+          "role": "generic"
+        },
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "quarter": {
+          "name": "",
+          "role": "generic"
+        }
+      },
+      "focus": null,
+      "focusVisible": null,
+      "label": "sizes resolved against the parent",
+      "log": [],
+      "rects": {
+        "full": [
+          30.0,
+          30.0,
+          120.0,
+          30.0
+        ],
+        "half": [
+          20.0,
+          20.0,
+          140.0,
+          90.0
+        ],
+        "outer": [
+          10.0,
+          10.0,
+          300.0,
+          200.0
+        ],
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          300.0
+        ],
+        "quarter": [
+          20.0,
+          110.0,
+          70.0,
+          40.0
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {}
+    }
+  ],
+  "scenario": "percent-nested",
+  "screenshots": [
+    "percent-nested--0.png"
+  ],
+  "size": [
+    420,
+    300
+  ],
+  "title": "Percentage sizes inside parents with padding",
+  "unsupported": []
+}

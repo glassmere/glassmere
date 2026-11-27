@@ -1,0 +1,90 @@
+{
+  "scenario": "margin-border",
+  "framework": "qt",
+  "title": "Margin and border",
+  "size": [
+    420,
+    320
+  ],
+  "records": [
+    {
+      "type": "observe",
+      "label": "where the boxes sit",
+      "focus": null,
+      "focusVisible": null,
+      "values": {},
+      "scroll": {},
+      "log": [],
+      "a11y": {
+        "plain": {
+          "role": "generic",
+          "name": ""
+        },
+        "margined": {
+          "role": "generic",
+          "name": ""
+        },
+        "bordered": {
+          "role": "generic",
+          "name": ""
+        },
+        "both": {
+          "role": "generic",
+          "name": ""
+        },
+        "last": {
+          "role": "generic",
+          "name": ""
+        },
+        "page": {
+          "role": "generic",
+          "name": ""
+        }
+      },
+      "rects": {
+        "plain": [
+          10,
+          10,
+          100,
+          30
+        ],
+        "margined": [
+          10,
+          40,
+          100,
+          30
+        ],
+        "bordered": [
+          10,
+          70,
+          100,
+          30
+        ],
+        "both": [
+          10,
+          100,
+          100,
+          30
+        ],
+        "last": [
+          10,
+          130,
+          100,
+          30
+        ],
+        "page": [
+          0,
+          0,
+          420,
+          320
+        ]
+      }
+    }
+  ],
+  "screenshots": [
+    "margin-border--1.png"
+  ],
+  "unsupported": [
+    "margin"
+  ]
+}

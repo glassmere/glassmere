@@ -1,0 +1,652 @@
+{
+  "framework": "glassmere",
+  "notes": [
+    "A slider's width is fixed by the widget; `width` in the spec is not honoured.",
+    "Fonts differ between frameworks, so widths of text are not comparable."
+  ],
+  "records": [
+    {
+      "a11y": {
+        "note": {
+          "name": "Some text",
+          "role": "text"
+        },
+        "off": {
+          "disabled": true,
+          "name": "Disabled",
+          "role": "button"
+        },
+        "other": {
+          "name": "Other",
+          "role": "button"
+        },
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "pane": {
+          "name": "",
+          "role": "generic"
+        },
+        "save": {
+          "name": "Save",
+          "role": "button"
+        }
+      },
+      "focus": null,
+      "focusVisible": null,
+      "label": "initial",
+      "log": [],
+      "rects": {
+        "note": [
+          16.0,
+          124.80000305175781,
+          82.0,
+          22.399999618530273
+        ],
+        "off": [
+          16.0,
+          70.4000015258789,
+          93.5,
+          46.400001525878906
+        ],
+        "other": [
+          16.0,
+          223.1999969482422,
+          69.4000015258789,
+          46.400001525878906
+        ],
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          300.0
+        ],
+        "pane": [
+          16.0,
+          155.1999969482422,
+          200.0,
+          60.0
+        ],
+        "save": [
+          16.0,
+          16.0,
+          63.29999923706055,
+          46.400001525878906
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {}
+    },
+    {
+      "cursor": {
+        "note": "default",
+        "off": "default",
+        "pane": "default",
+        "save": "pointer"
+      },
+      "label": "pointer over each",
+      "type": "cursor"
+    },
+    {
+      "a11y": {
+        "note": {
+          "name": "Some text",
+          "role": "text"
+        },
+        "off": {
+          "disabled": true,
+          "name": "Disabled",
+          "role": "button"
+        },
+        "other": {
+          "name": "Other",
+          "role": "button"
+        },
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "pane": {
+          "name": "",
+          "role": "generic"
+        },
+        "save": {
+          "name": "Save",
+          "role": "button"
+        }
+      },
+      "focus": "save",
+      "focusVisible": false,
+      "label": "after a mouse click",
+      "log": [
+        "click:save"
+      ],
+      "rects": {
+        "note": [
+          16.0,
+          124.80000305175781,
+          82.0,
+          22.399999618530273
+        ],
+        "off": [
+          16.0,
+          70.4000015258789,
+          93.5,
+          46.400001525878906
+        ],
+        "other": [
+          16.0,
+          223.1999969482422,
+          69.4000015258789,
+          46.400001525878906
+        ],
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          300.0
+        ],
+        "pane": [
+          16.0,
+          155.1999969482422,
+          200.0,
+          60.0
+        ],
+        "save": [
+          16.0,
+          16.0,
+          63.29999923706055,
+          46.400001525878906
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {}
+    },
+    {
+      "a11y": {
+        "note": {
+          "name": "Some text",
+          "role": "text"
+        },
+        "off": {
+          "disabled": true,
+          "name": "Disabled",
+          "role": "button"
+        },
+        "other": {
+          "name": "Other",
+          "role": "button"
+        },
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "pane": {
+          "name": "",
+          "role": "generic"
+        },
+        "save": {
+          "name": "Save",
+          "role": "button"
+        }
+      },
+      "focus": "other",
+      "focusVisible": true,
+      "label": "after Tab",
+      "log": [
+        "click:save"
+      ],
+      "rects": {
+        "note": [
+          16.0,
+          124.80000305175781,
+          82.0,
+          22.399999618530273
+        ],
+        "off": [
+          16.0,
+          70.4000015258789,
+          93.5,
+          46.400001525878906
+        ],
+        "other": [
+          16.0,
+          223.1999969482422,
+          69.4000015258789,
+          46.400001525878906
+        ],
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          300.0
+        ],
+        "pane": [
+          16.0,
+          155.1999969482422,
+          200.0,
+          60.0
+        ],
+        "save": [
+          16.0,
+          16.0,
+          63.29999923706055,
+          46.400001525878906
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {}
+    },
+    {
+      "a11y": {
+        "note": {
+          "name": "Some text",
+          "role": "text"
+        },
+        "off": {
+          "disabled": true,
+          "name": "Disabled",
+          "role": "button"
+        },
+        "other": {
+          "name": "Other",
+          "role": "button"
+        },
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "pane": {
+          "name": "",
+          "role": "generic"
+        },
+        "save": {
+          "name": "Save",
+          "role": "button"
+        }
+      },
+      "focus": "save",
+      "focusVisible": true,
+      "label": "after Enter and Space on the focused button",
+      "log": [
+        "click:save",
+        "click:save",
+        "click:save"
+      ],
+      "rects": {
+        "note": [
+          16.0,
+          124.80000305175781,
+          82.0,
+          22.399999618530273
+        ],
+        "off": [
+          16.0,
+          70.4000015258789,
+          93.5,
+          46.400001525878906
+        ],
+        "other": [
+          16.0,
+          223.1999969482422,
+          69.4000015258789,
+          46.400001525878906
+        ],
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          300.0
+        ],
+        "pane": [
+          16.0,
+          155.1999969482422,
+          200.0,
+          60.0
+        ],
+        "save": [
+          16.0,
+          16.0,
+          63.29999923706055,
+          46.400001525878906
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {}
+    },
+    {
+      "a11y": {
+        "note": {
+          "name": "Some text",
+          "role": "text"
+        },
+        "off": {
+          "disabled": true,
+          "name": "Disabled",
+          "role": "button"
+        },
+        "other": {
+          "name": "Other",
+          "role": "button"
+        },
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "pane": {
+          "name": "",
+          "role": "generic"
+        },
+        "save": {
+          "name": "Save",
+          "role": "button"
+        }
+      },
+      "focus": "other",
+      "focusVisible": false,
+      "label": "pressed on a button, released away from it",
+      "log": [
+        "click:save",
+        "click:save",
+        "click:save"
+      ],
+      "rects": {
+        "note": [
+          16.0,
+          124.80000305175781,
+          82.0,
+          22.399999618530273
+        ],
+        "off": [
+          16.0,
+          70.4000015258789,
+          93.5,
+          46.400001525878906
+        ],
+        "other": [
+          16.0,
+          223.1999969482422,
+          69.4000015258789,
+          46.400001525878906
+        ],
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          300.0
+        ],
+        "pane": [
+          16.0,
+          155.1999969482422,
+          200.0,
+          60.0
+        ],
+        "save": [
+          16.0,
+          16.0,
+          63.29999923706055,
+          46.400001525878906
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {}
+    },
+    {
+      "a11y": {
+        "note": {
+          "name": "Some text",
+          "role": "text"
+        },
+        "off": {
+          "disabled": true,
+          "name": "Disabled",
+          "role": "button"
+        },
+        "other": {
+          "name": "Other",
+          "role": "button"
+        },
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "pane": {
+          "name": "",
+          "role": "generic"
+        },
+        "save": {
+          "name": "Save",
+          "role": "button"
+        }
+      },
+      "focus": null,
+      "focusVisible": null,
+      "label": "after clicking the disabled button",
+      "log": [
+        "click:save",
+        "click:save",
+        "click:save"
+      ],
+      "rects": {
+        "note": [
+          16.0,
+          124.80000305175781,
+          82.0,
+          22.399999618530273
+        ],
+        "off": [
+          16.0,
+          70.4000015258789,
+          93.5,
+          46.400001525878906
+        ],
+        "other": [
+          16.0,
+          223.1999969482422,
+          69.4000015258789,
+          46.400001525878906
+        ],
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          300.0
+        ],
+        "pane": [
+          16.0,
+          155.1999969482422,
+          200.0,
+          60.0
+        ],
+        "save": [
+          16.0,
+          16.0,
+          63.29999923706055,
+          46.400001525878906
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {}
+    },
+    {
+      "a11y": {
+        "note": {
+          "name": "Some text",
+          "role": "text"
+        },
+        "off": {
+          "disabled": true,
+          "name": "Disabled",
+          "role": "button"
+        },
+        "other": {
+          "name": "Other",
+          "role": "button"
+        },
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "pane": {
+          "name": "",
+          "role": "generic"
+        },
+        "save": {
+          "name": "Save",
+          "role": "button"
+        }
+      },
+      "focus": null,
+      "focusVisible": null,
+      "label": "after clicking a plain panel",
+      "log": [
+        "click:save",
+        "click:save",
+        "click:save"
+      ],
+      "rects": {
+        "note": [
+          16.0,
+          124.80000305175781,
+          82.0,
+          22.399999618530273
+        ],
+        "off": [
+          16.0,
+          70.4000015258789,
+          93.5,
+          46.400001525878906
+        ],
+        "other": [
+          16.0,
+          223.1999969482422,
+          69.4000015258789,
+          46.400001525878906
+        ],
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          300.0
+        ],
+        "pane": [
+          16.0,
+          155.1999969482422,
+          200.0,
+          60.0
+        ],
+        "save": [
+          16.0,
+          16.0,
+          63.29999923706055,
+          46.400001525878906
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {}
+    },
+    {
+      "a11y": {
+        "note": {
+          "name": "Some text",
+          "role": "text"
+        },
+        "off": {
+          "disabled": true,
+          "name": "Disabled",
+          "role": "button"
+        },
+        "other": {
+          "name": "Other",
+          "role": "button"
+        },
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "pane": {
+          "name": "",
+          "role": "generic"
+        },
+        "save": {
+          "name": "Save",
+          "role": "button"
+        }
+      },
+      "focus": null,
+      "focusVisible": null,
+      "label": "after clicking a text label",
+      "log": [
+        "click:save",
+        "click:save",
+        "click:save"
+      ],
+      "rects": {
+        "note": [
+          16.0,
+          124.80000305175781,
+          82.0,
+          22.399999618530273
+        ],
+        "off": [
+          16.0,
+          70.4000015258789,
+          93.5,
+          46.400001525878906
+        ],
+        "other": [
+          16.0,
+          223.1999969482422,
+          69.4000015258789,
+          46.400001525878906
+        ],
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          300.0
+        ],
+        "pane": [
+          16.0,
+          155.1999969482422,
+          200.0,
+          60.0
+        ],
+        "save": [
+          16.0,
+          16.0,
+          63.29999923706055,
+          46.400001525878906
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {}
+    }
+  ],
+  "scenario": "buttons",
+  "screenshots": [
+    "buttons--0.png",
+    "buttons--2.png",
+    "buttons--3.png",
+    "buttons--4.png",
+    "buttons--5.png",
+    "buttons--6.png",
+    "buttons--7.png",
+    "buttons--8.png"
+  ],
+  "size": [
+    420,
+    300
+  ],
+  "title": "Buttons: click, drag off, disabled, keyboard, focus ring, pointer",
+  "unsupported": []
+}

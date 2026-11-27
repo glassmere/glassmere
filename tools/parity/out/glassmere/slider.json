@@ -1,0 +1,265 @@
+{
+  "framework": "glassmere",
+  "notes": [
+    "A slider's width is fixed by the widget; `width` in the spec is not honoured.",
+    "Fonts differ between frameworks, so widths of text are not comparable."
+  ],
+  "records": [
+    {
+      "a11y": {
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "vol": {
+          "name": "Volume",
+          "role": "slider",
+          "value": "50"
+        }
+      },
+      "focus": null,
+      "focusVisible": null,
+      "label": "initial",
+      "log": [],
+      "rects": {
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          160.0
+        ],
+        "vol": [
+          16.0,
+          16.0,
+          280.0,
+          64.0
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {
+        "vol": 50.0
+      }
+    },
+    {
+      "cursor": {
+        "vol": "pointer"
+      },
+      "label": "pointer over the slider",
+      "type": "cursor"
+    },
+    {
+      "a11y": {
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "vol": {
+          "name": "Volume",
+          "role": "slider",
+          "value": "50"
+        }
+      },
+      "focus": "vol",
+      "focusVisible": false,
+      "label": "after a click in the middle",
+      "log": [],
+      "rects": {
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          160.0
+        ],
+        "vol": [
+          16.0,
+          16.0,
+          280.0,
+          64.0
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {
+        "vol": 50.0
+      }
+    },
+    {
+      "a11y": {
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "vol": {
+          "name": "Volume",
+          "role": "slider",
+          "value": "60"
+        }
+      },
+      "focus": "vol",
+      "focusVisible": true,
+      "label": "two ArrowRight",
+      "log": [
+        "slide:vol:55",
+        "slide:vol:60"
+      ],
+      "rects": {
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          160.0
+        ],
+        "vol": [
+          16.0,
+          16.0,
+          280.0,
+          64.0
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {
+        "vol": 60.0
+      }
+    },
+    {
+      "a11y": {
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "vol": {
+          "name": "Volume",
+          "role": "slider",
+          "value": "0"
+        }
+      },
+      "focus": "vol",
+      "focusVisible": true,
+      "label": "Home",
+      "log": [
+        "slide:vol:55",
+        "slide:vol:60",
+        "slide:vol:0"
+      ],
+      "rects": {
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          160.0
+        ],
+        "vol": [
+          16.0,
+          16.0,
+          280.0,
+          64.0
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {
+        "vol": 0.0
+      }
+    },
+    {
+      "a11y": {
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "vol": {
+          "name": "Volume",
+          "role": "slider",
+          "value": "100"
+        }
+      },
+      "focus": "vol",
+      "focusVisible": true,
+      "label": "End",
+      "log": [
+        "slide:vol:55",
+        "slide:vol:60",
+        "slide:vol:0",
+        "slide:vol:100"
+      ],
+      "rects": {
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          160.0
+        ],
+        "vol": [
+          16.0,
+          16.0,
+          280.0,
+          64.0
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {
+        "vol": 100.0
+      }
+    },
+    {
+      "a11y": {
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "vol": {
+          "name": "Volume",
+          "role": "slider",
+          "value": "75"
+        }
+      },
+      "focus": "vol",
+      "focusVisible": false,
+      "label": "a click three quarters along the track",
+      "log": [
+        "slide:vol:55",
+        "slide:vol:60",
+        "slide:vol:0",
+        "slide:vol:100",
+        "slide:vol:75"
+      ],
+      "rects": {
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          160.0
+        ],
+        "vol": [
+          16.0,
+          16.0,
+          280.0,
+          64.0
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {
+        "vol": 75.0
+      }
+    }
+  ],
+  "scenario": "slider",
+  "screenshots": [
+    "slider--0.png",
+    "slider--2.png",
+    "slider--3.png",
+    "slider--4.png",
+    "slider--5.png",
+    "slider--6.png"
+  ],
+  "size": [
+    420,
+    160
+  ],
+  "title": "Slider: keys and a click on the track",
+  "unsupported": []
+}

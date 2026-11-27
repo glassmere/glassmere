@@ -1,0 +1,154 @@
+{
+  "framework": "glassmere",
+  "notes": [
+    "A slider's width is fixed by the widget; `width` in the spec is not honoured.",
+    "Fonts differ between frameworks, so widths of text are not comparable."
+  ],
+  "records": [
+    {
+      "a11y": {
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "wide": {
+          "name": "A button wider than its parent",
+          "role": "button"
+        },
+        "window": {
+          "name": "",
+          "role": "generic"
+        }
+      },
+      "focus": null,
+      "focusVisible": null,
+      "label": "initial",
+      "log": [],
+      "rects": {
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          220.0
+        ],
+        "wide": [
+          12.0,
+          12.0,
+          240.0,
+          36.0
+        ],
+        "window": [
+          12.0,
+          12.0,
+          120.0,
+          50.0
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {}
+    },
+    {
+      "a11y": {
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "wide": {
+          "name": "A button wider than its parent",
+          "role": "button"
+        },
+        "window": {
+          "name": "",
+          "role": "generic"
+        }
+      },
+      "focus": "wide",
+      "focusVisible": false,
+      "label": "a click on the part that shows",
+      "log": [
+        "click:wide"
+      ],
+      "rects": {
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          220.0
+        ],
+        "wide": [
+          12.0,
+          12.0,
+          240.0,
+          36.0
+        ],
+        "window": [
+          12.0,
+          12.0,
+          120.0,
+          50.0
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {}
+    },
+    {
+      "a11y": {
+        "page": {
+          "name": "",
+          "role": "generic"
+        },
+        "wide": {
+          "name": "A button wider than its parent",
+          "role": "button"
+        },
+        "window": {
+          "name": "",
+          "role": "generic"
+        }
+      },
+      "focus": null,
+      "focusVisible": null,
+      "label": "a click on the part that is clipped away",
+      "log": [
+        "click:wide"
+      ],
+      "rects": {
+        "page": [
+          0.0,
+          0.0,
+          420.0,
+          220.0
+        ],
+        "wide": [
+          12.0,
+          12.0,
+          240.0,
+          36.0
+        ],
+        "window": [
+          12.0,
+          12.0,
+          120.0,
+          50.0
+        ]
+      },
+      "scroll": {},
+      "type": "observe",
+      "values": {}
+    }
+  ],
+  "scenario": "clip",
+  "screenshots": [
+    "clip--0.png",
+    "clip--1.png",
+    "clip--2.png"
+  ],
+  "size": [
+    420,
+    220
+  ],
+  "title": "A child larger than its parent: is the clipped part clickable",
+  "unsupported": []
+}
