@@ -8,7 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- A view that is not run. `App::view_state` is an opt-in promise that the view reads nothing from the application but the value it returns and the sources of its bound labels. A message after which it is equal to what it was when the view last ran no longer runs the view; the default, `None`, runs it after every message as before. `Ui::bound_label` shows a `Signal<String>` or a `Memo<String>` (anything that implements the new `TextSource`) and follows it: when the source changes, the label's text is replaced in the retained tree, measured again if its size changed, repainted and published to the screen reader without the view running. See `examples/bound.rs` and "Declaring nothing" in [state](docs/state.md).
 - `NumberOptions::field_style`, `NumberOptions::stepper_style` and `NumberOptions::without_steppers`, and `Autocomplete::style`. The number input's field (44 tall with padding 10) and its 32 by 44 buttons, and the autocomplete's 280 by 44 field, were fixed; they can now be made compact to fit a bar or a pill, or the buttons left out (the arrow keys and the wheel still step the number). Nothing changes for code that sets none of them.
+
+### Changed
+
+- Input that handlers answered in full (a click on a button with `on_click`, an activation from the keyboard or a screen reader) no longer marks the view stale on its own. It runs the view through the messages it sends, as before, unless the application's `view_state` is unchanged. An application that does not implement `view_state` sees no difference. Input that nothing answers still waits for the declaration that reads it.
 
 ## [0.1.8] - 2026-11-23
 
