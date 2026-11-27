@@ -28,7 +28,7 @@ const MAP = { start: 'flex-start', center: 'center', end: 'flex-end', stretch: '
 // What a framework cannot express is listed in `unsupported`; the web can do all of it.
 function css(node, extra = '') {
   // An omitted `shrink` is the web's own default of 1; the others default to 0.
-  const s = [`flex:${node.grow ?? 0} ${node.shrink ?? 1} auto`, extra];
+  const s = [`flex:${node.grow ?? 0} ${node.shrink ?? 1} ${node.basis != null ? px(node.basis) : 'auto'}`, extra];
   if (node.width != null) s.push(`width:${px(node.width)}`);
   if (node.height != null) s.push(`height:${px(node.height)}`);
   if (node.widthPercent != null) s.push(`width:${node.widthPercent * 100}%`);

@@ -771,6 +771,7 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
                 "false" | "nowrap" => false,
                 _ => return Err(format!("wrap-items is `true` or `false`, got `{value}`")),
             };
+        }
         "basis" => style.basis = length(value)?,
         // `flex: 1`: grow by that factor, shrink, and start from nothing.
         "flex" => {

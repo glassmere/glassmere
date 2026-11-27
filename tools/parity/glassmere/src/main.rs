@@ -167,6 +167,9 @@ fn sized(node: &Value, mut style: Style) -> Style {
             ))
             .border_color(colour("#8aa4c8"));
     }
+    if let Some(b) = px(node, "basis") {
+        style = style.basis(Length::Px(b));
+    }
     if let Some(g) = px(node, "grow") {
         style.grow = g;
     }
