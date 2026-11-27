@@ -9,10 +9,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - A view that is not run. `App::view_state` is an opt-in promise that the view reads nothing from the application but the value it returns and the sources of its bound labels. A message after which it is equal to what it was when the view last ran no longer runs the view; the default, `None`, runs it after every message as before. `Ui::bound_label` shows a `Signal<String>` or a `Memo<String>` (anything that implements the new `TextSource`) and follows it: when the source changes, the label's text is replaced in the retained tree, measured again if its size changed, repainted and published to the screen reader without the view running. See `examples/bound.rs` and "Declaring nothing" in [state](docs/state.md).
+- `FocusRing`, with `Style::focus_ring` and `Style::no_focus_ring`: one widget's focus ring in its own width, colour and inset, or none. `Path::rounded_rect` in `glassmere-scene` builds the stroked outline the ring uses. See "The focus ring" in [styling](docs/styling.md).
 
 ### Changed
 
 - Input that handlers answered in full (a click on a button with `on_click`, an activation from the keyboard or a screen reader) no longer marks the view stale on its own. It runs the view through the messages it sends, as before, unless the application's `view_state` is unchanged. An application that does not implement `view_state` sees no difference. Input that nothing answers still waits for the declaration that reads it.
+- A widget that takes no typed text shows its focus ring after the keyboard and not after a click or a touch, as a browser does. A field you type into still always shows it, and so does a window before the first press. A press hides the ring and the next key that does something shows it again. Code that checked for the ring in a scene after a click, as a snapshot test might, sees none: focus the widget with `Tab` or `Action::Focus` first.
+
+### Fixed
+
+- The focus ring of a node with rounded corners and no opaque background was four square bars. It is now a stroked rounded outline for every node with a radius, drawn inside its box over its fill. A node with a gradient or a translucent background no longer loses it while focused: the old ring replaced the fill of an opaque node with the focus colour and drew the background back inside it, and skipped the gradient.
 
 ## [0.1.8] - 2026-11-23
 

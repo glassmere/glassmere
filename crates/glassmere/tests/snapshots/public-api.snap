@@ -45,12 +45,16 @@ glassmere-core   const Dirty::PAINT: Dirty
 glassmere-core   const Dirty::STYLE: Dirty
 glassmere-core   const Dirty::TEXT: Dirty
 glassmere-core   const Dirty::TREE: Dirty
+glassmere-core   const FocusRing::NONE: Self
 glassmere-core   const GridColumns::MAX_WIDTH: f32
 glassmere-core   const GridColumns::MIN_WIDTH: f32
 glassmere-core   const PropertyChoice::NAMES: &'static [&'static str]
 glassmere-core   const ResizeEdge::ALL: [Self; 8]
 glassmere-core   const Transform::IDENTITY: Self
 glassmere-core   const WindowId::MAIN: WindowId
+glassmere-core   const fn FocusRing::color(mut self, color: Color) -> Self
+glassmere-core   const fn FocusRing::inset(mut self, inset: f32) -> Self
+glassmere-core   const fn FocusRing::new(width: f32) -> Self
 glassmere-core   field Animation::alternate: bool
 glassmere-core   field Animation::duration: Duration
 glassmere-core   field Animation::easing: Easing
@@ -165,6 +169,9 @@ glassmere-core   field FindState::regex: bool
 glassmere-core   field FindState::replace: bool
 glassmere-core   field FindState::replacement: String
 glassmere-core   field FindState::whole_word: bool
+glassmere-core   field FocusRing::color: Option<Color>
+glassmere-core   field FocusRing::inset: f32
+glassmere-core   field FocusRing::width: f32
 glassmere-core   field FocusScope::arrows: bool
 glassmere-core   field FocusScope::autofocus: bool
 glassmere-core   field FocusScope::restore: bool
@@ -407,6 +414,7 @@ glassmere-core   field Style::columns: Vec<Track>
 glassmere-core   field Style::direction: Option<Direction>
 glassmere-core   field Style::enter: Option<Effect>
 glassmere-core   field Style::exit: Option<Effect>
+glassmere-core   field Style::focus_ring: Option<FocusRing>
 glassmere-core   field Style::font_family: Option<FontFamily>
 glassmere-core   field Style::font_size: Option<f32>
 glassmere-core   field Style::font_weight: Option<u16>
@@ -1021,6 +1029,7 @@ glassmere-core   fn Style::columns(mut self, value: Vec<Track>) -> Self
 glassmere-core   fn Style::direction(mut self, value: Direction) -> Self
 glassmere-core   fn Style::enter(mut self, value: Effect) -> Self
 glassmere-core   fn Style::exit(mut self, value: Effect) -> Self
+glassmere-core   fn Style::focus_ring(mut self, ring: FocusRing) -> Self
 glassmere-core   fn Style::font_family(mut self, value: FontFamily) -> Self
 glassmere-core   fn Style::font_size(mut self, value: f32) -> Self
 glassmere-core   fn Style::font_weight(mut self, value: u16) -> Self
@@ -1037,6 +1046,7 @@ glassmere-core   fn Style::max_height(mut self, value: Length) -> Self
 glassmere-core   fn Style::max_width(mut self, value: Length) -> Self
 glassmere-core   fn Style::min_height(mut self, value: Length) -> Self
 glassmere-core   fn Style::min_width(mut self, value: Length) -> Self
+glassmere-core   fn Style::no_focus_ring(mut self) -> Self
 glassmere-core   fn Style::offset(mut self, x: f32, y: f32) -> Self
 glassmere-core   fn Style::on_disabled(self, paint: Paint) -> Self
 glassmere-core   fn Style::on_focused(self, paint: Paint) -> Self
@@ -1893,6 +1903,7 @@ glassmere-core struct Effects<'a, M> (private fields)
 glassmere-core struct EventArea #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-core struct FileRequest #[cfg(feature = "std")] #[derive(Clone, Debug, Default, Eq, PartialEq)]
 glassmere-core struct FindState #[cfg(feature = "std")] #[derive(Clone, Debug, Default)] (private fields)
+glassmere-core struct FocusRing #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-core struct FocusScope #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-core struct FrameDiagnostic #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct FrameStats #[derive(Clone, Copy, Debug, Default)]
@@ -2068,6 +2079,7 @@ glassmere-core use FileKind = platform::FileKind #[cfg(feature = "std")]
 glassmere-core use FileRequest = platform::FileRequest #[cfg(feature = "std")]
 glassmere-core use FindEdit = text_area::FindEdit
 glassmere-core use FindState = text_area::FindState #[cfg(feature = "std")]
+glassmere-core use FocusRing = style::FocusRing
 glassmere-core use FocusScope = focus::FocusScope
 glassmere-core use FontFamily = glassmere_scene::FontFamily
 glassmere-core use FrameDiagnostic = tree::diagnostics::FrameDiagnostic
@@ -2302,6 +2314,7 @@ glassmere-scene   fn Path::line_to(&mut self, to: Point) -> &mut Self
 glassmere-scene   fn Path::move_to(&mut self, to: Point) -> &mut Self
 glassmere-scene   fn Path::new() -> Self
 glassmere-scene   fn Path::quad_to(&mut self, control: Point, to: Point) -> &mut Self
+glassmere-scene   fn Path::rounded_rect(rect: Rect, radius: f32) -> Self
 glassmere-scene   fn Path::segments(&self) -> &[Segment]
 glassmere-scene   fn Path::translated(&self, offset: Point) -> Self
 glassmere-scene   fn Primitive::translated(&self, offset: Point) -> Self
