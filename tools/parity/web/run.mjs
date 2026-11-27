@@ -23,11 +23,23 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 const px = (v) => (typeof v === 'number' ? `${v}px` : v);
 
 // The spec's `align` defaults to "start": children keep their own width.
+const MAP = { start: 'flex-start', center: 'center', end: 'flex-end', stretch: 'stretch', 'space-between': 'space-between', 'space-around': 'space-around', 'space-evenly': 'space-evenly' };
+
+// What a framework cannot express is listed in `unsupported`; the web can do all of it.
 function css(node, extra = '') {
-  const s = ['flex:none', extra];
+  // An omitted `shrink` is the web's own default of 1; the others default to 0.
+  const s = [`flex:${node.grow ?? 0} ${node.shrink ?? 1} auto`, extra];
   if (node.width != null) s.push(`width:${px(node.width)}`);
   if (node.height != null) s.push(`height:${px(node.height)}`);
+  if (node.widthPercent != null) s.push(`width:${node.widthPercent * 100}%`);
+  if (node.heightPercent != null) s.push(`height:${node.heightPercent * 100}%`);
+  if (node.minWidth != null) s.push(`min-width:${px(node.minWidth)}`);
+  if (node.maxWidth != null) s.push(`max-width:${px(node.maxWidth)}`);
+  if (node.margin != null) s.push(`margin:${px(node.margin)}`);
+  if (node.border != null) s.push(`border:${px(node.border)} solid #8aa4c8`);
+  if (node.overflow) s.push(`overflow:${node.overflow}`);
   if (node.background) s.push(`background:${node.background}`);
+  if (node.visible === false) s.push('display:none');
   return s.filter(Boolean).join(';');
 }
 
@@ -40,7 +52,19 @@ function render(node) {
       const dir = node.type === 'column' ? 'column' : 'row';
       const gap = node.gap != null ? `gap:${px(node.gap)}` : '';
       const pad = node.padding != null ? `padding:${px(node.padding)}` : '';
-      return `<div data-id="${id}" style="${css(node, `display:flex;flex-direction:${dir};align-items:flex-start;${gap};${pad}`)}">${(node.children || []).map(render).join('')}</div>`;
+      const flex = `display:flex;flex-direction:${dir};align-items:${MAP[node.align ?? 'start']};justify-content:${MAP[node.justify ?? 'start']};${gap};${pad}`;
+      // A plain element cannot disable what is inside it; a fieldset can.
+      if (node.disabled) return `<fieldset data-id="${id}" disabled style="${css(node, `padding:0;${flex};border:0;margin:0;min-width:0`)}">${(node.children || []).map(render).join('')}</fieldset>`;
+      return `<div data-id="${id}" style="${css(node, flex)}">${(node.children || []).map(render).join('')}</div>`;
+    }
+    case 'stack': {
+      const kids = (node.children || []).map((c) => {
+        const at = c.position ?? { x: 0, y: 0 };
+        const z = c.z != null ? `;z-index:${c.z}` : '';
+        // Wrapped so the child keeps its own style; the wrapper only places it.
+        return `<div style="position:absolute;left:${at.x}px;top:${at.y}px${z}">${render({ ...c, grow: 0, shrink: 0 })}</div>`;
+      }).join('');
+      return `<div data-id="${id}" style="${css(node, 'position:relative')}">${kids}</div>`;
     }
     case 'scroll':
       return `<div data-id="${id}" style="${css(node, 'display:flex;flex-direction:column;align-items:flex-start;overflow:auto')}">${(node.children || []).map(render).join('')}</div>`;
@@ -72,6 +96,7 @@ function render(node) {
 
 const shell = (spec) => `<!doctype html><html><head><meta charset="utf-8"><style>
   :root { color-scheme: dark; }
+  *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; background: #1b2230; color: #e6ebf5; font: 14px/1.2 system-ui, sans-serif; }
   #root { width: ${spec.size[0]}px; height: ${spec.size[1]}px; overflow: hidden; display: flex; flex-direction: column; }
 </style></head><body><div id="root">${render({ ...spec.ui, width: spec.size[0], height: spec.size[1] })}</div>
@@ -109,6 +134,7 @@ async function run(spec, browser) {
   const rectOf = (id) =>
     page.evaluate((id) => {
       const el = document.querySelector(`[data-id="${id}"]`);
+      if (!el.getClientRects().length) return [0, 0, 0, 0];
       const box = (el.type === 'checkbox' || el.type === 'radio' ? el.closest('label') : el).getBoundingClientRect();
       return [box.x, box.y, box.width, box.height];
     }, id);
@@ -123,6 +149,7 @@ async function run(spec, browser) {
     const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: `[data-id="${id}"]` });
     const { nodes } = await cdp.send('Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false });
     const n = nodes[0];
+    if (!n || n.ignored) return { role: 'none', name: '' };
     const prop = (name) => n.properties?.find((p) => p.name === name)?.value?.value;
     const raw = n.role?.value ?? 'generic';
     const out = { role: ROLES[raw] ?? raw, name: n.name?.value ?? '' };
@@ -244,7 +271,7 @@ async function run(spec, browser) {
     await page.waitForTimeout(30);
   }
   await page.close();
-  return { scenario: spec.id, framework: 'web', title: spec.title, size: spec.size, records, screenshots: shots };
+  return { scenario: spec.id, framework: 'web', title: spec.title, size: spec.size, records, screenshots: shots, unsupported: [] };
 }
 
 const specs = readdirSync(join(here, '..', 'scenarios'))

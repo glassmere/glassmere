@@ -24,6 +24,7 @@ function kinds(spec) {
   const map = {};
   const walk = (n) => {
     if (n.id) map[n.id] = n.type;
+    if (n.id && n.width != null && n.height != null) map[`${n.id}#fixed`] = true;
     for (const o of n.options ?? []) map[o.id] = 'radio';
     (n.children ?? []).forEach(walk);
   };
@@ -31,7 +32,7 @@ function kinds(spec) {
   return map;
 }
 const INTERACTIVE = new Set(['button', 'checkbox', 'switch', 'radio', 'input', 'slider']);
-const BOXES = new Set(['panel', 'spacer', 'column', 'row', 'scroll']);
+const BOXES = new Set(['panel', 'spacer', 'column', 'row', 'scroll', 'stack']);
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const show = (v) => (v === undefined ? '—' : v === null ? 'none' : typeof v === 'object' ? JSON.stringify(v) : String(v));
@@ -48,12 +49,13 @@ function image(fw, name) {
 }
 
 // Rows of comparison for one record: [{group, field, values: {fw: v}, differs: {fw: bool}}]
-function rowsOf(spec, k, records) {
+function rowsOf(spec, k, records, unsupported) {
   const rows = [];
   const add = (group, field, values, opts = {}) => {
     const diff = {};
     for (const [fw] of present) {
       if (fw === 'web') continue;
+      if (group === 'layout' && unsupported[fw]?.length) { diff[fw] = false; continue; }
       const a = values.web, b = values[fw];
       if (opts.skipNull && (a === null || b === null) && fw === 'qt') { diff[fw] = false; continue; }
       diff[fw] = values.web !== undefined && b !== undefined && !(opts.eq ?? same)(a, b);
@@ -81,7 +83,7 @@ function rowsOf(spec, k, records) {
         add('accessibility', id, a11y, { eq: (a, b) => a && b && a.role === b.role && a.name === b.name && !!a.checked === !!b.checked && !!a.disabled === !!b.disabled && (a.value ?? '') === (b.value ?? '') });
       }
       const rects = Object.fromEntries(present.map(([fw]) => [fw, r[fw]?.rects?.[id]]));
-      const fixed = BOXES.has(k[id]) && id !== 'page';
+      const fixed = (BOXES.has(k[id]) || k[`${id}#fixed`]) && id !== 'page';
       // Text sets the size of everything else, and fonts differ.
       add('layout', id, rects, { eq: (a, b) => !fixed || (a && b && a.every((v, i) => Math.abs(v - b[i]) <= 2)), informative: !fixed });
     }
@@ -96,7 +98,27 @@ function rowsOf(spec, k, records) {
 }
 
 const scenarios = Object.keys(specs).filter((id) => present.some(([fw]) => load(fw, id))).sort();
+// Performance, from each framework's perf.json.
+const perf = FRAMEWORKS.map(([fw, name]) => [name, existsSync(join(out, fw, 'perf.json')) ? JSON.parse(readFileSync(join(out, fw, 'perf.json'), 'utf8')) : null]).filter(([, d]) => d);
+function perfTable() {
+  if (!perf.length) return '';
+  const rows = [...new Set(perf.flatMap(([, d]) => Object.values(d.variants).flatMap((v) => Object.keys(v))))].sort((a, b) => a - b);
+  const fmt = (v) => (v === undefined ? '—' : v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2));
+  let body = '';
+  for (const [name, d] of perf) {
+    for (const [variant, byRows] of Object.entries(d.variants)) {
+      body += `<tr><th>${esc(name)}${Object.keys(d.variants).length > 1 || variant ? ` <span class="muted">${esc(variant)}</span>` : ''}</th>${rows.map((n) => {
+        const m = byRows[n];
+        return `<td>${m ? `${fmt(m.first)} / ${fmt(m.update)} / ${fmt(m.scroll)}` : '—'}</td>`;
+      }).join('')}</tr>`;
+    }
+  }
+  return `<h2>Performance</h2>
+<p class="note">A list of N rows (a label, a button and a check box each) in a 400 px scroll area. Each cell is <b>first frame / one label changes / one scroll step</b>, in milliseconds. The web number is main-thread time from the DevTools protocol (script, style, layout, recording the paint; raster runs on other threads and is not counted). Qt's is wall time to lay out and paint the visible part. glassmere's is a whole frame as a host runs it (messages, the view, reconcile, layout, paint) plus a full software raster. All on the same machine in one process, so read the ratios, not the digits.</p>
+<table><thead><tr><th>toolkit</th>${rows.map((n) => `<th>${n} rows</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
+}
 const findings = [];
+const limitations = [];
 const sections = [];
 const summary = [];
 
@@ -104,13 +126,15 @@ for (const id of scenarios) {
   const spec = specs[id];
   const k = kinds(spec);
   const data = Object.fromEntries(present.map(([fw]) => [fw, load(fw, id)]));
+  const unsupported = Object.fromEntries(present.map(([fw]) => [fw, data[fw]?.unsupported ?? []]));
+  for (const [fw, list] of Object.entries(unsupported)) for (const f of list) limitations.push({ id, fw, feature: f, title: spec.title });
   const count = Math.max(...Object.values(data).map((d) => d?.records.length ?? 0));
   const tally = { qt: 0, glassmere: 0 };
   let html = '';
   for (let i = 0; i < count; i++) {
     const recs = Object.fromEntries(present.map(([fw]) => [fw, data[fw]?.records[i]]));
     const any = Object.values(recs).find(Boolean);
-    const rows = rowsOf(spec, k, recs);
+    const rows = rowsOf(spec, k, recs, unsupported);
     const bad = rows.filter((r) => r.differs.glassmere || r.differs.qt);
     for (const row of rows) {
       if (row.differs.glassmere) tally.glassmere++;
@@ -153,7 +177,7 @@ main { max-width:1180px; margin:0 auto; padding:24px 16px 80px; } h1 { margin:0 
 .id { color:var(--muted); margin:0 0 8px; font:12px ui-monospace,monospace; } p.lede { color:var(--muted); max-width:760px; }
 table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); margin:8px 0 16px; font-size:13px; }
 th,td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); vertical-align:top; word-break:break-word; } thead th { color:var(--muted); font-weight:600; }
-td.g { color:var(--muted); width:96px; } td.differs { color:var(--bad); font-weight:600; } tr.info td, tr.info th { color:var(--muted); }
+td.g { color:var(--muted); width:96px; } .muted { color:var(--muted); font-weight:400; } td.differs { color:var(--bad); font-weight:600; } tr.info td, tr.info th { color:var(--muted); }
 details.step { background:var(--panel); border:1px solid var(--line); border-radius:8px; margin:8px 0; padding:0 12px; } details.step table { margin-top:0; }
 summary { cursor:pointer; padding:10px 0; font-weight:600; } .badge { font-weight:400; font-size:12px; margin-left:8px; color:var(--ok); } .has .badge { color:var(--bad); }
 .shots { display:flex; flex-wrap:wrap; gap:12px; margin:4px 0 12px; } figure { margin:0; flex:1 1 240px; max-width:400px; } img { display:block; border:1px solid var(--line); width:100%; height:auto; }
@@ -169,6 +193,10 @@ ${summary.map((s) => `<tr><th><a href="#${s.id}">${s.id}</a></th><td>${esc(s.tit
 <h2>Where glassmere differs from the web, in behaviour</h2>
 <p class="note">Layout rows are left out here and shown in each scenario below: fonts differ between frameworks, so only boxes with a fixed size are compared.</p>
 <table><thead><tr><th>scenario</th><th>step</th><th>what</th><th>web</th><th>Qt</th><th>glassmere</th></tr></thead><tbody>${findingRows || '<tr><td colspan="6">No differences.</td></tr>'}</tbody></table>
+${perfTable()}
+<h2>What a toolkit cannot express</h2>
+<p class="note">Scenarios that need a property the toolkit does not have. The property is left out there and its layout rows are not compared.</p>
+<table><thead><tr><th>scenario</th><th>toolkit</th><th>property</th></tr></thead><tbody>${limitations.map((l) => `<tr><td><a href="#${l.id}">${l.id}</a></td><th>${esc(FRAMEWORKS.find(([f]) => f === l.fw)[1])}</th><td>${esc(l.feature)}</td></tr>`).join('') || '<tr><td colspan="3">None.</td></tr>'}</tbody></table>
 <div class="toolbar"><label><input type="checkbox" id="only"> Show only what differs</label></div>
 <div id="all">${sections.join('')}</div>
 <h2>How to read this</h2>

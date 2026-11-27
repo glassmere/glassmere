@@ -16,8 +16,13 @@ from PySide6.QtGui import QAccessible, QColor, QPalette, QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QCheckBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QRadioButton, QScrollArea, QSlider, QVBoxLayout, QWidget,
+    QPushButton, QRadioButton, QScrollArea, QSizePolicy, QSlider, QVBoxLayout, QWidget,
 )
+
+# What Qt Widgets cannot say about one widget. Percent sizes and a per-widget
+# margin have no equivalent; a scenario that needs them is marked unsupported
+# and the property is ignored.
+UNSUPPORTED = {"percent", "margin", "wrap"}
 
 HERE = Path(__file__).resolve().parent
 args = sys.argv[1:]
@@ -66,6 +71,7 @@ class Built:
         self.widgets = {}
         self.log = []
         self.groups = {}
+        self.hidden = set()
         self.root = QWidget()
         self.root.setFixedSize(*spec["size"])
         self.root.setAutoFillBackground(True)
@@ -77,10 +83,55 @@ class Built:
         top.setFixedSize(*spec["size"])
 
     def fixed(self, w, node):
-        if node.get("width") is not None:
+        grows = node.get("grow", 0) > 0
+        if node.get("width") is not None and not grows and node.get("minWidth") is None and node.get("maxWidth") is None:
             w.setFixedWidth(node["width"])
+        elif node.get("width") is not None:
+            w.setMinimumWidth(node["width"])
+        if node.get("minWidth") is not None:
+            w.setMinimumWidth(node["minWidth"])
+        if node.get("maxWidth") is not None:
+            w.setMaximumWidth(node["maxWidth"])
         if node.get("height") is not None:
             w.setFixedHeight(node["height"])
+
+    ALIGN_COLUMN = {"start": Qt.AlignLeft, "center": Qt.AlignHCenter, "end": Qt.AlignRight, "stretch": Qt.Alignment()}
+    ALIGN_ROW = {"start": Qt.AlignTop, "center": Qt.AlignVCenter, "end": Qt.AlignBottom, "stretch": Qt.Alignment()}
+
+    def fill(self, lay, node, kind):
+        """Add the children of a box layout: cross-axis alignment on each, and
+        stretches for what the main axis does with spare room."""
+        align = node.get("align", "start")
+        cross = (self.ALIGN_COLUMN if kind == "column" else self.ALIGN_ROW)[align]
+        main = Qt.AlignTop if kind == "column" else Qt.AlignLeft
+        kids = [c for c in node.get("children", [])]
+        justify = node.get("justify", "start")
+        growing = any(c.get("grow", 0) for c in kids)
+        stretch = lambda weight: lay.addStretch(weight)
+        if not growing:
+            if justify in ("end", "center", "space-around", "space-evenly"):
+                stretch(1)
+            for index, child in enumerate(kids):
+                if index and justify in ("space-between", "space-around", "space-evenly"):
+                    stretch(2 if justify == "space-around" else 1)
+                self.add(lay, child, cross, kind)
+            if justify in ("start", "center", "space-around", "space-evenly"):
+                stretch(1)
+        else:
+            for child in kids:
+                self.add(lay, child, cross, kind)
+
+    def add(self, lay, child, cross, kind):
+        w = self.build(child)
+        grow = child.get("grow", 0)
+        if grow:
+            policy = w.sizePolicy()
+            if kind == "row":
+                policy.setHorizontalPolicy(QSizePolicy.Expanding)
+            else:
+                policy.setVerticalPolicy(QSizePolicy.Expanding)
+            w.setSizePolicy(policy)
+        lay.addWidget(w, grow, cross)
 
     def build(self, node):
         kind, ident = node["type"], node.get("id", "")
@@ -93,9 +144,19 @@ class Built:
             if node.get("padding") is not None:
                 p = node["padding"]
                 lay.setContentsMargins(p, p, p, p)
-            for child in node.get("children", []):
-                lay.addWidget(self.build(child), 0, Qt.AlignLeft | Qt.AlignTop)
-            lay.addStretch(1)
+            self.fill(lay, node, kind)
+        elif kind == "stack":
+            w = QWidget()
+            order = sorted(enumerate(node.get("children", [])), key=lambda it: (it[1].get("z", 0), it[0]))
+            for _, child in order:
+                c = self.build(child)
+                c.setParent(w)
+                at = child.get("position", {"x": 0, "y": 0})
+                if not (child.get("width") or child.get("height")):
+                    c.adjustSize()
+                c.move(at["x"], at["y"])
+                c.show()
+                c.raise_()
         elif kind == "scroll":
             w = QScrollArea()
             w.setFrameShape(QFrame.NoFrame)
@@ -155,8 +216,16 @@ class Built:
         self.fixed(w, node)
         if node.get("label"):
             w.setAccessibleName(node["label"])
+        if node.get("border") is not None:
+            # A style sheet's border sits inside the widget, as border-box does.
+            w.setAttribute(Qt.WA_StyledBackground, True)
+            extra = f"background:{node['background']};" if node.get("background") else ""
+            w.setStyleSheet(f"#{ident or 'x'} {{ {extra} border:{node['border']}px solid #8aa4c8; }}")
         if node.get("disabled"):
             w.setEnabled(False)
+        if node.get("visible") is False:
+            w.hide()
+            self.hidden.add(ident)
         if ident:
             w.setObjectName(ident)
             self.widgets[ident] = w
@@ -164,6 +233,8 @@ class Built:
 
     # What a person aims at.
     def rect(self, ident):
+        if ident in self.hidden:
+            return [0, 0, 0, 0]
         w = self.widgets[ident]
         p = w.mapTo(self.root, QPoint(0, 0))
         return [p.x(), p.y(), w.width(), w.height()]
@@ -197,6 +268,8 @@ class Built:
         return out
 
     def a11y(self, ident):
+        if ident in self.hidden:
+            return {"role": "none", "name": ""}
         iface = QAccessible.queryAccessibleInterface(self.widgets[ident])
         if iface is None:
             return {"role": "n/a", "name": ""}
@@ -329,7 +402,8 @@ def run(spec):
 
     root.close()
     return {"scenario": spec["id"], "framework": "qt", "title": spec["title"], "size": spec["size"],
-            "records": records, "screenshots": shots}
+            "records": records, "screenshots": shots,
+            "unsupported": sorted(set(spec.get("features", [])) & UNSUPPORTED)}
 
 
 for path in sorted((HERE.parent / "scenarios").glob("*.json")):

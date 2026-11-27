@@ -11,8 +11,8 @@ glassmere (or Qt) differs from the web.
 
 | Runner | How it drives the UI | What it reads back |
 | --- | --- | --- |
-| `web/run.mjs` | Playwright and Chromium: real mouse and keyboard | the DOM, `:focus-visible`, the browser's accessibility tree, computed cursors, screenshots |
-| `qt/run.py` | PySide6 on the `offscreen` platform, `QTest` input | `QApplication.focusWidget()`, `QAccessible`, widget cursors, `QWidget.grab()` |
+| `web/run.mjs`, `web/perf.mjs` | Playwright and Chromium: real mouse and keyboard | the DOM, `:focus-visible`, the browser's accessibility tree, computed cursors, screenshots |
+| `qt/run.py`, `qt/perf.py` | PySide6 on the `offscreen` platform, `QTest` input | `QApplication.focusWidget()`, `QAccessible`, widget cursors, `QWidget.grab()` |
 | `glassmere/` | `Context::event` and `AppDriver`, as a host does | the node tree, accessibility snapshots, `Context::cursor`, the scene, the CPU renderer |
 
 No window or display is needed for any of them.
@@ -40,6 +40,18 @@ The glassmere runner is not a member of the workspace, so it adds nothing to CI.
 focus-ring, `focusable` and custom-widget changes of the 0.1.9 branch, so build it from a tree that
 has them.
 
+## What is covered
+
+Widgets and input: buttons, toggles, text input, slider, scrolling, focus order.
+Layout and parents: alignment and distribution, flex grow and shrink (including what each toolkit
+does by default), percentage sizes, margin and border, a disabled parent, a hidden child, overlapping
+widgets and stacking order, and a child larger than its parent.
+Performance: a long list of rows, built the ways each toolkit offers (see below).
+
+Where a toolkit cannot express a property (glassmere has no margin, border or wrapping row; Qt has
+no percentage size or per-widget margin) the scenario says so and the property is left out, so the
+report lists it as a limitation instead of a difference.
+
 ## What is compared
 
 For every `observe` step: which widget has focus, whether a focus ring is shown on it, the value of
@@ -54,6 +66,17 @@ order.
   12 for a gap). That is deliberate: the `layout` scenario exists to show it.
 - **Scroll distance** is informational: a wheel notch or an arrow key scrolls a different distance in
   every toolkit. Only whether it moved at all is compared.
+
+## Performance
+
+`node run.mjs` also times a list of 100, 1,000 and 5,000 rows (a label, a button and a check box
+each, in a 400 px scroll area): the first frame, one label changing, and one scroll step.
+`PARITY_ROWS=100,1000 node run.mjs` changes the sizes. glassmere is measured three ways because how a
+list is built is most of its cost: plain (the view declares every row each frame), plain inside
+`Ui::memo`, and a virtual list. `PARITY_DIAG=1` prints glassmere's own frame statistics for the last
+scroll step. The web figure is main-thread time from the DevTools protocol and leaves out raster,
+which runs on other threads; Qt's is wall time for `QWidget.grab()`; glassmere's is a whole frame
+plus a full software raster. Read the ratios, not the digits.
 
 ## Limits of the measurement
 
@@ -72,9 +95,15 @@ order.
 
 Write `scenarios/<id>.json`: a `size`, a `ui` tree and `steps`.
 
-Widgets: `column`, `row` (`gap`, `padding`), `scroll`, `panel`, `spacer` (`width`, `height`,
-`background`), `label`, `button`, `checkbox`, `switch`, `radiogroup` (`options`, `value`), `input`
-(`value`, `label`), `slider` (`min`, `max`, `step`, `value`, `label`). Every widget takes an `id`.
+Widgets: `column`, `row` (`gap`, `padding`, `align`, `justify`), `stack` (children placed by
+`position` and ordered by `z`), `scroll`, `panel`, `spacer` (`width`, `height`, `background`),
+`label`, `button`, `checkbox`, `switch`, `radiogroup` (`options`, `value`), `input` (`value`,
+`label`), `slider` (`min`, `max`, `step`, `value`, `label`). Every widget takes an `id`.
+
+Properties on any widget: `width`, `height`, `widthPercent`, `heightPercent`, `minWidth`, `maxWidth`,
+`grow`, `shrink`, `margin`, `border`, `overflow`, `disabled` (on a container, disables what is inside
+it) and `visible: false`. List the ones a scenario depends on in `features` so a toolkit that cannot
+express them is reported as unable to, not as different.
 
 Steps: `observe`, `click`, `clickAt` (`fx`, `fy`), `hover`, `dragOff`, `wheel` (`dy`), `press` (`Tab`,
 `Shift+Tab`, `Enter`, `Space`, arrows, `Home`, `End`, `Backspace`, `Control+a`), `type`, `cursor`

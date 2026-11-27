@@ -1,0 +1,63 @@
+{
+  "id": "clip",
+  "title": "A child larger than its parent: is the clipped part clickable",
+  "size": [
+    420,
+    220
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 8,
+    "padding": 12,
+    "children": [
+      {
+        "type": "stack",
+        "id": "window",
+        "width": 120,
+        "height": 50,
+        "overflow": "hidden",
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "button",
+            "id": "wide",
+            "text": "A button wider than its parent",
+            "width": 240,
+            "height": 36,
+            "position": {
+              "x": 0,
+              "y": 0
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "initial"
+    },
+    {
+      "do": "clickAt",
+      "target": "wide",
+      "fx": 0.2,
+      "fy": 0.5
+    },
+    {
+      "do": "observe",
+      "label": "a click on the part that shows"
+    },
+    {
+      "do": "clickAt",
+      "target": "wide",
+      "fx": 0.8,
+      "fy": 0.5
+    },
+    {
+      "do": "observe",
+      "label": "a click on the part that is clipped away"
+    }
+  ]
+}

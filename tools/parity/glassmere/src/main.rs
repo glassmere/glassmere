@@ -5,9 +5,11 @@
 //!
 //! An omitted `gap` or `padding` is glassmere's own default, which is the
 //! point of the layout scenario.
+mod perf;
+
 use glassmere_core::{
-    Align, App, AppDriver, Button, Context, Cursor, Effects, Event, Key, Length, Role, Style,
-    TextEdit, TextInput, Ui,
+    Align, App, AppDriver, Button, Context, Cursor, Effects, Event, Justify, Key, Length, Role,
+    Style, TextEdit, TextInput, Ui,
 };
 use glassmere_render_cpu::CpuRenderer;
 use glassmere_scene::{Color, Point, Primitive, Size};
@@ -92,7 +94,31 @@ fn colour(hex: &str) -> Color {
     Color::rgb((v >> 16) as u8, (v >> 8) as u8, v as u8)
 }
 
-/// Fixed sizes and background from the spec; everything else is the widget's.
+fn align(name: &str) -> Align {
+    match name {
+        "center" => Align::Center,
+        "end" => Align::End,
+        "stretch" => Align::Stretch,
+        _ => Align::Start,
+    }
+}
+
+fn justify(name: &str) -> Justify {
+    match name {
+        "center" => Justify::Center,
+        "end" => Justify::End,
+        "stretch" => Justify::Stretch,
+        "space-between" => Justify::SpaceBetween,
+        "space-around" => Justify::SpaceAround,
+        "space-evenly" => Justify::SpaceEvenly,
+        _ => Justify::Start,
+    }
+}
+
+/// Sizes, flex factors, placement and background from the spec; everything
+/// else is the widget's. A margin, a border and wrapping are not things a
+/// glassmere `Style` has, so they are not applied (the scenario is reported
+/// as unsupported).
 fn sized(node: &Value, mut style: Style) -> Style {
     if let Some(w) = px(node, "width") {
         style.width = Length::Px(w);
@@ -100,8 +126,34 @@ fn sized(node: &Value, mut style: Style) -> Style {
     if let Some(h) = px(node, "height") {
         style.height = Length::Px(h);
     }
+    if let Some(f) = px(node, "widthPercent") {
+        style.width = Length::Percent(f);
+    }
+    if let Some(f) = px(node, "heightPercent") {
+        style.height = Length::Percent(f);
+    }
+    if let Some(w) = px(node, "minWidth") {
+        style.min_width = Length::Px(w);
+    }
+    if let Some(w) = px(node, "maxWidth") {
+        style.max_width = Length::Px(w);
+    }
+    if let Some(g) = px(node, "grow") {
+        style.grow = g;
+    }
+    // An omitted `shrink` is glassmere's own default, which is not to shrink.
+    if let Some(g) = px(node, "shrink") {
+        style.shrink = g;
+    }
     if let Some(bg) = node.get("background").and_then(Value::as_str) {
         style.background = Some(colour(bg));
+    }
+    // Set by a `stack` on the children it places.
+    if let Some(at) = node.get("__at").and_then(Value::as_array) {
+        style = style.offset(
+            at[0].as_f64().unwrap_or(0.0) as f32,
+            at[1].as_f64().unwrap_or(0.0) as f32,
+        );
     }
     style
 }
@@ -115,6 +167,10 @@ impl Bench {
     }
 
     fn build(&self, ui: &mut Ui<'_, Msg>, node: &Value) {
+        // There is no `display: none`: a widget that is not shown is not declared.
+        if node.get("visible").and_then(Value::as_bool) == Some(false) {
+            return;
+        }
         let kind = node["type"].as_str().unwrap_or("");
         let id = node
             .get("id")
@@ -142,19 +198,67 @@ impl Bench {
         };
         match kind {
             "column" | "row" => {
-                let mut style = sized(node, Style::default().align_items(Align::Start));
+                let mut style = sized(node, Style::default());
+                style.align_items =
+                    align(node.get("align").and_then(Value::as_str).unwrap_or("start"));
+                style.justify_content = justify(
+                    node.get("justify")
+                        .and_then(Value::as_str)
+                        .unwrap_or("start"),
+                );
                 if let Some(gap) = px(node, "gap") {
                     style.gap = gap;
                 }
                 if let Some(padding) = px(node, "padding") {
                     style.padding = padding;
                 }
+                let content = |ui: &mut Ui<'_, Msg>| {
+                    // `Ui::enabled` is how a parent disables what is inside it.
+                    if off {
+                        ui.enabled(false, children);
+                    } else {
+                        children(ui);
+                    }
+                };
                 ui.keyed(id, |ui| {
                     if kind == "column" {
-                        ui.column(style, children);
+                        ui.column(style, content);
                     } else {
-                        ui.row(style, children);
+                        ui.row(style, content);
                     }
+                });
+            }
+            "stack" => {
+                let style = sized(node, Style::default());
+                let mut kids: Vec<(i64, usize, Value)> = node
+                    .get("children")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .enumerate()
+                    .map(|(index, child)| {
+                        let at = child
+                            .get("position")
+                            .cloned()
+                            .unwrap_or(json!({"x": 0, "y": 0}));
+                        let mut child = child.clone();
+                        child["__at"] = json!([at["x"], at["y"]]);
+                        (
+                            child.get("z").and_then(Value::as_i64).unwrap_or(0),
+                            index,
+                            child,
+                        )
+                    })
+                    .collect();
+                // There is no z-index: later siblings are on top, so the
+                // order of declaration is the order of stacking.
+                kids.sort_by_key(|(z, index, _)| (*z, *index));
+                ui.keyed(id, |ui| {
+                    ui.container(style, |ui| {
+                        for (_, _, child) in &kids {
+                            self.build(ui, child);
+                        }
+                    });
                 });
             }
             "scroll" => {
@@ -302,6 +406,37 @@ fn paths(
     prefix.pop();
 }
 
+/// Ids of widgets the spec does not show, and of what is inside them.
+fn hidden_ids(node: &Value) -> std::collections::HashSet<String> {
+    fn walk(node: &Value, hidden: bool, out: &mut std::collections::HashSet<String>) {
+        let hidden = hidden || node.get("visible").and_then(Value::as_bool) == Some(false);
+        if hidden {
+            if let Some(id) = node.get("id").and_then(Value::as_str) {
+                out.insert(id.to_string());
+            }
+            for option in node
+                .get("options")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                out.insert(option["id"].as_str().unwrap_or("").to_string());
+            }
+        }
+        for child in node
+            .get("children")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            walk(child, hidden, out);
+        }
+    }
+    let mut out = std::collections::HashSet::new();
+    walk(node, false, &mut out);
+    out
+}
+
 fn initial(node: &Value, out: &mut HashMap<String, Val>) {
     let id = node
         .get("id")
@@ -404,6 +539,7 @@ struct Rig {
     now: Duration,
     paths: HashMap<String, Vec<String>>,
     kinds: HashMap<String, String>,
+    hidden: std::collections::HashSet<String>,
 }
 
 impl Rig {
@@ -490,6 +626,11 @@ impl Rig {
         let mut rects = Map::new();
         let mut scroll = Map::new();
         for id in ids {
+            if self.hidden.contains(id) {
+                a11y.insert(id.clone(), json!({ "role": "none", "name": "" }));
+                rects.insert(id.clone(), json!([0, 0, 0, 0]));
+                continue;
+            }
             let node = self.node(id);
             let snap = &snapshots[&node];
             let mut entry = Map::new();
@@ -587,6 +728,7 @@ fn run(spec: &Value, out: &Path) -> Value {
         now: Duration::ZERO,
         paths: paths_map,
         kinds,
+        hidden: hidden_ids(&spec["ui"]),
     };
     // The ring is found in the scene by its colour. The dark theme's accent
     // is the same colour as its focus, so the focus colour is nudged by one
@@ -699,6 +841,9 @@ fn run(spec: &Value, out: &Path) -> Value {
     json!({
         "scenario": spec["id"], "framework": "glassmere", "title": spec["title"], "size": spec["size"],
         "records": records, "screenshots": shots,
+        "unsupported": spec["features"].as_array().into_iter().flatten()
+            .filter(|f| ["margin", "border", "wrap"].contains(&f.as_str().unwrap_or("")))
+            .cloned().collect::<Vec<_>>(),
         "notes": ["A slider's width is fixed by the widget; `width` in the spec is not honoured.",
                   "Fonts differ between frameworks, so widths of text are not comparable."],
     })
@@ -718,6 +863,10 @@ fn main() {
         .map(|(_, a)| a)
         .collect();
     fs::create_dir_all(&out).unwrap();
+    if args.iter().any(|a| a == "--perf") {
+        perf::run(&out);
+        return;
+    }
     let mut files: Vec<_> = fs::read_dir(manifest.join("../scenarios"))
         .unwrap()
         .map(|e| e.unwrap().path())
