@@ -1,6 +1,6 @@
 //! What hangs over an unclipped box is drawn, also when the box has a group
 //! opacity, by the real CPU renderer.
-use glassmere_core::{Context, Length, MonospaceMeasurer, Style, Ui};
+use glassmere_core::{Context, Length, MonospaceMeasurer, Style, Transform, Ui};
 use glassmere_render_cpu::CpuRenderer;
 use glassmere_scene::{Color, Size};
 
@@ -10,6 +10,10 @@ const HEIGHT: u32 = 100;
 /// The pixel at `x`, `y` after drawing a 60 by 40 unclipped box at the top
 /// left with `opacity`, holding a red 200 by 40 child that hangs over it.
 fn pixel(unclipped: bool, opacity: f32, x: u32, y: u32) -> [u8; 4] {
+    moved(unclipped, opacity, Transform::IDENTITY, x, y)
+}
+
+fn moved(unclipped: bool, opacity: f32, transform: Transform, x: u32, y: u32) -> [u8; 4] {
     let mut context = Context::new();
     context.run(
         Size::new(WIDTH as f32, HEIGHT as f32),
@@ -26,6 +30,7 @@ fn pixel(unclipped: bool, opacity: f32, x: u32, y: u32) -> [u8; 4] {
                                 Style::default()
                                     .unclipped(unclipped)
                                     .opacity(opacity)
+                                    .transform(transform)
                                     .width(Length::Px(60.0))
                                     .height(Length::Px(40.0)),
                                 |ui| {
@@ -84,5 +89,22 @@ fn an_unclipped_box_with_opacity_draws_it_too() {
     assert!(
         beyond[1] > 60 && beyond[1] < 200,
         "half red beyond the box as well: {beyond:?}"
+    );
+}
+
+#[test]
+fn a_transformed_unclipped_box_moves_what_hangs_over_with_it() {
+    let down = Transform {
+        translate: (0.0, 40.0),
+        ..Transform::IDENTITY
+    };
+    // The child, and the part that hangs over, are 40 lower.
+    assert!(
+        reddish(moved(true, 1.0, down, 120, 60)),
+        "moved with the box"
+    );
+    assert!(
+        !reddish(moved(true, 1.0, down, 120, 20)),
+        "and not where it was"
     );
 }
