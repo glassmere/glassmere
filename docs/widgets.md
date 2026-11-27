@@ -125,6 +125,50 @@ What `WidgetInput` carries is of the last frame, because that is what there is t
 - **Style** is `ui.theme()` for the tokens, `ui.class(..)` for a stylesheet class, and the `style` argument for the node itself, which lays out like any container.
 - **Paint** is a list of primitives in the widget's own coordinates: rounded rectangles, gradients, shadows, text, images, clips and layers. Clips and layers must balance.
 
+### Sizing it to text
+
+A widget declares its size up front, so one that holds text needs to know how big that text is. `ui.measure_text(text, &style)` asks the measurer the layout uses, so the answer is the size the text will have, and `ui.text_style()` gives the theme's plain text to start from:
+
+```rust
+let style = ui.text_style();
+let label = ui.measure_text("Save changes", &style);
+let size = Size::new(label.width + 24.0, label.height + 12.0);
+```
+
+`ui.measure_text_wrapped(text, &style, width)` is the size when the text wraps at `width`. Shaping costs time, so measure once and keep the answer while the text stays the same, as with any work in a view. `examples/layout.rs` draws a badge this way.
+
+### A button with an icon
+
+`ui.button` takes a text. For a button with an icon, or anything else drawn beside the label, make the button a widget of your own with `Role::Button`: it is then a button to the keyboard (Tab, Enter and Space), to a screen reader and to a click, and it is the size you give it. Measure the label to size it, draw the icon with any primitive (a `Quad`, an `Image`), and send the message with `WidgetBuilder::on_click`:
+
+```rust
+fn icon_button(ui: &mut Ui<'_, Msg>, key: &str, text: &str, message: Msg) {
+    let style = ui.text_style();
+    let label = ui.measure_text(text, &style);
+    let size = Size::new(14.0 * 2.0 + ICON + GAP + label.width, 8.0 * 2.0 + label.height.max(ICON));
+    let name = text.to_owned();
+    ui.keyed(key, |ui| {
+        ui.widget(
+            Style::default(),
+            WidgetBuilder::new(move |input: &WidgetInput| CustomWidget {
+                size,
+                semantics: Semantics {
+                    role: Role::Button,
+                    label: name.clone(),
+                    focusable: true,
+                    ..Semantics::default()
+                },
+                primitives: vec![/* the fill (lighter when `input.hovered`), the icon, the text */],
+                ..CustomWidget::default()
+            })
+            .on_click(message),
+        );
+    });
+}
+```
+
+`crates/glassmere-core/tests/icon_button.rs` is the whole thing, with tests that its width is its label's plus the room around it, that Enter and Space click it, and that a click reaches only it. Its size is known when it is declared, which is what `measure_text` is for: a widget has no way to ask the layout for its size afterwards.
+
 ### Testing it
 
 The same harness the built-in controls use, with no window:

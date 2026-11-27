@@ -66,8 +66,15 @@ impl Context {
         self.families.borrow_mut().clear();
         self.nodes.get_mut(&self.root).unwrap().resolved = self.root_text();
         let panics = self.misuse_panics();
+        // The view measures through the same measurer the layout will use. It
+        // is lent for the view alone: reconcile takes it back afterwards.
+        let probe = core::cell::RefCell::new(&mut *measurer);
+        let measure = |text: &str, style: &glassmere_scene::TextStyle, width: Option<f32>| {
+            probe.borrow_mut().measure_styled(text, style, width)
+        };
         let mut ui = Ui {
             context: self,
+            measure: &measure,
             parent: Some(self.root),
             pending_key: None,
             clicks: &mut clicks,
