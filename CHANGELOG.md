@@ -39,6 +39,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Choosing the radio button that is already chosen, by a click, Space or an assistive Activate, no longer sends its message. Nothing changes, and a web page's `change` event and a Qt `toggled` do not fire either. A handler that counted on being told again gets nothing; the chosen option is already in the state.
 
 - `Style::offset_end(right, bottom)`: takes the node out of flow and pins its bottom-right corner that far from the parent's, as `position: absolute; right; bottom` does, so a badge or a floating button stays in the corner at any size. With `offset` as well, the node is pinned on both sides and stretches between them if it has no size. `offset` alone is unchanged.
+### Fixed
+
+- An explicit pixel size is held to its own minimum and maximum before the layout engine sizes the parent from it. A container with no size of its own was as tall (or wide) as the size its child asked for, not the size the child ended up: a child with `height(100)` and `max_height(25)` was 25 tall inside a parent that was 100 tall. CSS gives 25 for both. Content with a maximum, such as a scroll panel, was not affected, and nothing changes for a size inside its limits. Found by the parity bench against Chromium.
+
 ## [0.1.8] - 2026-11-23
 
 ### Added
