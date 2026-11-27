@@ -752,6 +752,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             // A grid that scrolls declares the rows in view and a few beyond,
             // like a virtual list, where the last declaration left the scroll.
             let window = options.height.map(|height| {
+                ui.context.note_scroll_read();
                 let offset = ui
                     .context
                     .child(ui.parent, &WidgetKey::named("$scroll"), Kind::Scroll)

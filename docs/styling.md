@@ -29,6 +29,14 @@ Text properties (`foreground`, `font_size`, `font_family`, `font_weight`, `itali
 
 Pointer and focus states are overrides on top of the base style: `on_hover`, `on_pressed`, `on_focused` and `on_disabled`, each taking a `Paint` (background, foreground, radius, opacity, transform). They repaint; they never lay out again.
 
+### The focus ring
+
+A focused widget outlines itself with a ring: a stroke 2 px wide in the theme's `focus` colour, drawn inside the widget's box along its rounded edge, over its background and gradient. A widget with square corners gets four bars, which land exactly on pixels.
+
+The ring follows how focus was given, as it does in a browser. A widget that takes no typed text shows it after the keyboard, Tab and the arrow keys, and not after a click or a touch; the next key that does something brings it back, and the next press hides it again. A field you type into always shows it, because it is where the text goes. A window shows it from the start, until the first press.
+
+`Style::focus_ring(FocusRing::new(3.0).color(color).inset(2.0))` sets the width, the colour and how far the ring sits inside the edge, for one widget; `Style::no_focus_ring()` draws none, for a widget that shows focus some other way. The ring stays inside the widget's box, which is what is repainted when focus moves; outside it, it would be left behind. The colour of the default ring is the theme's `focus` token.
+
 ## Theme
 
 `Theme::dark()` and `Theme::light()` are the two built in. Every colour is a named token:
@@ -138,3 +146,9 @@ A window runs left to right or right to left according to `AppOptions::direction
 ## Pinning to a corner
 
 `Style::offset(x, y)` takes a node out of flow and puts its top-left corner at that place in its parent. `Style::offset_end(right, bottom)` does the same from the bottom-right corner, so a badge or a floating button stays in the corner whatever size its parent has. With both, the node is pinned on both sides, and one with no `width` or `height` stretches between them, as `left`, `right`, `top` and `bottom` together do in CSS. The edges are physical: the right edge is on the right in a right-to-left window too. The parent needs a size of its own, as the node no longer gives it one.
+
+## Stacking
+
+Overlapping siblings (nodes placed with `Style::offset`, or pushed over each other by a negative `margin`) are painted in the order they are declared, the last on top, and a click reaches the one on top. `Style::z_index(n)` (stylesheet `z-index: n`) changes that: a higher value is painted later and hit first, a lower one, negative or not, goes under. Siblings with the same value keep their declaration order. Layout and the Tab order still follow the declaration order.
+
+It orders the children of one parent. Each parent is a stack of its own, so a child never goes over or under a node outside its parent. To put something above the whole window, use a `popover` or a `dialog`.
