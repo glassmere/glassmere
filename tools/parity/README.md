@@ -44,7 +44,7 @@ has them.
 
 Widgets and input: buttons, toggles, text input, slider, scrolling, focus order.
 Layout and parents: alignment and distribution, flex grow and shrink (including what each toolkit
-does by default), percentage sizes, margin, border and padding per side, `align-content` for wrapped lines, a disabled parent, a hidden child, overlapping
+does by default), percentage sizes, margin, border and padding per side, `align-content` for wrapped lines, per-child `align-self`, minimum and maximum sizes and aspect ratio, nested percentages, row and column gaps, `space-between` with margins, grids (fixed, fractional and auto tracks, spans, automatic placement), a disabled parent, a hidden child, overlapping
 widgets and stacking order (`z-index`), and a child larger than its parent.
 Performance: a long list of rows, built the ways each toolkit offers (see below).
 

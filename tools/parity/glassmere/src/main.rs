@@ -186,6 +186,10 @@ fn sized(node: &Value, mut style: Style) -> Style {
             end[1].as_f64().unwrap_or(0.0) as f32,
         );
     }
+    if let Some(area) = node.get("__area").and_then(Value::as_array) {
+        let n = |i: usize| area[i].as_u64().unwrap_or(0) as u16;
+        style = style.area(glassmere_core::GridArea::span(n(0), n(1), n(2), n(3)));
+    }
     // Set by a `stack` on the children it places.
     if let Some(at) = node.get("__at").and_then(Value::as_array) {
         style = style.offset(
@@ -197,6 +201,22 @@ fn sized(node: &Value, mut style: Style) -> Style {
 }
 
 impl Bench {
+    /// A child of a grid, placed by the `column`, `row`, `colSpan` and `rowSpan`
+    /// its spec gives (from 1; none is automatic).
+    fn build_in_cell(&self, ui: &mut Ui<'_, Msg>, child: &Value) {
+        let mut child = child.clone();
+        let column = child.get("column").and_then(Value::as_u64).unwrap_or(0) as u16;
+        let row = child.get("row").and_then(Value::as_u64).unwrap_or(0) as u16;
+        let spans = (
+            child.get("colSpan").and_then(Value::as_u64).unwrap_or(1) as u16,
+            child.get("rowSpan").and_then(Value::as_u64).unwrap_or(1) as u16,
+        );
+        if column > 0 || row > 0 {
+            child["__area"] = json!([column, row, spans.0, spans.1]);
+        }
+        self.build(ui, &child);
+    }
+
     fn text(&self, id: &str) -> String {
         match self.values.get(id) {
             Some(Val::Text(t)) => t.clone(),
@@ -235,6 +255,41 @@ impl Bench {
             }
         };
         match kind {
+            "grid" => {
+                // The tracks are read the way a stylesheet reads them.
+                let mut text = String::from("class g {\n");
+                if let Some(columns) = node.get("columns").and_then(Value::as_str) {
+                    text.push_str(&format!("columns: {columns}\n"));
+                }
+                if let Some(rows) = node.get("rows").and_then(Value::as_str) {
+                    text.push_str(&format!("rows: {rows}\n"));
+                }
+                text.push_str("}\n");
+                let sheet = glassmere_core::StyleSheet::parse(&text).expect("tracks");
+                let tracks = sheet.class("g").cloned().unwrap_or_default();
+                let mut style = sized(node, Style::default());
+                style.columns = tracks.columns;
+                style.rows = tracks.rows;
+                if let Some(gap) = px(node, "gap") {
+                    style.gap = gap;
+                }
+                if let Some(padding) = px(node, "padding") {
+                    style.padding = padding;
+                }
+                style.align_items = Align::Start;
+                let kids: Vec<Value> = node
+                    .get("children")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
+                ui.keyed(id, |ui| {
+                    ui.grid(style, |ui| {
+                        for child in &kids {
+                            self.build_in_cell(ui, child);
+                        }
+                    });
+                });
+            }
             "column" | "row" => {
                 let mut style = sized(node, Style::default());
                 style.align_items =

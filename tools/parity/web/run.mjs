@@ -64,6 +64,19 @@ function render(node) {
       if (node.disabled) return `<fieldset data-id="${id}" disabled style="${css(node, `padding:0;${flex};border:0;margin:0;min-width:0`)}">${(node.children || []).map(render).join('')}</fieldset>`;
       return `<div data-id="${id}" style="${css(node, flex)}">${(node.children || []).map(render).join('')}</div>`;
     }
+    case 'grid': {
+      // Track sizes are numbers (pixels) or `fr`, `auto`, as the stylesheet reads them.
+      const tracks = (t) => String(t).split(/\s+/).map((x) => (/^[0-9.]+$/.test(x) ? `${x}px` : x)).join(' ');
+      const gap = node.gap != null ? `gap:${px(node.gap)};` : '';
+      const cols = node.columns ? `grid-template-columns:${tracks(node.columns)};` : '';
+      const rows = node.rows ? `grid-template-rows:${tracks(node.rows)};` : '';
+      const pad = node.padding != null ? `padding:${px(node.padding)};` : '';
+      const kids = (node.children || []).map((c) => {
+        const place = (c.column ? `grid-column:${c.column} / span ${c.colSpan ?? 1};` : '') + (c.row ? `grid-row:${c.row} / span ${c.rowSpan ?? 1};` : '');
+        return `<div style="${place}min-width:0;display:flex;flex-direction:column;align-items:stretch">${render({ ...c, grow: 0, shrink: 1 })}</div>`;
+      }).join('');
+      return `<div data-id="${id}" style="${css(node, `display:grid;${cols}${rows}${gap}${pad}align-items:start;justify-items:start`)}">${kids}</div>`;
+    }
     case 'stack': {
       const kids = (node.children || []).map((c) => {
         const at = c.position ?? { x: 0, y: 0 };
