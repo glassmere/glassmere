@@ -380,6 +380,7 @@ glassmere-core   field Semantics::label: String
 glassmere-core   field Semantics::numeric: Option<NumericValue>
 glassmere-core   field Semantics::role: Role
 glassmere-core   field Semantics::selected: Option<bool>
+glassmere-core   field Semantics::switch: bool
 glassmere-core   field Semantics::value: Option<String>
 glassmere-core   field Shadow::blur: f32
 glassmere-core   field Shadow::color: Color

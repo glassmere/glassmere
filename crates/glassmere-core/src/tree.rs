@@ -718,6 +718,7 @@ impl Node {
             checked: None,
             selected: None,
             expanded: None,
+            switch: self.kind == Kind::Switch,
         }
     }
 }
