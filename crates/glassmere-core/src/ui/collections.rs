@@ -844,6 +844,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
         kind: CollectionKind,
         row: impl FnMut(&mut Ui<'_, Msg>, &M, usize, bool),
     ) -> Nav {
+        let mut options = options;
         let heights = model.row_heights().filter(|_| kind != CollectionKind::Grid);
         if heights.is_some_and(|heights| heights.len() != model.len()) {
             self.misuse("row heights need one entry per row of the model".to_owned());
@@ -857,7 +858,23 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
             self.misuse(message.to_owned());
             return Nav::default();
         }
+        self.context.note_scroll_read();
         let owner = self.context.child(self.parent, &key, Kind::Collection);
+        // A list that fills its parent does not know how tall it is until
+        // layout has run: it shows rows for the whole window, which is enough
+        // for any height it can be given, and takes what it was laid out at
+        // for everything that depends on the true height.
+        let realize_height = if options.fill {
+            let laid_out = owner
+                .and_then(|id| self.context.node(id))
+                .map(|node| node.bounds.height)
+                .filter(|height| height.is_finite() && *height > 0.0);
+            let window = self.context.size().height;
+            options.height = laid_out.unwrap_or(options.height);
+            window.max(options.height)
+        } else {
+            options.height
+        };
         let mut native = owner
             .and_then(|id| self.context.node(id))
             .and_then(|node| node.scroll.map(|scroll| scroll.offset))
@@ -913,7 +930,14 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
         let window = Window {
             selected: state.selected(),
             offset,
-            realized: geometry.realized(model.len(), offset, &options),
+            realized: geometry.realized(
+                model.len(),
+                offset,
+                &VirtualListOptions {
+                    height: realize_height,
+                    ..options.clone()
+                },
+            ),
             geometry,
             pages,
         };
@@ -935,12 +959,19 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
         let selected = window.selected;
         let theme = self.context.theme();
         let (selection, even_row, odd_row) = (theme.selection, theme.row, theme.row_alternate);
-        let style = Style {
+        let mut style = Style {
             height: Length::Px(options.height),
             gap: 0.0,
             padding: 0.0,
             ..options.style.clone()
         };
+        if options.fill {
+            // Whatever the parent leaves, however many rows there are.
+            style.height = Length::Px(0.0);
+            style.min_height = Length::Px(0.0);
+            style.grow = 1.0;
+            style.shrink = 1.0;
+        }
         self.group(key, Kind::Collection, style, |ui| {
             ui.label_at(
                 "$before",

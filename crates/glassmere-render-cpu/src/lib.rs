@@ -815,6 +815,16 @@ impl CpuRenderer {
                             &tiny_skia::Stroke {
                                 width: stroke.width,
                                 miter_limit: 4.0,
+                                line_cap: match path.cap() {
+                                    glassmere_scene::LineCap::Butt => tiny_skia::LineCap::Butt,
+                                    glassmere_scene::LineCap::Round => tiny_skia::LineCap::Round,
+                                    glassmere_scene::LineCap::Square => tiny_skia::LineCap::Square,
+                                },
+                                line_join: match path.join() {
+                                    glassmere_scene::LineJoin::Miter => tiny_skia::LineJoin::Miter,
+                                    glassmere_scene::LineJoin::Round => tiny_skia::LineJoin::Round,
+                                    glassmere_scene::LineJoin::Bevel => tiny_skia::LineJoin::Bevel,
+                                },
                                 ..tiny_skia::Stroke::default()
                             },
                             surface.scale,

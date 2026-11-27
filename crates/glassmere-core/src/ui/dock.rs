@@ -409,8 +409,11 @@ fn group<M: 'static>(
         strip.tabs_with(
             selected,
             &labels,
-            Some(&ids[selected]),
-            None,
+            super::overlays::TabsExtra {
+                dock_panel: Some(&ids[selected]),
+                on_close: None,
+                style: None,
+            },
             |ui, current| {
                 menu(
                     ui,

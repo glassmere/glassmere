@@ -225,7 +225,23 @@ impl<'a, M: 'static> Ui<'a, M> {
     ) -> Response<'a> {
         let label = label.into();
         let shown = label.clone();
-        let response = self.checkbox_shown(label, &shown, checked);
+        let response = self.checkbox_shown(label, &shown, checked, None);
+        self.set_handler(Handler::Message(on_toggle(!checked)));
+        response
+    }
+
+    /// [`checkbox`](Self::checkbox) with a style of its own, for a box that
+    /// is not as tall as the default: `Checkbox::new("Notify").style(..)`.
+    #[track_caller]
+    pub fn checkbox_with(
+        &mut self,
+        checkbox: impl Into<crate::Checkbox>,
+        checked: bool,
+        on_toggle: impl Fn(bool) -> M,
+    ) -> Response<'a> {
+        let checkbox = checkbox.into();
+        let shown = checkbox.label.clone();
+        let response = self.checkbox_shown(checkbox.label, &shown, checked, checkbox.style);
         self.set_handler(Handler::Message(on_toggle(!checked)));
         response
     }
@@ -238,6 +254,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         label: impl Into<String>,
         shown: &str,
         checked: bool,
+        style: Option<Style>,
     ) -> Response<'a> {
         let key = self.next_key();
         let label = label.into();
@@ -245,7 +262,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             key,
             Kind::Checkbox,
             shown.to_owned(),
-            Style::button(),
+            style.unwrap_or_else(Style::button),
             Control::Checkbox { label, checked },
         )
     }
@@ -261,18 +278,46 @@ impl<'a, M: 'static> Ui<'a, M> {
         on_select: impl Fn(usize) -> M,
     ) -> Response<'a> {
         let key = self.next_key();
-        let response = self.radio_shown(key, label.into(), selected == option);
-        self.set_handler(Handler::Message(on_select(option)));
+        let response = self.radio_shown(key, label.into(), selected == option, None);
+        // Choosing what is already chosen changes nothing, so it sends
+        // nothing, as a web page's `change` and a Qt `toggled` do not either.
+        if selected != option {
+            self.set_handler(Handler::Message(on_select(option)));
+        }
+        response
+    }
+
+    /// [`radio`](Self::radio) with a style of its own: `Radio::new("Quiet").style(..)`.
+    #[track_caller]
+    pub fn radio_with(
+        &mut self,
+        radio: impl Into<crate::Radio>,
+        selected: usize,
+        option: usize,
+        on_select: impl Fn(usize) -> M,
+    ) -> Response<'a> {
+        let radio = radio.into();
+        let key = self.next_key();
+        let response = self.radio_shown(key, radio.label, selected == option, radio.style);
+        if selected != option {
+            self.set_handler(Handler::Message(on_select(option)));
+        }
         response
     }
 
     #[track_caller]
-    fn radio_shown(&mut self, key: WidgetKey, label: String, selected: bool) -> Response<'a> {
+    fn radio_shown(
+        &mut self,
+        key: WidgetKey,
+        label: String,
+        selected: bool,
+        style: Option<Style>,
+    ) -> Response<'a> {
         self.control(
             key,
             Kind::Radio,
             label.clone(),
-            Style::button(),
+            style.unwrap_or_else(Style::button),
             Control::Radio { label, selected },
         )
     }
@@ -337,8 +382,10 @@ impl<'a, M: 'static> Ui<'a, M> {
         let key = self.next_key();
         let selected = selected.min(items.len().saturating_sub(1));
         let response = self.combo_shown(combo, key, selected, items, "—");
+        // Choosing what is already chosen changes nothing, so it sends
+        // nothing, as a `<select>`'s `change` does not fire either.
         self.set_handler(Handler::Map(Box::new(move |update| match update {
-            ControlUpdate::Choice(index) => Some(on_choose(index)),
+            ControlUpdate::Choice(index) if index != selected => Some(on_choose(index)),
             _ => None,
         })));
         response
