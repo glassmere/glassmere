@@ -722,7 +722,9 @@ impl Context {
                 radial: gradient.radial,
             });
         }
-        if node.style.border > 0.0 {
+        if node.style.border_sides.is_some() && node.kind.holds_nodes() {
+            self.paint_border_sides(node, scene);
+        } else if node.style.border > 0.0 {
             self.paint_border(node, radius, scene);
         }
         if ring {
@@ -753,6 +755,58 @@ impl Context {
     fn paint_border(&self, node: &Node, radius: f32, scene: &mut Scene) {
         let color = node.style.border_color.unwrap_or(self.theme.track);
         stroke_inside(node.bounds, radius, node.style.border, color, 0.0, scene);
+    }
+
+    /// The border of a node that holds nodes, each side as wide as it says,
+    /// drawn straight along the inside of the box.
+    fn paint_border_sides(&self, node: &Node, scene: &mut Scene) {
+        let Some(sides) = node.style.border_sides else {
+            return;
+        };
+        let color = node.style.border_color.unwrap_or(self.theme.track);
+        let Rect {
+            x,
+            y,
+            width,
+            height,
+        } = node.bounds;
+        let (top, bottom) = (sides.top.max(0.0), sides.bottom.max(0.0));
+        let (left, right) = (sides.left.max(0.0), sides.right.max(0.0));
+        let middle = (height - top - bottom).max(0.0);
+        for rect in [
+            Rect {
+                x,
+                y,
+                width,
+                height: top.min(height),
+            },
+            Rect {
+                x,
+                y: y + height - bottom.min(height),
+                width,
+                height: bottom.min(height),
+            },
+            Rect {
+                x,
+                y: y + top,
+                width: left.min(width),
+                height: middle,
+            },
+            Rect {
+                x: x + width - right.min(width),
+                y: y + top,
+                width: right.min(width),
+                height: middle,
+            },
+        ] {
+            if rect.width > 0.0 && rect.height > 0.0 {
+                scene.primitives.push(Primitive::Quad {
+                    rect,
+                    color,
+                    radius: 0.0,
+                });
+            }
+        }
     }
 
     /// The node's own text, placed in its box.
