@@ -853,6 +853,17 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
                 }
             })
         }
+        "visibility" => {
+            style.hidden = match value {
+                "visible" => false,
+                "hidden" => true,
+                _ => {
+                    return Err(format!(
+                        "visibility is `visible` or `hidden`, got `{value}`"
+                    ));
+                }
+            }
+        }
         "line-height" => {
             let multiple = number(value)?;
             if !(multiple.is_finite() && multiple > 0.0) {

@@ -418,6 +418,7 @@ glassmere-core   field Style::gap: f32
 glassmere-core   field Style::gradient: Option<Box<Gradient>>
 glassmere-core   field Style::grow: f32
 glassmere-core   field Style::height: Length
+glassmere-core   field Style::hidden: bool
 glassmere-core   field Style::italic: Option<bool>
 glassmere-core   field Style::justify_content: Justify
 glassmere-core   field Style::justify_self: Option<Align>
@@ -1034,6 +1035,7 @@ glassmere-core   fn Style::gap(mut self, value: f32) -> Self
 glassmere-core   fn Style::gradient(mut self, gradient: Gradient) -> Self
 glassmere-core   fn Style::grow(mut self, value: f32) -> Self
 glassmere-core   fn Style::height(mut self, value: Length) -> Self
+glassmere-core   fn Style::hidden(mut self, value: bool) -> Self
 glassmere-core   fn Style::italic(mut self, value: bool) -> Self
 glassmere-core   fn Style::justify_content(mut self, value: Justify) -> Self
 glassmere-core   fn Style::justify_self(mut self, value: Align) -> Self

@@ -103,6 +103,9 @@ impl Context {
             return self.update_bounds_reference(id, origin, clip);
         }
         let node = &self.nodes[&id];
+        let hidden =
+            node.style.hidden || node.parent.is_some_and(|parent| self.nodes[&parent].hidden);
+        self.hidden_changed |= node.hidden != hidden;
         let old_bounds = node.bounds;
         let old_clip = node.clip;
         let old_scroll = node.scroll;
@@ -221,6 +224,11 @@ impl Context {
         // clip that does not start inside its parent's is that of a hidden
         // strip scroll button.
         node.clip = clip.intersect(node.bounds);
+        node.hidden = hidden;
+        if hidden {
+            node.clip.width = 0.0;
+            node.clip.height = 0.0;
+        }
         if scrolls_down {
             node.scroll.maximum =
                 (content_bottom + node.style.padding.max(0.0) - node.bounds.height).max(0.0);
@@ -548,7 +556,7 @@ impl Context {
             .filter(|parent| self.nodes[parent].kind == Kind::TabList)
             .map(|_| node.clip)
             .filter(|clip| *clip != node.bounds);
-        if strip_clip.is_some_and(|clip| clip.width <= 0.0 || clip.height <= 0.0) {
+        if node.hidden || strip_clip.is_some_and(|clip| clip.width <= 0.0 || clip.height <= 0.0) {
             let chunk = PaintChunk::new(Vec::new(), 0, Vec::new()).put_in(spare);
             self.nodes.get_mut(&id).unwrap().paint_cache = Some(chunk.clone());
             return chunk;
@@ -1137,6 +1145,9 @@ mod tests {
         pub(super) fn update_bounds_reference(&mut self, id: NodeId, origin: Point, clip: Rect) {
             let viewport = self.nodes[&self.root].bounds;
             let node = &self.nodes[&id];
+            let hidden =
+                node.style.hidden || node.parent.is_some_and(|parent| self.nodes[&parent].hidden);
+            self.hidden_changed |= node.hidden != hidden;
             let old_bounds = node.bounds;
             let old_clip = node.clip;
             let old_scroll = node.scroll;
@@ -1241,6 +1252,11 @@ mod tests {
             // clip that does not start inside its parent's is that of a hidden
             // strip scroll button.
             node.clip = clip.intersect(node.bounds);
+            node.hidden = hidden;
+            if hidden {
+                node.clip.width = 0.0;
+                node.clip.height = 0.0;
+            }
             if matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection) {
                 node.scroll.maximum =
                     (content_bottom + node.style.padding.max(0.0) - node.bounds.height).max(0.0);

@@ -406,6 +406,8 @@ struct Node {
     changed_frame: u64,
     painted_frame: u64,
     resolved: ResolvedText,
+    /// This node or an ancestor is `Style::hidden`; set by the bounds walk.
+    hidden: bool,
     scope: Option<Box<ScopeState>>,
     tooltip: Option<Box<crate::Tooltip>>,
     anim: Option<Box<animation_state::NodeAnim>>,
@@ -464,6 +466,7 @@ impl Node {
 
     fn focusable(&self) -> bool {
         self.enabled
+            && !self.hidden
             && !matches!(
                 self.control,
                 Control::Stepper
@@ -522,24 +525,26 @@ impl Node {
     /// A tab strip's scroll button while no tabs are hidden on its side: it
     /// is laid out but neither drawn nor reachable, and not reported.
     fn parked(&self) -> bool {
-        matches!(self.control, Control::StripScroll { .. })
-            && (self.clip.width <= 0.0 || self.clip.height <= 0.0)
+        self.hidden
+            || matches!(self.control, Control::StripScroll { .. })
+                && (self.clip.width <= 0.0 || self.clip.height <= 0.0)
     }
 
     /// Whether a press can land on this node: anything focusable or
     /// activatable, the pointer-only column sizer, and the window frame a
     /// view draws for itself.
     fn takes_pointer(&self) -> bool {
-        self.focusable()
-            || self.activatable()
-            || (self.enabled
-                && matches!(
-                    self.control,
-                    Control::Sizer { .. }
-                        | Control::TitleBar
-                        | Control::ResizeGrip(_)
-                        | Control::GridScrollbar { .. }
-                ))
+        !self.hidden
+            && (self.focusable()
+                || self.activatable()
+                || (self.enabled
+                    && matches!(
+                        self.control,
+                        Control::Sizer { .. }
+                            | Control::TitleBar
+                            | Control::ResizeGrip(_)
+                            | Control::GridScrollbar { .. }
+                    )))
     }
 
     fn activatable(&self) -> bool {
@@ -749,6 +754,9 @@ pub struct Context {
     spare_chunks: crate::collections::FastMap<NodeId, Rc<PaintChunk>>,
     stats: FrameStats,
     geometry_dirty: bool,
+    /// A node was hidden or shown by the last bounds walk, so what the user
+    /// was focused on or holding may no longer be there to be.
+    hidden_changed: bool,
     /// Whether the bounds walk is the plain one the tests compare it with.
     #[cfg(test)]
     reference_walk: bool,
@@ -1013,6 +1021,7 @@ impl Default for Context {
             changed_frame: 0,
             painted_frame: 0,
             resolved: ResolvedText::from_theme(&theme),
+            hidden: false,
             scope: None,
             tooltip: None,
         };
@@ -1038,6 +1047,7 @@ impl Default for Context {
             spare_chunks: Default::default(),
             stats: FrameStats::default(),
             geometry_dirty: false,
+            hidden_changed: false,
             #[cfg(test)]
             reference_walk: false,
             clips_valid: false,
