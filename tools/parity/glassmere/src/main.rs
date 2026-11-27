@@ -116,9 +116,7 @@ fn justify(name: &str) -> Justify {
 }
 
 /// Sizes, margin, border, flex factors, placement and background from the
-/// spec; everything else is the widget's. Wrapping is not something a
-/// glassmere `Style` has, so it is not applied (the scenario is reported as
-/// unsupported).
+/// spec; everything else is the widget's.
 fn sized(node: &Value, mut style: Style) -> Style {
     if let Some(w) = px(node, "width") {
         style.width = Length::Px(w);
@@ -219,6 +217,15 @@ impl Bench {
                 }
                 if let Some(padding) = px(node, "padding") {
                     style.padding = padding;
+                }
+                // `[top, right, bottom, left]`, as CSS orders them.
+                if let Some(sides) = node.get("padding").and_then(Value::as_array) {
+                    let side = |i: usize| sides.get(i).and_then(Value::as_f64).unwrap_or(0.0) as f32;
+                    style.padding_sides =
+                        Some(glassmere_core::Edges::new(side(0), side(1), side(2), side(3)));
+                }
+                if let Some(name) = node.get("alignContent").and_then(Value::as_str) {
+                    style.align_content = Some(justify(name));
                 }
                 let content = |ui: &mut Ui<'_, Msg>| {
                     // `Ui::enabled` is how a parent disables what is inside it.

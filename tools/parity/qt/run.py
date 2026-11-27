@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 # What Qt Widgets cannot say about one widget. Percent sizes and a per-widget
 # margin have no equivalent; a scenario that needs them is marked unsupported
 # and the property is ignored.
-UNSUPPORTED = {"percent", "margin", "wrap"}
+UNSUPPORTED = {"percent", "margin", "wrap", "align-content"}
 
 HERE = Path(__file__).resolve().parent
 args = sys.argv[1:]
@@ -143,7 +143,10 @@ class Built:
                 lay.setSpacing(node["gap"])
             if node.get("padding") is not None:
                 p = node["padding"]
-                lay.setContentsMargins(p, p, p, p)
+                if isinstance(p, list):
+                    lay.setContentsMargins(p[3], p[0], p[1], p[2])
+                else:
+                    lay.setContentsMargins(p, p, p, p)
             self.fill(lay, node, kind)
         elif kind == "stack":
             w = QWidget()
