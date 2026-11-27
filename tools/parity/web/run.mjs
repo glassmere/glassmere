@@ -56,9 +56,10 @@ function render(node) {
     case 'row': {
       const dir = node.type === 'column' ? 'column' : 'row';
       const gap = node.gap != null ? `gap:${px(node.gap)}` : '';
+      const gaps = `${node.rowGap != null ? `row-gap:${px(node.rowGap)};` : ''}${node.columnGap != null ? `column-gap:${px(node.columnGap)};` : ''}`;
       const pad = node.padding != null ? `padding:${[].concat(node.padding).map(px).join(' ')}` : '';
       const content = node.alignContent ? `align-content:${MAP[node.alignContent]};` : '';
-      const flex = `display:flex;${node.wrap ? 'flex-wrap:wrap;' : ''}flex-direction:${dir};align-items:${MAP[node.align ?? 'start']};justify-content:${MAP[node.justify ?? 'start']};${gap};${pad};${content}`;
+      const flex = `display:flex;${node.wrap ? 'flex-wrap:wrap;' : ''}flex-direction:${dir};align-items:${MAP[node.align ?? 'start']};justify-content:${MAP[node.justify ?? 'start']};${gap};${gaps}${pad};${content}`;
       // A plain element cannot disable what is inside it; a fieldset can.
       if (node.disabled) return `<fieldset data-id="${id}" disabled style="${css(node, `padding:0;${flex};border:0;margin:0;min-width:0`)}">${(node.children || []).map(render).join('')}</fieldset>`;
       return `<div data-id="${id}" style="${css(node, flex)}">${(node.children || []).map(render).join('')}</div>`;

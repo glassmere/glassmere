@@ -248,6 +248,12 @@ impl Bench {
                 if let Some(gap) = px(node, "gap") {
                     style.gap = gap;
                 }
+                if let Some(gap) = px(node, "rowGap") {
+                    style.row_gap = Some(gap);
+                }
+                if let Some(gap) = px(node, "columnGap") {
+                    style.column_gap = Some(gap);
+                }
                 if let Some(padding) = px(node, "padding") {
                     style.padding = padding;
                 }
