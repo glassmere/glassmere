@@ -19,7 +19,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use glassmere_scene::{
-    Color, Point, Primitive, Rect, Scene, Size, TextMeasurer, TextStyle, TextWrap,
+    Color, Point, Primitive, Rect, Scene, Size, TextAlign, TextMeasurer, TextStyle, TextWrap,
 };
 mod actions;
 mod animation_state;
@@ -33,6 +33,7 @@ mod dock_input;
 mod drag_input;
 mod edge_scroll;
 mod editor_text;
+mod ellipsis;
 mod events;
 mod focus_input;
 mod handlers;
@@ -77,6 +78,8 @@ struct Preparing {
     /// Rows whose hint is measured.
     hinted: Vec<NodeId>,
     editors: Vec<NodeId>,
+    /// Text leaves that end an overlong line with an ellipsis.
+    ellipsized: Vec<NodeId>,
     /// Whether the lists hold what a walk over the nodes finds: set once
     /// `prepare_controls` has stored them, dropped by every declaration. It
     /// holds because nodes are created, removed, and given a kind, style,
@@ -94,6 +97,7 @@ impl Preparing {
         self.labelled.clear();
         self.hinted.clear();
         self.editors.clear();
+        self.ellipsized.clear();
     }
 }
 
@@ -357,12 +361,13 @@ fn overwrite(slot: &mut Primitive, source: &Primitive) {
 /// Makes `into` a copy of `from`. The room `into` has is kept when `from` fits
 /// in it and it is not more than twice the length of `from` plus 32 bytes: one
 /// long text must not leave its room to every text that comes after it.
-fn refill(into: &mut String, from: &String) {
+fn refill(into: &mut String, from: &str) {
     let room = into.capacity();
     if room >= from.len() && room <= from.len().saturating_mul(2).saturating_add(32) {
-        into.clone_from(from);
+        into.clear();
+        into.push_str(from);
     } else {
-        *into = from.clone();
+        *into = from.to_owned();
     }
 }
 
@@ -407,6 +412,8 @@ struct Node {
     changed_frame: u64,
     painted_frame: u64,
     resolved: ResolvedText,
+    /// This node or an ancestor is `Style::hidden`; set by the bounds walk.
+    hidden: bool,
     scope: Option<Box<ScopeState>>,
     tooltip: Option<Box<crate::Tooltip>>,
     anim: Option<Box<animation_state::NodeAnim>>,
@@ -418,6 +425,8 @@ struct Node {
     label_width: f32,
     /// Width of a menu item's hint, which is written along the end edge.
     hint_width: f32,
+    /// What a line that does not fit shows, for `TextOverflow::Ellipsis`.
+    ellipsis: Option<Box<ellipsis::Ellipsis>>,
     /// Consecutive frames in which all of this node's new children replaced
     /// as many removed ones.
     churn: u8,
@@ -479,6 +488,7 @@ impl Node {
 
     fn focusable(&self) -> bool {
         self.enabled
+            && !self.hidden
             && !matches!(
                 self.control,
                 Control::Stepper
@@ -529,6 +539,16 @@ impl Node {
                     .is_some_and(|widget| widget.semantics.focusable))
     }
 
+    /// Its box does not cut off what is inside it: `Style::unclipped` on a
+    /// kind that does not scroll or float.
+    fn unclipped(&self) -> bool {
+        self.style.unclipped
+            && !matches!(
+                self.kind,
+                Kind::Scroll | Kind::Collection | Kind::TabList | Kind::Popup | Kind::Popover
+            )
+    }
+
     /// Text that is selected and copied but never edited.
     fn read_only(&self) -> bool {
         matches!(self.control, Control::SelectableText)
@@ -537,24 +557,27 @@ impl Node {
     /// A tab strip's scroll button while no tabs are hidden on its side: it
     /// is laid out but neither drawn nor reachable, and not reported.
     fn parked(&self) -> bool {
-        matches!(self.control, Control::StripScroll { .. })
-            && (self.clip.width <= 0.0 || self.clip.height <= 0.0)
+        self.hidden
+            || matches!(self.control, Control::StripScroll { .. })
+                && (self.clip.width <= 0.0 || self.clip.height <= 0.0)
     }
 
     /// Whether a press can land on this node: anything focusable or
     /// activatable, the pointer-only column sizer, and the window frame a
     /// view draws for itself.
     fn takes_pointer(&self) -> bool {
-        self.focusable()
-            || self.activatable()
-            || (self.enabled
-                && matches!(
-                    self.control,
-                    Control::Sizer { .. }
-                        | Control::TitleBar
-                        | Control::ResizeGrip(_)
-                        | Control::GridScrollbar { .. }
-                ))
+        !self.hidden
+            && (self.style.blocks_pointer
+                || self.focusable()
+                || self.activatable()
+                || (self.enabled
+                    && matches!(
+                        self.control,
+                        Control::Sizer { .. }
+                            | Control::TitleBar
+                            | Control::ResizeGrip(_)
+                            | Control::GridScrollbar { .. }
+                    )))
     }
 
     fn activatable(&self) -> bool {
@@ -746,6 +769,11 @@ pub struct Context {
     /// A node in a title bar that took focus from a press, which shows no
     /// focus ring: a desktop's title bar never does.
     quiet_focus: Option<NodeId>,
+    /// Whether the last input that could move focus was the keyboard, which
+    /// is what shows the focus ring on a widget that takes no typed text.
+    /// True before any input, so a window that opens with something focused
+    /// shows it.
+    keyboard_modality: bool,
     pointer: Option<Point>,
     clicks: HashSet<NodeId>,
     /// The clicks a pointer made, as opposed to keys or assistive
@@ -764,6 +792,12 @@ pub struct Context {
     spare_chunks: crate::collections::FastMap<NodeId, Rc<PaintChunk>>,
     stats: FrameStats,
     geometry_dirty: bool,
+    /// A node was hidden or shown by the last bounds walk, so what the user
+    /// was focused on or holding may no longer be there to be.
+    hidden_changed: bool,
+    /// Some node is `unclipped`, so a clip says nothing about what is under
+    /// it, as when there is a popup. Set by the bounds walk.
+    has_unclipped: bool,
     /// Whether the bounds walk is the plain one the tests compare it with.
     #[cfg(test)]
     reference_walk: bool,
@@ -774,6 +808,9 @@ pub struct Context {
     popover_count: usize,
     /// How many popups the tree holds.
     popup_count: usize,
+    /// How many nodes have a `z_index` other than 0. While there are none,
+    /// painting and hit testing go through the children as they are.
+    z_count: usize,
     /// How many text areas the tree holds.
     text_area_count: usize,
     /// How many rich editors the tree holds.
@@ -965,6 +1002,16 @@ pub struct Context {
     /// not say that the view reads nothing those change; see
     /// `App::view_state`.
     view_stale_handled: bool,
+    /// Whether the declaration running now read the offset of a scroll area,
+    /// as a grid that declares only the rows in view does, and whether the
+    /// last one did. A wheel step that moves a plain scroll area declares the
+    /// view again only in the second case: nothing else reads the offset.
+    reading_scroll: core::cell::Cell<bool>,
+    view_reads_scroll: bool,
+    /// What the wheel step in progress moved: a plain scroll area, whose
+    /// offset only the kernel uses, and anything else, which the view reads.
+    wheel_moved_plain: bool,
+    wheel_moved_other: bool,
     /// The dock being declared or reconciled, whose panels are found by id
     /// wherever they sit. A cell because `Ui` only holds a shared reference
     /// to the context.
@@ -1027,6 +1074,7 @@ impl Default for Context {
             rich_editor: None,
             label_width: 0.0,
             hint_width: 0.0,
+            ellipsis: None,
             churn: 0,
             layout_rect: Rect::default(),
             handler: None,
@@ -1039,6 +1087,7 @@ impl Default for Context {
             changed_frame: 0,
             painted_frame: 0,
             resolved: ResolvedText::from_theme(&theme),
+            hidden: false,
             scope: None,
             tooltip: None,
         };
@@ -1055,6 +1104,7 @@ impl Default for Context {
             taken_range: None,
             keyboard_pressed: None,
             quiet_focus: None,
+            keyboard_modality: true,
             pointer: None,
             clicks: HashSet::new(),
             pointer_clicks: HashSet::new(),
@@ -1064,11 +1114,14 @@ impl Default for Context {
             spare_chunks: Default::default(),
             stats: FrameStats::default(),
             geometry_dirty: false,
+            hidden_changed: false,
+            has_unclipped: false,
             #[cfg(test)]
             reference_walk: false,
             clips_valid: false,
             popover_count: 0,
             popup_count: 0,
+            z_count: 0,
             text_area_count: 0,
             rich_editor_count: 0,
             preparing: Preparing::default(),
@@ -1177,6 +1230,10 @@ impl Default for Context {
             bound_nodes: Vec::new(),
             view_stale: true,
             view_stale_handled: false,
+            reading_scroll: core::cell::Cell::new(false),
+            view_reads_scroll: false,
+            wheel_moved_plain: false,
+            wheel_moved_other: false,
             dock: core::cell::Cell::new(None),
             panels: HashMap::new(),
             calendar_views: HashMap::new(),
@@ -1343,6 +1400,12 @@ impl Context {
 
     pub fn direction(&self) -> crate::Direction {
         self.direction
+    }
+
+    /// The text the theme gives a view that sets nothing: what `Ui::text_style`
+    /// starts from.
+    pub(crate) fn base_text(&self) -> ResolvedText {
+        self.root_text()
     }
 
     fn root_text(&self) -> ResolvedText {
@@ -1706,6 +1769,11 @@ impl Context {
         if let Some(node) = self.nodes.get(&id) {
             node.observing.set(true);
         }
+    }
+
+    /// The view read the offset of a scroll area to decide what to declare.
+    pub(crate) fn note_scroll_read(&self) {
+        self.reading_scroll.set(true);
     }
 
     /// The view read the hover or focus of an element whose node does not
@@ -2212,14 +2280,14 @@ mod tests {
         let mut into = String::with_capacity(64);
         into.push_str("old text");
         let (room, allocation) = (into.capacity(), into.as_ptr());
-        refill(&mut into, &"a text of some length".to_owned());
+        refill(&mut into, "a text of some length");
         assert_eq!(into, "a text of some length");
         assert_eq!((into.capacity(), into.as_ptr()), (room, allocation));
 
         // A long text left room for 4096 bytes and the next one needs 5.
         let mut into = String::with_capacity(4096);
         into.push_str(&"long ".repeat(500));
-        refill(&mut into, &"short".to_owned());
+        refill(&mut into, "short");
         assert_eq!(into, "short");
         assert!(
             into.capacity() <= 2 * 5 + 32,
@@ -2229,12 +2297,12 @@ mod tests {
 
         // Too little room for the text that comes.
         let mut into = String::from("ab");
-        refill(&mut into, &"a text that does not fit".to_owned());
+        refill(&mut into, "a text that does not fit");
         assert_eq!(into, "a text that does not fit");
 
         // Nothing to put, and nothing to put it in.
         let mut into = String::new();
-        refill(&mut into, &String::new());
+        refill(&mut into, "");
         assert_eq!(into, "");
     }
 
@@ -2408,12 +2476,23 @@ mod tests {
         assert_eq!(root.count(), context.scene.primitives.len());
         counted(&root);
 
-        // A row draws a clip, its text and the pop, which is 3. The view draws
-        // its clip, the rows, the thumb of its scroll bar and the pop: 12. The
-        // root has a clip and a pop around the view: 14.
+        // A row draws a clip, its text and the pop, which is 3, and a row the
+        // view clips away draws nothing. The view draws its clip, the rows in
+        // it, the thumb of its scroll bar and the pop: 3 and 3 for each. The
+        // root has a clip and a pop around the view: 2 more. Rows are 33 px
+        // apart in a view of 30, so one of the three shows.
+        let visible = context
+            .nodes
+            .values()
+            .filter(|node| {
+                node.kind == Kind::Label && node.clip.width > 0.0 && node.clip.height > 0.0
+            })
+            .count();
+        assert_eq!(visible, 1);
         let report = context.memory();
         assert_eq!((report.nodes, report.cached_nodes), (5, 5));
-        assert_eq!(report.cached_primitives, 14 + 12 + 3 * 3);
+        let rows = 3 * visible;
+        assert_eq!(report.cached_primitives, (2 + 3 + rows) + (3 + rows) + rows);
         let mut flattened = 0;
         for node in context.nodes.values() {
             let mut flat = Vec::new();

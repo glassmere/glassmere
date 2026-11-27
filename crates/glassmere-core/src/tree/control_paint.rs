@@ -86,7 +86,8 @@ impl Context {
     #[cfg(debug_assertions)]
     fn check_found(&self, found: &Preparing) {
         let frame = self.frame;
-        let (mut rows, mut areas, mut texts, mut rich, mut editors) = (0, 0, 0, 0, 0);
+        let (mut rows, mut areas, mut texts, mut rich, mut editors, mut ellipsized) =
+            (0, 0, 0, 0, 0, 0);
         for (id, node) in &self.nodes {
             assert!(
                 node.changed_frame != frame,
@@ -115,15 +116,20 @@ impl Context {
                 assert_eq!(found.editors.get(editors), Some(id));
                 editors += 1;
             }
+            if node.ellipsizes() {
+                assert_eq!(found.ellipsized.get(ellipsized), Some(id));
+                ellipsized += 1;
+            }
         }
         assert_eq!(
-            [rows, areas, texts, rich, editors],
+            [rows, areas, texts, rich, editors, ellipsized],
             [
                 found.baseline_rows.len(),
                 found.text_areas.len(),
                 found.rich_texts.len(),
                 found.rich_editors.len(),
                 found.editors.len(),
+                found.ellipsized.len(),
             ],
             "the kept lists are out of date"
         );
@@ -175,6 +181,9 @@ impl Context {
                 if node.editor.is_some() {
                     found.editors.push(*id);
                 }
+                if node.ellipsizes() {
+                    found.ellipsized.push(*id);
+                }
             }
         }
         self.align_baselines(&found.baseline_rows, measurer);
@@ -198,6 +207,7 @@ impl Context {
                 .width;
             self.nodes.get_mut(id).unwrap().hint_width = width;
         }
+        self.prepare_ellipsis(&found.ellipsized, measurer);
         self.prepare_rich_text(&found.rich_texts, measurer);
         self.prepare_rich_editors(&found.rich_editors, measurer);
         for id in &found.editors {
@@ -402,7 +412,7 @@ impl Context {
                     color: self.theme.accent,
                     radius: 2.0,
                 });
-            } else if self.focused == Some(id) && self.quiet_focus != Some(id) {
+            } else if self.ring_shown(id) {
                 scene.primitives.push(Primitive::Quad {
                     rect: Rect {
                         x: track.x + track.width * thumb - 9.0,
