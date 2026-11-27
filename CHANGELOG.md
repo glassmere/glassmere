@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- `AppOptions::min_size` and `AppOptions::max_size`: the smallest and largest a window can be dragged to, in logical pixels, for a layout that does not fit in less. Unset (the default), the system decides. Windows the application opens inherit them, as they do the other options. A program that builds `AppOptions` without `..AppOptions::default()` needs the two new fields.
 ## [0.1.8] - 2026-11-23
 
 ### Added
