@@ -124,6 +124,21 @@ What `WidgetInput` carries is of the last frame, because that is what there is t
 - **Style** is `ui.theme()` for the tokens, `ui.class(..)` for a stylesheet class, and the `style` argument for the node itself, which lays out like any container.
 - **Paint** is a list of primitives in the widget's own coordinates: rounded rectangles, gradients, shadows, text, images, clips and layers. Clips and layers must balance.
 
+### Icons from path data
+
+A widget draws with the primitives in `CustomWidget::primitives`. For a vector icon, `Path::from_svg_data` reads the `d` attribute of an SVG path (`M L H V C S Q T A Z`, absolute and relative) with no image feature and no parser of your own, and `Path::arc_to` draws an elliptical arc as the `A` command does:
+
+```rust
+let tick = Path::from_svg_data("M4 12l5 5L20 6")?;
+let mut dot = Path::new();
+dot.move_to(Point { x: 0.0, y: 5.0 })
+    .arc_to((5.0, 5.0), 0.0, true, true, Point { x: 10.0, y: 5.0 })
+    .arc_to((5.0, 5.0), 0.0, true, true, Point { x: 0.0, y: 5.0 })
+    .close();
+```
+
+A mistake in the data is an `SvgPathError` with the byte it starts at, so parse an icon once, when the application starts, and not each frame.
+
 ### Sizing it to text
 
 A widget declares its size up front, so one that holds text needs to know how big that text is. `ui.measure_text(text, &style)` asks the measurer the layout uses, so the answer is the size the text will have, and `ui.text_style()` gives the theme's plain text to start from:
