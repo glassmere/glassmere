@@ -1809,12 +1809,21 @@ mod tests {
             .collect()
     }
 
+    /// Only the bundled font, so that the lines break in the same places on
+    /// every machine, whatever fonts it has installed.
+    fn bundled() -> TextSystem {
+        TextSystem::with_fonts([include_bytes!(
+            "../../glassmere-render-wgpu/fonts/FiraMono-Regular.ttf"
+        )
+        .to_vec()])
+    }
+
     #[test]
     fn wrapped_lines_sit_where_the_alignment_puts_them() {
         use glassmere_scene::TextAlign;
         let text = "one two three four five six seven eight";
         let width = 140.0;
-        let mut system = TextSystem::default();
+        let mut system = bundled();
         let mut shaped = |align, rtl| {
             let style = TextStyle {
                 wrap: TextWrap::Word,
@@ -1880,7 +1889,7 @@ mod tests {
     #[test]
     fn alignment_needs_a_width_and_a_block_without_one_is_where_it_was() {
         use glassmere_scene::TextAlign;
-        let mut system = TextSystem::default();
+        let mut system = bundled();
         let plain = system.geometry("one two", &TextStyle::default(), None);
         for align in [TextAlign::Center, TextAlign::End, TextAlign::Justify] {
             let style = TextStyle {
