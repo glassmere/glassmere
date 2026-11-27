@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - The focus ring of a node with rounded corners and no opaque background was four square bars. It is now a stroked rounded outline for every node with a radius, drawn inside its box over its fill. A node with a gradient or a translucent background no longer loses it while focused: the old ring replaced the fill of an opaque node with the focus colour and drew the background back inside it, and skipped the gradient.
+- `Ui::measure_text`, `Ui::measure_text_wrapped` and `Ui::text_style`: how big some text is, asked of the same measurer the layout uses, from inside a view. A control you paint yourself can size itself to its label without a table of glyph widths. See "Sizing it to text" in [widgets](docs/widgets.md) and `examples/layout.rs`.
 
 ## [0.1.8] - 2026-11-23
 

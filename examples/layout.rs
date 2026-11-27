@@ -1,6 +1,7 @@
 use glassmere::{
-    Align, App, AppOptions, AutoFlow, Button, Effects, GridArea, Justify, Label, Length, Size,
-    Style, TextInput, TextWrap, Track, TrackSize, Ui, run,
+    Align, App, AppOptions, AutoFlow, Button, CustomWidget, Effects, GridArea, Justify, Label,
+    Length, Primitive, Rect, Role, Semantics, Size, Style, TextInput, TextWrap, Track, TrackSize,
+    Ui, WidgetBuilder, WidgetInput, run,
 };
 
 #[derive(Clone)]
@@ -259,6 +260,18 @@ impl App for Layout {
                     });
                 }
             });
+            ui.label(
+                Label::new(
+                    "Measuring · a badge drawn by the application, sized to its label by \
+                     asking the same text measurer the layout uses",
+                )
+                .style(heading.clone()),
+            );
+            ui.row(Style::default().gap(8.0), |ui| {
+                for text in ["new", "In review", "Waiting for a long-running build"] {
+                    badge(ui, text);
+                }
+            });
             ui.checkbox("Let the wide children below shrink to fit", self.shrink, Msg::Shrink);
             let factor = if self.shrink { 1.0 } else { 0.0 };
             ui.row(full.clone().gap(12.0), |ui| {
@@ -315,4 +328,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             shrink: true,
         },
     )
+}
+
+/// A pill with a label, drawn by the application. Its size is the label's, as
+/// the layout measures it, plus room around it: no table of glyph widths.
+fn badge(ui: &mut Ui<'_, Msg>, text: &str) {
+    let style = ui.text_style();
+    let label = ui.measure_text(text, &style);
+    let size = Size::new(label.width + 24.0, label.height + 10.0);
+    let (fill, ink) = (ui.theme().control, ui.theme().text);
+    let text = text.to_owned();
+    ui.keyed(text.clone(), |ui| {
+        ui.widget(
+            Style::default(),
+            WidgetBuilder::new(move |_: &WidgetInput| CustomWidget {
+                size,
+                semantics: Semantics {
+                    role: Role::Label,
+                    label: text.clone(),
+                    ..Semantics::default()
+                },
+                primitives: vec![
+                    Primitive::Quad {
+                        rect: Rect {
+                            x: 0.0,
+                            y: 0.0,
+                            width: size.width,
+                            height: size.height,
+                        },
+                        color: fill,
+                        radius: size.height / 2.0,
+                    },
+                    Primitive::Text {
+                        rect: Rect {
+                            x: 12.0,
+                            y: 5.0,
+                            width: label.width,
+                            height: label.height,
+                        },
+                        text: text.clone(),
+                        font_size: style.font_size,
+                        color: ink,
+                    },
+                ],
+                ..CustomWidget::default()
+            }),
+        );
+    });
 }

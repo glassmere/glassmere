@@ -1340,6 +1340,12 @@ impl Context {
         self.direction
     }
 
+    /// The text the theme gives a view that sets nothing: what `Ui::text_style`
+    /// starts from.
+    pub(crate) fn base_text(&self) -> ResolvedText {
+        self.root_text()
+    }
+
     fn root_text(&self) -> ResolvedText {
         ResolvedText {
             direction: self.direction,
