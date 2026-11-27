@@ -355,6 +355,72 @@ impl Switch {
     }
 }
 
+/// A check box. `ui.checkbox("Notify me", on, Msg::Notify)` is the short form
+/// of [`Ui::checkbox_with`](crate::Ui::checkbox_with) with `Checkbox::new("Notify me")`; the label is
+/// written beside the box and is its accessible name.
+#[derive(Clone, Debug, Default)]
+pub struct Checkbox {
+    pub(crate) label: String,
+    pub(crate) style: Option<Style>,
+}
+
+impl Checkbox {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            style: None,
+        }
+    }
+
+    /// Replaces the default style, which is a button's padding: 12 on every
+    /// side, so a box with a short label is tall. Give it less to sit in a
+    /// toolbar or a table row.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+}
+
+/// One of a set of choices. `ui.radio("Quiet", mode, 0, Msg::Mode)` is the
+/// short form of [`Ui::radio_with`](crate::Ui::radio_with) with `Radio::new("Quiet")`.
+#[derive(Clone, Debug, Default)]
+pub struct Radio {
+    pub(crate) label: String,
+    pub(crate) style: Option<Style>,
+}
+
+impl Radio {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            style: None,
+        }
+    }
+
+    /// Replaces the default style, which is a button's padding.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+}
+
+/// How the tabs of [`Ui::tabs_styled`](crate::Ui::tabs_styled) look: the style of every tab, and the
+/// style of the selected one in its place. The default tabs give the selected
+/// one a surface behind it and the others a hover; a style of your own brings
+/// whatever it needs, such as an underline for the selected tab, in `active`
+/// and states in `tab`.
+#[derive(Clone, Debug, Default)]
+pub struct TabStyle {
+    pub tab: Style,
+    pub active: Style,
+}
+
+impl TabStyle {
+    pub fn new(tab: Style, active: Style) -> Self {
+        Self { tab, active }
+    }
+}
+
 /// A section that its header opens and closes. `ui.collapsible("Advanced",
 /// open, Msg::Advanced, |ui| ..)` is the short form of
 /// `Collapsible::new("Advanced")`; the label is written in the header and is
@@ -544,6 +610,8 @@ from_text!(ComboBox);
 from_text!(Progress);
 from_text!(Spinner);
 from_text!(Switch);
+from_text!(Checkbox);
+from_text!(Radio);
 from_text!(Collapsible);
 from_text!(RangeSlider);
 from_text!(Link<M>);
