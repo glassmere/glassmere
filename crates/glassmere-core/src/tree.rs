@@ -746,6 +746,11 @@ pub struct Context {
     /// A node in a title bar that took focus from a press, which shows no
     /// focus ring: a desktop's title bar never does.
     quiet_focus: Option<NodeId>,
+    /// Whether the last input that could move focus was the keyboard, which
+    /// is what shows the focus ring on a widget that takes no typed text.
+    /// True before any input, so a window that opens with something focused
+    /// shows it.
+    keyboard_modality: bool,
     pointer: Option<Point>,
     clicks: HashSet<NodeId>,
     /// The clicks a pointer made, as opposed to keys or assistive
@@ -1055,6 +1060,7 @@ impl Default for Context {
             taken_range: None,
             keyboard_pressed: None,
             quiet_focus: None,
+            keyboard_modality: true,
             pointer: None,
             clicks: HashSet::new(),
             pointer_clicks: HashSet::new(),
