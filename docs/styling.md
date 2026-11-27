@@ -39,7 +39,7 @@ In a stylesheet: `margin: 8` (all sides), `margin: 4 8` (vertical, horizontal), 
 
 ### Wrapping rows
 
-`Style::wrap_items(true)` on a row or a column starts a new line when the next child does not fit along the main axis, as `flex-wrap: wrap` does, instead of overflowing it or, with `shrink`, squeezing it. The `gap` is the room between lines as well as between children. A stylesheet takes `wrap-items: true`. A row that wraps needs a width to wrap at, from `width`, a parent that gives it one, or `Length::Percent`.
+`Style::wrap_items(true)` on a row or a column starts a new line when the next child does not fit along the main axis, as `flex-wrap: wrap` does, instead of overflowing it or, with `shrink`, squeezing it. The `gap` is the room between lines as well as between children. A stylesheet takes `wrap-items: true`. `Style::align_content(Justify::SpaceBetween)` (stylesheet `align-content`) shares the room left across the container among its lines, as `align-content` does; left unset, the lines are stretched as the layout engine does. A row that wraps needs a width to wrap at, from `width`, a parent that gives it one, or `Length::Percent`.
 
 ### The focus ring
 
@@ -166,3 +166,7 @@ There is no mipmap chain, but a photo drawn at under half its natural size is bo
 ## Direction
 
 A window runs left to right or right to left according to `AppOptions::direction` (`DirectionChoice::Auto` follows the OS locale). `Style::direction` overrides it for a subtree: layout mirrors, text aligns to the end side, and directional internals follow. Physical values stay physical: `offset`, transforms, slide effects, floating dock rectangles and `DockZone::Left` and `Right` mean the same pixels in both directions. `Style::base_direction` forces the base direction of a text paragraph, in labels and in text fields, text areas, code editors and rich editors (every line or block takes it; a text field and a rich editor align to it, a text area and a code editor only order by it).
+
+## Padding per side
+
+`Style::padding(8.0)` pads all four sides. On a node that holds other nodes (`row`, `column`, `grid`, `container`) `Style::padding_sides(Edges::new(top, right, bottom, left))` pads each side by its own amount instead, and the border still adds to it. A stylesheet takes `padding: 4 8` (vertical, horizontal), three or four numbers in CSS order, and `padding-left` and the like. A label, a button, a field, a scroll view and a list lay out their own content at the one `padding` and ignore `padding_sides`.

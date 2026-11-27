@@ -36,7 +36,7 @@
 //! Properties: width, height, min-width, max-width, min-height, max-height
 //! (`auto`, `50%`, `120`), aspect-ratio, padding, gap, grow, shrink, radius,
 //! align-items, align-self, justify-self (`start`, `center`, `end`, `stretch`,
-//! `baseline`), justify-content (also `space-between`, `space-around`,
+//! `baseline`), align-content and justify-content (also `space-between`, `space-around`,
 //! `space-evenly`), columns, rows, auto-columns, auto-rows (`120 50% 1fr auto
 //! minmax(100, 1fr) repeat(3, 1fr) repeat(auto-fill, minmax(120, 1fr))`),
 //! row-gap, column-gap (`gap` sets both), auto-flow (`row`, `column`, `row
@@ -626,6 +626,18 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
                 _ => return Err(format!("unknown justify-content `{value}`")),
             }
         }
+        "align-content" => {
+            style.align_content = Some(match value {
+                "start" => Justify::Start,
+                "center" => Justify::Center,
+                "end" => Justify::End,
+                "stretch" => Justify::Stretch,
+                "space-between" => Justify::SpaceBetween,
+                "space-around" => Justify::SpaceAround,
+                "space-evenly" => Justify::SpaceEvenly,
+                _ => return Err(format!("unknown align-content `{value}`")),
+            })
+        }
         "columns" => style.columns = tracks(value)?,
         "rows" => style.rows = tracks(value)?,
         "auto-columns" => style.auto_columns = tracks(value)?,
@@ -701,7 +713,19 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         "exit-opacity" | "exit-translate" | "exit-scale" | "exit-rotate" | "exit-transition" => {
             effect(&mut style.exit, &key[5..], value)?;
         }
-        "padding" => style.padding = number(value)?,
+        "padding" => {
+            let sides = edges(value)?;
+            if value.split_whitespace().count() == 1 {
+                style.padding = sides.top;
+                style.padding_sides = None;
+            } else {
+                style.padding_sides = Some(sides);
+            }
+        }
+        "padding-top" => padding_side(style, value, |sides| &mut sides.top)?,
+        "padding-right" => padding_side(style, value, |sides| &mut sides.right)?,
+        "padding-bottom" => padding_side(style, value, |sides| &mut sides.bottom)?,
+        "padding-left" => padding_side(style, value, |sides| &mut sides.left)?,
         // One to four numbers, in the order CSS gives them: all sides;
         // vertical and horizontal; top, horizontal and bottom; top, right,
         // bottom and left.
@@ -1160,6 +1184,20 @@ fn gradient(value: &str) -> Result<crate::Gradient, String> {
     })
 }
 
+/// One side of the padding, the others being what they were.
+fn padding_side(
+    style: &mut Style,
+    value: &str,
+    side: impl Fn(&mut crate::Edges) -> &mut f32,
+) -> Result<(), String> {
+    let mut sides = style
+        .padding_sides
+        .unwrap_or_else(|| crate::Edges::all(style.padding));
+    *side(&mut sides) = number(value)?;
+    style.padding_sides = Some(sides);
+    Ok(())
+}
+
 fn edges(value: &str) -> Result<crate::Edges, String> {
     let numbers = value
         .split_whitespace()
@@ -1170,7 +1208,9 @@ fn edges(value: &str) -> Result<crate::Edges, String> {
         [vertical, horizontal] => Ok(crate::Edges::xy(*horizontal, *vertical)),
         [top, horizontal, bottom] => Ok(crate::Edges::new(*top, *horizontal, *bottom, *horizontal)),
         [top, right, bottom, left] => Ok(crate::Edges::new(*top, *right, *bottom, *left)),
-        _ => Err(format!("margin is one to four numbers, got `{value}`")),
+        _ => Err(format!(
+            "margin and padding are one to four numbers, got `{value}`"
+        )),
     }
 }
 
