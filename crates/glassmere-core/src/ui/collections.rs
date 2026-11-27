@@ -857,6 +857,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
             self.misuse(message.to_owned());
             return Nav::default();
         }
+        self.context.note_scroll_read();
         let owner = self.context.child(self.parent, &key, Kind::Collection);
         let mut native = owner
             .and_then(|id| self.context.node(id))

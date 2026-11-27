@@ -676,14 +676,16 @@ fn a_node_is_cached_until_its_paint_is_invalidated_and_not_while_its_old_chunk_w
 /// The nodes caching a chunk and the primitives in them, and then the nodes
 /// painted and the chunks reused, after the first frame, between the pointer
 /// and the second frame, after the second, and after a third that changes
-/// nothing and paints nothing.
+/// nothing and paints nothing. The list clips away four of its eight rows
+/// and a node that is clipped away is not painted, so it caches nothing and
+/// neither do the nodes in it: 20 of the form's 35 nodes cache a chunk.
 const RECORDED_CACHES: [(usize, usize); 7] = [
-    (35, 420),
-    (35, 0),
-    (31, 181),
-    (35, 420),
+    (20, 170),
+    (20, 0),
+    (16, 61),
+    (20, 170),
     (4, 10),
-    (35, 420),
+    (20, 170),
     (0, 0),
 ];
 
