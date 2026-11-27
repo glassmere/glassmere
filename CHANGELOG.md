@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `Style::align_content` (stylesheet `align-content`): how the lines of a wrapping container (`wrap_items`) share the room left across it. Unset, they are laid out as before.
 - `Style::wrap_items(true)`: a row or a column whose children go on to a new line when the next does not fit, as `flex-wrap: wrap` does. The gap is between the lines too. In a stylesheet: `wrap-items: true`. See "Wrapping rows" in [styling](docs/styling.md).
 - `Style::margin`, `Style::margin_edges` and the `Edges` type: room kept clear outside a box, per side. `Style::border` and `Style::border_color`: a border drawn along the edge of the box, inside it, that follows its radius and takes room like padding. `Style::inset` is the padding and the border together, which is where the content starts. In a stylesheet: `margin`, `margin-top`, `margin-right`, `margin-bottom`, `margin-left`, `border`, `border-width` and `border-color`. See "Margin and border" in [styling](docs/styling.md).
 - `FocusRing`, with `Style::focus_ring` and `Style::no_focus_ring`: one widget's focus ring in its own width, colour and inset, or none. `Path::rounded_rect` in `glassmere-scene` builds the stroked outline the ring uses. See "The focus ring" in [styling](docs/styling.md).

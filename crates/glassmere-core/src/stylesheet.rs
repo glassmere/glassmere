@@ -36,7 +36,7 @@
 //! Properties: width, height, min-width, max-width, min-height, max-height
 //! (`auto`, `50%`, `120`), aspect-ratio, padding, gap, grow, shrink, radius,
 //! align-items, align-self, justify-self (`start`, `center`, `end`, `stretch`,
-//! `baseline`), justify-content (also `space-between`, `space-around`,
+//! `baseline`), align-content and justify-content (also `space-between`, `space-around`,
 //! `space-evenly`), columns, rows, auto-columns, auto-rows (`120 50% 1fr auto
 //! minmax(100, 1fr) repeat(3, 1fr) repeat(auto-fill, minmax(120, 1fr))`),
 //! row-gap, column-gap (`gap` sets both), auto-flow (`row`, `column`, `row
@@ -625,6 +625,18 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
                 "space-evenly" => Justify::SpaceEvenly,
                 _ => return Err(format!("unknown justify-content `{value}`")),
             }
+        }
+        "align-content" => {
+            style.align_content = Some(match value {
+                "start" => Justify::Start,
+                "center" => Justify::Center,
+                "end" => Justify::End,
+                "stretch" => Justify::Stretch,
+                "space-between" => Justify::SpaceBetween,
+                "space-around" => Justify::SpaceAround,
+                "space-evenly" => Justify::SpaceEvenly,
+                _ => return Err(format!("unknown align-content `{value}`")),
+            })
         }
         "columns" => style.columns = tracks(value)?,
         "rows" => style.rows = tracks(value)?,

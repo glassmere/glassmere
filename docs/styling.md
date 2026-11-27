@@ -39,7 +39,7 @@ In a stylesheet: `margin: 8` (all sides), `margin: 4 8` (vertical, horizontal), 
 
 ### Wrapping rows
 
-`Style::wrap_items(true)` on a row or a column starts a new line when the next child does not fit along the main axis, as `flex-wrap: wrap` does, instead of overflowing it or, with `shrink`, squeezing it. The `gap` is the room between lines as well as between children. A stylesheet takes `wrap-items: true`. A row that wraps needs a width to wrap at, from `width`, a parent that gives it one, or `Length::Percent`.
+`Style::wrap_items(true)` on a row or a column starts a new line when the next child does not fit along the main axis, as `flex-wrap: wrap` does, instead of overflowing it or, with `shrink`, squeezing it. The `gap` is the room between lines as well as between children. A stylesheet takes `wrap-items: true`. `Style::align_content(Justify::SpaceBetween)` (stylesheet `align-content`) shares the room left across the container among its lines, as `align-content` does; left unset, the lines are stretched as the layout engine does. A row that wraps needs a width to wrap at, from `width`, a parent that gives it one, or `Length::Percent`.
 
 ### The focus ring
 

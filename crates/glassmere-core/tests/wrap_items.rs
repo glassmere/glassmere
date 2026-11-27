@@ -81,3 +81,59 @@ fn a_stylesheet_turns_wrapping_on() {
     assert!(!sheet.class("line").unwrap().wrap_items);
     assert!(StyleSheet::parse("class bad {\nwrap-items: maybe\n}").is_err());
 }
+
+fn lines(content: Option<glassmere_core::Justify>) -> Context {
+    let mut context = Context::new();
+    context.run(
+        Size::new(400.0, 300.0),
+        &mut MonospaceMeasurer,
+        |ui: &mut Ui<'_>| {
+            let mut row = Style::default()
+                .width(Length::Px(100.0))
+                .height(Length::Px(200.0))
+                .gap(0.0)
+                .align_items(Align::Start)
+                .wrap_items(true);
+            row.align_content = content;
+            ui.keyed("row", |ui| {
+                ui.row(row, |ui| {
+                    for name in ["a", "b", "c", "d", "e"] {
+                        ui.keyed(name, |ui| ui.container(tile(), |_| {}));
+                    }
+                })
+            });
+        },
+    );
+    context
+}
+
+#[test]
+fn align_content_shares_the_room_left_across_the_lines() {
+    use glassmere_core::Justify;
+    // Three lines of 20 in 200: 140 is left over.
+    let ys = |content| {
+        let context = lines(content);
+        let top = at(&context, "a").y;
+        ["a", "c", "e"].map(|name| at(&context, name).y - top)
+    };
+    assert_eq!(ys(Some(Justify::Start)), [0.0, 20.0, 40.0]);
+    assert_eq!(ys(Some(Justify::SpaceBetween)), [0.0, 90.0, 180.0]);
+    let evenly = ys(Some(Justify::SpaceEvenly));
+    assert_eq!(evenly[1] - evenly[0], evenly[2] - evenly[1]);
+    assert!(evenly[1] - evenly[0] > 20.0);
+    // Unset, the lines are as the engine puts them: stretched across the room.
+    let stretched = ys(None);
+    assert_eq!(stretched, ys(Some(Justify::Stretch)));
+}
+
+#[test]
+fn a_stylesheet_takes_align_content() {
+    let sheet =
+        StyleSheet::parse("class cloud {\nwrap-items: true\nalign-content: space-between\n}")
+            .unwrap();
+    assert_eq!(
+        sheet.class("cloud").unwrap().align_content,
+        Some(glassmere_core::Justify::SpaceBetween)
+    );
+    assert!(StyleSheet::parse("class x {\nalign-content: nope\n}").is_err());
+}

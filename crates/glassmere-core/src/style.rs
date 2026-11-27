@@ -293,6 +293,11 @@ pub struct Style {
     pub radius: f32,
     pub align_items: Align,
     pub justify_content: Justify,
+    /// How the lines of a wrapping container (`wrap_items`) share the room
+    /// left across it, as `align-content` does; `None` leaves them as the
+    /// layout engine does. It has an effect only when the container is taller
+    /// (or wider, in a column) than its lines.
+    pub align_content: Option<Justify>,
     pub align_self: Option<Align>,
     /// Grid items only: inline-axis alignment inside the cell.
     pub justify_self: Option<Align>,
@@ -385,6 +390,7 @@ impl Default for Style {
             radius: 0.0,
             align_items: Align::Start,
             justify_content: Justify::Start,
+            align_content: None,
             align_self: None,
             justify_self: None,
             columns: Vec::new(),
@@ -690,6 +696,7 @@ impl Style {
     setter!(radius, radius, f32);
     setter!(align_items, align_items, Align);
     setter!(justify_content, justify_content, Justify);
+    setter!(align_content, align_content, Justify, some);
     setter!(align_self, align_self, Align, some);
     setter!(justify_self, justify_self, Align, some);
     setter!(columns, columns, Vec<Track>);
@@ -915,6 +922,7 @@ impl Style {
             // `Start` keeps the engine's normal behavior, which lets grid tracks fill.
             justify_content: (self.justify_content != Justify::Start)
                 .then(|| justify(self.justify_content)),
+            align_content: self.align_content.map(justify),
             align_self: self.align_self.map(align),
             justify_self: self.justify_self.map(align),
             flex_wrap: if self.wrap_items {
