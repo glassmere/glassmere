@@ -3,6 +3,8 @@
 use crate::{Color, Point, Rect};
 use alloc::vec::Vec;
 
+mod dash;
+
 /// A shape of straight and curved segments, in the same logical coordinates
 /// as the rest of the scene. Each `move_to` starts a subpath; `close` joins a
 /// subpath back to where it started. Fills use the non-zero rule, so a

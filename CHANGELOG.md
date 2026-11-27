@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- `Path::dashed(dashes, phase)`: the path cut into dashes, as a stroke with SVG's `stroke-dasharray` would draw it, for a dashed line, a dashed outline or a marching border. It returns a path of open subpaths to stroke, so it works with any renderer and changes nothing in `Stroke`. Caps and joins other than the stroke's own mitre and square ends are not part of it.
 ## [0.1.8] - 2026-11-23
 
 ### Added

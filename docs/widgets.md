@@ -124,6 +124,10 @@ What `WidgetInput` carries is of the last frame, because that is what there is t
 - **Style** is `ui.theme()` for the tokens, `ui.class(..)` for a stylesheet class, and the `style` argument for the node itself, which lays out like any container.
 - **Paint** is a list of primitives in the widget's own coordinates: rounded rectangles, gradients, shadows, text, images, clips and layers. Clips and layers must balance.
 
+### Dashed lines
+
+`Stroke` is a width and a colour, with the stroke's own mitred corners and square ends. For a dashed line or outline, cut the path first: `path.dashed(&[6.0, 4.0], phase)` returns the path as dashes (a dash of 6, a gap of 4; one entry is read twice over, as `stroke-dasharray` does) to stroke without a fill. Changing `phase` frame by frame makes the dashes march. Round caps and joins are not available.
+
 ### Testing it
 
 The same harness the built-in controls use, with no window:

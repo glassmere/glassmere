@@ -2290,6 +2290,7 @@ glassmere-scene   fn Image::vector(&self) -> Option<&dyn VectorImage>
 glassmere-scene   fn Path::bounds(&self) -> Rect
 glassmere-scene   fn Path::close(&mut self) -> &mut Self
 glassmere-scene   fn Path::cubic_to(&mut self, first: Point, second: Point, to: Point) -> &mut Self
+glassmere-scene   fn Path::dashed(&self, dashes: &[f32], phase: f32) -> Path
 glassmere-scene   fn Path::line_to(&mut self, to: Point) -> &mut Self
 glassmere-scene   fn Path::move_to(&mut self, to: Point) -> &mut Self
 glassmere-scene   fn Path::new() -> Self
