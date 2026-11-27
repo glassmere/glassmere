@@ -1,0 +1,91 @@
+{
+  "id": "textarea",
+  "title": "A multi-line field: caret movement between lines, new lines, and deleting across them",
+  "size": [
+    420,
+    260
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 8,
+    "padding": 12,
+    "children": [
+      {
+        "type": "textarea",
+        "id": "notes",
+        "label": "Notes",
+        "value": "one\ntwo\nthree",
+        "width": 260,
+        "height": 120
+      },
+      {
+        "type": "button",
+        "id": "after",
+        "text": "After"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "press",
+      "key": "Tab"
+    },
+    {
+      "do": "observe",
+      "label": "focused with Tab"
+    },
+    {
+      "do": "type",
+      "text": "A"
+    },
+    {
+      "do": "press",
+      "key": "ArrowDown"
+    },
+    {
+      "do": "type",
+      "text": "B"
+    },
+    {
+      "do": "observe",
+      "label": "typed on the first and second lines"
+    },
+    {
+      "do": "press",
+      "key": "End"
+    },
+    {
+      "do": "press",
+      "key": "Enter"
+    },
+    {
+      "do": "type",
+      "text": "C"
+    },
+    {
+      "do": "observe",
+      "label": "a new line after the end of the second"
+    },
+    {
+      "do": "press",
+      "key": "Control+Home"
+    },
+    {
+      "do": "press",
+      "key": "ArrowDown"
+    },
+    {
+      "do": "press",
+      "key": "ArrowDown"
+    },
+    {
+      "do": "press",
+      "key": "Backspace"
+    },
+    {
+      "do": "observe",
+      "label": "back to the start, two down, and one character deleted"
+    }
+  ]
+}

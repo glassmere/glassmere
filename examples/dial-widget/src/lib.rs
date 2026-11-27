@@ -208,6 +208,7 @@ impl Dial {
                     max: 100.0,
                     step: STEP * 100.0,
                 }),
+                ..Semantics::default()
             },
             primitives,
             // Capturing keeps the keys and the wheel from the containers

@@ -394,11 +394,15 @@ glassmere-core   field ScrollState::offset: f32
 glassmere-core   field ScrollState::offset_x: f32
 glassmere-core   field Selection::anchor: usize
 glassmere-core   field Selection::cursor: usize
+glassmere-core   field Semantics::checked: Option<bool>
 glassmere-core   field Semantics::disabled: bool
+glassmere-core   field Semantics::expanded: Option<bool>
 glassmere-core   field Semantics::focusable: bool
 glassmere-core   field Semantics::label: String
 glassmere-core   field Semantics::numeric: Option<NumericValue>
 glassmere-core   field Semantics::role: Role
+glassmere-core   field Semantics::selected: Option<bool>
+glassmere-core   field Semantics::switch: bool
 glassmere-core   field Semantics::value: Option<String>
 glassmere-core   field Shadow::blur: f32
 glassmere-core   field Shadow::color: Color
@@ -439,10 +443,12 @@ glassmere-core   field Style::border_color: Option<Color>
 glassmere-core   field Style::border_sides: Option<Edges>
 glassmere-core   field Style::column_gap: Option<f32>
 glassmere-core   field Style::columns: Vec<Track>
+glassmere-core   field Style::cursor: Option<Cursor>
 glassmere-core   field Style::direction: Option<Direction>
 glassmere-core   field Style::enter: Option<Effect>
 glassmere-core   field Style::exit: Option<Effect>
 glassmere-core   field Style::focus_ring: Option<FocusRing>
+glassmere-core   field Style::focusable: bool
 glassmere-core   field Style::font_family: Option<FontFamily>
 glassmere-core   field Style::font_size: Option<f32>
 glassmere-core   field Style::font_weight: Option<u16>
@@ -648,6 +654,7 @@ glassmere-core   fn Context::clear_bindings(&mut self)
 glassmere-core   fn Context::clear_diagnostics(&mut self)
 glassmere-core   fn Context::close_button(&self) -> Option<Rect>
 glassmere-core   fn Context::composing_text(&self) -> bool
+glassmere-core   fn Context::cursor(&self, id: NodeId) -> Cursor
 glassmere-core   fn Context::damage_regions(&self) -> &[Rect]
 glassmere-core   fn Context::details(&self, id: NodeId) -> Option<NodeDetails>
 glassmere-core   fn Context::diagnostics(&self) -> &[FrameDiagnostic]
@@ -683,6 +690,7 @@ glassmere-core   fn Context::node(&self, id: NodeId) -> Option<NodeSnapshot>
 glassmere-core   fn Context::node_count(&self) -> usize
 glassmere-core   fn Context::now(&self) -> Duration
 glassmere-core   fn Context::parse_number(&self, text: &str) -> Option<f64>
+glassmere-core   fn Context::pressable_cursor(&self) -> crate::Cursor
 glassmere-core   fn Context::pressed(&self, id: NodeId) -> bool
 glassmere-core   fn Context::push_toast(&mut self, toast: Toast) -> ToastId
 glassmere-core   fn Context::report_font(&mut self, message: impl Into<String>)
@@ -705,6 +713,7 @@ glassmere-core   fn Context::set_image_file(&mut self, path: &Path, image: core:
 glassmere-core   fn Context::set_messages(&mut self, messages: Option<Box<dyn Messages>>)
 glassmere-core   fn Context::set_now(&mut self, now: Duration)
 glassmere-core   fn Context::set_opened_files(&mut self, paths: Vec<std::path::PathBuf>) #[cfg(feature = "std")]
+glassmere-core   fn Context::set_pressable_cursor(&mut self, cursor: crate::Cursor)
 glassmere-core   fn Context::set_reduced_motion(&mut self, reduced: bool)
 glassmere-core   fn Context::set_stylesheet(&mut self, sheet: StyleSheet)
 glassmere-core   fn Context::set_theme(&mut self, theme: Theme)
@@ -1085,11 +1094,13 @@ glassmere-core   fn Style::border_sides(mut self, value: Edges) -> Self
 glassmere-core   fn Style::button() -> Self
 glassmere-core   fn Style::column_gap(mut self, value: f32) -> Self
 glassmere-core   fn Style::columns(mut self, value: Vec<Track>) -> Self
+glassmere-core   fn Style::cursor(mut self, cursor: Cursor) -> Self
 glassmere-core   fn Style::direction(mut self, value: Direction) -> Self
 glassmere-core   fn Style::enter(mut self, value: Effect) -> Self
 glassmere-core   fn Style::exit(mut self, value: Effect) -> Self
 glassmere-core   fn Style::flex(mut self, factor: f32) -> Self
 glassmere-core   fn Style::focus_ring(mut self, ring: FocusRing) -> Self
+glassmere-core   fn Style::focusable(mut self, focusable: bool) -> Self
 glassmere-core   fn Style::font_family(mut self, value: FontFamily) -> Self
 glassmere-core   fn Style::font_size(mut self, value: f32) -> Self
 glassmere-core   fn Style::font_weight(mut self, value: u16) -> Self
@@ -1358,6 +1369,7 @@ glassmere-core   fn Ui::window_buttons_with(&mut self, buttons: WindowButtons, o
 glassmere-core   fn Ui::window_size(&self) -> glassmere_scene::Size #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn VirtualListOptions::filling(mut self) -> Self
 glassmere-core   fn WidgetBuilder::new(build: F) -> Self where F: FnOnce(&WidgetInput) -> CustomWidget [impl<F, M> WidgetBuilder<F, M>]
+glassmere-core   fn WidgetBuilder::on_click(mut self, message: M) -> Self [impl<F, M> WidgetBuilder<F, M>]
 glassmere-core   fn WidgetBuilder::on_event(mut self, on_event: impl Fn(crate::UiEvent) -> Option<M> + 'static) -> Self [impl<F, M> WidgetBuilder<F, M>]
 glassmere-core   fn WindowButtons::height(mut self, height: crate::Length) -> Self
 glassmere-core   fn WindowButtons::new() -> Self
@@ -1407,6 +1419,18 @@ glassmere-core   variant CellValue::Bool(bool)
 glassmere-core   variant CellValue::Choice(usize)
 glassmere-core   variant CellValue::Number(f64)
 glassmere-core   variant CellValue::Text(String)
+glassmere-core   variant Cursor::ColResize
+glassmere-core   variant Cursor::Crosshair
+glassmere-core   variant Cursor::Default
+glassmere-core   variant Cursor::Grab
+glassmere-core   variant Cursor::Grabbing
+glassmere-core   variant Cursor::Help
+glassmere-core   variant Cursor::Move
+glassmere-core   variant Cursor::NotAllowed
+glassmere-core   variant Cursor::Pointer
+glassmere-core   variant Cursor::RowResize
+glassmere-core   variant Cursor::Text
+glassmere-core   variant Cursor::Wait
 glassmere-core   variant DateStyle::Long
 glassmere-core   variant DateStyle::Medium
 glassmere-core   variant DateStyle::Short
@@ -1766,6 +1790,7 @@ glassmere-core enum BlockKind #[derive(Clone, Copy, Debug, Default, Eq, PartialE
 glassmere-core enum CaretMovement #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-core enum CellEditor #[derive(Clone, Debug, PartialEq)]
 glassmere-core enum CellValue #[derive(Clone, Debug, PartialEq)]
+glassmere-core enum Cursor #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 glassmere-core enum DateStyle #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-core enum DiagnosticKind #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 glassmere-core enum Direction #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -2153,6 +2178,7 @@ glassmere-core use Command = command::Command
 glassmere-core use CommandPalette = ui::CommandPalette
 glassmere-core use Component = app::Component
 glassmere-core use Context = tree::Context
+glassmere-core use Cursor = style::Cursor
 glassmere-core use CustomWidget = widget::CustomWidget
 glassmere-core use Date = locale_format::Date
 glassmere-core use DatePicker = ui::DatePicker
@@ -2693,6 +2719,7 @@ glassmere-winit   field AppOptions::icon: Option<glassmere_scene::Image>
 glassmere-winit   field AppOptions::max_size: Option<Size>
 glassmere-winit   field AppOptions::min_size: Option<Size>
 glassmere-winit   field AppOptions::placement: Placement
+glassmere-winit   field AppOptions::pressable_cursor: glassmere_core::Cursor
 glassmere-winit   field AppOptions::reduced_motion: bool
 glassmere-winit   field AppOptions::resizable: bool
 glassmere-winit   field AppOptions::size: Size

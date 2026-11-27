@@ -432,6 +432,16 @@ pub struct Style {
     /// height stretches between them. The edges are physical: the right edge
     /// stays on the right in a right-to-left window.
     pub offset_end: Option<(f32, f32)>,
+    /// Whether the node can take focus, by a click or by Tab. `false` keeps a
+    /// widget that is focusable by kind, a divider or a scroll container,
+    /// out of the focus order, and a click on it leaves focus where it was.
+    /// It still reacts to the pointer. A container that scrolls nothing is
+    /// not focusable whatever this says.
+    pub focusable: bool,
+    /// The pointer over the node and, when a descendant sets none, over it.
+    /// `None` takes the parent's, and at the top what the widget is: a hand
+    /// over one that takes a press, an I-beam over text.
+    pub cursor: Option<Cursor>,
     /// Where the node stands among its siblings when they overlap, as
     /// `z-index` does on a flex item: a higher value is painted later, so over
     /// the lower ones, and is hit first. Siblings with the same value keep the
@@ -521,9 +531,34 @@ impl Default for Style {
             offset_end: None,
             z_index: 0,
             focus_ring: None,
+            focusable: true,
+            cursor: None,
             direction: None,
         }
     }
+}
+
+/// The shape of the pointer over a node, as `Style::cursor` sets it and
+/// `Context::cursor` reports it for a host to show.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Cursor {
+    #[default]
+    Default,
+    /// The hand over something that can be pressed.
+    Pointer,
+    /// The I-beam over text.
+    Text,
+    Crosshair,
+    Move,
+    Grab,
+    Grabbing,
+    NotAllowed,
+    Help,
+    Wait,
+    /// Left and right edges, as over a column divider.
+    ColResize,
+    /// Top and bottom edges, as over a row divider.
+    RowResize,
 }
 
 /// Which sides of a box have an automatic margin.
@@ -980,6 +1015,18 @@ impl Style {
     /// focus, such as a text caret or a highlighted row, is still drawn.
     pub fn no_focus_ring(mut self) -> Self {
         self.focus_ring = Some(FocusRing::NONE);
+        self
+    }
+    /// Takes the node out of the focus order and stops a click from
+    /// focusing it, when `focusable` is false.
+    pub fn focusable(mut self, focusable: bool) -> Self {
+        self.focusable = focusable;
+        self
+    }
+    /// The pointer shown over this node, and over what is inside it that
+    /// sets no cursor of its own.
+    pub fn cursor(mut self, cursor: Cursor) -> Self {
+        self.cursor = Some(cursor);
         self
     }
     setter!(background, background, Color, some);

@@ -116,11 +116,12 @@ pub fn update(&mut self, message: DialMsg) {
 }
 ```
 
-What `WidgetInput` carries is of the last frame, because that is what there is to know while this one is being declared: the room it was given, and whether it is hovered, pressed, focused and enabled. The events that reach the widget go to `on_event` when the batch is resolved, with pointer positions relative to its own top left corner, and what it returns goes to `update`. `UiEvent::Activate` comes only from the keyboard and assistive technology; a pointer click arrives as `PointerDown` and `PointerUp`.
+What `WidgetInput` carries is of the last frame, because that is what there is to know while this one is being declared: the room it was given, and whether it is hovered, pressed, focused and enabled. The events that reach the widget go to `on_event` when the batch is resolved, with pointer positions relative to its own top left corner, and what it returns goes to `update`. `UiEvent::Activate` comes only from the keyboard and assistive technology; a pointer click arrives as `PointerDown` and `PointerUp`. For a widget that is pressed, ask for a click instead of tracking hover yourself: `WidgetBuilder::on_click(message)` sends it for a press that began on the widget and is released on it, and for Enter, Space and an assistive Activate. Drag off and let go and nothing is sent, as with a web page's `click`. `on_event` still hears the pointer events, and does not hear the click again as `Activate`. `Ui::custom` is the same for a widget that needs no events of its own.
 
 - **Input** is what `CustomWidget::input` asks for. Nothing is delivered until it does. A widget that uses the arrow keys should capture and consume the keyboard, or the page it sits on will scroll as well. Pointer events are heard but never kept: focus, hover and press are the framework's services to the widget.
 - **Focus** is `Semantics::focusable`, for any role. A focusable widget joins the tab order and receives keys.
-- **Semantics** is how it is announced. A widget that holds a value sets `value` and `numeric`; without them it says nothing to a screen reader. `Role::Button` also opts into the activation path, so Enter and Space work.
+- **Semantics** is how it is announced. A widget that holds a value sets `value` and `numeric`; without them it says nothing to a screen reader. A widget with a state sets `checked` (a checkbox or a switch), `selected` (a radio button, a tab, an option) or `expanded` (a disclosure, a menu button), and a screen reader reads it out. The roles that are pressed, `Button`, `Checkbox`, `Radio`, `Tab`, `MenuButton`, `MenuItem` and `Option`, also opt into the activation path, so a click, Enter and Space work and `on_click` is sent; a slider or a dial is moved, not pressed, and takes `on_event`. Give a painted checkbox `Role::Checkbox` and not `Role::Button`, so that it is announced as one.
+- **Cursor** is `Style::cursor`, on the widget or on a container around it: `Cursor::Pointer` for a hand, and `Grab`, `Crosshair`, `NotAllowed` and the rest. Without one, a widget that is pressed shows the hand and text shows the I-beam.
 - **Style** is `ui.theme()` for the tokens, `ui.class(..)` for a stylesheet class, and the `style` argument for the node itself, which lays out like any container.
 - **Paint** is a list of primitives in the widget's own coordinates: rounded rectangles, gradients, shadows, text, images, clips and layers. Clips and layers must balance.
 
@@ -160,6 +161,38 @@ let size = Size::new(label.width + 24.0, label.height + 12.0);
 ```
 
 `ui.measure_text_wrapped(text, &style, width)` is the size when the text wraps at `width`. Shaping costs time, so measure once and keep the answer while the text stays the same, as with any work in a view. `examples/layout.rs` draws a badge this way.
+
+### A button with an icon
+
+`ui.button` takes a text. For a button with an icon, or anything else drawn beside the label, make the button a widget of your own with `Role::Button`: it is then a button to the keyboard (Tab, Enter and Space), to a screen reader and to a click, and it is the size you give it. Measure the label to size it, draw the icon with any primitive (a `Quad`, an `Image`), and send the message with `WidgetBuilder::on_click`:
+
+```rust
+fn icon_button(ui: &mut Ui<'_, Msg>, key: &str, text: &str, message: Msg) {
+    let style = ui.text_style();
+    let label = ui.measure_text(text, &style);
+    let size = Size::new(14.0 * 2.0 + ICON + GAP + label.width, 8.0 * 2.0 + label.height.max(ICON));
+    let name = text.to_owned();
+    ui.keyed(key, |ui| {
+        ui.widget(
+            Style::default(),
+            WidgetBuilder::new(move |input: &WidgetInput| CustomWidget {
+                size,
+                semantics: Semantics {
+                    role: Role::Button,
+                    label: name.clone(),
+                    focusable: true,
+                    ..Semantics::default()
+                },
+                primitives: vec![/* the fill (lighter when `input.hovered`), the icon, the text */],
+                ..CustomWidget::default()
+            })
+            .on_click(message),
+        );
+    });
+}
+```
+
+`crates/glassmere-core/tests/icon_button.rs` is the whole thing, with tests that its width is its label's plus the room around it, that Enter and Space click it, and that a click reaches only it. Its size is known when it is declared, which is what `measure_text` is for: a widget has no way to ask the layout for its size afterwards.
 
 ### Testing it
 

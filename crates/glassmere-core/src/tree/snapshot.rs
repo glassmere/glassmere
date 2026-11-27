@@ -89,7 +89,7 @@ impl Context {
             checked: match node.control {
                 Control::Checkbox { checked, .. } => Some(checked),
                 Control::Switch { on, .. } => Some(on),
-                _ => None,
+                _ => node.custom.as_ref().and_then(|widget| widget.semantics.checked),
             },
             selected: match node.control {
                 Control::Radio { selected, .. }
@@ -101,7 +101,7 @@ impl Context {
                     menu: false,
                     ..
                 } => Some(selected),
-                _ => None,
+                _ => node.custom.as_ref().and_then(|widget| widget.semantics.selected),
             },
             numeric: match node.control {
                 Control::Slider {
@@ -146,7 +146,7 @@ impl Context {
                 Control::Toast { .. } => Some(Live::Polite),
                 _ => None,
             },
-            expanded: if let Control::CollectionRow { expanded, .. } = node.control { expanded } else if let Control::Disclosure { open, .. } = node.control { Some(open) } else {
+            expanded: if let Some(expanded) = node.custom.as_ref().and_then(|widget| widget.semantics.expanded) { Some(expanded) } else if let Control::CollectionRow { expanded, .. } = node.control { expanded } else if let Control::Disclosure { open, .. } = node.control { Some(open) } else {
                 let suggests = matches!(node.control, Control::TextInput { suggestions: Some(_), .. });
                 // An autocomplete list is open only while it has rows to show.
                 let submenu = matches!(node.control, Control::Submenu { .. });

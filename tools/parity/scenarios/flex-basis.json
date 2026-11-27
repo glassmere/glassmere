@@ -1,0 +1,139 @@
+{
+  "id": "flex-basis",
+  "title": "flex: 1 means a basis of 0: equal shares whatever the content",
+  "size": [
+    420,
+    260
+  ],
+  "features": [
+    "flex-basis"
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "width": 400,
+    "gap": 8,
+    "padding": 10,
+    "children": [
+      {
+        "type": "row",
+        "id": "auto",
+        "width": 300,
+        "height": 30,
+        "gap": 0,
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "b1",
+            "background": "#3b4a63",
+            "grow": 1,
+            "width": 100,
+            "height": 20
+          },
+          {
+            "type": "panel",
+            "id": "b2",
+            "background": "#4a5d80",
+            "grow": 1,
+            "width": 20,
+            "height": 20
+          }
+        ]
+      },
+      {
+        "type": "row",
+        "id": "zero",
+        "width": 300,
+        "height": 30,
+        "gap": 0,
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "b3",
+            "background": "#3b4a63",
+            "grow": 1,
+            "basis": 0,
+            "width": 100,
+            "height": 20
+          },
+          {
+            "type": "panel",
+            "id": "b4",
+            "background": "#4a5d80",
+            "grow": 1,
+            "basis": 0,
+            "width": 20,
+            "height": 20
+          }
+        ]
+      },
+      {
+        "type": "row",
+        "id": "mixed",
+        "width": 300,
+        "height": 30,
+        "gap": 0,
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "b5",
+            "background": "#3b4a63",
+            "grow": 1,
+            "basis": 0,
+            "height": 20
+          },
+          {
+            "type": "panel",
+            "id": "b6",
+            "background": "#4a5d80",
+            "grow": 2,
+            "basis": 0,
+            "height": 20
+          },
+          {
+            "type": "panel",
+            "id": "b7",
+            "background": "#3b4a63",
+            "width": 60,
+            "height": 20
+          }
+        ]
+      },
+      {
+        "type": "row",
+        "id": "basis",
+        "width": 300,
+        "height": 30,
+        "gap": 0,
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "b8",
+            "background": "#3b4a63",
+            "grow": 1,
+            "basis": 50,
+            "height": 20
+          },
+          {
+            "type": "panel",
+            "id": "b9",
+            "background": "#4a5d80",
+            "grow": 1,
+            "basis": 100,
+            "height": 20
+          }
+        ]
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "where the boxes sit"
+    }
+  ]
+}

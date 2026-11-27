@@ -107,7 +107,9 @@ impl App for Panes {
             .background(theme.surface);
         ui.column(page, |ui| {
             ui.row(Style::default().gap(8.0).align_items(Align::Center), |ui| {
-                ui.button("New");
+                // Ctrl+N is its keyboard path, so Tab skips the button; a click
+                // still works and leaves focus where it was.
+                ui.button(Button::new("New").style(Style::button().focusable(false)));
                 ui.tooltip("Create a new document (Ctrl+N)");
                 ui.button("Open…");
                 // Shows after 150 ms instead of the usual half second.

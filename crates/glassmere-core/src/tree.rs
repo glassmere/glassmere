@@ -28,6 +28,7 @@ mod calendar_input;
 mod collection_input;
 mod control_input;
 mod control_paint;
+mod cursor;
 pub mod diagnostics;
 mod dock_input;
 mod drag_input;
@@ -486,7 +487,21 @@ impl Node {
         )
     }
 
+    /// Whether the node can hold focus: it is a widget a press lands on, its
+    /// style has not opted out, and a scroll container scrolls. A container
+    /// that only lays things out, or scrolls nothing, is not a place for
+    /// focus to be, or for the keyboard to land on.
     fn focusable(&self) -> bool {
+        self.focus_kind()
+            && self.style.focusable
+            && (self.kind != Kind::Scroll
+                || self.scroll.maximum > 0.0
+                || self.scroll.maximum_x > 0.0)
+    }
+
+    /// Whether the kind of widget is one that a press lands on and that can
+    /// hold focus, before its style or its scrolling is asked.
+    fn focus_kind(&self) -> bool {
         self.enabled
             && !self.hidden
             && !matches!(
@@ -568,7 +583,7 @@ impl Node {
     fn takes_pointer(&self) -> bool {
         !self.hidden
             && (self.style.blocks_pointer
-                || self.focusable()
+                || self.focus_kind()
                 || self.activatable()
                 || (self.enabled
                     && matches!(
@@ -598,7 +613,7 @@ impl Node {
             ) || self
                 .custom
                 .as_ref()
-                .is_some_and(|widget| widget.semantics.role == Role::Button))
+                .is_some_and(|widget| widget.semantics.role.is_pressed()))
     }
 
     fn semantics(&self) -> Semantics {
@@ -738,6 +753,10 @@ impl Node {
             focusable: self.focusable(),
             value: None,
             numeric: None,
+            checked: None,
+            selected: None,
+            expanded: None,
+            switch: self.kind == Kind::Switch,
         }
     }
 }
@@ -905,6 +924,9 @@ pub struct Context {
     painted_overlays: Vec<Rect>,
     redraw_requested: bool,
     caret_movement: crate::CaretMovement,
+    /// The pointer over a widget that takes a press, unless a style says
+    /// otherwise; a hand by default.
+    pressable_cursor: crate::Cursor,
     direction: crate::Direction,
     #[cfg(feature = "std")]
     watched: HashMap<std::path::PathBuf, Watched>,
@@ -1172,6 +1194,7 @@ impl Default for Context {
             painted_overlays: Vec::new(),
             redraw_requested: false,
             caret_movement: crate::CaretMovement::Visual,
+            pressable_cursor: crate::Cursor::Pointer,
             direction: crate::Direction::Ltr,
             #[cfg(feature = "std")]
             watched: HashMap::new(),
@@ -1275,6 +1298,20 @@ impl Context {
     /// order inside bidirectional text. Applies to every text editor.
     pub fn set_caret_movement(&mut self, movement: crate::CaretMovement) {
         self.caret_movement = movement;
+    }
+
+    /// The pointer shown over a widget that takes a press (a button, a
+    /// check box, a tab, a link) when no `Style::cursor` says otherwise: a
+    /// hand (`Cursor::Pointer`) by default. `Cursor::Default` is what a
+    /// browser shows over a button, for an application that wants the
+    /// web's behaviour everywhere without styling every node. Text fields keep
+    /// their I-beam and dividers their resize pointers.
+    pub fn set_pressable_cursor(&mut self, cursor: crate::Cursor) {
+        self.pressable_cursor = cursor;
+    }
+
+    pub fn pressable_cursor(&self) -> crate::Cursor {
+        self.pressable_cursor
     }
 
     pub fn caret_movement(&self) -> crate::CaretMovement {

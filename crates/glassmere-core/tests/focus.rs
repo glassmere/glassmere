@@ -563,6 +563,10 @@ fn page_and_button(ui: &mut Ui<'_>) {
     ui.keyed("page", |ui| {
         ui.scroll(page, |ui| {
             ui.keyed("save", |ui| ui.button("Save"));
+            // Taller than the window, so the page scrolls and can be focused.
+            ui.keyed("tall", |ui| {
+                ui.container(Style::default().height(Length::Px(900.0)), |_| {})
+            });
         })
     });
 }
@@ -723,4 +727,107 @@ fn a_focused_node_keeps_its_gradient() {
         "the ring is drawn over the gradient, not instead of it"
     );
     assert!(!rings(&context).is_empty());
+}
+
+/// A scroll container with a spacer and a button, and a plain pane beside it.
+fn layout(tall: bool) -> impl Fn(&mut Ui<'_>) {
+    move |ui| {
+        ui.row(Style::default().gap(0.0), |ui| {
+            ui.keyed("left", |ui| {
+                let style = Style {
+                    width: Length::Px(300.0),
+                    height: Length::Px(300.0),
+                    ..Style::default()
+                };
+                ui.scroll(style, |ui| {
+                    ui.keyed("spacer", |ui| {
+                        ui.container(Style::default().height(Length::Px(40.0)), |_| {})
+                    });
+                    ui.keyed("go", |ui| ui.button("Go"));
+                    if tall {
+                        ui.keyed("tall", |ui| {
+                            ui.container(Style::default().height(Length::Px(900.0)), |_| {})
+                        });
+                    }
+                })
+            });
+            ui.keyed("right", |ui| {
+                let style = Style {
+                    width: Length::Px(200.0),
+                    height: Length::Px(300.0),
+                    ..Style::default()
+                };
+                ui.container(style, |ui| ui.label("pane"))
+            });
+        });
+    }
+}
+
+#[test]
+fn layout_that_scrolls_nothing_takes_no_focus_from_a_click_or_from_tab() {
+    let mut context = Context::new();
+    let view = layout(false);
+    frame(&mut context, &view);
+    frame(&mut context, &view);
+    // The empty part of the scroll container, its spacer and the pane.
+    for at in [
+        Point { x: 100.0, y: 250.0 },
+        Point { x: 100.0, y: 10.0 },
+        Point { x: 400.0, y: 100.0 },
+    ] {
+        click(&mut context, at);
+        frame(&mut context, &view);
+        assert_eq!(focused_key(&context), "none", "a click at {at:?}");
+    }
+    // Tab goes to the one thing there that is for the keyboard.
+    key(&mut context, Key::Tab);
+    frame(&mut context, &view);
+    assert_eq!(focused_key(&context), "go");
+    key(&mut context, Key::Tab);
+    frame(&mut context, &view);
+    assert_ne!(focused_key(&context), "left", "Tab does not stop on layout");
+}
+
+#[test]
+fn a_container_that_scrolls_still_takes_focus_for_the_keyboard() {
+    let mut context = Context::new();
+    let view = layout(true);
+    frame(&mut context, &view);
+    frame(&mut context, &view);
+    click(&mut context, Point { x: 100.0, y: 250.0 });
+    frame(&mut context, &view);
+    assert_eq!(focused_key(&context), "left", "arrow keys now scroll it");
+    assert!(rings(&context).is_empty(), "and a click shows no ring");
+}
+
+#[derive(Default)]
+struct Clicks {
+    count: u32,
+}
+
+#[test]
+fn a_node_that_opts_out_of_focus_still_reacts_to_the_pointer() {
+    let mut driven = Driven::new(ROOT, Clicks::default(), |_, ui| {
+        ui.keyed("before", |ui| ui.button("Before"));
+        ui.keyed("quiet", |ui| {
+            ui.button(
+                Button::new("Quiet")
+                    .style(Style::button().focusable(false))
+                    .on_click(act(|s: &mut Clicks| s.count += 1)),
+            )
+        });
+        ui.keyed("after", |ui| ui.button("After"));
+    });
+    let quiet = center(&driven.context, &["quiet"]);
+    click(&mut driven.context, quiet);
+    driven.frame();
+    assert_eq!(driven.state().count, 1, "it was clicked");
+    assert_eq!(focused_key(&driven.context), "none", "and took no focus");
+
+    let before = driven.context.find(&["before"]).unwrap();
+    driven.context.action(before, Action::Focus);
+    driven.frame();
+    key(&mut driven.context, Key::Tab);
+    driven.frame();
+    assert_eq!(focused_key(&driven.context), "after", "Tab skips it");
 }
