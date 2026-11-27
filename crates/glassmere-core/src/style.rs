@@ -284,6 +284,10 @@ pub struct Style {
     /// Overrides `gap` between columns when set.
     pub column_gap: Option<f32>,
     pub grow: f32,
+    /// Children that do not fit along the main axis go on to a new line,
+    /// as `flex-wrap: wrap` does, instead of overflowing or shrinking. `gap`
+    /// (or `row_gap` and `column_gap`) is the room between the lines too.
+    pub wrap_items: bool,
     /// Flex shrink factor; children do not shrink unless this is set.
     pub shrink: f32,
     pub radius: f32,
@@ -386,6 +390,7 @@ impl Default for Style {
             row_gap: None,
             column_gap: None,
             grow: 0.0,
+            wrap_items: false,
             shrink: 0.0,
             radius: 0.0,
             align_items: Align::Start,
@@ -715,6 +720,7 @@ impl Style {
     setter!(row_gap, row_gap, f32, some);
     setter!(column_gap, column_gap, f32, some);
     setter!(grow, grow, f32);
+    setter!(wrap_items, wrap_items, bool);
     setter!(shrink, shrink, f32);
     setter!(radius, radius, f32);
     setter!(align_items, align_items, Align);
@@ -958,6 +964,11 @@ impl Style {
                 .then(|| justify(self.justify_content)),
             align_self: self.align_self.map(align),
             justify_self: self.justify_self.map(align),
+            flex_wrap: if self.wrap_items {
+                FlexWrap::Wrap
+            } else {
+                FlexWrap::NoWrap
+            },
             flex_grow: self.grow.max(0.0),
             flex_shrink: self.shrink.max(0.0),
             grid_template_columns: template(&self.columns),

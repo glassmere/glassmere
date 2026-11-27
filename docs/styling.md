@@ -37,6 +37,10 @@ Pointer and focus states are overrides on top of the base style: `on_hover`, `on
 
 In a stylesheet: `margin: 8` (all sides), `margin: 4 8` (vertical, horizontal), `margin: 1 2 3 4` (top, right, bottom, left), `margin-top` and the other sides, `border: 2 #475a7a` (width and an optional colour), `border-width` and `border-color`. Padding is one value for all sides.
 
+### Wrapping rows
+
+`Style::wrap_items(true)` on a row or a column starts a new line when the next child does not fit along the main axis, as `flex-wrap: wrap` does, instead of overflowing it or, with `shrink`, squeezing it. The `gap` is the room between lines as well as between children. A stylesheet takes `wrap-items: true`. A row that wraps needs a width to wrap at, from `width`, a parent that gives it one, or `Length::Percent`.
+
 ### The focus ring
 
 A focused widget outlines itself with a ring: a stroke 2 px wide in the theme's `focus` colour, drawn inside the widget's box along its rounded edge, over its background and gradient. A widget with square corners gets four bars, which land exactly on pixels.

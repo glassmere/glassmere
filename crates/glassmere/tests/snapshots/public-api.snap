@@ -460,6 +460,7 @@ glassmere-core   field Style::transform: Transform
 glassmere-core   field Style::transition: Option<Transition>
 glassmere-core   field Style::width: Length
 glassmere-core   field Style::wrap: TextWrap
+glassmere-core   field Style::wrap_items: bool
 glassmere-core   field StyleSheet::theme: Option<Theme>
 glassmere-core   field StyleSheet::tokens: Vec<(String, Color)>
 glassmere-core   field StyleSheetError::line: usize
@@ -1088,6 +1089,7 @@ glassmere-core   fn Style::transform(mut self, value: Transform) -> Self
 glassmere-core   fn Style::transition(mut self, value: Transition) -> Self
 glassmere-core   fn Style::width(mut self, value: Length) -> Self
 glassmere-core   fn Style::wrap(mut self, value: TextWrap) -> Self
+glassmere-core   fn Style::wrap_items(mut self, value: bool) -> Self
 glassmere-core   fn StyleSheet::apply_to(&self, current: &Theme) -> Theme
 glassmere-core   fn StyleSheet::class(&self, name: &str) -> Option<&Style>
 glassmere-core   fn StyleSheet::classes(&self) -> impl Iterator<Item = (&str, &Style)>

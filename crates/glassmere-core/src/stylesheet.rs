@@ -731,6 +731,13 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         "row-gap" => style.row_gap = Some(number(value)?),
         "column-gap" => style.column_gap = Some(number(value)?),
         "grow" => style.grow = number(value)?,
+        "wrap-items" => {
+            style.wrap_items = match value {
+                "true" | "wrap" => true,
+                "false" | "nowrap" => false,
+                _ => return Err(format!("wrap-items is `true` or `false`, got `{value}`")),
+            };
+        }
         "radius" => style.radius = number(value)?,
         "background" => style.background = Some(color(value)?),
         "foreground" => style.foreground = Some(color(value)?),

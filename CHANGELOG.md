@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `Style::wrap_items(true)`: a row or a column whose children go on to a new line when the next does not fit, as `flex-wrap: wrap` does. The gap is between the lines too. In a stylesheet: `wrap-items: true`. See "Wrapping rows" in [styling](docs/styling.md).
 - `Style::cursor(Cursor)` sets the pointer over a node and what is inside it, and `Context::cursor(id)` is what a host shows. The winit host now takes its pointer from it. Without a style the pointer is as it was: a hand over a widget that takes a press, an I-beam over text, resize pointers over dividers. See "The pointer" in [styling](docs/styling.md).
 - A widget of your own can be clicked: `WidgetBuilder::on_click(message)` sends it for a press and release on the same widget, and for Enter, Space and an assistive Activate, and `Ui::custom` does the same. Dragging off and letting go sends nothing. Before, only `Role::Button` was pressed, and a painted control had to track its own hover to tell a click from a drag.
 - `Semantics::checked`, `selected` and `expanded` carry a widget's state to assistive technology, as for the built-in checkbox, tab and disclosure. `Semantics` is built with `..Semantics::default()` everywhere in the documentation, but a `Semantics { .. }` written out in full, as `examples/dial-widget` did, no longer compiles until it ends with `..Semantics::default()`. The same goes for `Style`, which gained `cursor`, `focusable` and `focus_ring` in this release.
