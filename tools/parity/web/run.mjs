@@ -113,6 +113,8 @@ function render(node) {
         .join('')}</div>`;
     case 'input':
       return `<input type="text" data-id="${id}" aria-label="${esc(node.label ?? '')}" value="${esc(node.value ?? '')}"${dis} style="${css(node)}">`;
+    case 'number':
+      return `<input type="number" data-id="${id}" aria-label="${esc(node.label ?? '')}"${node.min != null ? ` min="${node.min}"` : ''}${node.max != null ? ` max="${node.max}"` : ''} step="${node.step ?? 1}" value="${node.value ?? ''}"${dis} style="${css(node)}">`;
     case 'slider':
       return `<input type="range" data-id="${id}" aria-label="${esc(node.label ?? '')}" min="${node.min}" max="${node.max}" step="${node.step}" value="${node.value}"${dis} style="${css(node)}">`;
     default:
@@ -153,6 +155,7 @@ const shell = (spec) => `<!doctype html><html><head><meta charset="utf-8"><style
     const t = e.target;
     if (t.type === 'text') __log.push('input:' + t.dataset.id + ':' + t.value);
     if (t.type === 'range') __log.push('slide:' + t.dataset.id + ':' + Number(t.value));
+    if (t.type === 'number') __log.push('number:' + t.dataset.id + ':' + Number(t.value));
   });
 </script></body></html>`;
 
@@ -207,6 +210,7 @@ async function run(spec, browser) {
         else if (el.type === 'radio') { if (el.checked) values[el.name] = Number(el.value); }
         else if (el.type === 'text') values[el.dataset.id] = el.value;
         else if (el.type === 'range') values[el.dataset.id] = Number(el.value);
+        else if (el.type === 'number') values[el.dataset.id] = el.value === '' ? null : Number(el.value);
       }
       const scroll = {};
       for (const el of document.querySelectorAll('[data-id]')) {

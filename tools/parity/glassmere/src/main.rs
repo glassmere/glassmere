@@ -27,6 +27,7 @@ enum Msg {
     Select(String, usize),
     Text(String, String),
     Slide(String, f64),
+    Number(String, f64),
     /// A dialog was closed by the user's own dismissal (Escape or the scrim).
     Dialog(String, bool),
 }
@@ -72,6 +73,10 @@ impl App for Bench {
                     self.log.push(format!("dialog:{dialog}:false"));
                     self.values.insert(dialog, Val::Bool(false));
                 }
+            }
+            Msg::Number(id, value) => {
+                self.log.push(format!("number:{id}:{}", number(value)));
+                self.values.insert(id, Val::Num(value));
             }
             Msg::Dialog(id, open) => {
                 self.log.push(format!("dialog:{id}:{open}"));
@@ -547,6 +552,27 @@ impl Bench {
                     );
                 });
             }
+            "number" => {
+                let value = match self.values.get(&id) {
+                    Some(Val::Num(n)) => *n,
+                    _ => 0.0,
+                };
+                let options = glassmere_core::NumberOptions {
+                    min: node["min"].as_f64().unwrap_or(f64::NEG_INFINITY),
+                    max: node["max"].as_f64().unwrap_or(f64::INFINITY),
+                    step: node["step"].as_f64().unwrap_or(1.0),
+                    ..glassmere_core::NumberOptions::default()
+                };
+                let key = id.clone();
+                ui.keyed(id.clone(), |ui| {
+                    ui.number_input(
+                        node.get("label").and_then(Value::as_str).unwrap_or(""),
+                        value,
+                        options,
+                        move |v| Msg::Number(key.clone(), v),
+                    );
+                });
+            }
             other => panic!("unknown widget type {other}"),
         }
     }
@@ -685,7 +711,7 @@ fn initial(node: &Value, out: &mut HashMap<String, Val>) {
                 Val::Text(node["value"].as_str().unwrap_or("").to_string()),
             );
         }
-        "slider" => {
+        "slider" | "number" => {
             out.insert(id, Val::Num(node["value"].as_f64().unwrap_or(0.0)));
         }
         _ => {}
@@ -727,6 +753,7 @@ fn role(role: Role) -> &'static str {
         Role::Radio => "radio",
         Role::TextInput | Role::PasswordInput => "textbox",
         Role::Slider => "slider",
+        Role::SpinButton => "spinbutton",
         Role::Label => "text",
         Role::Group => "generic",
         Role::ScrollView => "scrollview",
@@ -812,7 +839,15 @@ impl Rig {
     fn focus(&self) -> Value {
         self.context
             .focused()
-            .and_then(|id| self.context.details(id))
+            .and_then(|id| {
+                let details = self.context.details(id)?;
+                // The field inside a composite is named by what holds it.
+                if details.key == "$field" {
+                    let parent = self.context.node(id)?.parent?;
+                    return self.context.details(parent);
+                }
+                Some(details)
+            })
             .map_or(Value::Null, |d| Value::String(d.key))
     }
 
@@ -878,6 +913,15 @@ impl Rig {
             }
             // A node hidden with `visibility` keeps its box but is not in the
             // accessibility tree, as in a browser.
+            // A number field is a row around the field that takes the keys; its
+            // name, role and value are the field's.
+            let node = if self.kinds[id] == "number" {
+                let mut path: Vec<&str> = self.paths[id].iter().map(String::as_str).collect();
+                path.push("$field");
+                self.context.find(&path).unwrap_or(node)
+            } else {
+                node
+            };
             let Some(snap) = snapshots.get(&node) else {
                 a11y.insert(id.clone(), json!({ "role": "none", "name": "" }));
                 let r = self.rect(id);
