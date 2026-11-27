@@ -115,10 +115,10 @@ fn justify(name: &str) -> Justify {
     }
 }
 
-/// Sizes, flex factors, placement and background from the spec; everything
-/// else is the widget's. A margin, a border and wrapping are not things a
-/// glassmere `Style` has, so they are not applied (the scenario is reported
-/// as unsupported).
+/// Sizes, margin, border, flex factors, placement and background from the
+/// spec; everything else is the widget's. Wrapping is not something a
+/// glassmere `Style` has, so it is not applied (the scenario is reported as
+/// unsupported).
 fn sized(node: &Value, mut style: Style) -> Style {
     if let Some(w) = px(node, "width") {
         style.width = Length::Px(w);
@@ -137,6 +137,13 @@ fn sized(node: &Value, mut style: Style) -> Style {
     }
     if let Some(w) = px(node, "maxWidth") {
         style.max_width = Length::Px(w);
+    }
+    if let Some(m) = px(node, "margin") {
+        style = style.margin(m);
+    }
+    // The web side draws a 1-pixel-radius-less border in this colour.
+    if let Some(b) = px(node, "border") {
+        style = style.border(b).border_color(colour("#8aa4c8"));
     }
     if let Some(g) = px(node, "grow") {
         style.grow = g;
@@ -842,7 +849,7 @@ fn run(spec: &Value, out: &Path) -> Value {
         "scenario": spec["id"], "framework": "glassmere", "title": spec["title"], "size": spec["size"],
         "records": records, "screenshots": shots,
         "unsupported": spec["features"].as_array().into_iter().flatten()
-            .filter(|f| ["margin", "border", "wrap"].contains(&f.as_str().unwrap_or("")))
+            .filter(|f| ["wrap"].contains(&f.as_str().unwrap_or("")))
             .cloned().collect::<Vec<_>>(),
         "notes": ["A slider's width is fixed by the widget; `width` in the spec is not honoured.",
                   "Fonts differ between frameworks, so widths of text are not comparable."],
