@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- `Style::basis` (stylesheet `basis`) and `Style::flex(factor)` (stylesheet `flex: 1`): what `grow` and `shrink` start from, as `flex-basis` and the `flex` shorthand are in CSS. Without a basis, children with `grow` 1 share what is left after their own sizes and end up unequal; `flex(1.0)` is `grow` 1, `shrink` 1 and a basis of 0, so children share the whole space by their factors whatever is in them, which is what `flex: 1` does on the web. `Style::default()` has no basis (`Auto`) and lays out as before.
+
 ## [0.1.8] - 2026-11-23
 
 ### Added
