@@ -262,7 +262,11 @@ impl<'a, M: 'static> Ui<'a, M> {
     ) -> Response<'a> {
         let key = self.next_key();
         let response = self.radio_shown(key, label.into(), selected == option);
-        self.set_handler(Handler::Message(on_select(option)));
+        // Choosing what is already chosen changes nothing, so it sends
+        // nothing, as a web page's `change` and a Qt `toggled` do not either.
+        if selected != option {
+            self.set_handler(Handler::Message(on_select(option)));
+        }
         response
     }
 
@@ -337,8 +341,10 @@ impl<'a, M: 'static> Ui<'a, M> {
         let key = self.next_key();
         let selected = selected.min(items.len().saturating_sub(1));
         let response = self.combo_shown(combo, key, selected, items, "—");
+        // Choosing what is already chosen changes nothing, so it sends
+        // nothing, as a `<select>`'s `change` does not fire either.
         self.set_handler(Handler::Map(Box::new(move |update| match update {
-            ControlUpdate::Choice(index) => Some(on_choose(index)),
+            ControlUpdate::Choice(index) if index != selected => Some(on_choose(index)),
             _ => None,
         })));
         response

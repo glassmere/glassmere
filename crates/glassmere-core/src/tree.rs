@@ -19,10 +19,11 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use glassmere_scene::{
-    Color, Point, Primitive, Rect, Scene, Size, TextMeasurer, TextStyle, TextWrap,
+    Color, Point, Primitive, Rect, Scene, Size, TextAlign, TextMeasurer, TextStyle, TextWrap,
 };
 mod actions;
 mod animation_state;
+mod bound;
 mod calendar_input;
 mod collection_input;
 mod control_input;
@@ -407,6 +408,8 @@ struct Node {
     changed_frame: u64,
     painted_frame: u64,
     resolved: ResolvedText,
+    /// This node or an ancestor is `Style::hidden`; set by the bounds walk.
+    hidden: bool,
     scope: Option<Box<ScopeState>>,
     tooltip: Option<Box<crate::Tooltip>>,
     anim: Option<Box<animation_state::NodeAnim>>,
@@ -431,6 +434,20 @@ struct Node {
     /// an observed state declares again; in any other it only repaints.
     observed: core::cell::Cell<bool>,
     observing: core::cell::Cell<bool>,
+    /// The text this label follows, and the version of it last shown. Set
+    /// only by a declaration; `Context::refresh_bound` is what reads it.
+    bound: Option<Box<Bound>>,
+}
+
+/// An element declared with a text source: its sequence number, the source
+/// and the version of it the declared text was read at.
+type DeclaredBound = (u32, Rc<dyn crate::TextSource>, u64);
+
+/// A label's text source: shown again when its version moves, whether or
+/// not the view ran.
+struct Bound {
+    source: Rc<dyn crate::TextSource>,
+    seen: u64,
 }
 
 impl Node {
@@ -442,7 +459,7 @@ impl Node {
 
     /// The box inside the padding.
     fn content_box(&self) -> Rect {
-        let padding = self.style.padding.max(0.0);
+        let padding = self.style.inset();
         Rect {
             x: self.bounds.x + padding,
             y: self.bounds.y + padding,
@@ -479,6 +496,7 @@ impl Node {
     /// hold focus, before its style or its scrolling is asked.
     fn focus_kind(&self) -> bool {
         self.enabled
+            && !self.hidden
             && !matches!(
                 self.control,
                 Control::Stepper
@@ -529,6 +547,16 @@ impl Node {
                     .is_some_and(|widget| widget.semantics.focusable))
     }
 
+    /// Its box does not cut off what is inside it: `Style::unclipped` on a
+    /// kind that does not scroll or float.
+    fn unclipped(&self) -> bool {
+        self.style.unclipped
+            && !matches!(
+                self.kind,
+                Kind::Scroll | Kind::Collection | Kind::TabList | Kind::Popup | Kind::Popover
+            )
+    }
+
     /// Text that is selected and copied but never edited.
     fn read_only(&self) -> bool {
         matches!(self.control, Control::SelectableText)
@@ -537,24 +565,27 @@ impl Node {
     /// A tab strip's scroll button while no tabs are hidden on its side: it
     /// is laid out but neither drawn nor reachable, and not reported.
     fn parked(&self) -> bool {
-        matches!(self.control, Control::StripScroll { .. })
-            && (self.clip.width <= 0.0 || self.clip.height <= 0.0)
+        self.hidden
+            || matches!(self.control, Control::StripScroll { .. })
+                && (self.clip.width <= 0.0 || self.clip.height <= 0.0)
     }
 
     /// Whether a press can land on this node: anything focusable or
     /// activatable, the pointer-only column sizer, and the window frame a
     /// view draws for itself.
     fn takes_pointer(&self) -> bool {
-        self.focus_kind()
-            || self.activatable()
-            || (self.enabled
-                && matches!(
-                    self.control,
-                    Control::Sizer { .. }
-                        | Control::TitleBar
-                        | Control::ResizeGrip(_)
-                        | Control::GridScrollbar { .. }
-                ))
+        !self.hidden
+            && (self.style.blocks_pointer
+                || self.focus_kind()
+                || self.activatable()
+                || (self.enabled
+                    && matches!(
+                        self.control,
+                        Control::Sizer { .. }
+                            | Control::TitleBar
+                            | Control::ResizeGrip(_)
+                            | Control::GridScrollbar { .. }
+                    )))
     }
 
     fn activatable(&self) -> bool {
@@ -718,6 +749,7 @@ impl Node {
             checked: None,
             selected: None,
             expanded: None,
+            switch: self.kind == Kind::Switch,
         }
     }
 }
@@ -772,6 +804,12 @@ pub struct Context {
     spare_chunks: crate::collections::FastMap<NodeId, Rc<PaintChunk>>,
     stats: FrameStats,
     geometry_dirty: bool,
+    /// A node was hidden or shown by the last bounds walk, so what the user
+    /// was focused on or holding may no longer be there to be.
+    hidden_changed: bool,
+    /// Some node is `unclipped`, so a clip says nothing about what is under
+    /// it, as when there is a popup. Set by the bounds walk.
+    has_unclipped: bool,
     /// Whether the bounds walk is the plain one the tests compare it with.
     #[cfg(test)]
     reference_walk: bool,
@@ -782,6 +820,9 @@ pub struct Context {
     popover_count: usize,
     /// How many popups the tree holds.
     popup_count: usize,
+    /// How many nodes have a `z_index` other than 0. While there are none,
+    /// painting and hit testing go through the children as they are.
+    z_count: usize,
     /// How many text areas the tree holds.
     text_area_count: usize,
     /// How many rich editors the tree holds.
@@ -961,8 +1002,18 @@ pub struct Context {
     queued: Vec<(NodeId, Queued)>,
     /// Elements whose hover or focus the view read before their node existed.
     observed_new: core::cell::RefCell<Vec<u32>>,
+    /// Elements declared with a text source this frame, with the version of
+    /// it they were declared at, in the order they were declared.
+    bound_new: core::cell::RefCell<Vec<DeclaredBound>>,
+    /// The nodes that follow a text source.
+    bound_nodes: Vec<NodeId>,
     /// Something the view reads may have changed since it last declared.
     view_stale: bool,
+    /// Input arrived that handlers answered in full. It declares the view
+    /// through the messages they send, and only when the application does
+    /// not say that the view reads nothing those change; see
+    /// `App::view_state`.
+    view_stale_handled: bool,
     /// The dock being declared or reconciled, whose panels are found by id
     /// wherever they sit. A cell because `Ui` only holds a shared reference
     /// to the context.
@@ -1030,12 +1081,14 @@ impl Default for Context {
             handler: None,
             observed: core::cell::Cell::new(false),
             observing: core::cell::Cell::new(false),
+            bound: None,
             control: Control::None,
             editor: None,
             changed: Dirty::all(),
             changed_frame: 0,
             painted_frame: 0,
             resolved: ResolvedText::from_theme(&theme),
+            hidden: false,
             scope: None,
             tooltip: None,
         };
@@ -1062,11 +1115,14 @@ impl Default for Context {
             spare_chunks: Default::default(),
             stats: FrameStats::default(),
             geometry_dirty: false,
+            hidden_changed: false,
+            has_unclipped: false,
             #[cfg(test)]
             reference_walk: false,
             clips_valid: false,
             popover_count: 0,
             popup_count: 0,
+            z_count: 0,
             text_area_count: 0,
             rich_editor_count: 0,
             preparing: Preparing::default(),
@@ -1171,7 +1227,10 @@ impl Default for Context {
             lost_selections: Default::default(),
             queued: Vec::new(),
             observed_new: core::cell::RefCell::new(Vec::new()),
+            bound_new: core::cell::RefCell::new(Vec::new()),
+            bound_nodes: Vec::new(),
             view_stale: true,
+            view_stale_handled: false,
             dock: core::cell::Cell::new(None),
             panels: HashMap::new(),
             calendar_views: HashMap::new(),
@@ -1713,6 +1772,12 @@ impl Context {
     /// exist yet; it is observed from the moment it is created.
     pub(crate) fn observe_element(&self, seq: u32) {
         self.observed_new.borrow_mut().push(seq);
+    }
+
+    /// The element just declared follows `source`, which was at `version`
+    /// when its text was read.
+    pub(crate) fn bind_element(&self, seq: u32, source: Rc<dyn crate::TextSource>, version: u64) {
+        self.bound_new.borrow_mut().push((seq, source, version));
     }
 
     pub(crate) fn count_skipped(&self) {

@@ -192,8 +192,8 @@ impl Context {
             }
         } else {
             Point {
-                x: node.bounds.x + node.style.padding - editor.scroll_x + editor.align_x,
-                y: node.bounds.y + node.style.padding,
+                x: node.bounds.x + node.style.inset() - editor.scroll_x + editor.align_x,
+                y: node.bounds.y + node.style.inset(),
             }
         };
         let local = Point {

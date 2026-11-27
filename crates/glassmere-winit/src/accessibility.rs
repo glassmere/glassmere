@@ -271,6 +271,7 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     CoreRole::TextInput => Role::TextInput,
                     CoreRole::MultilineTextInput => Role::MultilineTextInput,
                     CoreRole::PasswordInput => Role::PasswordInput,
+                    CoreRole::Checkbox if snapshot.semantics.switch => Role::Switch,
                     CoreRole::Checkbox => Role::CheckBox,
                     CoreRole::Radio => Role::RadioButton,
                     CoreRole::Slider => Role::Slider,
@@ -480,6 +481,7 @@ pub(crate) fn tree(context: &Context, title: &str, scale: f64) -> TreeUpdate {
                     role,
                     Role::Button
                         | Role::CheckBox
+                        | Role::Switch
                         | Role::RadioButton
                         | Role::ComboBox
                         | Role::ListBoxOption
@@ -1283,6 +1285,7 @@ mod tests {
         assert_eq!(node("input").value(), Some("Name"));
         assert!(node("input").supports_action(Action::SetValue));
         assert!(!node("disabled").supports_action(Action::SetValue));
+        assert_eq!(node("check").role(), Role::CheckBox);
         assert_eq!(node("check").toggled(), Some(accesskit::Toggled::False));
         assert_eq!(node("radio").toggled(), Some(accesskit::Toggled::True));
         assert_eq!(node("slider").numeric_value(), Some(50.0));
@@ -1336,7 +1339,7 @@ mod tests {
     }
 
     #[test]
-    fn a_switch_is_a_checkbox_that_reports_whether_it_is_on_and_can_be_clicked() {
+    fn a_switch_is_announced_as_a_switch_that_reports_whether_it_is_on_and_can_be_clicked() {
         let mut context = Context::new();
         context.run(Size::new(400.0, 300.0), &mut MonospaceMeasurer, |ui| {
             ui.keyed("off", |ui| ui.switch("Wi-Fi", false, |_| ()));
@@ -1347,7 +1350,8 @@ mod tests {
         });
         let update = tree(&context, "Switch", 1.0);
         let node = |key: &str| node_in(&update, NodeId(context.find(&[key]).unwrap().0));
-        assert_eq!(node("off").role(), Role::CheckBox);
+        assert_eq!(node("off").role(), Role::Switch);
+        assert_eq!(node("on").role(), Role::Switch);
         assert_eq!(node("off").label(), Some("Wi-Fi"));
         assert_eq!(node("off").toggled(), Some(accesskit::Toggled::False));
         assert_eq!(node("on").toggled(), Some(accesskit::Toggled::True));

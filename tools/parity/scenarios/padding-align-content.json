@@ -1,0 +1,140 @@
+{
+  "id": "padding-align-content",
+  "title": "Padding per side, and how wrapped lines share a taller row",
+  "size": [
+    420,
+    420
+  ],
+  "features": [
+    "padding-sides",
+    "align-content"
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 10,
+    "padding": 10,
+    "children": [
+      {
+        "type": "column",
+        "id": "sided",
+        "padding": [
+          5,
+          7,
+          11,
+          13
+        ],
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "t1",
+            "width": 40,
+            "height": 20,
+            "background": "#3b4a63"
+          }
+        ]
+      },
+      {
+        "type": "row",
+        "id": "between",
+        "width": 100,
+        "height": 140,
+        "gap": 0,
+        "wrap": true,
+        "alignContent": "space-between",
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "t2",
+            "width": 40,
+            "height": 20,
+            "background": "#4a5d80"
+          },
+          {
+            "type": "panel",
+            "id": "t3",
+            "width": 40,
+            "height": 20,
+            "background": "#3b4a63"
+          },
+          {
+            "type": "panel",
+            "id": "t4",
+            "width": 40,
+            "height": 20,
+            "background": "#4a5d80"
+          },
+          {
+            "type": "panel",
+            "id": "t5",
+            "width": 40,
+            "height": 20,
+            "background": "#3b4a63"
+          },
+          {
+            "type": "panel",
+            "id": "t6",
+            "width": 40,
+            "height": 20,
+            "background": "#4a5d80"
+          }
+        ]
+      },
+      {
+        "type": "row",
+        "id": "center",
+        "width": 100,
+        "height": 140,
+        "gap": 0,
+        "wrap": true,
+        "alignContent": "center",
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "t12",
+            "width": 40,
+            "height": 20,
+            "background": "#4a5d80"
+          },
+          {
+            "type": "panel",
+            "id": "t13",
+            "width": 40,
+            "height": 20,
+            "background": "#3b4a63"
+          },
+          {
+            "type": "panel",
+            "id": "t14",
+            "width": 40,
+            "height": 20,
+            "background": "#4a5d80"
+          },
+          {
+            "type": "panel",
+            "id": "t15",
+            "width": 40,
+            "height": 20,
+            "background": "#3b4a63"
+          },
+          {
+            "type": "panel",
+            "id": "t16",
+            "width": 40,
+            "height": 20,
+            "background": "#4a5d80"
+          }
+        ]
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "where the boxes sit"
+    }
+  ]
+}

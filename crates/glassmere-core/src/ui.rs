@@ -8,6 +8,7 @@ use crate::{Component, Context, CustomWidget, NodeId, Style};
 use alloc::borrow::ToOwned;
 use alloc::boxed::Box;
 use alloc::format;
+use alloc::rc::Rc;
 use alloc::string::String;
 #[cfg(feature = "std")]
 use alloc::sync::Arc;
@@ -369,6 +370,25 @@ pub(crate) const SWITCH_TRACK: (f32, f32) = (40.0, 22.0);
 pub(crate) const MARK: f32 = 18.0;
 
 impl Kind {
+    /// Whether the node only holds others, so its box is laid out by its
+    /// padding and border alone: what `Style::padding_sides` and
+    /// `Style::border_sides` apply to. The rest draw their own content at the
+    /// one `padding` and `border`.
+    pub(crate) fn holds_nodes(self) -> bool {
+        matches!(
+            self,
+            Self::Column
+                | Self::Row
+                | Self::Grid
+                | Self::Container
+                | Self::FocusScope
+                | Self::EventArea
+                | Self::Memo
+                | Self::ContextArea
+                | Self::GestureArea
+        )
+    }
+
     pub(crate) fn text_leaf(self) -> bool {
         matches!(
             self,
@@ -888,6 +908,29 @@ impl<'a, M: 'static> Ui<'a, M> {
         });
     }
 
+    /// A label that shows a [`Signal`](crate::Signal) or [`Memo`](crate::Memo)
+    /// of text and follows it. When the source changes, the label's text is
+    /// replaced in the tree, measured and repainted without the view running
+    /// again; see [`App::view_state`](crate::App::view_state) for how a view is kept from running
+    /// after a message.
+    ///
+    /// The view reads the text when it declares, so a view that does run
+    /// shows the same text. A label declared this way without the source
+    /// next frame is an ordinary label again.
+    #[track_caller]
+    pub fn bound_label<S: crate::TextSource + Clone + 'static>(&mut self, source: &S) {
+        let version = source.version();
+        let before = self.elements.len();
+        self.label(source.text());
+        // A duplicate key leaves nothing behind to follow the source.
+        if let Some(element) = self.elements.get(before)
+            && element.kind == Kind::Label
+        {
+            self.context
+                .bind_element(element.seq, Rc::new(source.clone()), version);
+        }
+    }
+
     /// A button. `ui.button("Save")` is the whole of it, and
     /// [`Button::new`] carries a style, a disabled state, and with
     /// [`Button::on_click`] the message a click sends.
@@ -1058,7 +1101,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             .child(self.parent, &key, Kind::Container)
             .and_then(|id| self.context.node(id))
             .map_or(0.0, |node| {
-                (node.bounds.width - 2.0 * style.padding.max(0.0)).max(0.0)
+                (node.bounds.width - 2.0 * style.inset()).max(0.0)
             });
         self.group(key, Kind::Container, style, |ui| content(ui, inside));
         inside

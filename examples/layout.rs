@@ -246,6 +246,30 @@ impl App for Layout {
 
             ui.label(
                 Label::new(
+                    "Wrapping · a row with wrap_items(true) starts a new line when the next \
+                     child does not fit, and the gap is between the lines too",
+                )
+                .style(heading.clone()),
+            );
+            ui.row(
+                full.clone().gap(8.0).wrap_items(true),
+                |ui| {
+                    for tag in [
+                        "layout", "flex", "grid", "margin", "border", "padding", "gap", "wrap",
+                        "align", "justify", "grow", "shrink", "percent", "offset",
+                    ] {
+                        ui.keyed(tag, |ui| {
+                            ui.container(
+                                Style::default().padding(6.0).radius(6.0).border(1.0),
+                                |ui| ui.label(tag),
+                            )
+                        });
+                    }
+                },
+            );
+
+            ui.label(
+                Label::new(
                     "Constraints · 16:9 cards bounded by min 120 / max 260 width; a row that \
                      shrinks only when asked",
                 )

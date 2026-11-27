@@ -9,10 +9,13 @@ impl Context {
             return false;
         }
         let focus = matches!(action, Action::Focus);
+        let queued = self.queued.len();
         let handled = self.handle_action(target, action);
         self.note_focus();
         // Focus only repaints unless the view observed it.
-        self.view_stale |= handled && !focus;
+        if handled && !focus {
+            self.note_handled(queued);
+        }
         handled
     }
 

@@ -1,0 +1,19 @@
+# The glassmere side of the parity bench. Not a member of the workspace, so it
+# adds nothing to CI: build it with
+#     cargo run --release --manifest-path tools/parity/glassmere/Cargo.toml -- --out tools/parity/out/glassmere
+[package]
+name = "parity-glassmere"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.90"
+publish = false
+
+[dependencies]
+glassmere-core = { path = "../../../crates/glassmere-core" }
+glassmere-scene = { path = "../../../crates/glassmere-scene" }
+glassmere-text = { path = "../../../crates/glassmere-text" }
+glassmere-render-cpu = { path = "../../../crates/glassmere-render-cpu" }
+serde_json = "1"
+png = "0.18"
+
+[workspace]

@@ -83,6 +83,7 @@ impl Opener {
 
 impl Context {
     pub(super) fn refresh_bounds(&mut self, size: Size) {
+        self.has_unclipped = false;
         self.update_bounds(
             self.root,
             Point::default(),
@@ -104,6 +105,11 @@ impl Context {
             return self.update_bounds_reference(id, origin, clip);
         }
         let node = &self.nodes[&id];
+        let hidden =
+            node.style.hidden || node.parent.is_some_and(|parent| self.nodes[&parent].hidden);
+        let unclipped = node.unclipped();
+        self.has_unclipped |= unclipped;
+        self.hidden_changed |= node.hidden != hidden;
         let old_bounds = node.bounds;
         let old_clip = node.clip;
         let old_scroll = node.scroll;
@@ -149,7 +155,7 @@ impl Context {
             .and_then(|row| {
                 Some(Opener {
                     row: row.bounds,
-                    padding: row.style.padding.max(0.0),
+                    padding: row.style.inset(),
                     menu: self.nodes[&row.parent?].bounds,
                     rtl: row.resolved.rtl(),
                 })
@@ -192,7 +198,7 @@ impl Context {
             node.bounds.width = node.bounds.width.min(viewport.width);
             node.bounds.height = node.bounds.height.min(viewport.height);
             if let Some(opener) = beside {
-                let level = (opener.row.y - node.style.padding.max(0.0))
+                let level = (opener.row.y - node.style.inset())
                     .min(viewport.height - node.bounds.height)
                     .max(0.0);
                 let size = Size {
@@ -222,16 +228,21 @@ impl Context {
         // clip that does not start inside its parent's is that of a hidden
         // strip scroll button.
         node.clip = clip.intersect(node.bounds);
+        node.hidden = hidden;
+        if hidden {
+            node.clip.width = 0.0;
+            node.clip.height = 0.0;
+        }
         if scrolls_down {
             node.scroll.maximum =
-                (content_bottom + node.style.padding.max(0.0) - node.bounds.height).max(0.0);
+                (content_bottom + node.style.inset() - node.bounds.height).max(0.0);
             node.scroll.offset = node.scroll.offset.clamp(0.0, node.scroll.maximum);
         }
         let rtl = node.resolved.rtl();
         if scrolls_across {
             // Content overflows at the end side: past the right edge, or past
             // the left edge in a right-to-left container.
-            let padding = node.style.padding.max(0.0);
+            let padding = node.style.inset();
             let overflow = if rtl {
                 padding - content_left
             } else {
@@ -250,7 +261,9 @@ impl Context {
                 },
             y: node.bounds.y - node.scroll.offset,
         };
-        let clip = node.clip;
+        // Children are cut by this box unless it is unclipped, when they
+        // are cut by what cuts it.
+        let clip = if unclipped { clip } else { node.clip };
         // Placing a child needs the tree mutably, so the children are copied,
         // into a list from an earlier frame when there is one. A node with no
         // children has nothing to copy and takes none.
@@ -549,7 +562,7 @@ impl Context {
             .filter(|parent| self.nodes[parent].kind == Kind::TabList)
             .map(|_| node.clip)
             .filter(|clip| *clip != node.bounds);
-        if strip_clip.is_some_and(|clip| clip.width <= 0.0 || clip.height <= 0.0) {
+        if node.hidden || strip_clip.is_some_and(|clip| clip.width <= 0.0 || clip.height <= 0.0) {
             let chunk = PaintChunk::new(Vec::new(), 0, Vec::new()).put_in(spare);
             self.nodes.get_mut(&id).unwrap().paint_cache = Some(chunk.clone());
             return chunk;
@@ -587,8 +600,16 @@ impl Context {
             scene.primitives.push(Primitive::PushClip(clip));
         }
         if let Some((opacity, transform)) = layer {
+            // What an unclipped node draws past its box belongs to the layer
+            // too, and how far that reaches is not known here, so the layer
+            // is as big as the window; the clips above cut it as usual.
+            let bounds = if node.unclipped() {
+                self.nodes[&self.root].bounds
+            } else {
+                node.bounds
+            };
             scene.primitives.push(Primitive::PushLayer {
-                bounds: node.bounds,
+                bounds,
                 opacity,
                 transform,
             });
@@ -657,7 +678,16 @@ impl Context {
         // Everything from here on is drawn after the children. It is only
         // ever pushed, never read, moved or removed, so the length now is
         // where it starts.
+        // An unclipped node closes its clip here, so that the children are not
+        // cut by it, and opens it again for what is drawn after them.
+        let unclipped = node.unclipped();
+        if unclipped {
+            scene.primitives.push(Primitive::PopClip);
+        }
         let split = scene.primitives.len();
+        if unclipped {
+            scene.primitives.push(Primitive::PushClip(node.bounds));
+        }
         self.paint_scrollbars(id, &mut scene);
         self.paint_strip_edges(id, &mut scene);
         self.paint_calendar_today(id, &mut scene);
@@ -668,6 +698,11 @@ impl Context {
         }
         if strip_clip.is_some() {
             scene.primitives.push(Primitive::PopClip);
+        }
+        let mut children = children;
+        if self.z_count > 0 {
+            // Stable: siblings that tie keep the order they were declared in.
+            children.sort_by_key(|child| self.nodes[child].style.z_index);
         }
         let children = children
             .into_iter()
@@ -722,6 +757,11 @@ impl Context {
                 radial: gradient.radial,
             });
         }
+        if node.style.border_sides.is_some() && node.kind.holds_nodes() {
+            self.paint_border_sides(node, scene);
+        } else if node.style.border > 0.0 {
+            self.paint_border(node, radius, scene);
+        }
         if ring {
             self.paint_focus_ring(node, radius, scene);
         }
@@ -738,76 +778,70 @@ impl Context {
     }
 
     /// The node's focus ring: a stroke along its rounded edge, inside its
-    /// box, over whatever fill the node has. Square corners are drawn as
-    /// four bars, which land exactly on pixels.
+    /// box and inside its border, over whatever fill the node has.
     fn paint_focus_ring(&self, node: &Node, radius: f32, scene: &mut Scene) {
         let ring = node.style.focus_ring.unwrap_or(FocusRing::new(2.0));
         let color = ring.color.unwrap_or(self.theme.focus);
-        let inset = ring.inset.max(0.0);
+        let inset = ring.inset.max(0.0) + node.style.border.max(0.0);
+        stroke_inside(node.bounds, radius, ring.width, color, inset, scene);
+    }
+
+    /// The node's border: a stroke along its rounded edge, inside its box.
+    fn paint_border(&self, node: &Node, radius: f32, scene: &mut Scene) {
+        let color = node.style.border_color.unwrap_or(self.theme.track);
+        stroke_inside(node.bounds, radius, node.style.border, color, 0.0, scene);
+    }
+
+    /// The border of a node that holds nodes, each side as wide as it says,
+    /// drawn straight along the inside of the box.
+    fn paint_border_sides(&self, node: &Node, scene: &mut Scene) {
+        let Some(sides) = node.style.border_sides else {
+            return;
+        };
+        let color = node.style.border_color.unwrap_or(self.theme.track);
         let Rect {
             x,
             y,
             width,
             height,
         } = node.bounds;
-        let (inner_width, inner_height) = (width - 2.0 * inset, height - 2.0 * inset);
-        if ring.width <= 0.0 || inner_width <= 0.0 || inner_height <= 0.0 {
-            return;
-        }
-        let stroke = ring.width.min(inner_width / 2.0).min(inner_height / 2.0);
-        let (x, y) = (x + inset, y + inset);
-        if radius <= inset {
-            for rect in [
-                Rect {
-                    x,
-                    y,
-                    width: inner_width,
-                    height: stroke,
-                },
-                Rect {
-                    x,
-                    y: y + inner_height - stroke,
-                    width: inner_width,
-                    height: stroke,
-                },
-                Rect {
-                    x,
-                    y,
-                    width: stroke,
-                    height: inner_height,
-                },
-                Rect {
-                    x: x + inner_width - stroke,
-                    y,
-                    width: stroke,
-                    height: inner_height,
-                },
-            ] {
+        let (top, bottom) = (sides.top.max(0.0), sides.bottom.max(0.0));
+        let (left, right) = (sides.left.max(0.0), sides.right.max(0.0));
+        let middle = (height - top - bottom).max(0.0);
+        for rect in [
+            Rect {
+                x,
+                y,
+                width,
+                height: top.min(height),
+            },
+            Rect {
+                x,
+                y: y + height - bottom.min(height),
+                width,
+                height: bottom.min(height),
+            },
+            Rect {
+                x,
+                y: y + top,
+                width: left.min(width),
+                height: middle,
+            },
+            Rect {
+                x: x + width - right.min(width),
+                y: y + top,
+                width: right.min(width),
+                height: middle,
+            },
+        ] {
+            if rect.width > 0.0 && rect.height > 0.0 {
                 scene.primitives.push(Primitive::Quad {
                     rect,
                     color,
                     radius: 0.0,
                 });
             }
-            return;
         }
-        // The stroke is centred on the path, so the path runs half a stroke
-        // in from the edge the ring is to fill out to.
-        let half = stroke / 2.0;
-        let rect = Rect {
-            x: x + half,
-            y: y + half,
-            width: inner_width - stroke,
-            height: inner_height - stroke,
-        };
-        scene.primitives.push(Primitive::Path {
-            path: glassmere_scene::Path::rounded_rect(rect, radius - inset - half),
-            fill: None,
-            stroke: Some(glassmere_scene::Stroke {
-                width: stroke,
-                color,
-            }),
-        });
     }
 
     /// The node's own text, placed in its box.
@@ -860,12 +894,23 @@ impl Context {
         let width = measured.map_or(node.label_width, |size| size.width - indicator);
         if width > 0.0 && node.style.wrap == TextWrap::None {
             let spare = (rect.width - width).max(0.0);
-            rect.x += match node.style.justify_content {
-                crate::Justify::Center => spare / 2.0,
-                crate::Justify::End => spare,
-                // Right-to-left text without an opinion goes to the end.
-                _ if node.resolved.rtl() => spare,
-                _ => 0.0,
+            let rtl = node.resolved.rtl();
+            rect.x += match node.resolved.align {
+                // `text_align` is where the line sits when it is set; it
+                // follows the reading direction, as the lines of a
+                // wrapped block do.
+                TextAlign::Center => spare / 2.0,
+                TextAlign::End if rtl => 0.0,
+                TextAlign::End => spare,
+                TextAlign::Justify if rtl => spare,
+                TextAlign::Justify => 0.0,
+                TextAlign::Start => match node.style.justify_content {
+                    crate::Justify::Center => spare / 2.0,
+                    crate::Justify::End => spare,
+                    // Right-to-left text without an opinion goes to the end.
+                    _ if rtl => spare,
+                    _ => 0.0,
+                },
             };
         }
         if let Some(size) = measured.filter(|size| size.height > rect.height)
@@ -961,7 +1006,7 @@ impl Context {
             && !hint.is_empty()
             && node.hint_width > 0.0
         {
-            let padding = node.style.padding.max(0.0);
+            let padding = node.style.inset();
             let inner = (node.bounds.width - 2.0 * padding).max(0.0);
             let offset = if node.resolved.rtl() {
                 0.0
@@ -1062,7 +1107,7 @@ impl Context {
     /// links and the next `refresh_bounds`, which a frame that unwinds in
     /// between leaves open.
     pub(super) fn can_prune_at(&self) -> bool {
-        self.clips_valid && self.popover_count == 0 && self.popup_count == 0
+        self.clips_valid && self.popover_count == 0 && self.popup_count == 0 && !self.has_unclipped
     }
 
     /// What `order` followed by a search from the back returns: the last
@@ -1087,9 +1132,19 @@ impl Context {
         if prune && (clip.width == 0.0 || clip.height == 0.0 || at.x < clip.x || at.y < clip.y) {
             return None;
         }
-        for child in node.children.iter().rev() {
-            if let Some(found) = self.last_at(*child, at, prune, wanted) {
-                return Some(found);
+        if self.z_count > 0 {
+            let mut stacked = node.children.clone();
+            stacked.sort_by_key(|child| self.nodes[child].style.z_index);
+            for child in stacked.iter().rev() {
+                if let Some(found) = self.last_at(*child, at, prune, wanted) {
+                    return Some(found);
+                }
+            }
+        } else {
+            for child in node.children.iter().rev() {
+                if let Some(found) = self.last_at(*child, at, prune, wanted) {
+                    return Some(found);
+                }
             }
         }
         (clip.contains(at) && wanted(id, node)).then_some(id)
@@ -1108,6 +1163,83 @@ fn within_box(top: f32, y: f32, extent: f32, height: f32) -> f32 {
 }
 
 /// A drop shadow behind the node, or an inset one inside it.
+/// A stroke `width` thick along the rounded edge of `bounds`, `inset` in from
+/// it and inside it. Square corners are drawn as four bars, which land exactly
+/// on pixels; round ones as a stroked path.
+fn stroke_inside(
+    bounds: Rect,
+    radius: f32,
+    width: f32,
+    color: Color,
+    inset: f32,
+    scene: &mut Scene,
+) {
+    let Rect {
+        x,
+        y,
+        width: box_width,
+        height: box_height,
+    } = bounds;
+    let (inner_width, inner_height) = (box_width - 2.0 * inset, box_height - 2.0 * inset);
+    if width <= 0.0 || inner_width <= 0.0 || inner_height <= 0.0 {
+        return;
+    }
+    let stroke = width.min(inner_width / 2.0).min(inner_height / 2.0);
+    let (x, y) = (x + inset, y + inset);
+    if radius <= inset {
+        for rect in [
+            Rect {
+                x,
+                y,
+                width: inner_width,
+                height: stroke,
+            },
+            Rect {
+                x,
+                y: y + inner_height - stroke,
+                width: inner_width,
+                height: stroke,
+            },
+            Rect {
+                x,
+                y,
+                width: stroke,
+                height: inner_height,
+            },
+            Rect {
+                x: x + inner_width - stroke,
+                y,
+                width: stroke,
+                height: inner_height,
+            },
+        ] {
+            scene.primitives.push(Primitive::Quad {
+                rect,
+                color,
+                radius: 0.0,
+            });
+        }
+        return;
+    }
+    // The stroke is centred on the path, so the path runs half a stroke in
+    // from the edge it is to fill out to.
+    let half = stroke / 2.0;
+    let rect = Rect {
+        x: x + half,
+        y: y + half,
+        width: inner_width - stroke,
+        height: inner_height - stroke,
+    };
+    scene.primitives.push(Primitive::Path {
+        path: glassmere_scene::Path::rounded_rect(rect, radius - inset - half),
+        fill: None,
+        stroke: Some(glassmere_scene::Stroke {
+            width: stroke,
+            color,
+        }),
+    });
+}
+
 fn paint_shadow(node: &Node, radius: f32, inset: bool, scene: &mut Scene) {
     if let Some(shadow) = &node.style.shadow
         && shadow.inset == inset
@@ -1146,6 +1278,11 @@ mod tests {
         pub(super) fn update_bounds_reference(&mut self, id: NodeId, origin: Point, clip: Rect) {
             let viewport = self.nodes[&self.root].bounds;
             let node = &self.nodes[&id];
+            let hidden =
+                node.style.hidden || node.parent.is_some_and(|parent| self.nodes[&parent].hidden);
+            let unclipped = node.unclipped();
+            self.has_unclipped |= unclipped;
+            self.hidden_changed |= node.hidden != hidden;
             let old_bounds = node.bounds;
             let old_clip = node.clip;
             let old_scroll = node.scroll;
@@ -1177,7 +1314,7 @@ mod tests {
                 .and_then(|row| {
                     Some(Opener {
                         row: row.bounds,
-                        padding: row.style.padding.max(0.0),
+                        padding: row.style.inset(),
                         menu: self.nodes[&row.parent?].bounds,
                         rtl: row.resolved.rtl(),
                     })
@@ -1220,7 +1357,7 @@ mod tests {
                 node.bounds.width = node.bounds.width.min(viewport.width);
                 node.bounds.height = node.bounds.height.min(viewport.height);
                 if let Some(opener) = beside {
-                    let level = (opener.row.y - node.style.padding.max(0.0))
+                    let level = (opener.row.y - node.style.inset())
                         .min(viewport.height - node.bounds.height)
                         .max(0.0);
                     let size = Size {
@@ -1250,16 +1387,21 @@ mod tests {
             // clip that does not start inside its parent's is that of a hidden
             // strip scroll button.
             node.clip = clip.intersect(node.bounds);
+            node.hidden = hidden;
+            if hidden {
+                node.clip.width = 0.0;
+                node.clip.height = 0.0;
+            }
             if matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection) {
                 node.scroll.maximum =
-                    (content_bottom + node.style.padding.max(0.0) - node.bounds.height).max(0.0);
+                    (content_bottom + node.style.inset() - node.bounds.height).max(0.0);
                 node.scroll.offset = node.scroll.offset.clamp(0.0, node.scroll.maximum);
             }
             let rtl = node.resolved.rtl();
             if matches!(node.kind, Kind::Scroll | Kind::Collection | Kind::TabList) {
                 // Content overflows at the end side: past the right edge, or past
                 // the left edge in a right-to-left container.
-                let padding = node.style.padding.max(0.0);
+                let padding = node.style.inset();
                 let overflow = if rtl {
                     padding - content_left
                 } else {
@@ -1278,7 +1420,7 @@ mod tests {
                     },
                 y: node.bounds.y - node.scroll.offset,
             };
-            let clip = node.clip;
+            let clip = if unclipped { clip } else { node.clip };
             // Placing a child needs the tree mutably, so the children are copied.
             let children = node.children.clone();
             // A tab strip that scrolls keeps its panel menu at the end edge, and

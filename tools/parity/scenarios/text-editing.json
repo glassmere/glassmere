@@ -1,0 +1,127 @@
+{
+  "id": "text-editing",
+  "title": "Editing a field from the keyboard: word-wise delete and move, selecting to the ends, select all",
+  "size": [
+    420,
+    200
+  ],
+  "features": [],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 8,
+    "padding": 16,
+    "children": [
+      {
+        "type": "input",
+        "id": "field",
+        "value": "one two three",
+        "width": 260,
+        "label": "Field"
+      },
+      {
+        "type": "button",
+        "id": "go",
+        "text": "Go"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "click",
+      "target": "field"
+    },
+    {
+      "do": "press",
+      "key": "End"
+    },
+    {
+      "do": "press",
+      "key": "Control+Backspace"
+    },
+    {
+      "do": "observe",
+      "label": "Ctrl+Backspace at the end deletes the last word"
+    },
+    {
+      "do": "press",
+      "key": "Control+ArrowLeft"
+    },
+    {
+      "do": "type",
+      "text": "X"
+    },
+    {
+      "do": "observe",
+      "label": "Ctrl+Left moves a word back, then typing"
+    },
+    {
+      "do": "press",
+      "key": "Shift+Home"
+    },
+    {
+      "do": "type",
+      "text": "Y"
+    },
+    {
+      "do": "observe",
+      "label": "Shift+Home selects to the start and typing replaces it"
+    },
+    {
+      "do": "press",
+      "key": "Control+a"
+    },
+    {
+      "do": "press",
+      "key": "Delete"
+    },
+    {
+      "do": "observe",
+      "label": "select all and Delete empties it"
+    },
+    {
+      "do": "type",
+      "text": "alpha beta gamma"
+    },
+    {
+      "do": "press",
+      "key": "Control+ArrowLeft"
+    },
+    {
+      "do": "press",
+      "key": "Control+Shift+ArrowRight"
+    },
+    {
+      "do": "type",
+      "text": "_"
+    },
+    {
+      "do": "observe",
+      "label": "Ctrl+Shift+Right selects a word and typing replaces it"
+    },
+    {
+      "do": "press",
+      "key": "Home"
+    },
+    {
+      "do": "press",
+      "key": "Control+Delete"
+    },
+    {
+      "do": "observe",
+      "label": "Ctrl+Delete at the start deletes the first word"
+    },
+    {
+      "do": "press",
+      "key": "Shift+End"
+    },
+    {
+      "do": "press",
+      "key": "Backspace"
+    },
+    {
+      "do": "observe",
+      "label": "Shift+End selects to the end and Backspace deletes it"
+    }
+  ]
+}

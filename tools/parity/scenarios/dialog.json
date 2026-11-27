@@ -1,0 +1,97 @@
+{
+  "id": "dialog",
+  "title": "A modal dialog: where focus goes, whether Tab stays inside, what Escape does, where focus returns",
+  "size": [
+    480,
+    320
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 8,
+    "padding": 12,
+    "children": [
+      {
+        "type": "button",
+        "id": "open",
+        "text": "Delete file",
+        "opens": "confirm"
+      },
+      {
+        "type": "button",
+        "id": "other",
+        "text": "Something else"
+      },
+      {
+        "type": "dialog",
+        "id": "confirm",
+        "title": "Delete file?",
+        "children": [
+          {
+            "type": "label",
+            "id": "question",
+            "text": "This cannot be undone."
+          },
+          {
+            "type": "row",
+            "id": "actions",
+            "gap": 8,
+            "children": [
+              {
+                "type": "button",
+                "id": "cancel",
+                "text": "Cancel",
+                "closes": "confirm"
+              },
+              {
+                "type": "button",
+                "id": "delete",
+                "text": "Delete",
+                "closes": "confirm"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "closed"
+    },
+    {
+      "do": "click",
+      "target": "open"
+    },
+    {
+      "do": "observe",
+      "label": "after opening it with a click"
+    },
+    {
+      "do": "tabSequence",
+      "label": "Tab inside the dialog",
+      "count": 4
+    },
+    {
+      "do": "press",
+      "key": "Escape"
+    },
+    {
+      "do": "observe",
+      "label": "after Escape"
+    },
+    {
+      "do": "click",
+      "target": "open"
+    },
+    {
+      "do": "click",
+      "target": "delete"
+    },
+    {
+      "do": "observe",
+      "label": "after opening it again and choosing Delete"
+    }
+  ]
+}

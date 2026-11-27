@@ -1,0 +1,59 @@
+{
+  "id": "pin-to-corner",
+  "title": "A node pinned to the bottom-right corner of its parent",
+  "size": [
+    420,
+    260
+  ],
+  "features": [
+    "offset-end"
+  ],
+  "ui": {
+    "type": "stack",
+    "id": "stage",
+    "width": 300,
+    "height": 180,
+    "background": "#222c3d",
+    "children": [
+      {
+        "type": "panel",
+        "id": "badge",
+        "width": 40,
+        "height": 24,
+        "background": "#4a5d80",
+        "positionEnd": {
+          "right": 12,
+          "bottom": 8
+        }
+      },
+      {
+        "type": "panel",
+        "id": "corner",
+        "width": 30,
+        "height": 30,
+        "background": "#3b4a63",
+        "positionEnd": {
+          "right": 0,
+          "bottom": 0
+        }
+      },
+      {
+        "type": "panel",
+        "id": "origin",
+        "width": 30,
+        "height": 30,
+        "background": "#3b4a63",
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "where the boxes sit"
+    }
+  ]
+}

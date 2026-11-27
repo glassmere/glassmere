@@ -1,0 +1,158 @@
+{
+  "id": "grow-shrink",
+  "title": "Flex grow, shrink, minimum and maximum sizes, and what happens by default",
+  "size": [
+    420,
+    420
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 8,
+    "padding": 10,
+    "children": [
+      {
+        "type": "row",
+        "id": "grow",
+        "width": 300,
+        "height": 30,
+        "gap": 0,
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "g1",
+            "background": "#3b4a63",
+            "width": 40,
+            "height": 30,
+            "grow": 1,
+            "shrink": 0
+          },
+          {
+            "type": "panel",
+            "id": "g2",
+            "background": "#4a5d80",
+            "width": 40,
+            "height": 30,
+            "grow": 2,
+            "shrink": 0
+          },
+          {
+            "type": "panel",
+            "id": "g3",
+            "background": "#3b4a63",
+            "width": 40,
+            "height": 30,
+            "grow": 0,
+            "shrink": 0
+          }
+        ],
+        "padding": 0
+      },
+      {
+        "type": "row",
+        "id": "squeeze",
+        "width": 200,
+        "height": 30,
+        "gap": 0,
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "s1",
+            "background": "#3b4a63",
+            "width": 100,
+            "height": 30,
+            "shrink": 1
+          },
+          {
+            "type": "panel",
+            "id": "s2",
+            "background": "#4a5d80",
+            "width": 100,
+            "height": 30,
+            "shrink": 1
+          },
+          {
+            "type": "panel",
+            "id": "s3",
+            "background": "#3b4a63",
+            "width": 100,
+            "height": 30,
+            "shrink": 1
+          }
+        ],
+        "padding": 0
+      },
+      {
+        "type": "row",
+        "id": "default",
+        "width": 200,
+        "height": 30,
+        "gap": 0,
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "d1",
+            "background": "#3b4a63",
+            "width": 100,
+            "height": 30
+          },
+          {
+            "type": "panel",
+            "id": "d2",
+            "background": "#4a5d80",
+            "width": 100,
+            "height": 30
+          },
+          {
+            "type": "panel",
+            "id": "d3",
+            "background": "#3b4a63",
+            "width": 100,
+            "height": 30
+          }
+        ],
+        "padding": 0
+      },
+      {
+        "type": "row",
+        "id": "limits",
+        "width": 300,
+        "height": 30,
+        "gap": 0,
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "m1",
+            "background": "#3b4a63",
+            "width": 50,
+            "height": 30,
+            "grow": 1,
+            "shrink": 0,
+            "maxWidth": 80
+          },
+          {
+            "type": "panel",
+            "id": "m2",
+            "background": "#4a5d80",
+            "width": 50,
+            "height": 30,
+            "grow": 1,
+            "shrink": 0,
+            "minWidth": 150
+          }
+        ],
+        "padding": 0
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "sizes after distributing the room"
+    }
+  ]
+}
