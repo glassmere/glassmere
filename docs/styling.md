@@ -154,3 +154,11 @@ There is no mipmap chain, but a photo drawn at under half its natural size is bo
 ## Direction
 
 A window runs left to right or right to left according to `AppOptions::direction` (`DirectionChoice::Auto` follows the OS locale). `Style::direction` overrides it for a subtree: layout mirrors, text aligns to the end side, and directional internals follow. Physical values stay physical: `offset`, transforms, slide effects, floating dock rectangles and `DockZone::Left` and `Right` mean the same pixels in both directions. `Style::base_direction` forces the base direction of a text paragraph, in labels and in text fields, text areas, code editors and rich editors (every line or block takes it; a text field and a rich editor align to it, a text area and a code editor only order by it).
+
+## Padding per side
+
+`Style::padding(8.0)` pads all four sides. On a node that holds other nodes (`row`, `column`, `grid`, `container`) `Style::padding_sides(Edges::new(top, right, bottom, left))` pads each side by its own amount instead, and the border still adds to it. A stylesheet takes `padding: 4 8` (vertical, horizontal), three or four numbers in CSS order, and `padding-left` and the like. A label, a button, a field, a scroll view and a list lay out their own content at the one `padding` and ignore `padding_sides`.
+
+## Border per side
+
+`Style::border_sides(Edges::new(top, right, bottom, left))` gives a node that holds other nodes a border of its own width on each side, drawn in `border_color`. A side of 0 draws nothing, so `Edges::new(0.0, 0.0, 2.0, 0.0)` is an underline. Each side takes room like padding does. In a stylesheet, `border-bottom-width: 2` and the like set one side, the others staying what `border-width` made them. The sides are straight lines along the inside of the box: a `radius` rounds the fill but not them, so a rounded outline is the one `border`. A label, a button, a field, a scroll view and a list keep the one `border`.
