@@ -299,6 +299,14 @@ pub struct Style {
     /// as `flex-wrap: wrap` does, instead of overflowing or shrinking. `gap`
     /// (or `row_gap` and `column_gap`) is the room between the lines too.
     pub wrap_items: bool,
+    /// The size along the main axis that `grow` and `shrink` start from, as
+    /// `flex-basis` is in CSS. `Auto` starts from the width (or height) and,
+    /// without one, from the content, so two children with `grow` 1 share
+    /// what is left after their own sizes and end up unequal. A basis of 0 (or
+    /// [`Style::flex`]) shares the whole space by `grow`, so they end up equal
+    /// whatever is in them. Wins over `width` (`height` in a column) for the
+    /// size it starts from.
+    pub basis: Length,
     /// Flex shrink factor; children do not shrink unless this is set.
     pub shrink: f32,
     pub radius: f32,
@@ -426,6 +434,7 @@ impl Default for Style {
             column_gap: None,
             grow: 0.0,
             wrap_items: false,
+            basis: Length::Auto,
             shrink: 0.0,
             radius: 0.0,
             align_items: Align::Start,
@@ -761,6 +770,16 @@ impl Style {
     setter!(column_gap, column_gap, f32, some);
     setter!(grow, grow, f32);
     setter!(wrap_items, wrap_items, bool);
+    setter!(basis, basis, Length);
+    /// `flex: factor` as CSS has it: grows by `factor`, shrinks, and starts
+    /// from a basis of 0, so that children sharing a row each take a share of
+    /// the whole space by their factor, whatever is in them.
+    pub fn flex(mut self, factor: f32) -> Self {
+        self.grow = factor;
+        self.shrink = 1.0;
+        self.basis = Length::Px(0.0);
+        self
+    }
     setter!(shrink, shrink, f32);
     setter!(radius, radius, f32);
     setter!(align_items, align_items, Align);
@@ -1033,6 +1052,7 @@ impl Style {
                 FlexWrap::NoWrap
             },
             flex_grow: self.grow.max(0.0),
+            flex_basis: dimension(self.basis),
             flex_shrink: self.shrink.max(0.0),
             grid_template_columns: template(&self.columns),
             grid_template_rows: template(&self.rows),

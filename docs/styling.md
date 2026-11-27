@@ -182,3 +182,6 @@ It orders the children of one parent. Each parent is a stack of its own, so a ch
 ## Pinning to a corner
 
 `Style::offset(x, y)` takes a node out of flow and puts its top-left corner at that place in its parent. `Style::offset_end(right, bottom)` does the same from the bottom-right corner, so a badge or a floating button stays in the corner whatever size its parent has. With both, the node is pinned on both sides, and one with no `width` or `height` stretches between them, as `left`, `right`, `top` and `bottom` together do in CSS. The edges are physical: the right edge is on the right in a right-to-left window too. The parent needs a size of its own, as the node no longer gives it one.
+## Sharing space: grow, shrink and basis
+
+`grow` and `shrink` start from the size a child has along the row (or column): its `width`, or its content. Two children with `grow(1.0)` share what is left after their own sizes, so a child with more in it ends up wider. For equal shares whatever the content, as `flex: 1` gives on the web, use `Style::flex(1.0)` (stylesheet `flex: 1`): it grows by that factor, shrinks, and starts from a `basis` of 0. `Style::basis(Length::Px(120.0))` (stylesheet `basis: 120`) is the size to start from when you want one of your own, and it wins over `width`. Children of `Style::flex(1.0)` and `Style::flex(2.0)` split a row one to two.

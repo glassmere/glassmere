@@ -42,6 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - An explicit pixel size is held to its own minimum and maximum before the layout engine sizes the parent from it. A container with no size of its own was as tall (or wide) as the size its child asked for, not the size the child ended up: a child with `height(100)` and `max_height(25)` was 25 tall inside a parent that was 100 tall. CSS gives 25 for both. Content with a maximum, such as a scroll panel, was not affected, and nothing changes for a size inside its limits. Found by the parity bench against Chromium.
+- `Style::basis` (stylesheet `basis`) and `Style::flex(factor)` (stylesheet `flex: 1`): what `grow` and `shrink` start from, as `flex-basis` and the `flex` shorthand are in CSS. Without a basis, children with `grow` 1 share what is left after their own sizes and end up unequal; `flex(1.0)` is `grow` 1, `shrink` 1 and a basis of 0, so children share the whole space by their factors whatever is in them, which is what `flex: 1` does on the web. `Style::default()` has no basis (`Auto`) and lays out as before.
 
 ## [0.1.8] - 2026-11-23
 
