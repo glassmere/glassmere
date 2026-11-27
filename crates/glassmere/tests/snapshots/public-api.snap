@@ -454,6 +454,7 @@ glassmere-core   field Style::shadow: Option<Box<Shadow>>
 glassmere-core   field Style::shrink: f32
 glassmere-core   field Style::states: Option<Box<StateStyles>>
 glassmere-core   field Style::text_align: Option<TextAlign>
+glassmere-core   field Style::text_decoration: TextDecoration
 glassmere-core   field Style::text_overflow: TextOverflow
 glassmere-core   field Style::transform: Transform
 glassmere-core   field Style::transition: Option<Transition>
@@ -1098,6 +1099,7 @@ glassmere-core   fn Style::set_property(&mut self, name: &str, value: &str) -> R
 glassmere-core   fn Style::shadow(mut self, shadow: Shadow) -> Self
 glassmere-core   fn Style::shrink(mut self, value: f32) -> Self
 glassmere-core   fn Style::text_align(mut self, value: TextAlign) -> Self
+glassmere-core   fn Style::text_decoration(mut self, value: TextDecoration) -> Self
 glassmere-core   fn Style::text_overflow(mut self, value: TextOverflow) -> Self
 glassmere-core   fn Style::transform(mut self, value: Transform) -> Self
 glassmere-core   fn Style::transition(mut self, value: Transition) -> Self
@@ -1618,6 +1620,9 @@ glassmere-core   variant SwipeDirection::Down
 glassmere-core   variant SwipeDirection::Left
 glassmere-core   variant SwipeDirection::Right
 glassmere-core   variant SwipeDirection::Up
+glassmere-core   variant TextDecoration::LineThrough
+glassmere-core   variant TextDecoration::None
+glassmere-core   variant TextDecoration::Underline
 glassmere-core   variant TextEdit::Backspace { word: bool }
 glassmere-core   variant TextEdit::CancelComposition
 glassmere-core   variant TextEdit::Commit(String)
@@ -1762,6 +1767,7 @@ glassmere-core enum ShortcutKey #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 glassmere-core enum SortDirection #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 glassmere-core enum StateKind #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 glassmere-core enum SwipeDirection #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+glassmere-core enum TextDecoration #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 glassmere-core enum TextEdit #[derive(Clone, Debug)]
 glassmere-core enum TextMove #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 glassmere-core enum TextOp #[derive(Clone, Debug, PartialEq)]
@@ -2263,6 +2269,7 @@ glassmere-core use TabStyle = ui::TabStyle
 glassmere-core use TaskSender = task::TaskSender #[cfg(feature = "std")]
 glassmere-core use Tasks = task::Tasks #[cfg(feature = "std")]
 glassmere-core use TextAlign = glassmere_scene::TextAlign
+glassmere-core use TextDecoration = style::TextDecoration
 glassmere-core use TextDocument = document::TextDocument #[cfg(feature = "std")]
 glassmere-core use TextEdit = editor::TextEdit
 glassmere-core use TextInput = ui::TextInput

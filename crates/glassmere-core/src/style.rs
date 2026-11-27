@@ -352,6 +352,11 @@ pub struct Style {
     /// ancestor that clips, and a scroll view, a list or a popup always clips.
     pub unclipped: bool,
     pub wrap: TextWrap,
+    /// A rule drawn through a single line of text, in its colour:
+    /// `Underline` under it, `LineThrough` through the middle, as
+    /// `text-decoration` does. A link is underlined whatever this says. It
+    /// applies to text that does not wrap (`wrap` is `None`).
+    pub text_decoration: TextDecoration,
     /// What a single line of text that is wider than its box shows of the
     /// rest: `Clip` cuts it at the edge, `Ellipsis` ends it with `…` where the
     /// next character would not fit, as `text-overflow: ellipsis` does. It
@@ -459,6 +464,7 @@ impl Default for Style {
             hidden: false,
             unclipped: false,
             wrap: TextWrap::None,
+            text_decoration: TextDecoration::None,
             text_overflow: TextOverflow::Clip,
             states: None,
             opacity: 1.0,
@@ -476,6 +482,17 @@ impl Default for Style {
             direction: None,
         }
     }
+}
+
+/// A rule drawn on a line of text.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum TextDecoration {
+    #[default]
+    None,
+    /// Under the text.
+    Underline,
+    /// Through the middle of the text.
+    LineThrough,
 }
 
 /// What a line of text that is wider than its box shows.
@@ -745,6 +762,7 @@ impl Style {
     setter!(area, area, GridArea, some);
     setter!(area_name, area_name, String, some);
     setter!(wrap, wrap, TextWrap);
+    setter!(text_decoration, text_decoration, TextDecoration);
     setter!(text_overflow, text_overflow, TextOverflow);
     setter!(opacity, opacity, f32);
     setter!(transform, transform, Transform);

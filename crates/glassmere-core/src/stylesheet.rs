@@ -63,7 +63,8 @@ use crate::collections::HashMap;
 use crate::float::FloatExt as _;
 use crate::style::template_areas;
 use crate::{
-    Align, AutoFlow, GridArea, Justify, Length, Paint, Style, TextOverflow, Theme, Track, TrackSize,
+    Align, AutoFlow, GridArea, Justify, Length, Paint, Style, TextDecoration, TextOverflow, Theme,
+    Track, TrackSize,
 };
 use alloc::borrow::ToOwned;
 use alloc::boxed::Box;
@@ -873,6 +874,18 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
                 "false" => false,
                 _ => return Err(format!("italic must be true or false, got `{value}`")),
             })
+        }
+        "text-decoration" => {
+            style.text_decoration = match value {
+                "none" => TextDecoration::None,
+                "underline" => TextDecoration::Underline,
+                "line-through" => TextDecoration::LineThrough,
+                _ => {
+                    return Err(format!(
+                        "text-decoration is `none`, `underline` or `line-through`, got `{value}`"
+                    ));
+                }
+            };
         }
         "text-overflow" => {
             style.text_overflow = match value {

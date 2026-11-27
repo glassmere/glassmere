@@ -92,7 +92,7 @@ pub use rich_text::{RichRun, RichText};
 pub use selection::{Indentation, Motion, Selection};
 pub use style::{
     Align, AutoFlow, Direction, FocusRing, Gradient, GridArea, Justify, Length, Paint,
-    ResolvedText, Shadow, StateStyles, Style, TextOverflow, Track, TrackSize,
+    ResolvedText, Shadow, StateStyles, Style, TextDecoration, TextOverflow, Track, TrackSize,
 };
 pub use stylesheet::{StyleSheet, StyleSheetError};
 #[cfg(feature = "std")]
