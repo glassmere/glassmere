@@ -143,6 +143,13 @@ fn sized(node: &Value, mut style: Style) -> Style {
     if let Some(b) = px(node, "border") {
         style = style.border(b).border_color(colour("#8aa4c8"));
     }
+    // `[top, right, bottom, left]`, as CSS orders them.
+    if let Some(sides) = node.get("border").and_then(Value::as_array) {
+        let side = |i: usize| sides.get(i).and_then(Value::as_f64).unwrap_or(0.0) as f32;
+        style = style
+            .border_sides(glassmere_core::Edges::new(side(0), side(1), side(2), side(3)))
+            .border_color(colour("#8aa4c8"));
+    }
     if let Some(g) = px(node, "grow") {
         style.grow = g;
     }

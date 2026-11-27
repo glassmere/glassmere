@@ -36,7 +36,8 @@ function css(node, extra = '') {
   if (node.minWidth != null) s.push(`min-width:${px(node.minWidth)}`);
   if (node.maxWidth != null) s.push(`max-width:${px(node.maxWidth)}`);
   if (node.margin != null) s.push(`margin:${px(node.margin)}`);
-  if (node.border != null) s.push(`border:${px(node.border)} solid #8aa4c8`);
+  if (Array.isArray(node.border)) s.push(`border-style:solid;border-color:#8aa4c8;border-width:${node.border.map(px).join(' ')}`);
+  else if (node.border != null) s.push(`border:${px(node.border)} solid #8aa4c8`);
   if (node.overflow) s.push(`overflow:${node.overflow}`);
   if (node.background) s.push(`background:${node.background}`);
   if (node.visible === false) s.push('display:none');
