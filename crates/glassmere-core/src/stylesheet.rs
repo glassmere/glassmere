@@ -747,6 +747,10 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         }
         "border-width" => style.border = number(value)?,
         "border-color" => style.border_color = Some(color(value)?),
+        "border-top-width" => border_side(style, value, |sides| &mut sides.top)?,
+        "border-right-width" => border_side(style, value, |sides| &mut sides.right)?,
+        "border-bottom-width" => border_side(style, value, |sides| &mut sides.bottom)?,
+        "border-left-width" => border_side(style, value, |sides| &mut sides.left)?,
         "gap" => {
             style.gap = number(value)?;
             style.row_gap = None;
@@ -1195,6 +1199,20 @@ fn padding_side(
         .unwrap_or_else(|| crate::Edges::all(style.padding));
     *side(&mut sides) = number(value)?;
     style.padding_sides = Some(sides);
+    Ok(())
+}
+
+/// One side of the border, the others being what they were.
+fn border_side(
+    style: &mut Style,
+    value: &str,
+    side: impl Fn(&mut crate::Edges) -> &mut f32,
+) -> Result<(), String> {
+    let mut sides = style
+        .border_sides
+        .unwrap_or_else(|| crate::Edges::all(style.border));
+    *side(&mut sides) = number(value)?;
+    style.border_sides = Some(sides);
     Ok(())
 }
 

@@ -93,20 +93,7 @@ pub(super) fn layout_style(style: &Style, kind: Kind, direction: crate::Directio
     });
     // Only a node that holds others is laid out by its padding alone; the rest
     // draw their content at the one `padding` and so keep it.
-    if style.padding_sides.is_some()
-        && !matches!(
-            kind,
-            Kind::Column
-                | Kind::Row
-                | Kind::Grid
-                | Kind::Container
-                | Kind::FocusScope
-                | Kind::EventArea
-                | Kind::Memo
-                | Kind::ContextArea
-                | Kind::GestureArea
-        )
-    {
+    if (style.padding_sides.is_some() || style.border_sides.is_some()) && !kind.holds_nodes() {
         result.padding = taffy::Rect::length(style.inset());
     }
     let rtl = direction == crate::Direction::Rtl;
