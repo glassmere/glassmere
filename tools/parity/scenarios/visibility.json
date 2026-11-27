@@ -1,0 +1,53 @@
+{
+  "id": "visibility",
+  "title": "visibility: hidden keeps its space but takes no clicks and no focus",
+  "size": [
+    420,
+    260
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 8,
+    "padding": 12,
+    "children": [
+      {
+        "type": "button",
+        "id": "first",
+        "text": "First"
+      },
+      {
+        "type": "button",
+        "id": "ghost",
+        "text": "Not shown",
+        "invisible": true
+      },
+      {
+        "type": "button",
+        "id": "last",
+        "text": "Last"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "initial: the space of the hidden button is kept"
+    },
+    {
+      "do": "tabSequence",
+      "label": "Tab forward skips the hidden button",
+      "count": 3
+    },
+    {
+      "do": "clickAt",
+      "target": "ghost",
+      "fx": 0.5,
+      "fy": 0.5
+    },
+    {
+      "do": "observe",
+      "label": "a click on the space it leaves reaches nothing"
+    }
+  ]
+}

@@ -118,6 +118,10 @@ impl Context {
         drop(declare_span);
         self.stats.declare = declare_started.elapsed();
         self.layout_pass(size, measurer);
+        if core::mem::take(&mut self.hidden_changed) {
+            self.repair_interaction();
+            self.note_focus();
+        }
         self.prepare_controls(measurer);
         self.update_hover();
         self.stats.elements = self.declared.get();
@@ -782,6 +786,11 @@ impl Context {
         if node.enabled != element.enabled {
             self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
         }
+        // Whether it is hidden is worked out by the bounds walk.
+        if node.style.hidden != element.style.hidden {
+            self.geometry_dirty = true;
+            self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
+        }
         if matches!(element.control, Control::Tab { selected: true, .. })
             && !matches!(node.control, Control::Tab { selected: true, .. })
         {
@@ -949,6 +958,7 @@ impl Context {
                 changed_frame: self.frame,
                 painted_frame: 0,
                 resolved,
+                hidden: false,
                 scope: matches!(
                     element.kind,
                     Kind::FocusScope | Kind::Dialog | Kind::Popover

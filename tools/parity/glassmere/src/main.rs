@@ -155,6 +155,14 @@ fn sized(node: &Value, mut style: Style) -> Style {
     if node.get("blocksPointer").and_then(Value::as_bool) == Some(true) {
         style = style.blocks_pointer(true);
     }
+    // `visibility: hidden` keeps the space; `overflow: visible` lets a box's
+    // contents hang over its edge. A box cuts them unless it is told not to.
+    if node.get("invisible").and_then(Value::as_bool) == Some(true) {
+        style = style.hidden(true);
+    }
+    if node.get("overflow").and_then(Value::as_str) == Some("visible") {
+        style = style.unclipped(true);
+    }
     for side in node
         .get("marginAuto")
         .and_then(Value::as_array)
@@ -322,7 +330,10 @@ impl Bench {
                         .unwrap_or("start"),
                 );
                 style.wrap_items = node.get("wrap").and_then(Value::as_bool).unwrap_or(false);
-                style.reverse = node.get("reverse").and_then(Value::as_bool).unwrap_or(false);
+                style.reverse = node
+                    .get("reverse")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
                 if let Some(gap) = px(node, "gap") {
                     style.gap = gap;
                 }
@@ -765,7 +776,14 @@ impl Rig {
                 continue;
             }
             let node = self.node(id);
-            let snap = &snapshots[&node];
+            // A node hidden with `visibility` keeps its box but is not in the
+            // accessibility tree, as in a browser.
+            let Some(snap) = snapshots.get(&node) else {
+                a11y.insert(id.clone(), json!({ "role": "none", "name": "" }));
+                let r = self.rect(id);
+                rects.insert(id.clone(), json!(r.map(|v| (v * 10.0).round() / 10.0)));
+                continue;
+            };
             let mut entry = Map::new();
             entry.insert(
                 "role".into(),

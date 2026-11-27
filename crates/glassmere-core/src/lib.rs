@@ -69,7 +69,7 @@ pub use drag::{DragInfo, DragOutcome, DragPayload, DropKind};
 pub use editor::{CaretMovement, TextEdit, TextMove, TextSelection};
 pub use events::{EventArea, UiEvent};
 pub use focus::{DialogOptions, FocusScope};
-pub use glassmere_scene::{FontFamily, TextSpan, TextStyle, TextWrap};
+pub use glassmere_scene::{FontFamily, TextAlign, TextSpan, TextStyle, TextWrap};
 pub use glassmere_scene::{MonospaceMeasurer, TextMeasurer};
 pub use image::{BackgroundImage, ImageFit, ImageOptions, ImageSource, ImageTint};
 pub use locale_format::{Date, DateStyle, LocaleFormat, Time, Weekday};

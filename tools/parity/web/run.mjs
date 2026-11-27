@@ -46,6 +46,7 @@ function css(node, extra = '') {
   if (node.overflow) s.push(`overflow:${node.overflow}`);
   if (node.background) s.push(`background:${node.background}`);
   if (node.visible === false) s.push('display:none');
+  if (node.invisible) s.push('visibility:hidden');
   return s.filter(Boolean).join(';');
 }
 
