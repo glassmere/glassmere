@@ -145,6 +145,7 @@ cargo run -p glassmere-designer -- examples/markup.glass
 | [State](docs/state.md) | Where state lives, threads, docking layouts and the reactive store. |
 | [Widgets](docs/widgets.md) | The built-in controls and writing your own. |
 | [Styling](docs/styling.md) | Styles, themes, stylesheets, motion and direction. |
+| [Coming from the web](docs/from-the-web.md) | CSS to `Style`, the defaults that differ from a browser's, and where behaviour differs. |
 | [Markup and the designer](docs/markup.md) | Views in `.glass` files, live reload and the visual editor. |
 | [Text](docs/text.md) | Fields, editors, IME, clipboard and localization. |
 | [Platform](docs/platform.md) | Windows, graphics backends, input, native services and the dev runner. |
