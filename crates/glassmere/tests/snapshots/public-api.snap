@@ -416,6 +416,7 @@ glassmere-core   field Style::background: Option<Color>
 glassmere-core   field Style::background_image: Option<crate::BackgroundImage>
 glassmere-core   field Style::base_direction: Option<Direction>
 glassmere-core   field Style::basis: Length
+glassmere-core   field Style::blocks_pointer: bool
 glassmere-core   field Style::column_gap: Option<f32>
 glassmere-core   field Style::columns: Vec<Track>
 glassmere-core   field Style::direction: Option<Direction>
@@ -1049,6 +1050,7 @@ glassmere-core   fn Style::background(mut self, value: Color) -> Self
 glassmere-core   fn Style::background_image(mut self, value: crate::BackgroundImage) -> Self
 glassmere-core   fn Style::base_direction(mut self, direction: Direction) -> Self
 glassmere-core   fn Style::basis(mut self, value: Length) -> Self
+glassmere-core   fn Style::blocks_pointer(mut self, value: bool) -> Self
 glassmere-core   fn Style::button() -> Self
 glassmere-core   fn Style::column_gap(mut self, value: f32) -> Self
 glassmere-core   fn Style::columns(mut self, value: Vec<Track>) -> Self

@@ -365,6 +365,13 @@ pub struct Style {
     /// Takes the node out of flow and places its top-left corner at this
     /// offset from the parent's top-left corner.
     pub offset: Option<(f32, f32)>,
+    /// Takes the pointer wherever the node is, as a box does in a browser: a
+    /// click or a hover on it does not reach what lies under it. A container
+    /// is otherwise transparent to the pointer, so a card, a panel or a
+    /// floating toolbar drawn over a button leaves the button clickable through
+    /// it; with this set it shields what is under it. What is inside the node
+    /// still takes the pointer first.
+    pub blocks_pointer: bool,
     /// Takes the node out of flow and places its bottom-right corner at this
     /// distance (right, bottom) from the parent's bottom-right corner, as
     /// `position: absolute; right; bottom` does, so a badge or a floating
@@ -447,6 +454,7 @@ impl Default for Style {
             exit: None,
             animation: None,
             offset: None,
+            blocks_pointer: false,
             offset_end: None,
             z_index: 0,
             focus_ring: None,
@@ -719,6 +727,7 @@ impl Style {
     setter!(exit, exit, Effect, some);
     setter!(animation, animation, Animation, some);
     setter!(direction, direction, Direction, some);
+    setter!(blocks_pointer, blocks_pointer, bool);
     /// See [`Style::offset_end`].
     pub fn offset_end(mut self, right: f32, bottom: f32) -> Self {
         self.offset_end = Some((right, bottom));

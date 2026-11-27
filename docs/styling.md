@@ -143,6 +143,10 @@ There is no mipmap chain, but a photo drawn at under half its natural size is bo
 
 A window runs left to right or right to left according to `AppOptions::direction` (`DirectionChoice::Auto` follows the OS locale). `Style::direction` overrides it for a subtree: layout mirrors, text aligns to the end side, and directional internals follow. Physical values stay physical: `offset`, transforms, slide effects, floating dock rectangles and `DockZone::Left` and `Right` mean the same pixels in both directions. `Style::base_direction` forces the base direction of a text paragraph, in labels and in text fields, text areas, code editors and rich editors (every line or block takes it; a text field and a rich editor align to it, a text area and a code editor only order by it).
 
+## Shielding what is underneath
+
+A container is transparent to the pointer: only widgets that take a press, a key or a drag are hit, so a card, a panel or a floating toolbar drawn over a button leaves the button clickable through it. In a browser a box under the pointer takes it. `Style::blocks_pointer(true)` (stylesheet `blocks-pointer: true`) makes a node do that: a click or a hover on it does not reach what is under it, and it is what `hovered` reports there. What is inside it still takes the pointer first. Popovers, dialogs and menus already shield what they cover.
+
 ## Sharing space: grow, shrink and basis
 
 `grow` and `shrink` start from the size a child has along the row (or column): its `width`, or its content. Two children with `grow(1.0)` share what is left after their own sizes, so a child with more in it ends up wider. For equal shares whatever the content, as `flex: 1` gives on the web, use `Style::flex(1.0)` (stylesheet `flex: 1`): it grows by that factor, shrinks, and starts from a `basis` of 0. `Style::basis(Length::Px(120.0))` (stylesheet `basis: 120`) is the size to start from when you want one of your own, and it wins over `width`. Children of `Style::flex(1.0)` and `Style::flex(2.0)` split a row one to two.

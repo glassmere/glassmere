@@ -560,7 +560,8 @@ impl Node {
     /// view draws for itself.
     fn takes_pointer(&self) -> bool {
         !self.hidden
-            && (self.focusable()
+            && (self.style.blocks_pointer
+                || self.focusable()
                 || self.activatable()
                 || (self.enabled
                     && matches!(
