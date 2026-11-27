@@ -68,6 +68,24 @@ fn a_widget_shows_the_pointer_for_what_it_is() {
 }
 
 #[test]
+fn a_disabled_text_field_does_not_ask_for_the_i_beam() {
+    let mut context = Context::new();
+    let view = |ui: &mut Ui<'_>| {
+        ui.keyed("page", |ui| {
+            ui.column(Style::default(), |ui| {
+                ui.keyed("on", |ui| ui.text_input("On", "", |_: String| ()));
+                ui.enabled(false, |ui| {
+                    ui.keyed("off", |ui| ui.text_input("Off", "", |_: String| ()));
+                });
+            })
+        });
+    };
+    context.run(ROOT, &mut MonospaceMeasurer, view);
+    assert_eq!(cursor(&context, &["on"]), Cursor::Text);
+    assert_eq!(cursor(&context, &["off"]), Cursor::Default);
+}
+
+#[test]
 fn a_disabled_widget_keeps_the_arrow() {
     let mut context = Context::new();
     context.run(ROOT, &mut MonospaceMeasurer, view);

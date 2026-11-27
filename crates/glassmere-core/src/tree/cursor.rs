@@ -28,11 +28,13 @@ impl Context {
         if self.caption_buttons.contains(&Some(id)) {
             return Cursor::Default;
         }
-        if matches!(node.control, Control::SelectableText)
-            || matches!(
-                node.semantics().role,
-                Role::TextInput | Role::MultilineTextInput | Role::PasswordInput
-            )
+        // A disabled field takes no typing, so it does not ask for the I-beam.
+        if node.enabled
+            && (matches!(node.control, Control::SelectableText)
+                || matches!(
+                    node.semantics().role,
+                    Role::TextInput | Role::MultilineTextInput | Role::PasswordInput
+                ))
         {
             return Cursor::Text;
         }

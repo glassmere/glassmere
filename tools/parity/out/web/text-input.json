@@ -1,0 +1,351 @@
+{
+  "scenario": "text-input",
+  "framework": "web",
+  "title": "Text input: typing, editing keys, selection, focus ring after a click",
+  "size": [
+    420,
+    220
+  ],
+  "records": [
+    {
+      "type": "observe",
+      "label": "initial",
+      "focus": null,
+      "focusVisible": null,
+      "values": {
+        "name": "Ada"
+      },
+      "scroll": {},
+      "log": [],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "name": {
+          "role": "textbox",
+          "name": "Name",
+          "value": "Ada"
+        },
+        "go": {
+          "role": "button",
+          "name": "Go"
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          420,
+          220
+        ],
+        "name": [
+          16,
+          16,
+          240,
+          21
+        ],
+        "go": [
+          16,
+          45,
+          33.8,
+          21
+        ]
+      }
+    },
+    {
+      "type": "cursor",
+      "label": "pointer over the field",
+      "cursor": {
+        "name": "text"
+      }
+    },
+    {
+      "type": "observe",
+      "label": "after a click on the field",
+      "focus": "name",
+      "focusVisible": true,
+      "values": {
+        "name": "Ada"
+      },
+      "scroll": {},
+      "log": [],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "name": {
+          "role": "textbox",
+          "name": "Name",
+          "value": "Ada"
+        },
+        "go": {
+          "role": "button",
+          "name": "Go"
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          420,
+          220
+        ],
+        "name": [
+          16,
+          16,
+          240,
+          21
+        ],
+        "go": [
+          16,
+          45,
+          33.8,
+          21
+        ]
+      }
+    },
+    {
+      "type": "observe",
+      "label": "typed at the end",
+      "focus": "name",
+      "focusVisible": true,
+      "values": {
+        "name": "Ada Lovelace"
+      },
+      "scroll": {},
+      "log": [
+        "input:name:Ada ",
+        "input:name:Ada L",
+        "input:name:Ada Lo",
+        "input:name:Ada Lov",
+        "input:name:Ada Love",
+        "input:name:Ada Lovel",
+        "input:name:Ada Lovela",
+        "input:name:Ada Lovelac",
+        "input:name:Ada Lovelace"
+      ],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "name": {
+          "role": "textbox",
+          "name": "Name",
+          "value": "Ada Lovelace"
+        },
+        "go": {
+          "role": "button",
+          "name": "Go"
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          420,
+          220
+        ],
+        "name": [
+          16,
+          16,
+          240,
+          21
+        ],
+        "go": [
+          16,
+          45,
+          33.8,
+          21
+        ]
+      }
+    },
+    {
+      "type": "observe",
+      "label": "Backspace, then Home and type",
+      "focus": "name",
+      "focusVisible": true,
+      "values": {
+        "name": ">Ada Lovelac"
+      },
+      "scroll": {},
+      "log": [
+        "input:name:Ada ",
+        "input:name:Ada L",
+        "input:name:Ada Lo",
+        "input:name:Ada Lov",
+        "input:name:Ada Love",
+        "input:name:Ada Lovel",
+        "input:name:Ada Lovela",
+        "input:name:Ada Lovelac",
+        "input:name:Ada Lovelace",
+        "input:name:Ada Lovelac",
+        "input:name:>Ada Lovelac"
+      ],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "name": {
+          "role": "textbox",
+          "name": "Name",
+          "value": ">Ada Lovelac"
+        },
+        "go": {
+          "role": "button",
+          "name": "Go"
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          420,
+          220
+        ],
+        "name": [
+          16,
+          16,
+          240,
+          21
+        ],
+        "go": [
+          16,
+          45,
+          33.8,
+          21
+        ]
+      }
+    },
+    {
+      "type": "observe",
+      "label": "select all and type over it",
+      "focus": "name",
+      "focusVisible": true,
+      "values": {
+        "name": "X"
+      },
+      "scroll": {},
+      "log": [
+        "input:name:Ada ",
+        "input:name:Ada L",
+        "input:name:Ada Lo",
+        "input:name:Ada Lov",
+        "input:name:Ada Love",
+        "input:name:Ada Lovel",
+        "input:name:Ada Lovela",
+        "input:name:Ada Lovelac",
+        "input:name:Ada Lovelace",
+        "input:name:Ada Lovelac",
+        "input:name:>Ada Lovelac",
+        "input:name:X"
+      ],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "name": {
+          "role": "textbox",
+          "name": "Name",
+          "value": "X"
+        },
+        "go": {
+          "role": "button",
+          "name": "Go"
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          420,
+          220
+        ],
+        "name": [
+          16,
+          16,
+          240,
+          21
+        ],
+        "go": [
+          16,
+          45,
+          33.8,
+          21
+        ]
+      }
+    },
+    {
+      "type": "observe",
+      "label": "Tab leaves the field",
+      "focus": "go",
+      "focusVisible": true,
+      "values": {
+        "name": "X"
+      },
+      "scroll": {},
+      "log": [
+        "input:name:Ada ",
+        "input:name:Ada L",
+        "input:name:Ada Lo",
+        "input:name:Ada Lov",
+        "input:name:Ada Love",
+        "input:name:Ada Lovel",
+        "input:name:Ada Lovela",
+        "input:name:Ada Lovelac",
+        "input:name:Ada Lovelace",
+        "input:name:Ada Lovelac",
+        "input:name:>Ada Lovelac",
+        "input:name:X"
+      ],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "name": {
+          "role": "textbox",
+          "name": "Name",
+          "value": "X"
+        },
+        "go": {
+          "role": "button",
+          "name": "Go"
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          420,
+          220
+        ],
+        "name": [
+          16,
+          16,
+          240,
+          21
+        ],
+        "go": [
+          16,
+          45,
+          33.8,
+          21
+        ]
+      }
+    }
+  ],
+  "screenshots": [
+    "text-input--1.png",
+    "text-input--3.png",
+    "text-input--4.png",
+    "text-input--5.png",
+    "text-input--6.png",
+    "text-input--7.png"
+  ],
+  "unsupported": []
+}

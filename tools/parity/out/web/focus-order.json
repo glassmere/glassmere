@@ -1,0 +1,207 @@
+{
+  "scenario": "focus-order",
+  "framework": "web",
+  "title": "Tab order over a mix of controls and layout",
+  "size": [
+    460,
+    360
+  ],
+  "records": [
+    {
+      "type": "observe",
+      "label": "initial",
+      "focus": null,
+      "focusVisible": null,
+      "values": {
+        "field": "",
+        "box": false,
+        "vol": 5
+      },
+      "scroll": {
+        "short": 0
+      },
+      "log": [],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "title": {
+          "role": "none",
+          "name": ""
+        },
+        "bar": {
+          "role": "none",
+          "name": ""
+        },
+        "b1": {
+          "role": "button",
+          "name": "One"
+        },
+        "gap": {
+          "role": "none",
+          "name": ""
+        },
+        "b2": {
+          "role": "button",
+          "name": "Two"
+        },
+        "pane": {
+          "role": "none",
+          "name": ""
+        },
+        "field": {
+          "role": "textbox",
+          "name": "Field"
+        },
+        "box": {
+          "role": "checkbox",
+          "name": "Box",
+          "checked": false
+        },
+        "short": {
+          "role": "none",
+          "name": ""
+        },
+        "s1": {
+          "role": "none",
+          "name": ""
+        },
+        "vol": {
+          "role": "slider",
+          "name": "Volume",
+          "value": "5"
+        },
+        "off": {
+          "role": "button",
+          "name": "Disabled",
+          "disabled": true
+        },
+        "last": {
+          "role": "button",
+          "name": "Last"
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          460,
+          360
+        ],
+        "title": [
+          12,
+          12,
+          66.9,
+          16.8
+        ],
+        "bar": [
+          12,
+          34.8,
+          113.7,
+          21
+        ],
+        "b1": [
+          12,
+          34.8,
+          41.2,
+          21
+        ],
+        "gap": [
+          59.2,
+          34.8,
+          20,
+          10
+        ],
+        "b2": [
+          85.2,
+          34.8,
+          40.5,
+          21
+        ],
+        "pane": [
+          12,
+          61.8,
+          200,
+          30
+        ],
+        "field": [
+          12,
+          97.8,
+          200,
+          21
+        ],
+        "box": [
+          12,
+          124.8,
+          50.9,
+          19
+        ],
+        "short": [
+          12,
+          149.8,
+          20.4,
+          60
+        ],
+        "s1": [
+          12,
+          149.8,
+          20.4,
+          16.8
+        ],
+        "vol": [
+          14,
+          217.8,
+          200,
+          16
+        ],
+        "off": [
+          12,
+          241.8,
+          67.9,
+          21
+        ],
+        "last": [
+          12,
+          268.8,
+          41.2,
+          21
+        ]
+      }
+    },
+    {
+      "type": "tabs",
+      "label": "Tab forward",
+      "focus": [
+        "b1",
+        "b2",
+        "field",
+        "box",
+        "vol",
+        "last",
+        null,
+        "b1",
+        "b2"
+      ]
+    },
+    {
+      "type": "tabs",
+      "label": "Shift+Tab back",
+      "focus": [
+        "b1",
+        null,
+        "last",
+        "vol",
+        "box",
+        "field",
+        "b2",
+        "b1",
+        null
+      ]
+    }
+  ],
+  "screenshots": [
+    "focus-order--1.png"
+  ],
+  "unsupported": []
+}

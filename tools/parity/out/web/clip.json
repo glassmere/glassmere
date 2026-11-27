@@ -1,0 +1,150 @@
+{
+  "scenario": "clip",
+  "framework": "web",
+  "title": "A child larger than its parent: is the clipped part clickable",
+  "size": [
+    420,
+    220
+  ],
+  "records": [
+    {
+      "type": "observe",
+      "label": "initial",
+      "focus": null,
+      "focusVisible": null,
+      "values": {},
+      "scroll": {},
+      "log": [],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "window": {
+          "role": "generic",
+          "name": ""
+        },
+        "wide": {
+          "role": "button",
+          "name": "A button wider than its parent"
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          420,
+          220
+        ],
+        "window": [
+          12,
+          12,
+          120,
+          50
+        ],
+        "wide": [
+          12,
+          12,
+          240,
+          36
+        ]
+      }
+    },
+    {
+      "type": "observe",
+      "label": "a click on the part that shows",
+      "focus": "wide",
+      "focusVisible": false,
+      "values": {},
+      "scroll": {},
+      "log": [
+        "click:wide"
+      ],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "window": {
+          "role": "generic",
+          "name": ""
+        },
+        "wide": {
+          "role": "button",
+          "name": "A button wider than its parent"
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          420,
+          220
+        ],
+        "window": [
+          12,
+          12,
+          120,
+          50
+        ],
+        "wide": [
+          12,
+          12,
+          240,
+          36
+        ]
+      }
+    },
+    {
+      "type": "observe",
+      "label": "a click on the part that is clipped away",
+      "focus": null,
+      "focusVisible": null,
+      "values": {},
+      "scroll": {},
+      "log": [
+        "click:wide"
+      ],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "window": {
+          "role": "generic",
+          "name": ""
+        },
+        "wide": {
+          "role": "button",
+          "name": "A button wider than its parent"
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          420,
+          220
+        ],
+        "window": [
+          12,
+          12,
+          120,
+          50
+        ],
+        "wide": [
+          12,
+          12,
+          240,
+          36
+        ]
+      }
+    }
+  ],
+  "screenshots": [
+    "clip--1.png",
+    "clip--2.png",
+    "clip--3.png"
+  ],
+  "unsupported": []
+}

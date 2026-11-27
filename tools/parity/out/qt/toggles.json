@@ -1,0 +1,683 @@
+{
+  "scenario": "toggles",
+  "framework": "qt",
+  "title": "Checkbox, switch and radio group: click, Space, arrows, accessibility state",
+  "size": [
+    420,
+    300
+  ],
+  "records": [
+    {
+      "type": "observe",
+      "label": "initial",
+      "focus": "agree",
+      "focusVisible": null,
+      "values": {
+        "agree": false,
+        "news": true,
+        "wifi": false,
+        "size": 0
+      },
+      "scroll": {},
+      "log": [],
+      "a11y": {
+        "agree": {
+          "role": "checkbox",
+          "name": "I agree",
+          "checked": false
+        },
+        "news": {
+          "role": "checkbox",
+          "name": "Newsletter",
+          "checked": true
+        },
+        "wifi": {
+          "role": "checkbox",
+          "name": "Wi-Fi",
+          "checked": false
+        },
+        "s": {
+          "role": "radio",
+          "name": "Small",
+          "checked": true
+        },
+        "m": {
+          "role": "radio",
+          "name": "Medium",
+          "checked": false
+        },
+        "l": {
+          "role": "radio",
+          "name": "Large",
+          "checked": false
+        },
+        "size": {
+          "role": "generic",
+          "name": ""
+        },
+        "page": {
+          "role": "generic",
+          "name": ""
+        }
+      },
+      "rects": {
+        "agree": [
+          16,
+          16,
+          63,
+          20
+        ],
+        "news": [
+          16,
+          44,
+          85,
+          20
+        ],
+        "wifi": [
+          16,
+          72,
+          55,
+          20
+        ],
+        "s": [
+          16,
+          100,
+          55,
+          20
+        ],
+        "m": [
+          16,
+          126,
+          70,
+          20
+        ],
+        "l": [
+          16,
+          152,
+          57,
+          20
+        ],
+        "size": [
+          16,
+          100,
+          70,
+          72
+        ],
+        "page": [
+          0,
+          0,
+          420,
+          300
+        ]
+      }
+    },
+    {
+      "type": "cursor",
+      "label": "pointer over each",
+      "cursor": {
+        "agree": "default",
+        "wifi": "default",
+        "m": "default"
+      }
+    },
+    {
+      "type": "observe",
+      "label": "after clicking one of each",
+      "focus": "l",
+      "focusVisible": null,
+      "values": {
+        "agree": true,
+        "news": true,
+        "wifi": true,
+        "size": 2
+      },
+      "scroll": {},
+      "log": [
+        "toggle:agree:true",
+        "toggle:wifi:true",
+        "select:size:2"
+      ],
+      "a11y": {
+        "agree": {
+          "role": "checkbox",
+          "name": "I agree",
+          "checked": true
+        },
+        "news": {
+          "role": "checkbox",
+          "name": "Newsletter",
+          "checked": true
+        },
+        "wifi": {
+          "role": "checkbox",
+          "name": "Wi-Fi",
+          "checked": true
+        },
+        "s": {
+          "role": "radio",
+          "name": "Small",
+          "checked": false
+        },
+        "m": {
+          "role": "radio",
+          "name": "Medium",
+          "checked": false
+        },
+        "l": {
+          "role": "radio",
+          "name": "Large",
+          "checked": true
+        },
+        "size": {
+          "role": "generic",
+          "name": ""
+        },
+        "page": {
+          "role": "generic",
+          "name": ""
+        }
+      },
+      "rects": {
+        "agree": [
+          16,
+          16,
+          63,
+          20
+        ],
+        "news": [
+          16,
+          44,
+          85,
+          20
+        ],
+        "wifi": [
+          16,
+          72,
+          55,
+          20
+        ],
+        "s": [
+          16,
+          100,
+          55,
+          20
+        ],
+        "m": [
+          16,
+          126,
+          70,
+          20
+        ],
+        "l": [
+          16,
+          152,
+          57,
+          20
+        ],
+        "size": [
+          16,
+          100,
+          70,
+          72
+        ],
+        "page": [
+          0,
+          0,
+          420,
+          300
+        ]
+      }
+    },
+    {
+      "type": "observe",
+      "label": "Space on the focused radio",
+      "focus": "l",
+      "focusVisible": null,
+      "values": {
+        "agree": true,
+        "news": true,
+        "wifi": true,
+        "size": 2
+      },
+      "scroll": {},
+      "log": [
+        "toggle:agree:true",
+        "toggle:wifi:true",
+        "select:size:2"
+      ],
+      "a11y": {
+        "agree": {
+          "role": "checkbox",
+          "name": "I agree",
+          "checked": true
+        },
+        "news": {
+          "role": "checkbox",
+          "name": "Newsletter",
+          "checked": true
+        },
+        "wifi": {
+          "role": "checkbox",
+          "name": "Wi-Fi",
+          "checked": true
+        },
+        "s": {
+          "role": "radio",
+          "name": "Small",
+          "checked": false
+        },
+        "m": {
+          "role": "radio",
+          "name": "Medium",
+          "checked": false
+        },
+        "l": {
+          "role": "radio",
+          "name": "Large",
+          "checked": true
+        },
+        "size": {
+          "role": "generic",
+          "name": ""
+        },
+        "page": {
+          "role": "generic",
+          "name": ""
+        }
+      },
+      "rects": {
+        "agree": [
+          16,
+          16,
+          63,
+          20
+        ],
+        "news": [
+          16,
+          44,
+          85,
+          20
+        ],
+        "wifi": [
+          16,
+          72,
+          55,
+          20
+        ],
+        "s": [
+          16,
+          100,
+          55,
+          20
+        ],
+        "m": [
+          16,
+          126,
+          70,
+          20
+        ],
+        "l": [
+          16,
+          152,
+          57,
+          20
+        ],
+        "size": [
+          16,
+          100,
+          70,
+          72
+        ],
+        "page": [
+          0,
+          0,
+          420,
+          300
+        ]
+      }
+    },
+    {
+      "type": "observe",
+      "label": "Space on the focused checkbox",
+      "focus": "news",
+      "focusVisible": null,
+      "values": {
+        "agree": true,
+        "news": true,
+        "wifi": true,
+        "size": 2
+      },
+      "scroll": {},
+      "log": [
+        "toggle:agree:true",
+        "toggle:wifi:true",
+        "select:size:2",
+        "toggle:news:false",
+        "toggle:news:true"
+      ],
+      "a11y": {
+        "agree": {
+          "role": "checkbox",
+          "name": "I agree",
+          "checked": true
+        },
+        "news": {
+          "role": "checkbox",
+          "name": "Newsletter",
+          "checked": true
+        },
+        "wifi": {
+          "role": "checkbox",
+          "name": "Wi-Fi",
+          "checked": true
+        },
+        "s": {
+          "role": "radio",
+          "name": "Small",
+          "checked": false
+        },
+        "m": {
+          "role": "radio",
+          "name": "Medium",
+          "checked": false
+        },
+        "l": {
+          "role": "radio",
+          "name": "Large",
+          "checked": true
+        },
+        "size": {
+          "role": "generic",
+          "name": ""
+        },
+        "page": {
+          "role": "generic",
+          "name": ""
+        }
+      },
+      "rects": {
+        "agree": [
+          16,
+          16,
+          63,
+          20
+        ],
+        "news": [
+          16,
+          44,
+          85,
+          20
+        ],
+        "wifi": [
+          16,
+          72,
+          55,
+          20
+        ],
+        "s": [
+          16,
+          100,
+          55,
+          20
+        ],
+        "m": [
+          16,
+          126,
+          70,
+          20
+        ],
+        "l": [
+          16,
+          152,
+          57,
+          20
+        ],
+        "size": [
+          16,
+          100,
+          70,
+          72
+        ],
+        "page": [
+          0,
+          0,
+          420,
+          300
+        ]
+      }
+    },
+    {
+      "type": "observe",
+      "label": "ArrowDown on the focused radio",
+      "focus": "m",
+      "focusVisible": null,
+      "values": {
+        "agree": true,
+        "news": true,
+        "wifi": true,
+        "size": 1
+      },
+      "scroll": {},
+      "log": [
+        "toggle:agree:true",
+        "toggle:wifi:true",
+        "select:size:2",
+        "toggle:news:false",
+        "toggle:news:true",
+        "select:size:0",
+        "select:size:1"
+      ],
+      "a11y": {
+        "agree": {
+          "role": "checkbox",
+          "name": "I agree",
+          "checked": true
+        },
+        "news": {
+          "role": "checkbox",
+          "name": "Newsletter",
+          "checked": true
+        },
+        "wifi": {
+          "role": "checkbox",
+          "name": "Wi-Fi",
+          "checked": true
+        },
+        "s": {
+          "role": "radio",
+          "name": "Small",
+          "checked": false
+        },
+        "m": {
+          "role": "radio",
+          "name": "Medium",
+          "checked": true
+        },
+        "l": {
+          "role": "radio",
+          "name": "Large",
+          "checked": false
+        },
+        "size": {
+          "role": "generic",
+          "name": ""
+        },
+        "page": {
+          "role": "generic",
+          "name": ""
+        }
+      },
+      "rects": {
+        "agree": [
+          16,
+          16,
+          63,
+          20
+        ],
+        "news": [
+          16,
+          44,
+          85,
+          20
+        ],
+        "wifi": [
+          16,
+          72,
+          55,
+          20
+        ],
+        "s": [
+          16,
+          100,
+          55,
+          20
+        ],
+        "m": [
+          16,
+          126,
+          70,
+          20
+        ],
+        "l": [
+          16,
+          152,
+          57,
+          20
+        ],
+        "size": [
+          16,
+          100,
+          70,
+          72
+        ],
+        "page": [
+          0,
+          0,
+          420,
+          300
+        ]
+      }
+    },
+    {
+      "type": "observe",
+      "label": "Tab after the radio group",
+      "focus": "agree",
+      "focusVisible": null,
+      "values": {
+        "agree": true,
+        "news": true,
+        "wifi": true,
+        "size": 1
+      },
+      "scroll": {},
+      "log": [
+        "toggle:agree:true",
+        "toggle:wifi:true",
+        "select:size:2",
+        "toggle:news:false",
+        "toggle:news:true",
+        "select:size:0",
+        "select:size:1"
+      ],
+      "a11y": {
+        "agree": {
+          "role": "checkbox",
+          "name": "I agree",
+          "checked": true
+        },
+        "news": {
+          "role": "checkbox",
+          "name": "Newsletter",
+          "checked": true
+        },
+        "wifi": {
+          "role": "checkbox",
+          "name": "Wi-Fi",
+          "checked": true
+        },
+        "s": {
+          "role": "radio",
+          "name": "Small",
+          "checked": false
+        },
+        "m": {
+          "role": "radio",
+          "name": "Medium",
+          "checked": true
+        },
+        "l": {
+          "role": "radio",
+          "name": "Large",
+          "checked": false
+        },
+        "size": {
+          "role": "generic",
+          "name": ""
+        },
+        "page": {
+          "role": "generic",
+          "name": ""
+        }
+      },
+      "rects": {
+        "agree": [
+          16,
+          16,
+          63,
+          20
+        ],
+        "news": [
+          16,
+          44,
+          85,
+          20
+        ],
+        "wifi": [
+          16,
+          72,
+          55,
+          20
+        ],
+        "s": [
+          16,
+          100,
+          55,
+          20
+        ],
+        "m": [
+          16,
+          126,
+          70,
+          20
+        ],
+        "l": [
+          16,
+          152,
+          57,
+          20
+        ],
+        "size": [
+          16,
+          100,
+          70,
+          72
+        ],
+        "page": [
+          0,
+          0,
+          420,
+          300
+        ]
+      }
+    }
+  ],
+  "screenshots": [
+    "toggles--1.png",
+    "toggles--3.png",
+    "toggles--4.png",
+    "toggles--5.png",
+    "toggles--6.png",
+    "toggles--7.png"
+  ],
+  "unsupported": []
+}

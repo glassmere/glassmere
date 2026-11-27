@@ -1,0 +1,188 @@
+{
+  "scenario": "grow-shrink",
+  "framework": "qt",
+  "title": "Flex grow, shrink, minimum and maximum sizes, and what happens by default",
+  "size": [
+    420,
+    420
+  ],
+  "records": [
+    {
+      "type": "observe",
+      "label": "sizes after distributing the room",
+      "focus": null,
+      "focusVisible": null,
+      "values": {},
+      "scroll": {},
+      "log": [],
+      "a11y": {
+        "g1": {
+          "role": "generic",
+          "name": ""
+        },
+        "g2": {
+          "role": "generic",
+          "name": ""
+        },
+        "g3": {
+          "role": "generic",
+          "name": ""
+        },
+        "grow": {
+          "role": "generic",
+          "name": ""
+        },
+        "s1": {
+          "role": "generic",
+          "name": ""
+        },
+        "s2": {
+          "role": "generic",
+          "name": ""
+        },
+        "s3": {
+          "role": "generic",
+          "name": ""
+        },
+        "squeeze": {
+          "role": "generic",
+          "name": ""
+        },
+        "d1": {
+          "role": "generic",
+          "name": ""
+        },
+        "d2": {
+          "role": "generic",
+          "name": ""
+        },
+        "d3": {
+          "role": "generic",
+          "name": ""
+        },
+        "default": {
+          "role": "generic",
+          "name": ""
+        },
+        "m1": {
+          "role": "generic",
+          "name": ""
+        },
+        "m2": {
+          "role": "generic",
+          "name": ""
+        },
+        "limits": {
+          "role": "generic",
+          "name": ""
+        },
+        "page": {
+          "role": "generic",
+          "name": ""
+        }
+      },
+      "rects": {
+        "g1": [
+          10,
+          10,
+          87,
+          30
+        ],
+        "g2": [
+          97,
+          10,
+          173,
+          30
+        ],
+        "g3": [
+          270,
+          10,
+          40,
+          30
+        ],
+        "grow": [
+          10,
+          10,
+          300,
+          30
+        ],
+        "s1": [
+          10,
+          48,
+          100,
+          30
+        ],
+        "s2": [
+          77,
+          48,
+          100,
+          30
+        ],
+        "s3": [
+          144,
+          48,
+          100,
+          30
+        ],
+        "squeeze": [
+          10,
+          48,
+          200,
+          30
+        ],
+        "d1": [
+          10,
+          86,
+          100,
+          30
+        ],
+        "d2": [
+          77,
+          86,
+          100,
+          30
+        ],
+        "d3": [
+          144,
+          86,
+          100,
+          30
+        ],
+        "default": [
+          10,
+          86,
+          200,
+          30
+        ],
+        "m1": [
+          10,
+          124,
+          80,
+          30
+        ],
+        "m2": [
+          90,
+          124,
+          220,
+          30
+        ],
+        "limits": [
+          10,
+          124,
+          300,
+          30
+        ],
+        "page": [
+          0,
+          0,
+          420,
+          420
+        ]
+      }
+    }
+  ],
+  "screenshots": [
+    "grow-shrink--1.png"
+  ],
+  "unsupported": []
+}

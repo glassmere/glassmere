@@ -1,0 +1,261 @@
+{
+  "scenario": "slider",
+  "framework": "web",
+  "title": "Slider: keys and a click on the track",
+  "size": [
+    420,
+    160
+  ],
+  "records": [
+    {
+      "type": "observe",
+      "label": "initial",
+      "focus": null,
+      "focusVisible": null,
+      "values": {
+        "vol": 50
+      },
+      "scroll": {},
+      "log": [],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "vol": {
+          "role": "slider",
+          "name": "Volume",
+          "value": "50"
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          420,
+          160
+        ],
+        "vol": [
+          18,
+          18,
+          300,
+          16
+        ]
+      }
+    },
+    {
+      "type": "cursor",
+      "label": "pointer over the slider",
+      "cursor": {
+        "vol": "default"
+      }
+    },
+    {
+      "type": "observe",
+      "label": "after a click in the middle",
+      "focus": "vol",
+      "focusVisible": false,
+      "values": {
+        "vol": 50
+      },
+      "scroll": {},
+      "log": [],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "vol": {
+          "role": "slider",
+          "name": "Volume",
+          "value": "50"
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          420,
+          160
+        ],
+        "vol": [
+          18,
+          18,
+          300,
+          16
+        ]
+      }
+    },
+    {
+      "type": "observe",
+      "label": "two ArrowRight",
+      "focus": "vol",
+      "focusVisible": true,
+      "values": {
+        "vol": 60
+      },
+      "scroll": {},
+      "log": [
+        "slide:vol:55",
+        "slide:vol:60"
+      ],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "vol": {
+          "role": "slider",
+          "name": "Volume",
+          "value": "60"
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          420,
+          160
+        ],
+        "vol": [
+          18,
+          18,
+          300,
+          16
+        ]
+      }
+    },
+    {
+      "type": "observe",
+      "label": "Home",
+      "focus": "vol",
+      "focusVisible": true,
+      "values": {
+        "vol": 0
+      },
+      "scroll": {},
+      "log": [
+        "slide:vol:55",
+        "slide:vol:60",
+        "slide:vol:0"
+      ],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "vol": {
+          "role": "slider",
+          "name": "Volume",
+          "value": "0"
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          420,
+          160
+        ],
+        "vol": [
+          18,
+          18,
+          300,
+          16
+        ]
+      }
+    },
+    {
+      "type": "observe",
+      "label": "End",
+      "focus": "vol",
+      "focusVisible": true,
+      "values": {
+        "vol": 100
+      },
+      "scroll": {},
+      "log": [
+        "slide:vol:55",
+        "slide:vol:60",
+        "slide:vol:0",
+        "slide:vol:100"
+      ],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "vol": {
+          "role": "slider",
+          "name": "Volume",
+          "value": "100"
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          420,
+          160
+        ],
+        "vol": [
+          18,
+          18,
+          300,
+          16
+        ]
+      }
+    },
+    {
+      "type": "observe",
+      "label": "a click three quarters along the track",
+      "focus": "vol",
+      "focusVisible": true,
+      "values": {
+        "vol": 75
+      },
+      "scroll": {},
+      "log": [
+        "slide:vol:55",
+        "slide:vol:60",
+        "slide:vol:0",
+        "slide:vol:100",
+        "slide:vol:75"
+      ],
+      "a11y": {
+        "page": {
+          "role": "none",
+          "name": ""
+        },
+        "vol": {
+          "role": "slider",
+          "name": "Volume",
+          "value": "75"
+        }
+      },
+      "rects": {
+        "page": [
+          0,
+          0,
+          420,
+          160
+        ],
+        "vol": [
+          18,
+          18,
+          300,
+          16
+        ]
+      }
+    }
+  ],
+  "screenshots": [
+    "slider--1.png",
+    "slider--3.png",
+    "slider--4.png",
+    "slider--5.png",
+    "slider--6.png",
+    "slider--7.png"
+  ],
+  "unsupported": []
+}
