@@ -25,6 +25,23 @@ impl Context {
         }
     }
 
+    /// Input was handled, and may have changed what the view reads, unless
+    /// everything it queued has a handler to answer it: `queued` is how many
+    /// entries there were before it.
+    pub(super) fn note_handled(&mut self, queued: usize) {
+        let answered = self.queued.len() > queued
+            && self.queued[queued..].iter().all(|(id, _)| {
+                self.nodes
+                    .get(id)
+                    .is_some_and(|node| node.handler.is_some())
+            });
+        if answered {
+            self.view_stale_handled = true;
+        } else {
+            self.view_stale = true;
+        }
+    }
+
     pub(super) fn queue_click(&mut self, id: NodeId) {
         self.clicks.insert(id);
         self.queued.push((id, Queued::Click));
@@ -416,6 +433,7 @@ impl Context {
         self.begin_frame(size);
         self.resize_root(size);
         self.update_tooltip();
+        self.refresh_bound(measurer);
         self.layout_pass(size, measurer);
         self.prepare_controls(measurer);
         self.update_hover();
@@ -436,8 +454,16 @@ impl Context {
     /// apart from messages: kernel state it reads, host-set state, its own
     /// request for another frame, the window's size, or a hover, focus or
     /// press it observed.
-    pub(crate) fn view_wanted(&self, size: Size, before: Interaction) -> bool {
-        if self.view_stale || self.redraw_requested || size != self.size {
+    ///
+    /// `covered` is whether the application says the view reads nothing that
+    /// the messages of this batch changed, which is all that input answered
+    /// by handlers does.
+    pub(crate) fn view_wanted(&self, size: Size, before: Interaction, covered: bool) -> bool {
+        if self.view_stale
+            || (self.view_stale_handled && !covered)
+            || self.redraw_requested
+            || size != self.size
+        {
             return true;
         }
         let now = self.interaction();
