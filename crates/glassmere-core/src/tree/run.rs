@@ -56,7 +56,9 @@ impl Context {
         // was resolved into messages already.
         self.queued.clear();
         self.observed_new.borrow_mut().clear();
+        self.bound_new.borrow_mut().clear();
         self.view_stale = false;
+        self.view_stale_handled = false;
         self.mark_awaiting(clicks.iter().chain(updates.keys()).copied().collect());
         self.skipped.set(0);
         self.declared.set(0);
@@ -120,6 +122,8 @@ impl Context {
         self.resize_root(size);
         self.reconcile(self.root, elements, measurer);
         self.observed_new.borrow_mut().clear();
+        self.bound_new.borrow_mut().clear();
+        self.refresh_bound(measurer);
         self.stats.skipped = self.skipped.get();
         self.after_reconcile(focus);
         drop(declare_span);
@@ -683,6 +687,7 @@ impl Context {
         measurer: &mut impl TextMeasurer,
     ) -> Vec<Element> {
         let frame = self.frame;
+        self.attach_bound(id, element.seq);
         let node = self.nodes.get_mut(&id).unwrap();
         // Declared again: observed now is what this declaration read.
         node.observed.set(node.observing.take());
@@ -925,6 +930,7 @@ impl Context {
                     element.seq != 0 && self.observed_new.borrow().contains(&element.seq),
                 ),
                 observing: core::cell::Cell::new(false),
+                bound: None,
                 key: element.key,
                 kind: element.kind,
                 parent: Some(parent),
@@ -975,6 +981,7 @@ impl Context {
         {
             self.new_popovers.push(id);
         }
+        self.attach_bound(id, element.seq);
         self.stats.created += 1;
         self.pending |= Dirty::all();
         (id, element.children)

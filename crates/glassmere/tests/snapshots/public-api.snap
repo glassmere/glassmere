@@ -519,6 +519,7 @@ glassmere-core   fn App::init(&mut self, _effects: &mut Effects<'_, Self::Messag
 glassmere-core   fn App::save_state(&self) -> Option<String> (provided)
 glassmere-core   fn App::update(&mut self, message: Self::Message, effects: &mut Effects<'_, Self::Message>)
 glassmere-core   fn App::view(&self, ui: &mut Ui<'_, Self::Message>)
+glassmere-core   fn App::view_state(&self) -> Option<u64> (provided)
 glassmere-core   fn App::view_window(&self, _window: WindowId, ui: &mut Ui<'_, Self::Message>) (provided)
 glassmere-core   fn App::window_closed(&mut self, _window: WindowId, _effects: &mut Effects<'_, Self::Message>) (provided)
 glassmere-core   fn AppDriver::awaiting(&self) -> Vec<WindowId> [impl<M: Clone + 'static> AppDriver<M>]
@@ -1130,6 +1131,8 @@ glassmere-core   fn TextInput::password_with_reveal(mut self) -> Self [impl<M> T
 glassmere-core   fn TextInput::placeholder(mut self, placeholder: impl Into<String>) -> Self [impl<M> TextInput<M>]
 glassmere-core   fn TextInput::style(mut self, style: Style) -> Self [impl<M> TextInput<M>]
 glassmere-core   fn TextSelection::range(self) -> Range<usize>
+glassmere-core   fn TextSource::text(&self) -> String
+glassmere-core   fn TextSource::version(&self) -> u64
 glassmere-core   fn Theme::dark() -> Self
 glassmere-core   fn Theme::light() -> Self
 glassmere-core   fn Theme::set_token(&mut self, name: &str, color: Color) -> bool
@@ -1166,6 +1169,7 @@ glassmere-core   fn TreeModel::new(items: Vec<TreeItem>) -> Result<Self, ModelEr
 glassmere-core   fn TreeModel::set_row_height(&mut self, id: ItemId, height: Option<f32>)
 glassmere-core   fn Ui::autocomplete<S: AsRef<str>>(&mut self, label: impl Into<String>, value: &str, suggestions: &[S], on_change: impl Fn(String) -> M + 'static) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::autocomplete_with<S: AsRef<str>>(&mut self, label: impl Into<String>, value: &str, suggestions: &[S], on_change: impl Fn(String) -> M + 'static, extra: Autocomplete<M>) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
+glassmere-core   fn Ui::bound_label<S: crate::TextSource + Clone + 'static>(&mut self, source: &S) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::button(&mut self, button: impl Into<Button<M>>) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::calendar(&mut self, calendar: impl Into<Calendar>, selected: Option<Date>, on_pick: impl Fn(Date) -> M + 'static) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::checkbox(&mut self, label: impl Into<String>, checked: bool, on_toggle: impl Fn(bool) -> M) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
@@ -1802,6 +1806,8 @@ glassmere-core impl From<usize> for MessageArg
 glassmere-core impl ListModel for TreeModel
 glassmere-core impl LocaleFormat for Shared<dyn LocaleFormat>
 glassmere-core impl Messages for Shared<dyn Messages>
+glassmere-core impl TextSource for Memo<String>
+glassmere-core impl TextSource for Signal<String>
 glassmere-core impl bitflags::Flags for Dirty
 glassmere-core impl core::error::Error for DockLayoutError
 glassmere-core impl core::error::Error for ModelError
@@ -1990,6 +1996,7 @@ glassmere-core trait ListModel
 glassmere-core trait LocaleFormat
 glassmere-core trait Messages
 glassmere-core trait PropertyChoice: Sized
+glassmere-core trait TextSource
 glassmere-core type app::Action<S> = Rc<dyn Fn(&mut S)>
 glassmere-core use Action = tree::Action
 glassmere-core use Align = style::Align
@@ -2181,6 +2188,7 @@ glassmere-core use TextMeasurer = glassmere_scene::TextMeasurer
 glassmere-core use TextMove = editor::TextMove
 glassmere-core use TextOp = text_area::TextOp
 glassmere-core use TextSelection = editor::TextSelection
+glassmere-core use TextSource = reactive::TextSource
 glassmere-core use TextSpan = glassmere_scene::TextSpan
 glassmere-core use TextStyle = glassmere_scene::TextStyle
 glassmere-core use TextWrap = glassmere_scene::TextWrap

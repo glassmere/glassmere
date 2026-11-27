@@ -8,6 +8,7 @@ use crate::{Component, Context, CustomWidget, NodeId, Style};
 use alloc::borrow::ToOwned;
 use alloc::boxed::Box;
 use alloc::format;
+use alloc::rc::Rc;
 use alloc::string::String;
 #[cfg(feature = "std")]
 use alloc::sync::Arc;
@@ -886,6 +887,29 @@ impl<'a, M: 'static> Ui<'a, M> {
                 Control::None
             },
         });
+    }
+
+    /// A label that shows a [`Signal`](crate::Signal) or [`Memo`](crate::Memo)
+    /// of text and follows it. When the source changes, the label's text is
+    /// replaced in the tree, measured and repainted without the view running
+    /// again; see [`App::view_state`](crate::App::view_state) for how a view is kept from running
+    /// after a message.
+    ///
+    /// The view reads the text when it declares, so a view that does run
+    /// shows the same text. A label declared this way without the source
+    /// next frame is an ordinary label again.
+    #[track_caller]
+    pub fn bound_label<S: crate::TextSource + Clone + 'static>(&mut self, source: &S) {
+        let version = source.version();
+        let before = self.elements.len();
+        self.label(source.text());
+        // A duplicate key leaves nothing behind to follow the source.
+        if let Some(element) = self.elements.get(before)
+            && element.kind == Kind::Label
+        {
+            self.context
+                .bind_element(element.seq, Rc::new(source.clone()), version);
+        }
     }
 
     /// A button. `ui.button("Save")` is the whole of it, and
