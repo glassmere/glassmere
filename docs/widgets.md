@@ -124,6 +124,12 @@ What `WidgetInput` carries is of the last frame, because that is what there is t
 - **Style** is `ui.theme()` for the tokens, `ui.class(..)` for a stylesheet class, and the `style` argument for the node itself, which lays out like any container.
 - **Paint** is a list of primitives in the widget's own coordinates: rounded rectangles, gradients, shadows, text, images, clips and layers. Clips and layers must balance.
 
+### Dashed and dotted lines, caps and joins
+
+`Stroke` is a width and a colour. How the ends and corners of the line are finished belongs to the path: `path.with_cap(LineCap::Round)` (`Butt` is the default, `Square` goes half the width past the end) and `path.with_join(LineJoin::Round)` (`Miter` is the default, up to four widths long and bevelled beyond that; `Bevel` always cuts across). The CPU, GPU and embedded renderers all draw them.
+
+For a dashed line, cut the path first: `path.dashed(&[6.0, 4.0], phase)` returns the path as dashes (a dash of 6, a gap of 4; one entry is read twice over, as `stroke-dasharray` does) to stroke without a fill, and it keeps the path's cap and join. Changing `phase` frame by frame makes the dashes march. A dash of no length with a round cap is a dot, so `path.with_cap(LineCap::Round).dashed(&[0.0, 8.0], 0.0)` is a dotted line.
+
 ### Smaller check boxes, radio buttons and tabs
 
 The defaults are roomy: a check box or a radio button has a button's padding, 12 px on every side, so one with a short label is 46 px tall. `ui.checkbox_with(Checkbox::new("Notify").style(Style::default().padding(2.0)), on, msg)` and `ui.radio_with(Radio::new("Quiet").style(..), selected, 0, msg)` take a style of your own, `ui.tabs_styled(selected, &tabs, &TabStyle::new(tab, active), on_select, content)` styles a strip (the selected tab takes `active`, so an underline or a fill is yours to give it, and `tab` can carry a hover state), and `Switch`, `Collapsible`, `Link` and `Button` take one through their builders. The short forms are unchanged.
