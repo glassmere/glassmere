@@ -1,6 +1,6 @@
 use glassmere::{
-    App, AppOptions, Button, Color, Effects, FontFamily, Gradient, Label, Length, Paint, Shadow,
-    Size, Style, TextWrap, Theme, Ui, run,
+    App, AppOptions, Button, Color, Effects, FocusRing, FontFamily, Gradient, Label, Length, Paint,
+    Shadow, Size, Style, TextWrap, Theme, Ui, run,
 };
 use std::path::PathBuf;
 
@@ -90,7 +90,9 @@ impl App for Theming {
             .on_focused(Paint {
                 radius: Some(2.0),
                 ..Paint::default()
-            });
+            })
+            // Tab to this button: the ring is its own, in the accent colour.
+            .focus_ring(FocusRing::new(3.0).color(theme.accent).inset(1.0));
         ui.scroll(page, |ui| {
             ui.label(Label::new(format!("Theming · {} theme", theme.name)).style(title));
             ui.label(
