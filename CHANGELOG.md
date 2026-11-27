@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- `Style::text_overflow` (stylesheet `text-overflow: ellipsis`) with `TextOverflow`: a single line of text in a label, a button or the like that is wider than its box ends with `…` where the next character would not fit, as in CSS, instead of being cut at the edge. It is cut between grapheme clusters, measured by the same text measurer the layout uses, redone only when the room, the text or the style changes, and what a screen reader and a selection see is still the whole text. `Clip` is the default, so nothing changes for a style that does not set it. Text that wraps is not affected.
+
 ## [0.1.8] - 2026-11-23
 
 ### Added

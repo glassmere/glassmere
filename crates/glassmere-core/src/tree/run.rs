@@ -911,6 +911,7 @@ impl Context {
                 rich_editor: None,
                 label_width: 0.0,
                 hint_width: 0.0,
+                ellipsis: None,
                 churn: 0,
                 layout_rect: Rect::default(),
                 handler: None,

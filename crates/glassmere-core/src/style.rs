@@ -317,6 +317,13 @@ pub struct Style {
     pub font_weight: Option<u16>,
     pub italic: Option<bool>,
     pub wrap: TextWrap,
+    /// What a single line of text that is wider than its box shows of the
+    /// rest: `Clip` cuts it at the edge, `Ellipsis` ends it with `…` where the
+    /// next character would not fit, as `text-overflow: ellipsis` does. It
+    /// applies to a label, a button and the like that do not wrap
+    /// (`wrap` is `None`), and the text the screen reader and a selection see is
+    /// still the whole of it.
+    pub text_overflow: TextOverflow,
     pub states: Option<Box<StateStyles>>,
     /// Group opacity of the node and its subtree, 0..=1.
     pub opacity: f32,
@@ -384,6 +391,7 @@ impl Default for Style {
             font_weight: None,
             italic: None,
             wrap: TextWrap::None,
+            text_overflow: TextOverflow::Clip,
             states: None,
             opacity: 1.0,
             transform: Transform::IDENTITY,
@@ -396,6 +404,16 @@ impl Default for Style {
             direction: None,
         }
     }
+}
+
+/// What a line of text that is wider than its box shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum TextOverflow {
+    /// Cut at the edge of the box.
+    #[default]
+    Clip,
+    /// Ended with an ellipsis, `…`, where the next character would not fit.
+    Ellipsis,
 }
 
 macro_rules! setter {
@@ -578,6 +596,7 @@ impl Style {
     setter!(area, area, GridArea, some);
     setter!(area_name, area_name, String, some);
     setter!(wrap, wrap, TextWrap);
+    setter!(text_overflow, text_overflow, TextOverflow);
     setter!(opacity, opacity, f32);
     setter!(transform, transform, Transform);
     setter!(transition, transition, Transition, some);

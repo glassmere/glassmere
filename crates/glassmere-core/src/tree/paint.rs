@@ -915,7 +915,7 @@ impl Context {
             })
         {
             let mut text = spare.unwrap_or_default();
-            refill(&mut text, &node.text);
+            refill(&mut text, node.shown_text());
             scene.primitives.push(Primitive::Text {
                 rect,
                 text,
@@ -924,7 +924,7 @@ impl Context {
             });
         } else {
             let mut text = spare.unwrap_or_default();
-            refill(&mut text, &node.text);
+            refill(&mut text, node.shown_text());
             scene.primitives.push(Primitive::StyledText {
                 rect,
                 text,
