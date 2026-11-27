@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Fixed
+
+- An explicit pixel size is held to its own minimum and maximum before the layout engine sizes the parent from it. A container with no size of its own was as tall (or wide) as the size its child asked for, not the size the child ended up: a child with `height(100)` and `max_height(25)` was 25 tall inside a parent that was 100 tall. CSS gives 25 for both. Content with a maximum, such as a scroll panel, was not affected, and nothing changes for a size inside its limits. Found by the parity bench against Chromium.
+
 ## [0.1.8] - 2026-11-23
 
 ### Added
