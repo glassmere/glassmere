@@ -2543,6 +2543,8 @@ glassmere-winit   field AppOptions::frame_limit: Option<u64>
 glassmere-winit   field AppOptions::gpu: Option<GpuSetup>
 glassmere-winit   field AppOptions::graphics: GraphicsOptions
 glassmere-winit   field AppOptions::icon: Option<glassmere_scene::Image>
+glassmere-winit   field AppOptions::max_size: Option<Size>
+glassmere-winit   field AppOptions::min_size: Option<Size>
 glassmere-winit   field AppOptions::placement: Placement
 glassmere-winit   field AppOptions::reduced_motion: bool
 glassmere-winit   field AppOptions::resizable: bool

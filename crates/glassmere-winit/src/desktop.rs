@@ -584,6 +584,12 @@ impl Desktop {
             .with_decorations(options.decorations)
             .with_resizable(options.resizable)
             .with_inner_size(LogicalSize::new(options.size.width, options.size.height));
+        if let Some(min) = options.min_size {
+            attributes = attributes.with_min_inner_size(LogicalSize::new(min.width, min.height));
+        }
+        if let Some(max) = options.max_size {
+            attributes = attributes.with_max_inner_size(LogicalSize::new(max.width, max.height));
+        }
         if let Some(icon) = options.icon.as_ref().and_then(window_icon) {
             attributes = attributes.with_window_icon(Some(icon));
         }
@@ -1265,6 +1271,7 @@ mod tests {
             decorations: false,
             devtools: false,
             reduced_motion: true,
+            min_size: Some(Size::new(720.0, 480.0)),
             ..AppOptions::default()
         };
         let request = glassmere_core::WindowRequest {
@@ -1279,6 +1286,9 @@ mod tests {
         assert_eq!(options.theme, main.theme);
         assert_eq!(options.stylesheet, main.stylesheet);
         assert!(!options.decorations && !options.devtools && options.reduced_motion);
+        assert_eq!(options.min_size, Some(Size::new(720.0, 480.0)));
+        assert_eq!(AppOptions::default().min_size, None);
+        assert_eq!(AppOptions::default().max_size, None);
     }
 
     #[test]
