@@ -134,3 +134,7 @@ There is no mipmap chain, but a photo drawn at under half its natural size is bo
 ## Direction
 
 A window runs left to right or right to left according to `AppOptions::direction` (`DirectionChoice::Auto` follows the OS locale). `Style::direction` overrides it for a subtree: layout mirrors, text aligns to the end side, and directional internals follow. Physical values stay physical: `offset`, transforms, slide effects, floating dock rectangles and `DockZone::Left` and `Right` mean the same pixels in both directions. `Style::base_direction` forces the base direction of a text paragraph, in labels and in text fields, text areas, code editors and rich editors (every line or block takes it; a text field and a rich editor align to it, a text area and a code editor only order by it).
+
+## Reversed flow
+
+`Style::reverse(true)` (stylesheet `reverse: true`) lays a row or a column out from its end, as `flex-direction: row-reverse` and `column-reverse` do: the first child is at the end of the main axis and the others follow back from it, which is the way to put the primary action at the right of a dialog's button row without declaring it last. Only the layout is reversed; Tab still goes in the order the children are declared. `Justify::Start` and `Justify::End` are relative to the main axis, so in a reversed row `End` is the left edge.

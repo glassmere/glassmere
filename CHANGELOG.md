@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- `Style::reverse` (stylesheet `reverse: true`): lays a row or a column out from its end, as `flex-direction: row-reverse` and `column-reverse` do. The first child is at the end of the main axis and the rest follow back from it; only the layout is reversed, not the focus order or the order the children are declared in. `Justify::Start` and `Justify::End` are now relative to the main axis, as `flex-start` and `flex-end` are, so in a reversed row `End` is the left edge; everywhere else they are what they were. `reverse` is off by default.
+
 ## [0.1.8] - 2026-11-23
 
 ### Added
