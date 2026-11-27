@@ -17,8 +17,8 @@ use alloc::vec::Vec;
 pub use image::{Image, ImageFrame, VectorImage};
 pub use path::{LineCap, LineJoin, Path, Segment, Stroke, SvgPathError};
 pub use text::{
-    Affinity, CaretStop, FontFamily, MonospaceMeasurer, TextCluster, TextGeometry, TextLine,
-    TextMeasurer, TextSpan, TextStyle, TextWrap,
+    Affinity, CaretStop, FontFamily, MonospaceMeasurer, TextAlign, TextCluster, TextGeometry,
+    TextLine, TextMeasurer, TextSpan, TextStyle, TextWrap,
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
