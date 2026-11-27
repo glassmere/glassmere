@@ -151,6 +151,21 @@ fn sized(node: &Value, mut style: Style) -> Style {
     if let Some(m) = px(node, "margin") {
         style = style.margin(m);
     }
+    for side in node
+        .get("marginAuto")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
+        style = match side {
+            "left" => style.margin_left_auto(),
+            "right" => style.margin_right_auto(),
+            "top" => style.margin_top_auto(),
+            "bottom" => style.margin_bottom_auto(),
+            _ => style,
+        };
+    }
     // The web side draws a 1-pixel-radius-less border in this colour.
     if let Some(b) = px(node, "border") {
         style = style.border(b).border_color(colour("#8aa4c8"));

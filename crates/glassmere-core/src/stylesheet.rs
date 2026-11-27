@@ -729,11 +729,20 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         // One to four numbers, in the order CSS gives them: all sides;
         // vertical and horizontal; top, horizontal and bottom; top, right,
         // bottom and left.
-        "margin" => style.margin = edges(value)?,
-        "margin-top" => style.margin.top = number(value)?,
-        "margin-right" => style.margin.right = number(value)?,
-        "margin-bottom" => style.margin.bottom = number(value)?,
-        "margin-left" => style.margin.left = number(value)?,
+        // Numbers, or `auto` for the room left over: `margin: 0 auto`.
+        "margin" => margin_sides(style, value)?,
+        "margin-top" => margin_side(style, value, |s| {
+            (&mut s.margin.top, &mut s.margin_auto.top)
+        })?,
+        "margin-right" => margin_side(style, value, |s| {
+            (&mut s.margin.right, &mut s.margin_auto.right)
+        })?,
+        "margin-bottom" => margin_side(style, value, |s| {
+            (&mut s.margin.bottom, &mut s.margin_auto.bottom)
+        })?,
+        "margin-left" => margin_side(style, value, |s| {
+            (&mut s.margin.left, &mut s.margin_auto.left)
+        })?,
         // `border: 2 #475a7a` is a width and, optionally, a colour.
         "border" => {
             let mut parts = value.split_whitespace();
@@ -1227,6 +1236,55 @@ fn border_side(
         .unwrap_or_else(|| crate::Edges::all(style.border));
     *side(&mut sides) = number(value)?;
     style.border_sides = Some(sides);
+    Ok(())
+}
+
+/// One side of the margin: a number, or `auto`.
+fn margin_side(
+    style: &mut Style,
+    value: &str,
+    side: impl Fn(&mut Style) -> (&mut f32, &mut bool),
+) -> Result<(), String> {
+    let (length, auto) = side(style);
+    if value.trim() == "auto" {
+        *auto = true;
+    } else {
+        *length = number(value)?;
+        *auto = false;
+    }
+    Ok(())
+}
+
+/// The `margin` shorthand: one to four values, each a number or `auto`, in
+/// the order CSS gives them.
+fn margin_sides(style: &mut Style, value: &str) -> Result<(), String> {
+    let words: Vec<&str> = value.split_whitespace().collect();
+    let [top, right, bottom, left] = match words.as_slice() {
+        [all] => [*all; 4],
+        [vertical, horizontal] => [*vertical, *horizontal, *vertical, *horizontal],
+        [top, horizontal, bottom] => [*top, *horizontal, *bottom, *horizontal],
+        [top, right, bottom, left] => [*top, *right, *bottom, *left],
+        _ => {
+            return Err(format!(
+                "margin is one to four numbers or `auto`, got `{value}`"
+            ));
+        }
+    };
+    let side = |word: &str| -> Result<(f32, bool), String> {
+        if word == "auto" {
+            Ok((0.0, true))
+        } else {
+            Ok((number(word)?, false))
+        }
+    };
+    let (t, r, b, l) = (side(top)?, side(right)?, side(bottom)?, side(left)?);
+    style.margin = crate::Edges::new(t.0, r.0, b.0, l.0);
+    style.margin_auto = crate::AutoEdges {
+        top: t.1,
+        right: r.1,
+        bottom: b.1,
+        left: l.1,
+    };
     Ok(())
 }
 

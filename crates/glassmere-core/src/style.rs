@@ -279,6 +279,11 @@ pub struct Style {
     /// the box's size and its hit area are what they were, and neighbours
     /// stay this far from it.
     pub margin: Edges,
+    /// The sides whose margin is `auto`: it takes the room left over along
+    /// that side, as `margin: auto` does in CSS, so `margin_left_auto` pushes a
+    /// child to the end of a row and auto margins on both sides of the cross
+    /// axis centre it. The `margin` of a side that is auto is ignored.
+    pub margin_auto: AutoEdges,
     /// The width of a border drawn along the edge of the box, inside it. It
     /// takes room like padding does, so the content starts inside it.
     pub border: f32,
@@ -426,6 +431,7 @@ impl Default for Style {
             padding: 0.0,
             padding_sides: None,
             margin: Edges::ZERO,
+            margin_auto: AutoEdges::NONE,
             border: 0.0,
             border_color: None,
             border_sides: None,
@@ -498,6 +504,44 @@ pub enum Cursor {
     ColResize,
     /// Top and bottom edges, as over a row divider.
     RowResize,
+}
+
+/// Which sides of a box have an automatic margin.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AutoEdges {
+    pub top: bool,
+    pub right: bool,
+    pub bottom: bool,
+    pub left: bool,
+}
+
+impl AutoEdges {
+    pub const NONE: Self = Self {
+        top: false,
+        right: false,
+        bottom: false,
+        left: false,
+    };
+    /// Left and right.
+    pub const HORIZONTAL: Self = Self {
+        top: false,
+        right: true,
+        bottom: false,
+        left: true,
+    };
+    /// Top and bottom.
+    pub const VERTICAL: Self = Self {
+        top: true,
+        right: false,
+        bottom: true,
+        left: false,
+    };
+    pub const ALL: Self = Self {
+        top: true,
+        right: true,
+        bottom: true,
+        left: true,
+    };
 }
 
 /// A length for each side of a box, as a margin takes.
@@ -739,6 +783,44 @@ impl Style {
     /// The same margin on every side.
     pub fn margin(mut self, margin: f32) -> Self {
         self.margin = Edges::all(margin);
+        self
+    }
+    /// An automatic margin on these sides, which take the room left over.
+    pub fn margin_auto_edges(mut self, edges: AutoEdges) -> Self {
+        self.margin_auto = edges;
+        self
+    }
+    /// An automatic margin on the left: in a row, the child goes to the end.
+    pub fn margin_left_auto(mut self) -> Self {
+        self.margin_auto.left = true;
+        self
+    }
+    /// An automatic margin on the right: in a row, what follows goes to the end.
+    pub fn margin_right_auto(mut self) -> Self {
+        self.margin_auto.right = true;
+        self
+    }
+    /// An automatic margin on the top.
+    pub fn margin_top_auto(mut self) -> Self {
+        self.margin_auto.top = true;
+        self
+    }
+    /// An automatic margin on the bottom.
+    pub fn margin_bottom_auto(mut self) -> Self {
+        self.margin_auto.bottom = true;
+        self
+    }
+    /// Automatic margins left and right, as `margin: 0 auto`: the child is
+    /// centred across a column, and in a row it takes the room left over.
+    pub fn margin_x_auto(mut self) -> Self {
+        self.margin_auto.left = true;
+        self.margin_auto.right = true;
+        self
+    }
+    /// Automatic margins on top and bottom: the child is centred across a row.
+    pub fn margin_y_auto(mut self) -> Self {
+        self.margin_auto.top = true;
+        self.margin_auto.bottom = true;
         self
     }
     /// A margin per side.
@@ -1024,11 +1106,20 @@ impl Style {
             } else {
                 Rect::length(self.inset())
             },
-            margin: Rect {
-                left: LengthPercentageAuto::length(self.margin.left),
-                right: LengthPercentageAuto::length(self.margin.right),
-                top: LengthPercentageAuto::length(self.margin.top),
-                bottom: LengthPercentageAuto::length(self.margin.bottom),
+            margin: {
+                let side = |length: f32, auto: bool| {
+                    if auto {
+                        LengthPercentageAuto::auto()
+                    } else {
+                        LengthPercentageAuto::length(length)
+                    }
+                };
+                Rect {
+                    left: side(self.margin.left, self.margin_auto.left),
+                    right: side(self.margin.right, self.margin_auto.right),
+                    top: side(self.margin.top, self.margin_auto.top),
+                    bottom: side(self.margin.bottom, self.margin_auto.bottom),
+                }
             },
             gap: Size {
                 width: gap(self.column_gap),

@@ -40,6 +40,7 @@ function css(node, extra = '') {
   if (node.aspectRatio != null) s.push(`aspect-ratio:${node.aspectRatio}`);
   if (node.alignSelf) s.push(`align-self:${MAP[node.alignSelf]}`);
   if (node.margin != null) s.push(`margin:${px(node.margin)}`);
+  for (const side of node.marginAuto || []) s.push(`margin-${side}:auto`);
   if (Array.isArray(node.border)) s.push(`border-style:solid;border-color:#8aa4c8;border-width:${node.border.map(px).join(' ')}`);
   else if (node.border != null) s.push(`border:${px(node.border)} solid #8aa4c8`);
   if (node.overflow) s.push(`overflow:${node.overflow}`);

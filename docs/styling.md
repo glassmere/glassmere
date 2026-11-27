@@ -185,3 +185,7 @@ It orders the children of one parent. Each parent is a stack of its own, so a ch
 ## Sharing space: grow, shrink and basis
 
 `grow` and `shrink` start from the size a child has along the row (or column): its `width`, or its content. Two children with `grow(1.0)` share what is left after their own sizes, so a child with more in it ends up wider. For equal shares whatever the content, as `flex: 1` gives on the web, use `Style::flex(1.0)` (stylesheet `flex: 1`): it grows by that factor, shrinks, and starts from a `basis` of 0. `Style::basis(Length::Px(120.0))` (stylesheet `basis: 120`) is the size to start from when you want one of your own, and it wins over `width`. Children of `Style::flex(1.0)` and `Style::flex(2.0)` split a row one to two.
+
+## Automatic margins
+
+`Style::margin_left_auto()` (stylesheet `margin-left: auto`) gives a child the room left over on its left, which pushes it to the end of a row: the usual way to put a button at the far end of a toolbar. `margin_x_auto()` (`margin: 0 auto`) centres a child across a column, and in a row it takes the room left over on both sides; `margin_y_auto()` centres across a row. A side that is auto ignores its number, and the other sides keep theirs.
