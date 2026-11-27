@@ -284,6 +284,11 @@ pub struct Style {
     pub border: f32,
     /// The border's colour; `None` takes the theme's `track` colour.
     pub border_color: Option<Color>,
+    /// The border's width per side, for a node that holds other nodes (see
+    /// `padding_sides`); when set it replaces `border` there. A side whose
+    /// width is 0 draws nothing, so one edge can carry a rule. The sides are
+    /// drawn straight, so `radius` rounds the fill but not these.
+    pub border_sides: Option<Edges>,
     pub gap: f32,
     /// Overrides `gap` between rows when set.
     pub row_gap: Option<f32>,
@@ -388,6 +393,7 @@ impl Default for Style {
             margin: Edges::ZERO,
             border: 0.0,
             border_color: None,
+            border_sides: None,
             gap: 12.0,
             row_gap: None,
             column_gap: None,
@@ -683,6 +689,7 @@ impl Style {
         self
     }
     setter!(border_color, border_color, Color, some);
+    setter!(border_sides, border_sides, Edges, some);
 
     /// How far the content starts inside the box: the padding and the
     /// border, which both take room.
@@ -910,17 +917,20 @@ impl Style {
             aspect_ratio: self
                 .aspect_ratio
                 .filter(|ratio| ratio.is_finite() && *ratio > 0.0),
-            padding: match self.padding_sides {
-                Some(sides) => {
-                    let border = self.border.max(0.0);
-                    Rect {
-                        left: LengthPercentage::length(sides.left.max(0.0) + border),
-                        right: LengthPercentage::length(sides.right.max(0.0) + border),
-                        top: LengthPercentage::length(sides.top.max(0.0) + border),
-                        bottom: LengthPercentage::length(sides.bottom.max(0.0) + border),
-                    }
+            padding: if self.padding_sides.is_some() || self.border_sides.is_some() {
+                let padding = self.padding_sides.unwrap_or(Edges::all(self.padding));
+                let border = self.border_sides.unwrap_or(Edges::all(self.border));
+                let side = |padding: f32, border: f32| {
+                    LengthPercentage::length(padding.max(0.0) + border.max(0.0))
+                };
+                Rect {
+                    left: side(padding.left, border.left),
+                    right: side(padding.right, border.right),
+                    top: side(padding.top, border.top),
+                    bottom: side(padding.bottom, border.bottom),
                 }
-                None => Rect::length(self.inset()),
+            } else {
+                Rect::length(self.inset())
             },
             margin: Rect {
                 left: LengthPercentageAuto::length(self.margin.left),
