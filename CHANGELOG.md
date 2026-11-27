@@ -8,7 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- A view that is not run. `App::view_state` is an opt-in promise that the view reads nothing from the application but the value it returns and the sources of its bound labels. A message after which it is equal to what it was when the view last ran no longer runs the view; the default, `None`, runs it after every message as before. `Ui::bound_label` shows a `Signal<String>` or a `Memo<String>` (anything that implements the new `TextSource`) and follows it: when the source changes, the label's text is replaced in the retained tree, measured again if its size changed, repainted and published to the screen reader without the view running. See `examples/bound.rs` and "Declaring nothing" in [state](docs/state.md).
 - `Path::arc_to` and `Path::from_svg_data`. `arc_to` draws an elliptical arc as SVG's `A` command does (radii, rotation, the large and sweep flags), stored as cubic curves; `from_svg_data` reads the `d` attribute of an SVG path, with `M L H V C S Q T A Z` in absolute and relative forms, so an icon needs no image feature and no parser of your own. `Path::current_point` is where the next segment starts, and `SvgPathError` says at which byte the data is wrong. They need no new dependency and work without `std`.
+
+### Changed
+
+- Input that handlers answered in full (a click on a button with `on_click`, an activation from the keyboard or a screen reader) no longer marks the view stale on its own. It runs the view through the messages it sends, as before, unless the application's `view_state` is unchanged. An application that does not implement `view_state` sees no difference. Input that nothing answers still waits for the declaration that reads it.
+
 ## [0.1.8] - 2026-11-23
 
 ### Added
