@@ -83,7 +83,7 @@ pub use panes::{
 pub use platform::{FileKind, FileRequest};
 pub use platform::{Menu, MenuEntry, Notification, Tray};
 pub use property_grid::{PropertyChoice, PropertyGridOptions, PropertyGridState, PropertyMsg};
-pub use reactive::{GraphNode, Memo, Signal, StateKind, Store};
+pub use reactive::{GraphNode, Memo, Signal, StateKind, Store, TextSource};
 pub use rich_document::{
     Block, BlockKind, InlineRun, Mark, Marks, RichDocument, RichMotion, RichPosition,
 };
@@ -91,8 +91,8 @@ pub use rich_editor::{RichEditorOptions, RichEditorResponse, RichOp};
 pub use rich_text::{RichRun, RichText};
 pub use selection::{Indentation, Motion, Selection};
 pub use style::{
-    Align, AutoFlow, Direction, Gradient, GridArea, Justify, Length, Paint, ResolvedText, Shadow,
-    StateStyles, Style, Track, TrackSize,
+    Align, AutoFlow, Direction, FocusRing, Gradient, GridArea, Justify, Length, Paint,
+    ResolvedText, Shadow, StateStyles, Style, Track, TrackSize,
 };
 pub use stylesheet::{StyleSheet, StyleSheetError};
 #[cfg(feature = "std")]
@@ -115,9 +115,10 @@ pub use tree::{
     SwipeDirection, TouchPhase,
 };
 pub use ui::{
-    AreaBuilder, Autocomplete, Button, Calendar, Collapsible, ComboBox, CommandPalette, DatePicker,
-    DockOptions, DockPanel, DragSourceBuilder, DropTargetBuilder, GestureBuilder, Label, Link,
-    Progress, PropertyGrid, RangeSlider, Response, Spinner, Switch, TextInput, Ui, suggest,
+    AreaBuilder, Autocomplete, Button, Calendar, Checkbox, Collapsible, ComboBox, CommandPalette,
+    DatePicker, DockOptions, DockPanel, DragSourceBuilder, DropTargetBuilder, GestureBuilder,
+    Label, Link, Progress, PropertyGrid, Radio, RangeSlider, Response, Spinner, Switch, TabStyle,
+    TextInput, Ui, suggest,
 };
 pub use widget::{CustomWidget, WidgetBuilder, WidgetInput};
 pub use window::{ResizeEdge, WindowCommand, WindowId, WindowInfo, WindowRequest};

@@ -3,7 +3,7 @@
 //! falls from 1 to 0, half inside the outline and half outside it, as the
 //! CPU renderer's coverage does. Strokes become outlines filled the same way.
 
-use glassmere_scene::{Path, Point, Segment};
+use glassmere_scene::{LineCap, LineJoin, Path, Point, Segment};
 use lyon_tessellation::path::Path as LyonPath;
 use lyon_tessellation::path::PathEvent;
 use lyon_tessellation::path::iterator::PathIterator;
@@ -38,21 +38,42 @@ pub(crate) fn fill(path: &Path, pixel: f32, out: &mut Vec<Corner>) {
 pub(crate) fn stroke(path: &Path, width: f32, pixel: f32, out: &mut Vec<Corner>) -> f32 {
     let faint = (width / pixel).min(1.0);
     let half = width.max(pixel) / 2.0;
+    let (cap, join) = (path.cap(), path.join());
+    let step = arc_step(half, pixel);
     let mut rings = Vec::new();
     for (points, closed) in polylines(path, pixel) {
         if points.len() < 2 {
             continue;
         }
         if closed && points.len() >= 3 {
-            rings.push(offset(&points, true, half));
+            rings.push(offset(&points, true, half, join, step));
             let mut back = points;
             back.reverse();
-            rings.push(offset(&back, true, half));
+            rings.push(offset(&back, true, half, join, step));
         } else {
-            let mut ring = offset(&points, false, half);
+            let mut ring = offset(&points, false, half, join, step);
+            let last = points.len() - 1;
+            // Along the way out, then the cap at the far end, then back
+            // along the other side and the cap at the start.
+            end_cap(
+                &mut ring,
+                points[last],
+                left(points[last - 1], points[last]),
+                half,
+                cap,
+                step,
+            );
             let mut back = points;
             back.reverse();
-            ring.extend(offset(&back, false, half));
+            ring.extend(offset(&back, false, half, join, step));
+            end_cap(
+                &mut ring,
+                back[last],
+                left(back[last - 1], back[last]),
+                half,
+                cap,
+                step,
+            );
             rings.push(ring);
         }
     }
@@ -164,7 +185,7 @@ fn left(a: Point, b: Point) -> Point {
 /// The line `half` to the left of a polyline, joined as the CPU renderer
 /// joins: mitred within the limit, bevelled past it, and through the corner
 /// itself on the inside of a turn.
-fn offset(points: &[Point], closed: bool, half: f32) -> Vec<Point> {
+fn offset(points: &[Point], closed: bool, half: f32, join: LineJoin, step: f32) -> Vec<Point> {
     let count = points.len();
     let mut out = Vec::with_capacity(count * 2);
     for index in 0..count {
@@ -214,15 +235,76 @@ fn offset(points: &[Point], closed: bool, half: f32) -> Vec<Point> {
                 y: incoming.y + outgoing.y,
             };
             let squared = (1.0 + cosine) / 2.0;
-            if squared > 0.0 && 1.0 / squared.sqrt() <= MITER_LIMIT {
+            if join == LineJoin::Miter && squared > 0.0 && 1.0 / squared.sqrt() <= MITER_LIMIT {
                 out.push(along(at, sum, half / (1.0 + cosine)));
             } else {
                 out.push(along(at, incoming, half));
+                if join == LineJoin::Round {
+                    // The arc between the two offset points, round the corner.
+                    let turned = (incoming.x * outgoing.y - incoming.y * outgoing.x).atan2(cosine);
+                    let pieces = (turned.abs() / step).ceil().max(1.0) as usize;
+                    for piece in 1..pieces {
+                        let angle = turned * piece as f32 / pieces as f32;
+                        out.push(along(at, rotated(incoming, angle), half));
+                    }
+                }
                 out.push(along(at, outgoing, half));
             }
         }
     }
     out
+}
+
+/// `direction` turned by `angle` radians.
+fn rotated(direction: Point, angle: f32) -> Point {
+    let (sin, cos) = angle.sin_cos();
+    Point {
+        x: direction.x * cos - direction.y * sin,
+        y: direction.x * sin + direction.y * cos,
+    }
+}
+
+/// The angle between the points of an arc of radius `half`, small enough that
+/// the chord strays from the circle by no more than the tolerance.
+fn arc_step(half: f32, pixel: f32) -> f32 {
+    let tolerance = TOLERANCE * pixel;
+    // At most an eighth of a half turn apart: the chords of a cap or a join
+    // that small are well inside the tolerance and close to a true curve.
+    let widest = std::f32::consts::FRAC_PI_8;
+    if half <= tolerance {
+        return widest;
+    }
+    (2.0 * (1.0 - tolerance / half).acos()).clamp(0.05, widest)
+}
+
+/// The points that finish the end of an open line, from the offset point on
+/// the left of `end` to the one on its right. `normal` is the unit normal on
+/// the left of the last segment. A butt cap adds nothing: the ring goes
+/// straight across.
+fn end_cap(ring: &mut Vec<Point>, end: Point, normal: Point, half: f32, cap: LineCap, step: f32) {
+    // Straight on, the way the line was going.
+    let ahead = Point {
+        x: normal.y,
+        y: -normal.x,
+    };
+    match cap {
+        LineCap::Butt => {}
+        LineCap::Square => {
+            ring.push(along(along(end, normal, half), ahead, half));
+            ring.push(along(along(end, normal, -half), ahead, half));
+        }
+        LineCap::Round => {
+            let pieces = (std::f32::consts::PI / step).ceil().max(2.0) as usize;
+            for piece in 1..pieces {
+                let angle = std::f32::consts::PI * piece as f32 / pieces as f32;
+                let (sin, cos) = angle.sin_cos();
+                ring.push(Point {
+                    x: end.x + half * (normal.x * cos + ahead.x * sin),
+                    y: end.y + half * (normal.y * cos + ahead.y * sin),
+                });
+            }
+        }
+    }
 }
 
 /// The edges of rings by the rows of the shape they cross, so that how many
@@ -452,5 +534,83 @@ mod tests {
         // Thinner than a pixel: a pixel wide and fainter.
         let mut corners = Vec::new();
         assert_eq!(stroke(&line, 0.5, 1.0, &mut corners), 0.5);
+    }
+
+    #[test]
+    fn caps_finish_an_open_line_by_their_shape() {
+        let line = || {
+            let mut line = Path::new();
+            line.move_to(Point { x: 0.0, y: 0.0 })
+                .line_to(Point { x: 20.0, y: 0.0 });
+            line
+        };
+        let area = |cap| {
+            let mut corners = Vec::new();
+            stroke(&line().with_cap(cap), 4.0, 1.0, &mut corners);
+            covered(&corners)
+        };
+        // 20 by 4; half the width longer at both ends; a half circle at each.
+        assert!((area(LineCap::Butt) - 80.0).abs() < 0.5);
+        assert!(
+            (area(LineCap::Square) - 96.0).abs() < 0.8,
+            "{}",
+            area(LineCap::Square)
+        );
+        let round = 80.0 + std::f32::consts::PI * 4.0;
+        assert!(
+            (area(LineCap::Round) - round).abs() < 0.8,
+            "{}",
+            area(LineCap::Round)
+        );
+    }
+
+    #[test]
+    fn joins_finish_a_corner_by_their_shape() {
+        let area = |join| {
+            let mut corners = Vec::new();
+            stroke(&square(10.0).with_join(join), 2.0, 1.0, &mut corners);
+            covered(&corners)
+        };
+        // The band between 12 by 12 and 8 by 8; a bevel takes half a square
+        // off each corner and a round join the part of it outside a quarter circle.
+        assert!(
+            (area(LineJoin::Miter) - 80.0).abs() < 1.0,
+            "{}",
+            area(LineJoin::Miter)
+        );
+        assert!(
+            (area(LineJoin::Bevel) - 78.0).abs() < 1.0,
+            "{}",
+            area(LineJoin::Bevel)
+        );
+        let round = 80.0 - 4.0 * (1.0 - std::f32::consts::FRAC_PI_4);
+        assert!(
+            (area(LineJoin::Round) - round).abs() < 1.0,
+            "{}",
+            area(LineJoin::Round)
+        );
+        assert!(area(LineJoin::Bevel) < area(LineJoin::Round));
+        assert!(area(LineJoin::Round) < area(LineJoin::Miter));
+    }
+
+    #[test]
+    fn a_round_join_turns_the_way_the_line_turns() {
+        // The same corner turning left and right is the same shape mirrored.
+        let corner = |up: bool| {
+            let mut path = Path::new();
+            path.move_to(Point { x: 0.0, y: 0.0 })
+                .line_to(Point { x: 20.0, y: 0.0 })
+                .line_to(Point {
+                    x: 20.0,
+                    y: if up { -20.0 } else { 20.0 },
+                });
+            let mut corners = Vec::new();
+            stroke(&path.with_join(LineJoin::Round), 4.0, 1.0, &mut corners);
+            covered(&corners)
+        };
+        assert!((corner(true) - corner(false)).abs() < 0.5);
+        // Two 20 by 4 arms, the corner square once, and a quarter disc past it.
+        let expected = 2.0 * 20.0 * 4.0 - 4.0 + 4.0 * 4.0 / 4.0 * 0.0 + std::f32::consts::PI;
+        assert!((corner(true) - expected).abs() < 1.5, "{}", corner(true));
     }
 }

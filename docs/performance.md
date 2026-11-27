@@ -8,11 +8,13 @@ A frame runs the view, reconciles what it declared against the retained tree, la
 
 | Phase | Runs when | What makes it expensive | What to do about it |
 | --- | --- | --- | --- |
-| Declare | Every frame the host asks for one: input arrived, a message arrived, an animation is running, or the application asked. | The view itself, plus one `Element` per widget it declares. | `Ui::memo` skips a subtree whose state has not changed. Virtualized collections declare only what is visible, whatever the model's size. |
+| Declare | Every frame the host asks for one: input arrived, a message arrived, an animation is running, or the application asked. A wheel step over a plain scroll area is not one: nothing the view reads has moved. | The view itself, plus one `Element` per widget it declares. | `Ui::memo` skips a subtree whose state has not changed. `App::view_state` skips the whole view after a message that changes nothing it reads, and `Ui::bound_label` keeps a label current without it (see [state](state.md#declaring-nothing)). Virtualized collections declare only what is visible, whatever the model's size. |
 | Reconcile | With the declaration. | Matching keys against the retained children, one map lookup per widget. | Stable keys. A key that changes every frame destroys and recreates the node, and its scroll, focus and animation state with it. |
 | Layout | Only when a declaration changed something layout depends on: size, spacing, text that measures differently. | Taffy over the dirty subtree, plus the text measurer. | Do not change sizes for a cosmetic state. A colour change alone never reaches layout. |
 | Paint | When anything changed that is drawn: layout, colour, text, focus, hover. | One chunk per node; unchanged subtrees reuse the chunk they had. | The inspector's Repaints overlay shows what repainted. |
 | Present | When the scene changed. | Uploading changed buffers and drawing; with damage, only the changed pixels are cleared and drawn. | Nothing usually. Damage is automatic. |
+
+A node that its ancestors clip away is not painted, nor is what is inside it, so a long list in a scroll area paints what shows. It is still declared, laid out and kept in the tree: a list of thousands of rows is cheap to scroll and costs a declaration of every row each time the view runs. Past a thousand or so rows, use a virtual list, which declares only the rows in view, or put the rows in a `Ui::memo` so that the view does not declare them again while they are unchanged.
 
 Text shaping happens inside declare, layout and paint rather than beside them, and is timed separately, so a frame that is slow because of text says so.
 

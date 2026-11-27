@@ -8,6 +8,7 @@ use crate::{Component, Context, CustomWidget, NodeId, Style};
 use alloc::borrow::ToOwned;
 use alloc::boxed::Box;
 use alloc::format;
+use alloc::rc::Rc;
 use alloc::string::String;
 #[cfg(feature = "std")]
 use alloc::sync::Arc;
@@ -16,8 +17,8 @@ use core::panic::Location;
 use glassmere_scene::Color;
 mod builders;
 pub use builders::{
-    Button, Calendar, Collapsible, ComboBox, DatePicker, Label, Link, Progress, RangeSlider,
-    Spinner, Switch, TextInput,
+    Button, Calendar, Checkbox, Collapsible, ComboBox, DatePicker, Label, Link, Progress, Radio,
+    RangeSlider, Spinner, Switch, TabStyle, TextInput,
 };
 mod calendar;
 mod collections;
@@ -399,6 +400,10 @@ impl Kind {
     }
 }
 
+/// How a view asks the host's text measurer for the size of some text.
+pub(crate) type MeasureFn<'a> =
+    dyn Fn(&str, &glassmere_scene::TextStyle, Option<f32>) -> glassmere_scene::Size + 'a;
+
 pub(crate) struct Element {
     /// Where among the declaration's handlers this element's is.
     pub handler: Option<u32>,
@@ -520,6 +525,9 @@ impl Response<'_> {
 /// move. Keys are scoped to the parent.
 pub struct Ui<'a, M: 'static = ()> {
     pub(crate) context: &'a Context,
+    /// Measures text with the measurer this frame's layout uses, so that the
+    /// answer is the size the text will have.
+    pub(crate) measure: &'a MeasureFn<'a>,
     pub(crate) parent: Option<NodeId>,
     /// The name [`Ui::keyed`] gave the next element declared, taken by the
     /// first one that asks for a key.
@@ -567,6 +575,44 @@ impl<'a, M: 'static> Ui<'a, M> {
     #[track_caller]
     pub fn theme(&self) -> &crate::Theme {
         self.context.theme()
+    }
+
+    /// How big `text` is in `style`, on one line, as the layout will measure
+    /// it: the same font system the host draws with, so a control you paint
+    /// yourself can size itself to its label with no table of glyph widths.
+    ///
+    /// ```ignore
+    /// let style = ui.text_style();
+    /// let label = ui.measure_text("Save changes", &style);
+    /// let size = Size::new(label.width + 24.0, label.height + 12.0);
+    /// ```
+    ///
+    /// Shaping costs time, so measure once and keep the answer when the text
+    /// does not change.
+    pub fn measure_text(
+        &self,
+        text: &str,
+        style: &glassmere_scene::TextStyle,
+    ) -> glassmere_scene::Size {
+        (self.measure)(text, style, None)
+    }
+
+    /// How big `text` is when it wraps at `width`.
+    pub fn measure_text_wrapped(
+        &self,
+        text: &str,
+        style: &glassmere_scene::TextStyle,
+        width: f32,
+    ) -> glassmere_scene::Size {
+        (self.measure)(text, style, Some(width))
+    }
+
+    /// The text style the theme gives plain text: its size, family, weight
+    /// and direction. Change what you need before measuring.
+    pub fn text_style(&self) -> glassmere_scene::TextStyle {
+        self.context
+            .base_text()
+            .text_style(glassmere_scene::TextWrap::None)
     }
 
     /// Files the operating system asked the application to open, from the
@@ -843,6 +889,29 @@ impl<'a, M: 'static> Ui<'a, M> {
         });
     }
 
+    /// A label that shows a [`Signal`](crate::Signal) or [`Memo`](crate::Memo)
+    /// of text and follows it. When the source changes, the label's text is
+    /// replaced in the tree, measured and repainted without the view running
+    /// again; see [`App::view_state`](crate::App::view_state) for how a view is kept from running
+    /// after a message.
+    ///
+    /// The view reads the text when it declares, so a view that does run
+    /// shows the same text. A label declared this way without the source
+    /// next frame is an ordinary label again.
+    #[track_caller]
+    pub fn bound_label<S: crate::TextSource + Clone + 'static>(&mut self, source: &S) {
+        let version = source.version();
+        let before = self.elements.len();
+        self.label(source.text());
+        // A duplicate key leaves nothing behind to follow the source.
+        if let Some(element) = self.elements.get(before)
+            && element.kind == Kind::Label
+        {
+            self.context
+                .bind_element(element.seq, Rc::new(source.clone()), version);
+        }
+    }
+
     /// A button. `ui.button("Save")` is the whole of it, and
     /// [`Button::new`] carries a style, a disabled state, and with
     /// [`Button::on_click`] the message a click sends.
@@ -875,6 +944,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         let mut handlers = Vec::new();
         let mut inner = Ui {
             context: self.context,
+            measure: self.measure,
             parent: self.parent,
             pending_key: self.pending_key.take(),
             clicks: &mut *self.clicks,
@@ -911,6 +981,7 @@ impl<'a, M: 'static> Ui<'a, M> {
     pub(crate) fn scope(&mut self, parent: Option<NodeId>) -> Ui<'_, M> {
         Ui {
             context: self.context,
+            measure: self.measure,
             parent,
             pending_key: None,
             clicks: self.clicks,
@@ -1622,7 +1693,7 @@ mod tests {
                 };
             },
             |ui| {
-                ui.checkbox_shown("Named", "shown", false);
+                ui.checkbox_shown("Named", "shown", false, None);
             },
         );
         declared_as(

@@ -336,6 +336,25 @@ pub struct Style {
     /// Takes the node out of flow and places its top-left corner at this
     /// offset from the parent's top-left corner.
     pub offset: Option<(f32, f32)>,
+    /// Takes the node out of flow and places its bottom-right corner at this
+    /// distance (right, bottom) from the parent's bottom-right corner, as
+    /// `position: absolute; right; bottom` does, so a badge or a floating
+    /// button stays in the corner whatever size the parent is. With `offset`
+    /// as well the node is pinned on both sides, and a node with no width or
+    /// height stretches between them. The edges are physical: the right edge
+    /// stays on the right in a right-to-left window.
+    pub offset_end: Option<(f32, f32)>,
+    /// Where the node stands among its siblings when they overlap, as
+    /// `z-index` does on a flex item: a higher value is painted later, so over
+    /// the lower ones, and is hit first. Siblings with the same value keep the
+    /// order they were declared in, and 0 is where a node is unless it says
+    /// otherwise. It orders siblings only, so a child never leaves its parent's
+    /// place in the stack; use an overlay (`popover`, `dialog`) to put
+    /// something above the whole window. Layout and the focus order still
+    /// follow the declaration order.
+    pub z_index: i32,
+    /// How the node shows keyboard focus; `None` takes the theme's ring.
+    pub focus_ring: Option<FocusRing>,
     /// Inherited like text properties; `None` takes the parent's direction.
     pub direction: Option<Direction>,
     /// Forces the direction a paragraph starts in, whatever its first strong
@@ -393,8 +412,56 @@ impl Default for Style {
             exit: None,
             animation: None,
             offset: None,
+            offset_end: None,
+            z_index: 0,
+            focus_ring: None,
             direction: None,
         }
+    }
+}
+
+/// The outline a node draws while it has keyboard focus. It is a stroked
+/// rounded rectangle that follows the node's radius and lies inside the
+/// node's box, so it is painted and repainted with the node.
+///
+/// By default a node shows it after keyboard navigation and not after a
+/// click, as a browser does, except in widgets that take typed text, which
+/// always show it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FocusRing {
+    /// Stroke width in logical pixels. Zero or less draws no ring.
+    pub width: f32,
+    /// The ring's colour; `None` takes the theme's `focus` colour.
+    pub color: Option<Color>,
+    /// The gap between the node's edge and the ring, inside the node.
+    pub inset: f32,
+}
+
+impl FocusRing {
+    /// No ring at all.
+    pub const NONE: Self = Self {
+        width: 0.0,
+        color: None,
+        inset: 0.0,
+    };
+
+    /// The theme's colour, flush with the node's edge, `width` thick.
+    pub const fn new(width: f32) -> Self {
+        Self {
+            width,
+            color: None,
+            inset: 0.0,
+        }
+    }
+
+    pub const fn color(mut self, color: Color) -> Self {
+        self.color = Some(color);
+        self
+    }
+
+    pub const fn inset(mut self, inset: f32) -> Self {
+        self.inset = inset;
+        self
     }
 }
 
@@ -586,8 +653,26 @@ impl Style {
     setter!(exit, exit, Effect, some);
     setter!(animation, animation, Animation, some);
     setter!(direction, direction, Direction, some);
+    /// See [`Style::offset_end`].
+    pub fn offset_end(mut self, right: f32, bottom: f32) -> Self {
+        self.offset_end = Some((right, bottom));
+        self
+    }
+    setter!(z_index, z_index, i32);
+
     pub fn offset(mut self, x: f32, y: f32) -> Self {
         self.offset = Some((x, y));
+        self
+    }
+    /// Draws this node's focus ring as `ring` says instead of the theme's.
+    pub fn focus_ring(mut self, ring: FocusRing) -> Self {
+        self.focus_ring = Some(ring);
+        self
+    }
+    /// Draws no focus ring on this node. Whatever the node does when it has
+    /// focus, such as a text caret or a highlighted row, is still drawn.
+    pub fn no_focus_ring(mut self) -> Self {
+        self.focus_ring = Some(FocusRing::NONE);
         self
     }
     setter!(background, background, Color, some);
@@ -792,17 +877,28 @@ impl Style {
                 (None, Some(area)) => placement(area.row, area.row_span),
                 (None, None) => Default::default(),
             },
-            position: if self.offset.is_some() {
+            position: if self.offset.is_some() || self.offset_end.is_some() {
                 Position::Absolute
             } else {
                 Position::Relative
             },
-            inset: self.offset.map_or_else(Rect::auto, |(x, y)| Rect {
-                left: LengthPercentageAuto::length(x),
-                top: LengthPercentageAuto::length(y),
-                right: LengthPercentageAuto::auto(),
-                bottom: LengthPercentageAuto::auto(),
-            }),
+            inset: {
+                let (left, top) = self
+                    .offset
+                    .map_or((None, None), |(x, y)| (Some(x), Some(y)));
+                let (right, bottom) = self
+                    .offset_end
+                    .map_or((None, None), |(x, y)| (Some(x), Some(y)));
+                let side = |value: Option<f32>| {
+                    value.map_or_else(LengthPercentageAuto::auto, LengthPercentageAuto::length)
+                };
+                Rect {
+                    left: side(left),
+                    top: side(top),
+                    right: side(right),
+                    bottom: side(bottom),
+                }
+            },
             ..taffy::Style::default()
         }
     }

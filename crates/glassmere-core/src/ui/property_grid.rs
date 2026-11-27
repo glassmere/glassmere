@@ -388,7 +388,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
                             .context
                             .tr("glassmere-property-set", &[("name", name.into())]);
                         let checkbox = ui.at("$set");
-                        checkbox.checkbox_shown(label, "", set);
+                        checkbox.checkbox_shown(label, "", set, None);
                         checkbox.set_handler(Handler::Message(toggle));
                         ui.enabled(set, |ui| editor(ui, name));
                     });
@@ -460,7 +460,7 @@ impl<M: 'static> PropertyGrid<'_, '_, M> {
                 String::new()
             };
             let checkbox = ui.at("$value");
-            checkbox.checkbox_shown(label, &hint, value && !mixed);
+            checkbox.checkbox_shown(label, &hint, value && !mixed, None);
             checkbox.set_handler(Handler::Message(on(mixed || !value)));
         });
     }
@@ -752,6 +752,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             // A grid that scrolls declares the rows in view and a few beyond,
             // like a virtual list, where the last declaration left the scroll.
             let window = options.height.map(|height| {
+                ui.context.note_scroll_read();
                 let offset = ui
                     .context
                     .child(ui.parent, &WidgetKey::named("$scroll"), Kind::Scroll)

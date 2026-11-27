@@ -9,6 +9,10 @@ use glassmere_scene::{Point, Primitive, Rect, Size};
 use support::{Driven, act, labelled, shows};
 
 const ROOT: Size = Size::new(800.0, 600.0);
+/// For the tests of what a panel keeps: tall enough that its text area stays in
+/// view in every group it is moved to. A scroll area does not paint what it
+/// clips away, and those tests read what the area scrolled to from its lines.
+const TALL: Size = Size::new(800.0, 2000.0);
 
 fn workspace() -> DockLayout {
     DockLayout::new(DockNode::row(
@@ -1240,7 +1244,7 @@ mod retained {
     /// What the panel has: the editor scrolled, a field with two edits and
     /// the keyboard in it.
     fn start() -> (Driven<Retained>, Content) {
-        let mut app = Driven::new(ROOT, retained(workspace()), view);
+        let mut app = Driven::new(TALL, retained(workspace()), view);
         app.frame();
         let nodes = content(&app.context);
         for id in [nodes.scroll, nodes.area] {
@@ -1443,7 +1447,7 @@ mod retained {
 
     #[test]
     fn a_text_area_whose_tab_was_hidden_takes_presses_and_added_cursors_when_shown_again() {
-        let mut app = Driven::new(ROOT, retained(workspace()), view);
+        let mut app = Driven::new(TALL, retained(workspace()), view);
         app.frame();
         let area = content(&app.context).area;
         select(&mut app, "preview");
@@ -1554,7 +1558,7 @@ mod retained {
         // The dock has as many nodes as one that never had the panel.
         let mut without = workspace();
         without.close("editor");
-        let never = Driven::new(ROOT, retained(without), view);
+        let never = Driven::new(TALL, retained(without), view);
         assert!(app.context.node_count() < kept);
         assert_eq!(app.context.node_count(), never.context.node_count());
         // Shown again, it starts afresh.
@@ -1576,7 +1580,7 @@ mod retained {
         app.set_view(|_, _| {});
         app.frame();
         app.frame();
-        let empty = Driven::new(ROOT, retained(workspace()), |_, _| {});
+        let empty = Driven::new(TALL, retained(workspace()), |_, _| {});
         assert_eq!(app.context.node_count(), empty.context.node_count());
     }
 }
