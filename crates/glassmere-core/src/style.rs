@@ -269,6 +269,12 @@ pub struct Style {
     /// width / height; the unspecified dimension follows the other.
     pub aspect_ratio: Option<f32>,
     pub padding: f32,
+    /// Padding per side, for a node that holds other nodes: `row`, `column`,
+    /// `grid`, `container` and the like. When set it replaces `padding` there
+    /// (the border still adds to it). A control that draws its own content, such
+    /// as a label, a button, a field, a scroll view or a list, ignores it and
+    /// keeps the one `padding`, because it lays that content out itself.
+    pub padding_sides: Option<Edges>,
     /// Room kept clear outside the box, per side. It is not part of the box:
     /// the box's size and its hit area are what they were, and neighbours
     /// stay this far from it.
@@ -278,6 +284,11 @@ pub struct Style {
     pub border: f32,
     /// The border's colour; `None` takes the theme's `track` colour.
     pub border_color: Option<Color>,
+    /// The border's width per side, for a node that holds other nodes (see
+    /// `padding_sides`); when set it replaces `border` there. A side whose
+    /// width is 0 draws nothing, so one edge can carry a rule. The sides are
+    /// drawn straight, so `radius` rounds the fill but not these.
+    pub border_sides: Option<Edges>,
     pub gap: f32,
     /// Overrides `gap` between rows when set.
     pub row_gap: Option<f32>,
@@ -293,6 +304,11 @@ pub struct Style {
     pub radius: f32,
     pub align_items: Align,
     pub justify_content: Justify,
+    /// How the lines of a wrapping container (`wrap_items`) share the room
+    /// left across it, as `align-content` does; `None` leaves them as the
+    /// layout engine does. It has an effect only when the container is taller
+    /// (or wider, in a column) than its lines.
+    pub align_content: Option<Justify>,
     pub align_self: Option<Align>,
     /// Grid items only: inline-axis alignment inside the cell.
     pub justify_self: Option<Align>,
@@ -373,9 +389,11 @@ impl Default for Style {
             gradient: None,
             shadow: None,
             padding: 0.0,
+            padding_sides: None,
             margin: Edges::ZERO,
             border: 0.0,
             border_color: None,
+            border_sides: None,
             gap: 12.0,
             row_gap: None,
             column_gap: None,
@@ -385,6 +403,7 @@ impl Default for Style {
             radius: 0.0,
             align_items: Align::Start,
             justify_content: Justify::Start,
+            align_content: None,
             align_self: None,
             justify_self: None,
             columns: Vec::new(),
@@ -653,6 +672,7 @@ impl Style {
         some
     );
     setter!(padding, padding, f32);
+    setter!(padding_sides, padding_sides, Edges, some);
     /// The same margin on every side.
     pub fn margin(mut self, margin: f32) -> Self {
         self.margin = Edges::all(margin);
@@ -669,6 +689,7 @@ impl Style {
         self
     }
     setter!(border_color, border_color, Color, some);
+    setter!(border_sides, border_sides, Edges, some);
 
     /// How far the content starts inside the box: the padding and the
     /// border, which both take room.
@@ -690,6 +711,7 @@ impl Style {
     setter!(radius, radius, f32);
     setter!(align_items, align_items, Align);
     setter!(justify_content, justify_content, Justify);
+    setter!(align_content, align_content, Justify, some);
     setter!(align_self, align_self, Align, some);
     setter!(justify_self, justify_self, Align, some);
     setter!(columns, columns, Vec<Track>);
@@ -895,7 +917,21 @@ impl Style {
             aspect_ratio: self
                 .aspect_ratio
                 .filter(|ratio| ratio.is_finite() && *ratio > 0.0),
-            padding: Rect::length(self.inset()),
+            padding: if self.padding_sides.is_some() || self.border_sides.is_some() {
+                let padding = self.padding_sides.unwrap_or(Edges::all(self.padding));
+                let border = self.border_sides.unwrap_or(Edges::all(self.border));
+                let side = |padding: f32, border: f32| {
+                    LengthPercentage::length(padding.max(0.0) + border.max(0.0))
+                };
+                Rect {
+                    left: side(padding.left, border.left),
+                    right: side(padding.right, border.right),
+                    top: side(padding.top, border.top),
+                    bottom: side(padding.bottom, border.bottom),
+                }
+            } else {
+                Rect::length(self.inset())
+            },
             margin: Rect {
                 left: LengthPercentageAuto::length(self.margin.left),
                 right: LengthPercentageAuto::length(self.margin.right),
@@ -915,6 +951,7 @@ impl Style {
             // `Start` keeps the engine's normal behavior, which lets grid tracks fill.
             justify_content: (self.justify_content != Justify::Start)
                 .then(|| justify(self.justify_content)),
+            align_content: self.align_content.map(justify),
             align_self: self.align_self.map(align),
             justify_self: self.justify_self.map(align),
             flex_wrap: if self.wrap_items {

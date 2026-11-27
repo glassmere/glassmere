@@ -404,6 +404,7 @@ glassmere-core   field StateStyles::disabled: Paint
 glassmere-core   field StateStyles::focused: Paint
 glassmere-core   field StateStyles::hover: Paint
 glassmere-core   field StateStyles::pressed: Paint
+glassmere-core   field Style::align_content: Option<Justify>
 glassmere-core   field Style::align_items: Align
 glassmere-core   field Style::align_self: Option<Align>
 glassmere-core   field Style::animation: Option<Animation>
@@ -419,6 +420,7 @@ glassmere-core   field Style::background_image: Option<crate::BackgroundImage>
 glassmere-core   field Style::base_direction: Option<Direction>
 glassmere-core   field Style::border: f32
 glassmere-core   field Style::border_color: Option<Color>
+glassmere-core   field Style::border_sides: Option<Edges>
 glassmere-core   field Style::column_gap: Option<f32>
 glassmere-core   field Style::columns: Vec<Track>
 glassmere-core   field Style::direction: Option<Direction>
@@ -445,6 +447,7 @@ glassmere-core   field Style::min_width: Length
 glassmere-core   field Style::offset: Option<(f32, f32)>
 glassmere-core   field Style::opacity: f32
 glassmere-core   field Style::padding: f32
+glassmere-core   field Style::padding_sides: Option<Edges>
 glassmere-core   field Style::radius: f32
 glassmere-core   field Style::row_gap: Option<f32>
 glassmere-core   field Style::rows: Vec<Track>
@@ -1022,6 +1025,7 @@ glassmere-core   fn Store::memo<T>(&self, name: impl Into<String>, compute: impl
 glassmere-core   fn Store::new() -> Self
 glassmere-core   fn Store::signal<T>(&self, name: impl Into<String>, value: T) -> Signal<T>
 glassmere-core   fn Store::version(&self) -> u64
+glassmere-core   fn Style::align_content(mut self, value: Justify) -> Self
 glassmere-core   fn Style::align_items(mut self, value: Align) -> Self
 glassmere-core   fn Style::align_self(mut self, value: Align) -> Self
 glassmere-core   fn Style::animation(mut self, value: Animation) -> Self
@@ -1037,6 +1041,7 @@ glassmere-core   fn Style::background_image(mut self, value: crate::BackgroundIm
 glassmere-core   fn Style::base_direction(mut self, direction: Direction) -> Self
 glassmere-core   fn Style::border(mut self, width: f32) -> Self
 glassmere-core   fn Style::border_color(mut self, value: Color) -> Self
+glassmere-core   fn Style::border_sides(mut self, value: Edges) -> Self
 glassmere-core   fn Style::button() -> Self
 glassmere-core   fn Style::column_gap(mut self, value: f32) -> Self
 glassmere-core   fn Style::columns(mut self, value: Vec<Track>) -> Self
@@ -1071,6 +1076,7 @@ glassmere-core   fn Style::on_hover(self, paint: Paint) -> Self
 glassmere-core   fn Style::on_pressed(self, paint: Paint) -> Self
 glassmere-core   fn Style::opacity(mut self, value: f32) -> Self
 glassmere-core   fn Style::padding(mut self, value: f32) -> Self
+glassmere-core   fn Style::padding_sides(mut self, value: Edges) -> Self
 glassmere-core   fn Style::radius(mut self, value: f32) -> Self
 glassmere-core   fn Style::resolve_text(&self, inherited: &ResolvedText) -> ResolvedText
 glassmere-core   fn Style::row_gap(mut self, value: f32) -> Self
