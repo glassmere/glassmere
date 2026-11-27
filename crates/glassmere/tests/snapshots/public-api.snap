@@ -435,6 +435,7 @@ glassmere-core   field Style::max_width: Length
 glassmere-core   field Style::min_height: Length
 glassmere-core   field Style::min_width: Length
 glassmere-core   field Style::offset: Option<(f32, f32)>
+glassmere-core   field Style::offset_end: Option<(f32, f32)>
 glassmere-core   field Style::opacity: f32
 glassmere-core   field Style::padding: f32
 glassmere-core   field Style::radius: f32
@@ -1056,6 +1057,7 @@ glassmere-core   fn Style::min_height(mut self, value: Length) -> Self
 glassmere-core   fn Style::min_width(mut self, value: Length) -> Self
 glassmere-core   fn Style::no_focus_ring(mut self) -> Self
 glassmere-core   fn Style::offset(mut self, x: f32, y: f32) -> Self
+glassmere-core   fn Style::offset_end(mut self, right: f32, bottom: f32) -> Self
 glassmere-core   fn Style::on_disabled(self, paint: Paint) -> Self
 glassmere-core   fn Style::on_focused(self, paint: Paint) -> Self
 glassmere-core   fn Style::on_hover(self, paint: Paint) -> Self
