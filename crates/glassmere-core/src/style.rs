@@ -304,6 +304,12 @@ pub struct Style {
     /// as `flex-wrap: wrap` does, instead of overflowing or shrinking. `gap`
     /// (or `row_gap` and `column_gap`) is the room between the lines too.
     pub wrap_items: bool,
+    /// Lays the children of a row or a column out from the end instead of the
+    /// start, as `flex-direction: row-reverse` and `column-reverse` do: the
+    /// first child is at the end of the main axis, and `justify_content`'s
+    /// start is that end. Only the layout is reversed; the focus order and the
+    /// order the children are declared in stay what they were.
+    pub reverse: bool,
     /// The size along the main axis that `grow` and `shrink` start from, as
     /// `flex-basis` is in CSS. `Auto` starts from the width (or height) and,
     /// without one, from the content, so two children with `grow` 1 share
@@ -312,12 +318,6 @@ pub struct Style {
     /// whatever is in them. Wins over `width` (`height` in a column) for the
     /// size it starts from.
     pub basis: Length,
-    /// Lays the children of a row or a column out from the end instead of the
-    /// start, as `flex-direction: row-reverse` and `column-reverse` do: the
-    /// first child is at the end of the main axis, and `justify_content`'s
-    /// start is that end. Only the layout is reversed; the focus order and the
-    /// order the children are declared in stay what they were.
-    pub reverse: bool,
     /// Flex shrink factor; children do not shrink unless this is set.
     pub shrink: f32,
     pub radius: f32,
@@ -386,6 +386,18 @@ pub struct Style {
     /// ancestor that clips, and a scroll view, a list or a popup always clips.
     pub unclipped: bool,
     pub wrap: TextWrap,
+    /// A rule drawn through a single line of text, in its colour:
+    /// `Underline` under it, `LineThrough` through the middle, as
+    /// `text-decoration` does. A link is underlined whatever this says. It
+    /// applies to text that does not wrap (`wrap` is `None`).
+    pub text_decoration: TextDecoration,
+    /// What a single line of text that is wider than its box shows of the
+    /// rest: `Clip` cuts it at the edge, `Ellipsis` ends it with `…` where the
+    /// next character would not fit, as `text-overflow: ellipsis` does. It
+    /// applies to a label, a button and the like that do not wrap
+    /// (`wrap` is `None`), and the text the screen reader and a selection see is
+    /// still the whole of it.
+    pub text_overflow: TextOverflow,
     pub states: Option<Box<StateStyles>>,
     /// Group opacity of the node and its subtree, 0..=1.
     pub opacity: f32,
@@ -405,8 +417,21 @@ pub struct Style {
     /// Takes the node out of flow and places its top-left corner at this
     /// offset from the parent's top-left corner.
     pub offset: Option<(f32, f32)>,
-    /// How the node shows keyboard focus; `None` takes the theme's ring.
-    pub focus_ring: Option<FocusRing>,
+    /// Takes the pointer wherever the node is, as a box does in a browser: a
+    /// click or a hover on it does not reach what lies under it. A container
+    /// is otherwise transparent to the pointer, so a card, a panel or a
+    /// floating toolbar drawn over a button leaves the button clickable through
+    /// it; with this set it shields what is under it. What is inside the node
+    /// still takes the pointer first.
+    pub blocks_pointer: bool,
+    /// Takes the node out of flow and places its bottom-right corner at this
+    /// distance (right, bottom) from the parent's bottom-right corner, as
+    /// `position: absolute; right; bottom` does, so a badge or a floating
+    /// button stays in the corner whatever size the parent is. With `offset`
+    /// as well the node is pinned on both sides, and a node with no width or
+    /// height stretches between them. The edges are physical: the right edge
+    /// stays on the right in a right-to-left window.
+    pub offset_end: Option<(f32, f32)>,
     /// Whether the node can take focus, by a click or by Tab. `false` keeps a
     /// widget that is focusable by kind, a divider or a scroll container,
     /// out of the focus order, and a click on it leaves focus where it was.
@@ -426,21 +451,8 @@ pub struct Style {
     /// something above the whole window. Layout and the focus order still
     /// follow the declaration order.
     pub z_index: i32,
-    /// Takes the node out of flow and places its bottom-right corner at this
-    /// distance (right, bottom) from the parent's bottom-right corner, as
-    /// `position: absolute; right; bottom` does, so a badge or a floating
-    /// button stays in the corner whatever size the parent is. With `offset`
-    /// as well the node is pinned on both sides, and a node with no width or
-    /// height stretches between them. The edges are physical: the right edge
-    /// stays on the right in a right-to-left window.
-    pub offset_end: Option<(f32, f32)>,
-    /// Takes the pointer wherever the node is, as a box does in a browser: a
-    /// click or a hover on it does not reach what lies under it. A container
-    /// is otherwise transparent to the pointer, so a card, a panel or a
-    /// floating toolbar drawn over a button leaves the button clickable through
-    /// it; with this set it shields what is under it. What is inside the node
-    /// still takes the pointer first.
-    pub blocks_pointer: bool,
+    /// How the node shows keyboard focus; `None` takes the theme's ring.
+    pub focus_ring: Option<FocusRing>,
     /// Inherited like text properties; `None` takes the parent's direction.
     pub direction: Option<Direction>,
     /// Forces the direction a paragraph starts in, whatever its first strong
@@ -474,8 +486,8 @@ impl Default for Style {
             column_gap: None,
             grow: 0.0,
             wrap_items: false,
-            basis: Length::Auto,
             reverse: false,
+            basis: Length::Auto,
             shrink: 0.0,
             radius: 0.0,
             align_items: Align::Start,
@@ -504,6 +516,8 @@ impl Default for Style {
             hidden: false,
             unclipped: false,
             wrap: TextWrap::None,
+            text_decoration: TextDecoration::None,
+            text_overflow: TextOverflow::Clip,
             states: None,
             opacity: 1.0,
             transform: Transform::IDENTITY,
@@ -513,12 +527,12 @@ impl Default for Style {
             exit: None,
             animation: None,
             offset: None,
+            blocks_pointer: false,
+            offset_end: None,
+            z_index: 0,
             focus_ring: None,
             focusable: true,
             cursor: None,
-            z_index: 0,
-            offset_end: None,
-            blocks_pointer: false,
             direction: None,
         }
     }
@@ -626,6 +640,27 @@ impl Edges {
             left,
         }
     }
+}
+
+/// A rule drawn on a line of text.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum TextDecoration {
+    #[default]
+    None,
+    /// Under the text.
+    Underline,
+    /// Through the middle of the text.
+    LineThrough,
+}
+
+/// What a line of text that is wider than its box shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum TextOverflow {
+    /// Cut at the edge of the box.
+    #[default]
+    Clip,
+    /// Ended with an ellipsis, `…`, where the next character would not fit.
+    Ellipsis,
 }
 
 /// The outline a node draws while it has keyboard focus. It is a stroked
@@ -797,6 +832,27 @@ impl Style {
         self
     }
 
+    /// A container that lays its children out as `display: flex` does in CSS,
+    /// for someone who knows how that behaves: no gap between children
+    /// (`gap` 0, where the default is 12), children that shrink when they do
+    /// not fit (`shrink` 1, where the default lets them overflow), and
+    /// children that stretch across the other axis (`align_items` stretch,
+    /// where the default keeps their own size). Everything else is the default,
+    /// and is set with the same methods:
+    /// `Style::web().width(Length::Px(200.0)).padding(8.0)`.
+    ///
+    /// The `shrink` is the container's own, as a child of a flex container
+    /// has `flex-shrink: 1` in CSS: give it to each child that should give way
+    /// (`child.shrink(1.0)`), or build the children from `Style::web()` too.
+    pub fn web() -> Self {
+        Self {
+            gap: 0.0,
+            shrink: 1.0,
+            align_items: Align::Stretch,
+            ..Self::default()
+        }
+    }
+
     /// Themed control surface with the default control padding and radius.
     pub fn button() -> Self {
         Self {
@@ -893,6 +949,7 @@ impl Style {
     setter!(column_gap, column_gap, f32, some);
     setter!(grow, grow, f32);
     setter!(wrap_items, wrap_items, bool);
+    setter!(reverse, reverse, bool);
     setter!(basis, basis, Length);
     /// `flex: factor` as CSS has it: grows by `factor`, shrinks, and starts
     /// from a basis of 0, so that children sharing a row each take a share of
@@ -903,7 +960,6 @@ impl Style {
         self.basis = Length::Px(0.0);
         self
     }
-    setter!(reverse, reverse, bool);
     setter!(shrink, shrink, f32);
     setter!(radius, radius, f32);
     setter!(align_items, align_items, Align);
@@ -928,6 +984,8 @@ impl Style {
     setter!(area, area, GridArea, some);
     setter!(area_name, area_name, String, some);
     setter!(wrap, wrap, TextWrap);
+    setter!(text_decoration, text_decoration, TextDecoration);
+    setter!(text_overflow, text_overflow, TextOverflow);
     setter!(opacity, opacity, f32);
     setter!(transform, transform, Transform);
     setter!(transition, transition, Transition, some);
@@ -936,13 +994,13 @@ impl Style {
     setter!(exit, exit, Effect, some);
     setter!(animation, animation, Animation, some);
     setter!(direction, direction, Direction, some);
-    setter!(z_index, z_index, i32);
+    setter!(blocks_pointer, blocks_pointer, bool);
     /// See [`Style::offset_end`].
     pub fn offset_end(mut self, right: f32, bottom: f32) -> Self {
         self.offset_end = Some((right, bottom));
         self
     }
-    setter!(blocks_pointer, blocks_pointer, bool);
+    setter!(z_index, z_index, i32);
 
     pub fn offset(mut self, x: f32, y: f32) -> Self {
         self.offset = Some((x, y));

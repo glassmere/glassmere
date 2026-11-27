@@ -562,7 +562,30 @@ impl Context {
             .filter(|parent| self.nodes[parent].kind == Kind::TabList)
             .map(|_| node.clip)
             .filter(|clip| *clip != node.bounds);
-        if node.hidden || strip_clip.is_some_and(|clip| clip.width <= 0.0 || clip.height <= 0.0) {
+        // Nothing of a node shows where its clip is empty, and every node
+        // clips its children to its own box, so nothing of what is inside it
+        // does either: a row scrolled out of a long list is not painted. What
+        // can draw outside its clip is kept: a popup, which is clipped to the
+        // window, a node that is animating or has a transform, which can move
+        // into view, and a shadow, which reaches past its box.
+        let culled = {
+            let node = &self.nodes[&id];
+            (node.clip.width <= 0.0 || node.clip.height <= 0.0)
+                // Clipped away by an ancestor, not empty of its own accord.
+                && node.bounds.width > 0.0
+                && node.bounds.height > 0.0
+                && !matches!(node.kind, Kind::Popup | Kind::Popover)
+                && node.anim.is_none()
+                && node.style.transform == crate::animation::Transform::IDENTITY
+                && node.style.shadow.is_none()
+                && node.style.opacity >= 1.0
+                // What is inside an unclipped node can hang over its box into view.
+                && !node.unclipped()
+        };
+        if culled
+            || node.hidden
+            || strip_clip.is_some_and(|clip| clip.width <= 0.0 || clip.height <= 0.0)
+        {
             let chunk = PaintChunk::new(Vec::new(), 0, Vec::new()).put_in(spare);
             self.nodes.get_mut(&id).unwrap().paint_cache = Some(chunk.clone());
             return chunk;
@@ -939,14 +962,25 @@ impl Context {
     /// when there is one.
     fn paint_text(&self, node: &Node, foreground: Color, spare: Option<String>, scene: &mut Scene) {
         let (rect, measured, width) = self.text_place(node);
-        if node.kind == Kind::Link
+        let decoration = if node.kind == Kind::Link {
+            crate::TextDecoration::Underline
+        } else {
+            node.style.text_decoration
+        };
+        if decoration != crate::TextDecoration::None
+            && node.style.wrap == TextWrap::None
             && let Some(size) = measured.filter(|size| size.width > 0.0)
         {
-            // Under the text, as a rich text link's rule is under its run.
+            // Under the text, as a rich text link's rule is under its run, or
+            // through the middle of it.
+            let y = match decoration {
+                crate::TextDecoration::LineThrough => rect.y + size.height / 2.0 - 0.5,
+                _ => rect.y + size.height - 3.0,
+            };
             scene.primitives.push(Primitive::Quad {
                 rect: Rect {
                     x: rect.x,
-                    y: rect.y + size.height - 3.0,
+                    y,
                     width: width.min(rect.width),
                     height: 1.0,
                 },
@@ -980,7 +1014,7 @@ impl Context {
             })
         {
             let mut text = spare.unwrap_or_default();
-            refill(&mut text, &node.text);
+            refill(&mut text, node.shown_text());
             scene.primitives.push(Primitive::Text {
                 rect,
                 text,
@@ -989,7 +1023,7 @@ impl Context {
             });
         } else {
             let mut text = spare.unwrap_or_default();
-            refill(&mut text, &node.text);
+            refill(&mut text, node.shown_text());
             scene.primitives.push(Primitive::StyledText {
                 rect,
                 text,

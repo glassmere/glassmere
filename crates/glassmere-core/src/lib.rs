@@ -92,7 +92,8 @@ pub use rich_text::{RichRun, RichText};
 pub use selection::{Indentation, Motion, Selection};
 pub use style::{
     Align, AutoEdges, AutoFlow, Cursor, Direction, Edges, FocusRing, Gradient, GridArea, Justify,
-    Length, Paint, ResolvedText, Shadow, StateStyles, Style, Track, TrackSize,
+    Length, Paint, ResolvedText, Shadow, StateStyles, Style, TextDecoration, TextOverflow, Track,
+    TrackSize,
 };
 pub use stylesheet::{StyleSheet, StyleSheetError};
 #[cfg(feature = "std")]
@@ -115,9 +116,10 @@ pub use tree::{
     SwipeDirection, TouchPhase,
 };
 pub use ui::{
-    AreaBuilder, Autocomplete, Button, Calendar, Collapsible, ComboBox, CommandPalette, DatePicker,
-    DockOptions, DockPanel, DragSourceBuilder, DropTargetBuilder, GestureBuilder, Label, Link,
-    Progress, PropertyGrid, RangeSlider, Response, Spinner, Switch, TextInput, Ui, suggest,
+    AreaBuilder, Autocomplete, Button, Calendar, Checkbox, Collapsible, ComboBox, CommandPalette,
+    DatePicker, DockOptions, DockPanel, DragSourceBuilder, DropTargetBuilder, GestureBuilder,
+    Label, Link, Progress, PropertyGrid, Radio, RangeSlider, Response, Spinner, Switch, TabStyle,
+    TextInput, Ui, WindowButtons, suggest,
 };
 pub use widget::{CustomWidget, WidgetBuilder, WidgetInput};
 pub use window::{ResizeEdge, WindowCommand, WindowId, WindowInfo, WindowRequest};

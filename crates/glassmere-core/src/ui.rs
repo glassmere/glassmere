@@ -17,8 +17,8 @@ use core::panic::Location;
 use glassmere_scene::Color;
 mod builders;
 pub use builders::{
-    Button, Calendar, Collapsible, ComboBox, DatePicker, Label, Link, Progress, RangeSlider,
-    Spinner, Switch, TextInput,
+    Button, Calendar, Checkbox, Collapsible, ComboBox, DatePicker, Label, Link, Progress, Radio,
+    RangeSlider, Spinner, Switch, TabStyle, TextInput,
 };
 mod calendar;
 mod collections;
@@ -42,6 +42,7 @@ mod text_area;
 mod toasts;
 mod window;
 pub(crate) use toasts::ToastOutbox;
+pub use window::WindowButtons;
 
 pub use dock::{DockOptions, DockPanel};
 
@@ -1712,7 +1713,7 @@ mod tests {
                 };
             },
             |ui| {
-                ui.checkbox_shown("Named", "shown", false);
+                ui.checkbox_shown("Named", "shown", false, None);
             },
         );
         declared_as(

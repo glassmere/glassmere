@@ -449,6 +449,12 @@ pub struct AppOptions {
     /// to be moved or resized but the one the application draws.
     pub decorations: bool,
     pub resizable: bool,
+    /// The smallest the window can be dragged to, in logical pixels, for a
+    /// layout that does not fit in less. `None` leaves it to the system. Windows
+    /// the application opens inherit it, as they do the rest of these options.
+    pub min_size: Option<Size>,
+    /// The largest the window can be dragged to, in logical pixels.
+    pub max_size: Option<Size>,
     /// The name the desktop knows the application by: the Wayland `app_id`
     /// and the X11 `WM_CLASS` on Linux, which a `<app_id>.desktop` file is
     /// matched against for the taskbar icon and grouping, and the
@@ -498,6 +504,8 @@ impl Default for AppOptions {
             direction: DirectionChoice::Auto,
             decorations: true,
             resizable: true,
+            min_size: None,
+            max_size: None,
             app_id: None,
             icon: None,
         }

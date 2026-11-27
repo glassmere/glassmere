@@ -14,7 +14,7 @@ fn frame(context: &mut Context, hidden: bool) {
                 ui.keyed("before", |ui| ui.button("Before"));
                 ui.keyed("group", |ui| {
                     ui.column(
-                        Style::default().hidden(hidden).height(Length::Px(50.0)),
+                        Style::default().hidden(hidden).height(Length::Px(120.0)),
                         |ui| {
                             ui.keyed("inner", |ui| ui.button("Inner"));
                             ui.keyed("note", |ui| ui.label(Label::new("Secret")));

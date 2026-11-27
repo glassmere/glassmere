@@ -4,7 +4,7 @@ What the host (`glassmere-winit`, re-exported by `glassmere`) provides around th
 
 ## Starting
 
-`run(options, app)` runs an `App`; `run_with(options, state, view)` is the shorter form whose message is an `Action<S>`. `AppOptions` carries `title`, `size`, `background`, `theme`, `stylesheet`, `direction`, `caret_movement`, `reduced_motion`, `decorations`, `resizable`, `placement`, `devtools`, `graphics`, `gpu` and `frame_limit`. `pressable_cursor` is the pointer over a button, a check box, a tab or a link: a hand by default, and `Cursor::Default` is the arrow a browser shows there. The defaults are a 900 by 650 window that follows the system theme with the inspector available.
+`run(options, app)` runs an `App`; `run_with(options, state, view)` is the shorter form whose message is an `Action<S>`. `AppOptions` carries `title`, `size`, `background`, `theme`, `stylesheet`, `direction`, `caret_movement`, `reduced_motion`, `decorations`, `resizable`, `min_size`, `max_size`, `placement`, `devtools`, `graphics`, `gpu` and `frame_limit`. `min_size` and `max_size` bound how far the window can be dragged, in logical pixels, and are inherited by the windows the application opens. `pressable_cursor` is the pointer over a button, a check box, a tab or a link: a hand by default, and `Cursor::Default` is the arrow a browser shows there. The defaults are a 900 by 650 window that follows the system theme with the inspector available.
 
 `App::save_state` and `glassmere::hot::saved_state` carry a string across a restart under the development runner. Outside it they do nothing.
 
@@ -18,7 +18,7 @@ What the host (`glassmere-winit`, re-exported by `glassmere`) provides around th
 
 ### Title bar
 
-`AppOptions::decorations = false` removes the system frame. `Ui::title_bar` is a strip that moves the window and maximizes on a double press, `Ui::window_buttons` draws minimize, maximize and close, and `Ui::resize_frame(thickness)` places the resize grips. `Ui::window()` reports whether the window is maximized or focused, of the last frame. `decorations` is read when the window opens. Full screen is not a window command.
+`AppOptions::decorations = false` removes the system frame. `Ui::title_bar` is a strip that moves the window and maximizes on a double press, `Ui::window_buttons` draws minimize, maximize and close, and `Ui::resize_frame(thickness)` places the resize grips. `Ui::window()` reports whether the window is maximized or focused, of the last frame. `decorations` is read when the window opens. `Ui::window_buttons_with(WindowButtons::new().width(52.0).height(Length::Percent(1.0)), on_command)` draws the same buttons at a size of your own, for a title bar taller than the system's 30 px, with each button as tall as the bar (the title bar needs a height of its own). Full screen is not a window command.
 
 On Windows 11 the `glassmere-win32` crate answers the system's hit test for the maximize button so the snap layout flyout appears. It is the only crate with unsafe code and is a few lines of window procedure; on Windows 10 it does nothing. The system takes the press, so the maximize button shows hover but no pressed state.
 

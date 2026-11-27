@@ -62,7 +62,10 @@ use crate::collections::HashMap;
 #[cfg(not(feature = "std"))]
 use crate::float::FloatExt as _;
 use crate::style::template_areas;
-use crate::{Align, AutoFlow, GridArea, Justify, Length, Paint, Style, Theme, Track, TrackSize};
+use crate::{
+    Align, AutoFlow, GridArea, Justify, Length, Paint, Style, TextDecoration, TextOverflow, Theme,
+    Track, TrackSize,
+};
 use alloc::borrow::ToOwned;
 use alloc::boxed::Box;
 use alloc::format;
@@ -714,6 +717,12 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         "exit-opacity" | "exit-translate" | "exit-scale" | "exit-rotate" | "exit-transition" => {
             effect(&mut style.exit, &key[5..], value)?;
         }
+        "z-index" => {
+            style.z_index = value
+                .trim()
+                .parse::<i32>()
+                .map_err(|_| format!("z-index is a whole number, got `{value}`"))?;
+        }
         "padding" => {
             let sides = edges(value)?;
             if value.split_whitespace().count() == 1 {
@@ -782,13 +791,12 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
                 _ => return Err(format!("wrap-items is `true` or `false`, got `{value}`")),
             };
         }
-        "basis" => style.basis = length(value)?,
-        // `flex: 1`: grow by that factor, shrink, and start from nothing.
-        "flex" => {
-            let factor = number(value)?;
-            style.grow = factor;
-            style.shrink = 1.0;
-            style.basis = Length::Px(0.0);
+        "reverse" => {
+            style.reverse = match value {
+                "true" => true,
+                "false" => false,
+                _ => return Err(format!("reverse is `true` or `false`, got `{value}`")),
+            };
         }
         "blocks-pointer" => {
             style.blocks_pointer = match value {
@@ -801,12 +809,13 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
                 }
             };
         }
-        "reverse" => {
-            style.reverse = match value {
-                "true" => true,
-                "false" => false,
-                _ => return Err(format!("reverse is `true` or `false`, got `{value}`")),
-            };
+        "basis" => style.basis = length(value)?,
+        // `flex: 1`: grow by that factor, shrink, and start from nothing.
+        "flex" => {
+            let factor = number(value)?;
+            style.grow = factor;
+            style.shrink = 1.0;
+            style.basis = Length::Px(0.0);
         }
         "radius" => style.radius = number(value)?,
         "background" => style.background = Some(color(value)?),
@@ -936,6 +945,29 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
                 "false" => false,
                 _ => return Err(format!("italic must be true or false, got `{value}`")),
             })
+        }
+        "text-decoration" => {
+            style.text_decoration = match value {
+                "none" => TextDecoration::None,
+                "underline" => TextDecoration::Underline,
+                "line-through" => TextDecoration::LineThrough,
+                _ => {
+                    return Err(format!(
+                        "text-decoration is `none`, `underline` or `line-through`, got `{value}`"
+                    ));
+                }
+            };
+        }
+        "text-overflow" => {
+            style.text_overflow = match value {
+                "clip" => TextOverflow::Clip,
+                "ellipsis" => TextOverflow::Ellipsis,
+                _ => {
+                    return Err(format!(
+                        "text-overflow is `clip` or `ellipsis`, got `{value}`"
+                    ));
+                }
+            };
         }
         "text-align" => {
             style.text_align = Some(match value {
@@ -1299,6 +1331,22 @@ fn border_side(
     Ok(())
 }
 
+fn edges(value: &str) -> Result<crate::Edges, String> {
+    let numbers = value
+        .split_whitespace()
+        .map(number)
+        .collect::<Result<Vec<f32>, String>>()?;
+    match numbers.as_slice() {
+        [all] => Ok(crate::Edges::all(*all)),
+        [vertical, horizontal] => Ok(crate::Edges::xy(*horizontal, *vertical)),
+        [top, horizontal, bottom] => Ok(crate::Edges::new(*top, *horizontal, *bottom, *horizontal)),
+        [top, right, bottom, left] => Ok(crate::Edges::new(*top, *right, *bottom, *left)),
+        _ => Err(format!(
+            "margin and padding are one to four numbers, got `{value}`"
+        )),
+    }
+}
+
 /// One side of the margin: a number, or `auto`.
 fn margin_side(
     style: &mut Style,
@@ -1346,22 +1394,6 @@ fn margin_sides(style: &mut Style, value: &str) -> Result<(), String> {
         left: l.1,
     };
     Ok(())
-}
-
-fn edges(value: &str) -> Result<crate::Edges, String> {
-    let numbers = value
-        .split_whitespace()
-        .map(number)
-        .collect::<Result<Vec<f32>, String>>()?;
-    match numbers.as_slice() {
-        [all] => Ok(crate::Edges::all(*all)),
-        [vertical, horizontal] => Ok(crate::Edges::xy(*horizontal, *vertical)),
-        [top, horizontal, bottom] => Ok(crate::Edges::new(*top, *horizontal, *bottom, *horizontal)),
-        [top, right, bottom, left] => Ok(crate::Edges::new(*top, *right, *bottom, *left)),
-        _ => Err(format!(
-            "margin and padding are one to four numbers, got `{value}`"
-        )),
-    }
 }
 
 fn color(value: &str) -> Result<Color, String> {
