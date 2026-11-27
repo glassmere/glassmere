@@ -48,7 +48,8 @@
 //! background-slice (nine-slice insets in image pixels: one number, `vertical
 //! horizontal`, or `top right bottom left`; `none`), background-tint
 //! (`foreground`, a colour, `none`), font-size, font-weight,
-//! font-family (`sans`, `serif`, `monospace`, `"Name"`), italic, wrap (`word`,
+//! font-family (`sans`, `serif`, `monospace`, `"Name"`), italic, text-align (`start`,
+//! `center`, `end`, `justify`), wrap (`word`,
 //! `none`), direction (`ltr`, `rtl`), opacity, translate (`x y`), scale (`factor` or `x y`), rotate
 //! (clockwise degrees), transition and layout-transition (`150ms ease-out
 //! [delay]`, easings `linear`, `ease-in`, `ease-out`, `ease-in-out`,
@@ -68,7 +69,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::time::Duration;
-use glassmere_scene::{Color, FontFamily, TextWrap};
+use glassmere_scene::{Color, FontFamily, TextAlign, TextWrap};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StyleSheet {
@@ -837,6 +838,19 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
                 "true" => true,
                 "false" => false,
                 _ => return Err(format!("italic must be true or false, got `{value}`")),
+            })
+        }
+        "text-align" => {
+            style.text_align = Some(match value {
+                "start" => TextAlign::Start,
+                "center" => TextAlign::Center,
+                "end" => TextAlign::End,
+                "justify" => TextAlign::Justify,
+                _ => {
+                    return Err(format!(
+                        "text-align is `start`, `center`, `end` or `justify`, got `{value}`"
+                    ));
+                }
             })
         }
         "wrap" => {

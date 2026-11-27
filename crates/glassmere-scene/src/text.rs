@@ -23,6 +23,21 @@ pub enum TextWrap {
     Word,
 }
 
+/// Where the lines of a wrapped block sit between its edges. It needs a width
+/// to align within, so a block that is not wrapped is not affected.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum TextAlign {
+    /// The edge the text starts at: left for left-to-right text, right for
+    /// right-to-left. What a block is without an opinion.
+    #[default]
+    Start,
+    Center,
+    /// The edge the text ends at.
+    End,
+    /// Both edges, by stretching the spaces of every line but the last.
+    Justify,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextStyle {
     pub font_size: f32,
@@ -39,6 +54,8 @@ pub struct TextStyle {
     /// right, `None` to let the text decide. Every line of the text takes it;
     /// the geometry still indexes the text as it was given.
     pub base: Option<bool>,
+    /// Where wrapped lines sit between the edges of the block.
+    pub align: TextAlign,
 }
 
 impl Default for TextStyle {
@@ -51,6 +68,7 @@ impl Default for TextStyle {
             wrap: TextWrap::None,
             rtl: false,
             base: None,
+            align: TextAlign::Start,
         }
     }
 }

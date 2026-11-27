@@ -840,12 +840,23 @@ impl Context {
         let width = measured.map_or(node.label_width, |size| size.width - indicator);
         if width > 0.0 && node.style.wrap == TextWrap::None {
             let spare = (rect.width - width).max(0.0);
-            rect.x += match node.style.justify_content {
-                crate::Justify::Center => spare / 2.0,
-                crate::Justify::End => spare,
-                // Right-to-left text without an opinion goes to the end.
-                _ if node.resolved.rtl() => spare,
-                _ => 0.0,
+            let rtl = node.resolved.rtl();
+            rect.x += match node.resolved.align {
+                // `text_align` is where the line sits when it is set; it
+                // follows the reading direction, as the lines of a
+                // wrapped block do.
+                TextAlign::Center => spare / 2.0,
+                TextAlign::End if rtl => 0.0,
+                TextAlign::End => spare,
+                TextAlign::Justify if rtl => spare,
+                TextAlign::Justify => 0.0,
+                TextAlign::Start => match node.style.justify_content {
+                    crate::Justify::Center => spare / 2.0,
+                    crate::Justify::End => spare,
+                    // Right-to-left text without an opinion goes to the end.
+                    _ if rtl => spare,
+                    _ => 0.0,
+                },
             };
         }
         if let Some(size) = measured.filter(|size| size.height > rect.height)

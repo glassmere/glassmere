@@ -332,6 +332,7 @@ glassmere-core   field PropertyGridOptions::style: Style
 glassmere-core   field PropertyGridState::collapsed: HashSet<String>
 glassmere-core   field PropertyGridState::filter: String
 glassmere-core   field PropertyGridState::name_share: f32
+glassmere-core   field ResolvedText::align: TextAlign
 glassmere-core   field ResolvedText::base_direction: Option<Direction>
 glassmere-core   field ResolvedText::direction: Direction
 glassmere-core   field ResolvedText::font_family: FontFamily
@@ -432,6 +433,7 @@ glassmere-core   field Style::rows: Vec<Track>
 glassmere-core   field Style::shadow: Option<Box<Shadow>>
 glassmere-core   field Style::shrink: f32
 glassmere-core   field Style::states: Option<Box<StateStyles>>
+glassmere-core   field Style::text_align: Option<TextAlign>
 glassmere-core   field Style::transform: Transform
 glassmere-core   field Style::transition: Option<Transition>
 glassmere-core   field Style::width: Length
@@ -1050,6 +1052,7 @@ glassmere-core   fn Style::rows(mut self, value: Vec<Track>) -> Self
 glassmere-core   fn Style::set_property(&mut self, name: &str, value: &str) -> Result<(), String>
 glassmere-core   fn Style::shadow(mut self, shadow: Shadow) -> Self
 glassmere-core   fn Style::shrink(mut self, value: f32) -> Self
+glassmere-core   fn Style::text_align(mut self, value: TextAlign) -> Self
 glassmere-core   fn Style::transform(mut self, value: Transform) -> Self
 glassmere-core   fn Style::transition(mut self, value: Transition) -> Self
 glassmere-core   fn Style::width(mut self, value: Length) -> Self
@@ -2171,6 +2174,7 @@ glassmere-core use TOOLTIP_DELAY = panes::TOOLTIP_DELAY
 glassmere-core use Tab = panes::Tab
 glassmere-core use TaskSender = task::TaskSender #[cfg(feature = "std")]
 glassmere-core use Tasks = task::Tasks #[cfg(feature = "std")]
+glassmere-core use TextAlign = glassmere_scene::TextAlign
 glassmere-core use TextDocument = document::TextDocument #[cfg(feature = "std")]
 glassmere-core use TextEdit = editor::TextEdit
 glassmere-core use TextInput = ui::TextInput
@@ -2261,6 +2265,7 @@ glassmere-scene   field TextSpan::family: Option<FontFamily>
 glassmere-scene   field TextSpan::italic: Option<bool>
 glassmere-scene   field TextSpan::text: String
 glassmere-scene   field TextSpan::weight: Option<u16>
+glassmere-scene   field TextStyle::align: TextAlign
 glassmere-scene   field TextStyle::base: Option<bool>
 glassmere-scene   field TextStyle::family: FontFamily
 glassmere-scene   field TextStyle::font_size: f32
@@ -2346,12 +2351,17 @@ glassmere-scene   variant Segment::Cubic(Point, Point, Point)
 glassmere-scene   variant Segment::Line(Point)
 glassmere-scene   variant Segment::Move(Point)
 glassmere-scene   variant Segment::Quad(Point, Point)
+glassmere-scene   variant TextAlign::Center
+glassmere-scene   variant TextAlign::End
+glassmere-scene   variant TextAlign::Justify
+glassmere-scene   variant TextAlign::Start
 glassmere-scene   variant TextWrap::None
 glassmere-scene   variant TextWrap::Word
 glassmere-scene enum Affinity #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-scene enum FontFamily #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 glassmere-scene enum Primitive #[derive(Clone, Debug, PartialEq)]
 glassmere-scene enum Segment #[derive(Clone, Copy, Debug, PartialEq)]
+glassmere-scene enum TextAlign #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 glassmere-scene enum TextWrap #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 glassmere-scene impl Default for Affine
 glassmere-scene impl Default for TextStyle
@@ -2387,6 +2397,7 @@ glassmere-scene use MonospaceMeasurer = text::MonospaceMeasurer
 glassmere-scene use Path = path::Path
 glassmere-scene use Segment = path::Segment
 glassmere-scene use Stroke = path::Stroke
+glassmere-scene use TextAlign = text::TextAlign
 glassmere-scene use TextCluster = text::TextCluster
 glassmere-scene use TextGeometry = text::TextGeometry
 glassmere-scene use TextLine = text::TextLine

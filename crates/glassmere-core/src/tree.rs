@@ -19,7 +19,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use glassmere_scene::{
-    Color, Point, Primitive, Rect, Scene, Size, TextMeasurer, TextStyle, TextWrap,
+    Color, Point, Primitive, Rect, Scene, Size, TextAlign, TextMeasurer, TextStyle, TextWrap,
 };
 mod actions;
 mod animation_state;

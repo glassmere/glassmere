@@ -6,7 +6,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
-use glassmere_scene::{Color, FontFamily, TextStyle, TextWrap};
+use glassmere_scene::{Color, FontFamily, TextAlign, TextStyle, TextWrap};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Length {
@@ -316,6 +316,12 @@ pub struct Style {
     pub font_family: Option<FontFamily>,
     pub font_weight: Option<u16>,
     pub italic: Option<bool>,
+    /// Where the lines of wrapped text sit between the edges of the box, and
+    /// where a single line sits in a box wider than it: `Start`, `Center`,
+    /// `End` or `Justify`. Inherited by what is inside, like the font. `None`
+    /// takes the parent's, and at the top `Start`, where text is unless
+    /// `justify_content` places it.
+    pub text_align: Option<TextAlign>,
     pub wrap: TextWrap,
     pub states: Option<Box<StateStyles>>,
     /// Group opacity of the node and its subtree, 0..=1.
@@ -383,6 +389,7 @@ impl Default for Style {
             font_family: None,
             font_weight: None,
             italic: None,
+            text_align: None,
             wrap: TextWrap::None,
             states: None,
             opacity: 1.0,
@@ -596,6 +603,7 @@ impl Style {
     setter!(font_family, font_family, FontFamily, some);
     setter!(font_weight, font_weight, u16, some);
     setter!(italic, italic, bool, some);
+    setter!(text_align, text_align, TextAlign, some);
 
     fn state(mut self, apply: impl FnOnce(&mut StateStyles)) -> Self {
         apply(self.states.get_or_insert_with(Default::default));
@@ -625,6 +633,7 @@ impl Style {
                 .unwrap_or_else(|| inherited.font_family.clone()),
             font_weight: self.font_weight.unwrap_or(inherited.font_weight),
             italic: self.italic.unwrap_or(inherited.italic),
+            align: self.text_align.unwrap_or(inherited.align),
             direction: self.direction.unwrap_or(inherited.direction),
             base_direction: self.base_direction.or(inherited.base_direction),
         }
@@ -816,6 +825,7 @@ pub struct ResolvedText {
     pub font_family: FontFamily,
     pub font_weight: u16,
     pub italic: bool,
+    pub align: TextAlign,
     pub direction: Direction,
     /// A paragraph direction the application forced.
     pub base_direction: Option<Direction>,
@@ -829,6 +839,7 @@ impl ResolvedText {
             font_family: theme.font_family.clone(),
             font_weight: 400,
             italic: false,
+            align: TextAlign::Start,
             direction: Direction::Ltr,
             base_direction: None,
         }
@@ -844,6 +855,7 @@ impl ResolvedText {
             family: self.font_family.clone(),
             weight: self.font_weight,
             italic: self.italic,
+            align: self.align,
             wrap,
             rtl: self.rtl(),
             base: self.base_direction.map(|base| base == Direction::Rtl),

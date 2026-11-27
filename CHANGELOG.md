@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- `Style::text_align` (stylesheet `text-align`) with `TextAlign`: `Start`, `Center`, `End` or `Justify`. It sets where the lines of wrapped text sit between the edges of the box (the shaper aligns them, so selection and carets follow), and where a single line sits in a box wider than it, so a right-aligned table cell or a centred title needs no `justify_content`. It is inherited like the font, follows the reading direction (`End` is the left edge in a right-to-left window), and a `Justify` line that is alone, or the last of a block, is not stretched. `TextStyle` gains `align` (default `Start`), so a struct literal of `TextStyle` without `..TextStyle::default()` needs the new field. Unset, nothing changes.
 ## [0.1.8] - 2026-11-23
 
 ### Added

@@ -122,6 +122,7 @@ fn block_style(base: &TextStyle, kind: BlockKind, font_size: f32) -> TextStyle {
         italic: false,
         wrap: TextWrap::Word,
         rtl: mirrored(base, kind),
+        align: base.align,
     }
 }
 
