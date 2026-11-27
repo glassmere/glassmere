@@ -312,9 +312,12 @@ glassmere-core   field Notification::body: String
 glassmere-core   field Notification::title: String
 glassmere-core   field Notification::urgent: bool
 glassmere-core   field NumberOptions::decimals: Option<usize>
+glassmere-core   field NumberOptions::field_style: Option<crate::Style>
 glassmere-core   field NumberOptions::max: f64
 glassmere-core   field NumberOptions::min: f64
 glassmere-core   field NumberOptions::step: f64
+glassmere-core   field NumberOptions::stepper_style: Option<crate::Style>
+glassmere-core   field NumberOptions::steppers: bool
 glassmere-core   field NumberOptions::style: crate::Style
 glassmere-core   field NumberOptions::suffix: String
 glassmere-core   field NumericValue::max: f64
@@ -546,6 +549,7 @@ glassmere-core   fn AreaBuilder::on_event(mut self, on_event: impl Fn(crate::UiE
 glassmere-core   fn Autocomplete::new() -> Self [impl<M> Autocomplete<M>]
 glassmere-core   fn Autocomplete::on_pick(mut self, message: impl Fn(usize) -> M + 'static) -> Self [impl<M> Autocomplete<M>]
 glassmere-core   fn Autocomplete::on_submit(mut self, message: M) -> Self [impl<M> Autocomplete<M>]
+glassmere-core   fn Autocomplete::style(mut self, style: Style) -> Self [impl<M> Autocomplete<M>]
 glassmere-core   fn BackgroundImage::file(path: impl Into<PathBuf>) -> Self #[cfg(feature = "std")]
 glassmere-core   fn BackgroundImage::fit(mut self, fit: ImageFit) -> Self
 glassmere-core   fn BackgroundImage::new(image: &Image) -> Self
@@ -886,14 +890,17 @@ glassmere-core   fn Notification::new(title: impl Into<String>, body: impl Into<
 glassmere-core   fn Notification::urgent(mut self) -> Self
 glassmere-core   fn NumberOptions::constrain(&self, value: f64) -> f64
 glassmere-core   fn NumberOptions::decimals(mut self, decimals: usize) -> Self
+glassmere-core   fn NumberOptions::field_style(mut self, style: crate::Style) -> Self
 glassmere-core   fn NumberOptions::format(&self, value: f64) -> String
 glassmere-core   fn NumberOptions::format_in(&self, context: &crate::Context, value: f64) -> String
 glassmere-core   fn NumberOptions::parse(&self, text: &str) -> Option<f64>
 glassmere-core   fn NumberOptions::parse_in(&self, context: &crate::Context, text: &str) -> Option<f64>
 glassmere-core   fn NumberOptions::range(mut self, min: f64, max: f64) -> Self
 glassmere-core   fn NumberOptions::step(mut self, step: f64) -> Self
+glassmere-core   fn NumberOptions::stepper_style(mut self, style: crate::Style) -> Self
 glassmere-core   fn NumberOptions::style(mut self, style: crate::Style) -> Self
 glassmere-core   fn NumberOptions::suffix(mut self, suffix: impl Into<String>) -> Self
+glassmere-core   fn NumberOptions::without_steppers(mut self) -> Self
 glassmere-core   fn Pacing::invalidate(&mut self)
 glassmere-core   fn Pacing::invalidated(&self) -> bool
 glassmere-core   fn Paint::background(color: Color) -> Self

@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A view that is not run. `App::view_state` is an opt-in promise that the view reads nothing from the application but the value it returns and the sources of its bound labels. A message after which it is equal to what it was when the view last ran no longer runs the view; the default, `None`, runs it after every message as before. `Ui::bound_label` shows a `Signal<String>` or a `Memo<String>` (anything that implements the new `TextSource`) and follows it: when the source changes, the label's text is replaced in the retained tree, measured again if its size changed, repainted and published to the screen reader without the view running. See `examples/bound.rs` and "Declaring nothing" in [state](docs/state.md).
 - `FocusRing`, with `Style::focus_ring` and `Style::no_focus_ring`: one widget's focus ring in its own width, colour and inset, or none. `Path::rounded_rect` in `glassmere-scene` builds the stroked outline the ring uses. See "The focus ring" in [styling](docs/styling.md).
 - `Ui::measure_text`, `Ui::measure_text_wrapped` and `Ui::text_style`: how big some text is, asked of the same measurer the layout uses, from inside a view. A control you paint yourself can size itself to its label without a table of glyph widths. See "Sizing it to text" in [widgets](docs/widgets.md) and `examples/layout.rs`.
+- `NumberOptions::field_style`, `NumberOptions::stepper_style` and `NumberOptions::without_steppers`, and `Autocomplete::style`. The number input's field (44 tall with padding 10) and its 32 by 44 buttons, and the autocomplete's 280 by 44 field, were fixed; they can now be made compact to fit a bar or a pill, or the buttons left out (the arrow keys and the wheel still step the number). Nothing changes for code that sets none of them.
 
 ### Changed
 
@@ -21,9 +22,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - The focus ring of a node with rounded corners and no opaque background was four square bars. It is now a stroked rounded outline for every node with a radius, drawn inside its box over its fill. A node with a gradient or a translucent background no longer loses it while focused: the old ring replaced the fill of an opaque node with the focus colour and drew the background back inside it, and skipped the gradient.
-
-### Fixed
-
 - Choosing the radio button that is already chosen, by a click, Space or an assistive Activate, no longer sends its message. Nothing changes, and a web page's `change` event and a Qt `toggled` do not fire either. A handler that counted on being told again gets nothing; the chosen option is already in the state.
 
 ## [0.1.8] - 2026-11-23

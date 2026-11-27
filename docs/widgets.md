@@ -156,3 +156,23 @@ assert!(harness.snapshot_accessibility().contains("value=\"55%\""));
 - Contain other widgets. A leaf is a leaf; something that holds children is a component that declares them.
 - Measure itself against the room it is given, except by reading last frame's `WidgetInput::size`.
 - Hear drag-and-drop, IME or touch directly. Those reach a widget through the built-in controls that own them.
+
+## Compact fields
+
+`number_input` and `autocomplete` are 44 tall by default. To fit a toolbar, give them a style of their own:
+
+```rust
+let compact = Style { height: Length::Px(28.0), padding: 4.0, ..Style::button() };
+ui.number_input(
+    "Count",
+    count,
+    NumberOptions::default()
+        .field_style(compact.clone())
+        .stepper_style(Style { width: Length::Px(20.0), ..compact.clone() }),
+    on_count,
+);
+// No buttons at all; the arrow keys and the wheel still step it.
+NumberOptions::default().without_steppers();
+// The autocomplete's field.
+Autocomplete::new().style(compact);
+```
