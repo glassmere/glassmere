@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- `Ui::checkbox_with` and `Ui::radio_with`, with the builders `Checkbox` and `Radio`, and `Ui::tabs_styled` with `TabStyle`: a check box, a radio button and a tab strip with a style of your own. They were a button's 12 px of padding on every side (a box with a short label is 46 px tall), and the tabs a fixed look; a style with less padding fits a toolbar or a table row. `ui.checkbox`, `ui.radio` and `ui.tabs` are what they were. `Switch`, `Collapsible`, `Link` and `Button` already took a style.
 ## [0.1.8] - 2026-11-23
 
 ### Added

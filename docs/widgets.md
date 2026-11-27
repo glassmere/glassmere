@@ -124,6 +124,10 @@ What `WidgetInput` carries is of the last frame, because that is what there is t
 - **Style** is `ui.theme()` for the tokens, `ui.class(..)` for a stylesheet class, and the `style` argument for the node itself, which lays out like any container.
 - **Paint** is a list of primitives in the widget's own coordinates: rounded rectangles, gradients, shadows, text, images, clips and layers. Clips and layers must balance.
 
+### Smaller check boxes, radio buttons and tabs
+
+The defaults are roomy: a check box or a radio button has a button's padding, 12 px on every side, so one with a short label is 46 px tall. `ui.checkbox_with(Checkbox::new("Notify").style(Style::default().padding(2.0)), on, msg)` and `ui.radio_with(Radio::new("Quiet").style(..), selected, 0, msg)` take a style of your own, `ui.tabs_styled(selected, &tabs, &TabStyle::new(tab, active), on_select, content)` styles a strip (the selected tab takes `active`, so an underline or a fill is yours to give it, and `tab` can carry a hover state), and `Switch`, `Collapsible`, `Link` and `Button` take one through their builders. The short forms are unchanged.
+
 ### Testing it
 
 The same harness the built-in controls use, with no window:
