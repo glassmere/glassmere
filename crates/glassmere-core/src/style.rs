@@ -739,8 +739,8 @@ impl Style {
                 Flow::Row | Flow::Column => Display::Flex,
             },
             size: Size {
-                width: dimension(self.width),
-                height: dimension(self.height),
+                width: dimension(bounded(self.width, self.min_width, self.max_width)),
+                height: dimension(bounded(self.height, self.min_height, self.max_height)),
             },
             min_size: Size {
                 width: minimum(self.min_width),
@@ -806,6 +806,26 @@ impl Style {
             ..taffy::Style::default()
         }
     }
+}
+
+/// An explicit pixel size held to its own minimum and maximum, as CSS holds
+/// `width: 400px; max-width: 100px` to 100. The layout engine sizes a
+/// container from its children's sizes before it applies their limits, so
+/// a parent of such a child would otherwise be as large as the size that was
+/// asked for and not the size the child ends up. Anything that is not a pixel
+/// size against pixel limits is left to the engine.
+fn bounded(size: Length, min: Length, max: Length) -> Length {
+    let Length::Px(mut value) = size else {
+        return size;
+    };
+    if let Length::Px(max) = max {
+        value = value.min(max);
+    }
+    if let Length::Px(min) = min {
+        // A minimum above the maximum wins, as in CSS.
+        value = value.max(min);
+    }
+    Length::Px(value)
 }
 
 /// Concrete text properties after inheritance; what measurement and paint use.
