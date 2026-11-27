@@ -56,7 +56,9 @@ impl Context {
         // was resolved into messages already.
         self.queued.clear();
         self.observed_new.borrow_mut().clear();
+        self.bound_new.borrow_mut().clear();
         self.view_stale = false;
+        self.view_stale_handled = false;
         self.mark_awaiting(clicks.iter().chain(updates.keys()).copied().collect());
         self.skipped.set(0);
         self.declared.set(0);
@@ -113,11 +115,17 @@ impl Context {
         self.resize_root(size);
         self.reconcile(self.root, elements, measurer);
         self.observed_new.borrow_mut().clear();
+        self.bound_new.borrow_mut().clear();
+        self.refresh_bound(measurer);
         self.stats.skipped = self.skipped.get();
         self.after_reconcile(focus);
         drop(declare_span);
         self.stats.declare = declare_started.elapsed();
         self.layout_pass(size, measurer);
+        if core::mem::take(&mut self.hidden_changed) {
+            self.repair_interaction();
+            self.note_focus();
+        }
         self.prepare_controls(measurer);
         self.update_hover();
         self.stats.elements = self.declared.get();
@@ -676,6 +684,7 @@ impl Context {
         measurer: &mut impl TextMeasurer,
     ) -> Vec<Element> {
         let frame = self.frame;
+        self.attach_bound(id, element.seq);
         let node = self.nodes.get_mut(&id).unwrap();
         // Declared again: observed now is what this declaration read.
         node.observed.set(node.observing.take());
@@ -782,6 +791,11 @@ impl Context {
         if node.enabled != element.enabled {
             self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
         }
+        // Whether it is hidden is worked out by the bounds walk.
+        if node.style.hidden != element.style.hidden {
+            self.geometry_dirty = true;
+            self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;
+        }
         if matches!(element.control, Control::Tab { selected: true, .. })
             && !matches!(node.control, Control::Tab { selected: true, .. })
         {
@@ -799,6 +813,8 @@ impl Context {
         // the move would copy a whole widget or control to leave everything
         // as it was.
         node.text = core::mem::take(&mut element.text);
+        self.z_count -= usize::from(node.style.z_index != 0);
+        self.z_count += usize::from(element.style.z_index != 0);
         node.style = core::mem::take(&mut element.style);
         node.resolved = resolved;
         node.tooltip = element.tooltip.take();
@@ -890,6 +906,7 @@ impl Context {
             Control::SelectableText => Some(Box::new(Editor::block(&element.text))),
             _ => None,
         };
+        self.z_count += usize::from(element.style.z_index != 0);
         if element.kind == Kind::Popover {
             self.popover_count += 1;
         }
@@ -918,6 +935,7 @@ impl Context {
                     element.seq != 0 && self.observed_new.borrow().contains(&element.seq),
                 ),
                 observing: core::cell::Cell::new(false),
+                bound: None,
                 key: element.key,
                 kind: element.kind,
                 parent: Some(parent),
@@ -946,6 +964,7 @@ impl Context {
                 changed_frame: self.frame,
                 painted_frame: 0,
                 resolved,
+                hidden: false,
                 scope: matches!(
                     element.kind,
                     Kind::FocusScope | Kind::Dialog | Kind::Popover
@@ -968,6 +987,7 @@ impl Context {
         {
             self.new_popovers.push(id);
         }
+        self.attach_bound(id, element.seq);
         self.stats.created += 1;
         self.pending |= Dirty::all();
         (id, element.children)
@@ -1006,6 +1026,7 @@ impl Context {
         {
             self.taken_range = None;
         }
+        self.z_count -= usize::from(node.style.z_index != 0);
         if node.kind == Kind::Popover {
             self.popover_count -= 1;
         }

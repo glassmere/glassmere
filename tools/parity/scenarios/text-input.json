@@ -1,0 +1,97 @@
+{
+  "id": "text-input",
+  "title": "Text input: typing, editing keys, selection, focus ring after a click",
+  "size": [
+    420,
+    220
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 8,
+    "padding": 16,
+    "children": [
+      {
+        "type": "input",
+        "id": "name",
+        "value": "Ada",
+        "width": 240,
+        "label": "Name"
+      },
+      {
+        "type": "button",
+        "id": "go",
+        "text": "Go"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "initial"
+    },
+    {
+      "do": "cursor",
+      "label": "pointer over the field",
+      "targets": [
+        "name"
+      ]
+    },
+    {
+      "do": "click",
+      "target": "name"
+    },
+    {
+      "do": "observe",
+      "label": "after a click on the field"
+    },
+    {
+      "do": "press",
+      "key": "End"
+    },
+    {
+      "do": "type",
+      "text": " Lovelace"
+    },
+    {
+      "do": "observe",
+      "label": "typed at the end"
+    },
+    {
+      "do": "press",
+      "key": "Backspace"
+    },
+    {
+      "do": "press",
+      "key": "Home"
+    },
+    {
+      "do": "type",
+      "text": ">"
+    },
+    {
+      "do": "observe",
+      "label": "Backspace, then Home and type"
+    },
+    {
+      "do": "press",
+      "key": "Control+a"
+    },
+    {
+      "do": "type",
+      "text": "X"
+    },
+    {
+      "do": "observe",
+      "label": "select all and type over it"
+    },
+    {
+      "do": "press",
+      "key": "Tab"
+    },
+    {
+      "do": "observe",
+      "label": "Tab leaves the field"
+    }
+  ]
+}

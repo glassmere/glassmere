@@ -1,0 +1,66 @@
+{
+  "id": "cover-blocking",
+  "title": "A panel that blocks the pointer, drawn over a button: which one a click reaches",
+  "size": [
+    420,
+    200
+  ],
+  "ui": {
+    "type": "stack",
+    "id": "stage",
+    "width": 300,
+    "height": 120,
+    "background": "#222c3d",
+    "children": [
+      {
+        "type": "button",
+        "id": "under",
+        "text": "Under",
+        "width": 160,
+        "height": 40,
+        "position": {
+          "x": 10,
+          "y": 10
+        }
+      },
+      {
+        "type": "panel",
+        "id": "cover",
+        "width": 80,
+        "height": 40,
+        "background": "#4a5d80",
+        "position": {
+          "x": 10,
+          "y": 10
+        },
+        "blocksPointer": true
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "initial"
+    },
+    {
+      "do": "clickAt",
+      "target": "under",
+      "fx": 0.1,
+      "fy": 0.5
+    },
+    {
+      "do": "observe",
+      "label": "a click on the part of the button the panel covers"
+    },
+    {
+      "do": "clickAt",
+      "target": "under",
+      "fx": 0.9,
+      "fy": 0.5
+    },
+    {
+      "do": "observe",
+      "label": "a click on the part the panel leaves free"
+    }
+  ]
+}

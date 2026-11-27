@@ -1,0 +1,145 @@
+{
+  "id": "flex-detail",
+  "title": "Per-child alignment, min and max sizes and aspect ratio",
+  "size": [
+    420,
+    420
+  ],
+  "features": [
+    "flex-detail"
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "width": 400,
+    "gap": 0,
+    "padding": 10,
+    "children": [
+      {
+        "type": "row",
+        "id": "a",
+        "height": 60,
+        "gap": 8,
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "p1",
+            "background": "#3b4a63",
+            "grow": 1,
+            "height": 20
+          },
+          {
+            "type": "panel",
+            "id": "p2",
+            "background": "#4a5d80",
+            "grow": 2,
+            "width": 20,
+            "height": 20
+          },
+          {
+            "type": "panel",
+            "id": "p3",
+            "background": "#3b4a63",
+            "width": 40,
+            "height": 20,
+            "alignSelf": "end"
+          }
+        ]
+      },
+      {
+        "type": "row",
+        "id": "b",
+        "height": 60,
+        "align": "center",
+        "gap": 0,
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "p4",
+            "background": "#3b4a63",
+            "width": 30,
+            "height": 20
+          },
+          {
+            "type": "panel",
+            "id": "p5",
+            "background": "#4a5d80",
+            "width": 30,
+            "height": 40,
+            "alignSelf": "start"
+          },
+          {
+            "type": "panel",
+            "id": "p6",
+            "background": "#3b4a63",
+            "width": 30,
+            "alignSelf": "stretch"
+          }
+        ]
+      },
+      {
+        "type": "row",
+        "id": "c",
+        "height": 40,
+        "gap": 0,
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "p7",
+            "background": "#3b4a63",
+            "grow": 1,
+            "maxWidth": 80,
+            "height": 20
+          },
+          {
+            "type": "panel",
+            "id": "p8",
+            "background": "#4a5d80",
+            "grow": 1,
+            "height": 20,
+            "minWidth": 120
+          }
+        ]
+      },
+      {
+        "type": "column",
+        "id": "d",
+        "gap": 0,
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "p9",
+            "background": "#3b4a63",
+            "width": 80,
+            "aspectRatio": 2
+          },
+          {
+            "type": "panel",
+            "id": "p10",
+            "background": "#4a5d80",
+            "width": 60,
+            "minHeight": 30
+          },
+          {
+            "type": "panel",
+            "id": "p11",
+            "background": "#3b4a63",
+            "width": 50,
+            "height": 100,
+            "maxHeight": 25
+          }
+        ]
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "where the boxes sit"
+    }
+  ]
+}
