@@ -83,6 +83,13 @@ impl Context {
     /// After an offset changed: children move, and the pointer may be over
     /// something else now.
     pub(super) fn scrolled(&mut self, id: NodeId) {
+        // A scroll area's offset is the kernel's alone; a list, an editor or a
+        // text area gives it back to the view.
+        if self.nodes[&id].kind == Kind::Scroll {
+            self.wheel_moved_plain = true;
+        } else {
+            self.wheel_moved_other = true;
+        }
         self.invalidate_paint(id);
         self.geometry_dirty = true;
         self.pending |= Dirty::PAINT | Dirty::ACCESSIBILITY;

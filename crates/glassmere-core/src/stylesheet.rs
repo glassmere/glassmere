@@ -48,7 +48,8 @@
 //! background-slice (nine-slice insets in image pixels: one number, `vertical
 //! horizontal`, or `top right bottom left`; `none`), background-tint
 //! (`foreground`, a colour, `none`), font-size, font-weight,
-//! font-family (`sans`, `serif`, `monospace`, `"Name"`), italic, wrap (`word`,
+//! font-family (`sans`, `serif`, `monospace`, `"Name"`), italic, text-align (`start`,
+//! `center`, `end`, `justify`), wrap (`word`,
 //! `none`), direction (`ltr`, `rtl`), opacity, translate (`x y`), scale (`factor` or `x y`), rotate
 //! (clockwise degrees), transition and layout-transition (`150ms ease-out
 //! [delay]`, easings `linear`, `ease-in`, `ease-out`, `ease-in-out`,
@@ -70,7 +71,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::time::Duration;
-use glassmere_scene::{Color, FontFamily, TextWrap};
+use glassmere_scene::{Color, FontFamily, TextAlign, TextWrap};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StyleSheet {
@@ -703,6 +704,12 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         "exit-opacity" | "exit-translate" | "exit-scale" | "exit-rotate" | "exit-transition" => {
             effect(&mut style.exit, &key[5..], value)?;
         }
+        "z-index" => {
+            style.z_index = value
+                .trim()
+                .parse::<i32>()
+                .map_err(|_| format!("z-index is a whole number, got `{value}`"))?;
+        }
         "padding" => style.padding = number(value)?,
         "gap" => {
             style.gap = number(value)?;
@@ -712,6 +719,25 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         "row-gap" => style.row_gap = Some(number(value)?),
         "column-gap" => style.column_gap = Some(number(value)?),
         "grow" => style.grow = number(value)?,
+        "blocks-pointer" => {
+            style.blocks_pointer = match value {
+                "true" => true,
+                "false" => false,
+                _ => {
+                    return Err(format!(
+                        "blocks-pointer is `true` or `false`, got `{value}`"
+                    ));
+                }
+            };
+        }
+        "basis" => style.basis = length(value)?,
+        // `flex: 1`: grow by that factor, shrink, and start from nothing.
+        "flex" => {
+            let factor = number(value)?;
+            style.grow = factor;
+            style.shrink = 1.0;
+            style.basis = Length::Px(0.0);
+        }
         "radius" => style.radius = number(value)?,
         "background" => style.background = Some(color(value)?),
         "foreground" => style.foreground = Some(color(value)?),
@@ -852,6 +878,47 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
                 }
             };
         }
+        "text-align" => {
+            style.text_align = Some(match value {
+                "start" => TextAlign::Start,
+                "center" => TextAlign::Center,
+                "end" => TextAlign::End,
+                "justify" => TextAlign::Justify,
+                _ => {
+                    return Err(format!(
+                        "text-align is `start`, `center`, `end` or `justify`, got `{value}`"
+                    ));
+                }
+            })
+        }
+        "overflow" => {
+            style.unclipped = match value {
+                "visible" => true,
+                "hidden" => false,
+                _ => {
+                    return Err(format!("overflow is `visible` or `hidden`, got `{value}`"));
+                }
+            }
+        }
+        "visibility" => {
+            style.hidden = match value {
+                "visible" => false,
+                "hidden" => true,
+                _ => {
+                    return Err(format!(
+                        "visibility is `visible` or `hidden`, got `{value}`"
+                    ));
+                }
+            }
+        }
+        "line-height" => {
+            let multiple = number(value)?;
+            if !(multiple.is_finite() && multiple > 0.0) {
+                return Err(format!("line-height must be above zero, got `{value}`"));
+            }
+            style.line_height = Some(multiple);
+        }
+        "letter-spacing" => style.letter_spacing = Some(number(value)?),
         "wrap" => {
             style.wrap = match value {
                 "word" => TextWrap::Word,

@@ -412,7 +412,7 @@ impl Context {
                     color: self.theme.accent,
                     radius: 2.0,
                 });
-            } else if self.focused == Some(id) && self.quiet_focus != Some(id) {
+            } else if self.ring_shown(id) {
                 scene.primitives.push(Primitive::Quad {
                     rect: Rect {
                         x: track.x + track.width * thumb - 9.0,

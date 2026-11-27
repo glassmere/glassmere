@@ -13,6 +13,7 @@ use alloc::vec::Vec;
 pub struct Autocomplete<M = ()> {
     on_pick: Option<Box<dyn Fn(usize) -> M>>,
     on_submit: Option<M>,
+    style: Option<Style>,
 }
 
 impl<M> core::fmt::Debug for Autocomplete<M> {
@@ -26,6 +27,7 @@ impl<M> Default for Autocomplete<M> {
         Self {
             on_pick: None,
             on_submit: None,
+            style: None,
         }
     }
 }
@@ -45,6 +47,12 @@ impl<M> Autocomplete<M> {
     /// The message Enter sends when no suggestion is highlighted.
     pub fn on_submit(mut self, message: M) -> Self {
         self.on_submit = Some(message);
+        self
+    }
+
+    /// The style of the field: 280 wide and 44 tall unless it says otherwise.
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
         self
     }
 }
@@ -105,12 +113,13 @@ impl<'a, M: 'static> Ui<'a, M> {
         } else {
             Vec::new()
         };
+        let field_style = extra.style.clone().unwrap_or_else(Self::field_style);
         let response = self.text_field(
             key,
             label.into(),
             value,
             "",
-            Self::field_style(),
+            field_style,
             FieldExtra {
                 number: None,
                 suggestions: Some(entries),
@@ -120,7 +129,9 @@ impl<'a, M: 'static> Ui<'a, M> {
         );
         // Picking a suggestion edits the field to it, and the kernel reports
         // that pick as the index, which names the text in `labels`.
-        let Autocomplete { on_pick, on_submit } = extra;
+        let Autocomplete {
+            on_pick, on_submit, ..
+        } = extra;
         self.set_handler(Handler::Autocomplete {
             change: Box::new(move |update, out| match update {
                 ControlUpdate::Text(text) => out.push(on_change(single_line(&text))),
@@ -205,7 +216,10 @@ impl<'a, M: 'static> Ui<'a, M> {
                 max: options.max,
                 step: options.step,
             };
-            let mut style = Self::field_style();
+            let mut style = options
+                .field_style
+                .clone()
+                .unwrap_or_else(Self::field_style);
             style.width = Length::Auto;
             style.grow = 1.0;
             result = ui
@@ -228,6 +242,12 @@ impl<'a, M: 'static> Ui<'a, M> {
                 options: Box::new(options.clone()),
                 mixed,
             });
+            let stepper = options.stepper_style.clone().unwrap_or_else(|| Style {
+                width: Length::Px(32.0),
+                height: Length::Px(44.0),
+                padding: 10.0,
+                ..Style::button()
+            });
             for (key, symbol, name, enabled, steps) in [
                 (
                     "$less",
@@ -243,15 +263,13 @@ impl<'a, M: 'static> Ui<'a, M> {
                     shown < max,
                     1.0,
                 ),
-            ] {
+            ]
+            .into_iter()
+            .filter(|_| options.steppers)
+            {
                 ui.push(Element {
                     text: symbol.into(),
-                    style: Style {
-                        width: Length::Px(32.0),
-                        height: Length::Px(44.0),
-                        padding: 10.0,
-                        ..Style::button()
-                    },
+                    style: stepper.clone(),
                     enabled: ui.enabled && enabled,
                     tooltip: Some(Box::new(crate::Tooltip::new(name))),
                     control: Control::Stepper,
