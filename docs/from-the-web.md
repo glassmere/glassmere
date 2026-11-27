@@ -53,7 +53,9 @@ The bench found glassmere and Chromium in agreement on where boxes land for: ali
 
 ### What cannot be said yet
 
-No per-side padding or border. No `z-index`. No `align-content` for wrapped lines. No way to measure text from a view, so a painted control sizes itself from an estimate. These are listed in [known limitations](limitations.md).
+No per-side padding or border (`padding` and `border` are one width on all four sides; `margin` is per side). No `z-index`: later siblings paint on top, and a popup or overlay is the way to put something above its siblings. The `switch` role is announced as a checkbox. Anything that would change a default (the 12 px `gap`, `shrink` 0) waits for 0.2.0.
+
+Three things that were on this list are no longer: `Style::align_content` shares the room left across the lines of a wrapped row, `Ui::measure_text` and `Ui::measure_text_wrapped` size a painted control from the text the layout will measure, and `NumberOptions::field_style`, `NumberOptions::stepper_style` and `Autocomplete::style` make those fields compact. A button with an icon is a custom widget with `Role::Button` and `WidgetBuilder::on_click`.
 
 ## Behaviour that differs
 
