@@ -47,7 +47,7 @@ Two kinds are in between. A scroll container takes focus only while it scrolls, 
 
 ### The pointer
 
-Over a widget that takes a press the pointer is a hand, over text it is an I-beam, over a divider it is the resize pointer of its direction, and over a layout container, a scroll area or a disabled widget it is the arrow. `Style::cursor(Cursor::Grab)` sets another for one node and for everything inside it that sets none of its own, so a container can give its whole area a pointer. `Context::cursor(id)` is the answer a host shows; the winit host takes it from the hovered node. Whether a widget can take focus has no part in it: a button with `focusable(false)` still shows the hand.
+Over a widget that takes a press the pointer is a hand, over text it is an I-beam, over a divider it is the resize pointer of its direction, and over a layout container, a scroll area or a disabled widget it is the arrow. `Style::cursor(Cursor::Grab)` sets another for one node and for everything inside it that sets none of its own, so a container can give its whole area a pointer. `Context::cursor(id)` is the answer a host shows; the winit host takes it from the hovered node. Whether a widget can take focus has no part in it: a button with `focusable(false)` still shows the hand. To show the arrow over every pressable widget, as a browser does, set `AppOptions::pressable_cursor` (or `Context::set_pressable_cursor`) to `Cursor::Default`; text fields keep the I-beam and a node's own `Style::cursor` still wins.
 
 ## Theme
 

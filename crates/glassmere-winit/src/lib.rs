@@ -439,6 +439,10 @@ pub struct AppOptions {
     /// Whether Left and Right move on screen or in reading order in
     /// bidirectional text.
     pub caret_movement: glassmere_core::CaretMovement,
+    /// The pointer over a button, a check box, a tab or a link: a hand
+    /// (`Cursor::Pointer`) by default. `Cursor::Default` is the arrow a browser
+    /// shows there. A node's own `Style::cursor` still wins.
+    pub pressable_cursor: glassmere_core::Cursor,
     /// Layout and text direction of the window.
     pub direction: DirectionChoice,
     /// The system's title bar and border. Without them the window has no way
@@ -490,6 +494,7 @@ impl Default for AppOptions {
             stylesheet: None,
             reduced_motion: false,
             caret_movement: glassmere_core::CaretMovement::Visual,
+            pressable_cursor: glassmere_core::Cursor::Pointer,
             direction: DirectionChoice::Auto,
             decorations: true,
             resizable: true,
@@ -1116,6 +1121,7 @@ impl Application {
         // this from repeating.
         probe_system_motion(&wake, options.reduced_motion);
         context.set_caret_movement(options.caret_movement);
+        context.set_pressable_cursor(options.pressable_cursor);
         context.set_direction(options.direction.resolve());
         // `ToastSender::send` from any thread wakes the loop; the next frame shows the toast.
         let toast_wake = wake.clone();

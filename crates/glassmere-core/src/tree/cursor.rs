@@ -7,7 +7,8 @@ impl Context {
     /// The pointer to show over `id`. A `Style::cursor` on the node or the
     /// nearest ancestor that sets one wins. Otherwise it is what the widget
     /// is: an I-beam over a text field or selectable text, the resize
-    /// pointers over a divider, a hand over one that takes a press, and
+    /// pointers over a divider, a hand over one that takes a press (or what
+    /// `Context::set_pressable_cursor` says), and
     /// the ordinary arrow over everything else, a layout container, a
     /// scroll area and a disabled widget included. The window's own
     /// buttons keep the arrow, as the system's do.
@@ -49,7 +50,7 @@ impl Context {
         // A scroll container is focusable for the keyboard and is not
         // something to press.
         if node.kind != Kind::Scroll && (node.focus_kind() || node.activatable()) {
-            Cursor::Pointer
+            self.pressable_cursor
         } else {
             Cursor::Default
         }

@@ -637,6 +637,7 @@ glassmere-core   fn Context::node(&self, id: NodeId) -> Option<NodeSnapshot>
 glassmere-core   fn Context::node_count(&self) -> usize
 glassmere-core   fn Context::now(&self) -> Duration
 glassmere-core   fn Context::parse_number(&self, text: &str) -> Option<f64>
+glassmere-core   fn Context::pressable_cursor(&self) -> crate::Cursor
 glassmere-core   fn Context::pressed(&self, id: NodeId) -> bool
 glassmere-core   fn Context::push_toast(&mut self, toast: Toast) -> ToastId
 glassmere-core   fn Context::report_font(&mut self, message: impl Into<String>)
@@ -659,6 +660,7 @@ glassmere-core   fn Context::set_image_file(&mut self, path: &Path, image: core:
 glassmere-core   fn Context::set_messages(&mut self, messages: Option<Box<dyn Messages>>)
 glassmere-core   fn Context::set_now(&mut self, now: Duration)
 glassmere-core   fn Context::set_opened_files(&mut self, paths: Vec<std::path::PathBuf>) #[cfg(feature = "std")]
+glassmere-core   fn Context::set_pressable_cursor(&mut self, cursor: crate::Cursor)
 glassmere-core   fn Context::set_reduced_motion(&mut self, reduced: bool)
 glassmere-core   fn Context::set_stylesheet(&mut self, sheet: StyleSheet)
 glassmere-core   fn Context::set_theme(&mut self, theme: Theme)
@@ -2543,6 +2545,7 @@ glassmere-winit   field AppOptions::gpu: Option<GpuSetup>
 glassmere-winit   field AppOptions::graphics: GraphicsOptions
 glassmere-winit   field AppOptions::icon: Option<glassmere_scene::Image>
 glassmere-winit   field AppOptions::placement: Placement
+glassmere-winit   field AppOptions::pressable_cursor: glassmere_core::Cursor
 glassmere-winit   field AppOptions::reduced_motion: bool
 glassmere-winit   field AppOptions::resizable: bool
 glassmere-winit   field AppOptions::size: Size
