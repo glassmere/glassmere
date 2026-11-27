@@ -317,6 +317,11 @@ pub struct Style {
     pub font_weight: Option<u16>,
     pub italic: Option<bool>,
     pub wrap: TextWrap,
+    /// A rule drawn through a single line of text, in its colour:
+    /// `Underline` under it, `LineThrough` through the middle, as
+    /// `text-decoration` does. A link is underlined whatever this says. It
+    /// applies to text that does not wrap (`wrap` is `None`).
+    pub text_decoration: TextDecoration,
     pub states: Option<Box<StateStyles>>,
     /// Group opacity of the node and its subtree, 0..=1.
     pub opacity: f32,
@@ -384,6 +389,7 @@ impl Default for Style {
             font_weight: None,
             italic: None,
             wrap: TextWrap::None,
+            text_decoration: TextDecoration::None,
             states: None,
             opacity: 1.0,
             transform: Transform::IDENTITY,
@@ -396,6 +402,17 @@ impl Default for Style {
             direction: None,
         }
     }
+}
+
+/// A rule drawn on a line of text.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum TextDecoration {
+    #[default]
+    None,
+    /// Under the text.
+    Underline,
+    /// Through the middle of the text.
+    LineThrough,
 }
 
 macro_rules! setter {
@@ -578,6 +595,7 @@ impl Style {
     setter!(area, area, GridArea, some);
     setter!(area_name, area_name, String, some);
     setter!(wrap, wrap, TextWrap);
+    setter!(text_decoration, text_decoration, TextDecoration);
     setter!(opacity, opacity, f32);
     setter!(transform, transform, Transform);
     setter!(transition, transition, Transition, some);

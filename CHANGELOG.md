@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- `Style::text_decoration` (stylesheet `text-decoration: underline` and `line-through`) with `TextDecoration`: a rule under or through a single line of text, in its colour, for a label, a button and the like that do not wrap. Only links were underlined, and always. A link is still underlined whatever the style says, and `None` is the default, so nothing changes for a style that does not set it. Text that wraps has none.
+
 ## [0.1.8] - 2026-11-23
 
 ### Added

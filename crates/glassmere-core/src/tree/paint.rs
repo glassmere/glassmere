@@ -874,14 +874,25 @@ impl Context {
     /// when there is one.
     fn paint_text(&self, node: &Node, foreground: Color, spare: Option<String>, scene: &mut Scene) {
         let (rect, measured, width) = self.text_place(node);
-        if node.kind == Kind::Link
+        let decoration = if node.kind == Kind::Link {
+            crate::TextDecoration::Underline
+        } else {
+            node.style.text_decoration
+        };
+        if decoration != crate::TextDecoration::None
+            && node.style.wrap == TextWrap::None
             && let Some(size) = measured.filter(|size| size.width > 0.0)
         {
-            // Under the text, as a rich text link's rule is under its run.
+            // Under the text, as a rich text link's rule is under its run, or
+            // through the middle of it.
+            let y = match decoration {
+                crate::TextDecoration::LineThrough => rect.y + size.height / 2.0 - 0.5,
+                _ => rect.y + size.height - 3.0,
+            };
             scene.primitives.push(Primitive::Quad {
                 rect: Rect {
                     x: rect.x,
-                    y: rect.y + size.height - 3.0,
+                    y,
                     width: width.min(rect.width),
                     height: 1.0,
                 },

@@ -134,3 +134,7 @@ There is no mipmap chain, but a photo drawn at under half its natural size is bo
 ## Direction
 
 A window runs left to right or right to left according to `AppOptions::direction` (`DirectionChoice::Auto` follows the OS locale). `Style::direction` overrides it for a subtree: layout mirrors, text aligns to the end side, and directional internals follow. Physical values stay physical: `offset`, transforms, slide effects, floating dock rectangles and `DockZone::Left` and `Right` mean the same pixels in both directions. `Style::base_direction` forces the base direction of a text paragraph, in labels and in text fields, text areas, code editors and rich editors (every line or block takes it; a text field and a rich editor align to it, a text area and a code editor only order by it).
+
+## Underline and strikethrough
+
+`Style::text_decoration(TextDecoration::Underline)` (stylesheet `text-decoration: underline`) draws a one-pixel rule under a single line of text in its colour, and `LineThrough` (`line-through`) draws it through the middle: a struck-out price, a done item, a hand-made link. It is for a label, a button and the like that do not wrap; text that wraps has none. A link is underlined whatever the style says.
