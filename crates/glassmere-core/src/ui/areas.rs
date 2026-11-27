@@ -20,7 +20,11 @@ impl<'a, M: 'static> Ui<'a, M> {
     where
         F: FnOnce(&crate::WidgetInput) -> CustomWidget,
     {
-        let crate::WidgetBuilder { build, on_event } = widget;
+        let crate::WidgetBuilder {
+            build,
+            on_event,
+            on_click,
+        } = widget;
         let key = self.next_key();
         let mut input = crate::WidgetInput {
             enabled: self.enabled,
@@ -53,10 +57,26 @@ impl<'a, M: 'static> Ui<'a, M> {
             .declared()
             .and_then(|element| element.custom.as_ref())
             .is_some_and(|widget| widget.input != crate::EventArea::default());
-        match on_event {
-            Some(on_event) => self.set_handler(crate::app::Handler::Event(on_event)),
-            None if listens => self.set_handler(crate::app::Handler::Event(Box::new(|_| None))),
-            None => {}
+        let pressed = self
+            .declared()
+            .and_then(|element| element.custom.as_ref())
+            .is_some_and(|widget| widget.semantics.role.is_pressed());
+        match (on_click, on_event) {
+            (Some(click), event) => {
+                if !pressed {
+                    self.misuse(
+                        "a widget with `on_click` needs a role that is pressed: Button, Checkbox, \
+                         Radio, Tab, MenuButton, MenuItem or Option"
+                            .into(),
+                    );
+                }
+                self.set_handler(crate::app::Handler::Widget { click, event });
+            }
+            (None, Some(on_event)) => self.set_handler(crate::app::Handler::Event(on_event)),
+            (None, None) if listens => {
+                self.set_handler(crate::app::Handler::Event(Box::new(|_| None)));
+            }
+            (None, None) => {}
         }
         // `build` was handed the hover, focus and press, so a change in them
         // declares again.

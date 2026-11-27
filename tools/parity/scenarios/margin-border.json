@@ -1,0 +1,65 @@
+{
+  "id": "margin-border",
+  "title": "Margin and border",
+  "size": [
+    420,
+    320
+  ],
+  "features": [
+    "margin",
+    "border"
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 0,
+    "padding": 10,
+    "children": [
+      {
+        "type": "panel",
+        "id": "plain",
+        "background": "#3b4a63",
+        "width": 100,
+        "height": 30
+      },
+      {
+        "type": "panel",
+        "id": "margined",
+        "background": "#4a5d80",
+        "width": 100,
+        "height": 30,
+        "margin": 12
+      },
+      {
+        "type": "panel",
+        "id": "bordered",
+        "background": "#3b4a63",
+        "width": 100,
+        "height": 30,
+        "border": 4
+      },
+      {
+        "type": "panel",
+        "id": "both",
+        "background": "#4a5d80",
+        "width": 100,
+        "height": 30,
+        "border": 4,
+        "margin": 12
+      },
+      {
+        "type": "panel",
+        "id": "last",
+        "background": "#3b4a63",
+        "width": 100,
+        "height": 30
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "where the boxes sit"
+    }
+  ]
+}

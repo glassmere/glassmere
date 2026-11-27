@@ -1,0 +1,92 @@
+{
+  "id": "disabled-parent",
+  "title": "A disabled parent disables what is inside it",
+  "size": [
+    420,
+    300
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 8,
+    "padding": 12,
+    "children": [
+      {
+        "type": "column",
+        "id": "form",
+        "gap": 8,
+        "disabled": true,
+        "children": [
+          {
+            "type": "button",
+            "id": "inside",
+            "text": "Inside"
+          },
+          {
+            "type": "checkbox",
+            "id": "tick",
+            "text": "Tick",
+            "checked": false
+          },
+          {
+            "type": "input",
+            "id": "field",
+            "label": "Field",
+            "value": "",
+            "width": 200
+          }
+        ]
+      },
+      {
+        "type": "button",
+        "id": "outside",
+        "text": "Outside"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "initial"
+    },
+    {
+      "do": "cursor",
+      "label": "pointer over each",
+      "targets": [
+        "inside",
+        "tick",
+        "field",
+        "outside"
+      ]
+    },
+    {
+      "do": "click",
+      "target": "inside"
+    },
+    {
+      "do": "click",
+      "target": "tick"
+    },
+    {
+      "do": "click",
+      "target": "field"
+    },
+    {
+      "do": "observe",
+      "label": "after clicking inside the disabled parent"
+    },
+    {
+      "do": "tabSequence",
+      "label": "Tab forward",
+      "count": 3
+    },
+    {
+      "do": "click",
+      "target": "outside"
+    },
+    {
+      "do": "observe",
+      "label": "after clicking outside it"
+    }
+  ]
+}

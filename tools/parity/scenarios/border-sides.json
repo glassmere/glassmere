@@ -1,0 +1,102 @@
+{
+  "id": "border-sides",
+  "title": "A border of a different width on each side",
+  "size": [
+    420,
+    260
+  ],
+  "features": [
+    "border-sides"
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 10,
+    "padding": 10,
+    "children": [
+      {
+        "type": "column",
+        "id": "rule",
+        "width": 160,
+        "border": [
+          0,
+          0,
+          3,
+          0
+        ],
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "a",
+            "width": 50,
+            "height": 20,
+            "background": "#3b4a63"
+          }
+        ]
+      },
+      {
+        "type": "column",
+        "id": "frame",
+        "width": 160,
+        "border": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "padding": [
+          2,
+          4,
+          6,
+          8
+        ],
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "b",
+            "width": 50,
+            "height": 20,
+            "background": "#4a5d80"
+          }
+        ]
+      },
+      {
+        "type": "row",
+        "id": "mark",
+        "width": 160,
+        "border": [
+          0,
+          0,
+          0,
+          5
+        ],
+        "gap": 6,
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "c",
+            "width": 30,
+            "height": 20,
+            "background": "#3b4a63"
+          },
+          {
+            "type": "panel",
+            "id": "d",
+            "width": 30,
+            "height": 20,
+            "background": "#4a5d80"
+          }
+        ]
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "where the boxes sit"
+    }
+  ]
+}

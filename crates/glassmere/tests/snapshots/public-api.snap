@@ -39,12 +39,17 @@ glassmere use run_with = glassmere_winit::run_with #[cfg(feature = "desktop")]
 glassmere use style_sheet = glassmere_derive::style_sheet #[cfg(feature = "derive")]
 glassmere use syntax = glassmere_syntax #[cfg(feature = "syntax")]
 glassmere use tr = glassmere_derive::tr #[cfg(feature = "derive")]
+glassmere-core   const AutoEdges::ALL: Self
+glassmere-core   const AutoEdges::HORIZONTAL: Self
+glassmere-core   const AutoEdges::NONE: Self
+glassmere-core   const AutoEdges::VERTICAL: Self
 glassmere-core   const Dirty::ACCESSIBILITY: Dirty
 glassmere-core   const Dirty::LAYOUT: Dirty
 glassmere-core   const Dirty::PAINT: Dirty
 glassmere-core   const Dirty::STYLE: Dirty
 glassmere-core   const Dirty::TEXT: Dirty
 glassmere-core   const Dirty::TREE: Dirty
+glassmere-core   const Edges::ZERO: Self
 glassmere-core   const FocusRing::NONE: Self
 glassmere-core   const GridColumns::MAX_WIDTH: f32
 glassmere-core   const GridColumns::MIN_WIDTH: f32
@@ -52,6 +57,9 @@ glassmere-core   const PropertyChoice::NAMES: &'static [&'static str]
 glassmere-core   const ResizeEdge::ALL: [Self; 8]
 glassmere-core   const Transform::IDENTITY: Self
 glassmere-core   const WindowId::MAIN: WindowId
+glassmere-core   const fn Edges::all(value: f32) -> Self
+glassmere-core   const fn Edges::new(top: f32, right: f32, bottom: f32, left: f32) -> Self
+glassmere-core   const fn Edges::xy(horizontal: f32, vertical: f32) -> Self
 glassmere-core   const fn FocusRing::color(mut self, color: Color) -> Self
 glassmere-core   const fn FocusRing::inset(mut self, inset: f32) -> Self
 glassmere-core   const fn FocusRing::new(width: f32) -> Self
@@ -60,6 +68,10 @@ glassmere-core   field Animation::duration: Duration
 glassmere-core   field Animation::easing: Easing
 glassmere-core   field Animation::keyframes: Vec<Keyframe>
 glassmere-core   field Animation::repeat: Repeat
+glassmere-core   field AutoEdges::bottom: bool
+glassmere-core   field AutoEdges::left: bool
+glassmere-core   field AutoEdges::right: bool
+glassmere-core   field AutoEdges::top: bool
 glassmere-core   field BackgroundImage::fit: ImageFit
 glassmere-core   field BackgroundImage::slice: Option<[f32; 4]>
 glassmere-core   field BackgroundImage::source: ImageSource
@@ -133,6 +145,10 @@ glassmere-core   field DockWindowId::0: u64
 glassmere-core   field DragInfo::can_drop: bool
 glassmere-core   field DragInfo::dragging: bool
 glassmere-core   field DragInfo::source: bool
+glassmere-core   field Edges::bottom: f32
+glassmere-core   field Edges::left: f32
+glassmere-core   field Edges::right: f32
+glassmere-core   field Edges::top: f32
 glassmere-core   field EditorCharacter::len: usize
 glassmere-core   field EditorCharacter::position: f32
 glassmere-core   field EditorCharacter::width: f32
@@ -339,6 +355,7 @@ glassmere-core   field PropertyGridOptions::style: Style
 glassmere-core   field PropertyGridState::collapsed: HashSet<String>
 glassmere-core   field PropertyGridState::filter: String
 glassmere-core   field PropertyGridState::name_share: f32
+glassmere-core   field ResolvedText::align: TextAlign
 glassmere-core   field ResolvedText::base_direction: Option<Direction>
 glassmere-core   field ResolvedText::direction: Direction
 glassmere-core   field ResolvedText::font_family: FontFamily
@@ -346,6 +363,8 @@ glassmere-core   field ResolvedText::font_size: f32
 glassmere-core   field ResolvedText::font_weight: u16
 glassmere-core   field ResolvedText::foreground: Color
 glassmere-core   field ResolvedText::italic: bool
+glassmere-core   field ResolvedText::letter_spacing: f32
+glassmere-core   field ResolvedText::line_height: f32
 glassmere-core   field RichEditorOptions::font_size: f32
 glassmere-core   field RichEditorOptions::label: String
 glassmere-core   field RichEditorOptions::read_only: bool
@@ -372,11 +391,15 @@ glassmere-core   field ScrollState::offset: f32
 glassmere-core   field ScrollState::offset_x: f32
 glassmere-core   field Selection::anchor: usize
 glassmere-core   field Selection::cursor: usize
+glassmere-core   field Semantics::checked: Option<bool>
 glassmere-core   field Semantics::disabled: bool
+glassmere-core   field Semantics::expanded: Option<bool>
 glassmere-core   field Semantics::focusable: bool
 glassmere-core   field Semantics::label: String
 glassmere-core   field Semantics::numeric: Option<NumericValue>
 glassmere-core   field Semantics::role: Role
+glassmere-core   field Semantics::selected: Option<bool>
+glassmere-core   field Semantics::switch: bool
 glassmere-core   field Semantics::value: Option<String>
 glassmere-core   field Shadow::blur: f32
 glassmere-core   field Shadow::color: Color
@@ -396,6 +419,7 @@ glassmere-core   field StateStyles::disabled: Paint
 glassmere-core   field StateStyles::focused: Paint
 glassmere-core   field StateStyles::hover: Paint
 glassmere-core   field StateStyles::pressed: Paint
+glassmere-core   field Style::align_content: Option<Justify>
 glassmere-core   field Style::align_items: Align
 glassmere-core   field Style::align_self: Option<Align>
 glassmere-core   field Style::animation: Option<Animation>
@@ -409,6 +433,11 @@ glassmere-core   field Style::auto_rows: Vec<Track>
 glassmere-core   field Style::background: Option<Color>
 glassmere-core   field Style::background_image: Option<crate::BackgroundImage>
 glassmere-core   field Style::base_direction: Option<Direction>
+glassmere-core   field Style::basis: Length
+glassmere-core   field Style::blocks_pointer: bool
+glassmere-core   field Style::border: f32
+glassmere-core   field Style::border_color: Option<Color>
+glassmere-core   field Style::border_sides: Option<Edges>
 glassmere-core   field Style::column_gap: Option<f32>
 glassmere-core   field Style::columns: Vec<Track>
 glassmere-core   field Style::cursor: Option<Cursor>
@@ -425,27 +454,39 @@ glassmere-core   field Style::gap: f32
 glassmere-core   field Style::gradient: Option<Box<Gradient>>
 glassmere-core   field Style::grow: f32
 glassmere-core   field Style::height: Length
+glassmere-core   field Style::hidden: bool
 glassmere-core   field Style::italic: Option<bool>
 glassmere-core   field Style::justify_content: Justify
 glassmere-core   field Style::justify_self: Option<Align>
 glassmere-core   field Style::layout_transition: Option<Transition>
+glassmere-core   field Style::letter_spacing: Option<f32>
+glassmere-core   field Style::line_height: Option<f32>
+glassmere-core   field Style::margin: Edges
+glassmere-core   field Style::margin_auto: AutoEdges
 glassmere-core   field Style::max_height: Length
 glassmere-core   field Style::max_width: Length
 glassmere-core   field Style::min_height: Length
 glassmere-core   field Style::min_width: Length
 glassmere-core   field Style::offset: Option<(f32, f32)>
+glassmere-core   field Style::offset_end: Option<(f32, f32)>
 glassmere-core   field Style::opacity: f32
 glassmere-core   field Style::padding: f32
+glassmere-core   field Style::padding_sides: Option<Edges>
 glassmere-core   field Style::radius: f32
+glassmere-core   field Style::reverse: bool
 glassmere-core   field Style::row_gap: Option<f32>
 glassmere-core   field Style::rows: Vec<Track>
 glassmere-core   field Style::shadow: Option<Box<Shadow>>
 glassmere-core   field Style::shrink: f32
 glassmere-core   field Style::states: Option<Box<StateStyles>>
+glassmere-core   field Style::text_align: Option<TextAlign>
 glassmere-core   field Style::transform: Transform
 glassmere-core   field Style::transition: Option<Transition>
+glassmere-core   field Style::unclipped: bool
 glassmere-core   field Style::width: Length
 glassmere-core   field Style::wrap: TextWrap
+glassmere-core   field Style::wrap_items: bool
+glassmere-core   field Style::z_index: i32
 glassmere-core   field StyleSheet::theme: Option<Theme>
 glassmere-core   field StyleSheet::tokens: Vec<(String, Color)>
 glassmere-core   field StyleSheetError::line: usize
@@ -1015,6 +1056,7 @@ glassmere-core   fn Store::memo<T>(&self, name: impl Into<String>, compute: impl
 glassmere-core   fn Store::new() -> Self
 glassmere-core   fn Store::signal<T>(&self, name: impl Into<String>, value: T) -> Signal<T>
 glassmere-core   fn Store::version(&self) -> u64
+glassmere-core   fn Style::align_content(mut self, value: Justify) -> Self
 glassmere-core   fn Style::align_items(mut self, value: Align) -> Self
 glassmere-core   fn Style::align_self(mut self, value: Align) -> Self
 glassmere-core   fn Style::animation(mut self, value: Animation) -> Self
@@ -1028,6 +1070,11 @@ glassmere-core   fn Style::auto_rows(mut self, value: Vec<Track>) -> Self
 glassmere-core   fn Style::background(mut self, value: Color) -> Self
 glassmere-core   fn Style::background_image(mut self, value: crate::BackgroundImage) -> Self
 glassmere-core   fn Style::base_direction(mut self, direction: Direction) -> Self
+glassmere-core   fn Style::basis(mut self, value: Length) -> Self
+glassmere-core   fn Style::blocks_pointer(mut self, value: bool) -> Self
+glassmere-core   fn Style::border(mut self, width: f32) -> Self
+glassmere-core   fn Style::border_color(mut self, value: Color) -> Self
+glassmere-core   fn Style::border_sides(mut self, value: Edges) -> Self
 glassmere-core   fn Style::button() -> Self
 glassmere-core   fn Style::column_gap(mut self, value: f32) -> Self
 glassmere-core   fn Style::columns(mut self, value: Vec<Track>) -> Self
@@ -1035,6 +1082,7 @@ glassmere-core   fn Style::cursor(mut self, cursor: Cursor) -> Self
 glassmere-core   fn Style::direction(mut self, value: Direction) -> Self
 glassmere-core   fn Style::enter(mut self, value: Effect) -> Self
 glassmere-core   fn Style::exit(mut self, value: Effect) -> Self
+glassmere-core   fn Style::flex(mut self, factor: f32) -> Self
 glassmere-core   fn Style::focus_ring(mut self, ring: FocusRing) -> Self
 glassmere-core   fn Style::focusable(mut self, focusable: bool) -> Self
 glassmere-core   fn Style::font_family(mut self, value: FontFamily) -> Self
@@ -1045,33 +1093,53 @@ glassmere-core   fn Style::gap(mut self, value: f32) -> Self
 glassmere-core   fn Style::gradient(mut self, gradient: Gradient) -> Self
 glassmere-core   fn Style::grow(mut self, value: f32) -> Self
 glassmere-core   fn Style::height(mut self, value: Length) -> Self
+glassmere-core   fn Style::hidden(mut self, value: bool) -> Self
+glassmere-core   fn Style::inset(&self) -> f32
 glassmere-core   fn Style::italic(mut self, value: bool) -> Self
 glassmere-core   fn Style::justify_content(mut self, value: Justify) -> Self
 glassmere-core   fn Style::justify_self(mut self, value: Align) -> Self
 glassmere-core   fn Style::layout_transition(mut self, value: Transition) -> Self
+glassmere-core   fn Style::letter_spacing(mut self, value: f32) -> Self
+glassmere-core   fn Style::line_height(mut self, value: f32) -> Self
+glassmere-core   fn Style::margin(mut self, margin: f32) -> Self
+glassmere-core   fn Style::margin_auto_edges(mut self, edges: AutoEdges) -> Self
+glassmere-core   fn Style::margin_bottom_auto(mut self) -> Self
+glassmere-core   fn Style::margin_edges(mut self, margin: Edges) -> Self
+glassmere-core   fn Style::margin_left_auto(mut self) -> Self
+glassmere-core   fn Style::margin_right_auto(mut self) -> Self
+glassmere-core   fn Style::margin_top_auto(mut self) -> Self
+glassmere-core   fn Style::margin_x_auto(mut self) -> Self
+glassmere-core   fn Style::margin_y_auto(mut self) -> Self
 glassmere-core   fn Style::max_height(mut self, value: Length) -> Self
 glassmere-core   fn Style::max_width(mut self, value: Length) -> Self
 glassmere-core   fn Style::min_height(mut self, value: Length) -> Self
 glassmere-core   fn Style::min_width(mut self, value: Length) -> Self
 glassmere-core   fn Style::no_focus_ring(mut self) -> Self
 glassmere-core   fn Style::offset(mut self, x: f32, y: f32) -> Self
+glassmere-core   fn Style::offset_end(mut self, right: f32, bottom: f32) -> Self
 glassmere-core   fn Style::on_disabled(self, paint: Paint) -> Self
 glassmere-core   fn Style::on_focused(self, paint: Paint) -> Self
 glassmere-core   fn Style::on_hover(self, paint: Paint) -> Self
 glassmere-core   fn Style::on_pressed(self, paint: Paint) -> Self
 glassmere-core   fn Style::opacity(mut self, value: f32) -> Self
 glassmere-core   fn Style::padding(mut self, value: f32) -> Self
+glassmere-core   fn Style::padding_sides(mut self, value: Edges) -> Self
 glassmere-core   fn Style::radius(mut self, value: f32) -> Self
 glassmere-core   fn Style::resolve_text(&self, inherited: &ResolvedText) -> ResolvedText
+glassmere-core   fn Style::reverse(mut self, value: bool) -> Self
 glassmere-core   fn Style::row_gap(mut self, value: f32) -> Self
 glassmere-core   fn Style::rows(mut self, value: Vec<Track>) -> Self
 glassmere-core   fn Style::set_property(&mut self, name: &str, value: &str) -> Result<(), String>
 glassmere-core   fn Style::shadow(mut self, shadow: Shadow) -> Self
 glassmere-core   fn Style::shrink(mut self, value: f32) -> Self
+glassmere-core   fn Style::text_align(mut self, value: TextAlign) -> Self
 glassmere-core   fn Style::transform(mut self, value: Transform) -> Self
 glassmere-core   fn Style::transition(mut self, value: Transition) -> Self
+glassmere-core   fn Style::unclipped(mut self, value: bool) -> Self
 glassmere-core   fn Style::width(mut self, value: Length) -> Self
 glassmere-core   fn Style::wrap(mut self, value: TextWrap) -> Self
+glassmere-core   fn Style::wrap_items(mut self, value: bool) -> Self
+glassmere-core   fn Style::z_index(mut self, value: i32) -> Self
 glassmere-core   fn StyleSheet::apply_to(&self, current: &Theme) -> Theme
 glassmere-core   fn StyleSheet::class(&self, name: &str) -> Option<&Style>
 glassmere-core   fn StyleSheet::classes(&self) -> impl Iterator<Item = (&str, &Style)>
@@ -1227,6 +1295,8 @@ glassmere-core   fn Ui::label(&mut self, label: impl Into<Label>) #[track_caller
 glassmere-core   fn Ui::link(&mut self, link: impl Into<Link<M>>) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::locale(&self) -> &str [impl<'a, M: 'static> crate::Ui<'a, M>]
 glassmere-core   fn Ui::map<N: Clone + 'static>(&mut self, f: impl Fn(N) -> M + 'static, content: impl FnOnce(&mut Ui<'_, N>)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
+glassmere-core   fn Ui::measure_text(&self, text: &str, style: &glassmere_scene::TextStyle) -> glassmere_scene::Size [impl<'a, M: 'static> Ui<'a, M>]
+glassmere-core   fn Ui::measure_text_wrapped(&self, text: &str, style: &glassmere_scene::TextStyle, width: f32) -> glassmere_scene::Size [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::memo<S: core::hash::Hash>(&mut self, state: &S, style: Style, content: impl FnOnce(&mut Ui<'_, M>)) -> bool #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::menu(&mut self, label: impl Into<String>, items: &[MenuItem], on_pick: impl Fn(usize) -> M + 'static) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::menu_bar(&mut self, menu: &crate::Menu) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
@@ -1255,6 +1325,7 @@ glassmere-core   fn Ui::tabs(&mut self, selected: usize, tabs: &[Tab], on_select
 glassmere-core   fn Ui::tabs_close(&mut self, selected: usize, tabs: &[Tab], on_select: impl Fn(usize) -> M + 'static, on_close: impl Fn(usize) -> M, content: impl FnOnce(&mut Ui<'_, M>, usize)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::text_area(&mut self, document: &TextDocument, options: CodeEditorOptions<'_>, on: impl Fn(TextOp) -> M + 'static) #[cfg(feature = "std")] #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::text_input(&mut self, input: impl Into<TextInput<M>>, value: &str, on_change: impl Fn(String) -> M + 'static) -> Response<'a> #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
+glassmere-core   fn Ui::text_style(&self) -> glassmere_scene::TextStyle [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::theme(&self) -> &crate::Theme #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::title_bar(&mut self, style: Style, content: impl FnOnce(&mut Ui<'_, M>)) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::toast_sender(&self) -> ToastSender #[cfg(feature = "std")] #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
@@ -1273,6 +1344,7 @@ glassmere-core   fn Ui::window(&self) -> crate::WindowInfo #[track_caller] [impl
 glassmere-core   fn Ui::window_buttons(&mut self, on_command: impl Fn(crate::WindowCommand) -> M) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::window_size(&self) -> glassmere_scene::Size #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn WidgetBuilder::new(build: F) -> Self where F: FnOnce(&WidgetInput) -> CustomWidget [impl<F, M> WidgetBuilder<F, M>]
+glassmere-core   fn WidgetBuilder::on_click(mut self, message: M) -> Self [impl<F, M> WidgetBuilder<F, M>]
 glassmere-core   fn WidgetBuilder::on_event(mut self, on_event: impl Fn(crate::UiEvent) -> Option<M> + 'static) -> Self [impl<F, M> WidgetBuilder<F, M>]
 glassmere-core   type App::Message: Clone + 'static
 glassmere-core   type Component::Message: Clone + 'static
@@ -1882,6 +1954,7 @@ glassmere-core mod app
 glassmere-core struct Animation #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct AppDriver<M: 'static> (private fields)
 glassmere-core struct AreaBuilder<M = ()> (private fields)
+glassmere-core struct AutoEdges #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-core struct Autocomplete<M = ()> (private fields)
 glassmere-core struct BackgroundImage #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct Block #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -1913,6 +1986,7 @@ glassmere-core struct DockWindowId #[cfg_attr(feature = "serde", derive(serde::S
 glassmere-core struct DragInfo #[derive(Clone, Copy, Debug)]
 glassmere-core struct DragSourceBuilder<M = ()> (private fields)
 glassmere-core struct DropTargetBuilder<M = ()> (private fields)
+glassmere-core struct Edges #[derive(Clone, Copy, Debug, Default, PartialEq)]
 glassmere-core struct EditorCharacter #[derive(Clone, Copy, Debug, PartialEq)] #[non_exhaustive]
 glassmere-core struct EditorLine #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
 glassmere-core struct EditorPoint #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -2032,6 +2106,7 @@ glassmere-core use Animation = animation::Animation
 glassmere-core use App = app::App
 glassmere-core use AppDriver = app::AppDriver
 glassmere-core use AreaBuilder = ui::AreaBuilder
+glassmere-core use AutoEdges = style::AutoEdges
 glassmere-core use AutoFlow = style::AutoFlow
 glassmere-core use Autocomplete = ui::Autocomplete
 glassmere-core use Axis = panes::Axis
@@ -2085,6 +2160,7 @@ glassmere-core use DragSourceBuilder = ui::DragSourceBuilder
 glassmere-core use DropKind = drag::DropKind
 glassmere-core use DropTargetBuilder = ui::DropTargetBuilder
 glassmere-core use Easing = animation::Easing
+glassmere-core use Edges = style::Edges
 glassmere-core use EditorCharacter = tree::EditorCharacter
 glassmere-core use EditorCommand = text_area::EditorCommand
 glassmere-core use EditorLine = tree::EditorLine
@@ -2211,6 +2287,7 @@ glassmere-core use TOOLTIP_DELAY = panes::TOOLTIP_DELAY
 glassmere-core use Tab = panes::Tab
 glassmere-core use TaskSender = task::TaskSender #[cfg(feature = "std")]
 glassmere-core use Tasks = task::Tasks #[cfg(feature = "std")]
+glassmere-core use TextAlign = glassmere_scene::TextAlign
 glassmere-core use TextDocument = document::TextDocument #[cfg(feature = "std")]
 glassmere-core use TextEdit = editor::TextEdit
 glassmere-core use TextInput = ui::TextInput
@@ -2302,10 +2379,13 @@ glassmere-scene   field TextSpan::family: Option<FontFamily>
 glassmere-scene   field TextSpan::italic: Option<bool>
 glassmere-scene   field TextSpan::text: String
 glassmere-scene   field TextSpan::weight: Option<u16>
+glassmere-scene   field TextStyle::align: TextAlign
 glassmere-scene   field TextStyle::base: Option<bool>
 glassmere-scene   field TextStyle::family: FontFamily
 glassmere-scene   field TextStyle::font_size: f32
 glassmere-scene   field TextStyle::italic: bool
+glassmere-scene   field TextStyle::letter_spacing: f32
+glassmere-scene   field TextStyle::line_height: f32
 glassmere-scene   field TextStyle::rtl: bool
 glassmere-scene   field TextStyle::weight: u16
 glassmere-scene   field TextStyle::wrap: TextWrap
@@ -2388,12 +2468,17 @@ glassmere-scene   variant Segment::Cubic(Point, Point, Point)
 glassmere-scene   variant Segment::Line(Point)
 glassmere-scene   variant Segment::Move(Point)
 glassmere-scene   variant Segment::Quad(Point, Point)
+glassmere-scene   variant TextAlign::Center
+glassmere-scene   variant TextAlign::End
+glassmere-scene   variant TextAlign::Justify
+glassmere-scene   variant TextAlign::Start
 glassmere-scene   variant TextWrap::None
 glassmere-scene   variant TextWrap::Word
 glassmere-scene enum Affinity #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-scene enum FontFamily #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 glassmere-scene enum Primitive #[derive(Clone, Debug, PartialEq)]
 glassmere-scene enum Segment #[derive(Clone, Copy, Debug, PartialEq)]
+glassmere-scene enum TextAlign #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 glassmere-scene enum TextWrap #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 glassmere-scene impl Default for Affine
 glassmere-scene impl Default for TextStyle
@@ -2429,6 +2514,7 @@ glassmere-scene use MonospaceMeasurer = text::MonospaceMeasurer
 glassmere-scene use Path = path::Path
 glassmere-scene use Segment = path::Segment
 glassmere-scene use Stroke = path::Stroke
+glassmere-scene use TextAlign = text::TextAlign
 glassmere-scene use TextCluster = text::TextCluster
 glassmere-scene use TextGeometry = text::TextGeometry
 glassmere-scene use TextLine = text::TextLine

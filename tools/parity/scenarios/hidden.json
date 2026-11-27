@@ -1,0 +1,43 @@
+{
+  "id": "hidden",
+  "title": "A widget that is not shown: layout, focus order and accessibility",
+  "size": [
+    420,
+    260
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 8,
+    "padding": 12,
+    "children": [
+      {
+        "type": "button",
+        "id": "first",
+        "text": "First"
+      },
+      {
+        "type": "button",
+        "id": "ghost",
+        "text": "Hidden",
+        "visible": false
+      },
+      {
+        "type": "button",
+        "id": "last",
+        "text": "Last"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "initial"
+    },
+    {
+      "do": "tabSequence",
+      "label": "Tab forward",
+      "count": 3
+    }
+  ]
+}
