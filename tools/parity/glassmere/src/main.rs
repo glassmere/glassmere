@@ -322,6 +322,7 @@ impl Bench {
                         .unwrap_or("start"),
                 );
                 style.wrap_items = node.get("wrap").and_then(Value::as_bool).unwrap_or(false);
+                style.reverse = node.get("reverse").and_then(Value::as_bool).unwrap_or(false);
                 if let Some(gap) = px(node, "gap") {
                     style.gap = gap;
                 }

@@ -800,6 +800,13 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
                 }
             };
         }
+        "reverse" => {
+            style.reverse = match value {
+                "true" => true,
+                "false" => false,
+                _ => return Err(format!("reverse is `true` or `false`, got `{value}`")),
+            };
+        }
         "radius" => style.radius = number(value)?,
         "background" => style.background = Some(color(value)?),
         "foreground" => style.foreground = Some(color(value)?),

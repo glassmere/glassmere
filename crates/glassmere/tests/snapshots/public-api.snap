@@ -467,6 +467,7 @@ glassmere-core   field Style::opacity: f32
 glassmere-core   field Style::padding: f32
 glassmere-core   field Style::padding_sides: Option<Edges>
 glassmere-core   field Style::radius: f32
+glassmere-core   field Style::reverse: bool
 glassmere-core   field Style::row_gap: Option<f32>
 glassmere-core   field Style::rows: Vec<Track>
 glassmere-core   field Style::shadow: Option<Box<Shadow>>
@@ -1111,6 +1112,7 @@ glassmere-core   fn Style::padding(mut self, value: f32) -> Self
 glassmere-core   fn Style::padding_sides(mut self, value: Edges) -> Self
 glassmere-core   fn Style::radius(mut self, value: f32) -> Self
 glassmere-core   fn Style::resolve_text(&self, inherited: &ResolvedText) -> ResolvedText
+glassmere-core   fn Style::reverse(mut self, value: bool) -> Self
 glassmere-core   fn Style::row_gap(mut self, value: f32) -> Self
 glassmere-core   fn Style::rows(mut self, value: Vec<Track>) -> Self
 glassmere-core   fn Style::set_property(&mut self, name: &str, value: &str) -> Result<(), String>

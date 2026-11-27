@@ -192,3 +192,6 @@ It orders the children of one parent. Each parent is a stack of its own, so a ch
 ## Shielding what is underneath
 
 A container is transparent to the pointer: only widgets that take a press, a key or a drag are hit, so a card, a panel or a floating toolbar drawn over a button leaves the button clickable through it. In a browser a box under the pointer takes it. `Style::blocks_pointer(true)` (stylesheet `blocks-pointer: true`) makes a node do that: a click or a hover on it does not reach what is under it, and it is what `hovered` reports there. What is inside it still takes the pointer first. Popovers, dialogs and menus already shield what they cover.
+## Reversed flow
+
+`Style::reverse(true)` (stylesheet `reverse: true`) lays a row or a column out from its end, as `flex-direction: row-reverse` and `column-reverse` do: the first child is at the end of the main axis and the others follow back from it, which is the way to put the primary action at the right of a dialog's button row without declaring it last. Only the layout is reversed; Tab still goes in the order the children are declared. `Justify::Start` and `Justify::End` are relative to the main axis, so in a reversed row `End` is the left edge.

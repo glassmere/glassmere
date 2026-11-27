@@ -55,7 +55,7 @@ function render(node) {
   switch (node.type) {
     case 'column':
     case 'row': {
-      const dir = node.type === 'column' ? 'column' : 'row';
+      const dir = (node.type === 'column' ? 'column' : 'row') + (node.reverse ? '-reverse' : '');
       const gap = node.gap != null ? `gap:${px(node.gap)}` : '';
       const gaps = `${node.rowGap != null ? `row-gap:${px(node.rowGap)};` : ''}${node.columnGap != null ? `column-gap:${px(node.columnGap)};` : ''}`;
       const pad = node.padding != null ? `padding:${[].concat(node.padding).map(px).join(' ')}` : '';
