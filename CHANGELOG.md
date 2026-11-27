@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `Style::padding_sides(Edges)`, and in a stylesheet `padding` with up to four numbers and `padding-top`, `padding-right`, `padding-bottom` and `padding-left`: padding per side on `row`, `column`, `grid`, `container` and the other nodes that hold nodes. A control that draws its own content (label, button, field, scroll view, list) keeps the one `padding`. `Style::padding` and `padding: 8` are unchanged.
 - `Style::align_content` (stylesheet `align-content`): how the lines of a wrapping container (`wrap_items`) share the room left across it. Unset, they are laid out as before.
 - `Style::wrap_items(true)`: a row or a column whose children go on to a new line when the next does not fit, as `flex-wrap: wrap` does. The gap is between the lines too. In a stylesheet: `wrap-items: true`. See "Wrapping rows" in [styling](docs/styling.md).
 - `Style::margin`, `Style::margin_edges` and the `Edges` type: room kept clear outside a box, per side. `Style::border` and `Style::border_color`: a border drawn along the edge of the box, inside it, that follows its radius and takes room like padding. `Style::inset` is the padding and the border together, which is where the content starts. In a stylesheet: `margin`, `margin-top`, `margin-right`, `margin-bottom`, `margin-left`, `border`, `border-width` and `border-color`. See "Margin and border" in [styling](docs/styling.md).
