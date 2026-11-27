@@ -40,6 +40,22 @@ pub trait App: 'static {
     fn save_state(&self) -> Option<String> {
         None
     }
+    /// Lets the view be skipped after a message. By default every message
+    /// declares the view again. An application that returns `Some` promises
+    /// that the view reads nothing but this value and the sources of its
+    /// [`bound_label`](Ui::bound_label)s: when a message leaves it equal to
+    /// what it was when the view last ran, the view does not run, and the
+    /// bound labels are brought up to date in the tree directly.
+    ///
+    /// Hash whatever the view reads from `self` that is not bound; a count
+    /// of the items the view lists, or `Some(0)` for a view that reads
+    /// nothing else at all. A change in what a window shows of its own
+    /// accord (size, hover and focus the view observed, a theme or locale
+    /// change, an `Effects::request_redraw`) still declares it, and so does
+    /// input waiting for a `Response`. One value covers every window.
+    fn view_state(&self) -> Option<u64> {
+        None
+    }
     /// A window opened with `Effects::open_window` was closed by the user or
     /// the OS (or went with its owner). Not called for a window `update`
     /// closed with `Effects::close_window`, which the app already knows of.
@@ -778,6 +794,8 @@ pub struct AppDriver<M: 'static> {
     sent: Vec<M>,
     batch: Vec<M>,
     started: bool,
+    /// What `App::view_state` answered when a view last ran.
+    view_state: Option<u64>,
     /// The pacing of the window `frame` drives.
     own: Pacing,
 }
@@ -830,6 +848,7 @@ impl<M: Clone + 'static> AppDriver<M> {
             sent: Vec::new(),
             batch: Vec::new(),
             started: false,
+            view_state: None,
             own: Pacing::default(),
         }
     }
@@ -982,7 +1001,14 @@ impl<M: Clone + 'static> AppDriver<M> {
         let changed = context.apply_requests(window, &mut self.effects.requests);
         self.adopt_toast_actions();
         context.prepare_batch();
-        (messages, messages > 0 || changed)
+        // Messages leave the view as it was when the application says what
+        // it reads and that is unchanged; a request that `update` made to
+        // the host does not.
+        let covered = messages > 0
+            && app
+                .view_state()
+                .is_some_and(|now| self.view_state == Some(now));
+        (messages, changed || (messages > 0 && !covered))
     }
 
     /// The second half of a batch, on the same context: declares the view
@@ -1002,9 +1028,14 @@ impl<M: Clone + 'static> AppDriver<M> {
     ) -> FrameStats {
         context.answer_hot_save(|| app.save_state());
         let forced = core::mem::take(&mut pacing.force);
-        let declare = !pacing.declared || forced || context.view_wanted(size, pacing.interaction);
+        let covered = app
+            .view_state()
+            .is_some_and(|now| self.view_state == Some(now));
+        let declare =
+            !pacing.declared || forced || context.view_wanted(size, pacing.interaction, covered);
         if declare {
             pacing.declared = true;
+            self.view_state = app.view_state();
             match window {
                 None => context.run_app(size, measurer, |ui| app.view(ui)),
                 Some(id) => context.run_app(size, measurer, |ui| app.view_window(id, ui)),
