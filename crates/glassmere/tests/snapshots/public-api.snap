@@ -1093,6 +1093,7 @@ glassmere-core   fn Style::text_align(mut self, value: TextAlign) -> Self
 glassmere-core   fn Style::transform(mut self, value: Transform) -> Self
 glassmere-core   fn Style::transition(mut self, value: Transition) -> Self
 glassmere-core   fn Style::unclipped(mut self, value: bool) -> Self
+glassmere-core   fn Style::web() -> Self
 glassmere-core   fn Style::width(mut self, value: Length) -> Self
 glassmere-core   fn Style::wrap(mut self, value: TextWrap) -> Self
 glassmere-core   fn Style::z_index(mut self, value: i32) -> Self

@@ -615,6 +615,27 @@ impl Style {
         self
     }
 
+    /// A container that lays its children out as `display: flex` does in CSS,
+    /// for someone who knows how that behaves: no gap between children
+    /// (`gap` 0, where the default is 12), children that shrink when they do
+    /// not fit (`shrink` 1, where the default lets them overflow), and
+    /// children that stretch across the other axis (`align_items` stretch,
+    /// where the default keeps their own size). Everything else is the default,
+    /// and is set with the same methods:
+    /// `Style::web().width(Length::Px(200.0)).padding(8.0)`.
+    ///
+    /// The `shrink` is the container's own, as a child of a flex container
+    /// has `flex-shrink: 1` in CSS: give it to each child that should give way
+    /// (`child.shrink(1.0)`), or build the children from `Style::web()` too.
+    pub fn web() -> Self {
+        Self {
+            gap: 0.0,
+            shrink: 1.0,
+            align_items: Align::Stretch,
+            ..Self::default()
+        }
+    }
+
     /// Themed control surface with the default control padding and radius.
     pub fn button() -> Self {
         Self {
