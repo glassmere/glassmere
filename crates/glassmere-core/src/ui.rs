@@ -41,6 +41,7 @@ mod text_area;
 mod toasts;
 mod window;
 pub(crate) use toasts::ToastOutbox;
+pub use window::WindowButtons;
 
 pub use dock::{DockOptions, DockPanel};
 

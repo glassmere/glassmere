@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- `Ui::window_buttons_with` and `WindowButtons`: the caption buttons of a window the application draws the frame of, at a size of its own. They were fixed at the system's 46 by 30; `WindowButtons::new().width(52.0).height(Length::Percent(1.0))` makes each button as tall as the title bar, so the hover reaches its top and bottom. `ui.window_buttons` is what it was. The areas Windows is told about for its tooltips and snap layouts follow the buttons' bounds, so they grow with them; that part was not tried on Windows.
 ## [0.1.8] - 2026-11-23
 
 ### Added

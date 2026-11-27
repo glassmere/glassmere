@@ -117,7 +117,8 @@ pub use tree::{
 pub use ui::{
     AreaBuilder, Autocomplete, Button, Calendar, Collapsible, ComboBox, CommandPalette, DatePicker,
     DockOptions, DockPanel, DragSourceBuilder, DropTargetBuilder, GestureBuilder, Label, Link,
-    Progress, PropertyGrid, RangeSlider, Response, Spinner, Switch, TextInput, Ui, suggest,
+    Progress, PropertyGrid, RangeSlider, Response, Spinner, Switch, TextInput, Ui, WindowButtons,
+    suggest,
 };
 pub use widget::{CustomWidget, WidgetBuilder, WidgetInput};
 pub use window::{ResizeEdge, WindowCommand, WindowId, WindowInfo, WindowRequest};
