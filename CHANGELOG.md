@@ -8,8 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- A view that is not run. `App::view_state` is an opt-in promise that the view reads nothing from the application but the value it returns and the sources of its bound labels. A message after which it is equal to what it was when the view last ran no longer runs the view; the default, `None`, runs it after every message as before. `Ui::bound_label` shows a `Signal<String>` or a `Memo<String>` (anything that implements the new `TextSource`) and follows it: when the source changes, the label's text is replaced in the retained tree, measured again if its size changed, repainted and published to the screen reader without the view running. See `examples/bound.rs` and "Declaring nothing" in [state](docs/state.md).
 - `Style::text_align` (stylesheet `text-align`) with `TextAlign`: `Start`, `Center`, `End` or `Justify`. It sets where the lines of wrapped text sit between the edges of the box (the shaper aligns them, so selection and carets follow), and where a single line sits in a box wider than it, so a right-aligned table cell or a centred title needs no `justify_content`. It is inherited like the font, follows the reading direction (`End` is the left edge in a right-to-left window), and a `Justify` line that is alone, or the last of a block, is not stretched. `TextStyle` gains `align` (default `Start`), so a struct literal of `TextStyle` without `..TextStyle::default()` needs the new field. Unset, nothing changes.
 - `Style::line_height` (stylesheet `line-height`, a multiple of the font size, `1.4` unless set) and `Style::letter_spacing` (stylesheet `letter-spacing`, pixels added after every character, negative tightens). Both are inherited like the font, so one value on a column sets every label in it, and a label's own value wins. The shaper takes them (selection and carets follow), `MonospaceMeasurer` and the embedded renderer lay them out too, and the rich editor's blocks inherit them. `TextStyle` gains `line_height` (default `1.4`) and `letter_spacing` (default `0.0`), so a struct literal of `TextStyle` without `..TextStyle::default()` needs the new fields. Text areas and code editors keep their own `1.4` line pitch. Unset, nothing changes.
+
+### Changed
+
+- Input that handlers answered in full (a click on a button with `on_click`, an activation from the keyboard or a screen reader) no longer marks the view stale on its own. It runs the view through the messages it sends, as before, unless the application's `view_state` is unchanged. An application that does not implement `view_state` sees no difference. Input that nothing answers still waits for the declaration that reads it.
 
 ## [0.1.8] - 2026-11-23
 

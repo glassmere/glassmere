@@ -517,6 +517,37 @@ impl<T> Memo<T> {
     }
 }
 
+/// Text a label can show and follow: a [`Signal`] or a [`Memo`] of a
+/// `String`. `Ui::bound_label` keeps one in the tree, and a change to it
+/// reaches the label without the view running again.
+pub trait TextSource {
+    /// Differs from the last answer whenever the text may have changed. A
+    /// memo computes first, so this answers about the text now.
+    fn version(&self) -> u64;
+    /// The text now.
+    fn text(&self) -> String;
+}
+
+impl TextSource for Signal<String> {
+    fn version(&self) -> u64 {
+        Signal::version(self)
+    }
+
+    fn text(&self) -> String {
+        self.get()
+    }
+}
+
+impl TextSource for Memo<String> {
+    fn version(&self) -> u64 {
+        Memo::version(self)
+    }
+
+    fn text(&self) -> String {
+        self.get()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
