@@ -970,6 +970,16 @@ pub struct Context {
     /// not say that the view reads nothing those change; see
     /// `App::view_state`.
     view_stale_handled: bool,
+    /// Whether the declaration running now read the offset of a scroll area,
+    /// as a grid that declares only the rows in view does, and whether the
+    /// last one did. A wheel step that moves a plain scroll area declares the
+    /// view again only in the second case: nothing else reads the offset.
+    reading_scroll: core::cell::Cell<bool>,
+    view_reads_scroll: bool,
+    /// What the wheel step in progress moved: a plain scroll area, whose
+    /// offset only the kernel uses, and anything else, which the view reads.
+    wheel_moved_plain: bool,
+    wheel_moved_other: bool,
     /// The dock being declared or reconciled, whose panels are found by id
     /// wherever they sit. A cell because `Ui` only holds a shared reference
     /// to the context.
@@ -1183,6 +1193,10 @@ impl Default for Context {
             bound_nodes: Vec::new(),
             view_stale: true,
             view_stale_handled: false,
+            reading_scroll: core::cell::Cell::new(false),
+            view_reads_scroll: false,
+            wheel_moved_plain: false,
+            wheel_moved_other: false,
             dock: core::cell::Cell::new(None),
             panels: HashMap::new(),
             calendar_views: HashMap::new(),
@@ -1349,6 +1363,12 @@ impl Context {
 
     pub fn direction(&self) -> crate::Direction {
         self.direction
+    }
+
+    /// The text the theme gives a view that sets nothing: what `Ui::text_style`
+    /// starts from.
+    pub(crate) fn base_text(&self) -> ResolvedText {
+        self.root_text()
     }
 
     fn root_text(&self) -> ResolvedText {
@@ -1712,6 +1732,11 @@ impl Context {
         if let Some(node) = self.nodes.get(&id) {
             node.observing.set(true);
         }
+    }
+
+    /// The view read the offset of a scroll area to decide what to declare.
+    pub(crate) fn note_scroll_read(&self) {
+        self.reading_scroll.set(true);
     }
 
     /// The view read the hover or focus of an element whose node does not
@@ -2414,12 +2439,23 @@ mod tests {
         assert_eq!(root.count(), context.scene.primitives.len());
         counted(&root);
 
-        // A row draws a clip, its text and the pop, which is 3. The view draws
-        // its clip, the rows, the thumb of its scroll bar and the pop: 12. The
-        // root has a clip and a pop around the view: 14.
+        // A row draws a clip, its text and the pop, which is 3, and a row the
+        // view clips away draws nothing. The view draws its clip, the rows in
+        // it, the thumb of its scroll bar and the pop: 3 and 3 for each. The
+        // root has a clip and a pop around the view: 2 more. Rows are 33 px
+        // apart in a view of 30, so one of the three shows.
+        let visible = context
+            .nodes
+            .values()
+            .filter(|node| {
+                node.kind == Kind::Label && node.clip.width > 0.0 && node.clip.height > 0.0
+            })
+            .count();
+        assert_eq!(visible, 1);
         let report = context.memory();
         assert_eq!((report.nodes, report.cached_nodes), (5, 5));
-        assert_eq!(report.cached_primitives, 14 + 12 + 3 * 3);
+        let rows = 3 * visible;
+        assert_eq!(report.cached_primitives, (2 + 3 + rows) + (3 + rows) + rows);
         let mut flattened = 0;
         for node in context.nodes.values() {
             let mut flat = Vec::new();
