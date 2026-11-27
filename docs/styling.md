@@ -146,3 +146,8 @@ A window runs left to right or right to left according to `AppOptions::direction
 ## Hiding without reflowing
 
 `Style::hidden(true)` (stylesheet `visibility: hidden`) keeps a node and its subtree where they are in the layout but draws nothing, takes no pointer or keyboard focus (Tab skips it) and leaves it out of the accessibility tree. Use it for a control that comes and goes while its neighbours stay put. To remove the space too, do not declare the node, which is `display: none`. Unlike CSS, a child of a hidden node cannot be made visible again.
+
+## Overflow
+
+A box cuts what is inside it at its edge, so a child larger than its parent shows only where the parent is, and the cut part cannot be clicked. `Style::unclipped(true)` (stylesheet `overflow: visible`) lifts that for a row, column, container or grid: its children are drawn and hit past its edge, still under the clip of whatever clips above it. A scroll view, a list, a tab strip, a popup and a popover always clip. While a window has an unclipped node, finding what is under the pointer searches the whole tree instead of skipping what a clip rules out, so use it for a few boxes, not for every one. A group opacity or transform set on the unclipped node still cuts at its box.
+

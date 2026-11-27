@@ -82,6 +82,7 @@ impl Opener {
 
 impl Context {
     pub(super) fn refresh_bounds(&mut self, size: Size) {
+        self.has_unclipped = false;
         self.update_bounds(
             self.root,
             Point::default(),
@@ -105,6 +106,8 @@ impl Context {
         let node = &self.nodes[&id];
         let hidden =
             node.style.hidden || node.parent.is_some_and(|parent| self.nodes[&parent].hidden);
+        let unclipped = node.unclipped();
+        self.has_unclipped |= unclipped;
         self.hidden_changed |= node.hidden != hidden;
         let old_bounds = node.bounds;
         let old_clip = node.clip;
@@ -257,7 +260,9 @@ impl Context {
                 },
             y: node.bounds.y - node.scroll.offset,
         };
-        let clip = node.clip;
+        // Children are cut by this box unless it is unclipped, when they
+        // are cut by what cuts it.
+        let clip = if unclipped { clip } else { node.clip };
         // Placing a child needs the tree mutably, so the children are copied,
         // into a list from an earlier frame when there is one. A node with no
         // children has nothing to copy and takes none.
@@ -665,7 +670,16 @@ impl Context {
         // Everything from here on is drawn after the children. It is only
         // ever pushed, never read, moved or removed, so the length now is
         // where it starts.
+        // An unclipped node closes its clip here, so that the children are not
+        // cut by it, and opens it again for what is drawn after them.
+        let unclipped = node.unclipped();
+        if unclipped {
+            scene.primitives.push(Primitive::PopClip);
+        }
         let split = scene.primitives.len();
+        if unclipped {
+            scene.primitives.push(Primitive::PushClip(node.bounds));
+        }
         self.paint_scrollbars(id, &mut scene);
         self.paint_strip_edges(id, &mut scene);
         self.paint_calendar_today(id, &mut scene);
@@ -1061,7 +1075,7 @@ impl Context {
     /// links and the next `refresh_bounds`, which a frame that unwinds in
     /// between leaves open.
     pub(super) fn can_prune_at(&self) -> bool {
-        self.clips_valid && self.popover_count == 0 && self.popup_count == 0
+        self.clips_valid && self.popover_count == 0 && self.popup_count == 0 && !self.has_unclipped
     }
 
     /// What `order` followed by a search from the back returns: the last
@@ -1147,6 +1161,8 @@ mod tests {
             let node = &self.nodes[&id];
             let hidden =
                 node.style.hidden || node.parent.is_some_and(|parent| self.nodes[&parent].hidden);
+            let unclipped = node.unclipped();
+            self.has_unclipped |= unclipped;
             self.hidden_changed |= node.hidden != hidden;
             let old_bounds = node.bounds;
             let old_clip = node.clip;
@@ -1285,7 +1301,7 @@ mod tests {
                     },
                 y: node.bounds.y - node.scroll.offset,
             };
-            let clip = node.clip;
+            let clip = if unclipped { clip } else { node.clip };
             // Placing a child needs the tree mutably, so the children are copied.
             let children = node.children.clone();
             // A tab strip that scrolls keeps its panel menu at the end edge, and
