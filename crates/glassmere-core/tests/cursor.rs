@@ -149,3 +149,25 @@ fn a_divider_shows_the_resize_pointer_of_its_direction() {
     context.run(ROOT, &mut MonospaceMeasurer, panes(Axis::Vertical));
     assert_eq!(cursor(&context, &["split", "$divider"]), Cursor::RowResize);
 }
+
+#[test]
+fn the_pointer_over_a_pressable_widget_can_be_the_arrow_for_the_whole_window() {
+    let mut context = Context::new();
+    assert_eq!(
+        context.pressable_cursor(),
+        Cursor::Pointer,
+        "a hand by default"
+    );
+    context.set_pressable_cursor(Cursor::Default);
+    context.run(ROOT, &mut MonospaceMeasurer, view);
+    // What a browser shows over a button.
+    assert_eq!(cursor(&context, &["button"]), Cursor::Default);
+    assert_eq!(cursor(&context, &["mouse"]), Cursor::Default);
+    // The rest is as it was: the I-beam over a field, and a style's own say.
+    assert_eq!(cursor(&context, &["input"]), Cursor::Text);
+    assert_eq!(cursor(&context, &["pill", "label"]), Cursor::Grab);
+    assert_eq!(cursor(&context, &["pill", "button"]), Cursor::NotAllowed);
+    // And back.
+    context.set_pressable_cursor(Cursor::Pointer);
+    assert_eq!(cursor(&context, &["button"]), Cursor::Pointer);
+}

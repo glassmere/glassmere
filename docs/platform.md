@@ -4,7 +4,7 @@ What the host (`glassmere-winit`, re-exported by `glassmere`) provides around th
 
 ## Starting
 
-`run(options, app)` runs an `App`; `run_with(options, state, view)` is the shorter form whose message is an `Action<S>`. `AppOptions` carries `title`, `size`, `background`, `theme`, `stylesheet`, `direction`, `caret_movement`, `reduced_motion`, `decorations`, `resizable`, `placement`, `devtools`, `graphics`, `gpu` and `frame_limit`. The defaults are a 900 by 650 window that follows the system theme with the inspector available.
+`run(options, app)` runs an `App`; `run_with(options, state, view)` is the shorter form whose message is an `Action<S>`. `AppOptions` carries `title`, `size`, `background`, `theme`, `stylesheet`, `direction`, `caret_movement`, `reduced_motion`, `decorations`, `resizable`, `placement`, `devtools`, `graphics`, `gpu` and `frame_limit`. `pressable_cursor` is the pointer over a button, a check box, a tab or a link: a hand by default, and `Cursor::Default` is the arrow a browser shows there. The defaults are a 900 by 650 window that follows the system theme with the inspector available.
 
 `App::save_state` and `glassmere::hot::saved_state` carry a string across a restart under the development runner. Outside it they do nothing.
 

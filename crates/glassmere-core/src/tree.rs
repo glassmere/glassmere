@@ -888,6 +888,9 @@ pub struct Context {
     painted_overlays: Vec<Rect>,
     redraw_requested: bool,
     caret_movement: crate::CaretMovement,
+    /// The pointer over a widget that takes a press, unless a style says
+    /// otherwise; a hand by default.
+    pressable_cursor: crate::Cursor,
     direction: crate::Direction,
     #[cfg(feature = "std")]
     watched: HashMap<std::path::PathBuf, Watched>,
@@ -1140,6 +1143,7 @@ impl Default for Context {
             painted_overlays: Vec::new(),
             redraw_requested: false,
             caret_movement: crate::CaretMovement::Visual,
+            pressable_cursor: crate::Cursor::Pointer,
             direction: crate::Direction::Ltr,
             #[cfg(feature = "std")]
             watched: HashMap::new(),
@@ -1239,6 +1243,20 @@ impl Context {
     /// order inside bidirectional text. Applies to every text editor.
     pub fn set_caret_movement(&mut self, movement: crate::CaretMovement) {
         self.caret_movement = movement;
+    }
+
+    /// The pointer shown over a widget that takes a press (a button, a
+    /// check box, a tab, a link) when no `Style::cursor` says otherwise: a
+    /// hand (`Cursor::Pointer`) by default. `Cursor::Default` is what a
+    /// browser shows over a button, for an application that wants the
+    /// web's behaviour everywhere without styling every node. Text fields keep
+    /// their I-beam and dividers their resize pointers.
+    pub fn set_pressable_cursor(&mut self, cursor: crate::Cursor) {
+        self.pressable_cursor = cursor;
+    }
+
+    pub fn pressable_cursor(&self) -> crate::Cursor {
+        self.pressable_cursor
     }
 
     pub fn caret_movement(&self) -> crate::CaretMovement {
