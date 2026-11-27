@@ -23,6 +23,34 @@ mod dash;
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Path {
     segments: Vec<Segment>,
+    cap: LineCap,
+    join: LineJoin,
+}
+
+/// How the open ends of a stroked path are finished.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum LineCap {
+    /// Cut square at the end point, which is where a line is without an
+    /// opinion.
+    #[default]
+    Butt,
+    /// A half circle as wide as the line, centred on the end point.
+    Round,
+    /// Cut square, half the line's width past the end point.
+    Square,
+}
+
+/// How the corners of a stroked path are finished.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum LineJoin {
+    /// A sharp corner, up to four times the width long and bevelled beyond
+    /// that, which is where a line is without an opinion.
+    #[default]
+    Miter,
+    /// A circular corner, centred on the point.
+    Round,
+    /// Cut straight across.
+    Bevel,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -36,8 +64,10 @@ pub enum Segment {
     Close,
 }
 
-/// The outline drawn along a path. Corners are mitred up to four times the
-/// width and bevelled beyond it; open ends are cut square at their points.
+/// The outline drawn along a path. Unless the path says otherwise
+/// ([`Path::with_cap`], [`Path::with_join`]), corners are mitred up to four
+/// times the width and bevelled beyond it, and open ends are cut square at
+/// their points.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Stroke {
     pub width: f32,
@@ -45,6 +75,30 @@ pub struct Stroke {
 }
 
 impl Path {
+    /// How the open ends of this path are finished when it is stroked.
+    pub fn cap(&self) -> LineCap {
+        self.cap
+    }
+
+    /// How the corners of this path are finished when it is stroked.
+    pub fn join(&self) -> LineJoin {
+        self.join
+    }
+
+    /// The path with `cap` at the open ends of its stroke. A path cut into
+    /// dashes gets it at the ends of every dash, so a round cap makes dots
+    /// and rounded dashes.
+    pub fn with_cap(mut self, cap: LineCap) -> Self {
+        self.cap = cap;
+        self
+    }
+
+    /// The path with `join` at the corners of its stroke.
+    pub fn with_join(mut self, join: LineJoin) -> Self {
+        self.join = join;
+        self
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -64,6 +118,8 @@ impl Path {
         // Ten segments with round corners, five without: one allocation.
         let mut path = Self {
             segments: Vec::with_capacity(if radius > 0.0 { 10 } else { 5 }),
+            cap: LineCap::default(),
+            join: LineJoin::default(),
         };
         if radius <= 0.0 {
             path.move_to(at(left, top))
@@ -168,6 +224,8 @@ impl Path {
             y: point.y + offset.y,
         };
         Self {
+            cap: self.cap,
+            join: self.join,
             segments: self
                 .segments
                 .iter()

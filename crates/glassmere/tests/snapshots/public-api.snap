@@ -2308,9 +2308,11 @@ glassmere-scene   fn Image::pixels(&self) -> Option<(u32, u32, &[u8])>
 glassmere-scene   fn Image::size(&self) -> Size
 glassmere-scene   fn Image::vector(&self) -> Option<&dyn VectorImage>
 glassmere-scene   fn Path::bounds(&self) -> Rect
+glassmere-scene   fn Path::cap(&self) -> LineCap
 glassmere-scene   fn Path::close(&mut self) -> &mut Self
 glassmere-scene   fn Path::cubic_to(&mut self, first: Point, second: Point, to: Point) -> &mut Self
 glassmere-scene   fn Path::dashed(&self, dashes: &[f32], phase: f32) -> Path
+glassmere-scene   fn Path::join(&self) -> LineJoin
 glassmere-scene   fn Path::line_to(&mut self, to: Point) -> &mut Self
 glassmere-scene   fn Path::move_to(&mut self, to: Point) -> &mut Self
 glassmere-scene   fn Path::new() -> Self
@@ -2318,6 +2320,8 @@ glassmere-scene   fn Path::quad_to(&mut self, control: Point, to: Point) -> &mut
 glassmere-scene   fn Path::rounded_rect(rect: Rect, radius: f32) -> Self
 glassmere-scene   fn Path::segments(&self) -> &[Segment]
 glassmere-scene   fn Path::translated(&self, offset: Point) -> Self
+glassmere-scene   fn Path::with_cap(mut self, cap: LineCap) -> Self
+glassmere-scene   fn Path::with_join(mut self, join: LineJoin) -> Self
 glassmere-scene   fn Primitive::translated(&self, offset: Point) -> Self
 glassmere-scene   fn Rect::contains(self, p: Point) -> bool
 glassmere-scene   fn Rect::intersect(self, other: Self) -> Self
@@ -2350,6 +2354,12 @@ glassmere-scene   variant FontFamily::Monospace
 glassmere-scene   variant FontFamily::Named(String)
 glassmere-scene   variant FontFamily::SansSerif
 glassmere-scene   variant FontFamily::Serif
+glassmere-scene   variant LineCap::Butt
+glassmere-scene   variant LineCap::Round
+glassmere-scene   variant LineCap::Square
+glassmere-scene   variant LineJoin::Bevel
+glassmere-scene   variant LineJoin::Miter
+glassmere-scene   variant LineJoin::Round
 glassmere-scene   variant Primitive::Custom { rect: Rect, id: u64 }
 glassmere-scene   variant Primitive::Gradient { rect: Rect, radius: f32, from: Point, to: Point, stops: Vec<GradientStop>, radial: bool }
 glassmere-scene   variant Primitive::Image { rect: Rect, image: Image, source: Rect, tint: Option<Color>, radius: f32 }
@@ -2372,6 +2382,8 @@ glassmere-scene   variant TextWrap::None
 glassmere-scene   variant TextWrap::Word
 glassmere-scene enum Affinity #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-scene enum FontFamily #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
+glassmere-scene enum LineCap #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+glassmere-scene enum LineJoin #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 glassmere-scene enum Primitive #[derive(Clone, Debug, PartialEq)]
 glassmere-scene enum Segment #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-scene enum TextWrap #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
@@ -2405,6 +2417,8 @@ glassmere-scene use CaretStop = text::CaretStop
 glassmere-scene use FontFamily = text::FontFamily
 glassmere-scene use Image = image::Image
 glassmere-scene use ImageFrame = image::ImageFrame
+glassmere-scene use LineCap = path::LineCap
+glassmere-scene use LineJoin = path::LineJoin
 glassmere-scene use MonospaceMeasurer = text::MonospaceMeasurer
 glassmere-scene use Path = path::Path
 glassmere-scene use Segment = path::Segment
