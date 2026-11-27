@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 # What Qt Widgets cannot say about one widget. Percent sizes and a per-widget
 # margin have no equivalent; a scenario that needs them is marked unsupported
 # and the property is ignored.
-UNSUPPORTED = {"percent", "margin", "wrap", "align-content", "border-sides", "offset-end"}
+UNSUPPORTED = {"percent", "margin", "wrap", "align-content", "border-sides", "offset-end", "flex-detail"}
 
 HERE = Path(__file__).resolve().parent
 args = sys.argv[1:]

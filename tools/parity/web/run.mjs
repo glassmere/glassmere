@@ -35,6 +35,10 @@ function css(node, extra = '') {
   if (node.heightPercent != null) s.push(`height:${node.heightPercent * 100}%`);
   if (node.minWidth != null) s.push(`min-width:${px(node.minWidth)}`);
   if (node.maxWidth != null) s.push(`max-width:${px(node.maxWidth)}`);
+  if (node.minHeight != null) s.push(`min-height:${px(node.minHeight)}`);
+  if (node.maxHeight != null) s.push(`max-height:${px(node.maxHeight)}`);
+  if (node.aspectRatio != null) s.push(`aspect-ratio:${node.aspectRatio}`);
+  if (node.alignSelf) s.push(`align-self:${MAP[node.alignSelf]}`);
   if (node.margin != null) s.push(`margin:${px(node.margin)}`);
   if (Array.isArray(node.border)) s.push(`border-style:solid;border-color:#8aa4c8;border-width:${node.border.map(px).join(' ')}`);
   else if (node.border != null) s.push(`border:${px(node.border)} solid #8aa4c8`);

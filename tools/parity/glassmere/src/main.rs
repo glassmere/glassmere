@@ -136,6 +136,18 @@ fn sized(node: &Value, mut style: Style) -> Style {
     if let Some(w) = px(node, "maxWidth") {
         style.max_width = Length::Px(w);
     }
+    if let Some(h) = px(node, "minHeight") {
+        style.min_height = Length::Px(h);
+    }
+    if let Some(h) = px(node, "maxHeight") {
+        style.max_height = Length::Px(h);
+    }
+    if let Some(ratio) = px(node, "aspectRatio") {
+        style.aspect_ratio = Some(ratio);
+    }
+    if let Some(name) = node.get("alignSelf").and_then(Value::as_str) {
+        style.align_self = Some(align(name));
+    }
     if let Some(m) = px(node, "margin") {
         style = style.margin(m);
     }
