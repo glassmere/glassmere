@@ -116,6 +116,8 @@ function render(node) {
         .join('')}</div>`;
     case 'input':
       return `<input type="text" data-id="${id}" aria-label="${esc(node.label ?? '')}" value="${esc(node.value ?? '')}"${dis} style="${css(node)}">`;
+    case 'select':
+      return `<select data-id="${id}" aria-label="${esc(node.label ?? '')}"${dis} style="${css(node)}">${(node.options || []).map((o, i) => `<option value="${i}"${node.value === i ? ' selected' : ''}>${esc(o.text)}</option>`).join('')}</select>`;
     case 'number':
       return `<input type="number" data-id="${id}" aria-label="${esc(node.label ?? '')}"${node.min != null ? ` min="${node.min}"` : ''}${node.max != null ? ` max="${node.max}"` : ''} step="${node.step ?? 1}" value="${node.value ?? ''}"${dis} style="${css(node)}">`;
     case 'slider':
@@ -152,6 +154,7 @@ const shell = (spec) => `<!doctype html><html><head><meta charset="utf-8"><style
   root.addEventListener('change', (e) => {
     const t = e.target;
     if (t.type === 'checkbox') __log.push('toggle:' + t.dataset.id + ':' + t.checked);
+    if (t.tagName === 'SELECT') __log.push('select:' + t.dataset.id + ':' + t.selectedIndex);
     if (t.type === 'radio') __log.push('select:' + t.name + ':' + t.value);
   });
   root.addEventListener('input', (e) => {
@@ -213,6 +216,7 @@ async function run(spec, browser) {
         else if (el.type === 'radio') { if (el.checked) values[el.name] = Number(el.value); }
         else if (el.type === 'text') values[el.dataset.id] = el.value;
         else if (el.type === 'range') values[el.dataset.id] = Number(el.value);
+        else if (el.tagName === 'SELECT') values[el.dataset.id] = el.selectedIndex;
         else if (el.type === 'number') values[el.dataset.id] = el.value === '' ? null : Number(el.value);
       }
       const scroll = {};

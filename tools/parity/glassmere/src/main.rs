@@ -499,6 +499,29 @@ impl Bench {
                     ui.switch(text, on, move |on| Msg::Toggle(key.clone(), on));
                 });
             }
+            "select" => {
+                let selected = match self.values.get(&id) {
+                    Some(Val::Index(i)) => *i,
+                    _ => 0,
+                };
+                let items: Vec<String> = node["options"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|o| o["text"].as_str().unwrap_or("").to_string())
+                    .collect();
+                let labels: Vec<&str> = items.iter().map(String::as_str).collect();
+                let group = id.clone();
+                let label = node.get("label").and_then(Value::as_str).unwrap_or("");
+                ui.keyed(id, |ui| {
+                    ui.combo_box(
+                        glassmere_core::ComboBox::new(label),
+                        selected,
+                        &labels,
+                        move |i| Msg::Select(group.clone(), i),
+                    );
+                });
+            }
             "radiogroup" => {
                 let selected = match self.values.get(&id) {
                     Some(Val::Index(i)) => *i,
@@ -714,7 +737,7 @@ fn initial(node: &Value, out: &mut HashMap<String, Val>) {
                 ),
             );
         }
-        "radiogroup" => {
+        "radiogroup" | "select" => {
             out.insert(id, Val::Index(node["value"].as_u64().unwrap_or(0) as usize));
         }
         "input" => {
@@ -766,6 +789,7 @@ fn role(role: Role) -> &'static str {
         Role::TextInput | Role::PasswordInput => "textbox",
         Role::Slider => "slider",
         Role::SpinButton => "spinbutton",
+        Role::ComboBox => "combobox",
         Role::Label => "text",
         Role::Group => "generic",
         Role::ScrollView => "scrollview",
