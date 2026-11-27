@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `FocusRing`, with `Style::focus_ring` and `Style::no_focus_ring`: one widget's focus ring in its own width, colour and inset, or none. `Path::rounded_rect` in `glassmere-scene` builds the stroked outline the ring uses. See "The focus ring" in [styling](docs/styling.md).
 - `Ui::measure_text`, `Ui::measure_text_wrapped` and `Ui::text_style`: how big some text is, asked of the same measurer the layout uses, from inside a view. A control you paint yourself can size itself to its label without a table of glyph widths. See "Sizing it to text" in [widgets](docs/widgets.md) and `examples/layout.rs`.
 - `NumberOptions::field_style`, `NumberOptions::stepper_style` and `NumberOptions::without_steppers`, and `Autocomplete::style`. The number input's field (44 tall with padding 10) and its 32 by 44 buttons, and the autocomplete's 280 by 44 field, were fixed; they can now be made compact to fit a bar or a pill, or the buttons left out (the arrow keys and the wheel still step the number). Nothing changes for code that sets none of them.
+- `Style::z_index` (stylesheet `z-index`): where a node stands among overlapping siblings, as on a flex item in CSS. A higher value is painted later and hit first; siblings with the same value keep their declaration order, and layout and the focus order are unchanged. It orders siblings only, so for something above the whole window use a `popover` or `dialog`. A tree where no node sets it paints and hit-tests as before.
 
 ### Changed
 

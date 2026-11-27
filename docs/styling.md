@@ -142,3 +142,9 @@ There is no mipmap chain, but a photo drawn at under half its natural size is bo
 ## Direction
 
 A window runs left to right or right to left according to `AppOptions::direction` (`DirectionChoice::Auto` follows the OS locale). `Style::direction` overrides it for a subtree: layout mirrors, text aligns to the end side, and directional internals follow. Physical values stay physical: `offset`, transforms, slide effects, floating dock rectangles and `DockZone::Left` and `Right` mean the same pixels in both directions. `Style::base_direction` forces the base direction of a text paragraph, in labels and in text fields, text areas, code editors and rich editors (every line or block takes it; a text field and a rich editor align to it, a text area and a code editor only order by it).
+
+## Stacking
+
+Overlapping siblings (nodes placed with `Style::offset`, or pushed over each other by a negative `margin`) are painted in the order they are declared, the last on top, and a click reaches the one on top. `Style::z_index(n)` (stylesheet `z-index: n`) changes that: a higher value is painted later and hit first, a lower one, negative or not, goes under. Siblings with the same value keep their declaration order. Layout and the Tab order still follow the declaration order.
+
+It orders the children of one parent. Each parent is a stack of its own, so a child never goes over or under a node outside its parent. To put something above the whole window, use a `popover` or a `dialog`.

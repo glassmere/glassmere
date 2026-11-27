@@ -336,6 +336,15 @@ pub struct Style {
     /// Takes the node out of flow and places its top-left corner at this
     /// offset from the parent's top-left corner.
     pub offset: Option<(f32, f32)>,
+    /// Where the node stands among its siblings when they overlap, as
+    /// `z-index` does on a flex item: a higher value is painted later, so over
+    /// the lower ones, and is hit first. Siblings with the same value keep the
+    /// order they were declared in, and 0 is where a node is unless it says
+    /// otherwise. It orders siblings only, so a child never leaves its parent's
+    /// place in the stack; use an overlay (`popover`, `dialog`) to put
+    /// something above the whole window. Layout and the focus order still
+    /// follow the declaration order.
+    pub z_index: i32,
     /// How the node shows keyboard focus; `None` takes the theme's ring.
     pub focus_ring: Option<FocusRing>,
     /// Inherited like text properties; `None` takes the parent's direction.
@@ -395,6 +404,7 @@ impl Default for Style {
             exit: None,
             animation: None,
             offset: None,
+            z_index: 0,
             focus_ring: None,
             direction: None,
         }
@@ -634,6 +644,8 @@ impl Style {
     setter!(exit, exit, Effect, some);
     setter!(animation, animation, Animation, some);
     setter!(direction, direction, Direction, some);
+    setter!(z_index, z_index, i32);
+
     pub fn offset(mut self, x: f32, y: f32) -> Self {
         self.offset = Some((x, y));
         self

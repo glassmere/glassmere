@@ -813,6 +813,8 @@ impl Context {
         // the move would copy a whole widget or control to leave everything
         // as it was.
         node.text = core::mem::take(&mut element.text);
+        self.z_count -= usize::from(node.style.z_index != 0);
+        self.z_count += usize::from(element.style.z_index != 0);
         node.style = core::mem::take(&mut element.style);
         node.resolved = resolved;
         node.tooltip = element.tooltip.take();
@@ -904,6 +906,7 @@ impl Context {
             Control::SelectableText => Some(Box::new(Editor::block(&element.text))),
             _ => None,
         };
+        self.z_count += usize::from(element.style.z_index != 0);
         if element.kind == Kind::Popover {
             self.popover_count += 1;
         }
@@ -1022,6 +1025,7 @@ impl Context {
         {
             self.taken_range = None;
         }
+        self.z_count -= usize::from(node.style.z_index != 0);
         if node.kind == Kind::Popover {
             self.popover_count -= 1;
         }

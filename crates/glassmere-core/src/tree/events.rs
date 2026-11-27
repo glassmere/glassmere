@@ -104,12 +104,8 @@ impl Context {
     /// things rather than taking the pointer themselves, so this is not the
     /// hit test.
     pub(super) fn deepest_at(&self, point: Point) -> Option<NodeId> {
-        let mut order = Vec::new();
-        self.order(self.root, &mut order);
-        order
-            .into_iter()
-            .rev()
-            .find(|id| self.nodes[id].clip.contains(point))
+        // The last node, in painting order, whose clip holds the point.
+        self.last_at(self.root, point, false, &mut |_, _| true)
     }
 
     /// Where an event goes: what it is over, or what has the focus.
