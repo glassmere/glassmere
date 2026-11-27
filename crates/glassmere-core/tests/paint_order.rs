@@ -123,9 +123,10 @@ fn a_scroll_bar_is_drawn_over_the_rows_and_the_clip_it_is_in_closes_after_it() {
     let start = opened(&context, &["view"]);
     let end = closed(primitives, start);
     let view = &primitives[start..=end];
-    // The clip of the view, its four rows, the thumb, and the pop of the clip.
+    // The clip of the view, the two of its four rows that are in it (the others
+    // are clipped away and not drawn), the thumb, and the pop of the clip.
     let mut wanted = vec!["push"];
-    wanted.extend(labels(4));
+    wanted.extend(labels(2));
     wanted.extend(["quad", "pop"]);
     assert_eq!(kinds(view), wanted);
     let thumb = context.theme().scrollbar;
@@ -344,9 +345,10 @@ fn a_node_that_slides_out_leaves_a_ghost_of_what_it_drew_in_the_order_it_drew_it
     let primitives = &context.scene().primitives;
     let start = opened(&context, &["panel"]);
     let drawn = primitives[start..=closed(primitives, start)].to_vec();
-    // Its clip, the three rows, the thumb of its scroll bar and the pop.
+    // Its clip, the two of its three rows that are in view (the third is
+    // clipped away and not drawn), the thumb of its scroll bar and the pop.
     let mut wanted = vec!["push"];
-    wanted.extend(labels(3));
+    wanted.extend(labels(2));
     wanted.extend(["quad", "pop"]);
     assert_eq!(kinds(&drawn), wanted);
 

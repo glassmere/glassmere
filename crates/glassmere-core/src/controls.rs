@@ -57,6 +57,15 @@ pub struct NumberOptions {
     pub suffix: String,
     /// Style of the whole field; 160 wide unless it says otherwise.
     pub style: crate::Style,
+    /// Style of the text field inside it: 44 tall with a padding of 10
+    /// unless it says otherwise. Its width is what the row leaves it.
+    pub field_style: Option<crate::Style>,
+    /// Style of each of the two buttons that step the number: 32 by 44
+    /// unless it says otherwise.
+    pub stepper_style: Option<crate::Style>,
+    /// Whether the buttons that step the number are shown. The arrow keys and
+    /// the wheel step it either way.
+    pub steppers: bool,
 }
 
 impl Default for NumberOptions {
@@ -68,6 +77,9 @@ impl Default for NumberOptions {
             decimals: None,
             suffix: String::new(),
             style: crate::Style::default(),
+            field_style: None,
+            stepper_style: None,
+            steppers: true,
         }
     }
 }
@@ -95,6 +107,25 @@ impl NumberOptions {
 
     pub fn style(mut self, style: crate::Style) -> Self {
         self.style = style;
+        self
+    }
+
+    /// The style of the text field inside, for a field that is not 44 tall.
+    pub fn field_style(mut self, style: crate::Style) -> Self {
+        self.field_style = Some(style);
+        self
+    }
+
+    /// The style of each of the buttons that step the number.
+    pub fn stepper_style(mut self, style: crate::Style) -> Self {
+        self.stepper_style = Some(style);
+        self
+    }
+
+    /// No buttons: the field alone, which the arrow keys and the wheel still
+    /// step. For a number in a tight place.
+    pub fn without_steppers(mut self) -> Self {
+        self.steppers = false;
         self
     }
 
