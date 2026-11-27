@@ -73,11 +73,16 @@ impl App for Theming {
             foreground: Some(theme.accent),
             ..panel.clone()
         };
+        // A margin keeps the swatches apart without a gap in the row, and the
+        // border takes room inside the box, so the label starts inside it.
         let swatch = Style {
             padding: 16.0,
             radius: 12.0,
             ..Style::default()
-        };
+        }
+        .margin(4.0)
+        .border(2.0)
+        .border_color(theme.accent);
         let outlined = Style::button()
             .background(Color::TRANSPARENT)
             .foreground(theme.accent)

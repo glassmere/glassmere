@@ -1011,7 +1011,7 @@ impl<'a, M: 'static> Ui<'a, M> {
             .child(self.parent, &key, Kind::Container)
             .and_then(|id| self.context.node(id))
             .map_or(0.0, |node| {
-                (node.bounds.width - 2.0 * style.padding.max(0.0)).max(0.0)
+                (node.bounds.width - 2.0 * style.inset()).max(0.0)
             });
         self.group(key, Kind::Container, style, |ui| content(ui, inside));
         inside

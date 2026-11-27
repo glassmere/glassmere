@@ -269,6 +269,15 @@ pub struct Style {
     /// width / height; the unspecified dimension follows the other.
     pub aspect_ratio: Option<f32>,
     pub padding: f32,
+    /// Room kept clear outside the box, per side. It is not part of the box:
+    /// the box's size and its hit area are what they were, and neighbours
+    /// stay this far from it.
+    pub margin: Edges,
+    /// The width of a border drawn along the edge of the box, inside it. It
+    /// takes room like padding does, so the content starts inside it.
+    pub border: f32,
+    /// The border's colour; `None` takes the theme's `track` colour.
+    pub border_color: Option<Color>,
     pub gap: f32,
     /// Overrides `gap` between rows when set.
     pub row_gap: Option<f32>,
@@ -370,6 +379,9 @@ impl Default for Style {
             gradient: None,
             shadow: None,
             padding: 0.0,
+            margin: Edges::ZERO,
+            border: 0.0,
+            border_color: None,
             gap: 12.0,
             row_gap: None,
             column_gap: None,
@@ -434,6 +446,49 @@ pub enum Cursor {
     ColResize,
     /// Top and bottom edges, as over a row divider.
     RowResize,
+}
+
+/// A length for each side of a box, as a margin takes.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Edges {
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+    pub left: f32,
+}
+
+impl Edges {
+    pub const ZERO: Self = Self::all(0.0);
+
+    /// The same on every side.
+    pub const fn all(value: f32) -> Self {
+        Self {
+            top: value,
+            right: value,
+            bottom: value,
+            left: value,
+        }
+    }
+
+    /// `horizontal` on the left and right, `vertical` on the top and bottom.
+    pub const fn xy(horizontal: f32, vertical: f32) -> Self {
+        Self {
+            top: vertical,
+            right: horizontal,
+            bottom: vertical,
+            left: horizontal,
+        }
+    }
+
+    /// In the order CSS gives them: top, right, bottom, left.
+    pub const fn new(top: f32, right: f32, bottom: f32, left: f32) -> Self {
+        Self {
+            top,
+            right,
+            bottom,
+            left,
+        }
+    }
 }
 
 /// The outline a node draws while it has keyboard focus. It is a stroked
@@ -628,6 +683,28 @@ impl Style {
         some
     );
     setter!(padding, padding, f32);
+    /// The same margin on every side.
+    pub fn margin(mut self, margin: f32) -> Self {
+        self.margin = Edges::all(margin);
+        self
+    }
+    /// A margin per side.
+    pub fn margin_edges(mut self, margin: Edges) -> Self {
+        self.margin = margin;
+        self
+    }
+    /// The border's width, in logical pixels; its colour is `border_color`.
+    pub fn border(mut self, width: f32) -> Self {
+        self.border = width;
+        self
+    }
+    setter!(border_color, border_color, Color, some);
+
+    /// How far the content starts inside the box: the padding and the
+    /// border, which both take room.
+    pub fn inset(&self) -> f32 {
+        self.padding.max(0.0) + self.border.max(0.0)
+    }
     /// Sets the gap between rows and between columns.
     pub fn gap(mut self, value: f32) -> Self {
         self.gap = value;
@@ -859,7 +936,13 @@ impl Style {
             aspect_ratio: self
                 .aspect_ratio
                 .filter(|ratio| ratio.is_finite() && *ratio > 0.0),
-            padding: Rect::length(self.padding.max(0.0)),
+            padding: Rect::length(self.inset()),
+            margin: Rect {
+                left: LengthPercentageAuto::length(self.margin.left),
+                right: LengthPercentageAuto::length(self.margin.right),
+                top: LengthPercentageAuto::length(self.margin.top),
+                bottom: LengthPercentageAuto::length(self.margin.bottom),
+            },
             gap: Size {
                 width: gap(self.column_gap),
                 height: gap(self.row_gap),

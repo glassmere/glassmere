@@ -45,6 +45,7 @@ glassmere-core   const Dirty::PAINT: Dirty
 glassmere-core   const Dirty::STYLE: Dirty
 glassmere-core   const Dirty::TEXT: Dirty
 glassmere-core   const Dirty::TREE: Dirty
+glassmere-core   const Edges::ZERO: Self
 glassmere-core   const FocusRing::NONE: Self
 glassmere-core   const GridColumns::MAX_WIDTH: f32
 glassmere-core   const GridColumns::MIN_WIDTH: f32
@@ -52,6 +53,9 @@ glassmere-core   const PropertyChoice::NAMES: &'static [&'static str]
 glassmere-core   const ResizeEdge::ALL: [Self; 8]
 glassmere-core   const Transform::IDENTITY: Self
 glassmere-core   const WindowId::MAIN: WindowId
+glassmere-core   const fn Edges::all(value: f32) -> Self
+glassmere-core   const fn Edges::new(top: f32, right: f32, bottom: f32, left: f32) -> Self
+glassmere-core   const fn Edges::xy(horizontal: f32, vertical: f32) -> Self
 glassmere-core   const fn FocusRing::color(mut self, color: Color) -> Self
 glassmere-core   const fn FocusRing::inset(mut self, inset: f32) -> Self
 glassmere-core   const fn FocusRing::new(width: f32) -> Self
@@ -133,6 +137,10 @@ glassmere-core   field DockWindowId::0: u64
 glassmere-core   field DragInfo::can_drop: bool
 glassmere-core   field DragInfo::dragging: bool
 glassmere-core   field DragInfo::source: bool
+glassmere-core   field Edges::bottom: f32
+glassmere-core   field Edges::left: f32
+glassmere-core   field Edges::right: f32
+glassmere-core   field Edges::top: f32
 glassmere-core   field EditorCharacter::len: usize
 glassmere-core   field EditorCharacter::position: f32
 glassmere-core   field EditorCharacter::width: f32
@@ -412,6 +420,8 @@ glassmere-core   field Style::auto_rows: Vec<Track>
 glassmere-core   field Style::background: Option<Color>
 glassmere-core   field Style::background_image: Option<crate::BackgroundImage>
 glassmere-core   field Style::base_direction: Option<Direction>
+glassmere-core   field Style::border: f32
+glassmere-core   field Style::border_color: Option<Color>
 glassmere-core   field Style::column_gap: Option<f32>
 glassmere-core   field Style::columns: Vec<Track>
 glassmere-core   field Style::cursor: Option<Cursor>
@@ -432,6 +442,7 @@ glassmere-core   field Style::italic: Option<bool>
 glassmere-core   field Style::justify_content: Justify
 glassmere-core   field Style::justify_self: Option<Align>
 glassmere-core   field Style::layout_transition: Option<Transition>
+glassmere-core   field Style::margin: Edges
 glassmere-core   field Style::max_height: Length
 glassmere-core   field Style::max_width: Length
 glassmere-core   field Style::min_height: Length
@@ -1028,6 +1039,8 @@ glassmere-core   fn Style::auto_rows(mut self, value: Vec<Track>) -> Self
 glassmere-core   fn Style::background(mut self, value: Color) -> Self
 glassmere-core   fn Style::background_image(mut self, value: crate::BackgroundImage) -> Self
 glassmere-core   fn Style::base_direction(mut self, direction: Direction) -> Self
+glassmere-core   fn Style::border(mut self, width: f32) -> Self
+glassmere-core   fn Style::border_color(mut self, value: Color) -> Self
 glassmere-core   fn Style::button() -> Self
 glassmere-core   fn Style::column_gap(mut self, value: f32) -> Self
 glassmere-core   fn Style::columns(mut self, value: Vec<Track>) -> Self
@@ -1045,10 +1058,13 @@ glassmere-core   fn Style::gap(mut self, value: f32) -> Self
 glassmere-core   fn Style::gradient(mut self, gradient: Gradient) -> Self
 glassmere-core   fn Style::grow(mut self, value: f32) -> Self
 glassmere-core   fn Style::height(mut self, value: Length) -> Self
+glassmere-core   fn Style::inset(&self) -> f32
 glassmere-core   fn Style::italic(mut self, value: bool) -> Self
 glassmere-core   fn Style::justify_content(mut self, value: Justify) -> Self
 glassmere-core   fn Style::justify_self(mut self, value: Align) -> Self
 glassmere-core   fn Style::layout_transition(mut self, value: Transition) -> Self
+glassmere-core   fn Style::margin(mut self, margin: f32) -> Self
+glassmere-core   fn Style::margin_edges(mut self, margin: Edges) -> Self
 glassmere-core   fn Style::max_height(mut self, value: Length) -> Self
 glassmere-core   fn Style::max_width(mut self, value: Length) -> Self
 glassmere-core   fn Style::min_height(mut self, value: Length) -> Self
@@ -1909,6 +1925,7 @@ glassmere-core struct DockWindowId #[cfg_attr(feature = "serde", derive(serde::S
 glassmere-core struct DragInfo #[derive(Clone, Copy, Debug)]
 glassmere-core struct DragSourceBuilder<M = ()> (private fields)
 glassmere-core struct DropTargetBuilder<M = ()> (private fields)
+glassmere-core struct Edges #[derive(Clone, Copy, Debug, Default, PartialEq)]
 glassmere-core struct EditorCharacter #[derive(Clone, Copy, Debug, PartialEq)] #[non_exhaustive]
 glassmere-core struct EditorLine #[derive(Clone, Debug, PartialEq)] #[non_exhaustive]
 glassmere-core struct EditorPoint #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -2080,6 +2097,7 @@ glassmere-core use DragSourceBuilder = ui::DragSourceBuilder
 glassmere-core use DropKind = drag::DropKind
 glassmere-core use DropTargetBuilder = ui::DropTargetBuilder
 glassmere-core use Easing = animation::Easing
+glassmere-core use Edges = style::Edges
 glassmere-core use EditorCharacter = tree::EditorCharacter
 glassmere-core use EditorCommand = text_area::EditorCommand
 glassmere-core use EditorLine = tree::EditorLine

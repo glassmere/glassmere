@@ -702,6 +702,27 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
             effect(&mut style.exit, &key[5..], value)?;
         }
         "padding" => style.padding = number(value)?,
+        // One to four numbers, in the order CSS gives them: all sides;
+        // vertical and horizontal; top, horizontal and bottom; top, right,
+        // bottom and left.
+        "margin" => style.margin = edges(value)?,
+        "margin-top" => style.margin.top = number(value)?,
+        "margin-right" => style.margin.right = number(value)?,
+        "margin-bottom" => style.margin.bottom = number(value)?,
+        "margin-left" => style.margin.left = number(value)?,
+        // `border: 2 #475a7a` is a width and, optionally, a colour.
+        "border" => {
+            let mut parts = value.split_whitespace();
+            style.border = number(parts.next().unwrap_or(""))?;
+            if let Some(colour) = parts.next() {
+                style.border_color = Some(color(colour)?);
+            }
+            if parts.next().is_some() {
+                return Err(format!("border is a width and a colour, got `{value}`"));
+            }
+        }
+        "border-width" => style.border = number(value)?,
+        "border-color" => style.border_color = Some(color(value)?),
         "gap" => {
             style.gap = number(value)?;
             style.row_gap = None;
@@ -1130,6 +1151,20 @@ fn gradient(value: &str) -> Result<crate::Gradient, String> {
             .collect::<Result<_, String>>()?,
         radial,
     })
+}
+
+fn edges(value: &str) -> Result<crate::Edges, String> {
+    let numbers = value
+        .split_whitespace()
+        .map(number)
+        .collect::<Result<Vec<f32>, String>>()?;
+    match numbers.as_slice() {
+        [all] => Ok(crate::Edges::all(*all)),
+        [vertical, horizontal] => Ok(crate::Edges::xy(*horizontal, *vertical)),
+        [top, horizontal, bottom] => Ok(crate::Edges::new(*top, *horizontal, *bottom, *horizontal)),
+        [top, right, bottom, left] => Ok(crate::Edges::new(*top, *right, *bottom, *left)),
+        _ => Err(format!("margin is one to four numbers, got `{value}`")),
+    }
 }
 
 fn color(value: &str) -> Result<Color, String> {
