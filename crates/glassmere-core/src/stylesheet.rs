@@ -717,6 +717,14 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         "row-gap" => style.row_gap = Some(number(value)?),
         "column-gap" => style.column_gap = Some(number(value)?),
         "grow" => style.grow = number(value)?,
+        "basis" => style.basis = length(value)?,
+        // `flex: 1`: grow by that factor, shrink, and start from nothing.
+        "flex" => {
+            let factor = number(value)?;
+            style.grow = factor;
+            style.shrink = 1.0;
+            style.basis = Length::Px(0.0);
+        }
         "radius" => style.radius = number(value)?,
         "background" => style.background = Some(color(value)?),
         "foreground" => style.foreground = Some(color(value)?),
