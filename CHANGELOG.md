@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Automatic margins: `Style::margin_left_auto`, `margin_right_auto`, `margin_top_auto`, `margin_bottom_auto`, `margin_x_auto`, `margin_y_auto` and `margin_auto_edges(AutoEdges)`, and in a stylesheet `margin: 0 auto` and `margin-left: auto`. An auto margin takes the room left over along its side, as `margin: auto` does in CSS: `margin-left: auto` pushes a child to the end of a row, and auto margins on both sides centre it across a column. A side that is auto ignores its number. Nothing changes for a style with none.
 - `Style::margin`, `Style::margin_edges` and the `Edges` type: room kept clear outside a box, per side. `Style::border` and `Style::border_color`: a border drawn along the edge of the box, inside it, that follows its radius and takes room like padding. `Style::inset` is the padding and the border together, which is where the content starts. In a stylesheet: `margin`, `margin-top`, `margin-right`, `margin-bottom`, `margin-left`, `border`, `border-width` and `border-color`. See "Margin and border" in [styling](docs/styling.md).
 - `FocusRing`, with `Style::focus_ring` and `Style::no_focus_ring`: one widget's focus ring in its own width, colour and inset, or none. `Path::rounded_rect` in `glassmere-scene` builds the stroked outline the ring uses. See "The focus ring" in [styling](docs/styling.md).
 

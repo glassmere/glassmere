@@ -150,3 +150,7 @@ There is no mipmap chain, but a photo drawn at under half its natural size is bo
 ## Direction
 
 A window runs left to right or right to left according to `AppOptions::direction` (`DirectionChoice::Auto` follows the OS locale). `Style::direction` overrides it for a subtree: layout mirrors, text aligns to the end side, and directional internals follow. Physical values stay physical: `offset`, transforms, slide effects, floating dock rectangles and `DockZone::Left` and `Right` mean the same pixels in both directions. `Style::base_direction` forces the base direction of a text paragraph, in labels and in text fields, text areas, code editors and rich editors (every line or block takes it; a text field and a rich editor align to it, a text area and a code editor only order by it).
+
+## Automatic margins
+
+`Style::margin_left_auto()` (stylesheet `margin-left: auto`) gives a child the room left over on its left, which pushes it to the end of a row: the usual way to put a button at the far end of a toolbar. `margin_x_auto()` (`margin: 0 auto`) centres a child across a column, and in a row it takes the room left over on both sides; `margin_y_auto()` centres across a row. A side that is auto ignores its number, and the other sides keep theirs.

@@ -39,6 +39,10 @@ glassmere use run_with = glassmere_winit::run_with #[cfg(feature = "desktop")]
 glassmere use style_sheet = glassmere_derive::style_sheet #[cfg(feature = "derive")]
 glassmere use syntax = glassmere_syntax #[cfg(feature = "syntax")]
 glassmere use tr = glassmere_derive::tr #[cfg(feature = "derive")]
+glassmere-core   const AutoEdges::ALL: Self
+glassmere-core   const AutoEdges::HORIZONTAL: Self
+glassmere-core   const AutoEdges::NONE: Self
+glassmere-core   const AutoEdges::VERTICAL: Self
 glassmere-core   const Dirty::ACCESSIBILITY: Dirty
 glassmere-core   const Dirty::LAYOUT: Dirty
 glassmere-core   const Dirty::PAINT: Dirty
@@ -64,6 +68,10 @@ glassmere-core   field Animation::duration: Duration
 glassmere-core   field Animation::easing: Easing
 glassmere-core   field Animation::keyframes: Vec<Keyframe>
 glassmere-core   field Animation::repeat: Repeat
+glassmere-core   field AutoEdges::bottom: bool
+glassmere-core   field AutoEdges::left: bool
+glassmere-core   field AutoEdges::right: bool
+glassmere-core   field AutoEdges::top: bool
 glassmere-core   field BackgroundImage::fit: ImageFit
 glassmere-core   field BackgroundImage::slice: Option<[f32; 4]>
 glassmere-core   field BackgroundImage::source: ImageSource
@@ -438,6 +446,7 @@ glassmere-core   field Style::justify_content: Justify
 glassmere-core   field Style::justify_self: Option<Align>
 glassmere-core   field Style::layout_transition: Option<Transition>
 glassmere-core   field Style::margin: Edges
+glassmere-core   field Style::margin_auto: AutoEdges
 glassmere-core   field Style::max_height: Length
 glassmere-core   field Style::max_width: Length
 glassmere-core   field Style::min_height: Length
@@ -1056,7 +1065,14 @@ glassmere-core   fn Style::justify_content(mut self, value: Justify) -> Self
 glassmere-core   fn Style::justify_self(mut self, value: Align) -> Self
 glassmere-core   fn Style::layout_transition(mut self, value: Transition) -> Self
 glassmere-core   fn Style::margin(mut self, margin: f32) -> Self
+glassmere-core   fn Style::margin_auto_edges(mut self, edges: AutoEdges) -> Self
+glassmere-core   fn Style::margin_bottom_auto(mut self) -> Self
 glassmere-core   fn Style::margin_edges(mut self, margin: Edges) -> Self
+glassmere-core   fn Style::margin_left_auto(mut self) -> Self
+glassmere-core   fn Style::margin_right_auto(mut self) -> Self
+glassmere-core   fn Style::margin_top_auto(mut self) -> Self
+glassmere-core   fn Style::margin_x_auto(mut self) -> Self
+glassmere-core   fn Style::margin_y_auto(mut self) -> Self
 glassmere-core   fn Style::max_height(mut self, value: Length) -> Self
 glassmere-core   fn Style::max_width(mut self, value: Length) -> Self
 glassmere-core   fn Style::min_height(mut self, value: Length) -> Self
@@ -1872,6 +1888,7 @@ glassmere-core mod app
 glassmere-core struct Animation #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct AppDriver<M: 'static> (private fields)
 glassmere-core struct AreaBuilder<M = ()> (private fields)
+glassmere-core struct AutoEdges #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 glassmere-core struct Autocomplete<M = ()> (private fields)
 glassmere-core struct BackgroundImage #[derive(Clone, Debug, PartialEq)]
 glassmere-core struct Block #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -2022,6 +2039,7 @@ glassmere-core use Animation = animation::Animation
 glassmere-core use App = app::App
 glassmere-core use AppDriver = app::AppDriver
 glassmere-core use AreaBuilder = ui::AreaBuilder
+glassmere-core use AutoEdges = style::AutoEdges
 glassmere-core use AutoFlow = style::AutoFlow
 glassmere-core use Autocomplete = ui::Autocomplete
 glassmere-core use Axis = panes::Axis
