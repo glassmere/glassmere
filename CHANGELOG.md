@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- `Path::arc_to` and `Path::from_svg_data`. `arc_to` draws an elliptical arc as SVG's `A` command does (radii, rotation, the large and sweep flags), stored as cubic curves; `from_svg_data` reads the `d` attribute of an SVG path, with `M L H V C S Q T A Z` in absolute and relative forms, so an icon needs no image feature and no parser of your own. `Path::current_point` is where the next segment starts, and `SvgPathError` says at which byte the data is wrong. They need no new dependency and work without `std`.
 ## [0.1.8] - 2026-11-23
 
 ### Added

@@ -2245,6 +2245,8 @@ glassmere-scene   field Size::height: f32
 glassmere-scene   field Size::width: f32
 glassmere-scene   field Stroke::color: Color
 glassmere-scene   field Stroke::width: f32
+glassmere-scene   field SvgPathError::message: String
+glassmere-scene   field SvgPathError::offset: usize
 glassmere-scene   field TextCluster::bytes: Range<usize>
 glassmere-scene   field TextCluster::rect: Rect
 glassmere-scene   field TextCluster::rtl: bool
@@ -2287,9 +2289,12 @@ glassmere-scene   fn Image::loops(&self) -> Option<NonZeroU32>
 glassmere-scene   fn Image::pixels(&self) -> Option<(u32, u32, &[u8])>
 glassmere-scene   fn Image::size(&self) -> Size
 glassmere-scene   fn Image::vector(&self) -> Option<&dyn VectorImage>
+glassmere-scene   fn Path::arc_to(&mut self, radii: (f32, f32), rotation: f32, large: bool, sweep: bool, to: Point) -> &mut Self
 glassmere-scene   fn Path::bounds(&self) -> Rect
 glassmere-scene   fn Path::close(&mut self) -> &mut Self
 glassmere-scene   fn Path::cubic_to(&mut self, first: Point, second: Point, to: Point) -> &mut Self
+glassmere-scene   fn Path::current_point(&self) -> Option<Point>
+glassmere-scene   fn Path::from_svg_data(data: &str) -> Result<Self, SvgPathError>
 glassmere-scene   fn Path::line_to(&mut self, to: Point) -> &mut Self
 glassmere-scene   fn Path::move_to(&mut self, to: Point) -> &mut Self
 glassmere-scene   fn Path::new() -> Self
@@ -2358,6 +2363,8 @@ glassmere-scene impl Default for TextStyle
 glassmere-scene impl PartialEq for Image
 glassmere-scene impl TextMeasurer for MonospaceMeasurer
 glassmere-scene impl core::fmt::Debug for Image
+glassmere-scene impl fmt::Display for SvgPathError
+glassmere-scene impl std::error::Error for SvgPathError #[cfg(feature = "std")]
 glassmere-scene struct Affine #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-scene struct CaretStop #[derive(Clone, Copy, Debug, PartialEq)]
 glassmere-scene struct Color #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2371,6 +2378,7 @@ glassmere-scene struct Rect #[derive(Clone, Copy, Debug, Default, PartialEq)]
 glassmere-scene struct Scene #[derive(Clone, Debug, Default, PartialEq)]
 glassmere-scene struct Size #[derive(Clone, Copy, Debug, Default, PartialEq)]
 glassmere-scene struct Stroke #[derive(Clone, Copy, Debug, PartialEq)]
+glassmere-scene struct SvgPathError #[derive(Clone, Debug, Eq, PartialEq)]
 glassmere-scene struct TextCluster #[derive(Clone, Debug, PartialEq)]
 glassmere-scene struct TextGeometry #[derive(Clone, Debug, Default, PartialEq)]
 glassmere-scene struct TextLine #[derive(Clone, Debug, PartialEq)]
@@ -2387,6 +2395,7 @@ glassmere-scene use MonospaceMeasurer = text::MonospaceMeasurer
 glassmere-scene use Path = path::Path
 glassmere-scene use Segment = path::Segment
 glassmere-scene use Stroke = path::Stroke
+glassmere-scene use SvgPathError = path::SvgPathError
 glassmere-scene use TextCluster = text::TextCluster
 glassmere-scene use TextGeometry = text::TextGeometry
 glassmere-scene use TextLine = text::TextLine
