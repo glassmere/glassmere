@@ -315,7 +315,9 @@ impl Context {
             && !self.view_reads_scroll;
         self.wheel_moved_plain = false;
         self.wheel_moved_other = false;
-        self.view_stale |= handled && !moved && !draft && !wheel_alone;
+        if handled && !moved && !draft && !wheel_alone {
+            self.note_handled(queued);
+        }
         handled || arrived
     }
 

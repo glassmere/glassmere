@@ -6,8 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- A view that is not run. `App::view_state` is an opt-in promise that the view reads nothing from the application but the value it returns and the sources of its bound labels. A message after which it is equal to what it was when the view last ran no longer runs the view; the default, `None`, runs it after every message as before. `Ui::bound_label` shows a `Signal<String>` or a `Memo<String>` (anything that implements the new `TextSource`) and follows it: when the source changes, the label's text is replaced in the retained tree, measured again if its size changed, repainted and published to the screen reader without the view running. See `examples/bound.rs` and "Declaring nothing" in [state](docs/state.md).
+
 ### Changed
 
+- Input that handlers answered in full (a click on a button with `on_click`, an activation from the keyboard or a screen reader) no longer marks the view stale on its own. It runs the view through the messages it sends, as before, unless the application's `view_state` is unchanged. An application that does not implement `view_state` sees no difference. Input that nothing answers still waits for the declaration that reads it.
 - Scrolling a long list costs what is in view and no more. A wheel step that moves only plain scroll areas no longer runs the view again, unless the last declaration read a scroll offset, as a virtual list or a property grid does. A node that its ancestors clip away is not painted, nor is anything inside it, until it scrolls into view. Measured on a list of 5,000 rows (a label, a button and a check box each) in a 400 px scroll area, a scroll step went from 65 to 87 ms to about 4 ms, and the first frame from about 290 to 330 ms to about 230 ms (on one machine, over several runs); a virtual list is unchanged at under 1 ms. A node that is animating, has a transform, a shadow or less than full opacity is still painted where it is clipped, since it can draw outside its clip. What was in the scene before is not: a scene of a scroll area no longer holds the rows it clips away, so a test that counts primitives or looks for the text of a row far down a list sees fewer, and a test of a view that reads a scroll offset through `Ui::context` sees it on the next frame that declares.
 
 ## [0.1.8] - 2026-11-23
