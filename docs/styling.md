@@ -170,3 +170,8 @@ A window runs left to right or right to left according to `AppOptions::direction
 ## Padding per side
 
 `Style::padding(8.0)` pads all four sides. On a node that holds other nodes (`row`, `column`, `grid`, `container`) `Style::padding_sides(Edges::new(top, right, bottom, left))` pads each side by its own amount instead, and the border still adds to it. A stylesheet takes `padding: 4 8` (vertical, horizontal), three or four numbers in CSS order, and `padding-left` and the like. A label, a button, a field, a scroll view and a list lay out their own content at the one `padding` and ignore `padding_sides`.
+## Stacking
+
+Overlapping siblings (nodes placed with `Style::offset`, or pushed over each other by a negative `margin`) are painted in the order they are declared, the last on top, and a click reaches the one on top. `Style::z_index(n)` (stylesheet `z-index: n`) changes that: a higher value is painted later and hit first, a lower one, negative or not, goes under. Siblings with the same value keep their declaration order. Layout and the Tab order still follow the declaration order.
+
+It orders the children of one parent. Each parent is a stack of its own, so a child never goes over or under a node outside its parent. To put something above the whole window, use a `popover` or a `dialog`.

@@ -747,6 +747,12 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         }
         "border-width" => style.border = number(value)?,
         "border-color" => style.border_color = Some(color(value)?),
+        "z-index" => {
+            style.z_index = value
+                .trim()
+                .parse::<i32>()
+                .map_err(|_| format!("z-index is a whole number, got `{value}`"))?;
+        }
         "gap" => {
             style.gap = number(value)?;
             style.row_gap = None;

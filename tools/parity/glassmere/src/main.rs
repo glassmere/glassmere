@@ -153,6 +153,9 @@ fn sized(node: &Value, mut style: Style) -> Style {
     if let Some(bg) = node.get("background").and_then(Value::as_str) {
         style.background = Some(colour(bg));
     }
+    if let Some(z) = node.get("z").and_then(Value::as_i64) {
+        style.z_index = z as i32;
+    }
     // Set by a `stack` on the children it places.
     if let Some(at) = node.get("__at").and_then(Value::as_array) {
         style = style.offset(
@@ -245,32 +248,24 @@ impl Bench {
             }
             "stack" => {
                 let style = sized(node, Style::default());
-                let mut kids: Vec<(i64, usize, Value)> = node
+                let kids: Vec<Value> = node
                     .get("children")
                     .and_then(Value::as_array)
                     .into_iter()
                     .flatten()
-                    .enumerate()
-                    .map(|(index, child)| {
+                    .map(|child| {
                         let at = child
                             .get("position")
                             .cloned()
                             .unwrap_or(json!({"x": 0, "y": 0}));
                         let mut child = child.clone();
                         child["__at"] = json!([at["x"], at["y"]]);
-                        (
-                            child.get("z").and_then(Value::as_i64).unwrap_or(0),
-                            index,
-                            child,
-                        )
+                        child
                     })
                     .collect();
-                // There is no z-index: later siblings are on top, so the
-                // order of declaration is the order of stacking.
-                kids.sort_by_key(|(z, index, _)| (*z, *index));
                 ui.keyed(id, |ui| {
                     ui.container(style, |ui| {
-                        for (_, _, child) in &kids {
+                        for child in &kids {
                             self.build(ui, child);
                         }
                     });

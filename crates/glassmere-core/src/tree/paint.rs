@@ -669,6 +669,11 @@ impl Context {
         if strip_clip.is_some() {
             scene.primitives.push(Primitive::PopClip);
         }
+        let mut children = children;
+        if self.z_count > 0 {
+            // Stable: siblings that tie keep the order they were declared in.
+            children.sort_by_key(|child| self.nodes[child].style.z_index);
+        }
         let children = children
             .into_iter()
             .map(|child| self.paint(child))
@@ -1032,9 +1037,19 @@ impl Context {
         if prune && (clip.width == 0.0 || clip.height == 0.0 || at.x < clip.x || at.y < clip.y) {
             return None;
         }
-        for child in node.children.iter().rev() {
-            if let Some(found) = self.last_at(*child, at, prune, wanted) {
-                return Some(found);
+        if self.z_count > 0 {
+            let mut stacked = node.children.clone();
+            stacked.sort_by_key(|child| self.nodes[child].style.z_index);
+            for child in stacked.iter().rev() {
+                if let Some(found) = self.last_at(*child, at, prune, wanted) {
+                    return Some(found);
+                }
+            }
+        } else {
+            for child in node.children.iter().rev() {
+                if let Some(found) = self.last_at(*child, at, prune, wanted) {
+                    return Some(found);
+                }
             }
         }
         (clip.contains(at) && wanted(id, node)).then_some(id)

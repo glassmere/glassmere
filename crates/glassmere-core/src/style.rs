@@ -372,6 +372,15 @@ pub struct Style {
     /// `None` takes the parent's, and at the top what the widget is: a hand
     /// over one that takes a press, an I-beam over text.
     pub cursor: Option<Cursor>,
+    /// Where the node stands among its siblings when they overlap, as
+    /// `z-index` does on a flex item: a higher value is painted later, so over
+    /// the lower ones, and is hit first. Siblings with the same value keep the
+    /// order they were declared in, and 0 is where a node is unless it says
+    /// otherwise. It orders siblings only, so a child never leaves its parent's
+    /// place in the stack; use an overlay (`popover`, `dialog`) to put
+    /// something above the whole window. Layout and the focus order still
+    /// follow the declaration order.
+    pub z_index: i32,
     /// Inherited like text properties; `None` takes the parent's direction.
     pub direction: Option<Direction>,
     /// Forces the direction a paragraph starts in, whatever its first strong
@@ -438,6 +447,7 @@ impl Default for Style {
             focus_ring: None,
             focusable: true,
             cursor: None,
+            z_index: 0,
             direction: None,
         }
     }
@@ -767,6 +777,8 @@ impl Style {
     setter!(exit, exit, Effect, some);
     setter!(animation, animation, Animation, some);
     setter!(direction, direction, Direction, some);
+    setter!(z_index, z_index, i32);
+
     pub fn offset(mut self, x: f32, y: f32) -> Self {
         self.offset = Some((x, y));
         self

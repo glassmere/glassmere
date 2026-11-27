@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The focus ring of a node with rounded corners and no opaque background was four square bars. It is now a stroked rounded outline for every node with a radius, drawn inside its box over its fill. A node with a gradient or a translucent background no longer loses it while focused: the old ring replaced the fill of an opaque node with the focus colour and drew the background back inside it, and skipped the gradient.
 
+- `Style::z_index` (stylesheet `z-index`): where a node stands among overlapping siblings, as on a flex item in CSS. A higher value is painted later and hit first; siblings with the same value keep their declaration order, and layout and the focus order are unchanged. It orders siblings only, so for something above the whole window use a `popover` or `dialog`. A tree where no node sets it paints and hit-tests as before.
 ## [0.1.8] - 2026-11-23
 
 ### Added
