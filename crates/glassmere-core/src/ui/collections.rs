@@ -858,6 +858,7 @@ impl<'a, Msg: 'static> Ui<'a, Msg> {
             self.misuse(message.to_owned());
             return Nav::default();
         }
+        self.context.note_scroll_read();
         let owner = self.context.child(self.parent, &key, Kind::Collection);
         // A list that fills its parent does not know how tall it is until
         // layout has run: it shows rows for the whole window, which is enough
