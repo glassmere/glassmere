@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- `Style::blocks_pointer` (stylesheet `blocks-pointer: true`): a node that takes the pointer wherever it is, as a box does in a browser, so a click or hover on it does not reach what lies under it. A container is otherwise transparent to the pointer, and a card, panel or floating toolbar drawn over a button left the button clickable through it; with this set the panel shields it, and what is inside the panel still takes the pointer first. Off by default, so nothing changes for a style that does not set it.
+
 ## [0.1.8] - 2026-11-23
 
 ### Added

@@ -710,6 +710,17 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
         "row-gap" => style.row_gap = Some(number(value)?),
         "column-gap" => style.column_gap = Some(number(value)?),
         "grow" => style.grow = number(value)?,
+        "blocks-pointer" => {
+            style.blocks_pointer = match value {
+                "true" => true,
+                "false" => false,
+                _ => {
+                    return Err(format!(
+                        "blocks-pointer is `true` or `false`, got `{value}`"
+                    ));
+                }
+            };
+        }
         "radius" => style.radius = number(value)?,
         "background" => style.background = Some(color(value)?),
         "foreground" => style.foreground = Some(color(value)?),
