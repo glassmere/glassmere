@@ -24,7 +24,7 @@ function kinds(spec) {
   const map = {};
   const walk = (n) => {
     if (n.id) map[n.id] = n.type;
-    if (n.id && n.width != null && n.height != null) map[`${n.id}#fixed`] = true;
+    if (n.id && ((n.width != null && n.height != null) || n.compareBox)) map[`${n.id}#fixed`] = true;
     for (const o of n.options ?? []) map[o.id] = 'radio';
     (n.children ?? []).forEach(walk);
   };

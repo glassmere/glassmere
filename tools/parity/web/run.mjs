@@ -45,6 +45,9 @@ function css(node, extra = '') {
   else if (node.border != null) s.push(`border:${px(node.border)} solid #8aa4c8`);
   if (node.overflow) s.push(`overflow:${node.overflow}`);
   if (node.background) s.push(`background:${node.background}`);
+  if (node.fontSize != null) s.push(`font-size:${px(node.fontSize)}`);
+  if (node.lineHeight != null) s.push(`line-height:${node.lineHeight}`);
+  if (node.letterSpacing != null) s.push(`letter-spacing:${px(node.letterSpacing)}`);
   if (node.visible === false) s.push('display:none');
   if (node.invisible) s.push('visibility:hidden');
   return s.filter(Boolean).join(';');

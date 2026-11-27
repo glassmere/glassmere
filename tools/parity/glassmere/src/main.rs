@@ -438,7 +438,19 @@ impl Bench {
                 ui.keyed(id, |ui| ui.container(style, |_| {}));
             }
             "label" => {
-                ui.keyed(id, |ui| ui.label(text));
+                // A label that asks for its box to be compared takes its size and
+                // the text properties the spec gives; the others are as they were.
+                if node.get("compareBox").and_then(Value::as_bool) == Some(true) {
+                    let mut style = sized(node, Style::default());
+                    style.font_size = px(node, "fontSize");
+                    style.line_height = px(node, "lineHeight");
+                    style.letter_spacing = px(node, "letterSpacing");
+                    ui.keyed(id, |ui| {
+                        ui.label(glassmere_core::Label::new(text).style(style))
+                    });
+                } else {
+                    ui.keyed(id, |ui| ui.label(text));
+                }
             }
             "dialog" => {
                 let open = matches!(self.values.get(&id), Some(Val::Bool(true)));
