@@ -322,6 +322,21 @@ pub struct Style {
     /// takes the parent's, and at the top `Start`, where text is unless
     /// `justify_content` places it.
     pub text_align: Option<TextAlign>,
+    /// The height of a line of text as a multiple of the font size, `1.4`
+    /// unless set. Inherited by what is inside, like the font.
+    pub line_height: Option<f32>,
+    /// Extra advance after every character in pixels, `0` unless set; negative
+    /// tightens. Inherited by what is inside, like the font.
+    pub letter_spacing: Option<f32>,
+    /// The node and everything inside it keeps its place in the layout but is
+    /// not drawn, hit, focused or reported to accessibility, like CSS
+    /// `visibility: hidden`. Unlike CSS a hidden subtree cannot show a child.
+    pub hidden: bool,
+    /// What is inside is not cut off at the edge of this box: a badge or a
+    /// shadow-like decoration can hang over the corner, as with CSS
+    /// `overflow: visible`. It still lies under the clip of the nearest
+    /// ancestor that clips, and a scroll view, a list or a popup always clips.
+    pub unclipped: bool,
     pub wrap: TextWrap,
     pub states: Option<Box<StateStyles>>,
     /// Group opacity of the node and its subtree, 0..=1.
@@ -392,6 +407,10 @@ impl Default for Style {
             font_weight: None,
             italic: None,
             text_align: None,
+            line_height: None,
+            letter_spacing: None,
+            hidden: false,
+            unclipped: false,
             wrap: TextWrap::None,
             states: None,
             opacity: 1.0,
@@ -663,6 +682,10 @@ impl Style {
     setter!(font_weight, font_weight, u16, some);
     setter!(italic, italic, bool, some);
     setter!(text_align, text_align, TextAlign, some);
+    setter!(hidden, hidden, bool);
+    setter!(unclipped, unclipped, bool);
+    setter!(line_height, line_height, f32, some);
+    setter!(letter_spacing, letter_spacing, f32, some);
 
     fn state(mut self, apply: impl FnOnce(&mut StateStyles)) -> Self {
         apply(self.states.get_or_insert_with(Default::default));
@@ -693,6 +716,8 @@ impl Style {
             font_weight: self.font_weight.unwrap_or(inherited.font_weight),
             italic: self.italic.unwrap_or(inherited.italic),
             align: self.text_align.unwrap_or(inherited.align),
+            line_height: self.line_height.unwrap_or(inherited.line_height),
+            letter_spacing: self.letter_spacing.unwrap_or(inherited.letter_spacing),
             direction: self.direction.unwrap_or(inherited.direction),
             base_direction: self.base_direction.or(inherited.base_direction),
         }
@@ -885,6 +910,8 @@ pub struct ResolvedText {
     pub font_weight: u16,
     pub italic: bool,
     pub align: TextAlign,
+    pub line_height: f32,
+    pub letter_spacing: f32,
     pub direction: Direction,
     /// A paragraph direction the application forced.
     pub base_direction: Option<Direction>,
@@ -899,6 +926,8 @@ impl ResolvedText {
             font_weight: 400,
             italic: false,
             align: TextAlign::Start,
+            line_height: 1.4,
+            letter_spacing: 0.0,
             direction: Direction::Ltr,
             base_direction: None,
         }
@@ -915,6 +944,8 @@ impl ResolvedText {
             weight: self.font_weight,
             italic: self.italic,
             align: self.align,
+            line_height: self.line_height,
+            letter_spacing: self.letter_spacing,
             wrap,
             rtl: self.rtl(),
             base: self.base_direction.map(|base| base == Direction::Rtl),

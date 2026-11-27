@@ -83,6 +83,7 @@ impl Opener {
 
 impl Context {
     pub(super) fn refresh_bounds(&mut self, size: Size) {
+        self.has_unclipped = false;
         self.update_bounds(
             self.root,
             Point::default(),
@@ -104,6 +105,11 @@ impl Context {
             return self.update_bounds_reference(id, origin, clip);
         }
         let node = &self.nodes[&id];
+        let hidden =
+            node.style.hidden || node.parent.is_some_and(|parent| self.nodes[&parent].hidden);
+        let unclipped = node.unclipped();
+        self.has_unclipped |= unclipped;
+        self.hidden_changed |= node.hidden != hidden;
         let old_bounds = node.bounds;
         let old_clip = node.clip;
         let old_scroll = node.scroll;
@@ -222,6 +228,11 @@ impl Context {
         // clip that does not start inside its parent's is that of a hidden
         // strip scroll button.
         node.clip = clip.intersect(node.bounds);
+        node.hidden = hidden;
+        if hidden {
+            node.clip.width = 0.0;
+            node.clip.height = 0.0;
+        }
         if scrolls_down {
             node.scroll.maximum =
                 (content_bottom + node.style.padding.max(0.0) - node.bounds.height).max(0.0);
@@ -250,7 +261,9 @@ impl Context {
                 },
             y: node.bounds.y - node.scroll.offset,
         };
-        let clip = node.clip;
+        // Children are cut by this box unless it is unclipped, when they
+        // are cut by what cuts it.
+        let clip = if unclipped { clip } else { node.clip };
         // Placing a child needs the tree mutably, so the children are copied,
         // into a list from an earlier frame when there is one. A node with no
         // children has nothing to copy and takes none.
@@ -549,7 +562,7 @@ impl Context {
             .filter(|parent| self.nodes[parent].kind == Kind::TabList)
             .map(|_| node.clip)
             .filter(|clip| *clip != node.bounds);
-        if strip_clip.is_some_and(|clip| clip.width <= 0.0 || clip.height <= 0.0) {
+        if node.hidden || strip_clip.is_some_and(|clip| clip.width <= 0.0 || clip.height <= 0.0) {
             let chunk = PaintChunk::new(Vec::new(), 0, Vec::new()).put_in(spare);
             self.nodes.get_mut(&id).unwrap().paint_cache = Some(chunk.clone());
             return chunk;
@@ -587,8 +600,16 @@ impl Context {
             scene.primitives.push(Primitive::PushClip(clip));
         }
         if let Some((opacity, transform)) = layer {
+            // What an unclipped node draws past its box belongs to the layer
+            // too, and how far that reaches is not known here, so the layer
+            // is as big as the window; the clips above cut it as usual.
+            let bounds = if node.unclipped() {
+                self.nodes[&self.root].bounds
+            } else {
+                node.bounds
+            };
             scene.primitives.push(Primitive::PushLayer {
-                bounds: node.bounds,
+                bounds,
                 opacity,
                 transform,
             });
@@ -657,7 +678,16 @@ impl Context {
         // Everything from here on is drawn after the children. It is only
         // ever pushed, never read, moved or removed, so the length now is
         // where it starts.
+        // An unclipped node closes its clip here, so that the children are not
+        // cut by it, and opens it again for what is drawn after them.
+        let unclipped = node.unclipped();
+        if unclipped {
+            scene.primitives.push(Primitive::PopClip);
+        }
         let split = scene.primitives.len();
+        if unclipped {
+            scene.primitives.push(Primitive::PushClip(node.bounds));
+        }
         self.paint_scrollbars(id, &mut scene);
         self.paint_strip_edges(id, &mut scene);
         self.paint_calendar_today(id, &mut scene);
@@ -1073,7 +1103,7 @@ impl Context {
     /// links and the next `refresh_bounds`, which a frame that unwinds in
     /// between leaves open.
     pub(super) fn can_prune_at(&self) -> bool {
-        self.clips_valid && self.popover_count == 0 && self.popup_count == 0
+        self.clips_valid && self.popover_count == 0 && self.popup_count == 0 && !self.has_unclipped
     }
 
     /// What `order` followed by a search from the back returns: the last
@@ -1157,6 +1187,11 @@ mod tests {
         pub(super) fn update_bounds_reference(&mut self, id: NodeId, origin: Point, clip: Rect) {
             let viewport = self.nodes[&self.root].bounds;
             let node = &self.nodes[&id];
+            let hidden =
+                node.style.hidden || node.parent.is_some_and(|parent| self.nodes[&parent].hidden);
+            let unclipped = node.unclipped();
+            self.has_unclipped |= unclipped;
+            self.hidden_changed |= node.hidden != hidden;
             let old_bounds = node.bounds;
             let old_clip = node.clip;
             let old_scroll = node.scroll;
@@ -1261,6 +1296,11 @@ mod tests {
             // clip that does not start inside its parent's is that of a hidden
             // strip scroll button.
             node.clip = clip.intersect(node.bounds);
+            node.hidden = hidden;
+            if hidden {
+                node.clip.width = 0.0;
+                node.clip.height = 0.0;
+            }
             if matches!(node.kind, Kind::Scroll | Kind::Popup | Kind::Collection) {
                 node.scroll.maximum =
                     (content_bottom + node.style.padding.max(0.0) - node.bounds.height).max(0.0);
@@ -1289,7 +1329,7 @@ mod tests {
                     },
                 y: node.bounds.y - node.scroll.offset,
             };
-            let clip = node.clip;
+            let clip = if unclipped { clip } else { node.clip };
             // Placing a child needs the tree mutably, so the children are copied.
             let children = node.children.clone();
             // A tab strip that scrolls keeps its panel menu at the end edge, and

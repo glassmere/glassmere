@@ -123,6 +123,8 @@ fn block_style(base: &TextStyle, kind: BlockKind, font_size: f32) -> TextStyle {
         wrap: TextWrap::Word,
         rtl: mirrored(base, kind),
         align: base.align,
+        line_height: base.line_height,
+        letter_spacing: base.letter_spacing,
     }
 }
 
@@ -699,7 +701,10 @@ impl Context {
                     let mut shaped = view.clone();
                     shaped.spans = spans;
                     BlockLayout {
-                        height: geometry.size.height.max(style.font_size * 1.4),
+                        height: geometry
+                            .size
+                            .height
+                            .max(style.font_size * style.line_height),
                         geometry,
                         view: shaped,
                         preedit: splice,
@@ -832,7 +837,7 @@ impl Context {
                             },
                             y: top,
                             width: layout.indent,
-                            height: style.font_size * 1.4,
+                            height: style.font_size * style.line_height,
                         },
                         text: if kind == BlockKind::Bullet {
                             "•".into()
