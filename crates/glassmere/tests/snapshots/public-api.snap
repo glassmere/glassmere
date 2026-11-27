@@ -493,6 +493,7 @@ glassmere-core   field Tray::tooltip: String
 glassmere-core   field TreeItem::id: ItemId
 glassmere-core   field TreeItem::label: String
 glassmere-core   field TreeItem::parent: Option<ItemId>
+glassmere-core   field VirtualListOptions::fill: bool
 glassmere-core   field VirtualListOptions::height: f32
 glassmere-core   field VirtualListOptions::label: String
 glassmere-core   field VirtualListOptions::overscan: usize
@@ -1251,6 +1252,7 @@ glassmere-core   fn Ui::widget<F>(&mut self, style: Style, widget: crate::Widget
 glassmere-core   fn Ui::window(&self) -> crate::WindowInfo #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::window_buttons(&mut self, on_command: impl Fn(crate::WindowCommand) -> M) #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
 glassmere-core   fn Ui::window_size(&self) -> glassmere_scene::Size #[track_caller] [impl<'a, M: 'static> Ui<'a, M>]
+glassmere-core   fn VirtualListOptions::filling(mut self) -> Self
 glassmere-core   fn WidgetBuilder::new(build: F) -> Self where F: FnOnce(&WidgetInput) -> CustomWidget [impl<F, M> WidgetBuilder<F, M>]
 glassmere-core   fn WidgetBuilder::on_event(mut self, on_event: impl Fn(crate::UiEvent) -> Option<M> + 'static) -> Self [impl<F, M> WidgetBuilder<F, M>]
 glassmere-core   type App::Message: Clone + 'static
