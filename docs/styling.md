@@ -146,3 +146,29 @@ A window runs left to right or right to left according to `AppOptions::direction
 ## Coming from CSS
 
 glassmere's defaults are not CSS's: `Style::default()` has a `gap` of 12, children that do not shrink (`shrink` 0) and that keep their own size across the container (`align_items` start). `Style::web()` is a style with CSS's flex defaults instead: no gap, `shrink` 1 and `align_items` stretch. `ui.row(Style::web().width(Length::Px(200.0)), |ui| ..)` lays three 100 px children out 66.67 px each, touching, as a browser does. Give a child `Style::web()` or `.shrink(1.0)` for it to give way, since shrinking is a property of the child. Changing what `Style::default()` is waits for 0.2.0.
+
+## Text alignment
+
+`Style::text_align(TextAlign::Center)` (stylesheet `text-align: center`) sets where text sits in a box wider than it. For wrapped text the shaper aligns every line between the edges (`Start`, `Center`, `End`, or `Justify`, which stretches the spaces of every line but the last), so a selection and the caret follow the drawn text. A single line sits at the start, the middle or the end of its box, so a right-aligned number in a fixed-width cell is `text_align(TextAlign::End)`. It is inherited, like the font: set it on a column and every label in it takes it, and a label's own value wins. It follows the reading direction: `Start` is the left edge in a left-to-right window and the right edge in a right-to-left one, and `End` the other. Without it text is where it was, or where `justify_content` puts a single line.
+
+## Line height and letter spacing
+
+`Style::line_height(1.6)` (stylesheet `line-height: 1.6`) sets the height of a line as a multiple of the font size, `1.4` unless set. Unlike CSS it takes only a multiple, not a length. `Style::letter_spacing(0.5)` (stylesheet `letter-spacing: 0.5`) adds pixels after every character; a negative value tightens. Both are inherited like the font, so set them on a column and every label inside takes them. Text areas and code editors keep their fixed line pitch.
+
+## Hiding without reflowing
+
+`Style::hidden(true)` (stylesheet `visibility: hidden`) keeps a node and its subtree where they are in the layout but draws nothing, takes no pointer or keyboard focus (Tab skips it) and leaves it out of the accessibility tree. Use it for a control that comes and goes while its neighbours stay put. To remove the space too, do not declare the node, which is `display: none`. Unlike CSS, a child of a hidden node cannot be made visible again.
+
+## Overflow
+
+A box cuts what is inside it at its edge, so a child larger than its parent shows only where the parent is, and the cut part cannot be clicked. `Style::unclipped(true)` (stylesheet `overflow: visible`) lifts that for a row, column, container or grid: its children are drawn and hit past its edge, still under the clip of whatever clips above it. A scroll view, a list, a tab strip, a popup and a popover always clip. While a window has an unclipped node, finding what is under the pointer searches the whole tree instead of skipping what a clip rules out, so use it for a few boxes, not for every one. A group opacity set on the unclipped node composites what hangs over it too, in an offscreen layer as big as the window, which costs more than a layer of the box; a transform moves it with the box (tested for a translation).
+
+## Pinning to a corner
+
+`Style::offset(x, y)` takes a node out of flow and puts its top-left corner at that place in its parent. `Style::offset_end(right, bottom)` does the same from the bottom-right corner, so a badge or a floating button stays in the corner whatever size its parent has. With both, the node is pinned on both sides, and one with no `width` or `height` stretches between them, as `left`, `right`, `top` and `bottom` together do in CSS. The edges are physical: the right edge is on the right in a right-to-left window too. The parent needs a size of its own, as the node no longer gives it one.
+
+## Stacking
+
+Overlapping siblings (nodes placed with `Style::offset`, or pushed over each other by a negative `margin`) are painted in the order they are declared, the last on top, and a click reaches the one on top. `Style::z_index(n)` (stylesheet `z-index: n`) changes that: a higher value is painted later and hit first, a lower one, negative or not, goes under. Siblings with the same value keep their declaration order. Layout and the Tab order still follow the declaration order.
+
+It orders the children of one parent. Each parent is a stack of its own, so a child never goes over or under a node outside its parent. To put something above the whole window, use a `popover` or a `dialog`.
