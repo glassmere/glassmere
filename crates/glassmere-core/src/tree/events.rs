@@ -214,6 +214,43 @@ impl Context {
     /// Returns true if a declaration/redraw is needed. Pointer capture survives
     /// leaving the window, but activation requires release over the same button.
     pub fn event(&mut self, event: Event) -> bool {
+        // Which input this is, for the focus ring of a widget that takes no
+        // typed text: a press hides it, a key that did something shows it. A
+        // key nothing took changes nothing on screen, so it does not, and
+        // the return value stays what the widgets said.
+        let pointer = matches!(
+            event,
+            Event::PointerDown
+                | Event::PointerDownWithShift
+                | Event::Touch {
+                    phase: TouchPhase::Started,
+                    ..
+                }
+        );
+        let keyboard = matches!(
+            event,
+            Event::KeyDown { .. } | Event::Text(_) | Event::Shortcut(_)
+        );
+        let handled = self.deliver_event(event);
+        if pointer {
+            self.set_keyboard_modality(false);
+        } else if keyboard && handled {
+            self.set_keyboard_modality(true);
+        }
+        handled
+    }
+
+    /// Repaints the focused widget when the ring it shows changes with it.
+    fn set_keyboard_modality(&mut self, keyboard: bool) {
+        if keyboard != self.keyboard_modality {
+            self.keyboard_modality = keyboard;
+            if let Some(id) = self.focused {
+                self.invalidate_paint(id);
+            }
+        }
+    }
+
+    fn deliver_event(&mut self, event: Event) -> bool {
         if self.escape_tooltip(&event) {
             return true;
         }
