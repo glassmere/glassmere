@@ -1,0 +1,135 @@
+{
+  "id": "wrap",
+  "title": "A row that wraps onto new lines, and one that does not",
+  "size": [
+    420,
+    260
+  ],
+  "features": [
+    "wrap"
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 12,
+    "padding": 10,
+    "children": [
+      {
+        "type": "row",
+        "id": "tags",
+        "width": 140,
+        "gap": 8,
+        "wrap": true,
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "t1",
+            "width": 40,
+            "height": 20,
+            "background": "#3b4a63"
+          },
+          {
+            "type": "panel",
+            "id": "t2",
+            "width": 40,
+            "height": 20,
+            "background": "#4a5d80"
+          },
+          {
+            "type": "panel",
+            "id": "t3",
+            "width": 40,
+            "height": 20,
+            "background": "#3b4a63"
+          },
+          {
+            "type": "panel",
+            "id": "t4",
+            "width": 40,
+            "height": 20,
+            "background": "#4a5d80"
+          },
+          {
+            "type": "panel",
+            "id": "t5",
+            "width": 40,
+            "height": 20,
+            "background": "#3b4a63"
+          },
+          {
+            "type": "panel",
+            "id": "t6",
+            "width": 40,
+            "height": 20,
+            "background": "#4a5d80"
+          }
+        ]
+      },
+      {
+        "type": "row",
+        "id": "plain",
+        "width": 140,
+        "gap": 8,
+        "shrink": 0,
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "panel",
+            "id": "p1",
+            "width": 40,
+            "height": 20,
+            "background": "#3b4a63",
+            "shrink": 0
+          },
+          {
+            "type": "panel",
+            "id": "p2",
+            "width": 40,
+            "height": 20,
+            "background": "#4a5d80",
+            "shrink": 0
+          },
+          {
+            "type": "panel",
+            "id": "p3",
+            "width": 40,
+            "height": 20,
+            "background": "#3b4a63",
+            "shrink": 0
+          },
+          {
+            "type": "panel",
+            "id": "p4",
+            "width": 40,
+            "height": 20,
+            "background": "#4a5d80",
+            "shrink": 0
+          },
+          {
+            "type": "panel",
+            "id": "p5",
+            "width": 40,
+            "height": 20,
+            "background": "#3b4a63",
+            "shrink": 0
+          },
+          {
+            "type": "panel",
+            "id": "p6",
+            "width": 40,
+            "height": 20,
+            "background": "#4a5d80",
+            "shrink": 0
+          }
+        ]
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "where each tile sits"
+    }
+  ]
+}

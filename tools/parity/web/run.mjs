@@ -52,7 +52,7 @@ function render(node) {
       const dir = node.type === 'column' ? 'column' : 'row';
       const gap = node.gap != null ? `gap:${px(node.gap)}` : '';
       const pad = node.padding != null ? `padding:${px(node.padding)}` : '';
-      const flex = `display:flex;flex-direction:${dir};align-items:${MAP[node.align ?? 'start']};justify-content:${MAP[node.justify ?? 'start']};${gap};${pad}`;
+      const flex = `display:flex;${node.wrap ? 'flex-wrap:wrap;' : ''}flex-direction:${dir};align-items:${MAP[node.align ?? 'start']};justify-content:${MAP[node.justify ?? 'start']};${gap};${pad}`;
       // A plain element cannot disable what is inside it; a fieldset can.
       if (node.disabled) return `<fieldset data-id="${id}" disabled style="${css(node, `padding:0;${flex};border:0;margin:0;min-width:0`)}">${(node.children || []).map(render).join('')}</fieldset>`;
       return `<div data-id="${id}" style="${css(node, flex)}">${(node.children || []).map(render).join('')}</div>`;

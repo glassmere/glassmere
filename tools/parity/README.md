@@ -48,7 +48,7 @@ does by default), percentage sizes, margin and border, a disabled parent, a hidd
 widgets and stacking order, and a child larger than its parent.
 Performance: a long list of rows, built the ways each toolkit offers (see below).
 
-Where a toolkit cannot express a property (glassmere has no wrapping row; Qt has no percentage size
+Where a toolkit cannot express a property (Qt has no wrapping row, percentage size
 or per-widget margin) the scenario says so and the property is left out, so the
 report lists it as a limitation instead of a difference.
 

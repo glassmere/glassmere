@@ -213,6 +213,7 @@ impl Bench {
                         .and_then(Value::as_str)
                         .unwrap_or("start"),
                 );
+                style.wrap_items = node.get("wrap").and_then(Value::as_bool).unwrap_or(false);
                 if let Some(gap) = px(node, "gap") {
                     style.gap = gap;
                 }
@@ -848,9 +849,7 @@ fn run(spec: &Value, out: &Path) -> Value {
     json!({
         "scenario": spec["id"], "framework": "glassmere", "title": spec["title"], "size": spec["size"],
         "records": records, "screenshots": shots,
-        "unsupported": spec["features"].as_array().into_iter().flatten()
-            .filter(|f| ["wrap"].contains(&f.as_str().unwrap_or("")))
-            .cloned().collect::<Vec<_>>(),
+        "unsupported": Vec::<Value>::new(),
         "notes": ["A slider's width is fixed by the widget; `width` in the spec is not honoured.",
                   "Fonts differ between frameworks, so widths of text are not comparable."],
     })
