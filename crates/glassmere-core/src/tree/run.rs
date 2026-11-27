@@ -57,6 +57,7 @@ impl Context {
         self.queued.clear();
         self.observed_new.borrow_mut().clear();
         self.view_stale = false;
+        self.reading_scroll.set(false);
         self.mark_awaiting(clicks.iter().chain(updates.keys()).copied().collect());
         self.skipped.set(0);
         self.declared.set(0);
@@ -108,6 +109,7 @@ impl Context {
             .map(crate::Store::graph)
             .unwrap_or_default();
         self.redraw_requested = redraw;
+        self.view_reads_scroll = self.reading_scroll.get();
         self.apply_outbox(host);
         let size = Size::new(size.width.max(0.0), size.height.max(0.0));
         self.resize_root(size);
