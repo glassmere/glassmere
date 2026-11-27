@@ -340,7 +340,9 @@ impl Context {
         // change the view reads: the draft waits for Enter or for leaving.
         let draft = matches!(event, Event::Text(_))
             && self.focused.is_some_and(|id| self.sends_numbers(id));
-        self.view_stale |= handled && !moved && !draft;
+        if handled && !moved && !draft {
+            self.note_handled(queued);
+        }
         handled || arrived
     }
 
