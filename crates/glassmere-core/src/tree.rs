@@ -23,6 +23,7 @@ use glassmere_scene::{
 };
 mod actions;
 mod animation_state;
+mod bound;
 mod calendar_input;
 mod collection_input;
 mod control_input;
@@ -431,6 +432,20 @@ struct Node {
     /// an observed state declares again; in any other it only repaints.
     observed: core::cell::Cell<bool>,
     observing: core::cell::Cell<bool>,
+    /// The text this label follows, and the version of it last shown. Set
+    /// only by a declaration; `Context::refresh_bound` is what reads it.
+    bound: Option<Box<Bound>>,
+}
+
+/// An element declared with a text source: its sequence number, the source
+/// and the version of it the declared text was read at.
+type DeclaredBound = (u32, Rc<dyn crate::TextSource>, u64);
+
+/// A label's text source: shown again when its version moves, whether or
+/// not the view ran.
+struct Bound {
+    source: Rc<dyn crate::TextSource>,
+    seen: u64,
 }
 
 impl Node {
@@ -961,8 +976,18 @@ pub struct Context {
     queued: Vec<(NodeId, Queued)>,
     /// Elements whose hover or focus the view read before their node existed.
     observed_new: core::cell::RefCell<Vec<u32>>,
+    /// Elements declared with a text source this frame, with the version of
+    /// it they were declared at, in the order they were declared.
+    bound_new: core::cell::RefCell<Vec<DeclaredBound>>,
+    /// The nodes that follow a text source.
+    bound_nodes: Vec<NodeId>,
     /// Something the view reads may have changed since it last declared.
     view_stale: bool,
+    /// Input arrived that handlers answered in full. It declares the view
+    /// through the messages they send, and only when the application does
+    /// not say that the view reads nothing those change; see
+    /// `App::view_state`.
+    view_stale_handled: bool,
     /// The dock being declared or reconciled, whose panels are found by id
     /// wherever they sit. A cell because `Ui` only holds a shared reference
     /// to the context.
@@ -1030,6 +1055,7 @@ impl Default for Context {
             handler: None,
             observed: core::cell::Cell::new(false),
             observing: core::cell::Cell::new(false),
+            bound: None,
             control: Control::None,
             editor: None,
             changed: Dirty::all(),
@@ -1172,7 +1198,10 @@ impl Default for Context {
             lost_selections: Default::default(),
             queued: Vec::new(),
             observed_new: core::cell::RefCell::new(Vec::new()),
+            bound_new: core::cell::RefCell::new(Vec::new()),
+            bound_nodes: Vec::new(),
             view_stale: true,
+            view_stale_handled: false,
             dock: core::cell::Cell::new(None),
             panels: HashMap::new(),
             calendar_views: HashMap::new(),
@@ -1722,6 +1751,12 @@ impl Context {
     /// exist yet; it is observed from the moment it is created.
     pub(crate) fn observe_element(&self, seq: u32) {
         self.observed_new.borrow_mut().push(seq);
+    }
+
+    /// The element just declared follows `source`, which was at `version`
+    /// when its text was read.
+    pub(crate) fn bind_element(&self, seq: u32, source: Rc<dyn crate::TextSource>, version: u64) {
+        self.bound_new.borrow_mut().push((seq, source, version));
     }
 
     pub(crate) fn count_skipped(&self) {
