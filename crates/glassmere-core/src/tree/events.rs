@@ -104,12 +104,8 @@ impl Context {
     /// things rather than taking the pointer themselves, so this is not the
     /// hit test.
     pub(super) fn deepest_at(&self, point: Point) -> Option<NodeId> {
-        let mut order = Vec::new();
-        self.order(self.root, &mut order);
-        order
-            .into_iter()
-            .rev()
-            .find(|id| self.nodes[id].clip.contains(point))
+        // The last node, in painting order, whose clip holds the point.
+        self.last_at(self.root, point, false, &mut |_, _| true)
     }
 
     /// Where an event goes: what it is over, or what has the focus.
@@ -214,6 +210,43 @@ impl Context {
     /// Returns true if a declaration/redraw is needed. Pointer capture survives
     /// leaving the window, but activation requires release over the same button.
     pub fn event(&mut self, event: Event) -> bool {
+        // Which input this is, for the focus ring of a widget that takes no
+        // typed text: a press hides it, a key that did something shows it. A
+        // key nothing took changes nothing on screen, so it does not, and
+        // the return value stays what the widgets said.
+        let pointer = matches!(
+            event,
+            Event::PointerDown
+                | Event::PointerDownWithShift
+                | Event::Touch {
+                    phase: TouchPhase::Started,
+                    ..
+                }
+        );
+        let keyboard = matches!(
+            event,
+            Event::KeyDown { .. } | Event::Text(_) | Event::Shortcut(_)
+        );
+        let handled = self.deliver_event(event);
+        if pointer {
+            self.set_keyboard_modality(false);
+        } else if keyboard && handled {
+            self.set_keyboard_modality(true);
+        }
+        handled
+    }
+
+    /// Repaints the focused widget when the ring it shows changes with it.
+    fn set_keyboard_modality(&mut self, keyboard: bool) {
+        if keyboard != self.keyboard_modality {
+            self.keyboard_modality = keyboard;
+            if let Some(id) = self.focused {
+                self.invalidate_paint(id);
+            }
+        }
+    }
+
+    fn deliver_event(&mut self, event: Event) -> bool {
         if self.escape_tooltip(&event) {
             return true;
         }
@@ -307,7 +340,15 @@ impl Context {
         // change the view reads: the draft waits for Enter or for leaving.
         let draft = matches!(event, Event::Text(_))
             && self.focused.is_some_and(|id| self.sends_numbers(id));
-        if handled && !moved && !draft {
+        // A wheel step that moved only plain scroll areas changed nothing the
+        // view reads, unless the last declaration read a scroll offset.
+        let wheel_alone = matches!(event, Event::Scroll { .. })
+            && self.wheel_moved_plain
+            && !self.wheel_moved_other
+            && !self.view_reads_scroll;
+        self.wheel_moved_plain = false;
+        self.wheel_moved_other = false;
+        if handled && !moved && !draft && !wheel_alone {
             self.note_handled(queued);
         }
         handled || arrived

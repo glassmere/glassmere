@@ -46,6 +46,16 @@ impl<M> CommandPalette<M> {
     }
 }
 
+/// What a tab strip takes beyond its tabs and its content.
+pub(super) struct TabsExtra<'a, M> {
+    /// A dock group gives the id of the panel it shows.
+    pub(super) dock_panel: Option<&'a str>,
+    /// Sends the index of a tab whose close button was pressed.
+    pub(super) on_close: Option<&'a dyn Fn(usize) -> M>,
+    /// The look of the tabs, instead of the default one.
+    pub(super) style: Option<&'a crate::TabStyle>,
+}
+
 impl<'a, M: 'static> Ui<'a, M> {
     /// Attaches help to the previously declared widget. It appears after a
     /// short dwell of the pointer or of keyboard focus, and doubles as the
@@ -77,7 +87,22 @@ impl<'a, M: 'static> Ui<'a, M> {
         on_select: impl Fn(usize) -> M + 'static,
         content: impl FnOnce(&mut Ui<'_, M>, usize),
     ) {
-        self.tabs_close_with(selected, tabs, on_select, None, content);
+        self.tabs_close_with(selected, tabs, on_select, None, None, content);
+    }
+
+    /// [`tabs`](Self::tabs) with a [`TabStyle`](crate::TabStyle) for the tabs
+    /// in place of the default look: the selected tab takes `active` and the
+    /// others `tab`. The panel and the keyboard are the same.
+    #[track_caller]
+    pub fn tabs_styled(
+        &mut self,
+        selected: usize,
+        tabs: &[Tab],
+        style: &crate::TabStyle,
+        on_select: impl Fn(usize) -> M + 'static,
+        content: impl FnOnce(&mut Ui<'_, M>, usize),
+    ) {
+        self.tabs_close_with(selected, tabs, on_select, None, Some(style), content);
     }
 
     /// `tabs` that also sends `on_close(index)` when the close button of a
@@ -91,7 +116,7 @@ impl<'a, M: 'static> Ui<'a, M> {
         on_close: impl Fn(usize) -> M,
         content: impl FnOnce(&mut Ui<'_, M>, usize),
     ) {
-        self.tabs_close_with(selected, tabs, on_select, Some(&on_close), content);
+        self.tabs_close_with(selected, tabs, on_select, Some(&on_close), None, content);
     }
 
     #[track_caller]
@@ -101,9 +126,15 @@ impl<'a, M: 'static> Ui<'a, M> {
         tabs: &[Tab],
         on_select: impl Fn(usize) -> M + 'static,
         on_close: Option<&dyn Fn(usize) -> M>,
+        style: Option<&crate::TabStyle>,
         content: impl FnOnce(&mut Ui<'_, M>, usize),
     ) {
-        self.tabs_with(selected, tabs, None, on_close, |_, _| {}, content);
+        let extra = TabsExtra {
+            dock_panel: None,
+            on_close,
+            style,
+        };
+        self.tabs_with(selected, tabs, extra, |_, _| {}, content);
         // The strip's choices reach the tabs group, which `tabs` declared last.
         self.set_handler(crate::app::Handler::Map(Box::new(
             move |update| match update {
@@ -121,11 +152,15 @@ impl<'a, M: 'static> Ui<'a, M> {
         &mut self,
         selected: usize,
         tabs: &[Tab],
-        dock_panel: Option<&str>,
-        on_close: Option<&dyn Fn(usize) -> M>,
+        extra: TabsExtra<'_, M>,
         strip_extra: impl FnOnce(&mut Ui<'_, M>, usize),
         content: impl FnOnce(&mut Ui<'_, M>, usize),
     ) {
+        let TabsExtra {
+            dock_panel,
+            on_close,
+            style: tab_style,
+        } = extra;
         let key = self.next_key();
         let current = selected.min(tabs.len().saturating_sub(1));
         let (surface, hover) = {
@@ -162,17 +197,21 @@ impl<'a, M: 'static> Ui<'a, M> {
                             let active = index == current;
                             ui.push(Element {
                                 text: tab.label.clone(),
-                                style: Style {
-                                    padding: 10.0,
-                                    radius: 6.0,
-                                    background: active.then_some(surface),
-                                    states: (!active).then(|| {
-                                        Box::new(crate::StateStyles {
-                                            hover: crate::Paint::background(hover),
-                                            ..Default::default()
-                                        })
-                                    }),
-                                    ..Style::default()
+                                style: match tab_style {
+                                    Some(styles) if active => styles.active.clone(),
+                                    Some(styles) => styles.tab.clone(),
+                                    None => Style {
+                                        padding: 10.0,
+                                        radius: 6.0,
+                                        background: active.then_some(surface),
+                                        states: (!active).then(|| {
+                                            Box::new(crate::StateStyles {
+                                                hover: crate::Paint::background(hover),
+                                                ..Default::default()
+                                            })
+                                        }),
+                                        ..Style::default()
+                                    },
                                 },
                                 enabled: ui.enabled,
                                 control: Control::Tab {
