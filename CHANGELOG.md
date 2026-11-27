@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- `Style::z_index` (stylesheet `z-index`): where a node stands among overlapping siblings, as on a flex item in CSS. A higher value is painted later and hit first; siblings with the same value keep their declaration order, and layout and the focus order are unchanged. It orders siblings only, so for something above the whole window use a `popover` or `dialog`. A tree where no node sets it paints and hit-tests as before.
 ## [0.1.8] - 2026-11-23
 
 ### Added

@@ -759,6 +759,9 @@ pub struct Context {
     popover_count: usize,
     /// How many popups the tree holds.
     popup_count: usize,
+    /// How many nodes have a `z_index` other than 0. While there are none,
+    /// painting and hit testing go through the children as they are.
+    z_count: usize,
     /// How many text areas the tree holds.
     text_area_count: usize,
     /// How many rich editors the tree holds.
@@ -1043,6 +1046,7 @@ impl Default for Context {
             clips_valid: false,
             popover_count: 0,
             popup_count: 0,
+            z_count: 0,
             text_area_count: 0,
             rich_editor_count: 0,
             preparing: Preparing::default(),
