@@ -175,3 +175,7 @@ A window runs left to right or right to left according to `AppOptions::direction
 Overlapping siblings (nodes placed with `Style::offset`, or pushed over each other by a negative `margin`) are painted in the order they are declared, the last on top, and a click reaches the one on top. `Style::z_index(n)` (stylesheet `z-index: n`) changes that: a higher value is painted later and hit first, a lower one, negative or not, goes under. Siblings with the same value keep their declaration order. Layout and the Tab order still follow the declaration order.
 
 It orders the children of one parent. Each parent is a stack of its own, so a child never goes over or under a node outside its parent. To put something above the whole window, use a `popover` or a `dialog`.
+
+## Border per side
+
+`Style::border_sides(Edges::new(top, right, bottom, left))` gives a node that holds other nodes a border of its own width on each side, drawn in `border_color`. A side of 0 draws nothing, so `Edges::new(0.0, 0.0, 2.0, 0.0)` is an underline. Each side takes room like padding does. In a stylesheet, `border-bottom-width: 2` and the like set one side, the others staying what `border-width` made them. The sides are straight lines along the inside of the box: a `radius` rounds the fill but not them, so a rounded outline is the one `border`. A label, a button, a field, a scroll view and a list keep the one `border`.
