@@ -599,8 +599,16 @@ impl Context {
             scene.primitives.push(Primitive::PushClip(clip));
         }
         if let Some((opacity, transform)) = layer {
+            // What an unclipped node draws past its box belongs to the layer
+            // too, and how far that reaches is not known here, so the layer
+            // is as big as the window; the clips above cut it as usual.
+            let bounds = if node.unclipped() {
+                self.nodes[&self.root].bounds
+            } else {
+                node.bounds
+            };
             scene.primitives.push(Primitive::PushLayer {
-                bounds: node.bounds,
+                bounds,
                 opacity,
                 transform,
             });
