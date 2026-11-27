@@ -29,6 +29,14 @@ Text properties (`foreground`, `font_size`, `font_family`, `font_weight`, `itali
 
 Pointer and focus states are overrides on top of the base style: `on_hover`, `on_pressed`, `on_focused` and `on_disabled`, each taking a `Paint` (background, foreground, radius, opacity, transform). They repaint; they never lay out again.
 
+### Margin and border
+
+`Style::margin(8.0)` keeps 8 px clear outside the box on every side; `Style::margin_edges(Edges::new(top, right, bottom, left))` sets each side, and `Edges::xy(horizontal, vertical)` and `Edges::all` are shorter. A margin is not part of the box: the box keeps its size, the pointer over the margin is not over the box, and neighbours stay that far away. Margins do not collapse into each other as they do in a web page's block layout; they add, as they do in its flex layout.
+
+`Style::border(2.0)` draws a border `2` px wide along the edge of the box, inside it, in `border_color`, or in the theme's `track` colour when none is set. It follows `radius`. A border takes room like padding does: the content starts inside both, `Style::inset()` is the sum of the two, and a box that sizes itself grows by it. A focus ring sits inside the border.
+
+In a stylesheet: `margin: 8` (all sides), `margin: 4 8` (vertical, horizontal), `margin: 1 2 3 4` (top, right, bottom, left), `margin-top` and the other sides, `border: 2 #475a7a` (width and an optional colour), `border-width` and `border-color`. Padding is one value for all sides.
+
 ### The focus ring
 
 A focused widget outlines itself with a ring: a stroke 2 px wide in the theme's `focus` colour, drawn inside the widget's box along its rounded edge, over its background and gradient. A widget with square corners gets four bars, which land exactly on pixels.

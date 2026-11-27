@@ -127,7 +127,7 @@ pub(super) fn layout_style(style: &Style, kind: Kind, direction: crate::Directio
 /// Taffy then ignores its measure context; keep its intrinsic size as a minimum.
 pub(super) fn anchor_minimum(style: &mut taffy::Style, element: &Element, measured: Size) {
     if element.kind.text_leaf() && !element.children.is_empty() {
-        let padding = element.style.padding.max(0.0) * 2.0;
+        let padding = element.style.inset() * 2.0;
         style.min_size = taffy::Size {
             width: taffy::Dimension::length(measured.width + padding),
             height: taffy::Dimension::length(measured.height + padding),
