@@ -179,3 +179,6 @@ It orders the children of one parent. Each parent is a stack of its own, so a ch
 ## Border per side
 
 `Style::border_sides(Edges::new(top, right, bottom, left))` gives a node that holds other nodes a border of its own width on each side, drawn in `border_color`. A side of 0 draws nothing, so `Edges::new(0.0, 0.0, 2.0, 0.0)` is an underline. Each side takes room like padding does. In a stylesheet, `border-bottom-width: 2` and the like set one side, the others staying what `border-width` made them. The sides are straight lines along the inside of the box: a `radius` rounds the fill but not them, so a rounded outline is the one `border`. A label, a button, a field, a scroll view and a list keep the one `border`.
+## Pinning to a corner
+
+`Style::offset(x, y)` takes a node out of flow and puts its top-left corner at that place in its parent. `Style::offset_end(right, bottom)` does the same from the bottom-right corner, so a badge or a floating button stays in the corner whatever size its parent has. With both, the node is pinned on both sides, and one with no `width` or `height` stretches between them, as `left`, `right`, `top` and `bottom` together do in CSS. The edges are physical: the right edge is on the right in a right-to-left window too. The parent needs a size of its own, as the node no longer gives it one.

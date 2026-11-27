@@ -386,6 +386,14 @@ pub struct Style {
     /// something above the whole window. Layout and the focus order still
     /// follow the declaration order.
     pub z_index: i32,
+    /// Takes the node out of flow and places its bottom-right corner at this
+    /// distance (right, bottom) from the parent's bottom-right corner, as
+    /// `position: absolute; right; bottom` does, so a badge or a floating
+    /// button stays in the corner whatever size the parent is. With `offset`
+    /// as well the node is pinned on both sides, and a node with no width or
+    /// height stretches between them. The edges are physical: the right edge
+    /// stays on the right in a right-to-left window.
+    pub offset_end: Option<(f32, f32)>,
     /// Inherited like text properties; `None` takes the parent's direction.
     pub direction: Option<Direction>,
     /// Forces the direction a paragraph starts in, whatever its first strong
@@ -454,6 +462,7 @@ impl Default for Style {
             focusable: true,
             cursor: None,
             z_index: 0,
+            offset_end: None,
             direction: None,
         }
     }
@@ -785,6 +794,11 @@ impl Style {
     setter!(animation, animation, Animation, some);
     setter!(direction, direction, Direction, some);
     setter!(z_index, z_index, i32);
+    /// See [`Style::offset_end`].
+    pub fn offset_end(mut self, right: f32, bottom: f32) -> Self {
+        self.offset_end = Some((right, bottom));
+        self
+    }
 
     pub fn offset(mut self, x: f32, y: f32) -> Self {
         self.offset = Some((x, y));
@@ -1041,17 +1055,28 @@ impl Style {
                 (None, Some(area)) => placement(area.row, area.row_span),
                 (None, None) => Default::default(),
             },
-            position: if self.offset.is_some() {
+            position: if self.offset.is_some() || self.offset_end.is_some() {
                 Position::Absolute
             } else {
                 Position::Relative
             },
-            inset: self.offset.map_or_else(Rect::auto, |(x, y)| Rect {
-                left: LengthPercentageAuto::length(x),
-                top: LengthPercentageAuto::length(y),
-                right: LengthPercentageAuto::auto(),
-                bottom: LengthPercentageAuto::auto(),
-            }),
+            inset: {
+                let (left, top) = self
+                    .offset
+                    .map_or((None, None), |(x, y)| (Some(x), Some(y)));
+                let (right, bottom) = self
+                    .offset_end
+                    .map_or((None, None), |(x, y)| (Some(x), Some(y)));
+                let side = |value: Option<f32>| {
+                    value.map_or_else(LengthPercentageAuto::auto, LengthPercentageAuto::length)
+                };
+                Rect {
+                    left: side(left),
+                    top: side(top),
+                    right: side(right),
+                    bottom: side(bottom),
+                }
+            },
             ..taffy::Style::default()
         }
     }
