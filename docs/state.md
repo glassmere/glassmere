@@ -133,6 +133,27 @@ ui.memo(&(&self.rows, self.selected), style, |ui| { .. });
 
 The retained subtree stays exactly as it was, so it still paints, scrolls and animates, and the handlers it left keep sending. The state must cover everything the content reads. `Store::version` and `Signal::version` are hashable, so a store plugs straight in.
 
+## Declaring nothing
+
+`Ui::memo` skips the content of a subtree, but the view still runs down to it and declares everything outside it. For a screen that is mostly a few values that change, the whole view can be skipped, and the values that change are followed in the tree.
+
+```rust
+fn view(&self, ui: &mut Ui<'_, Msg>) {
+    ui.bound_label(&self.caption);              // a Memo<String> or a Signal<String>
+    ui.button(Button::new("Add").on_click(Msg::Add));
+}
+
+fn view_state(&self) -> Option<u64> {
+    Some(0)                                      // the view reads nothing else
+}
+```
+
+`App::view_state` is a promise: the view reads nothing from `self` but what the returned value hashes and the sources of its `bound_label`s. A message after which it is equal to what it was when the view last ran does not run the view. The label is then brought up to date in the retained tree: its text is replaced, measured again if that changes its size, and repainted, and the screen reader hears the new text. A message after which it differs runs the view as before, and so does everything else that always did: a resized window, a hover, focus or press the view asked about, a theme, locale or `request_redraw`, and input that no handler answered and so waits for a `Response`. The default, `None`, runs the view after every message.
+
+Return a hash of whatever the view reads that is not bound, or a counter that `update` bumps when it changes: the number of rows the view lists, say. A view that reads state it did not hash shows stale content after a message, which is the same mistake as the state of a `Ui::memo` that does not cover its content.
+
+A label is bound by key like any widget: keep its place in the view stable. A label that is declared without a source on a later run is an ordinary label again. Only the text of a plain label is bound in this release.
+
 ## Docking layouts
 
 `DockLayout` is the layout of a docked workspace: a tree of splits and tab groups, floating groups and detached windows. It is plain data the application owns. `Ui::dock(&layout, &panels, options, Msg::Dock, |ui, id| ..)` draws it and sends a `DockAction` for every move, resize, selection, close and raise; `update` applies it with `layout.apply(action)` and saves the layout if that returned true. `Ui::dock_window` draws one detached window from `view_window`. A panel is a `DockPanel::new(id, title)`, or `pinned` when it cannot be closed. `DockLayout::show`, `move_panel(id, DockTarget)`, `redock` and `remove_window` change it from code.
