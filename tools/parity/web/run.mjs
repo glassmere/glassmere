@@ -64,7 +64,9 @@ function render(node) {
         const at = c.position ?? { x: 0, y: 0 };
         const z = c.z != null ? `;z-index:${c.z}` : '';
         // Wrapped so the child keeps its own style; the wrapper only places it.
-        return `<div style="position:absolute;left:${at.x}px;top:${at.y}px${z}">${render({ ...c, grow: 0, shrink: 0 })}</div>`;
+        // `positionEnd` pins to the right and bottom instead of the left and top.
+        const place = c.positionEnd ? `right:${c.positionEnd.right}px;bottom:${c.positionEnd.bottom}px` : `left:${at.x}px;top:${at.y}px`;
+        return `<div style="position:absolute;${place}${z}">${render({ ...c, grow: 0, shrink: 0 })}</div>`;
       }).join('');
       return `<div data-id="${id}" style="${css(node, 'position:relative')}">${kids}</div>`;
     }

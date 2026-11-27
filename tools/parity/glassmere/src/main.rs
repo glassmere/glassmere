@@ -168,6 +168,12 @@ fn sized(node: &Value, mut style: Style) -> Style {
     if let Some(z) = node.get("z").and_then(Value::as_i64) {
         style.z_index = z as i32;
     }
+    if let Some(end) = node.get("__end").and_then(Value::as_array) {
+        style = style.offset_end(
+            end[0].as_f64().unwrap_or(0.0) as f32,
+            end[1].as_f64().unwrap_or(0.0) as f32,
+        );
+    }
     // Set by a `stack` on the children it places.
     if let Some(at) = node.get("__at").and_then(Value::as_array) {
         style = style.offset(
@@ -276,7 +282,11 @@ impl Bench {
                             .cloned()
                             .unwrap_or(json!({"x": 0, "y": 0}));
                         let mut child = child.clone();
-                        child["__at"] = json!([at["x"], at["y"]]);
+                        if let Some(end) = child.get("positionEnd").cloned() {
+                            child["__end"] = json!([end["right"], end["bottom"]]);
+                        } else {
+                            child["__at"] = json!([at["x"], at["y"]]);
+                        }
                         child
                     })
                     .collect();
