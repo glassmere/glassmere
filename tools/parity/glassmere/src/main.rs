@@ -151,6 +151,10 @@ fn sized(node: &Value, mut style: Style) -> Style {
     if let Some(m) = px(node, "margin") {
         style = style.margin(m);
     }
+    // A box takes the pointer in a browser; here a container does when told to.
+    if node.get("blocksPointer").and_then(Value::as_bool) == Some(true) {
+        style = style.blocks_pointer(true);
+    }
     for side in node
         .get("marginAuto")
         .and_then(Value::as_array)

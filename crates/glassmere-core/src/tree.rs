@@ -545,7 +545,8 @@ impl Node {
     /// activatable, the pointer-only column sizer, and the window frame a
     /// view draws for itself.
     fn takes_pointer(&self) -> bool {
-        self.focus_kind()
+        self.style.blocks_pointer
+            || self.focus_kind()
             || self.activatable()
             || (self.enabled
                 && matches!(

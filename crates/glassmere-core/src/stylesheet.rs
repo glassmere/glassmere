@@ -789,6 +789,17 @@ fn apply(style: &mut Style, key: &str, value: &str) -> Result<(), String> {
             style.shrink = 1.0;
             style.basis = Length::Px(0.0);
         }
+        "blocks-pointer" => {
+            style.blocks_pointer = match value {
+                "true" => true,
+                "false" => false,
+                _ => {
+                    return Err(format!(
+                        "blocks-pointer is `true` or `false`, got `{value}`"
+                    ));
+                }
+            };
+        }
         "radius" => style.radius = number(value)?,
         "background" => style.background = Some(color(value)?),
         "foreground" => style.foreground = Some(color(value)?),
