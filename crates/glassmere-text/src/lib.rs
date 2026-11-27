@@ -5,8 +5,8 @@ use cosmic_text::{
     Attrs, Buffer, Family, FontSystem, LineEnding, LineIter, Metrics, Shaping, Wrap,
 };
 use glassmere_scene::{
-    CaretStop, FontFamily, Rect, Size, TextCluster, TextGeometry, TextLine, TextMeasurer, TextSpan,
-    TextStyle, TextWrap,
+    CaretStop, FontFamily, Rect, Size, TextAlign, TextCluster, TextGeometry, TextLine,
+    TextMeasurer, TextSpan, TextStyle, TextWrap,
 };
 use std::collections::hash_map::RandomState;
 use std::collections::{HashMap, HashSet};
@@ -28,6 +28,9 @@ pub struct TextKey {
     italic: Skip<bool>,
     wrap: Skip<TextWrap>,
     rtl: Skip<bool>,
+    align: Skip<TextAlign>,
+    line_height: Skip<u32>,
+    letter_spacing: Skip<u32>,
     base: Skip<Option<bool>>,
     width: Skip<Option<u32>>,
     /// Byte length and overrides of each run of a rich block; empty for plain text.
@@ -177,15 +180,26 @@ fn family(family: &FontFamily) -> Family<'_> {
     }
 }
 
+#[cfg(test)]
 fn attrs(font: &FontFamily, weight: u16, italic: bool) -> Attrs<'_> {
-    Attrs::new()
+    spaced(font, weight, italic, 0.0)
+}
+
+/// `attrs` with `spacing` ems added after every glyph.
+fn spaced(font: &FontFamily, weight: u16, italic: bool, spacing: f32) -> Attrs<'_> {
+    let attrs = Attrs::new()
         .family(family(font))
         .weight(cosmic_text::Weight(weight.clamp(100, 900)))
         .style(if italic {
             cosmic_text::Style::Italic
         } else {
             cosmic_text::Style::Normal
-        })
+        });
+    if spacing == 0.0 {
+        attrs
+    } else {
+        attrs.letter_spacing(spacing)
+    }
 }
 
 /// Bytes of the mark that starts each line of a text whose direction is
@@ -360,7 +374,25 @@ impl TextSystem {
         let weight = style.weight.clamp(100, 900);
         // Alignment needs a width, which only wrapped blocks have.
         let rtl = style.rtl && width.is_some();
+        let align = if width.is_some() {
+            style.align
+        } else {
+            TextAlign::Start
+        };
         let width_bits = width.map(f32::to_bits);
+        // Bits, so the key stays hashable; -0.0 and NaN are folded away first.
+        let line_height = if style.line_height.is_finite() && style.line_height > 0.0 {
+            style.line_height
+        } else {
+            1.4
+        }
+        .to_bits();
+        let letter_spacing = if style.letter_spacing.is_finite() && style.letter_spacing != 0.0 {
+            style.letter_spacing
+        } else {
+            0.0
+        }
+        .to_bits();
         // Most blocks are plain, and there is nothing to collect for them.
         let spans: Vec<SpanKey> = if spans.is_empty() {
             Vec::new()
@@ -386,6 +418,9 @@ impl TextSystem {
             style.italic,
             style.wrap,
             rtl,
+            align,
+            line_height,
+            letter_spacing,
             style.base,
             width_bits,
             &spans,
@@ -403,6 +438,9 @@ impl TextSystem {
             italic: Skip(style.italic),
             wrap: Skip(style.wrap),
             rtl: Skip(rtl),
+            align: Skip(align),
+            line_height: Skip(line_height),
+            letter_spacing: Skip(letter_spacing),
             base: Skip(style.base),
             width: Skip(width_bits),
             spans: Skip(spans),
@@ -418,7 +456,17 @@ impl TextSystem {
         font_size: f32,
         width: Option<f32>,
     ) -> Buffer {
-        let metrics = Metrics::new(font_size, font_size * 1.4);
+        let line_height = if style.line_height.is_finite() && style.line_height > 0.0 {
+            style.line_height
+        } else {
+            1.4
+        };
+        let spacing = if style.letter_spacing.is_finite() {
+            style.letter_spacing / font_size
+        } else {
+            0.0
+        };
+        let metrics = Metrics::new(font_size, font_size * line_height);
         // Buffer::new shapes and lays out an empty line that set_text then
         // drops. set_rich_text reuses that line instead, so a rich block
         // starts from it.
@@ -436,7 +484,7 @@ impl TextSystem {
             },
         );
         buffer.set_size(fonts, width, None);
-        let base = attrs(&style.family, style.weight, style.italic);
+        let base = spaced(&style.family, style.weight, style.italic, spacing);
         // A forced paragraph direction is a mark that starts each line.
         let forced = style.base.map(|rtl| (mark(rtl), line_starts(text)));
         if spans.is_empty() {
@@ -466,10 +514,11 @@ impl TextSystem {
             let mut runs = Vec::new();
             let mut at = 0;
             for span in spans {
-                let run = attrs(
+                let run = spaced(
                     span.family.as_ref().unwrap_or(&style.family),
                     span.weight.unwrap_or(style.weight),
                     span.italic.unwrap_or(style.italic),
+                    spacing,
                 );
                 let run = match span.color {
                     Some(color) => {
@@ -508,9 +557,22 @@ impl TextSystem {
                 .weight(cosmic_text::Weight(style.weight.clamp(100, 900) ^ 1));
             buffer.set_rich_text(fonts, runs, &unused, Shaping::Advanced, None);
         }
-        if style.rtl && width.is_some() {
-            for line in &mut buffer.lines {
-                line.set_align(Some(cosmic_text::Align::Right));
+        if width.is_some() {
+            let align = match style.align {
+                TextAlign::Center => Some(cosmic_text::Align::Center),
+                // The end of right-to-left UI is the left edge, whatever the
+                // text in it says.
+                TextAlign::End if style.rtl => Some(cosmic_text::Align::Left),
+                TextAlign::End => Some(cosmic_text::Align::End),
+                TextAlign::Justify => Some(cosmic_text::Align::Justified),
+                // Right-to-left UI starts at the right edge.
+                TextAlign::Start if style.rtl => Some(cosmic_text::Align::Right),
+                TextAlign::Start => None,
+            };
+            if align.is_some() {
+                for line in &mut buffer.lines {
+                    line.set_align(align);
+                }
             }
         }
         buffer.shape_until_scroll(fonts, false);
@@ -1719,12 +1781,12 @@ mod tests {
         assert_eq!(
             format!("{plain:?}"),
             "TextKey { text: \"hi\", size: 1098907648, family: SansSerif, weight: 400, \
-             italic: false, wrap: None, rtl: false, base: None, width: None, spans: [] }"
+             italic: false, wrap: None, rtl: false, align: Start, line_height: 1068708659, letter_spacing: 0, base: None, width: None, spans: [] }"
         );
         assert_eq!(
             format!("{plain:#?}"),
             "TextKey {\n    text: \"hi\",\n    size: 1098907648,\n    family: SansSerif,\n    \
-             weight: 400,\n    italic: false,\n    wrap: None,\n    rtl: false,\n    \
+             weight: 400,\n    italic: false,\n    wrap: None,\n    rtl: false,\n    align: Start,\n    line_height: 1068708659,\n    letter_spacing: 0,\n    \
              base: None,\n    width: None,\n    spans: [],\n}"
         );
         let spans = [
@@ -1745,7 +1807,7 @@ mod tests {
         assert_eq!(
             format!("{rich:?}"),
             "TextKey { text: \"ab\", size: 1098907648, family: Named(\"q\"), weight: 400, \
-             italic: false, wrap: Word, rtl: false, base: Some(true), width: Some(1112014848), \
+             italic: false, wrap: Word, rtl: false, align: Start, line_height: 1068708659, letter_spacing: 0, base: Some(true), width: Some(1112014848), \
              spans: [(1, None, None, None, None), \
              (1, Some([1, 2, 3, 4]), Some(700), Some(true), Some(Named(\"z\")))] }"
         );
@@ -1753,7 +1815,7 @@ mod tests {
             format!("{rich:#?}"),
             "TextKey {\n    text: \"ab\",\n    size: 1098907648,\n    family: Named(\n        \
              \"q\",\n    ),\n    weight: 400,\n    italic: false,\n    wrap: Word,\n    \
-             rtl: false,\n    base: Some(\n        true,\n    ),\n    width: Some(\n        \
+             rtl: false,\n    align: Start,\n    line_height: 1068708659,\n    letter_spacing: 0,\n    base: Some(\n        true,\n    ),\n    width: Some(\n        \
              1112014848,\n    ),\n    spans: [\n        (\n            1,\n            None,\n            \
              None,\n            None,\n            None,\n        ),\n        (\n            1,\n            \
              Some(\n                [\n                    1,\n                    2,\n                    \
@@ -1761,6 +1823,184 @@ mod tests {
              Some(\n                700,\n            ),\n            Some(\n                \
              true,\n            ),\n            Some(\n                Named(\n                    \
              \"z\",\n                ),\n            ),\n        ),\n    ],\n}"
+        );
+    }
+
+    /// The left and right edge of the characters of each line.
+    fn extents(geometry: &TextGeometry) -> Vec<(f32, f32)> {
+        geometry
+            .lines
+            .iter()
+            .map(|line| {
+                let inside = geometry
+                    .clusters
+                    .iter()
+                    .filter(|cluster| {
+                        cluster.bytes.start >= line.bytes.start
+                            && cluster.bytes.end <= line.bytes.end
+                    })
+                    .filter(|cluster| cluster.rect.width > 0.0);
+                inside.fold((f32::MAX, f32::MIN), |(left, right), cluster| {
+                    (
+                        left.min(cluster.rect.x),
+                        right.max(cluster.rect.x + cluster.rect.width),
+                    )
+                })
+            })
+            .collect()
+    }
+
+    /// Only the bundled font, so that the lines break in the same places on
+    /// every machine, whatever fonts it has installed.
+    fn bundled() -> TextSystem {
+        TextSystem::with_fonts([include_bytes!(
+            "../../glassmere-render-wgpu/fonts/FiraMono-Regular.ttf"
+        )
+        .to_vec()])
+    }
+
+    #[test]
+    fn wrapped_lines_sit_where_the_alignment_puts_them() {
+        use glassmere_scene::TextAlign;
+        let text = "one two three four five six seven eight";
+        let width = 140.0;
+        let mut system = bundled();
+        let mut shaped = |align, rtl| {
+            let style = TextStyle {
+                wrap: TextWrap::Word,
+                align,
+                rtl,
+                ..TextStyle::default()
+            };
+            extents(&system.geometry(text, &style, Some(width)))
+        };
+        let start = shaped(TextAlign::Start, false);
+        assert!(start.len() > 2, "the text wraps");
+        assert!(start.iter().all(|(left, _)| left.abs() < 0.5), "{start:?}");
+        assert!(
+            start.iter().any(|(_, right)| *right < width - 5.0),
+            "some line is short"
+        );
+
+        let center = shaped(TextAlign::Center, false);
+        for ((left, right), (_, natural)) in center.iter().zip(&start) {
+            assert!(
+                ((left + right) / 2.0 - width / 2.0).abs() < 1.0,
+                "{center:?}"
+            );
+            assert!(
+                (right - left - natural).abs() < 1.0,
+                "a line keeps its width"
+            );
+        }
+        assert!(center.iter().any(|(left, _)| *left > 3.0));
+
+        let end = shaped(TextAlign::End, false);
+        assert!(
+            end.iter().all(|(_, right)| (right - width).abs() < 1.0),
+            "{end:?}"
+        );
+
+        // The last line of a justified block is not stretched; the others
+        // reach both edges.
+        let justify = shaped(TextAlign::Justify, false);
+        let last = justify.len() - 1;
+        for (index, (left, right)) in justify.iter().enumerate() {
+            assert!(left.abs() < 1.0, "{justify:?}");
+            if index < last {
+                assert!((right - width).abs() < 1.5, "{justify:?}");
+            }
+        }
+
+        // Right-to-left UI starts at the right edge, and `End` there is the
+        // left one.
+        let rtl_start = shaped(TextAlign::Start, true);
+        assert!(
+            rtl_start
+                .iter()
+                .all(|(_, right)| (right - width).abs() < 1.0)
+        );
+        let rtl_end = shaped(TextAlign::End, true);
+        assert!(
+            rtl_end.iter().all(|(left, _)| left.abs() < 1.0),
+            "{rtl_end:?}"
+        );
+    }
+
+    #[test]
+    fn line_height_and_letter_spacing_change_the_shaped_size() {
+        let mut system = bundled();
+        let plain = TextStyle::default();
+        let size = |system: &mut TextSystem, style: &TextStyle| {
+            system.measure_styled("abcd\nabcd", style, None)
+        };
+        let base = size(&mut system, &plain);
+        let tall = size(
+            &mut system,
+            &TextStyle {
+                line_height: 2.0,
+                ..plain.clone()
+            },
+        );
+        assert_eq!(base.height, 2.0 * 16.0 * 1.4);
+        assert_eq!(tall.height, 2.0 * 16.0 * 2.0);
+        assert_eq!(tall.width, base.width);
+        let spaced = size(
+            &mut system,
+            &TextStyle {
+                letter_spacing: 3.0,
+                ..plain.clone()
+            },
+        );
+        assert_eq!(spaced.height, base.height);
+        assert!(
+            (spaced.width - base.width - 12.0).abs() < 0.01,
+            "{spaced:?} {base:?}"
+        );
+        // A different spacing is a different shaped buffer.
+        let key = |style: &TextStyle| TextSystem::key("abcd", &[], style, None).0;
+        assert_ne!(
+            key(&plain),
+            key(&TextStyle {
+                letter_spacing: 1.0,
+                ..plain.clone()
+            })
+        );
+        assert_ne!(
+            key(&plain),
+            key(&TextStyle {
+                line_height: 1.0,
+                ..plain.clone()
+            })
+        );
+    }
+
+    #[test]
+    fn alignment_needs_a_width_and_a_block_without_one_is_where_it_was() {
+        use glassmere_scene::TextAlign;
+        let mut system = bundled();
+        let plain = system.geometry("one two", &TextStyle::default(), None);
+        for align in [TextAlign::Center, TextAlign::End, TextAlign::Justify] {
+            let style = TextStyle {
+                align,
+                ..TextStyle::default()
+            };
+            let aligned = system.geometry("one two", &style, None);
+            assert_eq!(extents(&aligned), extents(&plain), "{align:?}");
+            // And the key is the same one, so nothing is shaped twice.
+            assert_eq!(
+                TextSystem::key("one two", &[], &style, None).0,
+                TextSystem::key("one two", &[], &TextStyle::default(), None).0
+            );
+        }
+        let wrapped = |align| TextStyle {
+            wrap: TextWrap::Word,
+            align,
+            ..TextStyle::default()
+        };
+        assert_ne!(
+            TextSystem::key("one two", &[], &wrapped(TextAlign::Start), Some(50.0)).0,
+            TextSystem::key("one two", &[], &wrapped(TextAlign::Center), Some(50.0)).0
         );
     }
 
