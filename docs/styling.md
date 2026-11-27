@@ -29,6 +29,14 @@ Text properties (`foreground`, `font_size`, `font_family`, `font_weight`, `itali
 
 Pointer and focus states are overrides on top of the base style: `on_hover`, `on_pressed`, `on_focused` and `on_disabled`, each taking a `Paint` (background, foreground, radius, opacity, transform). They repaint; they never lay out again.
 
+### The focus ring
+
+A focused widget outlines itself with a ring: a stroke 2 px wide in the theme's `focus` colour, drawn inside the widget's box along its rounded edge, over its background and gradient. A widget with square corners gets four bars, which land exactly on pixels.
+
+The ring follows how focus was given, as it does in a browser. A widget that takes no typed text shows it after the keyboard, Tab and the arrow keys, and not after a click or a touch; the next key that does something brings it back, and the next press hides it again. A field you type into always shows it, because it is where the text goes. A window shows it from the start, until the first press.
+
+`Style::focus_ring(FocusRing::new(3.0).color(color).inset(2.0))` sets the width, the colour and how far the ring sits inside the edge, for one widget; `Style::no_focus_ring()` draws none, for a widget that shows focus some other way. The ring stays inside the widget's box, which is what is repainted when focus moves; outside it, it would be left behind. The colour of the default ring is the theme's `focus` token.
+
 ## Theme
 
 `Theme::dark()` and `Theme::light()` are the two built in. Every colour is a named token:
@@ -138,3 +146,49 @@ A window runs left to right or right to left according to `AppOptions::direction
 ## Underline and strikethrough
 
 `Style::text_decoration(TextDecoration::Underline)` (stylesheet `text-decoration: underline`) draws a one-pixel rule under a single line of text in its colour, and `LineThrough` (`line-through`) draws it through the middle: a struck-out price, a done item, a hand-made link. It is for a label, a button and the like that do not wrap; text that wraps has none. A link is underlined whatever the style says.
+
+## Reversed flow
+
+`Style::reverse(true)` (stylesheet `reverse: true`) lays a row or a column out from its end, as `flex-direction: row-reverse` and `column-reverse` do: the first child is at the end of the main axis and the others follow back from it, which is the way to put the primary action at the right of a dialog's button row without declaring it last. Only the layout is reversed; Tab still goes in the order the children are declared. `Justify::Start` and `Justify::End` are relative to the main axis, so in a reversed row `End` is the left edge.
+
+## Overlong text
+
+A line of text that is wider than its box is cut at the edge. `Style::text_overflow(TextOverflow::Ellipsis)` (stylesheet `text-overflow: ellipsis`) ends it with `…` where the next character would not fit, the way a table cell or a file name is usually shown. It is for a label, a button and the like that do not wrap, so give the node a width (a fixed one, a percentage, or a column that stretches it). The text is cut between characters that belong together and measured the way the layout measures it, it follows the box when the window is resized, and the name a screen reader reads, and what a selection copies, is still all of it. Text that wraps is not affected.
+
+## Shielding what is underneath
+
+A container is transparent to the pointer: only widgets that take a press, a key or a drag are hit, so a card, a panel or a floating toolbar drawn over a button leaves the button clickable through it. In a browser a box under the pointer takes it. `Style::blocks_pointer(true)` (stylesheet `blocks-pointer: true`) makes a node do that: a click or a hover on it does not reach what is under it, and it is what `hovered` reports there. What is inside it still takes the pointer first. Popovers, dialogs and menus already shield what they cover.
+
+## Sharing space: grow, shrink and basis
+
+`grow` and `shrink` start from the size a child has along the row (or column): its `width`, or its content. Two children with `grow(1.0)` share what is left after their own sizes, so a child with more in it ends up wider. For equal shares whatever the content, as `flex: 1` gives on the web, use `Style::flex(1.0)` (stylesheet `flex: 1`): it grows by that factor, shrinks, and starts from a `basis` of 0. `Style::basis(Length::Px(120.0))` (stylesheet `basis: 120`) is the size to start from when you want one of your own, and it wins over `width`. Children of `Style::flex(1.0)` and `Style::flex(2.0)` split a row one to two.
+
+## Coming from CSS
+
+glassmere's defaults are not CSS's: `Style::default()` has a `gap` of 12, children that do not shrink (`shrink` 0) and that keep their own size across the container (`align_items` start). `Style::web()` is a style with CSS's flex defaults instead: no gap, `shrink` 1 and `align_items` stretch. `ui.row(Style::web().width(Length::Px(200.0)), |ui| ..)` lays three 100 px children out 66.67 px each, touching, as a browser does. Give a child `Style::web()` or `.shrink(1.0)` for it to give way, since shrinking is a property of the child. Changing what `Style::default()` is waits for 0.2.0.
+
+## Text alignment
+
+`Style::text_align(TextAlign::Center)` (stylesheet `text-align: center`) sets where text sits in a box wider than it. For wrapped text the shaper aligns every line between the edges (`Start`, `Center`, `End`, or `Justify`, which stretches the spaces of every line but the last), so a selection and the caret follow the drawn text. A single line sits at the start, the middle or the end of its box, so a right-aligned number in a fixed-width cell is `text_align(TextAlign::End)`. It is inherited, like the font: set it on a column and every label in it takes it, and a label's own value wins. It follows the reading direction: `Start` is the left edge in a left-to-right window and the right edge in a right-to-left one, and `End` the other. Without it text is where it was, or where `justify_content` puts a single line.
+
+## Line height and letter spacing
+
+`Style::line_height(1.6)` (stylesheet `line-height: 1.6`) sets the height of a line as a multiple of the font size, `1.4` unless set. Unlike CSS it takes only a multiple, not a length. `Style::letter_spacing(0.5)` (stylesheet `letter-spacing: 0.5`) adds pixels after every character; a negative value tightens. Both are inherited like the font, so set them on a column and every label inside takes them. Text areas and code editors keep their fixed line pitch.
+
+## Hiding without reflowing
+
+`Style::hidden(true)` (stylesheet `visibility: hidden`) keeps a node and its subtree where they are in the layout but draws nothing, takes no pointer or keyboard focus (Tab skips it) and leaves it out of the accessibility tree. Use it for a control that comes and goes while its neighbours stay put. To remove the space too, do not declare the node, which is `display: none`. Unlike CSS, a child of a hidden node cannot be made visible again.
+
+## Overflow
+
+A box cuts what is inside it at its edge, so a child larger than its parent shows only where the parent is, and the cut part cannot be clicked. `Style::unclipped(true)` (stylesheet `overflow: visible`) lifts that for a row, column, container or grid: its children are drawn and hit past its edge, still under the clip of whatever clips above it. A scroll view, a list, a tab strip, a popup and a popover always clip. While a window has an unclipped node, finding what is under the pointer searches the whole tree instead of skipping what a clip rules out, so use it for a few boxes, not for every one. A group opacity set on the unclipped node composites what hangs over it too, in an offscreen layer as big as the window, which costs more than a layer of the box; a transform moves it with the box (tested for a translation).
+
+## Pinning to a corner
+
+`Style::offset(x, y)` takes a node out of flow and puts its top-left corner at that place in its parent. `Style::offset_end(right, bottom)` does the same from the bottom-right corner, so a badge or a floating button stays in the corner whatever size its parent has. With both, the node is pinned on both sides, and one with no `width` or `height` stretches between them, as `left`, `right`, `top` and `bottom` together do in CSS. The edges are physical: the right edge is on the right in a right-to-left window too. The parent needs a size of its own, as the node no longer gives it one.
+
+## Stacking
+
+Overlapping siblings (nodes placed with `Style::offset`, or pushed over each other by a negative `margin`) are painted in the order they are declared, the last on top, and a click reaches the one on top. `Style::z_index(n)` (stylesheet `z-index: n`) changes that: a higher value is painted later and hit first, a lower one, negative or not, goes under. Siblings with the same value keep their declaration order. Layout and the Tab order still follow the declaration order.
+
+It orders the children of one parent. Each parent is a stack of its own, so a child never goes over or under a node outside its parent. To put something above the whole window, use a `popover` or a `dialog`.

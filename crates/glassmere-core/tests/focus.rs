@@ -1,10 +1,10 @@
 mod support;
 
 use glassmere_core::{
-    Action, Button, Context, DialogOptions, Event, FocusScope, Key, Length, MonospaceMeasurer,
-    Role, Style, Ui,
+    Action, Button, Context, DialogOptions, Event, FocusRing, FocusScope, Key, Length,
+    MonospaceMeasurer, Role, Style, Ui,
 };
-use glassmere_scene::{Color, Point, Primitive, Rect, Size};
+use glassmere_scene::{Color, Point, Primitive, Size};
 use support::{Driven, act, center, click, on};
 
 const ROOT: Size = Size::new(600.0, 400.0);
@@ -530,76 +530,197 @@ fn duplicate_dialog_keys_are_rejected() {
     });
 }
 
+/// What the scene draws in the theme's focus colour: bars and stroked paths.
+fn rings(context: &Context) -> Vec<Primitive> {
+    let focus = context.theme().focus;
+    ring_primitives(context, focus)
+}
+
+fn ring_primitives(context: &Context, focus: Color) -> Vec<Primitive> {
+    context
+        .scene()
+        .primitives
+        .iter()
+        .filter(|primitive| match primitive {
+            Primitive::Quad { color, .. } => *color == focus,
+            Primitive::Path {
+                stroke: Some(stroke),
+                ..
+            } => stroke.color == focus,
+            _ => false,
+        })
+        .cloned()
+        .collect()
+}
+
+fn page_and_button(ui: &mut Ui<'_>) {
+    let page = Style {
+        width: Length::Percent(1.0),
+        height: Length::Percent(1.0),
+        padding: 40.0,
+        ..Style::default()
+    };
+    ui.keyed("page", |ui| {
+        ui.scroll(page, |ui| {
+            ui.keyed("save", |ui| ui.button("Save"));
+        })
+    });
+}
+
 #[test]
 fn a_focus_ring_never_floods_a_node_that_has_no_opaque_background() {
     let mut context = Context::new();
-    let view = |ui: &mut Ui<'_>| {
-        let page = Style {
-            width: Length::Percent(1.0),
-            height: Length::Percent(1.0),
-            padding: 40.0,
-            ..Style::default()
-        };
-        ui.keyed("page", |ui| {
-            ui.scroll(page, |ui| {
-                ui.keyed("save", |ui| ui.button("Save"));
-            })
-        });
-    };
-    frame(&mut context, view);
-    let focus = context.theme().focus;
-    let focus_quads = |context: &Context| -> Vec<Rect> {
-        context
-            .scene()
-            .primitives
-            .iter()
-            .filter_map(|primitive| match primitive {
-                Primitive::Quad { rect, color, .. } if *color == focus => Some(*rect),
-                _ => None,
-            })
-            .collect()
-    };
-
-    // Clicking the empty page focuses the scroll view, which has no background.
-    click(&mut context, Point { x: 300.0, y: 300.0 });
-    frame(&mut context, view);
+    frame(&mut context, page_and_button);
+    let page = context.find(&["page"]).unwrap();
+    context.action(page, Action::Focus);
+    frame(&mut context, page_and_button);
     assert_eq!(focused_key(&context), "page");
-    let ring = focus_quads(&context);
+    let ring = rings(&context);
     assert_eq!(ring.len(), 4, "four edges");
     let middle = Point { x: 300.0, y: 300.0 };
-    assert!(
-        ring.iter().all(|edge| !edge.contains(middle)),
-        "the focus colour must not cover the page: {ring:?}"
-    );
-    assert!(ring.iter().all(|edge| edge.width.min(edge.height) <= 2.0));
+    for edge in &ring {
+        let Primitive::Quad { rect, .. } = edge else {
+            panic!("a square node is ringed by bars, got {edge:?}");
+        };
+        assert!(!rect.contains(middle), "the ring must not cover the page");
+        assert!(rect.width.min(rect.height) <= 2.0);
+    }
+}
 
-    // An opaque control keeps the rounded ring: focus colour, background inside.
+#[test]
+fn a_rounded_node_is_ringed_by_a_stroked_path_over_its_own_fill() {
+    let mut context = Context::new();
+    frame(&mut context, page_and_button);
+    let save = context.find(&["page", "save"]).unwrap();
+    context.action(save, Action::Focus);
+    frame(&mut context, page_and_button);
+    assert_eq!(focused_key(&context), "save");
+    let ring = rings(&context);
+    let [Primitive::Path { fill, stroke, path }] = ring.as_slice() else {
+        panic!("one stroked path, got {ring:?}");
+    };
+    assert_eq!(*fill, None);
+    assert_eq!(stroke.unwrap().width, 2.0);
+    // The stroke lies inside the node's box, which is what is repainted.
+    let bounds = context.node(save).unwrap().bounds;
+    let outline = path.bounds();
+    assert!(outline.x >= bounds.x && outline.y >= bounds.y);
+    assert!(outline.x + outline.width <= bounds.x + bounds.width);
+    assert!(outline.y + outline.height <= bounds.y + bounds.height);
+}
+
+#[test]
+fn a_click_shows_no_ring_on_a_button_and_the_keyboard_does() {
+    let mut context = Context::new();
+    frame(&mut context, page_and_button);
+    frame(&mut context, page_and_button);
     let save = center(&context, &["page", "save"]);
     click(&mut context, save);
-    frame(&mut context, view);
+    frame(&mut context, page_and_button);
     assert_eq!(focused_key(&context), "save");
-    let primitives = &context.scene().primitives;
-    let outer = primitives
-        .iter()
-        .position(|primitive| matches!(primitive, Primitive::Quad { color, .. } if *color == focus))
-        .unwrap();
-    let Primitive::Quad { rect: ring, .. } = primitives[outer] else {
-        unreachable!()
-    };
-    let Primitive::Quad {
-        rect: inside,
-        color,
-        ..
-    } = primitives[outer + 1]
-    else {
-        panic!("the background follows the ring");
-    };
-    assert_eq!(color.3, 255);
-    assert_ne!(color, Color::TRANSPARENT);
-    assert_eq!(
-        (inside.x, inside.width),
-        (ring.x + 2.0, ring.width - 4.0),
-        "inset by the ring's width"
+    assert!(rings(&context).is_empty(), "focused by the mouse");
+
+    // The next key that could move focus brings the ring, on the same node.
+    key(&mut context, Key::Tab);
+    frame(&mut context, page_and_button);
+    assert!(!rings(&context).is_empty(), "the keyboard took over");
+
+    // And a press takes it away again.
+    let save = center(&context, &["page", "save"]);
+    click(&mut context, save);
+    frame(&mut context, page_and_button);
+    assert!(rings(&context).is_empty());
+}
+
+#[derive(Default)]
+struct Field {
+    text: String,
+}
+
+#[test]
+fn a_text_input_keeps_its_ring_after_a_click() {
+    let mut driven = Driven::new(ROOT, Field::default(), |state, ui| {
+        ui.keyed("name", |ui| {
+            ui.text_input(
+                "Name",
+                &state.text,
+                on(|s: &mut Field, text: String| s.text = text),
+            );
+        });
+    });
+    let name = center(&driven.context, &["name"]);
+    click(&mut driven.context, name);
+    driven.frame();
+    assert_eq!(focused_key(&driven.context), "name");
+    assert!(
+        !rings(&driven.context).is_empty(),
+        "typing shows where it will go, however focus got there"
     );
-    assert_eq!(focus_quads(&context).len(), 1);
+}
+
+#[test]
+fn a_node_can_set_its_ring_or_have_none() {
+    let view = |ring: Option<FocusRing>| {
+        move |ui: &mut Ui<'_>| {
+            let style = Style {
+                focus_ring: ring,
+                radius: 8.0,
+                ..Style::default()
+            };
+            ui.keyed("save", |ui| ui.button(Button::new("Save").style(style)));
+        }
+    };
+    let pink = Color::rgb(255, 0, 128);
+    let mut context = Context::new();
+    frame(
+        &mut context,
+        view(Some(FocusRing::new(3.0).color(pink).inset(1.0))),
+    );
+    let save = context.find(&["save"]).unwrap();
+    context.action(save, Action::Focus);
+    frame(
+        &mut context,
+        view(Some(FocusRing::new(3.0).color(pink).inset(1.0))),
+    );
+    let own = ring_primitives(&context, pink);
+    let [Primitive::Path { stroke, path, .. }] = own.as_slice() else {
+        panic!("one ring in the node's own colour, got {own:?}");
+    };
+    assert_eq!(stroke.unwrap().width, 3.0);
+    let bounds = context.node(save).unwrap().bounds;
+    assert!(path.bounds().x >= bounds.x + 1.0, "inset from the edge");
+    assert!(rings(&context).is_empty(), "the theme's colour is not used");
+
+    frame(&mut context, view(Some(FocusRing::NONE)));
+    assert!(ring_primitives(&context, pink).is_empty());
+    assert!(rings(&context).is_empty());
+    assert_eq!(focused_key(&context), "save", "it still has focus");
+}
+
+#[test]
+fn a_focused_node_keeps_its_gradient() {
+    let view = |ui: &mut Ui<'_>| {
+        let style = Style::default()
+            .background(Color::rgb(30, 30, 30))
+            .gradient(glassmere_core::Gradient::linear(
+                (0.0, 0.0),
+                (0.0, 40.0),
+                Color::rgb(255, 0, 0),
+                Color::rgb(0, 0, 255),
+            ));
+        ui.keyed("save", |ui| ui.button(Button::new("Save").style(style)));
+    };
+    let mut context = Context::new();
+    frame(&mut context, view);
+    let save = context.find(&["save"]).unwrap();
+    context.action(save, Action::Focus);
+    frame(&mut context, view);
+    let primitives = &context.scene().primitives;
+    assert!(
+        primitives
+            .iter()
+            .any(|primitive| matches!(primitive, Primitive::Gradient { .. })),
+        "the ring is drawn over the gradient, not instead of it"
+    );
+    assert!(!rings(&context).is_empty());
 }
