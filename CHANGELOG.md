@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Fixed
+
+- Choosing the radio button that is already chosen, by a click, Space or an assistive Activate, no longer sends its message. Nothing changes, and a web page's `change` event and a Qt `toggled` do not fire either. A handler that counted on being told again gets nothing; the chosen option is already in the state.
+
 ## [0.1.8] - 2026-11-23
 
 ### Added
