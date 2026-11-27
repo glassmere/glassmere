@@ -1,0 +1,30 @@
+{
+  "id": "toggles",
+  "title": "Checkbox, switch and radio group: click, Space, arrows, accessibility state",
+  "size": [420, 300],
+  "ui": { "type": "column", "id": "page", "gap": 8, "padding": 16, "children": [
+    { "type": "checkbox", "id": "agree", "text": "I agree", "checked": false },
+    { "type": "checkbox", "id": "news", "text": "Newsletter", "checked": true },
+    { "type": "switch", "id": "wifi", "text": "Wi-Fi", "checked": false },
+    { "type": "radiogroup", "id": "size", "value": 0, "options": [
+      { "id": "s", "text": "Small" }, { "id": "m", "text": "Medium" }, { "id": "l", "text": "Large" } ] }
+  ]},
+  "steps": [
+    { "do": "observe", "label": "initial" },
+    { "do": "cursor", "label": "pointer over each", "targets": ["agree", "wifi", "m"] },
+    { "do": "click", "target": "agree" },
+    { "do": "click", "target": "wifi" },
+    { "do": "click", "target": "l" },
+    { "do": "observe", "label": "after clicking one of each" },
+    { "do": "press", "key": "Space" },
+    { "do": "observe", "label": "Space on the focused radio" },
+    { "do": "click", "target": "news" },
+    { "do": "press", "key": "Space" },
+    { "do": "observe", "label": "Space on the focused checkbox" },
+    { "do": "click", "target": "s" },
+    { "do": "press", "key": "ArrowDown" },
+    { "do": "observe", "label": "ArrowDown on the focused radio" },
+    { "do": "press", "key": "Tab" },
+    { "do": "observe", "label": "Tab after the radio group" }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "id": "slider",
+  "title": "Slider: keys and a click on the track",
+  "size": [
+    420,
+    160
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 8,
+    "padding": 16,
+    "children": [
+      {
+        "type": "slider",
+        "id": "vol",
+        "min": 0,
+        "max": 100,
+        "step": 5,
+        "value": 50,
+        "width": 300,
+        "label": "Volume"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "initial"
+    },
+    {
+      "do": "cursor",
+      "label": "pointer over the slider",
+      "targets": [
+        "vol"
+      ]
+    },
+    {
+      "do": "click",
+      "target": "vol"
+    },
+    {
+      "do": "observe",
+      "label": "after a click in the middle"
+    },
+    {
+      "do": "press",
+      "key": "ArrowRight"
+    },
+    {
+      "do": "press",
+      "key": "ArrowRight"
+    },
+    {
+      "do": "observe",
+      "label": "two ArrowRight"
+    },
+    {
+      "do": "press",
+      "key": "Home"
+    },
+    {
+      "do": "observe",
+      "label": "Home"
+    },
+    {
+      "do": "press",
+      "key": "End"
+    },
+    {
+      "do": "observe",
+      "label": "End"
+    },
+    {
+      "do": "clickAt",
+      "target": "vol",
+      "fx": 0.75,
+      "fy": 0.5
+    },
+    {
+      "do": "observe",
+      "label": "a click three quarters along the track"
+    }
+  ]
+}

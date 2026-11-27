@@ -6,7 +6,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
-use glassmere_scene::{Color, FontFamily, TextStyle, TextWrap};
+use glassmere_scene::{Color, FontFamily, TextAlign, TextStyle, TextWrap};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Length {
@@ -269,17 +269,65 @@ pub struct Style {
     /// width / height; the unspecified dimension follows the other.
     pub aspect_ratio: Option<f32>,
     pub padding: f32,
+    /// Padding per side, for a node that holds other nodes: `row`, `column`,
+    /// `grid`, `container` and the like. When set it replaces `padding` there
+    /// (the border still adds to it). A control that draws its own content, such
+    /// as a label, a button, a field, a scroll view or a list, ignores it and
+    /// keeps the one `padding`, because it lays that content out itself.
+    pub padding_sides: Option<Edges>,
+    /// Room kept clear outside the box, per side. It is not part of the box:
+    /// the box's size and its hit area are what they were, and neighbours
+    /// stay this far from it.
+    pub margin: Edges,
+    /// The sides whose margin is `auto`: it takes the room left over along
+    /// that side, as `margin: auto` does in CSS, so `margin_left_auto` pushes a
+    /// child to the end of a row and auto margins on both sides of the cross
+    /// axis centre it. The `margin` of a side that is auto is ignored.
+    pub margin_auto: AutoEdges,
+    /// The width of a border drawn along the edge of the box, inside it. It
+    /// takes room like padding does, so the content starts inside it.
+    pub border: f32,
+    /// The border's colour; `None` takes the theme's `track` colour.
+    pub border_color: Option<Color>,
+    /// The border's width per side, for a node that holds other nodes (see
+    /// `padding_sides`); when set it replaces `border` there. A side whose
+    /// width is 0 draws nothing, so one edge can carry a rule. The sides are
+    /// drawn straight, so `radius` rounds the fill but not these.
+    pub border_sides: Option<Edges>,
     pub gap: f32,
     /// Overrides `gap` between rows when set.
     pub row_gap: Option<f32>,
     /// Overrides `gap` between columns when set.
     pub column_gap: Option<f32>,
     pub grow: f32,
+    /// Children that do not fit along the main axis go on to a new line,
+    /// as `flex-wrap: wrap` does, instead of overflowing or shrinking. `gap`
+    /// (or `row_gap` and `column_gap`) is the room between the lines too.
+    pub wrap_items: bool,
+    /// The size along the main axis that `grow` and `shrink` start from, as
+    /// `flex-basis` is in CSS. `Auto` starts from the width (or height) and,
+    /// without one, from the content, so two children with `grow` 1 share
+    /// what is left after their own sizes and end up unequal. A basis of 0 (or
+    /// [`Style::flex`]) shares the whole space by `grow`, so they end up equal
+    /// whatever is in them. Wins over `width` (`height` in a column) for the
+    /// size it starts from.
+    pub basis: Length,
+    /// Lays the children of a row or a column out from the end instead of the
+    /// start, as `flex-direction: row-reverse` and `column-reverse` do: the
+    /// first child is at the end of the main axis, and `justify_content`'s
+    /// start is that end. Only the layout is reversed; the focus order and the
+    /// order the children are declared in stay what they were.
+    pub reverse: bool,
     /// Flex shrink factor; children do not shrink unless this is set.
     pub shrink: f32,
     pub radius: f32,
     pub align_items: Align,
     pub justify_content: Justify,
+    /// How the lines of a wrapping container (`wrap_items`) share the room
+    /// left across it, as `align-content` does; `None` leaves them as the
+    /// layout engine does. It has an effect only when the container is taller
+    /// (or wider, in a column) than its lines.
+    pub align_content: Option<Justify>,
     pub align_self: Option<Align>,
     /// Grid items only: inline-axis alignment inside the cell.
     pub justify_self: Option<Align>,
@@ -316,6 +364,27 @@ pub struct Style {
     pub font_family: Option<FontFamily>,
     pub font_weight: Option<u16>,
     pub italic: Option<bool>,
+    /// Where the lines of wrapped text sit between the edges of the box, and
+    /// where a single line sits in a box wider than it: `Start`, `Center`,
+    /// `End` or `Justify`. Inherited by what is inside, like the font. `None`
+    /// takes the parent's, and at the top `Start`, where text is unless
+    /// `justify_content` places it.
+    pub text_align: Option<TextAlign>,
+    /// The height of a line of text as a multiple of the font size, `1.4`
+    /// unless set. Inherited by what is inside, like the font.
+    pub line_height: Option<f32>,
+    /// Extra advance after every character in pixels, `0` unless set; negative
+    /// tightens. Inherited by what is inside, like the font.
+    pub letter_spacing: Option<f32>,
+    /// The node and everything inside it keeps its place in the layout but is
+    /// not drawn, hit, focused or reported to accessibility, like CSS
+    /// `visibility: hidden`. Unlike CSS a hidden subtree cannot show a child.
+    pub hidden: bool,
+    /// What is inside is not cut off at the edge of this box: a badge or a
+    /// shadow-like decoration can hang over the corner, as with CSS
+    /// `overflow: visible`. It still lies under the clip of the nearest
+    /// ancestor that clips, and a scroll view, a list or a popup always clips.
+    pub unclipped: bool,
     pub wrap: TextWrap,
     pub states: Option<Box<StateStyles>>,
     /// Group opacity of the node and its subtree, 0..=1.
@@ -348,6 +417,30 @@ pub struct Style {
     /// `None` takes the parent's, and at the top what the widget is: a hand
     /// over one that takes a press, an I-beam over text.
     pub cursor: Option<Cursor>,
+    /// Where the node stands among its siblings when they overlap, as
+    /// `z-index` does on a flex item: a higher value is painted later, so over
+    /// the lower ones, and is hit first. Siblings with the same value keep the
+    /// order they were declared in, and 0 is where a node is unless it says
+    /// otherwise. It orders siblings only, so a child never leaves its parent's
+    /// place in the stack; use an overlay (`popover`, `dialog`) to put
+    /// something above the whole window. Layout and the focus order still
+    /// follow the declaration order.
+    pub z_index: i32,
+    /// Takes the node out of flow and places its bottom-right corner at this
+    /// distance (right, bottom) from the parent's bottom-right corner, as
+    /// `position: absolute; right; bottom` does, so a badge or a floating
+    /// button stays in the corner whatever size the parent is. With `offset`
+    /// as well the node is pinned on both sides, and a node with no width or
+    /// height stretches between them. The edges are physical: the right edge
+    /// stays on the right in a right-to-left window.
+    pub offset_end: Option<(f32, f32)>,
+    /// Takes the pointer wherever the node is, as a box does in a browser: a
+    /// click or a hover on it does not reach what lies under it. A container
+    /// is otherwise transparent to the pointer, so a card, a panel or a
+    /// floating toolbar drawn over a button leaves the button clickable through
+    /// it; with this set it shields what is under it. What is inside the node
+    /// still takes the pointer first.
+    pub blocks_pointer: bool,
     /// Inherited like text properties; `None` takes the parent's direction.
     pub direction: Option<Direction>,
     /// Forces the direction a paragraph starts in, whatever its first strong
@@ -370,14 +463,24 @@ impl Default for Style {
             gradient: None,
             shadow: None,
             padding: 0.0,
+            padding_sides: None,
+            margin: Edges::ZERO,
+            margin_auto: AutoEdges::NONE,
+            border: 0.0,
+            border_color: None,
+            border_sides: None,
             gap: 12.0,
             row_gap: None,
             column_gap: None,
             grow: 0.0,
+            wrap_items: false,
+            basis: Length::Auto,
+            reverse: false,
             shrink: 0.0,
             radius: 0.0,
             align_items: Align::Start,
             justify_content: Justify::Start,
+            align_content: None,
             align_self: None,
             justify_self: None,
             columns: Vec::new(),
@@ -395,6 +498,11 @@ impl Default for Style {
             font_family: None,
             font_weight: None,
             italic: None,
+            text_align: None,
+            line_height: None,
+            letter_spacing: None,
+            hidden: false,
+            unclipped: false,
             wrap: TextWrap::None,
             states: None,
             opacity: 1.0,
@@ -408,6 +516,9 @@ impl Default for Style {
             focus_ring: None,
             focusable: true,
             cursor: None,
+            z_index: 0,
+            offset_end: None,
+            blocks_pointer: false,
             direction: None,
         }
     }
@@ -434,6 +545,87 @@ pub enum Cursor {
     ColResize,
     /// Top and bottom edges, as over a row divider.
     RowResize,
+}
+
+/// Which sides of a box have an automatic margin.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AutoEdges {
+    pub top: bool,
+    pub right: bool,
+    pub bottom: bool,
+    pub left: bool,
+}
+
+impl AutoEdges {
+    pub const NONE: Self = Self {
+        top: false,
+        right: false,
+        bottom: false,
+        left: false,
+    };
+    /// Left and right.
+    pub const HORIZONTAL: Self = Self {
+        top: false,
+        right: true,
+        bottom: false,
+        left: true,
+    };
+    /// Top and bottom.
+    pub const VERTICAL: Self = Self {
+        top: true,
+        right: false,
+        bottom: true,
+        left: false,
+    };
+    pub const ALL: Self = Self {
+        top: true,
+        right: true,
+        bottom: true,
+        left: true,
+    };
+}
+
+/// A length for each side of a box, as a margin takes.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Edges {
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+    pub left: f32,
+}
+
+impl Edges {
+    pub const ZERO: Self = Self::all(0.0);
+
+    /// The same on every side.
+    pub const fn all(value: f32) -> Self {
+        Self {
+            top: value,
+            right: value,
+            bottom: value,
+            left: value,
+        }
+    }
+
+    /// `horizontal` on the left and right, `vertical` on the top and bottom.
+    pub const fn xy(horizontal: f32, vertical: f32) -> Self {
+        Self {
+            top: vertical,
+            right: horizontal,
+            bottom: vertical,
+            left: horizontal,
+        }
+    }
+
+    /// In the order CSS gives them: top, right, bottom, left.
+    pub const fn new(top: f32, right: f32, bottom: f32, left: f32) -> Self {
+        Self {
+            top,
+            right,
+            bottom,
+            left,
+        }
+    }
 }
 
 /// The outline a node draws while it has keyboard focus. It is a stroked
@@ -628,6 +820,68 @@ impl Style {
         some
     );
     setter!(padding, padding, f32);
+    setter!(padding_sides, padding_sides, Edges, some);
+    /// The same margin on every side.
+    pub fn margin(mut self, margin: f32) -> Self {
+        self.margin = Edges::all(margin);
+        self
+    }
+    /// An automatic margin on these sides, which take the room left over.
+    pub fn margin_auto_edges(mut self, edges: AutoEdges) -> Self {
+        self.margin_auto = edges;
+        self
+    }
+    /// An automatic margin on the left: in a row, the child goes to the end.
+    pub fn margin_left_auto(mut self) -> Self {
+        self.margin_auto.left = true;
+        self
+    }
+    /// An automatic margin on the right: in a row, what follows goes to the end.
+    pub fn margin_right_auto(mut self) -> Self {
+        self.margin_auto.right = true;
+        self
+    }
+    /// An automatic margin on the top.
+    pub fn margin_top_auto(mut self) -> Self {
+        self.margin_auto.top = true;
+        self
+    }
+    /// An automatic margin on the bottom.
+    pub fn margin_bottom_auto(mut self) -> Self {
+        self.margin_auto.bottom = true;
+        self
+    }
+    /// Automatic margins left and right, as `margin: 0 auto`: the child is
+    /// centred across a column, and in a row it takes the room left over.
+    pub fn margin_x_auto(mut self) -> Self {
+        self.margin_auto.left = true;
+        self.margin_auto.right = true;
+        self
+    }
+    /// Automatic margins on top and bottom: the child is centred across a row.
+    pub fn margin_y_auto(mut self) -> Self {
+        self.margin_auto.top = true;
+        self.margin_auto.bottom = true;
+        self
+    }
+    /// A margin per side.
+    pub fn margin_edges(mut self, margin: Edges) -> Self {
+        self.margin = margin;
+        self
+    }
+    /// The border's width, in logical pixels; its colour is `border_color`.
+    pub fn border(mut self, width: f32) -> Self {
+        self.border = width;
+        self
+    }
+    setter!(border_color, border_color, Color, some);
+    setter!(border_sides, border_sides, Edges, some);
+
+    /// How far the content starts inside the box: the padding and the
+    /// border, which both take room.
+    pub fn inset(&self) -> f32 {
+        self.padding.max(0.0) + self.border.max(0.0)
+    }
     /// Sets the gap between rows and between columns.
     pub fn gap(mut self, value: f32) -> Self {
         self.gap = value;
@@ -638,10 +892,23 @@ impl Style {
     setter!(row_gap, row_gap, f32, some);
     setter!(column_gap, column_gap, f32, some);
     setter!(grow, grow, f32);
+    setter!(wrap_items, wrap_items, bool);
+    setter!(basis, basis, Length);
+    /// `flex: factor` as CSS has it: grows by `factor`, shrinks, and starts
+    /// from a basis of 0, so that children sharing a row each take a share of
+    /// the whole space by their factor, whatever is in them.
+    pub fn flex(mut self, factor: f32) -> Self {
+        self.grow = factor;
+        self.shrink = 1.0;
+        self.basis = Length::Px(0.0);
+        self
+    }
+    setter!(reverse, reverse, bool);
     setter!(shrink, shrink, f32);
     setter!(radius, radius, f32);
     setter!(align_items, align_items, Align);
     setter!(justify_content, justify_content, Justify);
+    setter!(align_content, align_content, Justify, some);
     setter!(align_self, align_self, Align, some);
     setter!(justify_self, justify_self, Align, some);
     setter!(columns, columns, Vec<Track>);
@@ -669,6 +936,14 @@ impl Style {
     setter!(exit, exit, Effect, some);
     setter!(animation, animation, Animation, some);
     setter!(direction, direction, Direction, some);
+    setter!(z_index, z_index, i32);
+    /// See [`Style::offset_end`].
+    pub fn offset_end(mut self, right: f32, bottom: f32) -> Self {
+        self.offset_end = Some((right, bottom));
+        self
+    }
+    setter!(blocks_pointer, blocks_pointer, bool);
+
     pub fn offset(mut self, x: f32, y: f32) -> Self {
         self.offset = Some((x, y));
         self
@@ -702,6 +977,11 @@ impl Style {
     setter!(font_family, font_family, FontFamily, some);
     setter!(font_weight, font_weight, u16, some);
     setter!(italic, italic, bool, some);
+    setter!(text_align, text_align, TextAlign, some);
+    setter!(hidden, hidden, bool);
+    setter!(unclipped, unclipped, bool);
+    setter!(line_height, line_height, f32, some);
+    setter!(letter_spacing, letter_spacing, f32, some);
 
     fn state(mut self, apply: impl FnOnce(&mut StateStyles)) -> Self {
         apply(self.states.get_or_insert_with(Default::default));
@@ -731,6 +1011,9 @@ impl Style {
                 .unwrap_or_else(|| inherited.font_family.clone()),
             font_weight: self.font_weight.unwrap_or(inherited.font_weight),
             italic: self.italic.unwrap_or(inherited.italic),
+            align: self.text_align.unwrap_or(inherited.align),
+            line_height: self.line_height.unwrap_or(inherited.line_height),
+            letter_spacing: self.letter_spacing.unwrap_or(inherited.letter_spacing),
             direction: self.direction.unwrap_or(inherited.direction),
             base_direction: self.base_direction.or(inherited.base_direction),
         }
@@ -764,10 +1047,13 @@ impl Style {
             // layout instead. See `Context::align_baselines`.
             Align::Baseline => AlignItems::FlexStart,
         };
+        // Relative to the main axis, as `flex-start` and `flex-end` are: the
+        // same as the writing mode's start and end everywhere but in a
+        // reversed row or column, where the start of the main axis is the end.
         let justify = |value: Justify| match value {
-            Justify::Start => AlignContent::Start,
+            Justify::Start => AlignContent::FlexStart,
             Justify::Center => AlignContent::Center,
-            Justify::End => AlignContent::End,
+            Justify::End => AlignContent::FlexEnd,
             Justify::Stretch => AlignContent::Stretch,
             Justify::SpaceBetween => AlignContent::SpaceBetween,
             Justify::SpaceAround => AlignContent::SpaceAround,
@@ -845,8 +1131,8 @@ impl Style {
                 Flow::Row | Flow::Column => Display::Flex,
             },
             size: Size {
-                width: dimension(self.width),
-                height: dimension(self.height),
+                width: dimension(bounded(self.width, self.min_width, self.max_width)),
+                height: dimension(bounded(self.height, self.min_height, self.max_height)),
             },
             min_size: Size {
                 width: minimum(self.min_width),
@@ -859,23 +1145,60 @@ impl Style {
             aspect_ratio: self
                 .aspect_ratio
                 .filter(|ratio| ratio.is_finite() && *ratio > 0.0),
-            padding: Rect::length(self.padding.max(0.0)),
+            padding: if self.padding_sides.is_some() || self.border_sides.is_some() {
+                let padding = self.padding_sides.unwrap_or(Edges::all(self.padding));
+                let border = self.border_sides.unwrap_or(Edges::all(self.border));
+                let side = |padding: f32, border: f32| {
+                    LengthPercentage::length(padding.max(0.0) + border.max(0.0))
+                };
+                Rect {
+                    left: side(padding.left, border.left),
+                    right: side(padding.right, border.right),
+                    top: side(padding.top, border.top),
+                    bottom: side(padding.bottom, border.bottom),
+                }
+            } else {
+                Rect::length(self.inset())
+            },
+            margin: {
+                let side = |length: f32, auto: bool| {
+                    if auto {
+                        LengthPercentageAuto::auto()
+                    } else {
+                        LengthPercentageAuto::length(length)
+                    }
+                };
+                Rect {
+                    left: side(self.margin.left, self.margin_auto.left),
+                    right: side(self.margin.right, self.margin_auto.right),
+                    top: side(self.margin.top, self.margin_auto.top),
+                    bottom: side(self.margin.bottom, self.margin_auto.bottom),
+                }
+            },
             gap: Size {
                 width: gap(self.column_gap),
                 height: gap(self.row_gap),
             },
-            flex_direction: if flow == Flow::Row {
-                FlexDirection::Row
-            } else {
-                FlexDirection::Column
+            flex_direction: match (flow == Flow::Row, self.reverse) {
+                (true, false) => FlexDirection::Row,
+                (true, true) => FlexDirection::RowReverse,
+                (false, false) => FlexDirection::Column,
+                (false, true) => FlexDirection::ColumnReverse,
             },
             align_items: Some(align(self.align_items)),
             // `Start` keeps the engine's normal behavior, which lets grid tracks fill.
             justify_content: (self.justify_content != Justify::Start)
                 .then(|| justify(self.justify_content)),
+            align_content: self.align_content.map(justify),
             align_self: self.align_self.map(align),
             justify_self: self.justify_self.map(align),
+            flex_wrap: if self.wrap_items {
+                FlexWrap::Wrap
+            } else {
+                FlexWrap::NoWrap
+            },
             flex_grow: self.grow.max(0.0),
+            flex_basis: dimension(self.basis),
             flex_shrink: self.shrink.max(0.0),
             grid_template_columns: template(&self.columns),
             grid_template_rows: template(&self.rows),
@@ -898,20 +1221,51 @@ impl Style {
                 (None, Some(area)) => placement(area.row, area.row_span),
                 (None, None) => Default::default(),
             },
-            position: if self.offset.is_some() {
+            position: if self.offset.is_some() || self.offset_end.is_some() {
                 Position::Absolute
             } else {
                 Position::Relative
             },
-            inset: self.offset.map_or_else(Rect::auto, |(x, y)| Rect {
-                left: LengthPercentageAuto::length(x),
-                top: LengthPercentageAuto::length(y),
-                right: LengthPercentageAuto::auto(),
-                bottom: LengthPercentageAuto::auto(),
-            }),
+            inset: {
+                let (left, top) = self
+                    .offset
+                    .map_or((None, None), |(x, y)| (Some(x), Some(y)));
+                let (right, bottom) = self
+                    .offset_end
+                    .map_or((None, None), |(x, y)| (Some(x), Some(y)));
+                let side = |value: Option<f32>| {
+                    value.map_or_else(LengthPercentageAuto::auto, LengthPercentageAuto::length)
+                };
+                Rect {
+                    left: side(left),
+                    top: side(top),
+                    right: side(right),
+                    bottom: side(bottom),
+                }
+            },
             ..taffy::Style::default()
         }
     }
+}
+
+/// An explicit pixel size held to its own minimum and maximum, as CSS holds
+/// `width: 400px; max-width: 100px` to 100. The layout engine sizes a
+/// container from its children's sizes before it applies their limits, so
+/// a parent of such a child would otherwise be as large as the size that was
+/// asked for and not the size the child ends up. Anything that is not a pixel
+/// size against pixel limits is left to the engine.
+fn bounded(size: Length, min: Length, max: Length) -> Length {
+    let Length::Px(mut value) = size else {
+        return size;
+    };
+    if let Length::Px(max) = max {
+        value = value.min(max);
+    }
+    if let Length::Px(min) = min {
+        // A minimum above the maximum wins, as in CSS.
+        value = value.max(min);
+    }
+    Length::Px(value)
 }
 
 /// Concrete text properties after inheritance; what measurement and paint use.
@@ -922,6 +1276,9 @@ pub struct ResolvedText {
     pub font_family: FontFamily,
     pub font_weight: u16,
     pub italic: bool,
+    pub align: TextAlign,
+    pub line_height: f32,
+    pub letter_spacing: f32,
     pub direction: Direction,
     /// A paragraph direction the application forced.
     pub base_direction: Option<Direction>,
@@ -935,6 +1292,9 @@ impl ResolvedText {
             font_family: theme.font_family.clone(),
             font_weight: 400,
             italic: false,
+            align: TextAlign::Start,
+            line_height: 1.4,
+            letter_spacing: 0.0,
             direction: Direction::Ltr,
             base_direction: None,
         }
@@ -950,6 +1310,9 @@ impl ResolvedText {
             family: self.font_family.clone(),
             weight: self.font_weight,
             italic: self.italic,
+            align: self.align,
+            line_height: self.line_height,
+            letter_spacing: self.letter_spacing,
             wrap,
             rtl: self.rtl(),
             base: self.base_direction.map(|base| base == Direction::Rtl),

@@ -1,0 +1,50 @@
+{
+  "id": "line-height",
+  "title": "line-height as a multiple of a pixel font size: the height of a one-line box, whatever the font",
+  "size": [
+    420,
+    260
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 8,
+    "padding": 12,
+    "children": [
+      {
+        "type": "label",
+        "id": "tight",
+        "text": "Line height one",
+        "fontSize": 20,
+        "lineHeight": 1,
+        "width": 300,
+        "compareBox": true
+      },
+      {
+        "type": "label",
+        "id": "double",
+        "text": "Line height two",
+        "fontSize": 20,
+        "lineHeight": 2,
+        "width": 300,
+        "compareBox": true
+      },
+      {
+        "type": "label",
+        "id": "triple",
+        "text": "Line height three",
+        "fontSize": 20,
+        "lineHeight": 3,
+        "letterSpacing": 2,
+        "width": 300,
+        "compareBox": true
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "initial"
+    }
+  ]
+}

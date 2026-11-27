@@ -69,7 +69,7 @@ pub use drag::{DragInfo, DragOutcome, DragPayload, DropKind};
 pub use editor::{CaretMovement, TextEdit, TextMove, TextSelection};
 pub use events::{EventArea, UiEvent};
 pub use focus::{DialogOptions, FocusScope};
-pub use glassmere_scene::{FontFamily, TextSpan, TextStyle, TextWrap};
+pub use glassmere_scene::{FontFamily, TextAlign, TextSpan, TextStyle, TextWrap};
 pub use glassmere_scene::{MonospaceMeasurer, TextMeasurer};
 pub use image::{BackgroundImage, ImageFit, ImageOptions, ImageSource, ImageTint};
 pub use locale_format::{Date, DateStyle, LocaleFormat, Time, Weekday};
@@ -91,8 +91,8 @@ pub use rich_editor::{RichEditorOptions, RichEditorResponse, RichOp};
 pub use rich_text::{RichRun, RichText};
 pub use selection::{Indentation, Motion, Selection};
 pub use style::{
-    Align, AutoFlow, Cursor, Direction, FocusRing, Gradient, GridArea, Justify, Length, Paint,
-    ResolvedText, Shadow, StateStyles, Style, Track, TrackSize,
+    Align, AutoEdges, AutoFlow, Cursor, Direction, Edges, FocusRing, Gradient, GridArea, Justify,
+    Length, Paint, ResolvedText, Shadow, StateStyles, Style, Track, TrackSize,
 };
 pub use stylesheet::{StyleSheet, StyleSheetError};
 #[cfg(feature = "std")]

@@ -1,0 +1,32 @@
+{
+  "id": "buttons",
+  "title": "Buttons: click, drag off, disabled, keyboard, focus ring, pointer",
+  "size": [420, 300],
+  "ui": { "type": "column", "id": "page", "gap": 8, "padding": 16, "children": [
+    { "type": "button", "id": "save", "text": "Save" },
+    { "type": "button", "id": "off", "text": "Disabled", "disabled": true },
+    { "type": "label", "id": "note", "text": "Some text" },
+    { "type": "panel", "id": "pane", "width": 200, "height": 60, "background": "#2a3342" },
+    { "type": "button", "id": "other", "text": "Other" }
+  ]},
+  "steps": [
+    { "do": "observe", "label": "initial" },
+    { "do": "cursor", "label": "pointer over each", "targets": ["save", "off", "note", "pane"] },
+    { "do": "click", "target": "save" },
+    { "do": "observe", "label": "after a mouse click" },
+    { "do": "press", "key": "Tab" },
+    { "do": "observe", "label": "after Tab" },
+    { "do": "press", "key": "Shift+Tab" },
+    { "do": "press", "key": "Enter" },
+    { "do": "press", "key": "Space" },
+    { "do": "observe", "label": "after Enter and Space on the focused button" },
+    { "do": "dragOff", "target": "other" },
+    { "do": "observe", "label": "pressed on a button, released away from it" },
+    { "do": "click", "target": "off" },
+    { "do": "observe", "label": "after clicking the disabled button" },
+    { "do": "click", "target": "pane" },
+    { "do": "observe", "label": "after clicking a plain panel" },
+    { "do": "click", "target": "note" },
+    { "do": "observe", "label": "after clicking a text label" }
+  ]
+}

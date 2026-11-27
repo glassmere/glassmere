@@ -19,7 +19,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use glassmere_scene::{
-    Color, Point, Primitive, Rect, Scene, Size, TextMeasurer, TextStyle, TextWrap,
+    Color, Point, Primitive, Rect, Scene, Size, TextAlign, TextMeasurer, TextStyle, TextWrap,
 };
 mod actions;
 mod animation_state;
@@ -407,6 +407,8 @@ struct Node {
     changed_frame: u64,
     painted_frame: u64,
     resolved: ResolvedText,
+    /// This node or an ancestor is `Style::hidden`; set by the bounds walk.
+    hidden: bool,
     scope: Option<Box<ScopeState>>,
     tooltip: Option<Box<crate::Tooltip>>,
     anim: Option<Box<animation_state::NodeAnim>>,
@@ -442,7 +444,7 @@ impl Node {
 
     /// The box inside the padding.
     fn content_box(&self) -> Rect {
-        let padding = self.style.padding.max(0.0);
+        let padding = self.style.inset();
         Rect {
             x: self.bounds.x + padding,
             y: self.bounds.y + padding,
@@ -479,6 +481,7 @@ impl Node {
     /// hold focus, before its style or its scrolling is asked.
     fn focus_kind(&self) -> bool {
         self.enabled
+            && !self.hidden
             && !matches!(
                 self.control,
                 Control::Stepper
@@ -529,6 +532,16 @@ impl Node {
                     .is_some_and(|widget| widget.semantics.focusable))
     }
 
+    /// Its box does not cut off what is inside it: `Style::unclipped` on a
+    /// kind that does not scroll or float.
+    fn unclipped(&self) -> bool {
+        self.style.unclipped
+            && !matches!(
+                self.kind,
+                Kind::Scroll | Kind::Collection | Kind::TabList | Kind::Popup | Kind::Popover
+            )
+    }
+
     /// Text that is selected and copied but never edited.
     fn read_only(&self) -> bool {
         matches!(self.control, Control::SelectableText)
@@ -537,24 +550,27 @@ impl Node {
     /// A tab strip's scroll button while no tabs are hidden on its side: it
     /// is laid out but neither drawn nor reachable, and not reported.
     fn parked(&self) -> bool {
-        matches!(self.control, Control::StripScroll { .. })
-            && (self.clip.width <= 0.0 || self.clip.height <= 0.0)
+        self.hidden
+            || matches!(self.control, Control::StripScroll { .. })
+                && (self.clip.width <= 0.0 || self.clip.height <= 0.0)
     }
 
     /// Whether a press can land on this node: anything focusable or
     /// activatable, the pointer-only column sizer, and the window frame a
     /// view draws for itself.
     fn takes_pointer(&self) -> bool {
-        self.focus_kind()
-            || self.activatable()
-            || (self.enabled
-                && matches!(
-                    self.control,
-                    Control::Sizer { .. }
-                        | Control::TitleBar
-                        | Control::ResizeGrip(_)
-                        | Control::GridScrollbar { .. }
-                ))
+        !self.hidden
+            && (self.style.blocks_pointer
+                || self.focus_kind()
+                || self.activatable()
+                || (self.enabled
+                    && matches!(
+                        self.control,
+                        Control::Sizer { .. }
+                            | Control::TitleBar
+                            | Control::ResizeGrip(_)
+                            | Control::GridScrollbar { .. }
+                    )))
     }
 
     fn activatable(&self) -> bool {
@@ -718,6 +734,7 @@ impl Node {
             checked: None,
             selected: None,
             expanded: None,
+            switch: self.kind == Kind::Switch,
         }
     }
 }
@@ -772,6 +789,12 @@ pub struct Context {
     spare_chunks: crate::collections::FastMap<NodeId, Rc<PaintChunk>>,
     stats: FrameStats,
     geometry_dirty: bool,
+    /// A node was hidden or shown by the last bounds walk, so what the user
+    /// was focused on or holding may no longer be there to be.
+    hidden_changed: bool,
+    /// Some node is `unclipped`, so a clip says nothing about what is under
+    /// it, as when there is a popup. Set by the bounds walk.
+    has_unclipped: bool,
     /// Whether the bounds walk is the plain one the tests compare it with.
     #[cfg(test)]
     reference_walk: bool,
@@ -782,6 +805,9 @@ pub struct Context {
     popover_count: usize,
     /// How many popups the tree holds.
     popup_count: usize,
+    /// How many nodes have a `z_index` other than 0. While there are none,
+    /// painting and hit testing go through the children as they are.
+    z_count: usize,
     /// How many text areas the tree holds.
     text_area_count: usize,
     /// How many rich editors the tree holds.
@@ -1036,6 +1062,7 @@ impl Default for Context {
             changed_frame: 0,
             painted_frame: 0,
             resolved: ResolvedText::from_theme(&theme),
+            hidden: false,
             scope: None,
             tooltip: None,
         };
@@ -1062,11 +1089,14 @@ impl Default for Context {
             spare_chunks: Default::default(),
             stats: FrameStats::default(),
             geometry_dirty: false,
+            hidden_changed: false,
+            has_unclipped: false,
             #[cfg(test)]
             reference_walk: false,
             clips_valid: false,
             popover_count: 0,
             popup_count: 0,
+            z_count: 0,
             text_area_count: 0,
             rich_editor_count: 0,
             preparing: Preparing::default(),

@@ -1,0 +1,88 @@
+{
+  "id": "number",
+  "title": "A number field: arrow keys, the limits, and what typing letters does",
+  "size": [
+    420,
+    200
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 8,
+    "padding": 12,
+    "children": [
+      {
+        "type": "number",
+        "id": "count",
+        "label": "Count",
+        "value": 5,
+        "min": 0,
+        "max": 10,
+        "step": 1
+      },
+      {
+        "type": "button",
+        "id": "after",
+        "text": "After"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "initial"
+    },
+    {
+      "do": "click",
+      "target": "count"
+    },
+    {
+      "do": "press",
+      "key": "ArrowUp"
+    },
+    {
+      "do": "press",
+      "key": "ArrowUp"
+    },
+    {
+      "do": "observe",
+      "label": "two steps up"
+    },
+    {
+      "do": "press",
+      "key": "ArrowUp"
+    },
+    {
+      "do": "press",
+      "key": "ArrowUp"
+    },
+    {
+      "do": "press",
+      "key": "ArrowUp"
+    },
+    {
+      "do": "press",
+      "key": "ArrowUp"
+    },
+    {
+      "do": "observe",
+      "label": "past the maximum"
+    },
+    {
+      "do": "type",
+      "text": "abc"
+    },
+    {
+      "do": "observe",
+      "label": "after typing letters"
+    },
+    {
+      "do": "press",
+      "key": "Tab"
+    },
+    {
+      "do": "observe",
+      "label": "after leaving the field"
+    }
+  ]
+}

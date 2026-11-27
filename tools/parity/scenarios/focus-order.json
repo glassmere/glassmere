@@ -1,0 +1,114 @@
+{
+  "id": "focus-order",
+  "title": "Tab order over a mix of controls and layout",
+  "size": [
+    460,
+    360
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 6,
+    "padding": 12,
+    "children": [
+      {
+        "type": "label",
+        "id": "title",
+        "text": "A heading"
+      },
+      {
+        "type": "row",
+        "id": "bar",
+        "gap": 6,
+        "children": [
+          {
+            "type": "button",
+            "id": "b1",
+            "text": "One"
+          },
+          {
+            "type": "spacer",
+            "id": "gap",
+            "width": 20,
+            "height": 10
+          },
+          {
+            "type": "button",
+            "id": "b2",
+            "text": "Two"
+          }
+        ]
+      },
+      {
+        "type": "panel",
+        "id": "pane",
+        "width": 200,
+        "height": 30,
+        "background": "#2a3342"
+      },
+      {
+        "type": "input",
+        "id": "field",
+        "value": "",
+        "width": 200,
+        "label": "Field"
+      },
+      {
+        "type": "checkbox",
+        "id": "box",
+        "text": "Box",
+        "checked": false
+      },
+      {
+        "type": "scroll",
+        "id": "short",
+        "height": 60,
+        "children": [
+          {
+            "type": "label",
+            "id": "s1",
+            "text": "fits"
+          }
+        ]
+      },
+      {
+        "type": "slider",
+        "id": "vol",
+        "min": 0,
+        "max": 10,
+        "step": 1,
+        "value": 5,
+        "width": 200,
+        "label": "Volume"
+      },
+      {
+        "type": "button",
+        "id": "off",
+        "text": "Disabled",
+        "disabled": true
+      },
+      {
+        "type": "button",
+        "id": "last",
+        "text": "Last"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "initial"
+    },
+    {
+      "do": "tabSequence",
+      "label": "Tab forward",
+      "count": 9
+    },
+    {
+      "do": "tabSequence",
+      "label": "Shift+Tab back",
+      "count": 9,
+      "shift": true
+    }
+  ]
+}

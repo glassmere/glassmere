@@ -1,0 +1,61 @@
+{
+  "id": "percent-nested",
+  "title": "Percentage sizes inside parents with padding",
+  "size": [
+    420,
+    300
+  ],
+  "features": [
+    "percent"
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 0,
+    "padding": 10,
+    "children": [
+      {
+        "type": "column",
+        "id": "outer",
+        "width": 300,
+        "height": 200,
+        "gap": 0,
+        "padding": 10,
+        "background": "#222c3d",
+        "children": [
+          {
+            "type": "column",
+            "id": "half",
+            "widthPercent": 0.5,
+            "heightPercent": 0.5,
+            "gap": 0,
+            "padding": 10,
+            "background": "#2f3d57",
+            "children": [
+              {
+                "type": "panel",
+                "id": "full",
+                "background": "#3b4a63",
+                "height": 30,
+                "widthPercent": 1.0
+              }
+            ]
+          },
+          {
+            "type": "panel",
+            "id": "quarter",
+            "background": "#3b4a63",
+            "height": 40,
+            "widthPercent": 0.25
+          }
+        ]
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "sizes resolved against the parent"
+    }
+  ]
+}

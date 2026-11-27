@@ -100,6 +100,10 @@ pub struct Semantics {
     pub selected: Option<bool>,
     /// Whether what it opens is open, for a disclosure or a menu button.
     pub expanded: Option<bool>,
+    /// A `Checkbox` that is announced as a switch, which assistive technology
+    /// reads as "on" and "off" where a checkbox is "checked". Every
+    /// `Ui::switch` has it; a switch of the application's own sets it.
+    pub switch: bool,
 }
 
 #[derive(Clone, Debug)]

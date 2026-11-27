@@ -1,0 +1,79 @@
+{
+  "id": "select",
+  "title": "A drop-down: focus it from the keyboard, step through it, open it and choose",
+  "size": [
+    420,
+    260
+  ],
+  "ui": {
+    "type": "column",
+    "id": "page",
+    "gap": 8,
+    "padding": 12,
+    "children": [
+      {
+        "type": "select",
+        "id": "theme",
+        "label": "Theme",
+        "value": 0,
+        "options": [
+          {
+            "id": "dark",
+            "text": "Dark"
+          },
+          {
+            "id": "light",
+            "text": "Light"
+          },
+          {
+            "id": "system",
+            "text": "System"
+          }
+        ]
+      },
+      {
+        "type": "button",
+        "id": "after",
+        "text": "After"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "do": "observe",
+      "label": "initial"
+    },
+    {
+      "do": "press",
+      "key": "Tab"
+    },
+    {
+      "do": "observe",
+      "label": "focused with Tab"
+    },
+    {
+      "do": "press",
+      "key": "ArrowDown"
+    },
+    {
+      "do": "observe",
+      "label": "after ArrowDown on the closed drop-down"
+    },
+    {
+      "do": "press",
+      "key": "Space"
+    },
+    {
+      "do": "press",
+      "key": "ArrowDown"
+    },
+    {
+      "do": "press",
+      "key": "Enter"
+    },
+    {
+      "do": "observe",
+      "label": "opened with Space, one down, chosen with Enter"
+    }
+  ]
+}
