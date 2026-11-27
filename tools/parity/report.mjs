@@ -31,7 +31,7 @@ function kinds(spec) {
   walk(spec.ui);
   return map;
 }
-const INTERACTIVE = new Set(['button', 'checkbox', 'switch', 'radio', 'input', 'slider', 'number', 'select']);
+const INTERACTIVE = new Set(['button', 'checkbox', 'switch', 'radio', 'input', 'slider', 'number', 'select', 'textarea']);
 const BOXES = new Set(['panel', 'spacer', 'column', 'row', 'scroll', 'stack']);
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

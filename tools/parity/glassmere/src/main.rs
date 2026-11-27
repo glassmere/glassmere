@@ -28,6 +28,8 @@ enum Msg {
     Text(String, String),
     Slide(String, f64),
     Number(String, f64),
+    /// An operation of a multi-line text area.
+    TextOp(String, glassmere_core::TextOp),
     /// A dialog was closed by the user's own dismissal (Escape or the scrim).
     Dialog(String, bool),
 }
@@ -48,6 +50,8 @@ struct Bench {
     /// A button that opens a dialog, and one that closes it, by id.
     opens: HashMap<String, String>,
     closes: HashMap<String, String>,
+    /// The document of each multi-line text area, by id.
+    docs: HashMap<String, glassmere_core::TextDocument>,
 }
 
 fn number(n: f64) -> String {
@@ -72,6 +76,17 @@ impl App for Bench {
                 if let Some(dialog) = self.closes.get(&id).cloned() {
                     self.log.push(format!("dialog:{dialog}:false"));
                     self.values.insert(dialog, Val::Bool(false));
+                }
+            }
+            Msg::TextOp(id, op) => {
+                if let Some(doc) = self.docs.get_mut(&id) {
+                    let before = doc.text();
+                    doc.apply(op);
+                    let after = doc.text();
+                    if after != before {
+                        self.log.push(format!("input:{id}:{after}"));
+                    }
+                    self.values.insert(id, Val::Text(after));
                 }
             }
             Msg::Number(id, value) => {
@@ -499,6 +514,27 @@ impl Bench {
                     ui.switch(text, on, move |on| Msg::Toggle(key.clone(), on));
                 });
             }
+            "textarea" => {
+                let key = id.clone();
+                let mut style = sized(node, Style::default());
+                if style.width == Length::Auto {
+                    style.width = Length::Px(280.0);
+                }
+                let options = glassmere_core::CodeEditorOptions {
+                    label: node
+                        .get("label")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .into(),
+                    style,
+                    line_numbers: false,
+                    ..glassmere_core::CodeEditorOptions::default()
+                };
+                let doc = &self.docs[&id];
+                ui.keyed(id, |ui| {
+                    ui.text_area(doc, options, move |op| Msg::TextOp(key.clone(), op));
+                });
+            }
             "select" => {
                 let selected = match self.values.get(&id) {
                     Some(Val::Index(i)) => *i,
@@ -666,6 +702,32 @@ fn paths(
     }
 }
 
+/// A document for each multi-line text area of the spec.
+fn textareas(node: &Value) -> HashMap<String, glassmere_core::TextDocument> {
+    fn walk(node: &Value, out: &mut HashMap<String, glassmere_core::TextDocument>) {
+        if node["type"].as_str() == Some("textarea") {
+            if let Some(id) = node.get("id").and_then(Value::as_str) {
+                let text = node["value"].as_str().unwrap_or("");
+                out.insert(
+                    id.to_string(),
+                    glassmere_core::TextDocument::from_text(text),
+                );
+            }
+        }
+        for child in node
+            .get("children")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            walk(child, out);
+        }
+    }
+    let mut out = HashMap::new();
+    walk(node, &mut out);
+    out
+}
+
 /// Which dialog each button names under `key` (`opens` or `closes`).
 fn links(node: &Value, key: &str) -> HashMap<String, String> {
     fn walk(node: &Value, key: &str, out: &mut HashMap<String, String>) {
@@ -740,7 +802,7 @@ fn initial(node: &Value, out: &mut HashMap<String, Val>) {
         "radiogroup" | "select" => {
             out.insert(id, Val::Index(node["value"].as_u64().unwrap_or(0) as usize));
         }
-        "input" => {
+        "input" | "textarea" => {
             out.insert(
                 id,
                 Val::Text(node["value"].as_str().unwrap_or("").to_string()),
@@ -786,7 +848,7 @@ fn role(role: Role) -> &'static str {
         Role::Button => "button",
         Role::Checkbox => "checkbox",
         Role::Radio => "radio",
-        Role::TextInput | Role::PasswordInput => "textbox",
+        Role::TextInput | Role::PasswordInput | Role::MultilineTextInput => "textbox",
         Role::Slider => "slider",
         Role::SpinButton => "spinbutton",
         Role::ComboBox => "combobox",
@@ -990,6 +1052,12 @@ impl Rig {
             } else if let Some(value) = &snap.value {
                 entry.insert("value".into(), json!(value));
             }
+            // A text area publishes the text it declares as runs, with the line
+            // the caret is on as its value, so what a page reads as the value
+            // is the document's text.
+            if let Some(doc) = self.app.docs.get(id) {
+                entry.insert("value".into(), json!(doc.text()));
+            }
             a11y.insert(id.clone(), Value::Object(entry));
             let r = self.rect(id);
             rects.insert(id.clone(), json!(r.map(|v| (v * 10.0).round() / 10.0)));
@@ -1058,6 +1126,7 @@ fn run(spec: &Value, out: &Path) -> Value {
             size,
             values,
             log: Vec::new(),
+            docs: textareas(&spec["ui"]),
             opens: links(&spec["ui"], "opens"),
             closes: links(&spec["ui"], "closes"),
         },

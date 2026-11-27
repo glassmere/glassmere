@@ -116,6 +116,8 @@ function render(node) {
         .join('')}</div>`;
     case 'input':
       return `<input type="text" data-id="${id}" aria-label="${esc(node.label ?? '')}" value="${esc(node.value ?? '')}"${dis} style="${css(node)}">`;
+    case 'textarea':
+      return `<textarea data-id="${id}" aria-label="${esc(node.label ?? '')}"${dis} style="${css(node, 'resize:none')}">${esc(node.value ?? '')}</textarea>`;
     case 'select':
       return `<select data-id="${id}" aria-label="${esc(node.label ?? '')}"${dis} style="${css(node)}">${(node.options || []).map((o, i) => `<option value="${i}"${node.value === i ? ' selected' : ''}>${esc(o.text)}</option>`).join('')}</select>`;
     case 'number':
@@ -159,7 +161,7 @@ const shell = (spec) => `<!doctype html><html><head><meta charset="utf-8"><style
   });
   root.addEventListener('input', (e) => {
     const t = e.target;
-    if (t.type === 'text') __log.push('input:' + t.dataset.id + ':' + t.value);
+    if (t.type === 'text' || t.tagName === 'TEXTAREA') __log.push('input:' + t.dataset.id + ':' + t.value);
     if (t.type === 'range') __log.push('slide:' + t.dataset.id + ':' + Number(t.value));
     if (t.type === 'number') __log.push('number:' + t.dataset.id + ':' + Number(t.value));
   });
@@ -214,7 +216,7 @@ async function run(spec, browser) {
       for (const el of document.querySelectorAll('[data-id]')) {
         if (el.type === 'checkbox') values[el.dataset.id] = el.checked;
         else if (el.type === 'radio') { if (el.checked) values[el.name] = Number(el.value); }
-        else if (el.type === 'text') values[el.dataset.id] = el.value;
+        else if (el.type === 'text' || el.tagName === 'TEXTAREA') values[el.dataset.id] = el.value;
         else if (el.type === 'range') values[el.dataset.id] = Number(el.value);
         else if (el.tagName === 'SELECT') values[el.dataset.id] = el.selectedIndex;
         else if (el.type === 'number') values[el.dataset.id] = el.value === '' ? null : Number(el.value);
