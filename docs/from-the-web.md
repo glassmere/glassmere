@@ -1,0 +1,76 @@
+# Coming from the web
+
+glassmere lays out with flexbox, so most of what you know carries over. This page maps CSS to a `Style` and lists where the defaults and the behaviour differ, so that a first screen does not turn on a surprise.
+
+Everything here was checked against Chromium (the engine behind Tauri's WebView2) with the parity bench in `tools/parity`, which builds the same scenario in a page, in Qt and in glassmere and drives all three with real mouse and keyboard input. Where the bench found no difference, this page says they agree. Where it found one, this page says what it is.
+
+## The defaults that differ
+
+These are the ones to set on purpose, or the first screen looks off.
+
+| | The web | glassmere |
+| --- | --- | --- |
+| `gap` | 0 | **12** on every container made with `Style::default()`. Set `.gap(0.0)` where you do not want it. |
+| `flex-shrink` | 1, so children shrink to fit | **0**: children keep their size and overflow. Set `.shrink(1.0)` to squeeze them, as three 100 px panels in a 200 px row do on the web. |
+| `align-items` | `stretch` | **`Start`**: children keep their own size across the axis. Set `.align_items(Align::Stretch)` to fill it. |
+| `box-sizing` | `content-box` | **border box**, as `* { box-sizing: border-box }` gives you, which most pages set. `width` includes padding and border. |
+| padding | per side | one number for all four sides |
+| text is selectable | yes | no: `Label::new(..).selectable()` |
+| pointer over a button | the arrow, unless styled | **a hand** over anything that takes a press |
+
+## CSS to `Style`
+
+| CSS | glassmere |
+| --- | --- |
+| `display: flex; flex-direction` | `ui.row(style, ..)`, `ui.column(style, ..)` |
+| `gap`, `row-gap`, `column-gap` | `gap`, `row_gap`, `column_gap` |
+| `align-items`, `align-self` | `align_items`, `align_self` |
+| `justify-content` | `justify_content`: `Start`, `Center`, `End`, `SpaceBetween`, `SpaceAround`, `SpaceEvenly` |
+| `flex-grow`, `flex-shrink` | `grow`, `shrink` |
+| `flex-wrap: wrap` | `wrap_items(true)` |
+| `width`, `height` | `Length::Px`, `Length::Percent`, `Length::Auto` |
+| `min-width`, `max-width`, `min-height`, `max-height` | `min_width`, `max_width`, `min_height`, `max_height` |
+| `aspect-ratio` | `aspect_ratio` |
+| `padding` | `padding` (one value) |
+| `margin` | `margin`, `margin_edges(Edges::new(top, right, bottom, left))` |
+| `border` | `border(width)`, `border_color(color)` |
+| `border-radius` | `radius` |
+| `position: absolute; left; top` | `offset(x, y)`: the node leaves the flow and sits at that place in its parent |
+| `z-index` | none: later siblings are on top, so declare in stacking order |
+| `overflow: hidden` | every container clips its children to its box |
+| `overflow: auto` | `ui.scroll(style, ..)` |
+| `display: grid` | `ui.grid(style, ..)` with `columns`, `rows`, `areas` |
+| `display: none` | do not declare the widget |
+| `<fieldset disabled>` | `ui.enabled(false, ..)` |
+| `cursor` | `Style::cursor(Cursor::Grab)` and the others |
+| `outline` on `:focus-visible` | `Style::focus_ring(FocusRing::new(2.0).color(c))`, `Style::no_focus_ring()` |
+
+A stylesheet takes the same properties by name: `gap`, `padding`, `margin`, `border`, `grow`, `wrap-items`, `radius`, `background` and so on. See [styling](styling.md).
+
+### What agrees
+
+The bench found glassmere and Chromium in agreement on where boxes land for: alignment and distribution along both axes, `grow`, `shrink` where it is set, minimum and maximum sizes, percentage sizes inside padded parents, margin, border and wrapping rows, overlapping and stacking order, a disabled parent (the state and the focus order both follow), a widget that is not shown, and a child larger than its parent (the clipped part cannot be clicked).
+
+### What cannot be said yet
+
+No per-side padding or border. No `z-index`. No `align-content` for wrapped lines. No way to measure text from a view, so a painted control sizes itself from an estimate. These are listed in [known limitations](limitations.md).
+
+## Behaviour that differs
+
+- **Focus ring.** It shows after the keyboard and not after a click, as `:focus-visible` does, and always on a field you type in. It is a stroked outline inside the box that follows `radius`. One difference: Chromium keeps the ring on a slider that was already focused with the keyboard when you click it; glassmere hides it on the press.
+- **What takes focus.** A container that only lays things out does not, and a click on it, on empty space or on a spacer leaves focus where it was. A scroll area takes focus only while it scrolls, so that the arrow keys scroll the one you clicked. Chromium does not focus a scroller on a click. `Style::focusable(false)` keeps any widget out of the focus order while it still reacts to the pointer.
+- **Tab order.** Tab wraps from the last widget to the first. A browser leaves the page there, to its own chrome.
+- **A click.** A press that began on a widget and is released on it. Drag away and let go and nothing happens, as on the web. For a widget you paint yourself, `WidgetBuilder::on_click(message)` gives you that, with the keyboard activation, and a role such as `Checkbox` tells a screen reader what it is.
+- **Radio buttons.** Choosing the one that is already chosen sends nothing, as `change` does not fire.
+- **Switch.** A browser says `switch`; glassmere announces a checkbox that is on or off.
+- **Pointer.** The hand over every pressable widget is glassmere's choice. `Style::cursor(Cursor::Default)` on a node and what is inside it gives the arrow.
+
+## Performance, compared
+
+A list of rows is cheap in the browser up to many thousands, because it scrolls on the compositor. In glassmere a long list is declared and laid out each time the view runs, though it paints only what is in view and a wheel step does not run the view. On the bench, a plain list of 1,000 rows costs about 5 ms to change one label and about 1 ms to scroll, on par with Chromium; at 5,000 rows it is about 40 ms to change one label and about 4 ms to scroll.
+
+Past a thousand rows or so, use a virtual list, which declares only the rows in view and stays under 1 ms at any size, or put the rows in a `Ui::memo` so the view does not declare them again while they are unchanged. See [performance](performance.md).
+
+## Try it
+
+`tools/parity` is the bench these findings came from. `node run.mjs` there writes a report with both toolkits next to glassmere for each scenario, so you can see a difference before you meet it. A scenario is one JSON file.
