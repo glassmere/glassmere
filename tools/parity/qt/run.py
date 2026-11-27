@@ -47,7 +47,7 @@ KEYS = {
     "Tab": Qt.Key_Tab, "Enter": Qt.Key_Return, "Space": Qt.Key_Space, "Escape": Qt.Key_Escape,
     "ArrowUp": Qt.Key_Up, "ArrowDown": Qt.Key_Down, "ArrowLeft": Qt.Key_Left,
     "ArrowRight": Qt.Key_Right, "Home": Qt.Key_Home, "End": Qt.Key_End,
-    "Backspace": Qt.Key_Backspace, "PageUp": Qt.Key_PageUp, "PageDown": Qt.Key_PageDown,
+    "Backspace": Qt.Key_Backspace, "Delete": Qt.Key_Delete, "PageUp": Qt.Key_PageUp, "PageDown": Qt.Key_PageDown,
 }
 MODS = {"Shift": Qt.ShiftModifier, "Control": Qt.ControlModifier, "Alt": Qt.AltModifier}
 CURSORS = {

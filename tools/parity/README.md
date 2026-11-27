@@ -42,7 +42,7 @@ has them.
 
 ## What is covered
 
-Widgets and input: buttons, toggles, text input, slider, scrolling, focus order.
+Widgets and input: buttons, toggles, text input and editing from the keyboard (word-wise delete and move, selecting to the ends, select all), slider, scrolling, focus order.
 Layout and parents: alignment and distribution, flex grow and shrink (including what each toolkit
 does by default), percentage sizes, margin, border and padding per side, `align-content` for wrapped lines, per-child `align-self`, minimum and maximum sizes and aspect ratio, nested percentages, row and column gaps, `space-between` with margins, grids (fixed, fractional and auto tracks, spans, automatic placement), a disabled parent, a hidden child, overlapping
 widgets and stacking order (`z-index`), and a child larger than its parent.

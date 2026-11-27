@@ -908,9 +908,33 @@ fn run(spec: &Value, out: &Path) -> Value {
                         *parts.last().unwrap(),
                     )
                 };
-                if ctrl && key == "a" {
-                    // What the winit host sends for Ctrl+A in an editor.
-                    rig.event(Event::Text(TextEdit::SelectAll));
+                // What the winit host sends for a Ctrl-modified key in an editor
+                // (`glassmere-winit/src/input.rs`): the word and document
+                // moves and deletes are text edits, not key events.
+                let word = |direction| TextEdit::Move {
+                    direction,
+                    select: shift,
+                    word: true,
+                };
+                let document = |direction| TextEdit::Move {
+                    direction,
+                    select: shift,
+                    word: false,
+                };
+                let edit = match (ctrl, key) {
+                    (true, "a") => Some(TextEdit::SelectAll),
+                    (true, "ArrowLeft") => Some(word(glassmere_core::TextMove::Left)),
+                    (true, "ArrowRight") => Some(word(glassmere_core::TextMove::Right)),
+                    (true, "Backspace") => Some(TextEdit::Backspace { word: true }),
+                    (true, "Delete") => Some(TextEdit::Delete { word: true }),
+                    (true, "Home") => Some(document(glassmere_core::TextMove::DocumentStart)),
+                    (true, "End") => Some(document(glassmere_core::TextMove::DocumentEnd)),
+                    (true, "z") if shift => Some(TextEdit::Redo),
+                    (true, "z") => Some(TextEdit::Undo),
+                    _ => None,
+                };
+                if let Some(edit) = edit {
+                    rig.event(Event::Text(edit));
                 } else if let Some(key) = key_of(key) {
                     // A host sends the release too, and a button activates on it.
                     rig.event(Event::KeyDown {
