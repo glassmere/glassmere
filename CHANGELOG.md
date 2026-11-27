@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- `NumberOptions::field_style`, `NumberOptions::stepper_style` and `NumberOptions::without_steppers`, and `Autocomplete::style`. The number input's field (44 tall with padding 10) and its 32 by 44 buttons, and the autocomplete's 280 by 44 field, were fixed; they can now be made compact to fit a bar or a pill, or the buttons left out (the arrow keys and the wheel still step the number). Nothing changes for code that sets none of them.
+
 ## [0.1.8] - 2026-11-23
 
 ### Added
