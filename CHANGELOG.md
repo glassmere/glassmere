@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- A recipe for a button with an icon beside its label, in "A button with an icon" in the [widgets guide](docs/widgets.md): a widget of your own with `Role::Button`, sized with `Ui::measure_text`, clicked with `WidgetBuilder::on_click`. `tests/icon_button.rs` checks it. No new API.
 - `Style::cursor(Cursor)` sets the pointer over a node and what is inside it, and `Context::cursor(id)` is what a host shows. The winit host now takes its pointer from it. Without a style the pointer is as it was: a hand over a widget that takes a press, an I-beam over text, resize pointers over dividers. See "The pointer" in [styling](docs/styling.md).
 - A widget of your own can be clicked: `WidgetBuilder::on_click(message)` sends it for a press and release on the same widget, and for Enter, Space and an assistive Activate, and `Ui::custom` does the same. Dragging off and letting go sends nothing. Before, only `Role::Button` was pressed, and a painted control had to track its own hover to tell a click from a drag.
 - `Semantics::checked`, `selected` and `expanded` carry a widget's state to assistive technology, as for the built-in checkbox, tab and disclosure. `Semantics` is built with `..Semantics::default()` everywhere in the documentation, but a `Semantics { .. }` written out in full, as `examples/dial-widget` did, no longer compiles until it ends with `..Semantics::default()`. The same goes for `Style`, which gained `cursor`, `focusable` and `focus_ring` in this release.
