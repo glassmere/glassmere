@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 a breaking change raises the minor version; see [API stability](docs/api-stability.md).
 
+## [Unreleased]
+
+### Added
+
+- `Ui::measure_text`, `Ui::measure_text_wrapped` and `Ui::text_style`: how big some text is, asked of the same measurer the layout uses, from inside a view. A control you paint yourself can size itself to its label without a table of glyph widths. See "Sizing it to text" in [widgets](docs/widgets.md) and `examples/layout.rs`.
+
 ## [0.1.8] - 2026-11-23
 
 ### Added

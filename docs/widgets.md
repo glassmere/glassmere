@@ -124,6 +124,18 @@ What `WidgetInput` carries is of the last frame, because that is what there is t
 - **Style** is `ui.theme()` for the tokens, `ui.class(..)` for a stylesheet class, and the `style` argument for the node itself, which lays out like any container.
 - **Paint** is a list of primitives in the widget's own coordinates: rounded rectangles, gradients, shadows, text, images, clips and layers. Clips and layers must balance.
 
+### Sizing it to text
+
+A widget declares its size up front, so one that holds text needs to know how big that text is. `ui.measure_text(text, &style)` asks the measurer the layout uses, so the answer is the size the text will have, and `ui.text_style()` gives the theme's plain text to start from:
+
+```rust
+let style = ui.text_style();
+let label = ui.measure_text("Save changes", &style);
+let size = Size::new(label.width + 24.0, label.height + 12.0);
+```
+
+`ui.measure_text_wrapped(text, &style, width)` is the size when the text wraps at `width`. Shaping costs time, so measure once and keep the answer while the text stays the same, as with any work in a view. `examples/layout.rs` draws a badge this way.
+
 ### Testing it
 
 The same harness the built-in controls use, with no window:
